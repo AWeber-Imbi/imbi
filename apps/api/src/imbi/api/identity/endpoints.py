@@ -78,21 +78,34 @@ async def list_my_identities(
     """List the caller's identity connections."""
     user = auth.require_user
     rows = await repository.list_for_user(db, user.id)
-    return [
-        models.IdentityConnectionResponse(
-            id=row['id'],
-            integration_id=row['integration_id'],
-            integration_slug=row.get('integration_slug') or '',
-            integration_name=row.get('integration_name'),
-            subject=row.get('subject') or '',
-            status=row.get('status') or 'active',
-            expires_at=row.get('expires_at'),
-            scopes=list(row.get('scopes') or []),
-            last_used_at=row.get('last_used_at'),
-            metadata=row.get('metadata') or {},
+    out: list[models.IdentityConnectionResponse] = []
+    for row in rows:
+        # A connection whose Integration no longer resolves (e.g. the
+        # Integration was deleted, or predates stable node ids) has a null
+        # integration_id and can't be acted on — skip it rather than 500
+        # the whole list.
+        if not row.get('integration_id'):
+            LOGGER.warning(
+                'Skipping identity connection %s with no integration_id',
+                row.get('id'),
+            )
+            continue
+        out.append(
+            models.IdentityConnectionResponse(
+                id=row['id'],
+                integration_id=row['integration_id'],
+                integration_slug=row.get('integration_slug') or '',
+                integration_name=row.get('integration_name'),
+                plugin=row.get('plugin'),
+                subject=row.get('subject') or '',
+                status=row.get('status') or 'active',
+                expires_at=row.get('expires_at'),
+                scopes=list(row.get('scopes') or []),
+                last_used_at=row.get('last_used_at'),
+                metadata=row.get('metadata') or {},
+            )
         )
-        for row in rows
-    ]
+    return out
 
 
 @me_identities_router.post('/{integration_id}/start')

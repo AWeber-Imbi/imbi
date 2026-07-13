@@ -24,9 +24,16 @@ def _ctx() -> PluginContext:
     )
 
 
-def _resolved(identity_integration_id: str | None) -> mock.MagicMock:
+def _resolved(
+    identity_integration_id: str | None,
+    *,
+    integration: dict[str, typing.Any] | None = None,
+    integration_id: str = 'int-1',
+) -> mock.MagicMock:
     resolved = mock.MagicMock()
     resolved.identity_integration_id = identity_integration_id
+    resolved.integration_id = integration_id
+    resolved.integration = {} if integration is None else integration
     return resolved
 
 
@@ -38,7 +45,80 @@ def _auth(user_id: str | None) -> mock.MagicMock:
     return auth
 
 
+_IDENTITY_ENABLED = {'capabilities': {'identity': {'enabled': True}}}
+
+
+class EffectiveIdentityIntegrationIdTestCase(unittest.TestCase):
+    def test_prefers_explicit_binding(self) -> None:
+        resolved = _resolved(
+            'bound-1', integration=_IDENTITY_ENABLED, integration_id='self-1'
+        )
+        self.assertEqual(
+            host_integration.effective_identity_integration_id(resolved),
+            'bound-1',
+        )
+
+    def test_falls_back_to_self_when_identity_enabled(self) -> None:
+        resolved = _resolved(
+            None, integration=_IDENTITY_ENABLED, integration_id='self-1'
+        )
+        self.assertEqual(
+            host_integration.effective_identity_integration_id(resolved),
+            'self-1',
+        )
+
+    def test_none_without_binding_or_identity_capability(self) -> None:
+        resolved = _resolved(
+            None,
+            integration={'capabilities': {'deployment': {'enabled': True}}},
+            integration_id='self-1',
+        )
+        self.assertIsNone(
+            host_integration.effective_identity_integration_id(resolved)
+        )
+
+    def test_none_when_identity_capability_disabled(self) -> None:
+        resolved = _resolved(
+            None,
+            integration={'capabilities': {'identity': {'enabled': False}}},
+            integration_id='self-1',
+        )
+        self.assertIsNone(
+            host_integration.effective_identity_integration_id(resolved)
+        )
+
+
 class AttachIdentityTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_hydrates_self_identity_when_capability_enabled(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        hydrated = _ctx().model_copy(
+            update={
+                'actor_user_id': 'user-1',
+                'identity': IdentityCredentials(access_token='at'),
+            }
+        )
+        with mock.patch.object(
+            host_integration.identity_resolution,
+            'hydrate_identity',
+            new=mock.AsyncMock(return_value=hydrated),
+        ) as hydrate:
+            ctx = await host_integration.attach_identity(
+                db,
+                _ctx(),
+                _resolved(
+                    None,
+                    integration=_IDENTITY_ENABLED,
+                    integration_id='self-1',
+                ),
+                _auth('user-1'),
+            )
+        hydrate.assert_awaited_once()
+        # Hydrated against the serving Integration's own id.
+        self.assertEqual(hydrate.await_args.args[2], 'self-1')
+        self.assertEqual(ctx.identity.access_token, 'at')
+
     async def test_no_identity_integration_only_stamps_actor(self) -> None:
         db = mock.AsyncMock()
         ctx = await host_integration.attach_identity(

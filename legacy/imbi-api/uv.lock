@@ -1088,7 +1088,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
-    { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = "==2.12.0" },
+    { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = "==2.12.1" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },
     { name = "mcp", specifier = ">=1.26.0" },
@@ -1136,7 +1136,7 @@ docs = [
 
 [[package]]
 name = "imbi-common"
-version = "2.12.0"
+version = "2.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -1152,9 +1152,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/7a/5051acade39a77c20a97cbea49619d415883dd8d9b3fad75c29f1ac43272/imbi_common-2.12.0.tar.gz", hash = "sha256:21a4541f88069ee5cb9cac1694d4fbc37947592ee604043e76157d467830ab42", size = 360016, upload-time = "2026-07-07T20:57:16.928Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/67/70076e536ca9c9254f89d52fa4c7242ff3571182222440be474bcdb5bdaa/imbi_common-2.12.1.tar.gz", hash = "sha256:701e8941a49beceb319eec270a9517973e05c837c588086a18dfa79ca5a39600", size = 360810, upload-time = "2026-07-13T16:39:15.795Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/23/bd558c1eac0ee791a13cb44c85972bacd22f5a3e6fb6dee48da3bc595724/imbi_common-2.12.0-py3-none-any.whl", hash = "sha256:500d9fccf1afa61ea44548ede9bfb0624f7ba11db04f8660b88e2a24aeaf11a9", size = 120180, upload-time = "2026-07-07T20:57:15.367Z" },
+    { url = "https://files.pythonhosted.org/packages/62/18/126ebfdf5e6b21a25344b6762112680c6ba7b43400bfa5471f0f0a1c12f5/imbi_common-2.12.1-py3-none-any.whl", hash = "sha256:785f11ecd5e5892579fd62f0060831111fef82fa337e070aca4dee362b9d71cd", size = 120610, upload-time = "2026-07-13T16:39:14.424Z" },
 ]
 
 [package.optional-dependencies]

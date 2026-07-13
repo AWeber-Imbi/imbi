@@ -704,6 +704,9 @@ class IntegrationResponse(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='ignore')
 
+    #: Stable node id. ``None`` only for legacy Integrations created before
+    #: ids were persisted; the identity connect flow keys off this.
+    id: str | None = None
     plugin: str
     name: str
     slug: str
@@ -717,10 +720,15 @@ class IntegrationResponse(pydantic.BaseModel):
     capabilities: dict[str, CapabilityToggle] = {}
     #: Names of the credential fields currently populated (never values).
     credential_fields: list[str] = []
+    #: Values of populated, non-secret credential fields (``secret=False``
+    #: in the plugin manifest). Secret values are never included.
+    credential_values: dict[str, str] = {}
     links: dict[str, typing.Any] = {}
     identifiers: dict[str, typing.Any] = {}
     organization: dict[str, typing.Any] | None = None
     team: dict[str, typing.Any] | None = None
+    #: Whether this Integration is the organization's SSO login provider.
+    used_as_login: bool = False
 
 
 # -- Admin plugin (installed package) models ------------------------------

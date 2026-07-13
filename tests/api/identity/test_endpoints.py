@@ -411,3 +411,38 @@ class ListMyIdentitiesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].id, 'conn-1')
         self.assertEqual(result[0].integration_slug, 'oidc')
+
+    async def test_skips_rows_without_integration_id(self) -> None:
+        db = mock.AsyncMock()
+        auth = mock.MagicMock()
+        auth.require_user = mock.MagicMock(id='user-1')
+        rows = [
+            {
+                'id': 'conn-orphan',
+                'integration_id': None,
+                'integration_slug': None,
+                'integration_name': None,
+                'subject': 'sub-1',
+                'status': 'active',
+                'scopes': [],
+                'metadata': {},
+            },
+            {
+                'id': 'conn-2',
+                'integration_id': 'integration-2',
+                'integration_slug': 'github',
+                'integration_name': 'GitHub',
+                'subject': 'sub-2',
+                'status': 'active',
+                'scopes': [],
+                'metadata': {},
+            },
+        ]
+        with mock.patch.object(
+            endpoints.repository,
+            'list_for_user',
+            new=mock.AsyncMock(return_value=rows),
+        ):
+            result = await endpoints.list_my_identities(db, auth)
+        # The orphaned (null integration_id) row is skipped, not fatal.
+        self.assertEqual([c.id for c in result], ['conn-2'])

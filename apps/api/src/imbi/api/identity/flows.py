@@ -22,6 +22,7 @@ from imbi_api.identity.resolution import (
     load_integration,
     load_integration_org_slug,
 )
+from imbi_api.plugins.assignments import capability_state
 
 LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +67,16 @@ def _build_ctx(
     *,
     actor_user_id: str | None,
 ) -> PluginContext:
+    # The identity handler reads provider config (e.g. AWS IAM IC's
+    # ``start_url``) from ``capability_options`` — the identity
+    # capability's own options, distinct from the integration-level
+    # ``options`` (region, default role, …).
+    identity_options = capability_state(integration, 'identity').get('options')
+    capability_options: dict[str, typing.Any] = (
+        typing.cast('dict[str, typing.Any]', identity_options)
+        if isinstance(identity_options, dict)
+        else {}
+    )
     return PluginContext(
         project_id='',
         project_slug='',
@@ -74,6 +85,7 @@ def _build_ctx(
         integration_options=typing.cast(
             'dict[str, typing.Any]', integration.get('options') or {}
         ),
+        capability_options=capability_options,
     )
 
 

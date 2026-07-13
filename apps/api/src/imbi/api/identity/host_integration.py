@@ -30,11 +30,33 @@ from imbi_common.plugins import PluginAuthenticationFailed, PluginContext
 from imbi_api.auth import permissions
 from imbi_api.identity import errors as identity_errors
 from imbi_api.identity import resolution as identity_resolution
+from imbi_api.plugins.assignments import capability_enabled
 from imbi_api.plugins.resolution import ResolvedCapability
 
 LOGGER = logging.getLogger(__name__)
 
 T = typing.TypeVar('T')
+
+
+def effective_identity_integration_id(
+    resolved: ResolvedCapability,
+) -> str | None:
+    """Identity Integration whose connection powers this capability call.
+
+    Prefers an explicit ``identity_integration_id`` bound on the
+    capability's ``USES`` edge. When none is bound, defaults to the
+    serving Integration itself when it also provides an enabled
+    ``identity`` capability -- so a single unified plugin (one
+    Integration providing identity + deployment + lifecycle + ...) works
+    from one user connection, with no per-capability identity binding.
+    Returns ``None`` when neither applies (the capability needs no
+    per-user identity).
+    """
+    if resolved.identity_integration_id:
+        return resolved.identity_integration_id
+    if capability_enabled(resolved.integration, 'identity'):
+        return resolved.integration_id
+    return None
 
 
 async def attach_identity(
@@ -65,13 +87,14 @@ async def attach_identity(
     """
     actor_user_id = auth.user.id if auth.user else None
     ctx = ctx.model_copy(update={'actor_user_id': actor_user_id})
-    if not resolved.identity_integration_id:
+    identity_integration_id = effective_identity_integration_id(resolved)
+    if not identity_integration_id:
         return ctx
     try:
         return await identity_resolution.hydrate_identity(
             db,
             ctx,
-            resolved.identity_integration_id,
+            identity_integration_id,
             identity_options=identity_options,
         )
     except identity_errors.IdentityRequiredError as exc:
@@ -119,7 +142,7 @@ async def call_with_identity_retry(
     try:
         return await fn(ctx)
     except PluginAuthenticationFailed as exc:
-        integration_id = resolved.identity_integration_id
+        integration_id = effective_identity_integration_id(resolved)
         if not integration_id or auth.user is None:
             raise
         LOGGER.info(

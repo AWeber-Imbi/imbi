@@ -112,6 +112,17 @@ def _integration_to_login_app(
     if not capability_enabled(integration, 'identity'):
         return None
 
+    # An Integration with no stable ``id`` cannot back a login flow
+    # (``load_integration`` matches on ``id``); skip it rather than let a
+    # single malformed node 500 the whole login page.
+    integration_id = integration.get('id')
+    if not integration_id:
+        LOGGER.warning(
+            'Integration %r is marked used_as_login but has no id; skipping',
+            integration.get('slug'),
+        )
+        return None
+
     options = typing.cast(
         'dict[str, typing.Any]', integration.get('options') or {}
     )
@@ -124,7 +135,7 @@ def _integration_to_login_app(
     return LoginApp(
         slug=slug,
         name=str(integration.get('name') or slug),
-        integration_id=str(integration['id']),
+        integration_id=str(integration_id),
         oauth_app_type=str(
             options.get('oauth_app_type') or entry.manifest.auth_type
         ),

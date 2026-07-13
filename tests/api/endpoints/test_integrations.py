@@ -273,6 +273,31 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
             params['encrypted_credentials'], {'token': 'enc:secret'}
         )
 
+    def test_create_integration_strips_credential_whitespace(self) -> None:
+        self.mock_db.execute.return_value = [{'integration': _node()}]
+        with (
+            mock.patch(
+                'imbi_api.endpoints.integrations.get_plugin',
+                return_value=_entry(_create_manifest()),
+            ),
+            self._patch_encryptor(),
+        ):
+            response = self.client.post(
+                '/organizations/myorg/integrations/',
+                json={
+                    'plugin': 'logzio',
+                    'name': 'Logz.io Prod',
+                    'slug': 'logzio-prod',
+                    'credentials': {'token': '  secret\n', 'blank': '   '},
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        params = self.mock_db.execute.call_args.args[1]
+        # Surrounding whitespace stripped; whitespace-only field dropped.
+        self.assertEqual(
+            params['encrypted_credentials'], {'token': 'enc:secret'}
+        )
+
     def test_create_integration_plugin_not_installed(self) -> None:
         with mock.patch(
             'imbi_api.endpoints.integrations.get_plugin',

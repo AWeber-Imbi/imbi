@@ -126,8 +126,16 @@ async def resolve_capability(
             ),
         )
     if source:
+        # ``source`` disambiguates when several integrations serve a
+        # capability. The UI identifies integrations by id; a slug is also
+        # accepted for URL/CLI use. Both are unique on Integration.
         chosen = next(
-            (b for b in candidates if b.integration.get('slug') == source),
+            (
+                b
+                for b in candidates
+                if source
+                in (b.integration.get('slug'), b.integration.get('id'))
+            ),
             None,
         )
         if chosen is None:

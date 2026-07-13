@@ -134,6 +134,30 @@ class PatchCredentialsTestCase(unittest.TestCase):
         self.assertEqual(stored['token'], 'enc:new')
         self.assertNotIn('drop', stored)
 
+    def test_global_provider_matches_by_slug_alone(self) -> None:
+        # org_slug=None -> global login provider: read and CAS write are
+        # keyed by slug alone (no org_slug), but must be restricted to
+        # org-less Integrations so an organization-owned node is never
+        # read or overwritten by the global route.
+        db = mock.AsyncMock()
+        db.execute.side_effect = [
+            [{'creds': _blob({})}],
+            [{'i': {'id': '1'}}],  # successful CAS write
+        ]
+        fields = _run(
+            credentials.patch_integration_credentials(
+                db, 'google', None, {'client_id': 'cid'}
+            )
+        )
+        self.assertEqual(fields, ['client_id'])
+        read_query, read_params = db.execute.await_args_list[0].args[:2]
+        write_query, write_params = db.execute.await_args_list[1].args[:2]
+        self.assertNotIn('org_slug', read_params)
+        self.assertNotIn('org_slug', write_params)
+        # Org-less anti-join present on both the read and the CAS write.
+        self.assertIn('owner IS NULL', read_query)
+        self.assertIn('owner IS NULL', write_query)
+
     def test_concurrent_modification_retries_then_409(self) -> None:
         db = mock.AsyncMock()
         # Every read succeeds, every CAS write returns no rows -> retry

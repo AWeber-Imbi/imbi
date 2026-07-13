@@ -17,6 +17,9 @@ class IdentityConnectionResponse(pydantic.BaseModel):
     integration_id: str
     integration_slug: str
     integration_name: str | None = None
+    #: Slug of the plugin backing the integration (for plugin-level UI
+    #: joins, e.g. matching a connection to a catalog plugin).
+    plugin: str | None = None
     subject: str
     status: typing.Literal['active', 'revoked', 'expired']
     expires_at: datetime.datetime | None = None

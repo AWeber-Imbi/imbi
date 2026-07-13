@@ -32,23 +32,40 @@ RETURN i.encrypted_credentials AS creds
 LIMIT 1
 """
 
+# Global login-provider Integrations carry no ``BELONGS_TO`` edge, so they
+# are addressed by their (globally unique) slug alone.
+_READ_CREDS_GLOBAL: typing.LiteralString = """
+MATCH (i:Integration {{slug: {slug}}})
+OPTIONAL MATCH (i)-[:BELONGS_TO]->(owner:Organization)
+WITH i, owner
+WHERE owner IS NULL
+RETURN i.encrypted_credentials AS creds
+LIMIT 1
+"""
+
 
 async def _read_encrypted_credentials(
     db: graph.Graph,
     integration_slug: str,
-    org_slug: str,
+    org_slug: str | None,
 ) -> tuple[bool, str, dict[str, str]]:
     """Return ``(found, raw_blob, {field: ciphertext})``.
 
     ``found`` is ``False`` when no Integration matches ``slug`` within
-    ``org_slug``. ``raw_blob`` is the stored JSON string verbatim (``''``
-    when absent) -- the compare-and-swap witness.
+    ``org_slug`` (or, when ``org_slug`` is ``None``, by slug alone for a
+    global login provider). ``raw_blob`` is the stored JSON string
+    verbatim (``''`` when absent) -- the compare-and-swap witness.
     """
-    records = await db.execute(
-        _READ_CREDS,
-        {'slug': integration_slug, 'org_slug': org_slug},
-        ['creds'],
-    )
+    if org_slug is None:
+        records = await db.execute(
+            _READ_CREDS_GLOBAL, {'slug': integration_slug}, ['creds']
+        )
+    else:
+        records = await db.execute(
+            _READ_CREDS,
+            {'slug': integration_slug, 'org_slug': org_slug},
+            ['creds'],
+        )
     if not records:
         return False, '', {}
     raw = graph.parse_agtype(records[0].get('creds'))
@@ -71,7 +88,7 @@ async def _read_encrypted_credentials(
 async def get_integration_credential_fields(
     db: graph.Graph,
     integration_slug: str,
-    org_slug: str,
+    org_slug: str | None,
 ) -> list[str]:
     """Return the credential field names currently populated.
 
@@ -86,7 +103,7 @@ async def get_integration_credential_fields(
 async def patch_integration_credentials(
     db: graph.Graph,
     integration_slug: str,
-    org_slug: str,
+    org_slug: str | None,
     updates: dict[str, str | None],
 ) -> list[str]:
     """Apply a partial update to ``Integration.encrypted_credentials``.
@@ -94,7 +111,8 @@ async def patch_integration_credentials(
     ``updates`` maps a credential field name to its new plaintext value.
     ``None`` (or an empty string) removes the field. Existing fields not
     present in ``updates`` are preserved. Returns the resulting set of
-    populated field names.
+    populated field names. ``org_slug`` is ``None`` for global
+    login-provider Integrations (addressed by slug alone).
 
     Guarded by a compare-and-swap on the stored blob so two concurrent
     patches cannot clobber each other: each attempt re-reads the
@@ -111,30 +129,53 @@ async def patch_integration_credentials(
                 status_code=404, detail='Integration not found'
             )
         for field, value in updates.items():
-            if not value:
+            # Surrounding whitespace in a pasted credential is never
+            # meaningful and breaks downstream uses (e.g. HTTP auth headers).
+            stripped = (value or '').strip()
+            if not stripped:
                 current.pop(field, None)
             else:
-                encrypted = encryptor.encrypt(value)
+                encrypted = encryptor.encrypt(stripped)
                 if encrypted is not None:
                     current[field] = encrypted
         blob = json.dumps(current)
-        query: typing.LiteralString = """
-        MATCH (i:Integration {{slug: {slug}}})-[:BELONGS_TO]->
-          (:Organization {{slug: {org_slug}}})
-        WHERE coalesce(i.encrypted_credentials, '') = {expected}
-        SET i.encrypted_credentials = {blob}
-        RETURN i
-        """
-        updated = await db.execute(
-            query,
-            {
-                'slug': integration_slug,
-                'org_slug': org_slug,
-                'expected': expected,
-                'blob': blob,
-            },
-            ['i'],
-        )
+        if org_slug is None:
+            global_query: typing.LiteralString = """
+            MATCH (i:Integration {{slug: {slug}}})
+            OPTIONAL MATCH (i)-[:BELONGS_TO]->(owner:Organization)
+            WITH i, owner
+            WHERE owner IS NULL
+              AND coalesce(i.encrypted_credentials, '') = {expected}
+            SET i.encrypted_credentials = {blob}
+            RETURN i
+            """
+            updated = await db.execute(
+                global_query,
+                {
+                    'slug': integration_slug,
+                    'expected': expected,
+                    'blob': blob,
+                },
+                ['i'],
+            )
+        else:
+            query: typing.LiteralString = """
+            MATCH (i:Integration {{slug: {slug}}})-[:BELONGS_TO]->
+              (:Organization {{slug: {org_slug}}})
+            WHERE coalesce(i.encrypted_credentials, '') = {expected}
+            SET i.encrypted_credentials = {blob}
+            RETURN i
+            """
+            updated = await db.execute(
+                query,
+                {
+                    'slug': integration_slug,
+                    'org_slug': org_slug,
+                    'expected': expected,
+                    'blob': blob,
+                },
+                ['i'],
+            )
         if updated:
             return sorted(current)
     raise fastapi.HTTPException(

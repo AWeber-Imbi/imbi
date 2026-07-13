@@ -159,6 +159,52 @@ class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state_token, 'state-token')
         self.assertIsNone(polling)
 
+    async def test_threads_identity_capability_options_to_handler(
+        self,
+    ) -> None:
+        # Provider config (e.g. AWS IAM IC start_url) lives on the identity
+        # capability's options and must reach the handler via
+        # ctx.capability_options — distinct from integration-level options.
+        db = mock.AsyncMock()
+        request = mock.MagicMock()
+        request.authorization_url = 'https://idp/authorize?state=idp-state'
+        request.state = 'idp-state'
+        request.code_verifier = None
+        request.polling = None
+        request.registered_credentials = None
+        handler = mock.MagicMock(spec=flows.IdentityCapability)
+        handler.authorization_request = mock.AsyncMock(return_value=request)
+        integration = {
+            'slug': 'aws-prod',
+            'options': {'region': 'us-east-1'},
+            'capabilities': {
+                'identity': {
+                    'enabled': True,
+                    'options': {'start_url': 'https://x.awsapps.com/start'},
+                }
+            },
+        }
+        with (
+            _patch_load_handler(handler, integration=integration),
+            mock.patch.object(
+                flows.state,
+                'encode_identity_state',
+                return_value='state-token',
+            ),
+        ):
+            await flows.start_flow(
+                db,
+                integration_id='integration-1',
+                redirect_uri='https://imbi/cb',
+                actor_user_id='user-1',
+            )
+        ctx = handler.authorization_request.await_args.args[0]
+        self.assertEqual(
+            ctx.capability_options.get('start_url'),
+            'https://x.awsapps.com/start',
+        )
+        self.assertEqual(ctx.integration_options.get('region'), 'us-east-1')
+
     async def test_preserves_authorization_url_for_polling_flows(
         self,
     ) -> None:

@@ -475,6 +475,35 @@ class ResolutionTestCase(unittest.TestCase):
                 )
         self.assertEqual(ctx.exception.status_code, 404)
 
+    def test_source_matches_integration_id_or_slug(self) -> None:
+        from imbi_api.plugins.resolution import resolve_capability
+
+        bindings = [
+            _binding(integration_id='i1', slug='a', default=False),
+            _binding(integration_id='i2', slug='b', default=False),
+        ]
+        for source, want in (('b', 'i2'), ('i2', 'i2'), ('i1', 'i1')):
+            with (
+                mock.patch(
+                    'imbi_api.plugins.resolution.effective_bindings',
+                    new=mock.AsyncMock(return_value=bindings),
+                ),
+                mock.patch(
+                    'imbi_api.plugins.resolution.get_plugin',
+                    return_value=_make_registry_entry('ssm'),
+                ),
+                mock.patch(
+                    'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                    new=mock.AsyncMock(return_value=True),
+                ),
+            ):
+                resolved = asyncio.run(
+                    resolve_capability(
+                        mock.AsyncMock(), 'proj1', 'configuration', source
+                    )
+                )
+            self.assertEqual(resolved.integration_id, want)
+
     def test_multi_no_default_returns_400(self) -> None:
         from fastapi import HTTPException
 

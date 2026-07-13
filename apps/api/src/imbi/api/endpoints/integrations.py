@@ -4,6 +4,7 @@ import json
 import typing
 
 import fastapi
+import nanoid
 from imbi_common import graph
 from imbi_common.auth.encryption import TokenEncryption
 from imbi_common.plugins.errors import PluginNotFoundError
@@ -20,7 +21,7 @@ from imbi_api.plugins.credentials import patch_integration_credentials
 integrations_router = fastapi.APIRouter(tags=['Integrations'])
 
 
-def _build_response(
+def build_response(
     props: dict[str, typing.Any],
 ) -> models.IntegrationResponse:
     """Build an ``IntegrationResponse`` from a hydrated Integration node."""
@@ -29,6 +30,11 @@ def _build_response(
         integration.get('encrypted_credentials') or {}
     )
     credential_fields = sorted(encrypted_credentials)
+    # Non-secret credential values (e.g. a GitHub App id) are echoed back so
+    # the UI can display them; secret values never leave the server.
+    credential_values = _non_secret_credential_values(
+        str(integration.get('plugin') or ''), encrypted_credentials
+    )
     raw_capabilities: dict[str, typing.Any] = (
         integration.get('capabilities') or {}
     )
@@ -40,6 +46,7 @@ def _build_response(
         if isinstance(state, dict)
     }
     return models.IntegrationResponse(
+        id=integration.get('id'),
         plugin=integration['plugin'],
         name=integration['name'],
         slug=integration['slug'],
@@ -56,7 +63,41 @@ def _build_response(
         identifiers=integration.get('identifiers') or {},
         organization=integration.get('organization'),
         team=integration.get('team'),
+        used_as_login=bool(integration.get('used_as_login')),
+        credential_values=credential_values,
     )
+
+
+def _non_secret_credential_values(
+    plugin_slug: str,
+    encrypted_credentials: dict[str, typing.Any],
+) -> dict[str, str]:
+    """Decrypt and return the values of populated, non-secret credential
+    fields (``secret=False`` in the plugin manifest). Secret values are
+    never returned."""
+    if not encrypted_credentials:
+        return {}
+    try:
+        entry = get_plugin(plugin_slug)
+    except PluginNotFoundError:
+        return {}
+    non_secret = {
+        field.name
+        for field in entry.manifest.credentials
+        if field.secret is False
+    }
+    if not non_secret:
+        return {}
+    encryptor = TokenEncryption.get_instance()
+    values: dict[str, str] = {}
+    for name in non_secret:
+        ciphertext = encrypted_credentials.get(name)
+        if not ciphertext:
+            continue
+        plaintext = encryptor.decrypt(str(ciphertext))
+        if plaintext:
+            values[name] = plaintext
+    return values
 
 
 _LIST_QUERY: typing.LiteralString = """
@@ -91,7 +132,7 @@ async def list_integrations(
         _LIST_QUERY, {'org_slug': org_slug}, ['integration']
     )
     return [
-        _build_response(graph.parse_agtype(r['integration'])) for r in records
+        build_response(graph.parse_agtype(r['integration'])) for r in records
     ]
 
 
@@ -139,12 +180,17 @@ async def create_integration(
             }
 
     encryptor = TokenEncryption.get_instance()
+    # Strip surrounding whitespace (paste artifacts) and drop blanks so a
+    # credential is never stored with whitespace that breaks downstream
+    # uses (e.g. an HTTP auth header).
     encrypted_credentials = {
-        field: encryptor.encrypt(value)
+        field: encryptor.encrypt(stripped)
         for field, value in data.credentials.items()
+        if (stripped := value.strip())
     }
 
     props: dict[str, typing.Any] = {
+        'id': nanoid.generate(),
         'name': data.name,
         'slug': data.slug,
         'description': data.description,
@@ -208,7 +254,7 @@ async def create_integration(
             detail=f'Organization with slug {org_slug!r} not found',
         )
 
-    return _build_response(graph.parse_agtype(records[0]['integration']))
+    return build_response(graph.parse_agtype(records[0]['integration']))
 
 
 @integrations_router.get('/{slug}')
@@ -238,10 +284,10 @@ async def get_integration(
             status_code=404,
             detail=f'Integration with slug {slug!r} not found',
         )
-    return _build_response(graph.parse_agtype(records[0]['integration']))
+    return build_response(graph.parse_agtype(records[0]['integration']))
 
 
-def _merged_update_props(
+def merged_update_props(
     data: models.IntegrationUpdate,
     existing: dict[str, typing.Any],
 ) -> dict[str, typing.Any]:
@@ -331,7 +377,7 @@ async def update_integration(
     )
 
     sent = data.model_fields_set
-    props = _merged_update_props(data, existing)
+    props = merged_update_props(data, existing)
 
     if 'team_slug' in sent:
         if data.team_slug:
@@ -370,7 +416,7 @@ async def update_integration(
             params = {'slug': slug, 'org_slug': org_slug, **props}
     else:
         if not props:
-            return _build_response(
+            return build_response(
                 graph.parse_agtype(records[0]['integration'])
             )
         set_stmt = set_clause('i', props)
@@ -395,7 +441,7 @@ async def update_integration(
             detail=f'Integration with slug {slug!r} not found',
         )
 
-    return _build_response(graph.parse_agtype(updated[0]['integration']))
+    return build_response(graph.parse_agtype(updated[0]['integration']))
 
 
 @integrations_router.delete('/{slug}', status_code=204)
@@ -502,7 +548,7 @@ async def set_login_provider(
     )
 
     if data.used_as_login:
-        _require_login_capable(str(integration.get('plugin') or ''))
+        require_login_capable(str(integration.get('plugin') or ''))
         # At most one login provider per org: clear the flag on siblings.
         await db.execute(
             """
@@ -536,10 +582,10 @@ async def set_login_provider(
             status_code=404,
             detail=f'Integration with slug {slug!r} not found',
         )
-    return _build_response(graph.parse_agtype(updated[0]['integration']))
+    return build_response(graph.parse_agtype(updated[0]['integration']))
 
 
-def _require_login_capable(plugin_slug: str) -> None:
+def require_login_capable(plugin_slug: str) -> None:
     """Raise 400 unless ``plugin_slug`` declares a login-capable identity.
 
     Raises:
