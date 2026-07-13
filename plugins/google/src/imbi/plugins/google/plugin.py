@@ -217,6 +217,7 @@ class GooglePlugin(Plugin):
     manifest = PluginManifest(
         slug='google',
         name='Google',
+        icon='si-google',
         description='Sign in with a Google or Google Workspace account.',
         auth_type='oidc',
         options=[

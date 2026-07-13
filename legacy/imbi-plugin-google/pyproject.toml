@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-google"
-version = "2.11.5"
+version = "2.12.1"
 description = "Google identity plugin for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common==2.11.5",
+  "imbi-common==2.12.1",
   "pydantic>=2",
 ]
 
@@ -24,7 +24,7 @@ dependencies = [
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.11.5",
+  "imbi-common[server,databases]==2.12.1",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
@@ -116,9 +116,3 @@ exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false, "
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true
-
-# Temporary: track imbi-common main so the CredentialField.secret flag is
-# available before imbi-common is released. The lockstep release flow
-# restores the pinned PyPI version (==X) here. imbi-common is a public repo.
-[tool.uv.sources]
-imbi-common = { path = "../imbi-common", editable = true }
