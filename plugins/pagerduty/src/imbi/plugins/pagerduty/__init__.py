@@ -69,6 +69,7 @@ class PagerDutyPlugin(Plugin):
     manifest = PluginManifest(
         slug='pagerduty',
         name='PagerDuty',
+        icon='si-pagerduty',
         description=(
             'Provision and maintain a PagerDuty service for each project, '
             "routed to the owning team's escalation policy, surface the "
