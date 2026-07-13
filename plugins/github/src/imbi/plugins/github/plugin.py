@@ -95,12 +95,14 @@ _CREDENTIALS: list[CredentialField] = [
         label='GitHub App ID',
         description='GitHub App identifier used to mint installation tokens.',
         required=False,
+        secret=False,
     ),
     CredentialField(
         name='private_key',
         label='GitHub App private key',
         description='App private key, raw PEM or base64-encoded PEM.',
         required=False,
+        multiline=True,
     ),
     CredentialField(
         name='installation_id',
@@ -110,12 +112,14 @@ _CREDENTIALS: list[CredentialField] = [
             'target repository.'
         ),
         required=False,
+        secret=False,
     ),
     CredentialField(
         name='client_id',
         label='OAuth client ID',
         description='OAuth App client id for the identity capability.',
         required=False,
+        secret=False,
     ),
     CredentialField(
         name='client_secret',
@@ -223,6 +227,7 @@ class GitHubPlugin(Plugin):
     manifest = PluginManifest(
         slug='github',
         name='GitHub',
+        icon='si-github',
         description=(
             'GitHub integration for identity, deployments, repository '
             'lifecycle, and commit / pull-request history sync across '

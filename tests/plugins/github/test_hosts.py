@@ -3,6 +3,7 @@
 import unittest
 
 from imbi_plugin_github._hosts import (
+    flavor_host,
     normalize_host,
     require_ghec_tenant_host,
 )
@@ -55,3 +56,30 @@ class RequireGhecTenantHostTestCase(unittest.TestCase):
     def test_rejects_api_subdomain(self) -> None:
         with self.assertRaises(ValueError):
             require_ghec_tenant_host('api.tenant.ghe.com', 'plugin')
+
+
+class FlavorHostTestCase(unittest.TestCase):
+    def test_github_ignores_host(self) -> None:
+        self.assertEqual(flavor_host({'flavor': 'github'}, 'p'), 'github.com')
+
+    def test_ghec_bare_tenant_computes_full_host(self) -> None:
+        self.assertEqual(
+            flavor_host({'flavor': 'ghec', 'host': 'aweber'}, 'p'),
+            'aweber.ghe.com',
+        )
+
+    def test_ghec_full_tenant_host_unchanged(self) -> None:
+        self.assertEqual(
+            flavor_host({'flavor': 'ghec', 'host': 'aweber.ghe.com'}, 'p'),
+            'aweber.ghe.com',
+        )
+
+    def test_ghec_rejects_non_ghec_host(self) -> None:
+        with self.assertRaises(ValueError):
+            flavor_host({'flavor': 'ghec', 'host': 'example.com'}, 'p')
+
+    def test_ghes_uses_host_verbatim(self) -> None:
+        self.assertEqual(
+            flavor_host({'flavor': 'ghes', 'host': 'git.example.com'}, 'p'),
+            'git.example.com',
+        )

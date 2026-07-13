@@ -82,9 +82,12 @@ def flavor_host(options: dict[str, typing.Any], label: str) -> str:
     if flavor == 'github':
         return 'github.com'
     if flavor == 'ghec':
-        return require_ghec_tenant_host(
-            normalize_host(options.get('host'), label), label
-        )
+        host = normalize_host(options.get('host'), label)
+        # Accept a bare tenant slug (e.g. ``aweber``) and compute the full
+        # tenant host; GHEC tenants always live under ``.ghe.com``.
+        if '.' not in host:
+            host = f'{host}.ghe.com'
+        return require_ghec_tenant_host(host, label)
     if flavor == 'ghes':
         return normalize_host(options.get('host'), label)
     raise ValueError(
