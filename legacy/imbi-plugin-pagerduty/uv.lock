@@ -681,7 +681,7 @@ wheels = [
 
 [[package]]
 name = "imbi-common"
-version = "2.12.1"
+version = "2.12.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -697,9 +697,9 @@ dependencies = [
     { name = "python-slugify" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/67/70076e536ca9c9254f89d52fa4c7242ff3571182222440be474bcdb5bdaa/imbi_common-2.12.1.tar.gz", hash = "sha256:701e8941a49beceb319eec270a9517973e05c837c588086a18dfa79ca5a39600", size = 360810, upload-time = "2026-07-13T16:39:15.795Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/6f/39ac3a068a78c7cc9c2244e8af2e168bf51e022535f6024160fdad445dd0/imbi_common-2.12.2.tar.gz", hash = "sha256:2c0faf618f75e892795428faa28c80205f550056b4412c1cfcf1378d060fb004", size = 360806, upload-time = "2026-07-13T21:00:49.857Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/18/126ebfdf5e6b21a25344b6762112680c6ba7b43400bfa5471f0f0a1c12f5/imbi_common-2.12.1-py3-none-any.whl", hash = "sha256:785f11ecd5e5892579fd62f0060831111fef82fa337e070aca4dee362b9d71cd", size = 120610, upload-time = "2026-07-13T16:39:14.424Z" },
+    { url = "https://files.pythonhosted.org/packages/09/f6/f66907956a7bee8b8c5d5265ddf0cdd2cc995abd5bb2cf9432905165b41c/imbi_common-2.12.2-py3-none-any.whl", hash = "sha256:52fe04f4ff6b1b547f681ae1bcf713aac896797009448001f25f2c2e99ad804e", size = 120609, upload-time = "2026-07-13T21:00:48.46Z" },
 ]
 
 [package.optional-dependencies]
@@ -717,7 +717,7 @@ server = [
 
 [[package]]
 name = "imbi-plugin-pagerduty"
-version = "2.12.1"
+version = "2.12.2"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -745,7 +745,7 @@ dist = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
-    { name = "imbi-common", extras = ["databases"], specifier = "==2.12.1" },
+    { name = "imbi-common", extras = ["databases"], specifier = "==2.12.2" },
     { name = "pydantic", specifier = ">=2" },
 ]
 
@@ -753,7 +753,7 @@ requires-dist = [
 dev = [
     { name = "basedpyright" },
     { name = "coverage", extras = ["toml"] },
-    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.12.1" },
+    { name = "imbi-common", extras = ["server", "databases"], specifier = "==2.12.2" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
