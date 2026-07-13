@@ -34,3 +34,6 @@
 [submodule "repositories/imbi-plugin-pagerduty"]
 	path = repositories/imbi-plugin-pagerduty
 	url = git@github.com:AWeber-Imbi/imbi-plugin-pagerduty.git
+[submodule "repositories/imbi-plugin-google"]
+	path = repositories/imbi-plugin-google
+	url = git@github.com:AWeber-Imbi/imbi-plugin-google.git

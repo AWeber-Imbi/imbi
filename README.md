@@ -250,10 +250,12 @@ imbi/
 │   ├── imbi-ui/                  # React frontend
 │   ├── imbi-plugin-aws/          # AWS plugin
 │   ├── imbi-plugin-github/       # GitHub plugin
+│   ├── imbi-plugin-google/       # Google identity plugin
 │   ├── imbi-plugin-logzio/       # Logz.io plugin
 │   ├── imbi-plugin-oidc/         # OIDC authentication plugin
+│   ├── imbi-plugin-pagerduty/    # PagerDuty plugin
 │   ├── imbi-plugin-sonarqube/    # SonarQube plugin
-│   └── imbi-slackbot/            # Slack bot (vendored in-tree, not a submodule)
+│   └── imbi-slackbot/            # Slack bot
 ├── runtime/           # Per-service dev image + Caddy helper for `just start-dev`/`stop-dev`
 ├── Caddyfile          # Reverse proxy configuration
 ├── compose.yaml       # Local Docker Compose stack

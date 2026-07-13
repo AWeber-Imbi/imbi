@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is the **build and release** repo for Imbi. It does not contain application source code directly — it assembles all Imbi services (via git submodules) into a single Docker image with Caddy as a reverse proxy. The submodules live under `repositories/`:
 
 - Services: `imbi-api`, `imbi-assistant`, `imbi-gateway`, `imbi-mcp`, `imbi-ui`
-- Plugins: `imbi-plugin-aws`, `imbi-plugin-github`, `imbi-plugin-logzio`, `imbi-plugin-oidc`, `imbi-plugin-sonarqube`
+- Plugins: `imbi-plugin-aws`, `imbi-plugin-github`, `imbi-plugin-google`, `imbi-plugin-logzio`, `imbi-plugin-oidc`, `imbi-plugin-pagerduty`, `imbi-plugin-sonarqube`
 
-`imbi-common` is consumed as a published dependency, **not** a submodule. `repositories/imbi-slackbot/` is vendored in-tree (committed here, not a submodule).
+`imbi-common` is consumed as a published dependency, **not** a submodule.
 
 ## Build Commands
 
