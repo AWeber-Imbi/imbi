@@ -91,6 +91,18 @@ _OPTIONS: list[PluginOption] = [
 # optional so, e.g., an identity-only or App-only Integration is valid.
 _CREDENTIALS: list[CredentialField] = [
     CredentialField(
+        name='access_token',
+        label='Personal access token',
+        description=(
+            'GitHub personal access token used as the bearer credential '
+            'for PAT-based integrations (commit / pull-request sync, '
+            'deployments, lifecycle). Leave blank when using GitHub App '
+            'or OAuth authentication.'
+        ),
+        required=False,
+        secret=True,
+    ),
+    CredentialField(
         name='app_id',
         label='GitHub App ID',
         description='GitHub App identifier used to mint installation tokens.',
