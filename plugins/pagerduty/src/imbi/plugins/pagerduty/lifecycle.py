@@ -1,16 +1,16 @@
-"""PagerDuty lifecycle plugin.
+"""PagerDuty lifecycle capability.
 
 Reacts to the project lifecycle by managing a PagerDuty **service** named
 after the project slug, wired to the owning team's escalation policy via
-the ``team_escalation_policy_mapping`` option, and (when a gateway URL is
-configured) a per-service V3 **webhook subscription** so incident events
-flow back to Imbi.
+the ``team_escalation_policy_mapping`` integration option, and (when a
+gateway URL is configured) a per-service V3 **webhook subscription** so
+incident events flow back to Imbi.
 
 PagerDuty is cloud-only, so there is no host-flavor routing -- a single
 REST API key credential and the shared ``api.pagerduty.com`` client.
 
-The plugin writes its result through ``ctx.service_writeback``: the host
-persists the ``EXISTS_IN`` edge (service id + the encrypted webhook
+The capability writes its result through ``ctx.service_writeback``: the
+host persists the ``EXISTS_IN`` edge (service id + the encrypted webhook
 signing secret the gateway verifies against) and merges the
 ``pagerduty-service`` dashboard link into ``Project.links``. The service
 id is therefore never stored as a separate link; the subscription's
@@ -32,12 +32,9 @@ import typing
 import httpx
 from imbi_common.auth.encryption import TokenEncryption
 from imbi_common.plugins.base import (
-    CredentialField,
-    LifecyclePlugin,
+    LifecycleCapability,
     LifecycleResult,
     PluginContext,
-    PluginManifest,
-    PluginOption,
     RelocationTarget,
     ServiceWriteback,
 )
@@ -62,67 +59,9 @@ _WEBHOOK_EVENTS = [
     'incident.reopened',
 ]
 
-_OPTIONS: list[PluginOption] = [
-    PluginOption(
-        name='team_escalation_policy_mapping',
-        label='Team to escalation policy',
-        description=(
-            'Maps an Imbi team slug to the PagerDuty escalation policy id '
-            "the team's services route to. A PagerDuty service requires "
-            'an escalation policy, so a project whose team is unmapped is '
-            'skipped with an operator message.'
-        ),
-        type='mapping',
-        required=True,
-    ),
-    PluginOption(
-        name='default_escalation_policy_id',
-        label='Default escalation policy id',
-        description='Fallback escalation policy for unmapped teams.',
-        type='string',
-        required=False,
-    ),
-    PluginOption(
-        name='gateway_webhook_url',
-        label='Gateway webhook URL',
-        description=(
-            'Public imbi-gateway notifications URL the per-service '
-            'PagerDuty webhook subscription delivers to. Leave blank to '
-            'skip webhook provisioning.'
-        ),
-        type='string',
-        required=False,
-    ),
-]
 
-_CREDENTIALS: list[CredentialField] = [
-    CredentialField(
-        name='api_key',
-        label='PagerDuty REST API key',
-        description='A REST API key with write access to services.',
-        required=True,
-    )
-]
-
-
-class PagerDutyLifecyclePlugin(LifecyclePlugin):
+class PagerDutyLifecycle(LifecycleCapability):
     """Create / update / delete / relocate a project's PagerDuty service."""
-
-    manifest = PluginManifest(
-        slug='pagerduty-lifecycle',
-        name='PagerDuty Lifecycle',
-        description=(
-            'Provision and maintain a PagerDuty service for the project, '
-            "routed to the owning team's escalation policy, with a "
-            'per-service webhook subscription back to Imbi.'
-        ),
-        plugin_type='lifecycle',
-        auth_type='api_token',
-        options=_OPTIONS,
-        credentials=_CREDENTIALS,
-        lifecycle_events=['created', 'updated', 'deleted', 'relocated'],
-        supports_lifecycle_sync=True,
-    )
 
     # -- option resolution ------------------------------------------------
 
@@ -135,7 +74,7 @@ class PagerDutyLifecyclePlugin(LifecyclePlugin):
         Prefers the team mapping, then the ``default_escalation_policy_id``
         fallback. Returns ``None`` when neither yields one.
         """
-        options = ctx.assignment_options
+        options = ctx.integration_options
         mapping_raw = options.get('team_escalation_policy_mapping')
         if team_slug and isinstance(mapping_raw, dict):
             mapping = typing.cast('dict[str, typing.Any]', mapping_raw)
@@ -149,7 +88,7 @@ class PagerDutyLifecyclePlugin(LifecyclePlugin):
 
     @staticmethod
     def _gateway_url(ctx: PluginContext) -> str | None:
-        raw = ctx.assignment_options.get('gateway_webhook_url')
+        raw = ctx.integration_options.get('gateway_webhook_url')
         return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
     # -- service / subscription helpers -----------------------------------

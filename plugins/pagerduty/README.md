@@ -1,21 +1,21 @@
 # imbi-plugin-pagerduty
 
-PagerDuty plugins for the [Imbi](https://github.com/AWeber-Imbi) platform,
-distributed as a single Python package (`imbi_plugin_pagerduty`) shipping
-three plugin types:
+The PagerDuty plugin for the [Imbi](https://github.com/AWeber-Imbi)
+platform, distributed as a single Python package (`imbi_plugin_pagerduty`)
+exposing one Integration (`pagerduty`) with three capabilities:
 
-- **`pagerduty-lifecycle`** — provisions and maintains a PagerDuty
-  *service* for each project, routed to the owning team's escalation
-  policy (via the `team_escalation_policy_mapping` option), and a
-  per-service V3 webhook subscription back to Imbi.
-- **`pagerduty-webhook`** — receives PagerDuty incident webhooks. v1
-  records events through the gateway and advertises no custom actions.
-- **`pagerduty-incidents`** — live-queries PagerDuty for the incidents on
-  a project's service for the project-detail Incidents tab.
+- **`lifecycle`** — provisions and maintains a PagerDuty *service* for
+  each project, routed to the owning team's escalation policy (via the
+  `team_escalation_policy_mapping` integration option), and a per-service
+  V3 webhook subscription back to Imbi.
+- **`incidents`** — live-queries PagerDuty for the incidents on a
+  project's service for the project-detail Incidents tab.
+- **`webhook-actions`** — receives PagerDuty incident webhooks. v1 records
+  events through the gateway and advertises no custom actions.
 
-The Imbi host discovers these through the `imbi.plugins` entry points in
-`pyproject.toml`. All plugin base classes come from
-`imbi_common.plugins.base`.
+The Imbi host discovers the package by the `imbi_plugin_*` naming
+convention and reads the module-level `PLUGIN` attribute; there are no
+entry points. All plugin base classes come from `imbi_common.plugins`.
 
 ## Development
 

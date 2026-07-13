@@ -11,7 +11,7 @@ from cryptography import fernet
 from imbi_common.auth.encryption import TokenEncryption
 from imbi_common.plugins.base import PluginContext
 
-from imbi_plugin_pagerduty.lifecycle import PagerDutyLifecyclePlugin
+from imbi_plugin_pagerduty.lifecycle import PagerDutyLifecycle
 
 _CREDS = {'api_key': 'k'}
 _SERVICE = {
@@ -34,23 +34,11 @@ def _ctx(
         org_slug='org',
         team_slug=team_slug,
         previous_team_slug=previous_team_slug,
-        assignment_options=options
+        integration_options=options
         if options is not None
         else {'team_escalation_policy_mapping': {'platform': 'POLICY1'}},
         project_links=links or {},
     )
-
-
-class ManifestTestCase(unittest.TestCase):
-    def test_manifest(self) -> None:
-        manifest = PagerDutyLifecyclePlugin.manifest
-        self.assertEqual(manifest.slug, 'pagerduty-lifecycle')
-        self.assertEqual(manifest.plugin_type, 'lifecycle')
-        self.assertTrue(manifest.supports_lifecycle_sync)
-        self.assertEqual(
-            manifest.lifecycle_events,
-            ['created', 'updated', 'deleted', 'relocated'],
-        )
 
 
 class _EncryptionTestCase(unittest.IsolatedAsyncioTestCase):
@@ -91,9 +79,7 @@ class CreateTestCase(_EncryptionTestCase):
                 'gateway_webhook_url': 'https://gw/notifications/wh1',
             }
         )
-        result = await PagerDutyLifecyclePlugin().on_project_created(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_created(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         assert ctx.service_writeback is not None
         self.assertEqual(ctx.service_writeback.identifier, 'PSVC1')
@@ -110,9 +96,7 @@ class CreateTestCase(_EncryptionTestCase):
     @respx.mock
     async def test_skipped_when_no_policy(self) -> None:
         ctx = _ctx(options={'team_escalation_policy_mapping': {}})
-        result = await PagerDutyLifecyclePlugin().on_project_created(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_created(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
         self.assertIsNone(ctx.service_writeback)
 
@@ -124,9 +108,7 @@ class CreateTestCase(_EncryptionTestCase):
             )
         )
         ctx = _ctx()
-        result = await PagerDutyLifecyclePlugin().on_project_created(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_created(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
         assert ctx.service_writeback is not None
         self.assertEqual(ctx.service_writeback.identifier, 'PSVC1')
@@ -145,9 +127,7 @@ class CreateTestCase(_EncryptionTestCase):
             'https://api.pagerduty.com/webhook_subscriptions'
         ).mock(return_value=httpx.Response(201, json={}))
         ctx = _ctx()
-        result = await PagerDutyLifecyclePlugin().on_project_created(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_created(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         self.assertFalse(sub.called)
         assert ctx.service_writeback is not None
@@ -161,9 +141,7 @@ class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={'service': _SERVICE})
         )
         ctx = _ctx(links=_LINK)
-        result = await PagerDutyLifecyclePlugin().on_project_updated(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_updated(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         self.assertTrue(route.called)
         assert ctx.service_writeback is not None
@@ -196,9 +174,7 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.pagerduty.com/services/PSVC1'
         ).mock(return_value=httpx.Response(204))
         ctx = _ctx(links=_LINK)
-        result = await PagerDutyLifecyclePlugin().on_project_deleted(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_deleted(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         self.assertTrue(del_sub.called)
         self.assertTrue(del_svc.called)
@@ -216,9 +192,7 @@ class DeleteTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(404, json={'error': 'not found'})
         )
         ctx = _ctx(links=_LINK)
-        result = await PagerDutyLifecyclePlugin().on_project_deleted(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_deleted(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
 
 
@@ -241,9 +215,7 @@ class RelocateTestCase(unittest.IsolatedAsyncioTestCase):
             previous_team_slug='old-team',
             links=_LINK,
         )
-        result = await PagerDutyLifecyclePlugin().on_project_relocated(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_relocated(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         self.assertTrue(route.called)
 
@@ -254,21 +226,17 @@ class RelocateTestCase(unittest.IsolatedAsyncioTestCase):
             previous_team_slug='platform',
             links=_LINK,
         )
-        result = await PagerDutyLifecyclePlugin().on_project_relocated(
-            ctx, _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_relocated(ctx, _CREDS)
         self.assertEqual(result.status, 'skipped')
 
 
 class MiscTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_archived_skipped(self) -> None:
-        result = await PagerDutyLifecyclePlugin().on_project_archived(
-            _ctx(), _CREDS
-        )
+        result = await PagerDutyLifecycle().on_project_archived(_ctx(), _CREDS)
         self.assertEqual(result.status, 'skipped')
 
     async def test_resolve_relocation_target(self) -> None:
-        target = await PagerDutyLifecyclePlugin().resolve_relocation_target(
+        target = await PagerDutyLifecycle().resolve_relocation_target(
             _ctx(), _CREDS
         )
         assert target is not None
@@ -279,7 +247,7 @@ class MiscTestCase(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         ctx = _ctx(options={'team_escalation_policy_mapping': {}})
-        target = await PagerDutyLifecyclePlugin().resolve_relocation_target(
+        target = await PagerDutyLifecycle().resolve_relocation_target(
             ctx, _CREDS
         )
         self.assertIsNone(target)

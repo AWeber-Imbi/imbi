@@ -1,4 +1,4 @@
-"""Tests for the PagerDuty incidents plugin."""
+"""Tests for the PagerDuty incidents capability."""
 
 import datetime
 import unittest
@@ -7,7 +7,7 @@ import httpx
 import respx
 from imbi_common.plugins.base import PluginContext
 
-from imbi_plugin_pagerduty.incidents import PagerDutyIncidentsPlugin
+from imbi_plugin_pagerduty.incidents import PagerDutyIncidents
 
 _CREDS = {'api_key': 'k'}
 _LINKED = {
@@ -27,14 +27,6 @@ def _ctx(links: dict[str, str] | None = None) -> PluginContext:
 def _window() -> tuple[datetime.datetime, datetime.datetime]:
     end = datetime.datetime(2026, 6, 8, tzinfo=datetime.UTC)
     return end - datetime.timedelta(days=7), end
-
-
-class ManifestTestCase(unittest.TestCase):
-    def test_manifest(self) -> None:
-        manifest = PagerDutyIncidentsPlugin.manifest
-        self.assertEqual(manifest.slug, 'pagerduty-incidents')
-        self.assertEqual(manifest.plugin_type, 'incidents')
-        self.assertTrue(manifest.cacheable)
 
 
 class ListIncidentsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -59,7 +51,7 @@ class ListIncidentsTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         start, end = _window()
-        result = await PagerDutyIncidentsPlugin().list_incidents(
+        result = await PagerDutyIncidents().list_incidents(
             _ctx(), _CREDS, start_time=start, end_time=end
         )
         self.assertEqual(len(result.incidents), 1)
@@ -78,7 +70,7 @@ class ListIncidentsTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         start, end = _window()
-        result = await PagerDutyIncidentsPlugin().list_incidents(
+        result = await PagerDutyIncidents().list_incidents(
             _ctx(), _CREDS, start_time=start, end_time=end, limit=100
         )
         self.assertEqual(result.next_cursor, '100')
@@ -89,7 +81,7 @@ class ListIncidentsTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={'incidents': []})
         )
         start, end = _window()
-        await PagerDutyIncidentsPlugin().list_incidents(
+        await PagerDutyIncidents().list_incidents(
             _ctx(),
             _CREDS,
             start_time=start,
@@ -110,7 +102,7 @@ class ListIncidentsTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={'incidents': []})
         )
         start, end = _window()
-        result = await PagerDutyIncidentsPlugin().list_incidents(
+        result = await PagerDutyIncidents().list_incidents(
             _ctx(links={}), _CREDS, start_time=start, end_time=end
         )
         self.assertEqual(result.incidents, [])

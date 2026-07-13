@@ -1,18 +1,15 @@
-"""Tests for the PagerDuty webhook plugin (v1 stub)."""
+"""Tests for the PagerDuty webhook-actions capability (v1 stub)."""
 
 import unittest
 
-from imbi_plugin_pagerduty.webhook import PagerDutyWebhookPlugin
+from imbi_plugin_pagerduty.webhook import PagerDutyWebhookActions
 
 
-class WebhookPluginTestCase(unittest.TestCase):
-    def test_manifest(self) -> None:
-        manifest = PagerDutyWebhookPlugin.manifest
-        self.assertEqual(manifest.slug, 'pagerduty-webhook')
-        self.assertEqual(manifest.plugin_type, 'webhook')
-
+class WebhookActionsTestCase(unittest.TestCase):
     def test_actions_empty(self) -> None:
-        self.assertEqual(PagerDutyWebhookPlugin.actions(), [])
+        self.assertEqual(PagerDutyWebhookActions.actions(), [])
 
     def test_instantiable(self) -> None:
-        self.assertIsInstance(PagerDutyWebhookPlugin(), PagerDutyWebhookPlugin)
+        self.assertIsInstance(
+            PagerDutyWebhookActions(), PagerDutyWebhookActions
+        )

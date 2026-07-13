@@ -16,20 +16,15 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common[databases]==2.11.6",
+  "imbi-common[databases]==2.12.1",
   "pydantic>=2",
 ]
-
-[project.entry-points."imbi.plugins"]
-pagerduty-lifecycle = "imbi_plugin_pagerduty.lifecycle:PagerDutyLifecyclePlugin"
-pagerduty-webhook = "imbi_plugin_pagerduty.webhook:PagerDutyWebhookPlugin"
-pagerduty-incidents = "imbi_plugin_pagerduty.incidents:PagerDutyIncidentsPlugin"
 
 [dependency-groups]
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.11.6",
+  "imbi-common[server,databases]==2.12.1",
   "pre-commit",
   "pytest",
   "pytest-asyncio",

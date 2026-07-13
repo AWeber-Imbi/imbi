@@ -5,22 +5,31 @@ with code in this repository.
 
 ## What This Is
 
-PagerDuty plugins for the Imbi platform, distributed as a single Python
-package (`imbi_plugin_pagerduty`). It ships **three plugin types** —
-lifecycle, webhook, incidents — discovered by the Imbi host through the
-`imbi.plugins` entry points in `pyproject.toml`. That entry-point table
-is the registration surface: adding a plugin class means adding an entry
-point there.
+The PagerDuty plugin for the Imbi platform (Plugin Architecture v3),
+distributed as a single Python package (`imbi_plugin_pagerduty`). It ships
+**one `Plugin`** (`PagerDutyPlugin`, slug `pagerduty`) exposing **three
+capabilities** — `lifecycle`, `incidents`, `webhook-actions` — each bound
+to a handler class via its `Capability` entry. The package root
+`__init__.py` exposes the plugin as the module-level `PLUGIN` attribute;
+the Imbi host discovers it by the `imbi_plugin_*` naming convention. There
+are **no entry points** — adding a capability means adding a `Capability`
+to the manifest.
 
-All plugin base classes (`LifecyclePlugin`, `WebhookActionPlugin`,
-`IncidentsPlugin`, `PluginContext`, `PluginManifest`, the result /
-writeback types) come from `imbi_common.plugins.base`. Read that module
-(in the sibling `imbi-common` repo) before changing a plugin's method
-signatures.
+The REST API key credential and the escalation-policy / gateway options
+are declared **once** at the Integration (manifest) level and shared by
+every capability. Capabilities read integration options from
+`ctx.integration_options` and receive the decrypted credential blob as
+their `credentials` argument.
 
-Unlike the GitHub plugins, **PagerDuty is cloud-only**: a single
+All plugin base classes (`Plugin`, `PluginManifest`, `Capability`,
+`LifecycleCapability`, `IncidentsCapability`, `WebhookActionsCapability`,
+`PluginContext`, the result / writeback types) come from
+`imbi_common.plugins`. Read that module (in the sibling `imbi-common`
+repo) before changing a handler's method signatures.
+
+Unlike the GitHub plugin, **PagerDuty is cloud-only**: a single
 `api.pagerduty.com` host and one REST API key credential, so there is no
-host-flavor base/subclass pattern — one concrete class per plugin type.
+host-flavor base/subclass pattern.
 
 ## Commands
 
@@ -37,6 +46,10 @@ length; type checking is `basedpyright` in **strict** mode over `src`.
 
 ## Architecture
 
+- `__init__.py` — the `PagerDutyPlugin` (`Plugin` subclass) and its
+  `PluginManifest`: integration-level options + the single `api_key`
+  credential, plus the three `Capability` entries binding the handlers.
+  Exposes the module-level `PLUGIN = PagerDutyPlugin` the host discovers.
 - `_client.py` — the shared PagerDuty REST client factory
   (`api.pagerduty.com`, `Authorization: Token token=<key>`). An httpx
   response hook maps `401` → `PluginAuthenticationFailed` and `429` →
@@ -44,21 +57,24 @@ length; type checking is `basedpyright` in **strict** mode over `src`.
 - `_services.py` — resolves a project's PagerDuty service: the
   `pagerduty-service` link first, then an exact-name lookup on the
   project slug (and the pre-rename slug).
-- `lifecycle.py` — `PagerDutyLifecyclePlugin`. Manages the service +
-  escalation-policy routing (`team_escalation_policy_mapping`) + a
-  per-service V3 webhook subscription. Writes results through
-  `ctx.service_writeback`: the host persists the `EXISTS_IN` edge
-  (service id + the **encrypted** webhook signing secret the gateway
-  verifies against) and the `pagerduty-service` dashboard link. The
-  subscription's signing secret is returned by PagerDuty **only once**,
-  at creation, and is encrypted (via `imbi_common` `TokenEncryption`)
-  before it leaves the plugin. `on_project_deleted` finds the
-  subscription by listing `/webhook_subscriptions` and matching
-  `filter.id` (no subscription id is persisted).
-- `webhook.py` — `PagerDutyWebhookPlugin`, a v1 stub (`actions() -> []`);
-  incident events are captured by the gateway's built-in recording.
-- `incidents.py` — `PagerDutyIncidentsPlugin.list_incidents`, a paginated
-  live query of `/incidents` for the project's service.
+- `lifecycle.py` — `PagerDutyLifecycle` (`LifecycleCapability`). Manages
+  the service + escalation-policy routing (`team_escalation_policy_mapping`,
+  read from `ctx.integration_options`) + a per-service V3 webhook
+  subscription. Writes results through `ctx.service_writeback`: the host
+  persists the `EXISTS_IN` edge (service id + the **encrypted** webhook
+  signing secret the gateway verifies against) and the `pagerduty-service`
+  dashboard link. The subscription's signing secret is returned by
+  PagerDuty **only once**, at creation, and is encrypted (via
+  `imbi_common` `TokenEncryption`) before it leaves the plugin.
+  `on_project_deleted` finds the subscription by listing
+  `/webhook_subscriptions` and matching `filter.id` (no subscription id is
+  persisted).
+- `webhook.py` — `PagerDutyWebhookActions` (`WebhookActionsCapability`), a
+  v1 stub (`actions() -> []`); incident events are captured by the
+  gateway's built-in recording.
+- `incidents.py` — `PagerDutyIncidents.list_incidents`
+  (`IncidentsCapability`), a paginated live query of `/incidents` for the
+  project's service.
 - `models.py` — maps PagerDuty incident payloads to `IncidentView`.
 
 ### PagerDuty-API assumptions to confirm against a live tenant
@@ -74,9 +90,11 @@ length; type checking is `basedpyright` in **strict** mode over `src`.
 ## Testing
 
 Tests mock PagerDuty's HTTP with **respx** (`asyncio_mode = auto`, so
-async tests need no decorator). Build a `PluginContext` with the
-relevant project links / options and pass `{'api_key': ...}`
-credentials, mirroring how the host calls in. Coverage must stay ≥ 85%.
+async tests need no decorator). Build a `PluginContext` with the relevant
+project links and `integration_options`, and pass `{'api_key': ...}`
+credentials, mirroring how the host calls in. `test_plugin.py` covers the
+aggregate manifest (slug, capabilities, handler bindings, `PLUGIN`).
+Coverage must stay ≥ 85%.
 
 ## Dependency Management
 
