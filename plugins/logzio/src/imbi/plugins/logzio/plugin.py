@@ -1,4 +1,4 @@
-"""Logz.io LogsPlugin implementation."""
+"""Logz.io logs capability implementation (Plugin Architecture v3)."""
 
 import asyncio
 import datetime
@@ -9,12 +9,14 @@ from importlib.metadata import version as _pkg_version
 from typing import Any, cast
 
 from imbi_common.plugins.base import (
+    Capability,
     CredentialField,
     LogEntry,
     LogHistogramBucket,
     LogQuery,
     LogResult,
-    LogsPlugin,
+    LogsCapability,
+    Plugin,
     PluginContext,
     PluginManifest,
     PluginOption,
@@ -44,90 +46,8 @@ def _get_version() -> str:
 _VERSION = _get_version()
 
 
-class LogzioPlugin(LogsPlugin):
-    manifest = PluginManifest(
-        slug='logzio',
-        name='Logz.io',
-        description='Search Logz.io logs from the Imbi project logs tab.',
-        plugin_type='logs',
-        api_version=1,
-        cacheable=False,
-        supports_histogram=True,
-        options=[
-            PluginOption(
-                name='region',
-                label='Region',
-                type='string',
-                required=False,
-                default='us',
-                choices=['us', 'eu', 'uk', 'au', 'ca'],
-                description='Logz.io account region.',
-            ),
-            PluginOption(
-                name='base_query',
-                label='Base Query Template',
-                type='string',
-                required=False,
-                description=(
-                    'Elasticsearch query_string applied as a must clause. '
-                    'Supports ${project_slug}, ${org_slug}, ${environment}, '
-                    '${project_id}.'
-                ),
-            ),
-            PluginOption(
-                name='timestamp_field',
-                label='Timestamp Field',
-                type='string',
-                default='@timestamp',
-            ),
-            PluginOption(
-                name='message_field',
-                label='Message Field',
-                type='string',
-                default='message',
-            ),
-            PluginOption(
-                name='level_field',
-                label='Level Field',
-                type='string',
-                default='level',
-            ),
-            PluginOption(
-                name='environment_field',
-                label='Environment Field',
-                type='string',
-                required=False,
-                description=(
-                    'Log field used to filter by environment. '
-                    'Leave blank to disable automatic environment filtering.'
-                ),
-            ),
-            PluginOption(
-                name='default_environments',
-                label='Default Environments',
-                type='string',
-                required=False,
-                description=(
-                    'Comma-separated list of environments pre-selected in the '
-                    'UI (e.g. "production,staging"). Leave blank to use the '
-                    "UI's own default."
-                ),
-            ),
-            PluginOption(
-                name='timeout_seconds',
-                label='Request Timeout',
-                type='integer',
-                default=15,
-            ),
-        ],
-        credentials=[
-            CredentialField(
-                name='api_token',
-                label='Logz.io API Token',
-                description='X-API-TOKEN with search privileges.',
-            ),
-        ],
-    )
+class LogzioLogs(LogsCapability):
+    """Logs capability backed by the Logz.io search API."""
 
     async def search(
         self,
@@ -139,7 +59,7 @@ class LogzioPlugin(LogsPlugin):
         if not api_token:
             raise PluginCredentialsMissing('api_token is required')
 
-        opts = ctx.assignment_options
+        opts = ctx.capability_options
         region, timeout = _connection_opts(ctx)
         timestamp_field = str(opts.get('timestamp_field', '@timestamp'))
         message_field = str(opts.get('message_field', 'message'))
@@ -249,7 +169,7 @@ class LogzioPlugin(LogsPlugin):
         if not api_token:
             raise PluginCredentialsMissing('api_token is required')
 
-        opts = ctx.assignment_options
+        opts = ctx.capability_options
         region, timeout = _connection_opts(ctx)
         timestamp_field = str(opts.get('timestamp_field', '@timestamp'))
         message_field = str(opts.get('message_field', 'message'))
@@ -435,7 +355,7 @@ def _overlay_histogram_levels(
 
 
 def _connection_opts(ctx: PluginContext) -> tuple[str, float]:
-    opts = ctx.assignment_options
+    opts = ctx.integration_options
     region = str(opts.get('region', 'us'))
     timeout = float(opts.get('timeout_seconds', 15))
     return region, timeout
@@ -451,3 +371,109 @@ def _parse_timestamp(value: object) -> datetime.datetime:
         return dt
     except (ValueError, TypeError):
         return datetime.datetime.now(datetime.UTC)
+
+
+class LogzioPlugin(Plugin):
+    """Logz.io plugin package declaration.
+
+    Connection concerns (region, request timeout, and the API token
+    credential) live at the Integration level; the query-shaping options
+    are scoped to the single ``logs`` capability.
+    """
+
+    manifest = PluginManifest(
+        slug='logzio',
+        name='Logz.io',
+        icon='tabler-logs',
+        description='Search Logz.io logs from the Imbi project logs tab.',
+        api_version=2,
+        auth_type='api_token',
+        options=[
+            PluginOption(
+                name='region',
+                label='Region',
+                type='string',
+                required=False,
+                default='us',
+                choices=['us', 'eu', 'uk', 'au', 'ca'],
+                description='Logz.io account region.',
+            ),
+            PluginOption(
+                name='timeout_seconds',
+                label='Request Timeout',
+                type='integer',
+                default=15,
+            ),
+        ],
+        credentials=[
+            CredentialField(
+                name='api_token',
+                label='Logz.io API Token',
+                description='X-API-TOKEN with search privileges.',
+            ),
+        ],
+        capabilities=[
+            Capability(
+                kind='logs',
+                label='Logs',
+                description=(
+                    'Search Logz.io logs from the Imbi project logs tab.'
+                ),
+                hints={'supports_histogram': True, 'cacheable': False},
+                handler=LogzioLogs,
+                options=[
+                    PluginOption(
+                        name='base_query',
+                        label='Base Query Template',
+                        type='string',
+                        required=False,
+                        description=(
+                            'Elasticsearch query_string applied as a must '
+                            'clause. Supports ${project_slug}, ${org_slug}, '
+                            '${environment}, ${project_id}.'
+                        ),
+                    ),
+                    PluginOption(
+                        name='timestamp_field',
+                        label='Timestamp Field',
+                        type='string',
+                        default='@timestamp',
+                    ),
+                    PluginOption(
+                        name='message_field',
+                        label='Message Field',
+                        type='string',
+                        default='message',
+                    ),
+                    PluginOption(
+                        name='level_field',
+                        label='Level Field',
+                        type='string',
+                        default='level',
+                    ),
+                    PluginOption(
+                        name='environment_field',
+                        label='Environment Field',
+                        type='string',
+                        required=False,
+                        description=(
+                            'Log field used to filter by environment. Leave '
+                            'blank to disable automatic environment filtering.'
+                        ),
+                    ),
+                    PluginOption(
+                        name='default_environments',
+                        label='Default Environments',
+                        type='string',
+                        required=False,
+                        description=(
+                            'Comma-separated list of environments '
+                            'pre-selected in the UI (e.g. '
+                            '"production,staging"). Leave blank to use the '
+                            "UI's own default."
+                        ),
+                    ),
+                ],
+            ),
+        ],
+    )

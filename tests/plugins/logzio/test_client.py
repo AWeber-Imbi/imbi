@@ -75,6 +75,24 @@ async def test_post_search_sends_auth_header() -> None:
 
 
 @respx.mock
+async def test_post_search_strips_token_whitespace() -> None:
+    # A pasted token with surrounding whitespace must not produce an
+    # illegal HTTP header value (h11 rejects it).
+    route = respx.post('https://api.logz.io/v1/search').mock(
+        return_value=httpx.Response(200, json=_empty_hits_payload())
+    )
+    await post_search(
+        api_token='  my-token\n',
+        region='us',
+        body={},
+        timeout=5.0,
+        version='1.2.3',
+    )
+    req = route.calls[0].request  # type: ignore[union-attr]
+    assert req.headers['X-API-TOKEN'] == 'my-token'  # type: ignore[index]
+
+
+@respx.mock
 async def test_post_search_eu_region() -> None:
     route = respx.post('https://api-eu.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_empty_hits_payload())

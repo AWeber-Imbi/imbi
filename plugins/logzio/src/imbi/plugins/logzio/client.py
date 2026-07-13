@@ -28,8 +28,10 @@ def base_url(region: str) -> str:
 
 
 def _build_headers(api_token: str, version: str) -> dict[str, str]:
+    # Surrounding whitespace in a pasted token is never meaningful and
+    # produces an illegal HTTP header value (h11 rejects it); strip it.
     return {
-        'X-API-TOKEN': api_token,
+        'X-API-TOKEN': api_token.strip(),
         'Content-Type': 'application/json',
         'Accept-Encoding': 'deflate, gzip',
         'User-Agent': f'imbi-plugin-logzio/{version}',

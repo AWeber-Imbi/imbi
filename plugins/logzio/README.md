@@ -10,18 +10,27 @@ pip install imbi-plugin-logzio
 
 ## Configuration
 
-Assign the plugin to a service application in Imbi. The following options and credentials are available.
+Create a Logz.io Integration in Imbi and enable its **Logs** capability.
+Connection settings and the API token live on the Integration; the
+query-shaping settings are scoped to the Logs capability.
 
-### Options
+### Integration Options
 
 | Name | Label | Default | Description |
 |---|---|---|---|
 | `region` | Region | `us` | Logz.io account region. One of `us`, `eu`, `uk`, `au`, `ca`. |
+| `timeout_seconds` | Request Timeout | `15` | Per-request timeout in seconds. |
+
+### Logs Capability Options
+
+| Name | Label | Default | Description |
+|---|---|---|---|
 | `base_query` | Base Query Template | — | Elasticsearch `query_string` applied as a must clause. Supports `${project_slug}`, `${org_slug}`, `${environment}`, `${project_id}`. |
 | `timestamp_field` | Timestamp Field | `@timestamp` | Source field containing the log timestamp. |
 | `message_field` | Message Field | `message` | Source field containing the log message. |
 | `level_field` | Level Field | `level` | Source field containing the log severity level. |
-| `timeout_seconds` | Request Timeout | `15` | Per-request timeout in seconds. |
+| `environment_field` | Environment Field | — | Log field used to filter by environment. Leave blank to disable automatic environment filtering. |
+| `default_environments` | Default Environments | — | Comma-separated environments pre-selected in the UI. |
 
 ### Region → Hostname
 

@@ -1,42 +1,33 @@
-"""Registry integration: verify the plugin loads cleanly via entry points."""
+"""Manifest declaration and convention-based discovery (v3)."""
 
-from unittest.mock import MagicMock, patch
+from imbi_common.plugins import (
+    LogsCapability,
+    Plugin,
+    load_plugins,
+)
 
-from imbi_common.plugins import LogsPlugin, load_plugins
-
-from imbi_plugin_logzio.plugin import LogzioPlugin
-
-
-def _make_mock_ep(
-    name: str = 'logzio',
-    cls: type = LogzioPlugin,
-    dist_name: str = 'imbi-plugin-logzio',
-    dist_version: str = '0.1.0',
-) -> MagicMock:
-    ep = MagicMock()
-    ep.name = name
-    ep.load.return_value = cls
-    dist = MagicMock()
-    dist.name = dist_name
-    dist.version = dist_version
-    ep.dist = dist
-    return ep
+import imbi_plugin_logzio
+from imbi_plugin_logzio.plugin import LogzioLogs, LogzioPlugin
 
 
-def test_plugin_is_logs_plugin_subclass() -> None:
-    assert issubclass(LogzioPlugin, LogsPlugin)
+def test_module_exposes_plugin_attr() -> None:
+    assert imbi_plugin_logzio.PLUGIN is LogzioPlugin
+
+
+def test_plugin_is_plugin_subclass() -> None:
+    assert issubclass(LogzioPlugin, Plugin)
 
 
 def test_manifest_slug() -> None:
     assert LogzioPlugin.manifest.slug == 'logzio'
 
 
-def test_manifest_plugin_type() -> None:
-    assert LogzioPlugin.manifest.plugin_type == 'logs'
-
-
 def test_manifest_api_version() -> None:
-    assert LogzioPlugin.manifest.api_version == 1
+    assert LogzioPlugin.manifest.api_version == 2
+
+
+def test_manifest_auth_type() -> None:
+    assert LogzioPlugin.manifest.auth_type == 'api_token'
 
 
 def test_manifest_has_api_token_credential() -> None:
@@ -57,48 +48,45 @@ def test_manifest_region_choices() -> None:
     assert region_opt.default == 'us'
 
 
-def test_manifest_not_cacheable() -> None:
-    assert LogzioPlugin.manifest.cacheable is False
+def test_manifest_timeout_is_integration_option() -> None:
+    names = [o.name for o in LogzioPlugin.manifest.options]
+    assert 'timeout_seconds' in names
 
 
-def test_load_via_entry_points() -> None:
-    ep = _make_mock_ep()
-    with patch('importlib.metadata.entry_points', return_value=[ep]):
-        result = load_plugins()
+def test_manifest_single_logs_capability() -> None:
+    kinds = [c.kind for c in LogzioPlugin.manifest.capabilities]
+    assert kinds == ['logs']
+
+
+def test_logs_capability_handler() -> None:
+    capability = LogzioPlugin.manifest.get_capability('logs')
+    assert capability is not None
+    assert capability.handler is LogzioLogs
+    assert issubclass(capability.handler, LogsCapability)
+
+
+def test_logs_capability_hints() -> None:
+    capability = LogzioPlugin.manifest.get_capability('logs')
+    assert capability is not None
+    assert capability.hints['supports_histogram'] is True
+    assert capability.hints['cacheable'] is False
+
+
+def test_logs_capability_options() -> None:
+    capability = LogzioPlugin.manifest.get_capability('logs')
+    assert capability is not None
+    names = {o.name for o in capability.options}
+    assert {
+        'base_query',
+        'timestamp_field',
+        'message_field',
+        'level_field',
+        'environment_field',
+        'default_environments',
+    } <= names
+
+
+def test_load_via_convention_scan() -> None:
+    result = load_plugins()
     assert 'logzio' in result.loaded
-    assert not result.errors
-
-
-def test_load_wrong_base_class_rejected() -> None:
-    class NotAPlugin:
-        manifest = LogzioPlugin.manifest
-
-    ep = _make_mock_ep(cls=NotAPlugin)  # type: ignore[arg-type]
-    with patch('importlib.metadata.entry_points', return_value=[ep]):
-        result = load_plugins()
-    assert 'logzio' not in result.loaded
-    assert result.errors
-
-
-def test_load_unsupported_api_version_skipped() -> None:
-    from imbi_common.plugins.base import PluginManifest
-
-    class FuturePlugin(LogsPlugin):
-        manifest = PluginManifest(
-            slug='logzio',
-            name='Logz.io',
-            plugin_type='logs',
-            api_version=99,
-        )
-
-        async def search(self, ctx, credentials, query):  # type: ignore[override]
-            ...
-
-        async def schema(self, ctx, credentials):  # type: ignore[override]
-            ...
-
-    ep = _make_mock_ep(cls=FuturePlugin)
-    with patch('importlib.metadata.entry_points', return_value=[ep]):
-        result = load_plugins()
-    assert 'logzio' not in result.loaded
-    assert 'logzio' in result.skipped
+    assert 'logzio' not in result.errors

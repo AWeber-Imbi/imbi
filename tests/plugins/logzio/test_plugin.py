@@ -18,7 +18,7 @@ from imbi_common.plugins.errors import (
 )
 
 from imbi_plugin_logzio.plugin import (
-    LogzioPlugin,
+    LogzioLogs,
     _merge_histogram_totals,
     _overlay_histogram_levels,
     _parse_histogram,
@@ -31,23 +31,27 @@ from imbi_plugin_logzio.query import (
 
 _CREDS = {'api_token': 'test-token'}
 
-_DEFAULT_OPTS: dict[str, object] = {
+_INTEGRATION_OPTS: dict[str, object] = {
     'region': 'us',
+    'timeout_seconds': 5,
+}
+
+_CAPABILITY_OPTS: dict[str, object] = {
     'timestamp_field': '@timestamp',
     'message_field': 'message',
     'level_field': 'level',
-    'timeout_seconds': 5,
 }
 
 
 def _make_ctx(**opts: object) -> PluginContext:
-    assignment_options = {**_DEFAULT_OPTS, **opts}
+    capability_options = {**_CAPABILITY_OPTS, **opts}
     return PluginContext(
         project_id='42',
         project_slug='my-project',
         org_slug='my-org',
         environment='production',
-        assignment_options=assignment_options,
+        integration_options=dict(_INTEGRATION_OPTS),
+        capability_options=capability_options,
     )
 
 
@@ -88,13 +92,13 @@ def _source_hit(
 
 
 async def test_search_missing_token_raises() -> None:
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     with pytest.raises(PluginCredentialsMissing):
         await plugin.search(_make_ctx(), {}, _make_query())
 
 
 async def test_search_empty_token_raises() -> None:
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     with pytest.raises(PluginCredentialsMissing):
         await plugin.search(_make_ctx(), {'api_token': ''}, _make_query())
 
@@ -104,7 +108,7 @@ async def test_search_initial_returns_entries() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([_source_hit()]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query(limit=1))
     assert len(result.entries) == 1
     assert result.entries[0].message == 'hello'
@@ -119,7 +123,7 @@ async def test_search_full_page_sets_next_cursor() -> None:
             json=_hits_response([_source_hit(sort=[1735732800000, 0])]),
         )
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query(limit=1))
     assert result.next_cursor is not None
 
@@ -129,7 +133,7 @@ async def test_search_partial_page_no_next_cursor() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([_source_hit()]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query(limit=10))
     assert result.next_cursor is None
 
@@ -139,7 +143,7 @@ async def test_search_empty_page_no_next_cursor() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query(limit=10))
     assert result.next_cursor is None
     assert result.entries == []
@@ -168,7 +172,7 @@ async def test_search_with_cursor_sends_search_after() -> None:
     fp = compute_fp(body)
     cursor = encode_cursor([1735732800000, 5], fp)
 
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     await plugin.search(ctx, _CREDS, _make_query(limit=1, cursor=cursor))
 
     req_body = json.loads(route.calls[0].request.content)  # type: ignore[union-attr]
@@ -177,7 +181,7 @@ async def test_search_with_cursor_sends_search_after() -> None:
 
 
 async def test_search_bad_cursor_token_raises() -> None:
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     with pytest.raises(CursorExpiredError):
         await plugin.search(
             _make_ctx(),
@@ -194,7 +198,7 @@ async def test_search_total_dict_format() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=payload)
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.total == 42
 
@@ -205,7 +209,7 @@ async def test_search_total_int_format() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=payload)
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.total == 99
 
@@ -221,7 +225,7 @@ async def test_search_timestamp_parsed() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.entries[0].timestamp.year == 2025
     assert result.entries[0].timestamp.month == 1
@@ -234,7 +238,7 @@ async def test_search_missing_timestamp_defaults_to_utc_now() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.entries[0].timestamp.tzinfo is not None
 
@@ -251,7 +255,7 @@ async def test_search_custom_level_field() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     ctx = _make_ctx(level_field='severity')
     result = await plugin.search(ctx, _CREDS, _make_query())
     assert result.entries[0].level == 'WARN'
@@ -269,7 +273,7 @@ async def test_search_raw_contains_full_source() -> None:
             200, json=_hits_response([{'_source': source}])
         )
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.entries[0].raw['custom'] == 'value'
 
@@ -279,7 +283,7 @@ async def test_search_with_filter() -> None:
     route = respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     query = _make_query(
         filters=[LogFilter(field='env', op='eq', value='prod')]
     )
@@ -295,7 +299,7 @@ async def test_schema_with_log_types() -> None:
     respx.get('https://api.logz.io/v1/account/log-types').mock(
         return_value=httpx.Response(200, json=['syslog', 'nginx'])
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     fields = await plugin.schema(_make_ctx(), _CREDS)
     type_field = next(f for f in fields if f['name'] == 'type')
     assert type_field.get('choices') == ['syslog', 'nginx']
@@ -306,14 +310,14 @@ async def test_schema_log_types_error_returns_baseline() -> None:
     respx.get('https://api.logz.io/v1/account/log-types').mock(
         return_value=httpx.Response(500)
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     fields = await plugin.schema(_make_ctx(), _CREDS)
     type_field = next(f for f in fields if f['name'] == 'type')
     assert 'choices' not in type_field
 
 
 async def test_schema_no_token_returns_baseline() -> None:
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     fields = await plugin.schema(_make_ctx(), {})
     assert any(f['name'] == '@timestamp' for f in fields)
     assert any(f['name'] == 'message' for f in fields)
@@ -321,7 +325,7 @@ async def test_schema_no_token_returns_baseline() -> None:
 
 
 async def test_schema_baseline_field_count() -> None:
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     fields = await plugin.schema(_make_ctx(), {})
     assert len(fields) == 8
 
@@ -331,7 +335,7 @@ async def test_search_with_base_query_option() -> None:
     route = respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     ctx = _make_ctx(base_query='${project_slug}-*')
     await plugin.search(ctx, _CREDS, _make_query())
 
@@ -349,7 +353,7 @@ async def test_search_naive_timestamp_gets_utc() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.entries[0].timestamp.tzinfo is not None
 
@@ -360,7 +364,7 @@ async def test_search_invalid_timestamp_defaults_to_now() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_hits_response([hit]))
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.entries[0].timestamp.tzinfo is not None
 
@@ -371,7 +375,7 @@ async def test_search_total_missing_returns_none() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=payload)
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     result = await plugin.search(_make_ctx(), _CREDS, _make_query())
     assert result.total is None
 
@@ -565,7 +569,7 @@ def _histogram_response(
 
 @respx.mock
 async def test_histogram_missing_token_raises() -> None:
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     with pytest.raises(PluginCredentialsMissing):
         await plugin.histogram(_make_ctx(), {}, _make_query())
 
@@ -575,7 +579,7 @@ async def test_histogram_returns_sorted_buckets() -> None:
     respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_histogram_response())
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     # Use a past date so that end_offset and start_offset are positive.
     query = _make_query(
         start_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
@@ -601,7 +605,7 @@ async def test_histogram_filters_out_of_range_buckets() -> None:
             200, json=_histogram_response(out_of_range_ms)
         )
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     query = _make_query(
         start_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
         end_time=datetime.datetime(2025, 1, 2, tzinfo=datetime.UTC),
@@ -623,7 +627,7 @@ async def test_histogram_tolerates_failed_shards() -> None:
         return httpx.Response(500)
 
     respx.post('https://api.logz.io/v1/search').mock(side_effect=side_effect)
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     query = _make_query(
         start_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
         end_time=datetime.datetime(2025, 1, 2, tzinfo=datetime.UTC),
@@ -638,7 +642,7 @@ async def test_histogram_environment_field_option() -> None:
     route = respx.post('https://api.logz.io/v1/search').mock(
         return_value=httpx.Response(200, json=_histogram_response())
     )
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     ctx = _make_ctx(environment_field='env')
     query = _make_query(
         start_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
@@ -660,7 +664,7 @@ async def test_histogram_dayoffset_url_for_old_range() -> None:
         return httpx.Response(200, json=_histogram_response())
 
     respx.post('https://api.logz.io/v1/search').mock(side_effect=capture)
-    plugin = LogzioPlugin()
+    plugin = LogzioLogs()
     # A very old range → multiple dayOffset windows.
     query = _make_query(
         start_time=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
