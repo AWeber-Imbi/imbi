@@ -33,6 +33,7 @@ from imbi_plugin_github.commits import (
     sync_tags_descriptor,
 )
 from imbi_plugin_github.deployment import GitHubDeployment
+from imbi_plugin_github.doctor import GitHubDoctor
 from imbi_plugin_github.identity import DEFAULT_SCOPES, GitHubIdentity
 from imbi_plugin_github.lifecycle import GitHubLifecycle
 from imbi_plugin_github.pull_requests import (
@@ -317,6 +318,17 @@ class GitHubPlugin(Plugin):
                     'analytics.'
                 ),
                 handler=GitHubPullRequestSync,
+            ),
+            Capability(
+                kind='analysis',
+                label='Project doctor',
+                description=(
+                    'Validate the GitHub repository link (EXISTS_IN edge) '
+                    'against the live GitHub API — identifier, canonical '
+                    'URL shape, and dashboard / github-repository links — '
+                    'and offer one-click repairs.'
+                ),
+                handler=GitHubDoctor,
             ),
         ],
         ops_log_templates=_OPS_LOG_TEMPLATES,
