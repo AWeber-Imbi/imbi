@@ -1,4 +1,4 @@
-"""AWS Systems Manager Parameter Store ConfigurationPlugin."""
+"""AWS Systems Manager Parameter Store configuration capability handler."""
 
 from __future__ import annotations
 
@@ -9,13 +9,9 @@ import typing
 from imbi_common.plugins.base import (
     ConfigKey,
     ConfigKeyWithValue,
-    ConfigurationPlugin,
+    ConfigurationCapability,
     ConfigValue,
-    DataType,
-    OpsLogTemplate,
     PluginContext,
-    PluginManifest,
-    PluginOption,
 )
 from imbi_common.plugins.errors import (
     PluginCredentialsMissing,
@@ -25,8 +21,8 @@ from imbi_common.plugins.errors import (
 from imbi_common.plugins.templates import expand_template
 
 from imbi_plugin_aws._helpers import (
-    assignment_region,
-    assignment_timeout,
+    capability_timeout,
+    integration_region,
     template_vars,
 )
 from imbi_plugin_aws.aws_session import (
@@ -84,86 +80,10 @@ def _strip_prefix(name: str, prefix: str) -> str:
     return name.lstrip('/')
 
 
-class SsmPlugin(ConfigurationPlugin):
-    """ConfigurationPlugin backed by SSM Parameter Store."""
-
-    manifest = PluginManifest(
-        slug='aws-ssm',
-        name='AWS SSM Parameter Store',
-        description='Read and write project configuration as SSM parameters.',
-        plugin_type='configuration',
-        api_version=1,
-        cacheable=False,
-        options=[
-            PluginOption(
-                name='region',
-                label='AWS Region',
-                type='string',
-                required=True,
-                description='Region holding the project parameters.',
-            ),
-            PluginOption(
-                name='path_prefix',
-                label='Parameter Path Prefix',
-                type='string',
-                required=True,
-                description=(
-                    "Path prefix under which this project's parameters live. "
-                    'Supports ${project_slug}, ${org_slug}, ${environment}, '
-                    '${project_id}. Must start with /. Example: '
-                    '/imbi/${environment}/${project_slug}/'
-                ),
-            ),
-            PluginOption(
-                name='kms_key_id',
-                label='KMS Key ID',
-                type='string',
-                required=False,
-                description=(
-                    'KMS key id/alias for SecureString writes. Defaults to '
-                    'alias/aws/ssm.'
-                ),
-            ),
-            PluginOption(
-                name='timeout_seconds',
-                label='Request Timeout',
-                type='integer',
-                default=15,
-            ),
-            PluginOption(
-                name='default_role_name',
-                label='Default Role Name',
-                type='string',
-                required=False,
-                description=(
-                    'IAM role assumed when a per-environment account '
-                    "binding doesn't specify one of its own. Falls back "
-                    "to the identity plugin's default_role_name when "
-                    'unset. Supports ${project_slug}, ${org_slug}, '
-                    '${environment}, ${project_id}.'
-                ),
-            ),
-        ],
-        credentials=[],
-        data_types=[
-            DataType(name='string', label='String'),
-            DataType(name='string_list', label='String List'),
-            DataType(name='secret', label='Secret', secret=True),
-        ],
-        # The API writes ``{action, plugin_slug, key, data_type, secret}``
-        # to operations_log.description for every set/delete in
-        # ``project_configuration._write_audit``.
-        ops_log_templates={
-            'set_value': OpsLogTemplate(
-                label='Set parameter "{{key}}"',
-                summary='set parameter',
-            ),
-            'delete_key': OpsLogTemplate(
-                label='Deleted parameter "{{key}}"',
-                summary='deleted parameter',
-            ),
-        },
-    )
+class SSMConfiguration(ConfigurationCapability):
+    """The ``configuration`` capability of
+    :class:`~imbi_plugin_aws.plugin.AWSPlugin`, backed by SSM Parameter
+    Store."""
 
     async def list_keys(
         self,
@@ -172,9 +92,9 @@ class SsmPlugin(ConfigurationPlugin):
     ) -> list[ConfigKey]:
         prefix = self._prefix(ctx)
         creds = resolve_credentials(
-            credentials, region=assignment_region(ctx), ctx=ctx
+            credentials, region=integration_region(ctx), ctx=ctx
         )
-        timeout = assignment_timeout(ctx, default=15.0)
+        timeout = capability_timeout(ctx, default=15.0)
         keys: list[ConfigKey] = []
         next_token: str | None = None
         while True:
@@ -224,9 +144,9 @@ class SsmPlugin(ConfigurationPlugin):
     ) -> list[ConfigKeyWithValue]:
         prefix = self._prefix(ctx)
         creds = resolve_credentials(
-            credentials, region=assignment_region(ctx), ctx=ctx
+            credentials, region=integration_region(ctx), ctx=ctx
         )
-        timeout = assignment_timeout(ctx, default=15.0)
+        timeout = capability_timeout(ctx, default=15.0)
         if keys is None:
             return await self._get_all_values(creds, prefix, timeout)
         return await self._get_specific_values(creds, prefix, keys, timeout)
@@ -307,12 +227,12 @@ class SsmPlugin(ConfigurationPlugin):
         if '..' in key or key.startswith('/'):
             raise ValueError(
                 f'Invalid SSM key {key!r}: keys must be relative '
-                "to the assignment's path_prefix"
+                'to the configured path_prefix'
             )
         creds = resolve_credentials(
-            credentials, region=assignment_region(ctx), ctx=ctx
+            credentials, region=integration_region(ctx), ctx=ctx
         )
-        timeout = assignment_timeout(ctx, default=15.0)
+        timeout = capability_timeout(ctx, default=15.0)
         ssm_type = _DATA_TYPE_TO_SSM.get(value.data_type)
         if ssm_type is None:
             raise ValueError(
@@ -328,7 +248,7 @@ class SsmPlugin(ConfigurationPlugin):
             'Tier': 'Standard',
         }
         if value.data_type == 'secret':
-            kms_key_id = ctx.assignment_options.get('kms_key_id')
+            kms_key_id = ctx.capability_options.get('kms_key_id')
             if kms_key_id:
                 put_body['KeyId'] = str(kms_key_id)
         await call_aws_json(
@@ -366,9 +286,9 @@ class SsmPlugin(ConfigurationPlugin):
     ) -> None:
         prefix = self._prefix(ctx)
         creds = resolve_credentials(
-            credentials, region=assignment_region(ctx), ctx=ctx
+            credentials, region=integration_region(ctx), ctx=ctx
         )
-        timeout = assignment_timeout(ctx, default=15.0)
+        timeout = capability_timeout(ctx, default=15.0)
         full_name = _full_name(prefix, key)
         # Deletion is idempotent: route ParameterNotFound through a
         # private sentinel so we can swallow it without dropping other
@@ -391,9 +311,12 @@ class SsmPlugin(ConfigurationPlugin):
 
     @staticmethod
     def _prefix(ctx: PluginContext) -> str:
-        raw = ctx.assignment_options.get('path_prefix')
+        raw = ctx.capability_options.get('path_prefix')
         if not isinstance(raw, str) or not raw:
-            raise ValueError('aws-ssm requires the "path_prefix" option')
+            raise ValueError(
+                'The aws configuration capability requires the '
+                '"path_prefix" option'
+            )
         expanded = expand_template(raw, template_vars(ctx))
         if not expanded.startswith('/') or expanded == '/':
             raise ValueError(
@@ -420,4 +343,4 @@ def _param_to_kv(
     )
 
 
-__all__ = ['SsmPlugin']
+__all__ = ['SSMConfiguration']

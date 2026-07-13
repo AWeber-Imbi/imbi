@@ -1,4 +1,4 @@
-"""AWS CloudWatch Logs (Insights) LogsPlugin."""
+"""AWS CloudWatch Logs (Insights) logs capability handler."""
 
 from __future__ import annotations
 
@@ -15,10 +15,8 @@ from imbi_common.plugins.base import (
     LogHistogramBucket,
     LogQuery,
     LogResult,
-    LogsPlugin,
+    LogsCapability,
     PluginContext,
-    PluginManifest,
-    PluginOption,
 )
 from imbi_common.plugins.errors import (
     PluginCredentialsMissing,
@@ -28,8 +26,8 @@ from imbi_common.plugins.errors import (
 from imbi_common.plugins.templates import expand_template
 
 from imbi_plugin_aws._helpers import (
-    assignment_region,
-    assignment_timeout,
+    capability_timeout,
+    integration_region,
     template_vars,
 )
 from imbi_plugin_aws.aws_session import (
@@ -362,100 +360,9 @@ async def _resolve_pattern(
     return sorted(matches)
 
 
-class CloudWatchLogsPlugin(LogsPlugin):
-    """LogsPlugin backed by CloudWatch Logs Insights."""
-
-    manifest = PluginManifest(
-        slug='aws-cloudwatch-logs',
-        name='AWS CloudWatch Logs',
-        description='Search CloudWatch Logs from the Imbi project logs tab.',
-        plugin_type='logs',
-        api_version=1,
-        cacheable=False,
-        supports_histogram=True,
-        options=[
-            PluginOption(
-                name='region',
-                label='AWS Region',
-                type='string',
-                required=True,
-                description='Region holding the project log groups.',
-            ),
-            PluginOption(
-                name='log_group_names',
-                label='Log Group Names',
-                type='string',
-                required=True,
-                description=(
-                    'Comma-separated list of log group selectors. '
-                    'Supports ${project_slug}, ${org_slug}, '
-                    '${environment}, ${project_id}. Each entry can be: '
-                    'a literal name; a glob (`*` / `?` / `[...]`); '
-                    '`regex:<pattern>` for an explicit regex; or '
-                    '`prefix:<name>` for SOURCE-mode prefix selection. '
-                    'Glob and regex entries page DescribeLogGroups and '
-                    'match client-side (capped at 50 results per query); '
-                    '`prefix:` entries use CloudWatch SOURCE selection '
-                    'and may not be combined with other entries (max 5).'
-                ),
-            ),
-            PluginOption(
-                name='base_filter',
-                label='Base Filter Expression',
-                type='string',
-                required=False,
-                description=(
-                    'Logs Insights expression (without leading "filter") '
-                    'applied as an additional must clause. Supports the '
-                    'same template variables as Log Group Names.'
-                ),
-            ),
-            PluginOption(
-                name='message_field',
-                label='Message Field',
-                type='string',
-                default='@message',
-            ),
-            PluginOption(
-                name='timestamp_field',
-                label='Timestamp Field',
-                type='string',
-                default='@timestamp',
-            ),
-            PluginOption(
-                name='level_field',
-                label='Level Field',
-                type='string',
-                default='level',
-            ),
-            PluginOption(
-                name='poll_interval_ms',
-                label='Poll Interval (ms)',
-                type='integer',
-                default=500,
-            ),
-            PluginOption(
-                name='timeout_seconds',
-                label='Query Timeout',
-                type='integer',
-                default=30,
-            ),
-            PluginOption(
-                name='default_role_name',
-                label='Default Role Name',
-                type='string',
-                required=False,
-                description=(
-                    'IAM role assumed when a per-environment account '
-                    "binding doesn't specify one of its own. Falls back "
-                    "to the identity plugin's default_role_name when "
-                    'unset. Supports ${project_slug}, ${org_slug}, '
-                    '${environment}, ${project_id}.'
-                ),
-            ),
-        ],
-        credentials=[],
-    )
+class CloudWatchLogs(LogsCapability):
+    """The ``logs`` capability of :class:`~imbi_plugin_aws.plugin.AWSPlugin`,
+    backed by CloudWatch Logs Insights."""
 
     async def search(
         self,
@@ -464,9 +371,9 @@ class CloudWatchLogsPlugin(LogsPlugin):
         query: LogQuery,
     ) -> LogResult:
         creds = resolve_credentials(
-            credentials, region=assignment_region(ctx), ctx=ctx
+            credentials, region=integration_region(ctx), ctx=ctx
         )
-        timeout = assignment_timeout(ctx, default=30.0)
+        timeout = capability_timeout(ctx, default=30.0)
         selection = await self._build_selection(ctx, creds, timeout=timeout)
 
         if selection.names is not None and not selection.names:
@@ -571,9 +478,9 @@ class CloudWatchLogsPlugin(LogsPlugin):
         query still populates the chart.
         """
         creds = resolve_credentials(
-            credentials, region=assignment_region(ctx), ctx=ctx
+            credentials, region=integration_region(ctx), ctx=ctx
         )
-        timeout = assignment_timeout(ctx, default=30.0)
+        timeout = capability_timeout(ctx, default=30.0)
         selection = await self._build_selection(ctx, creds, timeout=timeout)
         if selection.names is not None and not selection.names:
             return []
@@ -756,7 +663,7 @@ class CloudWatchLogsPlugin(LogsPlugin):
         *,
         timeout: float,
     ) -> _Selection:
-        raw = ctx.assignment_options.get('log_group_names')
+        raw = ctx.capability_options.get('log_group_names')
         if not isinstance(raw, str) or not raw.strip():
             raise ValueError(
                 'aws-cloudwatch-logs requires the "log_group_names" '
@@ -885,7 +792,7 @@ class CloudWatchLogsPlugin(LogsPlugin):
         ]
         try:
             creds = resolve_credentials(
-                credentials, region=assignment_region(ctx), ctx=ctx
+                credentials, region=integration_region(ctx), ctx=ctx
             )
             response = await call_aws_json(
                 service='logs',
@@ -893,7 +800,7 @@ class CloudWatchLogsPlugin(LogsPlugin):
                 body={'limit': 50},
                 credentials=creds,
                 error_map=_LOGS_ERROR_MAP,
-                timeout=assignment_timeout(ctx, default=30.0),
+                timeout=capability_timeout(ctx, default=30.0),
             )
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug('DescribeLogGroups enrichment skipped: %s', exc)
@@ -937,17 +844,17 @@ class CloudWatchLogsPlugin(LogsPlugin):
         )
 
     def _expanded_base_filter(self, ctx: PluginContext) -> str | None:
-        raw = ctx.assignment_options.get('base_filter')
+        raw = ctx.capability_options.get('base_filter')
         if not raw:
             return None
         return expand_template(str(raw), template_vars(ctx)) or None
 
     def _option(self, ctx: PluginContext, name: str, default: str) -> str:
-        value = ctx.assignment_options.get(name)
+        value = ctx.capability_options.get(name)
         return str(value) if value else default
 
     def _poll_interval(self, ctx: PluginContext) -> float:
-        raw = ctx.assignment_options.get('poll_interval_ms')
+        raw = ctx.capability_options.get('poll_interval_ms')
         try:
             return float(raw) / 1000.0 if raw is not None else 0.5
         except (TypeError, ValueError):
@@ -1068,4 +975,4 @@ async def _build_resolve_selection(
     )
 
 
-__all__ = ['CloudWatchLogsPlugin']
+__all__ = ['CloudWatchLogs']

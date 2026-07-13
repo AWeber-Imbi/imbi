@@ -1,4 +1,4 @@
-"""Tests for the aws-cloudwatch-logs LogsPlugin."""
+"""Tests for the aws CloudWatch Logs capability handler."""
 
 import datetime
 import json
@@ -11,7 +11,7 @@ import respx
 from imbi_common.plugins.base import (
     LogFilter,
     LogQuery,
-    LogsPlugin,
+    LogsCapability,
     PluginContext,
 )
 from imbi_common.plugins.errors import (
@@ -22,7 +22,7 @@ from imbi_common.plugins.errors import (
 )
 
 from imbi_plugin_aws import cloudwatch as cw_module
-from imbi_plugin_aws.cloudwatch import CloudWatchLogsPlugin
+from imbi_plugin_aws.cloudwatch import CloudWatchLogs
 from imbi_plugin_aws.query import encode_cursor, query_fingerprint
 
 _LOGS_URL = 'https://logs.us-east-1.amazonaws.com/'
@@ -30,20 +30,20 @@ _GLOB_PATTERN = '/aws/rds/${project_slug}-*/postgresql'
 
 
 def _ctx(extras: dict[str, object] | None = None) -> PluginContext:
-    options: dict[str, object] = {
-        'region': 'us-east-1',
+    capability: dict[str, object] = {
         'log_group_names': '/imbi/${environment}/${project_slug}',
         'poll_interval_ms': 0,
         'timeout_seconds': 5,
     }
     if extras:
-        options.update(extras)
+        capability.update(extras)
     return PluginContext(
         project_id='proj-1',
         project_slug='widget',
         org_slug='acme',
         environment='prod',
-        assignment_options=options,
+        integration_options={'region': 'us-east-1'},
+        capability_options=capability,
     )
 
 
@@ -64,28 +64,26 @@ def _query(cursor: str | None = None, limit: int = 2) -> LogQuery:
     )
 
 
-class ManifestTestCase(unittest.TestCase):
-    def test_basics(self) -> None:
-        plugin = CloudWatchLogsPlugin()
-        self.assertIsInstance(plugin, LogsPlugin)
-        self.assertEqual(plugin.manifest.slug, 'aws-cloudwatch-logs')
-        self.assertEqual(plugin.manifest.plugin_type, 'logs')
+class HandlerTestCase(unittest.TestCase):
+    def test_is_logs_capability(self) -> None:
+        self.assertIsInstance(CloudWatchLogs(), LogsCapability)
 
 
 class CredentialsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_missing_credentials_raises(self) -> None:
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         with self.assertRaises(PluginCredentialsMissing):
             await plugin.search(_ctx(), {}, _query())
 
     async def test_missing_log_groups_raises(self) -> None:
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         ctx = PluginContext(
             project_id='p',
             project_slug='s',
             org_slug='o',
             environment='prod',
-            assignment_options={'region': 'us-east-1'},
+            integration_options={'region': 'us-east-1'},
+            capability_options={},
         )
         with self.assertRaises(ValueError):
             await plugin.search(ctx, _creds(), _query())
@@ -148,7 +146,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(500, text='unexpected')
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         result = await plugin.search(_ctx(), _creds(), _query(limit=2))
         self.assertEqual(len(result.entries), 2)
         self.assertEqual(result.total, 42)
@@ -190,7 +188,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         result = await plugin.search(_ctx(), _creds(), _query(limit=10))
         self.assertEqual(len(result.entries), 1)
         self.assertIsNone(result.next_cursor)
@@ -211,7 +209,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         # Build a fingerprint matching the plugin's exact query.
         ctx = _ctx()
         log_groups = ['/imbi/prod/widget']
@@ -241,7 +239,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_invalid_cursor_raises(self) -> None:
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         with self.assertRaises(CursorExpiredError):
             await plugin.search(
                 _ctx(),
@@ -261,7 +259,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         with self.assertRaises(PluginUnavailableError):
             await plugin.search(_ctx(), _creds(), _query())
 
@@ -288,7 +286,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(500, text='unexpected')
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         with self.assertRaises(PluginTimeoutError):
             await plugin.search(
                 _ctx(extras={'timeout_seconds': 0}),
@@ -363,7 +361,7 @@ class ResolveModeTestCase(unittest.IsolatedAsyncioTestCase):
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
         with _patch_valkey(None):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             result = await plugin.search(
                 _ctx(
                     extras={
@@ -395,7 +393,7 @@ class ResolveModeTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={'logGroups': []})
         )
         with _patch_valkey(None):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             result = await plugin.search(
                 _ctx(
                     extras={
@@ -452,7 +450,7 @@ class ResolveModeTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post(_LOGS_URL).mock(side_effect=capture_handler)
 
         with _patch_valkey(None):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             result = await plugin.search(
                 _ctx(
                     extras={
@@ -514,7 +512,7 @@ class ResolveModeTestCase(unittest.IsolatedAsyncioTestCase):
         fake.store[cache_key] = json.dumps(['/aws/rds/widget-1/postgresql'])
 
         with _patch_valkey(fake):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             await plugin.search(
                 _ctx(
                     extras={
@@ -556,7 +554,7 @@ class ResolveModeTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post(_LOGS_URL).mock(side_effect=handler)
         fake = _FakeValkey()
         with _patch_valkey(fake):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             await plugin.search(
                 _ctx(
                     extras={
@@ -596,7 +594,7 @@ class SourceModeTestCase(unittest.IsolatedAsyncioTestCase):
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
         with _patch_valkey(None):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             await plugin.search(
                 _ctx(
                     extras={
@@ -618,7 +616,7 @@ class SourceModeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn(expected_clause, start['payload']['queryString'])
 
     async def test_more_than_five_prefix_entries_raises(self) -> None:
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         ctx = _ctx(
             extras={
                 'log_group_names': ', '.join(
@@ -633,7 +631,7 @@ class SourceModeTestCase(unittest.IsolatedAsyncioTestCase):
             await plugin.search(ctx, _creds(), _query())
 
     async def test_mixing_prefix_with_literal_raises(self) -> None:
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         ctx = _ctx(
             extras={
                 'log_group_names': 'prefix:/p/, /aws/lambda/widget',
@@ -709,7 +707,7 @@ class CacheBustTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post(_LOGS_URL).mock(side_effect=handler)
 
         with _patch_valkey(fake):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             result = await plugin.search(
                 _ctx(
                     extras={
@@ -738,7 +736,7 @@ class SchemaTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         schema = await plugin.schema(_ctx(), _creds())
         names = [s['name'] for s in schema]
         self.assertIn('@timestamp', names)
@@ -757,14 +755,14 @@ class SchemaTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         schema = await plugin.schema(_ctx(), _creds())
         enriched = next(s for s in schema if s.get('choices'))
         self.assertIn('/aws/rds/postgresql', enriched['choices'])
 
 
 class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
-    """Coverage for ``CloudWatchLogsPlugin.histogram``."""
+    """Coverage for ``CloudWatchLogs.histogram``."""
 
     @respx.mock
     async def test_happy_path_two_queries_in_parallel(self) -> None:
@@ -840,7 +838,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(500, text='unexpected')
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         buckets = await plugin.histogram(_ctx(), _creds(), _query())
         # Two StartQuery calls (totals + level) and at least two
         # GetQueryResults responses.
@@ -906,7 +904,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(500, text='unexpected')
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         buckets = await plugin.histogram(_ctx(), _creds(), _query())
         self.assertEqual(len(buckets), 1)
         self.assertEqual(buckets[0].count, 7)
@@ -920,7 +918,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json={'logGroups': []})
         )
         with _patch_valkey(None):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             buckets = await plugin.histogram(
                 _ctx(extras={'log_group_names': _GLOB_PATTERN}),
                 _creds(),
@@ -993,7 +991,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
         with _patch_valkey(fake):
-            plugin = CloudWatchLogsPlugin()
+            plugin = CloudWatchLogs()
             buckets = await plugin.histogram(
                 _ctx(extras={'log_group_names': _GLOB_PATTERN}),
                 _creds(),
@@ -1041,7 +1039,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(500, text='unexpected')
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         with self.assertRaises(ValueError):
             await plugin.histogram(_ctx(), _creds(), _query())
 
@@ -1088,7 +1086,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(500, text='unexpected')
 
         respx.post(_LOGS_URL).mock(side_effect=handler)
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         with self.assertRaises(ValueError):
             await plugin.histogram(_ctx(), _creds(), _query())
         self.assertTrue(events['totals_started'])
@@ -1134,7 +1132,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
             filters=[],
             limit=2,
         )
-        plugin = CloudWatchLogsPlugin()
+        plugin = CloudWatchLogs()
         await plugin.histogram(_ctx(), _creds(), query)
         self.assertTrue(captured)
         # All emitted query strings should bin at 2 seconds, not 1.

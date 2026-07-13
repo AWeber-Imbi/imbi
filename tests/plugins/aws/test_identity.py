@@ -1,12 +1,12 @@
-"""Tests for the AwsIamIcPlugin device-flow contract."""
+"""Tests for the AWSIdentity device-flow capability handler."""
 
 import unittest
 
 import httpx
 import respx
 from imbi_common.plugins.base import (
+    IdentityCapability,
     IdentityCredentials,
-    IdentityPlugin,
     PluginContext,
 )
 
@@ -14,46 +14,43 @@ from imbi_plugin_aws.errors import (
     IamIcAuthorizationPending,
     IamIcDeviceFlowExpired,
 )
-from imbi_plugin_aws.identity import AwsIamIcPlugin
+from imbi_plugin_aws.identity import AWSIdentity
 
 
-def _ctx(options: dict[str, object] | None = None) -> PluginContext:
+def _ctx(
+    *,
+    integration: dict[str, object] | None = None,
+    capability: dict[str, object] | None = None,
+    **kwargs: object,
+) -> PluginContext:
     return PluginContext(
         project_id='p',
         project_slug='proj',
         org_slug='org',
-        assignment_options=options
-        or {
-            'region': 'us-east-1',
-            'start_url': 'https://example.awsapps.com/start',
-        },
+        integration_options=integration
+        if integration is not None
+        else {'region': 'us-east-1'},
+        capability_options=capability
+        if capability is not None
+        else {'start_url': 'https://example.awsapps.com/start'},
         actor_user_id='u-1',
+        **kwargs,
     )
 
 
-class ManifestTestCase(unittest.TestCase):
-    def test_basics(self) -> None:
-        plugin = AwsIamIcPlugin()
-        self.assertIsInstance(plugin, IdentityPlugin)
-        self.assertEqual(plugin.manifest.slug, 'aws-iam-ic')
-        self.assertEqual(plugin.manifest.plugin_type, 'identity')
-        self.assertEqual(plugin.manifest.auth_type, 'aws-iam-ic')
-        self.assertTrue(plugin.manifest.login_capable)
-        self.assertFalse(plugin.manifest.cacheable)
-        self.assertEqual(len(plugin.manifest.vertex_labels), 1)
-        self.assertEqual(plugin.manifest.vertex_labels[0].name, 'AwsAccount')
-        self.assertEqual(len(plugin.manifest.edge_labels), 1)
-        self.assertEqual(plugin.manifest.edge_labels[0].name, 'MAPS_TO')
+class HandlerTestCase(unittest.TestCase):
+    def test_is_identity_capability(self) -> None:
+        self.assertIsInstance(AWSIdentity(), IdentityCapability)
 
     def test_region_and_start_url_required(self) -> None:
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         with self.assertRaises(ValueError):
             plugin._region(  # pyright: ignore[reportPrivateUsage]
-                _ctx({'start_url': 'https://x'})
+                _ctx(integration={}, capability={'start_url': 'https://x'})
             )
         with self.assertRaises(ValueError):
             plugin._start_url(  # pyright: ignore[reportPrivateUsage]
-                _ctx({'region': 'us-east-1'})
+                _ctx(integration={'region': 'us-east-1'}, capability={})
             )
 
 
@@ -77,7 +74,7 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         request = await plugin.authorization_request(
             _ctx(),
             {
@@ -124,7 +121,7 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         request = await plugin.authorization_request(
             _ctx(),
             {},
@@ -175,7 +172,7 @@ class AuthorizationRequestTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         # Cached client predates the scope-tracking change: client_id /
         # client_secret are present but ``client_scopes`` is missing,
         # so the next connect must re-register to get refresh tokens.
@@ -208,7 +205,7 @@ class ExchangeCodeTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         with self.assertRaises(IamIcAuthorizationPending):
             await plugin.exchange_code(
                 _ctx(),
@@ -228,7 +225,7 @@ class ExchangeCodeTestCase(unittest.IsolatedAsyncioTestCase):
                 json={'error': 'expired_token'},
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         with self.assertRaises(IamIcDeviceFlowExpired):
             await plugin.exchange_code(
                 _ctx(),
@@ -250,15 +247,17 @@ class ExchangeCodeTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         profile, credentials = await plugin.exchange_code(
             _ctx(
-                {
+                integration={
                     'region': 'us-east-1',
+                    'default_role_name': 'PowerUserAccess',
+                },
+                capability={
                     'start_url': 'https://example.awsapps.com/start',
                     'default_account_id': '111111111111',
-                    'default_role_name': 'PowerUserAccess',
-                }
+                },
             ),
             {'client_id': 'cid', 'client_secret': 'sec'},
             'dev-code',
@@ -289,7 +288,7 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         connection = IdentityCredentials(
             access_token='iam-ic-token',
             extra={
@@ -308,7 +307,7 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.access_token, 'iam-ic-token')
 
     async def test_missing_account_or_role_raises(self) -> None:
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         connection = IdentityCredentials(
             access_token='iam-ic-token',
             extra={'aws_account_id': '111111111111'},
@@ -357,15 +356,15 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
                     }
                 ]
 
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='org',
             environment='production',
-            assignment_options={
-                'region': 'us-east-1',
-                'start_url': 'https://example.awsapps.com/start',
+            integration_options={'region': 'us-east-1'},
+            capability_options={
+                'start_url': 'https://example.awsapps.com/start'
             },
             actor_user_id='u-1',
         )
@@ -429,16 +428,16 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
                     }
                 ]
 
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         ctx = PluginContext(
             project_id='p',
             project_slug='widget',
             org_slug='org',
             team_slug='platform',
             environment='production',
-            assignment_options={
-                'region': 'us-east-1',
-                'start_url': 'https://example.awsapps.com/start',
+            integration_options={'region': 'us-east-1'},
+            capability_options={
+                'start_url': 'https://example.awsapps.com/start'
             },
             actor_user_id='u-1',
         )
@@ -496,15 +495,15 @@ class MaterializeTestCase(unittest.IsolatedAsyncioTestCase):
                     }
                 ]
 
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         ctx = PluginContext(
             project_id='p',
             project_slug='proj',
             org_slug='org',
             environment='staging',
-            assignment_options={
-                'region': 'us-east-1',
-                'start_url': 'https://example.awsapps.com/start',
+            integration_options={'region': 'us-east-1'},
+            capability_options={
+                'start_url': 'https://example.awsapps.com/start'
             },
             actor_user_id='u-1',
         )
@@ -537,7 +536,7 @@ class RefreshTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         result = await plugin.refresh(
             _ctx(),
             {'client_id': 'cid', 'client_secret': 'sec'},
@@ -558,7 +557,7 @@ class RefreshTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = AwsIamIcPlugin()
+        plugin = AWSIdentity()
         result = await plugin.refresh(
             _ctx(),
             {'client_id': 'cid', 'client_secret': 'sec'},

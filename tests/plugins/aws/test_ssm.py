@@ -1,4 +1,4 @@
-"""Tests for the aws-ssm ConfigurationPlugin."""
+"""Tests for the aws SSM configuration capability handler."""
 
 import json
 import typing
@@ -8,7 +8,7 @@ import httpx
 import respx
 from imbi_common.plugins.base import (
     ConfigKeyWithValue,
-    ConfigurationPlugin,
+    ConfigurationCapability,
     ConfigValue,
     PluginContext,
 )
@@ -17,7 +17,7 @@ from imbi_common.plugins.errors import (
     PluginUnavailableError,
 )
 
-from imbi_plugin_aws.ssm import SsmPlugin
+from imbi_plugin_aws.ssm import SSMConfiguration
 
 _SSM_URL = 'https://ssm.us-east-1.amazonaws.com/'
 
@@ -29,18 +29,16 @@ def _ctx(
     region: str = 'us-east-1',
     extras: dict[str, object] | None = None,
 ) -> PluginContext:
-    options: dict[str, object] = {
-        'region': region,
-        'path_prefix': path_prefix,
-    }
+    capability: dict[str, object] = {'path_prefix': path_prefix}
     if extras:
-        options.update(extras)
+        capability.update(extras)
     return PluginContext(
         project_id='proj-1',
         project_slug='widget',
         org_slug='acme',
         environment=environment,
-        assignment_options=options,
+        integration_options={'region': region},
+        capability_options=capability,
     )
 
 
@@ -60,36 +58,32 @@ def _identity_creds() -> dict[str, str]:
     }
 
 
-class ManifestTestCase(unittest.TestCase):
-    def test_basics(self) -> None:
-        plugin = SsmPlugin()
-        self.assertIsInstance(plugin, ConfigurationPlugin)
-        self.assertEqual(plugin.manifest.slug, 'aws-ssm')
-        self.assertEqual(plugin.manifest.plugin_type, 'configuration')
-        names = {dt.name for dt in plugin.manifest.data_types}
-        self.assertEqual(names, {'string', 'string_list', 'secret'})
+class HandlerTestCase(unittest.TestCase):
+    def test_is_configuration_capability(self) -> None:
+        self.assertIsInstance(SSMConfiguration(), ConfigurationCapability)
 
 
 class PrefixValidationTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_missing_prefix_raises(self) -> None:
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         ctx = PluginContext(
             project_id='p',
             project_slug='s',
             org_slug='o',
             environment='prod',
-            assignment_options={'region': 'us-east-1'},
+            integration_options={'region': 'us-east-1'},
+            capability_options={},
         )
         with self.assertRaises(ValueError):
             await plugin.list_keys(ctx, _creds())
 
     async def test_root_prefix_rejected(self) -> None:
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         with self.assertRaises(ValueError):
             await plugin.list_keys(_ctx(path_prefix='/'), _creds())
 
     async def test_relative_prefix_rejected(self) -> None:
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         with self.assertRaises(ValueError):
             await plugin.list_keys(_ctx(path_prefix='imbi/'), _creds())
 
@@ -97,7 +91,7 @@ class PrefixValidationTestCase(unittest.IsolatedAsyncioTestCase):
 class CredentialsTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_missing_credentials_raises(self) -> None:
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         with self.assertRaises(PluginCredentialsMissing):
             await plugin.list_keys(_ctx(), {})
 
@@ -106,7 +100,7 @@ class CredentialsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post(_SSM_URL).mock(
             return_value=httpx.Response(200, json={'Parameters': []})
         )
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         keys = await plugin.list_keys(_ctx(), _identity_creds())
         self.assertEqual(keys, [])
 
@@ -140,7 +134,7 @@ class ListKeysTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, json=next(responses))
 
         respx.post(_SSM_URL).mock(side_effect=page_handler)
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         keys = await plugin.list_keys(_ctx(), _creds())
         self.assertEqual(
             sorted(k.key for k in keys),
@@ -177,7 +171,7 @@ class GetValuesTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
         respx.post(_SSM_URL).mock(side_effect=handler)
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         values = await plugin.get_values(
             _ctx(), _creds(), keys=['db/url', 'missing']
         )
@@ -202,7 +196,7 @@ class GetValuesTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         values = await plugin.get_values(_ctx(), _creds(), keys=['nope'])
         self.assertEqual(values, [])
 
@@ -227,7 +221,7 @@ class GetValuesTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
         respx.post(_SSM_URL).mock(side_effect=handler)
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         values = await plugin.get_values(_ctx(), _creds())
         self.assertEqual(len(values), 1)
         self.assertEqual(values[0].data_type, 'string_list')
@@ -261,7 +255,7 @@ class SetValueTestCase(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(500, text='unexpected')
 
         respx.post(_SSM_URL).mock(side_effect=handler)
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         result = await plugin.set_value(
             _ctx(extras={'kms_key_id': 'alias/imbi'}),
             _creds(),
@@ -279,7 +273,7 @@ class SetValueTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload['Name'], '/imbi/prod/widget/db/password')
 
     async def test_relative_keys_only(self) -> None:
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         with self.assertRaises(ValueError):
             await plugin.set_value(
                 _ctx(),
@@ -289,7 +283,7 @@ class SetValueTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_unknown_data_type_raises(self) -> None:
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         with self.assertRaises(ValueError):
             await plugin.set_value(
                 _ctx(),
@@ -311,7 +305,7 @@ class DeleteKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         await plugin.delete_key(_ctx(), _creds(), 'k')
 
     @respx.mock
@@ -325,7 +319,7 @@ class DeleteKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         with self.assertRaises(ValueError):
             await plugin.delete_key(_ctx(), _creds(), 'k')
 
@@ -340,6 +334,6 @@ class DeleteKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = SsmPlugin()
+        plugin = SSMConfiguration()
         with self.assertRaises(PluginUnavailableError):
             await plugin.delete_key(_ctx(), _creds(), 'k')

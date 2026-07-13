@@ -1,6 +1,6 @@
-"""AWS IAM Identity Center identity plugin.
+"""AWS IAM Identity Center identity capability.
 
-Implements the :class:`IdentityPlugin` contract against the IAM IC
+Implements the :class:`IdentityCapability` contract against the IAM IC
 public OIDC + Portal HTTP APIs:
 
 * OIDC: ``https://oidc.{region}.amazonaws.com``
@@ -8,23 +8,23 @@ public OIDC + Portal HTTP APIs:
 
 These endpoints are unauthenticated for the device-code flow (no
 sigv4), so we use ``httpx`` directly instead of pulling in
-``aioboto3`` for Phase 1.
+``aioboto3``.
 
 Flow:
 
-1. ``RegisterClient`` (one-time per ``ServiceApplication``).  The
-   returned ``clientId``/``clientSecret`` are cached on the parent
-   ``ServiceApplication.plugin_credentials`` blob; the host-side
-   credentials machinery threads them back in via the ``credentials``
-   dict on subsequent calls.
+1. ``RegisterClient`` (one-time per Integration).  The returned
+   ``clientId``/``clientSecret`` are surfaced back to the host via
+   :attr:`AuthorizationRequest.registered_credentials`, which persists
+   them into the Integration's encrypted credential blob; the host
+   threads them back in via the ``credentials`` dict on subsequent
+   calls.
 2. ``StartDeviceAuthorization`` returns a verification URI + user
    code + device code.  We pack the device code (and the cached
    client id/secret) into the state JWT and surface the user code
    via :class:`PollingDescriptor`.
-3. The UI polls ``/me/identities/{plugin_id}/poll`` (host endpoint —
-   pending in the host) which calls back into ``poll`` here; until the
-   ABC gains :meth:`poll`, the host will instead call
-   :meth:`exchange_code` with the device code as ``code``.
+3. The UI polls ``/me/identities/{integration_id}/poll`` (host
+   endpoint) which calls back into :meth:`exchange_code` with the
+   device code as ``code``.
 4. ``CreateToken(grant_type=device_code)`` returns the IAM IC access
    token (and optionally a refresh token).  We populate
    :class:`IdentityProfile` from the IAM IC user metadata and stash
@@ -32,8 +32,8 @@ Flow:
    ``IdentityCredentials.extra``.
 5. ``materialize`` calls ``GetRoleCredentials`` against the Portal API
    to mint short-lived STS keys, returned as
-   ``IdentityCredentials.extra`` so the data plugins (``aws-ssm`` /
-   ``aws-cloudwatch-logs``) can pick them up transparently.
+   ``IdentityCredentials.extra`` so the ``logs`` / ``configuration``
+   capabilities can pick them up transparently.
 """
 
 from __future__ import annotations
@@ -45,16 +45,10 @@ import typing
 import httpx
 from imbi_common.plugins.base import (
     AuthorizationRequest,
-    CredentialField,
+    IdentityCapability,
     IdentityCredentials,
-    IdentityPlugin,
     IdentityProfile,
     PluginContext,
-    PluginEdgeLabel,
-    PluginIndex,
-    PluginManifest,
-    PluginOption,
-    PluginVertexLabel,
     PollingDescriptor,
 )
 from imbi_common.plugins.templates import expand_template
@@ -69,7 +63,12 @@ LOGGER = logging.getLogger(__name__)
 
 # IAM IC only issues refresh tokens when the registered client's
 # declared scopes include this value (or another long-lived scope).
-_REFRESH_SCOPE = 'sso:account:access'
+REFRESH_SCOPE = 'sso:account:access'
+
+#: Scopes requested at connect time. Surfaced to the host/UI via the
+#: identity capability's ``default_scopes`` hint (see plugin.py) and used
+#: directly by :meth:`AWSIdentity.authorization_request`.
+DEFAULT_SCOPES = [REFRESH_SCOPE]
 
 
 def _oidc_url(region: str, path: str) -> str:
@@ -80,98 +79,14 @@ def _portal_url(region: str, path: str) -> str:
     return f'https://portal.sso.{region}.amazonaws.com{path}'
 
 
-class AwsIamIcPlugin(IdentityPlugin):
-    """AWS IAM Identity Center identity plugin (device-code flow)."""
+class AWSIdentity(IdentityCapability):
+    """AWS IAM Identity Center identity handler (device-code flow).
 
-    manifest = PluginManifest(
-        slug='aws-iam-ic',
-        name='AWS IAM Identity Center',
-        description='Federated AWS access via IAM Identity Center.',
-        plugin_type='identity',
-        auth_type='aws-iam-ic',
-        cacheable=False,
-        login_capable=True,
-        requires_identity=False,
-        default_scopes=[_REFRESH_SCOPE],
-        widget_text=(
-            'Connect to enable project level functionality '
-            'such as configuration and log access.'
-        ),
-        options=[
-            PluginOption(
-                name='start_url',
-                label='IAM IC Start URL',
-                type='string',
-                required=True,
-                description=('e.g. https://example.awsapps.com/start'),
-            ),
-            PluginOption(
-                name='region',
-                label='IAM IC Region',
-                type='string',
-                required=True,
-                description=(
-                    'Region where IAM Identity Center is provisioned.'
-                ),
-            ),
-            PluginOption(
-                name='default_account_id',
-                label='Default AWS account id',
-                type='string',
-                required=False,
-            ),
-            PluginOption(
-                name='default_role_name',
-                label='Default IAM role',
-                type='string',
-                required=False,
-            ),
-        ],
-        credentials=[
-            CredentialField(
-                name='client_id',
-                label='Cached IAM IC Client ID',
-                description='Auto-managed via RegisterClient.',
-                required=False,
-            ),
-            CredentialField(
-                name='client_secret',
-                label='Cached IAM IC Client Secret',
-                description='Auto-managed via RegisterClient.',
-                required=False,
-            ),
-            CredentialField(
-                name='client_scopes',
-                label='Cached IAM IC Client Scopes',
-                description=(
-                    f'Space-separated scopes the cached client was '
-                    f'registered with.  Auto-managed; absence (or a set '
-                    f'that omits {_REFRESH_SCOPE}) forces a fresh '
-                    f'RegisterClient on the next connect so refresh '
-                    f'tokens are issued.'
-                ),
-                required=False,
-            ),
-        ],
-        vertex_labels=[
-            PluginVertexLabel(
-                name='AwsAccount',
-                model_ref='imbi_plugin_aws.models:AwsAccount',
-                indexes=[
-                    PluginIndex(fields=['account_id'], unique=True),
-                    PluginIndex(fields=['name']),
-                ],
-            ),
-        ],
-        edge_labels=[
-            PluginEdgeLabel(
-                name='MAPS_TO',
-                from_labels=['Environment'],
-                to_labels=['AwsAccount'],
-                properties={'tags': 'dict[str, str]'},
-            ),
-        ],
-    )
+    The ``identity`` capability of :class:`~imbi_plugin_aws.plugin.AWSPlugin`.
+    It is the credential mechanism for every AWS Integration: the other
+    capabilities receive the STS keys it mints via
+    :meth:`materialize` on ``PluginContext.identity``.
+    """
 
     async def authorization_request(
         self,
@@ -184,10 +99,11 @@ class AwsIamIcPlugin(IdentityPlugin):
 
         Auto-registers an OIDC client when ``credentials`` is missing
         ``client_id`` / ``client_secret``.  The host is expected to
-        round-trip the new client id/secret back to the
-        ``ServiceApplication.plugin_credentials`` blob via the existing
-        encryption layer; this plugin treats the ``credentials`` dict
-        as authoritative on the next call.
+        round-trip the new client id/secret back to the Integration's
+        encrypted credential blob (via
+        :attr:`AuthorizationRequest.registered_credentials`); this
+        handler treats the ``credentials`` dict as authoritative on the
+        next call.
         """
         region = self._region(ctx)
         start_url = self._start_url(ctx)
@@ -195,9 +111,7 @@ class AwsIamIcPlugin(IdentityPlugin):
         client_id = credentials.get('client_id')
         client_secret = credentials.get('client_secret')
         cached_scopes = _parse_cached_scopes(credentials.get('client_scopes'))
-        requested_scopes = (
-            self.manifest.default_scopes if scopes is None else scopes
-        )
+        requested_scopes = DEFAULT_SCOPES if scopes is None else scopes
         # A cached client registered before scope-tracking landed (or
         # with a stale scope set) silently produces connections with no
         # refresh token; force a re-register so the sweeper has
@@ -351,18 +265,17 @@ class AwsIamIcPlugin(IdentityPlugin):
            available.  This is the per-environment path: each env has
            its own AWS account, so log searches scoped to a specific
            env mint STS keys against that env's account.
-        2. The data plugin's assignment options (``default_role_name``
-           on the calling AWS plugin instance — e.g. CloudWatch Logs or
-           SSM — set per plugin in admin).
+        2. The Integration-level ``default_role_name`` option
+           (:attr:`PluginContext.integration_options`), shared by every
+           AWS capability.
         3. Connect-time defaults stamped onto ``connection.extra``
            (legacy single-account path).
-        4. Identity plugin instance ``options`` (``default_role_name``
-           in particular — operators usually have one canonical
-           role across accounts).
+        4. The identity capability's own ``identity_options``
+           (``default_role_name`` in particular), as a last resort.
 
         Falls back through the chain so a partially configured
         deployment keeps working: an account with no
-        ``default_role_name`` still mints creds via the plugin-level
+        ``default_role_name`` still mints creds via the Integration
         default, and a project with no environment query param still
         lands on the connect-time account.
         """
@@ -377,16 +290,18 @@ class AwsIamIcPlugin(IdentityPlugin):
             account_id = extra.get('aws_account_id')
         if not role_name:
             role_name = (
-                ctx.assignment_options.get('default_role_name')
+                ctx.integration_options.get('default_role_name')
                 or extra.get('aws_role_name')
                 or identity_options.get('default_role_name')
             )
 
-        # Region: assignment option (data plugin) > AwsAccount.default_region
-        # > connection extras > identity plugin's region option.
+        # Region: AwsAccount.default_region > Integration region option
+        # > connection extras > identity capability's region option.
+        # ``_region`` guarantees a non-empty string (or raises) so the
+        # portal URL below always has a region.
         region = (
-            ctx.assignment_options.get('region')
-            or account_region
+            account_region
+            or ctx.integration_options.get('region')
             or extra.get('aws_region')
             or identity_options.get('region')
             or self._region(ctx)
@@ -394,7 +309,7 @@ class AwsIamIcPlugin(IdentityPlugin):
 
         if not account_id or not role_name:
             raise ValueError(
-                'AwsIamIcPlugin.materialize: could not resolve '
+                'AWSIdentity.materialize: could not resolve '
                 f'aws_account_id / aws_role_name for environment='
                 f'{ctx.environment!r}; expected an Environment-MAPS_TO->'
                 f'AwsAccount with default_role_name, a connect-time '
@@ -410,7 +325,7 @@ class AwsIamIcPlugin(IdentityPlugin):
             role_name = expand_template(role_name, template_vars(ctx))
             if not role_name:
                 raise ValueError(
-                    'AwsIamIcPlugin.materialize: role_name template '
+                    'AWSIdentity.materialize: role_name template '
                     f'expanded to empty string for environment='
                     f'{ctx.environment!r}, team_slug={ctx.team_slug!r}'
                 )
@@ -509,7 +424,7 @@ class AwsIamIcPlugin(IdentityPlugin):
         """One-time OIDC client registration.
 
         Returns ``(client_id, client_secret)``.  The host is expected
-        to persist these on the parent ``ServiceApplication`` so the
+        to persist these into the Integration credential blob so the
         next call sees them in ``credentials``.  ``scopes`` is the list
         of OAuth scopes the client will be allowed to request — IAM IC
         gates refresh-token issuance on the registered scope set.
@@ -566,13 +481,14 @@ class AwsIamIcPlugin(IdentityPlugin):
         # populate the user-visible email / name.
         profile = IdentityProfile(subject=device_code)
 
-        # Default account / role from manifest options when set.  When
+        # Default account / role from configured options when set.  When
         # both are unset, the host UI is expected to prompt the user
         # and post back the choice via the connection metadata path.
-        options = ctx.assignment_options
+        # ``default_account_id`` is an identity capability option;
+        # ``default_role_name`` is an Integration-level option.
         extra: dict[str, typing.Any] = {}
-        default_account = options.get('default_account_id')
-        default_role = options.get('default_role_name')
+        default_account = ctx.capability_options.get('default_account_id')
+        default_role = ctx.integration_options.get('default_role_name')
         if default_account:
             extra['aws_account_id'] = str(default_account)
         if default_role:
@@ -592,16 +508,16 @@ class AwsIamIcPlugin(IdentityPlugin):
 
     @staticmethod
     def _region(ctx: PluginContext) -> str:
-        region = ctx.assignment_options.get('region')
+        region = ctx.integration_options.get('region')
         if not region:
-            raise ValueError('AwsIamIcPlugin requires the "region" option')
+            raise ValueError('AWSIdentity requires the "region" option')
         return str(region)
 
     @staticmethod
     def _start_url(ctx: PluginContext) -> str:
-        start_url = ctx.assignment_options.get('start_url')
+        start_url = ctx.capability_options.get('start_url')
         if not start_url:
-            raise ValueError('AwsIamIcPlugin requires the "start_url" option')
+            raise ValueError('AWSIdentity requires the "start_url" option')
         return str(start_url)
 
 

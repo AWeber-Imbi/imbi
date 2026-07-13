@@ -16,21 +16,16 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27,<1",
-  "imbi-common==2.11.6",
+  "imbi-common==2.12.1",
   "pydantic>=2",
 ]
-
-[project.entry-points."imbi.plugins"]
-aws-cloudwatch-logs = "imbi_plugin_aws.cloudwatch:CloudWatchLogsPlugin"
-aws-iam-ic = "imbi_plugin_aws.identity:AwsIamIcPlugin"
-aws-ssm = "imbi_plugin_aws.ssm:SsmPlugin"
 
 [dependency-groups]
 dev = [
   "basedpyright",
   "coverage[toml]",
   "httpcore",
-  "imbi-common[server,databases]==2.11.6",
+  "imbi-common[server,databases]==2.12.1",
   "pre-commit",
   "pytest",
   "pytest-asyncio",

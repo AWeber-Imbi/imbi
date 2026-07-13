@@ -1,21 +1,18 @@
-"""AWS plugins for Imbi.
+"""AWS plugin for Imbi (Plugin Architecture v3).
 
-Ships three plugin entry points from a single distribution:
+Ships one :class:`~imbi_plugin_aws.plugin.AWSPlugin` whose manifest
+declares the Integration-level options and IAM Identity Center credential
+blob once, plus three capabilities: ``identity`` (IAM Identity Center),
+``logs`` (CloudWatch Logs), and ``configuration`` (SSM Parameter Store).
 
-* ``aws-iam-ic`` -- :class:`IdentityPlugin` for AWS IAM Identity Center.
-* ``aws-ssm`` -- :class:`ConfigurationPlugin` backed by SSM Parameter
-  Store.
-* ``aws-cloudwatch-logs`` -- :class:`LogsPlugin` backed by CloudWatch
-  Logs Insights.
-
-The data plugins consume credentials from a flat ``dict[str, str]``
-populated by either the ``ServiceApplication`` static-key path or the
-identity-hydrated path that calls ``aws-iam-ic.materialize()``;
-neither plugin needs to know which source applied.
+The registry discovers this package by the ``imbi_plugin_*`` naming
+convention and reads the module-level :data:`PLUGIN` attribute; there are
+no ``imbi.plugins`` entry points.
 """
 
-from imbi_plugin_aws.cloudwatch import CloudWatchLogsPlugin
-from imbi_plugin_aws.identity import AwsIamIcPlugin
-from imbi_plugin_aws.ssm import SsmPlugin
+from imbi_plugin_aws.plugin import AWSPlugin
 
-__all__ = ['AwsIamIcPlugin', 'CloudWatchLogsPlugin', 'SsmPlugin']
+#: Discovered by the imbi-common plugin registry (convention scan).
+PLUGIN = AWSPlugin
+
+__all__ = ['PLUGIN', 'AWSPlugin']
