@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-pagerduty"
-version = "2.11.6"
+version = "2.12.1"
 description = "PagerDuty lifecycle, webhook, and incidents plugins for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
