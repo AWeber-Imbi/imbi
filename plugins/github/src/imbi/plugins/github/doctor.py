@@ -132,6 +132,21 @@ def _repo_fetch_url(
     return None
 
 
+def _find_connection(
+    connections: list[ServiceConnection],
+    slug: str,
+) -> ServiceConnection | None:
+    """Return the ``EXISTS_IN`` connection matching ``slug``, else ``None``.
+
+    Shared by ``analyze`` and ``remediate`` so the lookup over
+    ``ctx.service_connections`` lives in one place.
+    """
+    return next(
+        (c for c in connections if c.integration_slug == slug),
+        None,
+    )
+
+
 class GitHubDoctor(AnalysisCapability):
     """GitHub project-doctor analysis capability.
 
@@ -166,10 +181,7 @@ class GitHubDoctor(AnalysisCapability):
                 )
             ]
 
-        connection = next(
-            (c for c in ctx.service_connections if c.integration_slug == slug),
-            None,
-        )
+        connection = _find_connection(ctx.service_connections, slug)
         if connection is None:
             return [
                 _item(
@@ -518,16 +530,7 @@ class GitHubDoctor(AnalysisCapability):
         api_base = host_to_api_base(host)
         slug = ctx.integration_slug
         connection = (
-            next(
-                (
-                    c
-                    for c in ctx.service_connections
-                    if c.integration_slug == slug
-                ),
-                None,
-            )
-            if slug
-            else None
+            _find_connection(ctx.service_connections, slug) if slug else None
         )
         if slug is None or connection is None:
             return RemediationResult(
