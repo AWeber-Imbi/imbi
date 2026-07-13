@@ -2,16 +2,17 @@
 
 import datetime
 import unittest
-import unittest.mock
 
 import httpx
 import respx
 from imbi_common.plugins.base import (
-    IdentityPlugin,
+    IdentityCapability,
     PluginContext,
+    PluginManifest,
 )
 
-from imbi_plugin_oidc.plugin import OIDCPlugin
+from imbi_plugin_oidc import PLUGIN
+from imbi_plugin_oidc.plugin import OIDCIdentity, OIDCPlugin
 
 _DISCOVERY = {
     'authorization_endpoint': 'https://idp.example.com/authorize',
@@ -32,24 +33,45 @@ def _ctx(options: dict[str, object]) -> PluginContext:
         project_id='p',
         project_slug='proj',
         org_slug='org',
-        assignment_options=options,
+        integration_options=options,
         actor_user_id='u-1',
     )
 
 
 class ManifestTestCase(unittest.TestCase):
+    def test_plugin_registration(self) -> None:
+        self.assertIs(PLUGIN, OIDCPlugin)
+        self.assertIsInstance(OIDCPlugin.manifest, PluginManifest)
+
     def test_manifest_basics(self) -> None:
-        plugin = OIDCPlugin()
-        self.assertIsInstance(plugin, IdentityPlugin)
-        self.assertEqual(plugin.manifest.slug, 'oidc')
-        self.assertEqual(plugin.manifest.plugin_type, 'identity')
-        self.assertEqual(plugin.manifest.auth_type, 'oidc')
-        self.assertTrue(plugin.manifest.login_capable)
+        manifest = OIDCPlugin.manifest
+        self.assertEqual(manifest.slug, 'oidc')
+        self.assertEqual(manifest.api_version, 2)
+        self.assertEqual(manifest.auth_type, 'oidc')
+
+    def test_identity_capability(self) -> None:
+        manifest = OIDCPlugin.manifest
+        capability = manifest.get_capability('identity')
+        self.assertIsNotNone(capability)
+        assert capability is not None
+        self.assertIs(capability.handler, OIDCIdentity)
+        self.assertTrue(issubclass(capability.handler, IdentityCapability))
+        self.assertFalse(capability.project_scoped)
+        self.assertFalse(capability.default_enabled)
+        self.assertTrue(capability.hints['login_capable'])
+        self.assertEqual(
+            capability.hints['default_scopes'],
+            ['openid', 'profile', 'email'],
+        )
+
+    def test_credentials_declared_on_manifest(self) -> None:
+        names = {c.name for c in OIDCPlugin.manifest.credentials}
+        self.assertEqual(names, {'client_id', 'client_secret'})
 
 
 class FlowTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        OIDCPlugin._discovery_cache.clear()
+        OIDCIdentity._discovery_cache.clear()
 
     @respx.mock
     async def test_authorization_request_pkce(self) -> None:
@@ -65,7 +87,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         request = await plugin.authorization_request(
             ctx,
@@ -114,7 +136,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         profile, credentials = await plugin.exchange_code(
             ctx,
@@ -159,7 +181,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         credentials = await plugin.refresh(
             ctx,
@@ -183,7 +205,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         await plugin.revoke(ctx, {'client_id': 'cid'}, 'token-to-revoke')
 
@@ -193,7 +215,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         route = respx.post('https://idp.example.com/revoke').mock(
             return_value=httpx.Response(200)
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         await plugin.revoke(
             ctx,
@@ -208,7 +230,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post('https://idp.example.com/revoke').mock(
             side_effect=httpx.ConnectError('boom')
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         await plugin.revoke(ctx, {'client_id': 'cid'}, 'token-to-revoke')
 
@@ -217,7 +239,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         _mock_discovery()
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx(
             {
                 'issuer_url': 'https://idp.example.com',
@@ -239,7 +261,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_authorization_request_default_scopes_list(self) -> None:
         _mock_discovery()
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx(
             {
                 'issuer_url': 'https://idp.example.com',
@@ -255,7 +277,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('scope=openid+email', request.authorization_url)
 
     async def test_resolve_endpoints_requires_issuer(self) -> None:
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({})
         with self.assertRaises(ValueError):
             await plugin.authorization_request(
@@ -270,7 +292,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://idp.example.com/.well-known/openid-configuration'
         ).mock(return_value=httpx.Response(500))
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         with self.assertRaises(ValueError):
             await plugin.authorization_request(
@@ -286,7 +308,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post('https://idp.example.com/token').mock(
             return_value=httpx.Response(401, text='bad creds')
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         with self.assertRaises(ValueError):
             await plugin.exchange_code(
@@ -309,7 +331,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get('https://idp.example.com/userinfo').mock(
             return_value=httpx.Response(500, text='nope')
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         with self.assertRaises(ValueError):
             await plugin.exchange_code(
@@ -326,7 +348,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post('https://idp.example.com/token').mock(
             return_value=httpx.Response(400, text='expired')
         )
-        plugin = OIDCPlugin()
+        plugin = OIDCIdentity()
         ctx = _ctx({'issuer_url': 'https://idp.example.com'})
         with self.assertRaises(ValueError):
             await plugin.refresh(ctx, {'client_id': 'cid'}, 'rt-1')
