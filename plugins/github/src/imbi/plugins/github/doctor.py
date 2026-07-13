@@ -5,12 +5,12 @@ identifier is an integer, canonical URL follows the /repositories/{id} shape
 that the lifecycle plugin writes, dashboard link matches the API html_url, and
 the legacy github-repository link matches as well.
 
-A single host-agnostic plugin covers github.com, GHEC tenants, and GHES
-appliances: the GitHub host is resolved from the ``github-connection`` plugin
-on the same service, mirroring every other behavioral plugin in this package.
-The shared App/PAT credentials also live on that connection plugin, so the
-host supplies them through ``credentials`` (with the acting user's identity
-token preferred); the doctor declares no credential of its own.
+A single analysis capability covers github.com, GHEC tenants, and GHES
+appliances: the GitHub host is resolved from the Integration's ``flavor`` +
+``host`` options, mirroring every other capability on the GitHub plugin. The
+shared App/PAT credentials arrive through ``credentials`` (with the acting
+user's identity token preferred); the capability declares no credential of
+its own.
 """
 
 from __future__ import annotations
@@ -20,12 +20,11 @@ import typing
 
 import httpx
 from imbi_common.plugins.base import (
-    AnalysisPlugin,
+    AnalysisCapability,
     AnalysisResultItem,
     AnalysisResultStatus,
     LinkWriteback,
     PluginContext,
-    PluginManifest,
     RemediationOffer,
     RemediationResult,
     ServiceConnection,
@@ -34,8 +33,8 @@ from imbi_common.plugins.base import (
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 
 from imbi_plugin_github._hosts import (
+    flavor_host,
     host_to_api_base,
-    resolve_connection_host,
 )
 from imbi_plugin_github._repos import derive_owner_repo_from_links
 
@@ -125,7 +124,7 @@ def _repo_fetch_url(
     derived = derive_owner_repo_from_links(
         ctx.project_links,
         host,
-        preferred_key=ctx.third_party_service_slug,
+        preferred_key=ctx.integration_slug,
     )
     if derived is not None:
         owner, repo = derived
@@ -133,26 +132,28 @@ def _repo_fetch_url(
     return None
 
 
-class GitHubDoctorPlugin(AnalysisPlugin):
-    """Host-agnostic GitHub project-doctor analysis plugin.
+def _find_connection(
+    connections: list[ServiceConnection],
+    slug: str,
+) -> ServiceConnection | None:
+    """Return the ``EXISTS_IN`` connection matching ``slug``, else ``None``.
 
-    Resolves the GitHub host from the ``github-connection`` plugin on the
-    same service (github.com / GHEC tenant / GHES appliance) and validates
-    the ``EXISTS_IN`` edge against the live GitHub API.
+    Shared by ``analyze`` and ``remediate`` so the lookup over
+    ``ctx.service_connections`` lives in one place.
     """
-
-    manifest = PluginManifest(
-        slug='github-doctor',
-        name='GitHub Doctor',
-        description=(
-            'Validates the EXISTS_IN edge against the live GitHub API: '
-            'checks the identifier, canonical URL shape, dashboard link, '
-            'and github-repository link. The GitHub host and shared '
-            'App/PAT credentials are resolved from the github-connection '
-            'plugin on the same service.'
-        ),
-        plugin_type='analysis',
+    return next(
+        (c for c in connections if c.integration_slug == slug),
+        None,
     )
+
+
+class GitHubDoctor(AnalysisCapability):
+    """GitHub project-doctor analysis capability.
+
+    Resolves the GitHub host from the Integration's ``flavor`` + ``host``
+    options (github.com / GHEC tenant / GHES appliance) and validates the
+    ``EXISTS_IN`` edge against the live GitHub API.
+    """
 
     async def analyze(  # noqa: C901 — flat sequence of independent checks
         self,
@@ -162,15 +163,13 @@ class GitHubDoctorPlugin(AnalysisPlugin):
         results: list[AnalysisResultItem] = []
 
         try:
-            host = resolve_connection_host(
-                ctx.service_plugins, 'github-doctor'
-            )
+            host = flavor_host(ctx.integration_options, 'github doctor')
         except ValueError as exc:
             return [_item('connection', 'GitHub connection', 'warn', str(exc))]
         api_base = host_to_api_base(host)
 
-        # Step 1: locate the EXISTS_IN connection for this service.
-        slug = ctx.third_party_service_slug
+        # Step 1: locate the EXISTS_IN connection for this integration.
+        slug = ctx.integration_slug
         if not slug:
             return [
                 _item(
@@ -182,10 +181,7 @@ class GitHubDoctorPlugin(AnalysisPlugin):
                 )
             ]
 
-        connection = next(
-            (c for c in ctx.service_connections if c.service_slug == slug),
-            None,
-        )
+        connection = _find_connection(ctx.service_connections, slug)
         if connection is None:
             return [
                 _item(
@@ -528,20 +524,13 @@ class GitHubDoctorPlugin(AnalysisPlugin):
             return await super().remediate(ctx, credentials, remediation_id)
 
         try:
-            host = resolve_connection_host(
-                ctx.service_plugins, 'github-doctor'
-            )
+            host = flavor_host(ctx.integration_options, 'github doctor')
         except ValueError as exc:
             return RemediationResult(status='failed', message=str(exc))
         api_base = host_to_api_base(host)
-        slug = ctx.third_party_service_slug
+        slug = ctx.integration_slug
         connection = (
-            next(
-                (c for c in ctx.service_connections if c.service_slug == slug),
-                None,
-            )
-            if slug
-            else None
+            _find_connection(ctx.service_connections, slug) if slug else None
         )
         if slug is None or connection is None:
             return RemediationResult(

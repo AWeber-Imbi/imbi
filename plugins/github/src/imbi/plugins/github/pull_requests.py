@@ -33,10 +33,8 @@ from imbi_common.json_pointer import JsonPointer
 from imbi_common.models import PullRequestRecord
 from imbi_common.plugins.base import (
     ActionDescriptor,
-    CredentialField,
     PluginContext,
-    PluginManifest,
-    WebhookActionPlugin,
+    PullRequestSyncCapability,
 )
 
 from imbi_plugin_github._hosts import host_to_api_base
@@ -247,66 +245,33 @@ sync_pull_requests_descriptor = ActionDescriptor(
 )
 
 
-class GitHubPRSyncPlugin(WebhookActionPlugin):
-    """Webhook-action plugin syncing GitHub pull-request history.
+class GitHubPullRequestSync(PullRequestSyncCapability):
+    """Pull-request history sync capability handler.
 
-    Carries its own service credential (PAT or GitHub App) -- it is not
-    folded into the identity / deployment / lifecycle plugins, which run
-    as the acting user.  Auth is resolved identically to
-    :class:`~imbi_plugin_github.commits.GitHubCommitSyncPlugin`.
+    Uses the Integration's shared credential blob (PAT or GitHub App),
+    resolved identically to
+    :class:`~imbi_plugin_github.commits.GitHubCommitSync`.  The
+    gateway-side incremental sync flows through the
+    ``sync_pull_requests`` webhook action catalogued by the plugin's
+    ``webhook-actions`` capability.
     """
 
-    manifest = PluginManifest(
-        slug='github-pr-sync',
-        name='GitHub Pull Request History Sync',
-        description=(
-            'Syncs pull request history from GitHub webhooks into '
-            'ClickHouse for analytics. Also supports on-demand backfill '
-            'of the full PR history via sync_all_history.'
-        ),
-        plugin_type='webhook',
-        credentials=[
-            CredentialField(
-                name='access_token',
-                label='GitHub Token (PAT)',
-                description=(
-                    'Static personal/service access token. Use this *or* '
-                    'the GitHub App fields below.'
-                ),
-                required=False,
-            ),
-            CredentialField(
-                name='app_id',
-                label='GitHub App ID',
-                description=(
-                    'GitHub App identifier; with a private key the plugin '
-                    'mints short-lived installation tokens.'
-                ),
-                required=False,
-            ),
-            CredentialField(
-                name='private_key',
-                label='GitHub App Private Key',
-                description=(
-                    'App private key, raw PEM or base64-encoded PEM.'
-                ),
-                required=False,
-            ),
-            CredentialField(
-                name='installation_id',
-                label='GitHub App Installation ID',
-                description=(
-                    'Optional. When unset, the installation is discovered '
-                    'from the repository.'
-                ),
-                required=False,
-            ),
-        ],
-    )
-
-    @classmethod
-    def actions(cls) -> list[ActionDescriptor]:
-        return [sync_pull_requests_descriptor]
+    async def check_available(
+        self,
+        *,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> bool:
+        """Whether an on-demand sync can resolve a host + repo for ``ctx``."""
+        del credentials
+        host = _resolve_host_for_context(ctx)
+        if host is None:
+            return False
+        try:
+            resolve_owner_repo(ctx, host, _SELF_SLUG)
+        except ValueError:
+            return False
+        return True
 
     async def sync_all_history(
         self,
@@ -317,12 +282,12 @@ class GitHubPRSyncPlugin(WebhookActionPlugin):
         """Record the project's full pull request history.
 
         Host-invoked (no webhook payload): the host instantiates the
-        plugin, builds a :class:`PluginContext` carrying the project's
-        links and the connected ``service_plugins``, resolves this
-        plugin's service ``credentials``, and awaits this method.  The
-        GitHub host/flavor is read from ``service_plugins``, the
-        ``(owner, repo)`` from the project links, and the bearer token
-        from the same PAT-or-App resolution the webhook actions use.
+        handler, builds a :class:`PluginContext` carrying the project's
+        links and the Integration options, resolves the Integration's
+        ``credentials``, and awaits this method.  The GitHub host/flavor
+        is read from ``ctx.integration_options``, the ``(owner, repo)``
+        from the project links, and the bearer token from the same
+        PAT-or-App resolution the webhook actions use.
 
         Walks every PR in the repo (``state=all``, paginated) and upserts
         into the ClickHouse ``pull_requests`` table.
@@ -345,7 +310,7 @@ class GitHubPRSyncPlugin(WebhookActionPlugin):
         if host is None:
             raise ValueError(
                 'github-pr-sync could not resolve a GitHub host for an '
-                'on-demand sync: connect a GitHub plugin to the service'
+                'on-demand sync: set the Integration flavor/host'
             )
         base = host_to_api_base(host)
         owner, repo = resolve_owner_repo(ctx, host, _SELF_SLUG)

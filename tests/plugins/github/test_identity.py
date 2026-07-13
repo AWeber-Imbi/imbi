@@ -1,4 +1,4 @@
-"""Smoke tests for the GitHub identity plugin."""
+"""Smoke tests for the GitHub identity capability handler."""
 
 import unittest
 import urllib.parse
@@ -6,50 +6,52 @@ import urllib.parse
 import httpx
 import respx
 from imbi_common.plugins.base import (
-    IdentityPlugin,
+    IdentityCapability,
     PluginContext,
-    ServicePlugin,
 )
 
-from imbi_plugin_github.identity import GitHubIdentityPlugin
+from imbi_plugin_github.identity import GitHubIdentity
+from imbi_plugin_github.plugin import GitHubPlugin
 
 
-def _connection(flavor: str, host: str | None = None) -> ServicePlugin:
+def _connection(flavor: str, host: str | None = None) -> dict[str, object]:
     options: dict[str, object] = {'flavor': flavor}
     if host is not None:
         options['host'] = host
-    return ServicePlugin(slug='github-connection', options=options)
+    return options
 
 
 def _ctx(
     options: dict[str, object] | None = None,
-    connection: ServicePlugin | None = None,
+    connection: dict[str, object] | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
         project_slug='proj',
         org_slug='org',
-        assignment_options=options or {},
+        capability_options=options or {},
         actor_user_id='u-1',
-        service_plugins=([connection] if connection is not None else []),
+        integration_options=connection or {},
     )
 
 
 class ManifestTestCase(unittest.TestCase):
     def test_manifest_slug(self) -> None:
-        self.assertEqual(GitHubIdentityPlugin.manifest.slug, 'github-identity')
+        self.assertEqual(GitHubPlugin.manifest.slug, 'github')
 
     def test_login_capable(self) -> None:
-        self.assertIsInstance(GitHubIdentityPlugin(), IdentityPlugin)
-        self.assertTrue(GitHubIdentityPlugin.manifest.login_capable)
-        self.assertEqual(GitHubIdentityPlugin.manifest.plugin_type, 'identity')
-        self.assertEqual(GitHubIdentityPlugin.manifest.auth_type, 'oauth2')
+        cap = GitHubPlugin.manifest.get_capability('identity')
+        assert cap is not None
+        self.assertTrue(issubclass(cap.handler, IdentityCapability))
+        self.assertIs(cap.handler, GitHubIdentity)
+        self.assertTrue(cap.hints['login_capable'])
+        self.assertFalse(cap.default_enabled)
+        self.assertFalse(cap.project_scoped)
+        self.assertEqual(GitHubPlugin.manifest.auth_type, 'oauth2')
 
     def test_dot_com_endpoints(self) -> None:
-        plugin = GitHubIdentityPlugin()
-        endpoints = plugin._endpoints(
-            _ctx(connection=_connection('github.com'))
-        )
+        plugin = GitHubIdentity()
+        endpoints = plugin._endpoints(_ctx(connection=_connection('github')))
         self.assertEqual(
             endpoints['authorize'],
             'https://github.com/login/oauth/authorize',
@@ -64,7 +66,7 @@ class ManifestTestCase(unittest.TestCase):
         )
 
     def test_ghec_endpoints_route_oauth_to_tenant_host(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         endpoints = plugin._endpoints(
             _ctx(connection=_connection('ghec', 'tenant.ghe.com'))
         )
@@ -82,7 +84,7 @@ class ManifestTestCase(unittest.TestCase):
         )
 
     def test_ghes_endpoints_route_through_appliance(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         endpoints = plugin._endpoints(
             _ctx(connection=_connection('ghes', 'github.example.com'))
         )
@@ -96,17 +98,17 @@ class ManifestTestCase(unittest.TestCase):
         )
 
     def test_missing_connection_is_rejected(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         with self.assertRaises(ValueError):
             plugin._endpoints(_ctx())
 
     def test_ghes_host_required(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         with self.assertRaises(ValueError):
             plugin._endpoints(_ctx(connection=_connection('ghes')))
 
     def test_ghec_rejects_non_tenant_host(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         with self.assertRaises(ValueError):
             plugin._endpoints(
                 _ctx(connection=_connection('ghec', 'github.example.com'))
@@ -116,9 +118,9 @@ class ManifestTestCase(unittest.TestCase):
 class FlowTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_authorization_request_dot_com(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         request = await plugin.authorization_request(
-            _ctx(connection=_connection('github.com')),
+            _ctx(connection=_connection('github')),
             {'client_id': 'cid'},
             'https://imbi.test/cb',
         )
@@ -136,7 +138,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_authorization_request_ghes_uses_host(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         request = await plugin.authorization_request(
             _ctx(connection=_connection('ghes', 'github.example.com')),
             {'client_id': 'cid'},
@@ -151,7 +153,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_authorization_request_without_connection_raises(
         self,
     ) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         with self.assertRaises(ValueError):
             await plugin.authorization_request(
                 _ctx(),
@@ -183,9 +185,9 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         profile, credentials = await plugin.exchange_code(
-            _ctx(connection=_connection('github.com')),
+            _ctx(connection=_connection('github')),
             {'client_id': 'cid', 'client_secret': 'sec'},
             'auth-code',
             'https://imbi.test/cb',
@@ -198,7 +200,7 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(credentials.scopes, ['read:user', 'user:email'])
 
     async def test_exchange_code_without_connection_raises(self) -> None:
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         with self.assertRaises(ValueError):
             await plugin.exchange_code(
                 _ctx(),
@@ -246,9 +248,9 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         profile, _ = await plugin.exchange_code(
-            _ctx(connection=_connection('github.com')),
+            _ctx(connection=_connection('github')),
             {'client_id': 'cid', 'client_secret': 'sec'},
             'code',
             'https://imbi.test/cb',
@@ -268,9 +270,9 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         credentials = await plugin.refresh(
-            _ctx(connection=_connection('github.com')),
+            _ctx(connection=_connection('github')),
             {'client_id': 'cid', 'client_secret': 'sec'},
             'rt-1',
         )
@@ -291,9 +293,9 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
                 },
             )
         )
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         credentials = await plugin.refresh(
-            _ctx(connection=_connection('github.com')),
+            _ctx(connection=_connection('github')),
             {'client_id': 'cid', 'client_secret': 'sec'},
             'rt-keep',
         )
@@ -304,10 +306,10 @@ class FlowTestCase(unittest.IsolatedAsyncioTestCase):
         respx.post('https://github.com/login/oauth/access_token').mock(
             return_value=httpx.Response(400, text='bad')
         )
-        plugin = GitHubIdentityPlugin()
+        plugin = GitHubIdentity()
         with self.assertRaises(ValueError):
             await plugin.exchange_code(
-                _ctx(connection=_connection('github.com')),
+                _ctx(connection=_connection('github')),
                 {'client_id': 'cid', 'client_secret': 'sec'},
                 'auth-code',
                 'https://imbi.test/cb',

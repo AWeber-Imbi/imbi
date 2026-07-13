@@ -1,11 +1,11 @@
-"""GitHub lifecycle plugin.
+"""GitHub lifecycle capability handler.
 
-A single :class:`GitHubLifecyclePlugin` resolves its GitHub host from the
-``github-connection`` plugin attached to the same ThirdPartyService (via
-:func:`resolve_connection_host`), so one plugin serves github.com, a GHEC
-tenant, or a GHES appliance interchangeably.
+:class:`GitHubLifecycle` resolves its GitHub host from the Integration's
+``flavor`` + ``host`` options on ``ctx.integration_options``, so one
+handler serves github.com, a GHEC tenant, or a GHES appliance
+interchangeably.
 
-On project archive the plugin:
+On project archive the handler:
 
 1. Looks up the repo's current state.  If it's already archived (and
    already at the configured target org, when one is set) the call is
@@ -33,9 +33,8 @@ the repo's current location — it does **not** attempt to transfer
 the repo back to its original org because the original owner is not
 tracked anywhere.
 
-The plugin acts as the user via the paired :class:`IdentityPlugin`:
-callers materialise an :class:`~imbi_common.plugins.base.IdentityCredentials`
-and pass the access token through ``credentials['access_token']``.
+The handler acts as the user: callers pass the access token through the
+Integration credential blob's ``credentials['access_token']``.
 Archiving and transferring both require repo admin scope on the
 source, and transfer additionally requires admin permission on the
 target organization.
@@ -49,23 +48,17 @@ import typing
 
 import httpx
 from imbi_common.plugins.base import (
-    CredentialField,
-    LifecyclePlugin,
+    LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
     PluginContext,
-    PluginManifest,
-    PluginOption,
     RelocationTarget,
     ServiceWriteback,
 )
 from imbi_common.plugins.errors import PluginAuthenticationFailed
 from imbi_common.plugins.templates import expand_template
 
-from imbi_plugin_github._hosts import (
-    host_to_api_base,
-    resolve_connection_host,
-)
+from imbi_plugin_github._hosts import flavor_host, host_to_api_base
 from imbi_plugin_github._repos import (
     derive_owner_repo_from_links,
     resolve_owner_repo,
@@ -105,100 +98,15 @@ def _auth_headers(token: str) -> dict[str, str]:
     }
 
 
-_COMMON_OPTIONS: list[PluginOption] = [
-    PluginOption(
-        name='archive_target_org',
-        label='Transfer to org on archive',
-        description=(
-            'When set, repos are transferred to this organization before '
-            'being archived.  Useful for moving sunset projects into a '
-            'dedicated "archive" org so they no longer count against your '
-            "primary org's repo quota or surface in default searches.  "
-            'Leave blank to archive in place.  Requires admin permission '
-            'on both the source repo and the destination organization.'
-        ),
-        type='string',
-        required=False,
-    ),
-    PluginOption(
-        name='create_org',
-        label='Default org for repo creation',
-        description=(
-            'Org used by ``on_project_created`` (and the relocate-target '
-            'preview) when no per-project-type override matches in '
-            '``org_mapping``.  Supports the template variables '
-            '``${project_slug}``, ``${org_slug}``, ``${team_slug}``, '
-            '``${project_type_slug}``, ``${project_id}``.  Leave blank '
-            'to skip create / relocate when no mapping matches.'
-        ),
-        type='string',
-        required=False,
-    ),
-    PluginOption(
-        name='org_mapping',
-        label='Project-type to org overrides',
-        description=(
-            'Per-project-type-slug overrides for the target GitHub org.  '
-            'The first ``project_type_slug`` that has a mapping wins '
-            'over ``create_org``.  Use this when different project types '
-            'live in different orgs (e.g. ``api`` → ``aweber-services``, '
-            '``library`` → ``aweber-libs``).'
-        ),
-        type='mapping',
-        required=False,
-    ),
-]
-
-_LIFECYCLE_EVENTS: list[
-    typing.Literal[
-        'created',
-        'updated',
-        'archived',
-        'unarchived',
-        'deleted',
-        'relocated',
-    ]
-] = ['created', 'updated', 'archived', 'unarchived', 'deleted', 'relocated']
-
-_CREDENTIALS: list[CredentialField] = [
-    CredentialField(
-        name='access_token',
-        label='Service-account PAT (optional fallback)',
-        description=(
-            'Personal access token used when no per-user identity is '
-            'bound.  Requires repo admin scope; transfers additionally '
-            'require admin permission on the target organization.'
-        ),
-        required=False,
-    ),
-]
-
-
-class GitHubLifecyclePlugin(LifecyclePlugin):
+class GitHubLifecycle(LifecycleCapability):
     """React to the project lifecycle on the configured GitHub host.
 
-    The host is resolved from the ``github-connection`` plugin attached
-    to the same ThirdPartyService.  Plugin instances are single-shot per
-    request.
+    The host is resolved from the Integration's ``flavor`` + ``host``
+    options.  Instances are single-shot per request.
     """
 
-    manifest = PluginManifest(
-        slug='github-lifecycle',
-        name='GitHub Lifecycle',
-        description=(
-            'React to the project lifecycle on GitHub by creating, '
-            'renaming, archiving, transferring, or deleting the matching '
-            'repository.  Org selection on create / relocate is driven '
-            'by per-project-type overrides plus a template fallback.'
-        ),
-        plugin_type='lifecycle',
-        options=_COMMON_OPTIONS,
-        credentials=_CREDENTIALS,
-        lifecycle_events=_LIFECYCLE_EVENTS,
-    )
-
     def _resolve_host(self, ctx: PluginContext) -> str:
-        return resolve_connection_host(ctx.service_plugins, 'github-lifecycle')
+        return flavor_host(ctx.integration_options, 'github lifecycle')
 
     def _api_base(self, ctx: PluginContext) -> str:
         return host_to_api_base(self._resolve_host(ctx))
@@ -245,7 +153,7 @@ class GitHubLifecyclePlugin(LifecyclePlugin):
         Returns ``None`` when neither is configured so the caller can
         emit a clean ``status='skipped'``.
         """
-        options = ctx.assignment_options
+        options = ctx.capability_options
         mapping_raw = options.get('org_mapping')
         if isinstance(mapping_raw, dict):
             mapping = typing.cast(dict[str, typing.Any], mapping_raw)
@@ -479,7 +387,7 @@ class GitHubLifecyclePlugin(LifecyclePlugin):
     ) -> LifecycleResult:
         host = self._resolve_host(ctx)
         owner, repo = resolve_owner_repo(ctx, host, 'GitHub lifecycle plugin')
-        target_org = self._target_org(ctx.assignment_options)
+        target_org = self._target_org(ctx.capability_options)
 
         async with self._client(ctx, credentials) as client:
             current = await self._get_repo(client, owner, repo)
@@ -650,20 +558,20 @@ class GitHubLifecyclePlugin(LifecyclePlugin):
     ) -> str:
         """Record the repo on ``ctx`` for the host to persist.
 
-        Returns the dashboard (human) URL.  When the plugin is bound to a
-        third-party service and the GitHub payload carries the numeric
+        Returns the dashboard (human) URL.  When the handler is bound to
+        an Integration and the GitHub payload carries the numeric
         repo id, emit a :class:`ServiceWriteback` that maintains the
         ``EXISTS_IN`` edge -- the id plus the rename-stable
         ``/repositories/{id}`` API URL -- and a dashboard link keyed by
-        the service slug.  Otherwise fall back to the legacy
+        the Integration slug.  Otherwise fall back to the legacy
         ``github-repository`` :class:`LinkWriteback` so a project not
-        wired to a service still gets its stored link.
+        wired to an Integration still gets its stored link.
         """
         data = payload or {}
         html_url = str(
             data.get('html_url') or self._repo_html_url(host, owner, repo)
         )
-        slug = ctx.third_party_service_slug
+        slug = ctx.integration_slug
         repo_id = data.get('id')
         if slug and isinstance(repo_id, int):
             api_base = self._api_base(ctx)
