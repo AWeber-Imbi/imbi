@@ -28,6 +28,7 @@ from imbi_common.plugins.base import (
     ConfigKeyWithValue,
     ConfigurationCapability,
     Plugin,
+    PluginContext,
     PluginManifest,
 )
 from imbi_common.plugins.registry import RegistryEntry
@@ -384,6 +385,86 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         self.assertEqual(response.json()[0]['key'], '/foo')
         # And it must have populated the scoped key.
         self.assertIsNotNone(scoped_cached)
+
+    def test_context_includes_project_type_slugs(self) -> None:
+        # The plugin context must carry the project's type slugs so
+        # option templates like ``${project_type_slug}`` expand — an
+        # empty list expands to '' and produces invalid paths (e.g. an
+        # SSM path_prefix of ``/pse//imbi``).
+        self._list_cache_key()  # register for cleanup; ensures fresh id
+        captured: list[PluginContext] = []
+
+        class _RecordingHandler(_FakeConfigurationHandler):
+            async def list_keys(self, ctx, credentials):  # type: ignore[override]
+                captured.append(ctx)
+                return await super().list_keys(ctx, credentials)
+
+        entry = RegistryEntry(
+            plugin_cls=_FakePlugin,
+            manifest=PluginManifest(
+                slug='ssm',
+                name='SSM',
+                capabilities=[
+                    Capability(
+                        kind='configuration',
+                        label='Configuration',
+                        handler=_RecordingHandler,
+                    )
+                ],
+            ),
+            package_name='imbi-plugin-ssm',
+            package_version='1.0.0',
+        )
+        resolved = ResolvedCapability(
+            integration_id=self.plugin_id,
+            integration_slug='ssm-prod',
+            plugin_slug='ssm',
+            kind='configuration',
+            entry=entry,
+            capability_cls=_RecordingHandler,
+            integration={
+                'id': self.plugin_id,
+                'slug': 'ssm-prod',
+                'plugin': 'ssm',
+            },
+            integration_options={},
+            capability_options={},
+            encrypted_credentials={},
+        )
+
+        async def _execute(
+            query: str,
+            params: dict[str, typing.Any],
+            columns: list[str] | None = None,
+        ) -> list[dict[str, typing.Any]]:
+            if 'ProjectType' in query:
+                return [{'slug': 'apis'}, {'slug': 'consumer-apis'}]
+            return [{'slug': 'my-project', 'team_slug': 'my-team'}]
+
+        self.mock_db.execute.side_effect = _execute
+        with testclient.TestClient(self.test_app) as client:
+            with (
+                mock.patch(
+                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    return_value=resolved,
+                ),
+                mock.patch(
+                    'imbi_api.endpoints.project_configuration'
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
+                ),
+            ):
+                response = client.get(
+                    f'/organizations/myorg/projects/{self.project_id}'
+                    '/configuration/'
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(
+            captured[0].project_type_slugs, ['apis', 'consumer-apis']
+        )
+        self.assertEqual(captured[0].project_slug, 'my-project')
+        self.assertEqual(captured[0].team_slug, 'my-team')
 
     # ----- value fetch ------------------------------------------------
 

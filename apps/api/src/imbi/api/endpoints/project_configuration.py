@@ -19,7 +19,10 @@ from imbi_common.plugins.base import (
 
 from imbi_api.auth import permissions
 from imbi_api.domain import models
-from imbi_api.endpoints._helpers import lookup_project_slugs
+from imbi_api.endpoints._helpers import (
+    lookup_project_slugs,
+    lookup_project_type_slugs,
+)
 from imbi_api.identity.host_integration import call_with_identity_retry
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.resolution import ResolvedCapability, resolve_capability
@@ -97,12 +100,14 @@ async def _resolve_and_prepare(
         db, project_id, 'configuration', source
     )
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
+    project_type_slugs = await lookup_project_type_slugs(db, project_id)
     ctx = PluginContext(
         project_id=project_id,
         project_slug=project_slug,
         org_slug=org_slug,
         team_slug=team_slug,
         environment=environment,
+        project_type_slugs=project_type_slugs,
         assignment_options=resolved.capability_options,
         integration_options=resolved.integration_options,
         capability_options=resolved.capability_options,
