@@ -21,7 +21,7 @@ def _event(
     """Wrap a webhook body in the event context handlers now receive."""
     return {
         'type': '',
-        'third_party_service': '',
+        'integration': '',
         'attributed_to': '',
         'metadata': {'headers': {}},
         'payload': body,
@@ -1014,7 +1014,7 @@ class ImbiClientFindUserByIdentityTests(helpers.TestCase):
 
         mock_get.assert_called_once_with(
             '/users/by-identity',
-            params={'plugin_slug': 'github', 'subject': 's-1'},
+            params={'integration_slug': 'github', 'subject': 's-1'},
         )
         self.assertEqual('alice@example.com', result)
 

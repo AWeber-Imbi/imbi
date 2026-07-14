@@ -66,76 +66,80 @@ class StubActionConfig(pydantic.BaseModel):
     label: str = 'default'
 
 
-class StubNoCredsPlugin(plugin_base.WebhookActionPlugin):
+def _descriptor(name: str, callable_path: str) -> plugin_base.ActionDescriptor:
+    return plugin_base.ActionDescriptor(
+        name=name,
+        label=name,
+        callable=typing.cast('typing.Any', callable_path),
+        config_model=typing.cast(
+            'typing.Any', 'tests.test_notifications:StubActionConfig'
+        ),
+    )
+
+
+class StubWebhookActions(plugin_base.WebhookActionsCapability):
+    """webhook-actions catalog for the no-credentials stub plugin."""
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return [
+            _descriptor('do_thing', 'tests.test_notifications:stub_action'),
+            _descriptor('boom', 'tests.test_notifications:raising_action'),
+        ]
+
+
+class StubCredsWebhookActions(plugin_base.WebhookActionsCapability):
+    """webhook-actions catalog for the credential-requiring stub plugin."""
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return [
+            _descriptor('do_thing', 'tests.test_notifications:stub_action')
+        ]
+
+
+class StubNoCredsPlugin(plugin_base.Plugin):
     """Stub registered for tests that need a no-credentials plugin."""
 
     manifest = plugin_base.PluginManifest(
         slug='stub-nocreds',
         name='Stub (no credentials)',
-        plugin_type='webhook',
+        auth_type='none',
         credentials=[],
+        capabilities=[
+            plugin_base.Capability(
+                kind='webhook-actions',
+                label='Webhook actions',
+                project_scoped=False,
+                handler=StubWebhookActions,
+            )
+        ],
     )
 
-    @classmethod
-    def actions(cls) -> list[plugin_base.ActionDescriptor]:
-        return [
-            plugin_base.ActionDescriptor(
-                name='do_thing',
-                label='Do Thing',
-                callable=typing.cast(
-                    'typing.Any', 'tests.test_notifications:stub_action'
-                ),
-                config_model=typing.cast(
-                    'typing.Any', 'tests.test_notifications:StubActionConfig'
-                ),
-            ),
-            plugin_base.ActionDescriptor(
-                name='boom',
-                label='Boom',
-                callable=typing.cast(
-                    'typing.Any', 'tests.test_notifications:raising_action'
-                ),
-                config_model=typing.cast(
-                    'typing.Any', 'tests.test_notifications:StubActionConfig'
-                ),
-            ),
-        ]
 
-
-class StubWithCredsPlugin(plugin_base.WebhookActionPlugin):
+class StubWithCredsPlugin(plugin_base.Plugin):
     """Stub registered for tests that exercise credential resolution."""
 
     manifest = plugin_base.PluginManifest(
         slug='stub-creds',
         name='Stub (with credentials)',
-        plugin_type='webhook',
         credentials=[
             plugin_base.CredentialField(name='api_token', label='API Token')
         ],
-    )
-
-    @classmethod
-    def actions(cls) -> list[plugin_base.ActionDescriptor]:
-        return [
-            plugin_base.ActionDescriptor(
-                name='do_thing',
-                label='Do Thing',
-                callable=typing.cast(
-                    'typing.Any', 'tests.test_notifications:stub_action'
-                ),
-                config_model=typing.cast(
-                    'typing.Any', 'tests.test_notifications:StubActionConfig'
-                ),
+        capabilities=[
+            plugin_base.Capability(
+                kind='webhook-actions',
+                label='Webhook actions',
+                project_scoped=False,
+                handler=StubCredsWebhookActions,
             )
-        ]
-
-
-class StubIdentityPlugin(plugin_base.IdentityPlugin):
-    """Stub identity plugin used to satisfy registry filtering in tests."""
-
-    manifest = plugin_base.PluginManifest(
-        slug='stub-identity', name='Stub Identity', plugin_type='identity'
+        ],
     )
+
+
+class _StubIdentity(plugin_base.IdentityCapability):
+    """Minimal identity handler; only exists so a plugin can declare a
+    non-webhook-actions capability."""
 
     async def authorization_request(
         self,
@@ -168,12 +172,23 @@ class StubIdentityPlugin(plugin_base.IdentityPlugin):
         raise NotImplementedError
 
 
-#: Identity-typed slugs registered for tests that exercise the user
-#: resolution path. ``_resolve_user_id`` filters candidate plugin slugs
-#: through the registry, so every slug referenced as an identity plugin
-#: must be installed with ``plugin_type='identity'`` for the existing
-#: behavior to be reachable from tests.
-_IDENTITY_PLUGIN_SLUGS = ('github', 'gitlab', 'stub-identity')
+class StubIdentityOnlyPlugin(plugin_base.Plugin):
+    """Stub with only an identity capability (no webhook-actions)."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-identity-only',
+        name='Stub (identity only)',
+        auth_type='oauth2',
+        capabilities=[
+            plugin_base.Capability(
+                kind='identity',
+                label='Identity',
+                project_scoped=False,
+                default_enabled=False,
+                handler=_StubIdentity,
+            )
+        ],
+    )
 
 
 def _install_stub_plugins() -> None:
@@ -181,19 +196,14 @@ def _install_stub_plugins() -> None:
     _registry: dict[str, plugin_registry.RegistryEntry] = (
         plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
     )
-    for cls in (StubNoCredsPlugin, StubWithCredsPlugin):
+    for cls in (
+        StubNoCredsPlugin,
+        StubWithCredsPlugin,
+        StubIdentityOnlyPlugin,
+    ):
         _registry[cls.manifest.slug] = plugin_registry.RegistryEntry(
-            handler_cls=cls,
+            plugin_cls=cls,
             manifest=cls.manifest,
-            package_name='tests',
-            package_version='0.0.0',
-        )
-    for slug in _IDENTITY_PLUGIN_SLUGS:
-        _registry[slug] = plugin_registry.RegistryEntry(
-            handler_cls=StubIdentityPlugin,
-            manifest=plugin_base.PluginManifest(
-                slug=slug, name=f'Stub {slug}', plugin_type='identity'
-            ),
             package_name='tests',
             package_version='0.0.0',
         )
@@ -203,65 +213,14 @@ def _uninstall_stub_plugins() -> None:
     _registry: dict[str, plugin_registry.RegistryEntry] = (
         plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
     )
-    for slug in ('stub-nocreds', 'stub-creds', *_IDENTITY_PLUGIN_SLUGS):
+    for slug in ('stub-nocreds', 'stub-creds', 'stub-identity-only'):
         _registry.pop(slug, None)
 
 
-class WebhookRuleUnitTests(helpers.TestCase):
-    _VALID_RULE: typing.ClassVar[dict[str, object]] = {
-        'handler': 'stub-nocreds#do_thing',
-        'ordinal': 1,
-        'handler_config': '{}',
-        'filter_expression': 'true',
-    }
-
-    def test_valid_handler_exposes_slug_and_action(self) -> None:
-        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
-        self.assertEqual('stub-nocreds', rule.plugin_slug)
-        self.assertEqual('do_thing', rule.action_name)
-
-    def test_handler_without_separator_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            notifications.WebhookRule.model_validate(
-                {**self._VALID_RULE, 'handler': 'no-separator'}
-            )
-
-    def test_handler_with_empty_slug_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            notifications.WebhookRule.model_validate(
-                {**self._VALID_RULE, 'handler': '#do_thing'}
-            )
-
-    def test_handler_with_empty_action_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            notifications.WebhookRule.model_validate(
-                {**self._VALID_RULE, 'handler': 'stub-nocreds#'}
-            )
-
-    def test_handler_dotted_path_rejected(self) -> None:
-        with self.assertRaises(pydantic.ValidationError):
-            notifications.WebhookRule.model_validate(
-                {
-                    **self._VALID_RULE,
-                    'handler': 'imbi_gateway.actions:update_project',
-                }
-            )
-
-    def test_evaluate_condition_cel_error_returns_none(self) -> None:
-        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
-        with unittest.mock.patch.object(
-            celpy, 'json_to_cel', side_effect=celpy.CELEvalError('test')
-        ):
-            self.assertIsNone(rule.evaluate_condition({}))
-
-    def test_evaluate_condition_unexpected_exception_returns_none(
-        self,
-    ) -> None:
-        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
-        with unittest.mock.patch.object(
-            celpy, 'json_to_cel', side_effect=TypeError('unexpected')
-        ):
-            self.assertIsNone(rule.evaluate_condition({}))
+#: Default per-capability state for a webhook-enabled Integration.
+_WEBHOOK_ENABLED: dict[str, typing.Any] = {
+    'webhook-actions': {'enabled': True}
+}
 
 
 class ProcessNotificationTests(helpers.TestCase):
@@ -271,11 +230,10 @@ class ProcessNotificationTests(helpers.TestCase):
         self.org_id = nanoid.generate()
         self.org_slug = f'org-{self.org_id[:8]}'
         self.webhook_id = nanoid.generate()
-        self.tps_slug = f'tps-{nanoid.generate()[:8]}'
+        self.integration_slug = f'intg-{nanoid.generate()[:8]}'
         self.proj_id = nanoid.generate()
         self.ext_id = f'ext-{nanoid.generate()[:8]}'
         self.rule_ids: list[str] = []
-        self.plugin_ids: list[str] = []
         self.extra_project_ids: list[str] = []
 
         self.g = graph.Graph()
@@ -323,27 +281,34 @@ class ProcessNotificationTests(helpers.TestCase):
             ['w'],
         )
         await self.g.execute(
-            'CREATE (n:ThirdPartyService {{slug: {slug},'
-            ' name: {name}, created_at: {ts}}}) RETURN n',
-            {'slug': self.tps_slug, 'name': 'Test Service', 'ts': ts},
+            'CREATE (n:Integration {{slug: {slug}, name: {name},'
+            ' plugin: {plugin}, capabilities: {caps},'
+            ' created_at: {ts}}}) RETURN n',
+            {
+                'slug': self.integration_slug,
+                'name': 'Test Integration',
+                'plugin': 'stub-nocreds',
+                'caps': _WEBHOOK_ENABLED,
+                'ts': ts,
+            },
             ['n'],
         )
         await self.g.execute(
-            'MATCH (tps:ThirdPartyService {{slug: {tslug}}}),'
+            'MATCH (intg:Integration {{slug: {islug}}}),'
             ' (o:Organization {{id: {oid}}})'
-            ' CREATE (tps)-[:BELONGS_TO]->(o) RETURN tps',
-            {'tslug': self.tps_slug, 'oid': self.org_id},
-            ['tps'],
+            ' CREATE (intg)-[:BELONGS_TO]->(o) RETURN intg',
+            {'islug': self.integration_slug, 'oid': self.org_id},
+            ['intg'],
         )
         await self.g.execute(
             'MATCH (w:Webhook {{id: {wid}}}),'
-            ' (tps:ThirdPartyService {{slug: {tslug}}})'
+            ' (intg:Integration {{slug: {islug}}})'
             ' CREATE (w)-[:IMPLEMENTED_BY'
-            ' {{identifier_selector: {sel}}}]->(tps)'
+            ' {{identifier_selector: {sel}}}]->(intg)'
             ' RETURN w',
             {
                 'wid': self.webhook_id,
-                'tslug': self.tps_slug,
+                'islug': self.integration_slug,
                 'sel': '/repo/id',
             },
             ['w'],
@@ -361,12 +326,12 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         await self.g.execute(
             'MATCH (p:Project {{id: {pid}}}),'
-            ' (tps:ThirdPartyService {{slug: {tslug}}})'
-            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(tps)'
+            ' (intg:Integration {{slug: {islug}}})'
+            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(intg)'
             ' RETURN p',
             {
                 'pid': self.proj_id,
-                'tslug': self.tps_slug,
+                'islug': self.integration_slug,
                 'ext_id': self.ext_id,
             },
             ['p'],
@@ -380,12 +345,6 @@ class ProcessNotificationTests(helpers.TestCase):
                 {'id': rule_id},
                 ['r'],
             )
-        for plugin_id in self.plugin_ids:
-            await self.g.execute(
-                'MATCH (n:Plugin {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
-                {'id': plugin_id},
-                ['r'],
-            )
         for project_id in self.extra_project_ids:
             await self.g.execute(
                 'MATCH (n:Project {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
@@ -393,9 +352,9 @@ class ProcessNotificationTests(helpers.TestCase):
                 ['r'],
             )
         await self.g.execute(
-            'MATCH (n:ThirdPartyService {{slug: {slug}}})'
+            'MATCH (n:Integration {{slug: {slug}}})'
             ' DETACH DELETE n RETURN 1 AS r',
-            {'slug': self.tps_slug},
+            {'slug': self.integration_slug},
             ['r'],
         )
         for label, node_id in [
@@ -444,51 +403,43 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         return rule_id
 
-    async def _attach_plugin(
-        self,
-        slug: str,
-        *,
-        plugin_configuration: str | None = None,
-        options: dict[str, typing.Any] | None = None,
-    ) -> str:
-        plugin_id = nanoid.generate()
-        self.plugin_ids.append(plugin_id)
-        ts = '2024-01-01T00:00:00+00:00'
-        if plugin_configuration is None:
-            await self.g.execute(
-                'CREATE (p:Plugin {{id: {id}, plugin_slug: {slug},'
-                ' label: {slug}, created_at: {ts}}}) RETURN p',
-                {'id': plugin_id, 'slug': slug, 'ts': ts},
-                ['p'],
-            )
-        else:
-            await self.g.execute(
-                'CREATE (p:Plugin {{id: {id}, plugin_slug: {slug},'
-                ' label: {slug}, created_at: {ts},'
-                ' plugin_configuration: {cfg}}}) RETURN p',
-                {
-                    'id': plugin_id,
-                    'slug': slug,
-                    'ts': ts,
-                    'cfg': plugin_configuration,
-                },
-                ['p'],
-            )
-        if options is not None:
-            await self.g.execute(
-                'MATCH (p:Plugin {{id: {id}}}) SET p.options = {opts}'
-                ' RETURN p',
-                {'id': plugin_id, 'opts': options},
-                ['p'],
-            )
+    async def _set_integration_plugin(self, plugin: str) -> None:
         await self.g.execute(
-            'MATCH (p:Plugin {{id: {pid}}}),'
-            ' (tps:ThirdPartyService {{slug: {tslug}}})'
-            ' CREATE (tps)-[:HAS_PLUGIN]->(p) RETURN p',
-            {'pid': plugin_id, 'tslug': self.tps_slug},
-            ['p'],
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.plugin = {plugin} RETURN n',
+            {'slug': self.integration_slug, 'plugin': plugin},
+            ['n'],
         )
-        return plugin_id
+
+    async def _set_integration_capabilities(
+        self, capabilities: dict[str, typing.Any]
+    ) -> None:
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.capabilities = {caps} RETURN n',
+            {'slug': self.integration_slug, 'caps': capabilities},
+            ['n'],
+        )
+
+    async def _set_integration_options(
+        self, options: dict[str, typing.Any]
+    ) -> None:
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.options = {opts} RETURN n',
+            {'slug': self.integration_slug, 'opts': options},
+            ['n'],
+        )
+
+    async def _set_integration_credentials(
+        self, encrypted_credentials: dict[str, str]
+    ) -> None:
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.encrypted_credentials = {creds} RETURN n',
+            {'slug': self.integration_slug, 'creds': encrypted_credentials},
+            ['n'],
+        )
 
     async def _post(
         self,
@@ -521,10 +472,14 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         await self.g.execute(
             'MATCH (p:Project {{id: {pid}}}),'
-            ' (tps:ThirdPartyService {{slug: {tslug}}})'
-            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(tps)'
+            ' (intg:Integration {{slug: {islug}}})'
+            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(intg)'
             ' RETURN p',
-            {'pid': project_id, 'tslug': self.tps_slug, 'ext_id': self.ext_id},
+            {
+                'pid': project_id,
+                'islug': self.integration_slug,
+                'ext_id': self.ext_id,
+            },
             ['p'],
         )
         return project_id
@@ -544,16 +499,16 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(204, response.status_code)
         self.assertEqual([], ACTION_CALLS)
 
-    async def test_no_service_global_webhook_not_implemented(self) -> None:
-        no_tps_webhook_id = nanoid.generate()
+    async def test_no_integration_global_webhook_not_implemented(self) -> None:
+        no_intg_webhook_id = nanoid.generate()
         ts = '2024-01-01T00:00:00+00:00'
         await self.g.execute(
             'CREATE (n:Webhook {{id: {id}, slug: {slug},'
             ' name: {name}, created_at: {ts}}}) RETURN n',
             {
-                'id': no_tps_webhook_id,
-                'slug': f'wh-{no_tps_webhook_id[:8]}',
-                'name': 'No-TPS Webhook',
+                'id': no_intg_webhook_id,
+                'slug': f'wh-{no_intg_webhook_id[:8]}',
+                'name': 'No-Integration Webhook',
                 'ts': ts,
             },
             ['n'],
@@ -562,14 +517,14 @@ class ProcessNotificationTests(helpers.TestCase):
             'MATCH (w:Webhook {{id: {wid}}}),'
             ' (o:Organization {{id: {oid}}})'
             ' CREATE (w)-[:BELONGS_TO]->(o) RETURN w',
-            {'wid': no_tps_webhook_id, 'oid': self.org_id},
+            {'wid': no_intg_webhook_id, 'oid': self.org_id},
             ['w'],
         )
         try:
             with self.assertLogs(
                 'imbi_gateway.notifications', level='WARNING'
             ) as cm:
-                response = await self._post(no_tps_webhook_id, {})
+                response = await self._post(no_intg_webhook_id, {})
             self.assertEqual(204, response.status_code)
             self.assertEqual([], ACTION_CALLS)
             self.assertTrue(
@@ -578,7 +533,7 @@ class ProcessNotificationTests(helpers.TestCase):
         finally:
             await self.g.execute(
                 'MATCH (n:Webhook {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
-                {'id': no_tps_webhook_id},
+                {'id': no_intg_webhook_id},
                 ['r'],
             )
 
@@ -604,11 +559,37 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(self.org_slug, ctx.org_slug)
         self.assertEqual(self.proj_id, ctx.project_id)
         self.assertEqual(f'proj-{self.proj_id[:8]}', ctx.project_slug)
+        self.assertEqual(self.integration_slug, ctx.integration_slug)
         event = typing.cast('dict[str, typing.Any]', call['event'])
         self.assertEqual(body, event['payload'])
         self.assertEqual({}, call['credentials'])
         self.assertEqual(self.ext_id, call['external_identifier'])
         self.assertIsNone(ctx.actor_user_id)
+
+    async def test_webhook_actions_disabled_skips_dispatch(self) -> None:
+        await self._set_integration_capabilities(
+            {'webhook-actions': {'enabled': False}}
+        )
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ) as mock_insert,
+            self.assertLogs('imbi_gateway.notifications', level='DEBUG') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        # The delivery is still recorded (phase-1) even though no handler
+        # runs, so PagerDuty-style event capture keeps working.
+        mock_insert.assert_awaited_once()
+        self.assertTrue(
+            any(
+                'webhook-actions capability disabled' in line
+                for line in cm.output
+            )
+        )
 
     async def test_filter_matches_on_request_header(self) -> None:
         await self._add_rule(
@@ -839,40 +820,26 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(202, response.status_code)
         self.assertEqual(1, len(ACTION_CALLS))
 
-    async def test_connected_plugin_options_reach_context(self) -> None:
-        with self.override_environment(
-            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
-        ):
-            TokenEncryption.reset_instance()
-            try:
-                encrypted = TokenEncryption.get_instance().encrypt(
-                    json.dumps({'api_token': 's3cret'})
-                )
-                await self._attach_plugin(
-                    'stub-creds',
-                    plugin_configuration=encrypted,
-                    options={'host': 'example.ghe.com', 'flavor': 'ghec'},
-                )
-                await self._add_rule(handler='stub-creds#do_thing')
-                body = {'repo': {'id': self.ext_id}}
-                response = await self._post(self.webhook_id, body)
-                self.assertEqual(202, response.status_code)
-                self.assertEqual(1, len(ACTION_CALLS))
-                ctx = typing.cast(
-                    'plugin_base.PluginContext', ACTION_CALLS[0]['ctx']
-                )
-                by_slug = {sp.slug: sp for sp in ctx.service_plugins}
-                self.assertIn('stub-creds', by_slug)
-                self.assertEqual(
-                    {'host': 'example.ghe.com', 'flavor': 'ghec'},
-                    by_slug['stub-creds'].options,
-                )
-                # The non-secret options surface, never the credential blob.
-                for sp in ctx.service_plugins:
-                    self.assertNotIn('plugin_configuration', sp.options)
-                    self.assertNotIn('api_token', sp.options)
-            finally:
-                TokenEncryption.reset_instance()
+    async def test_integration_options_and_capability_options_reach_context(
+        self,
+    ) -> None:
+        await self._set_integration_options(
+            {'host': 'example.ghe.com', 'flavor': 'ghes'}
+        )
+        await self._set_integration_capabilities(
+            {'webhook-actions': {'enabled': True, 'options': {'foo': 'bar'}}}
+        )
+        await self._add_rule(handler='stub-nocreds#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual(
+            {'host': 'example.ghe.com', 'flavor': 'ghes'},
+            ctx.integration_options,
+        )
+        self.assertEqual({'foo': 'bar'}, ctx.capability_options)
 
     async def test_handler_called_for_each_matching_project(self) -> None:
         await self._add_rule(filter_expression='true')
@@ -909,6 +876,26 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(202, response.status_code)
         self.assertEqual([], ACTION_CALLS)
         self.assertTrue(any('Unknown plugin' in line for line in cm.output))
+
+    async def test_plugin_without_webhook_actions_logs_error_and_skips(
+        self,
+    ) -> None:
+        # A rule whose plugin exposes no webhook-actions capability is
+        # logged and skipped rather than dispatched.
+        await self._add_rule(handler='stub-identity-only#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any(
+                'exposes no webhook-actions capability' in line
+                for line in cm.output
+            )
+        )
 
     async def test_unknown_action_name_logs_error_and_skips(self) -> None:
         await self._add_rule(handler='stub-nocreds#missing_action')
@@ -951,9 +938,10 @@ class ProcessNotificationTests(helpers.TestCase):
             any('Invalid handler_config' in line for line in cm.output)
         )
 
-    async def test_plugin_requiring_credentials_skipped_when_unattached(
+    async def test_plugin_requiring_credentials_skipped_when_missing(
         self,
     ) -> None:
+        await self._set_integration_plugin('stub-creds')
         await self._add_rule(handler='stub-creds#do_thing')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
@@ -974,7 +962,7 @@ class ProcessNotificationTests(helpers.TestCase):
         # trust), the dispatcher logs and skips that rule instead of
         # aborting delivery for every sibling rule.
         def _boom(
-            cls: type[StubNoCredsPlugin],
+            cls: type[StubWebhookActions],
         ) -> list[plugin_base.ActionDescriptor]:
             del cls
             raise RuntimeError('boom in actions()')
@@ -983,7 +971,7 @@ class ProcessNotificationTests(helpers.TestCase):
         body = {'repo': {'id': self.ext_id}}
         with (
             unittest.mock.patch.object(
-                StubNoCredsPlugin, 'actions', classmethod(_boom)
+                StubWebhookActions, 'actions', classmethod(_boom)
             ),
             self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
         ):
@@ -998,30 +986,6 @@ class ProcessNotificationTests(helpers.TestCase):
             )
         )
 
-    async def test_plugin_skipped_when_credentials_cannot_be_loaded(
-        self,
-    ) -> None:
-        # A plugin row whose ``plugin_configuration`` cannot be decrypted
-        # is treated like an unattached plugin -- the rule is skipped
-        # rather than invoked with an empty credentials dict.
-        await self._attach_plugin(
-            'stub-creds', plugin_configuration='not-a-valid-ciphertext'
-        )
-        await self._add_rule(handler='stub-creds#do_thing')
-        body = {'repo': {'id': self.ext_id}}
-        with self.assertLogs(
-            'imbi_gateway.notifications', level='WARNING'
-        ) as cm:
-            response = await self._post(self.webhook_id, body)
-        self.assertEqual(202, response.status_code)
-        self.assertEqual([], ACTION_CALLS)
-        self.assertTrue(
-            any(
-                'none could be loaded' in line and 'stub-creds' in line
-                for line in cm.output
-            )
-        )
-
     async def test_plugin_with_credentials_receives_decrypted_blob(
         self,
     ) -> None:
@@ -1030,11 +994,12 @@ class ProcessNotificationTests(helpers.TestCase):
         ):
             TokenEncryption.reset_instance()
             try:
-                encrypted = TokenEncryption.get_instance().encrypt(
-                    json.dumps({'api_token': 's3cret'})
-                )
-                await self._attach_plugin(
-                    'stub-creds', plugin_configuration=encrypted
+                encryptor = TokenEncryption.get_instance()
+                encrypted = encryptor.encrypt('s3cret')
+                assert encrypted is not None  # noqa: S101 - test narrowing
+                await self._set_integration_plugin('stub-creds')
+                await self._set_integration_credentials(
+                    {'api_token': encrypted}
                 )
                 await self._add_rule(handler='stub-creds#do_thing')
                 body = {'repo': {'id': self.ext_id}}
@@ -1124,16 +1089,16 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         await self.g.execute(
             'MATCH (w:Webhook {{id: {wid}}}),'
-            ' (tps:ThirdPartyService {{slug: {tslug}}})'
+            ' (intg:Integration {{slug: {islug}}})'
             ' CREATE (w)-[:IMPLEMENTED_BY {{'
             'identifier_selector: {sel},'
             ' user_subject_selector: {uss},'
             ' identity_plugin_slug: {ips},'
             ' event_type_selector: {ets}'
-            '}}]->(tps) RETURN w',
+            '}}]->(intg) RETURN w',
             {
                 'wid': self.webhook_id,
-                'tslug': self.tps_slug,
+                'islug': self.integration_slug,
                 'sel': identifier_selector,
                 'uss': user_subject_selector,
                 'ips': identity_plugin_slug,
@@ -1142,10 +1107,48 @@ class ProcessNotificationTests(helpers.TestCase):
             ['w'],
         )
 
+    async def _enable_identity(self) -> None:
+        """Point the Integration at a plugin with an identity capability.
+
+        The real ``github`` plugin (loaded by the app) declares an
+        identity capability, so the delivery Integration becomes its own
+        identity source once the capability is enabled.
+        """
+        await self._set_integration_plugin('github')
+        await self._set_integration_capabilities(
+            {
+                'webhook-actions': {'enabled': True},
+                'identity': {'enabled': True},
+            }
+        )
+
     async def test_user_subject_selector_resolves_user(self) -> None:
         await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with(self.integration_slug, '12345')
+        self.assertEqual(1, len(ACTION_CALLS))
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual('alice@example.com', ctx.actor_user_id)
+
+    async def test_identity_edge_pin_overrides_integration(self) -> None:
+        # An explicit identity slug on the IMPLEMENTED_BY edge is trusted
+        # as-is, overriding the delivery Integration's own identity.
+        await self._add_rule(filter_expression='true')
         await self._set_implemented_by(
-            user_subject_selector='/sender/id', identity_plugin_slug='github'
+            user_subject_selector='/sender/id',
+            identity_plugin_slug='pinned-identity',
         )
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
@@ -1158,16 +1161,12 @@ class ProcessNotificationTests(helpers.TestCase):
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        mock_lookup.assert_awaited_once_with('github', '12345')
-        self.assertEqual(1, len(ACTION_CALLS))
-        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
-        self.assertEqual('alice@example.com', ctx.actor_user_id)
+        mock_lookup.assert_awaited_once_with('pinned-identity', '12345')
 
     async def test_user_subject_selector_misses_returns_none(self) -> None:
         await self._add_rule(filter_expression='true')
-        await self._set_implemented_by(
-            user_subject_selector='/sender/id', identity_plugin_slug='github'
-        )
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 99999}}
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -1184,10 +1183,8 @@ class ProcessNotificationTests(helpers.TestCase):
 
     async def test_user_subject_selector_unresolvable_pointer(self) -> None:
         await self._add_rule(filter_expression='true')
-        await self._set_implemented_by(
-            user_subject_selector='/missing/path',
-            identity_plugin_slug='github',
-        )
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/missing/path')
         body = {'repo': {'id': self.ext_id}}
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -1208,9 +1205,8 @@ class ProcessNotificationTests(helpers.TestCase):
         self,
     ) -> None:
         await self._add_rule(filter_expression='true')
-        await self._set_implemented_by(
-            user_subject_selector='/sender/id', identity_plugin_slug='github'
-        )
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': ''}}
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -1226,8 +1222,13 @@ class ProcessNotificationTests(helpers.TestCase):
         ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
         self.assertIsNone(ctx.actor_user_id)
 
-    async def test_user_subject_selector_no_candidate_plugins(self) -> None:
+    async def test_no_identity_candidate_when_capability_disabled(
+        self,
+    ) -> None:
+        # The Integration's plugin has an identity capability but it is
+        # not enabled, so no ``/users/by-identity`` lookup is attempted.
         await self._add_rule(filter_expression='true')
+        await self._set_integration_plugin('github')
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
@@ -1244,76 +1245,57 @@ class ProcessNotificationTests(helpers.TestCase):
         ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
         self.assertIsNone(ctx.actor_user_id)
 
-    async def test_non_identity_plugin_skipped_during_user_resolution(
+    async def test_no_identity_candidate_when_plugin_lacks_capability(
         self,
     ) -> None:
-        """Non-identity attached plugins are not probed for users.
-
-        The gateway used to call ``/users/by-identity`` for every plugin
-        attached to the TPS, generating 404 noise for webhook /
-        configuration / deployment plugins. After the refactor only
-        plugins registered with ``plugin_type='identity'`` are queried.
-        """
+        # The Integration's plugin (stub-nocreds) declares no identity
+        # capability, so even a user_subject_selector yields no lookup.
         await self._add_rule(filter_expression='true')
+        await self._set_integration_capabilities(
+            {
+                'webhook-actions': {'enabled': True},
+                'identity': {'enabled': True},
+            }
+        )
         await self._set_implemented_by(user_subject_selector='/sender/id')
-        await self._attach_plugin('stub-nocreds')
-        await self._attach_plugin('github')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
-                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+                new=unittest.mock.AsyncMock(),
             ) as mock_lookup,
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        mock_lookup.assert_awaited_once_with('github', '12345')
-        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
-        self.assertEqual('alice@example.com', ctx.actor_user_id)
+        mock_lookup.assert_not_awaited()
 
-    async def test_user_resolution_two_distinct_users_logs_error(self) -> None:
+    async def test_no_identity_candidate_when_plugin_not_loaded(self) -> None:
+        # The Integration names a plugin that is not in the registry, so
+        # identity resolution is skipped (logged at debug).
         await self._add_rule(filter_expression='true')
+        await self._set_integration_plugin('ghost-plugin')
+        await self._set_integration_capabilities(
+            {
+                'webhook-actions': {'enabled': True},
+                'identity': {'enabled': True},
+            }
+        )
         await self._set_implemented_by(user_subject_selector='/sender/id')
-        ts = '2024-01-01T00:00:00+00:00'
-        plugin_ids = [nanoid.generate(), nanoid.generate()]
-        self.plugin_ids.extend(plugin_ids)
-        slugs = ['github', 'gitlab']
-        for plugin_id, slug in zip(plugin_ids, slugs, strict=True):
-            await self.g.execute(
-                'CREATE (p:Plugin {{id: {id}, plugin_slug: {slug},'
-                ' label: {slug}, created_at: {ts}}}) RETURN p',
-                {'id': plugin_id, 'slug': slug, 'ts': ts},
-                ['p'],
-            )
-            await self.g.execute(
-                'MATCH (p:Plugin {{id: {pid}}}),'
-                ' (tps:ThirdPartyService {{slug: {tslug}}})'
-                ' CREATE (tps)-[:HAS_PLUGIN]->(p) RETURN p',
-                {'pid': plugin_id, 'tslug': self.tps_slug},
-                ['p'],
-            )
-
-        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 1}}
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
-                new=unittest.mock.AsyncMock(
-                    side_effect=['alice@x.com', 'bob@y.com']
-                ),
-            ),
-            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+            self.assertLogs('imbi_gateway.notifications', level='DEBUG'),
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
-        self.assertIsNone(ctx.actor_user_id)
-        self.assertTrue(
-            any('multiple Imbi users' in line for line in cm.output)
-        )
+        mock_lookup.assert_not_awaited()
 
     async def test_handler_exception_is_caught(self) -> None:
         await self._add_rule(handler='stub-nocreds#boom')
@@ -1361,6 +1343,7 @@ class ProcessNotificationTests(helpers.TestCase):
             # row is a webhook delivery. The resolved per-source
             # event-type label lives in ``metadata.event_type``.
             self.assertEqual('webhook', ev.type)
+            self.assertEqual(self.integration_slug, ev.integration)
             self.assertEqual('deployment_status', ev.metadata['event_type'])
             self.assertEqual(body, ev.payload)
             self.assertEqual(self.webhook_id, ev.metadata['webhook_id'])
@@ -1495,9 +1478,9 @@ class ProcessNotificationTests(helpers.TestCase):
 
     async def test_access_log_context_includes_user_id_and_event(self) -> None:
         await self._add_rule(filter_expression='true')
+        await self._enable_identity()
         await self._set_implemented_by(
             user_subject_selector='/sender/id',
-            identity_plugin_slug='github',
             event_type_selector='x-github-event',
         )
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
@@ -1581,6 +1564,63 @@ class ProcessNotificationTests(helpers.TestCase):
                 for line in cm.output
             )
         )
+
+
+class WebhookRuleUnitTests(helpers.TestCase):
+    _VALID_RULE: typing.ClassVar[dict[str, object]] = {
+        'handler': 'stub-nocreds#do_thing',
+        'ordinal': 1,
+        'handler_config': '{}',
+        'filter_expression': 'true',
+    }
+
+    def test_valid_handler_exposes_slug_and_action(self) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        self.assertEqual('stub-nocreds', rule.plugin_slug)
+        self.assertEqual('do_thing', rule.action_name)
+
+    def test_handler_without_separator_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': 'no-separator'}
+            )
+
+    def test_handler_with_empty_slug_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': '#do_thing'}
+            )
+
+    def test_handler_with_empty_action_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': 'stub-nocreds#'}
+            )
+
+    def test_handler_dotted_path_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {
+                    **self._VALID_RULE,
+                    'handler': 'imbi_gateway.actions:update_project',
+                }
+            )
+
+    def test_evaluate_condition_cel_error_returns_none(self) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        with unittest.mock.patch.object(
+            celpy, 'json_to_cel', side_effect=celpy.CELEvalError('test')
+        ):
+            self.assertIsNone(rule.evaluate_condition({}))
+
+    def test_evaluate_condition_unexpected_exception_returns_none(
+        self,
+    ) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        with unittest.mock.patch.object(
+            celpy, 'json_to_cel', side_effect=TypeError('unexpected')
+        ):
+            self.assertIsNone(rule.evaluate_condition({}))
 
 
 _set_access_log_context = (
@@ -1745,6 +1785,31 @@ class SafeHeadersUnitTests(helpers.TestCase):
         )
 
 
+_json_dict = notifications._json_dict  # pyright: ignore[reportPrivateUsage]
+
+
+class JsonDictUnitTests(helpers.TestCase):
+    """Unit tests for the `_json_dict` AGE map decoder."""
+
+    def test_dict_passes_through(self) -> None:
+        self.assertEqual({'a': 1}, _json_dict({'a': 1}))
+
+    def test_json_string_parsed(self) -> None:
+        self.assertEqual({'a': 1}, _json_dict('{"a": 1}'))
+
+    def test_malformed_json_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict('{not json'))
+
+    def test_non_object_json_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict('[1, 2]'))
+
+    def test_none_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict(None))
+
+    def test_empty_string_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict(''))
+
+
 _sanitize_utf8 = (
     notifications._sanitize_utf8  # pyright: ignore[reportPrivateUsage]
 )
@@ -1820,23 +1885,15 @@ class MakeUserResolverUnitTests(helpers.TestCase):
 
     The factory builds the coroutine an action (e.g. commit-sync author
     attribution) uses to map an identity subject to an Imbi user email,
-    reusing the same identity-plugin filtering and multi-match handling as
-    the gateway's own delivery-actor resolution.
+    reusing the same multi-match handling as the gateway's own
+    delivery-actor resolution.
     """
 
-    def test_no_identity_plugins_returns_none(self) -> None:
-        with unittest.mock.patch.object(
-            notifications, '_filter_to_identity_plugins', return_value=[]
-        ):
-            self.assertIsNone(_make_user_resolver(['stub-nocreds']))
+    def test_no_identity_slugs_returns_none(self) -> None:
+        self.assertIsNone(_make_user_resolver([]))
 
     async def test_resolves_subject_to_email(self) -> None:
         with (
-            unittest.mock.patch.object(
-                notifications,
-                '_filter_to_identity_plugins',
-                return_value=['github'],
-            ),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1844,19 +1901,14 @@ class MakeUserResolverUnitTests(helpers.TestCase):
             ) as mock_lookup,
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
         ):
-            resolver = _make_user_resolver(['github'])
+            resolver = _make_user_resolver(['github-com'])
             if resolver is None:
                 self.fail('expected a resolver, got None')
             self.assertEqual('alice@example.com', await resolver('42'))
-        mock_lookup.assert_awaited_once_with('github', '42')
+        mock_lookup.assert_awaited_once_with('github-com', '42')
 
     async def test_unmatched_subject_returns_none(self) -> None:
         with (
-            unittest.mock.patch.object(
-                notifications,
-                '_filter_to_identity_plugins',
-                return_value=['github'],
-            ),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1864,7 +1916,7 @@ class MakeUserResolverUnitTests(helpers.TestCase):
             ),
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
         ):
-            resolver = _make_user_resolver(['github'])
+            resolver = _make_user_resolver(['github-com'])
             if resolver is None:
                 self.fail('expected a resolver, got None')
             self.assertIsNone(await resolver('99'))
@@ -1874,11 +1926,6 @@ class MakeUserResolverUnitTests(helpers.TestCase):
     ) -> None:
         with (
             unittest.mock.patch.object(
-                notifications,
-                '_filter_to_identity_plugins',
-                return_value=['github', 'gitlab'],
-            ),
-            unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
                 new=unittest.mock.AsyncMock(
@@ -1887,7 +1934,7 @@ class MakeUserResolverUnitTests(helpers.TestCase):
             ),
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
         ):
-            resolver = _make_user_resolver(['github', 'gitlab'])
+            resolver = _make_user_resolver(['github-com', 'ghec'])
             if resolver is None:
                 self.fail('expected a resolver, got None')
             with self.assertLogs(notifications.LOGGER, level='ERROR'):

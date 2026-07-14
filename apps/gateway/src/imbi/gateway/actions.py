@@ -91,24 +91,27 @@ class ImbiClient(httpx.AsyncClient):
         return response
 
     async def find_user_by_identity(
-        self, plugin_slug: str, subject: str
+        self, integration_slug: str, subject: str
     ) -> str | None:
         """Look up an Imbi user by external identity subject.
 
-        Returns the user's email (the principal identity used by the
-        Release ``created_by`` field) or ``None`` when no active
-        ``IdentityConnection`` matches.
+        ``integration_slug`` names the identity Integration whose
+        ``IdentityConnection`` edges are searched (an
+        ``IdentityConnection`` is keyed by Integration in v3). Returns
+        the user's email (the principal identity used by the Release
+        ``created_by`` field) or ``None`` when no active connection
+        matches.
         """
         response = await self.get(
             '/users/by-identity',
-            params={'plugin_slug': plugin_slug, 'subject': subject},
+            params={'integration_slug': integration_slug, 'subject': subject},
         )
         if response.status_code == http.HTTPStatus.NOT_FOUND:
             return None
         if response.is_error:
             LOGGER.warning(
-                'Failed to look up user for plugin=%r subject=%r: %s',
-                plugin_slug,
+                'Failed to look up user for integration=%r subject=%r: %s',
+                integration_slug,
                 subject,
                 response.text,
             )

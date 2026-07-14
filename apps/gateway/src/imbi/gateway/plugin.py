@@ -2,10 +2,15 @@
 
 Wraps the bundled actions (``update_project``, ``create_release``,
 ``add_deployment_event``, ``ingest_sbom``) as a
-:class:`WebhookActionPlugin` so they participate in the same
-discovery, validation, and dispatch flow as externally-installed
-plugins. Declares no credentials -- the host always passes an empty
-``credentials`` dict to these callables.
+:class:`~imbi_common.plugins.base.WebhookActionsCapability` on a single
+:class:`~imbi_common.plugins.base.Plugin` (slug ``gateway-actions``) so
+they participate in the same discovery, validation, and dispatch flow as
+externally-installed plugins. The plugin does not follow the
+``imbi_plugin_*`` naming convention, so the gateway registers it
+explicitly through the ``IMBI_PLUGINS`` setting (see
+:func:`imbi_gateway.app.create_app`). It declares no integration-level
+credentials -- the host always passes an empty ``credentials`` dict to
+these callables.
 """
 
 import typing
@@ -36,20 +41,8 @@ def _descriptor(
     )
 
 
-class GatewayActionsPlugin(plugin_base.WebhookActionPlugin):
-    """Built-in plugin exposing the gateway's bundled webhook actions."""
-
-    manifest = plugin_base.PluginManifest(
-        slug='gateway-actions',
-        name='Gateway Actions',
-        description=(
-            'Webhook actions shipped with imbi-gateway: update project '
-            'facts, create a release, append a deployment event, and '
-            'ingest CycloneDX SBoMs.'
-        ),
-        plugin_type='webhook',
-        credentials=[],
-    )
+class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
+    """Catalog of the gateway's built-in webhook actions."""
 
     @classmethod
     def actions(cls) -> list[plugin_base.ActionDescriptor]:
@@ -96,3 +89,35 @@ class GatewayActionsPlugin(plugin_base.WebhookActionPlugin):
                 model_path='imbi_gateway.actions:IngestSbomConfig',
             ),
         ]
+
+
+class GatewayActionsPlugin(plugin_base.Plugin):
+    """Built-in plugin exposing the gateway's bundled webhook actions."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='gateway-actions',
+        name='Gateway Actions',
+        description=(
+            'Webhook actions shipped with imbi-gateway: update project '
+            'facts, create a release, append a deployment event, and '
+            'ingest CycloneDX SBoMs.'
+        ),
+        auth_type='none',
+        credentials=[],
+        capabilities=[
+            plugin_base.Capability(
+                kind='webhook-actions',
+                label='Gateway Actions',
+                description=(
+                    'Built-in webhook actions dispatched by the gateway.'
+                ),
+                project_scoped=False,
+                handler=GatewayWebhookActions,
+            )
+        ],
+    )
+
+
+#: Registered with the plugin registry through the ``IMBI_PLUGINS``
+#: setting; see :func:`imbi_gateway.app.create_app`.
+PLUGIN = GatewayActionsPlugin

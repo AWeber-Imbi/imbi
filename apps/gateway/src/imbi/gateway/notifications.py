@@ -15,6 +15,7 @@ from imbi_common import clickhouse, graph, models
 from imbi_common.auth.encryption import TokenEncryption
 from imbi_common.plugins import base as plugin_base
 from imbi_common.plugins import registry as plugin_registry
+from imbi_common.plugins.credentials import decrypt_integration_credentials
 from imbi_common.plugins.errors import PluginNotFoundError
 
 from imbi_gateway import actions
@@ -25,6 +26,10 @@ if typing.TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 router = fastapi.APIRouter(prefix='/notifications')
+
+#: Capability kind that gates and supplies gateway-dispatched webhook
+#: actions on an :class:`imbi_common.models.Integration`.
+_WEBHOOK_ACTIONS = 'webhook-actions'
 
 #: Headers that may carry credentials or webhook signatures. These are
 #: replaced with ``'[redacted]'`` before persisting ``metadata.headers``
@@ -61,6 +66,28 @@ def _safe_headers(headers: 'abc.Mapping[str, str]') -> dict[str, str]:
     }
 
 
+def _json_dict(raw: object) -> dict[str, typing.Any]:
+    """Decode an AGE map property to a dict.
+
+    The graph client serializes dict node properties (``options``,
+    ``capabilities``, ``encrypted_credentials``) via ``json.dumps``, so
+    they come back as a ``str`` that must be parsed. Tolerates an
+    already-decoded dict and treats anything else (``None``, malformed
+    JSON, non-object JSON) as an empty mapping rather than failing the
+    dispatch.
+    """
+    if isinstance(raw, dict):
+        return typing.cast('dict[str, typing.Any]', raw)
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(parsed, dict):
+            return typing.cast('dict[str, typing.Any]', parsed)
+    return {}
+
+
 #: Identifier of a ``Project`` node — the value of ``project.id`` in
 #: the graph and of ``project_id`` on activity-feed event rows. Any
 #: string passed around under this alias must originate there.
@@ -84,10 +111,12 @@ class HandlerOutcome(pydantic.BaseModel):
 class WebhookRule(pydantic.BaseModel):
     """A single ``WebhookRule`` row pulled from the graph.
 
-    ``handler`` is a ``"<plugin_slug>#<action_name>"`` string. The
-    field validator only enforces shape -- plugin/action resolution
-    happens at dispatch time so a stale rule does not stop the gateway
-    from accepting deliveries (the dispatcher logs and skips instead).
+    ``handler`` is a ``"<plugin_slug>#<action_name>"`` string where the
+    slug is the installed package's plugin slug (e.g. ``github``,
+    ``sonarqube``, ``gateway-actions``). The field validator only
+    enforces shape -- plugin/action resolution happens at dispatch time
+    so a stale rule does not stop the gateway from accepting deliveries
+    (the dispatcher logs and skips instead).
     """
 
     handler: str
@@ -121,8 +150,8 @@ class WebhookRule(pydantic.BaseModel):
         :func:`_record_and_build_filter_context` -- the same shape the
         activity-feed :class:`imbi_common.models.Event` row is
         materialized into, so a rule filters on ``type``,
-        ``third_party_service``, ``attributed_to``, ``metadata.headers``,
-        and ``payload`` (the webhook body).
+        ``integration``, ``attributed_to``, ``metadata.headers``, and
+        ``payload`` (the webhook body).
         """
         log_extra: dict[str, typing.Any] = {
             'webhook_id': webhook_id,
@@ -162,7 +191,7 @@ class WebhookRule(pydantic.BaseModel):
 
 
 @router.post('/{webhook_id}', include_in_schema=False)
-async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads top-down
+async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipeline reads top-down
     webhook_id: str,
     *,
     db: graph.Pool,
@@ -174,27 +203,14 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
     records = await db.execute(
         'MATCH (w:Webhook {{ id: {webhook_id} }})'
         ' -[:BELONGS_TO]->(o:Organization)'
-        ' OPTIONAL MATCH (w)-[i:IMPLEMENTED_BY]->(tps:ThirdPartyService)'
+        ' OPTIONAL MATCH (w)-[i:IMPLEMENTED_BY]->(intg:Integration)'
         ' OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)'
-        ' WITH w, o, tps, i, r ORDER BY r.ordinal'
-        ' WITH w, o, tps, i, collect(r{{.*}}) AS rules'
-        ' OPTIONAL MATCH (tps)-[:HAS_PLUGIN]->(plg:Plugin)'
-        ' WITH w, o, tps, i, rules,'
-        '      collect(DISTINCT plg.plugin_slug) AS plugin_slugs,'
-        '      collect(DISTINCT plg{{.id, .plugin_slug,'
-        '        .plugin_configuration, .options}}) AS plugins'
-        ' RETURN w{{.*}} AS webhook, o{{.*}} AS org, tps{{.*}} AS service,'
-        '        i{{.*}} AS sel, rules, plugin_slugs, plugins',
+        ' WITH w, o, intg, i, r ORDER BY r.ordinal'
+        ' WITH w, o, intg, i, collect(r{{.*}}) AS rules'
+        ' RETURN w{{.*}} AS webhook, o{{.*}} AS org,'
+        '        intg{{.*}} AS integration, i{{.*}} AS sel, rules',
         {'webhook_id': webhook_id},
-        [
-            'webhook',
-            'org',
-            'service',
-            'sel',
-            'rules',
-            'plugin_slugs',
-            'plugins',
-        ],
+        ['webhook', 'org', 'integration', 'sel', 'rules'],
     )
     if not records:
         LOGGER.warning(
@@ -215,16 +231,9 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
     record = records[0]
     webhook = graph.parse_agtype(record['webhook'])
     org = graph.parse_agtype(record['org'])
-    service = graph.parse_agtype(record['service'])  # maybe None
+    integration = graph.parse_agtype(record['integration'])  # maybe None
     sel = graph.parse_agtype(record['sel'])  # maybe None
     raw_rules = record['rules']
-    plugin_slugs_raw: list[typing.Any] = (
-        graph.parse_agtype(record['plugin_slugs']) or []
-    )
-    plugin_slugs: list[str] = [str(s) for s in plugin_slugs_raw if s]
-    plugins_raw: list[typing.Any] = graph.parse_agtype(record['plugins']) or []
-    plugins_by_slug = _index_plugins(plugins_raw)
-    service_plugins = _service_plugins(plugins_raw)
 
     parsed_rules: list[typing.Any] = graph.parse_agtype(raw_rules) or []
     try:
@@ -240,11 +249,11 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
 
     LOGGER.debug('webhook: %r', webhook)
     LOGGER.debug('org: %r', org)
-    LOGGER.debug('third_party_service: %r', service)
-    LOGGER.debug('third_party_sel: %r', sel)
+    LOGGER.debug('integration: %r', integration)
+    LOGGER.debug('sel: %r', sel)
     LOGGER.debug('%s rules: %r', len(rules), rules)
 
-    if sel is None or service is None:
+    if sel is None or integration is None:
         LOGGER.warning(
             'Global webhooks are not yet implemented (webhook_id=%r)',
             webhook_id,
@@ -252,20 +261,33 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
         )
         return
 
-    tps_slug = str(service['slug'])
+    integration_slug = str(integration['slug'])
+    integration_plugin = str(integration.get('plugin') or '')
+    integration_options = _json_dict(integration.get('options'))
+    integration_capabilities = _json_dict(integration.get('capabilities'))
+    integration_credentials = decrypt_integration_credentials(
+        _json_dict(integration.get('encrypted_credentials'))
+    )
+    webhook_capability = _json_dict(
+        integration_capabilities.get(_WEBHOOK_ACTIONS)
+    )
+    capability_options = _json_dict(webhook_capability.get('options'))
+    webhook_actions_enabled = bool(webhook_capability.get('enabled'))
+
     body = await _extract_json_body(request)
     try:
         ptr = jsonpointer.JsonPointer(sel['identifier_selector'])
         resolved = ptr.resolve(body)
     except jsonpointer.JsonPointerException:
         LOGGER.exception(
-            'failed to select project identifier %r for webhook_id=%r tps=%r',
+            'failed to select project identifier %r for webhook_id=%r'
+            ' integration=%r',
             sel['identifier_selector'],
             webhook_id,
-            tps_slug,
+            integration_slug,
             extra={
                 'webhook_id': webhook_id,
-                'tps_slug': tps_slug,
+                'integration_slug': integration_slug,
                 'identifier_selector': sel['identifier_selector'],
             },
         )
@@ -275,17 +297,22 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
         db,
         request,
         external_id=str(resolved),
-        tps_slug=tps_slug,
+        integration_slug=integration_slug,
         webhook_id=webhook_id,
     )
     if project_records is None:
         return
 
+    identity_candidates = _identity_candidate_slugs(
+        integration_slug=integration_slug,
+        integration_plugin=integration_plugin,
+        capabilities=integration_capabilities,
+        edge_identity_slug=sel.get('identity_plugin_slug'),
+    )
     user_id = await _resolve_user_id(
         body=body,
         user_subject_selector=sel.get('user_subject_selector'),
-        edge_plugin_slug=sel.get('identity_plugin_slug'),
-        candidate_plugin_slugs=plugin_slugs,
+        candidate_identity_slugs=identity_candidates,
         webhook_id=webhook_id,
     )
     event_type = _resolve_event_type(
@@ -301,21 +328,38 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
         recorder=recorder,
         headers=request.headers,
         webhook_id=webhook_id,
-        service_slug=tps_slug,
+        integration_slug=integration_slug,
         user_id=user_id,
         event_type=event_type,
         body=body,
     )
+    if not webhook_actions_enabled:
+        LOGGER.debug(
+            'webhook-actions capability disabled for integration %r;'
+            ' recorded delivery but dispatching no handlers'
+            ' (webhook_id=%r)',
+            integration_slug,
+            webhook_id,
+            extra={
+                'webhook_id': webhook_id,
+                'integration_slug': integration_slug,
+            },
+        )
+        return
     filter_results = [
         rule.evaluate_condition(context, webhook_id=webhook_id)
         for rule in rules
     ]
     if not any(filter_results):
         LOGGER.debug(
-            'Ignoring notification: no filter matches (webhook_id=%r tps=%r)',
+            'Ignoring notification: no filter matches'
+            ' (webhook_id=%r integration=%r)',
             webhook_id,
-            tps_slug,
-            extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
+            integration_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'integration_slug': integration_slug,
+            },
         )
         return
 
@@ -324,6 +368,7 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
         for rule, enabled in zip(rules, filter_results, strict=True)
         if enabled
     ]
+    resolver = _make_user_resolver(identity_candidates)
     try:
         for proj_record in project_records:
             project_id: ProjectId = str(
@@ -342,18 +387,15 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
                     if proj_record.get('team_slug') is not None
                     else None
                 ),
-                service_slug=tps_slug,
-                service_endpoint=(
-                    str(service['api_endpoint'])
-                    if service.get('api_endpoint') is not None
-                    else None
-                ),
+                integration_slug=integration_slug,
+                integration_options=integration_options,
+                capability_options=capability_options,
+                integration_credentials=integration_credentials,
                 external_identifier=str(resolved),
                 event=context,
                 user_id=user_id,
                 rules=matched_rules,
-                plugins_by_slug=plugins_by_slug,
-                service_plugins=service_plugins,
+                resolver=resolver,
                 webhook_id=webhook_id,
                 outcomes=recorder.outcomes_for(project_id),
             )
@@ -364,78 +406,40 @@ async def process_notification(  # noqa: PLR0915 - linear webhook pipeline reads
     response.status_code = http.HTTPStatus.ACCEPTED
 
 
-def _iter_plugin_rows(
-    plugins_raw: 'abc.Iterable[typing.Any]',
-) -> 'abc.Iterator[tuple[dict[str, typing.Any], str]]':
-    """Yield ``(row_dict, slug)`` for each well-formed Plugin row.
+def _identity_candidate_slugs(
+    *,
+    integration_slug: str,
+    integration_plugin: str,
+    capabilities: dict[str, typing.Any],
+    edge_identity_slug: object,
+) -> list[str]:
+    """Resolve the identity Integration slug(s) for actor attribution.
 
-    Skips rows that aren't dicts or carry no ``plugin_slug``; the shared
-    guard for the two indexers below.
+    An ``IdentityConnection`` is keyed by Integration in v3, so the
+    delivery's own Integration is the identity source when its plugin
+    declares an ``identity`` capability and that capability is enabled on
+    the Integration. An operator may override this by pinning an explicit
+    identity Integration slug on the ``IMPLEMENTED_BY`` edge
+    (``identity_plugin_slug``); the pin is trusted as-is. Returns an
+    empty list when neither applies, so the caller skips the
+    ``/users/by-identity`` lookups entirely.
     """
-    for row in plugins_raw:
-        if not isinstance(row, dict):
-            continue
-        row_dict = typing.cast('dict[str, typing.Any]', row)
-        slug_raw: object = row_dict.get('plugin_slug')
-        if not slug_raw:
-            continue
-        yield row_dict, str(slug_raw)
-
-
-def _index_plugins(
-    plugins_raw: 'abc.Iterable[typing.Any]',
-) -> dict[str, dict[str, str]]:
-    """Build ``{plugin_slug: {id, plugin_configuration}}`` from raw rows."""
-    indexed: dict[str, dict[str, str]] = {}
-    for row_dict, slug in _iter_plugin_rows(plugins_raw):
-        plugin_id: object = row_dict.get('id')
-        configuration: object = row_dict.get('plugin_configuration')
-        indexed[slug] = {
-            'id': str(plugin_id) if plugin_id is not None else '',
-            'plugin_configuration': (
-                str(configuration) if configuration is not None else ''
-            ),
-        }
-    return indexed
-
-
-def _service_plugins(
-    plugins_raw: 'abc.Iterable[typing.Any]',
-) -> list[plugin_base.ServicePlugin]:
-    """Build the non-secret connected-plugin list for ``PluginContext``.
-
-    Surfaces each plugin attached to the ``ThirdPartyService`` as a
-    slug + ``options`` map so actions can introspect sibling
-    configuration (e.g. a GitHub host/flavor). Credentials
-    (``plugin_configuration``) are deliberately excluded.
-    """
-    return [
-        plugin_base.ServicePlugin(
-            slug=slug, options=_plugin_options(row_dict.get('options'))
+    if edge_identity_slug:
+        return [str(edge_identity_slug)]
+    identity_capability = _json_dict(capabilities.get('identity'))
+    if not identity_capability.get('enabled'):
+        return []
+    try:
+        entry = plugin_registry.get_plugin(integration_plugin)
+    except PluginNotFoundError:
+        LOGGER.debug(
+            'Integration plugin %r not loaded; cannot resolve identities',
+            integration_plugin,
         )
-        for row_dict, slug in _iter_plugin_rows(plugins_raw)
-    ]
-
-
-def _plugin_options(raw: object) -> dict[str, typing.Any]:
-    """Decode a Plugin node's ``options`` property to a dict.
-
-    AGE stores the ``options`` map property as a JSON string (the graph
-    client serializes dict properties via ``json.dumps``), so it comes
-    back as a ``str`` that must be parsed. Tolerates an already-decoded
-    dict and treats anything else (``None``, malformed JSON) as no
-    options rather than failing the dispatch.
-    """
-    if isinstance(raw, dict):
-        return typing.cast('dict[str, typing.Any]', raw)
-    if isinstance(raw, str) and raw:
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-        if isinstance(parsed, dict):
-            return typing.cast('dict[str, typing.Any]', parsed)
-    return {}
+        return []
+    if entry.manifest.get_capability('identity') is None:
+        return []
+    return [integration_slug]
 
 
 def _verify_webhook_signature(
@@ -444,11 +448,11 @@ def _verify_webhook_signature(
     raw_body: bytes,
     signature_header: str | None,
     webhook_id: str | None,
-    tps_slug: str,
+    integration_slug: str,
 ) -> bool:
     """Verify an HMAC-signed inbound delivery; fail closed.
 
-    The matched ``EXISTS_IN`` edge carries an encrypted per-service
+    The matched ``EXISTS_IN`` edge carries an encrypted per-Integration
     signing secret (e.g. a PagerDuty V3 webhook-subscription secret).
     The signature header is one or more comma-separated ``v1=<hex>``
     tokens, each an HMAC-SHA256 of the raw request body keyed by the
@@ -459,15 +463,19 @@ def _verify_webhook_signature(
 
     Note: the header name is PagerDuty's; PagerDuty is the only producer
     of edge signing secrets today. A second signed integration would add
-    a per-TPS scheme selector rather than another hard-coded header.
+    a per-Integration scheme selector rather than another hard-coded
+    header.
     """
     if not signature_header:
         LOGGER.warning(
             'Signature required but header missing; dropping delivery '
-            '(webhook_id=%r tps=%r)',
+            '(webhook_id=%r integration=%r)',
             webhook_id,
-            tps_slug,
-            extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
+            integration_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'integration_slug': integration_slug,
+            },
         )
         return False
     try:
@@ -475,10 +483,13 @@ def _verify_webhook_signature(
     except Exception:  # noqa: BLE001
         LOGGER.warning(
             'Webhook signing secret decrypt failed; dropping delivery '
-            '(webhook_id=%r tps=%r)',
+            '(webhook_id=%r integration=%r)',
             webhook_id,
-            tps_slug,
-            extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
+            integration_slug,
+            extra={
+                'webhook_id': webhook_id,
+                'integration_slug': integration_slug,
+            },
         )
         return False
     if not secret:
@@ -491,10 +502,10 @@ def _verify_webhook_signature(
             return True
     LOGGER.warning(
         'Webhook signature verification failed; dropping delivery '
-        '(webhook_id=%r tps=%r)',
+        '(webhook_id=%r integration=%r)',
         webhook_id,
-        tps_slug,
-        extra={'webhook_id': webhook_id, 'tps_slug': tps_slug},
+        integration_slug,
+        extra={'webhook_id': webhook_id, 'integration_slug': integration_slug},
     )
     return False
 
@@ -504,42 +515,42 @@ async def _resolve_project_and_verify(
     request: fastapi.Request,
     *,
     external_id: str,
-    tps_slug: str,
+    integration_slug: str,
     webhook_id: str | None,
 ) -> list[dict[str, typing.Any]] | None:
     """Resolve the project(s) for an inbound delivery and verify it.
 
-    Matches ``(:Project)-[:EXISTS_IN {identifier}]->(:tps)`` and returns
-    the rows. Returns ``None`` -- meaning the caller should drop the
-    delivery -- when no project matches, or when any matched edge carries
-    a webhook signing secret and the request's signature does not verify
-    against it (parse-then-verify, fail closed). When ``external_id``
-    fans out to multiple projects, every secret-bearing edge must verify
-    against the same request body, so acceptance is not row-order
-    dependent. TPS that don't sign deliveries store no secret and pass
-    straight through.
+    Matches ``(:Project)-[:EXISTS_IN {identifier}]->(:Integration)`` and
+    returns the rows. Returns ``None`` -- meaning the caller should drop
+    the delivery -- when no project matches, or when any matched edge
+    carries a webhook signing secret and the request's signature does not
+    verify against it (parse-then-verify, fail closed). When
+    ``external_id`` fans out to multiple projects, every secret-bearing
+    edge must verify against the same request body, so acceptance is not
+    row-order dependent. Integrations that don't sign deliveries store no
+    secret and pass straight through.
     """
     project_records: list[dict[str, typing.Any]] = await db.execute(
         'MATCH (p:Project)'
         '      -[ei:EXISTS_IN {{identifier: {external_id}}}]'
-        '      ->(tps:ThirdPartyService {{slug: {tps_slug}}}) '
+        '      ->(intg:Integration {{slug: {integration_slug}}}) '
         'OPTIONAL MATCH (p)-[:OWNED_BY]->(t:Team)'
         ' RETURN p.id AS project_id, p.slug AS project_slug,'
         '        t.slug AS team_slug,'
         '        ei.webhook_secret_enc AS webhook_secret_enc',
-        {'external_id': external_id, 'tps_slug': tps_slug},
+        {'external_id': external_id, 'integration_slug': integration_slug},
         ['project_id', 'project_slug', 'team_slug', 'webhook_secret_enc'],
     )
     if not project_records:
         LOGGER.warning(
             'Ignoring notification: no project found for external_id=%r'
-            ' (webhook_id=%r tps=%r)',
+            ' (webhook_id=%r integration=%r)',
             external_id,
             webhook_id,
-            tps_slug,
+            integration_slug,
             extra={
                 'webhook_id': webhook_id,
-                'tps_slug': tps_slug,
+                'integration_slug': integration_slug,
                 'external_identifier': external_id,
             },
         )
@@ -553,56 +564,24 @@ async def _resolve_project_and_verify(
             raw_body=raw_body,
             signature_header=signature_header,
             webhook_id=webhook_id,
-            tps_slug=tps_slug,
+            integration_slug=integration_slug,
         ):
             return None
     return project_records
 
 
-def _decrypt_plugin_credentials(
-    plugin_record: dict[str, str],
-) -> dict[str, str]:
-    """Decrypt the ``plugin_configuration`` blob into a credential dict.
-
-    Returns ``{}`` for plugins that store no configuration. Decryption
-    or JSON parse failures are logged and treated as missing creds so
-    a bad row does not 5xx the webhook.
-    """
-    encrypted = plugin_record.get('plugin_configuration')
-    if not encrypted:
-        return {}
-    try:
-        plaintext = TokenEncryption.get_instance().decrypt(encrypted)
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'Plugin credentials decrypt failed for plugin_id=%s',
-            plugin_record.get('id'),
-        )
-        return {}
-    if not plaintext:
-        return {}
-    try:
-        data = json.loads(plaintext)
-    except json.JSONDecodeError:
-        LOGGER.warning(
-            'Plugin credentials JSON parse failed for plugin_id=%s',
-            plugin_record.get('id'),
-        )
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    creds = typing.cast('dict[str, typing.Any]', data)
-    return {k: str(v) for k, v in creds.items() if v is not None}
-
-
 def _resolve_rule_handler(
     rule: WebhookRule, *, webhook_id: str | None = None
 ) -> tuple[plugin_registry.RegistryEntry, plugin_base.ActionDescriptor] | None:
-    """Look the rule's plugin / action up in the registry.
+    """Look the rule's plugin / webhook action up in the registry.
 
-    Returns ``None`` (after logging) when the plugin or action cannot
-    be resolved -- the dispatcher continues with the next rule rather
-    than failing the whole delivery.
+    Resolves the rule's ``<plugin_slug>#<action_name>`` handler to the
+    plugin's ``webhook-actions`` capability and the matching
+    :class:`ActionDescriptor`. Returns ``None`` (after logging) when the
+    plugin is unknown, exposes no ``webhook-actions`` capability, raises
+    while enumerating actions, or does not expose the named action -- the
+    dispatcher continues with the next rule rather than failing the whole
+    delivery.
     """
     log_extra: dict[str, typing.Any] = {
         'webhook_id': webhook_id,
@@ -622,21 +601,23 @@ def _resolve_rule_handler(
             extra=log_extra,
         )
         return None
-    if not issubclass(entry.handler_cls, plugin_base.WebhookActionPlugin):
+    capability = entry.manifest.get_capability(_WEBHOOK_ACTIONS)
+    if capability is None:
         LOGGER.error(
-            'Plugin %r is not a WebhookActionPlugin; cannot dispatch %r'
-            ' (webhook_id=%r)',
+            'Plugin %r exposes no webhook-actions capability; cannot'
+            ' dispatch %r (webhook_id=%r)',
             rule.plugin_slug,
             rule.handler,
             webhook_id,
             extra=log_extra,
         )
         return None
+    handler_cls = typing.cast(
+        'type[plugin_base.WebhookActionsCapability]', capability.handler
+    )
     try:
         descriptors = [
-            d
-            for d in entry.handler_cls.actions()
-            if d.name == rule.action_name
+            d for d in handler_cls.actions() if d.name == rule.action_name
         ]
     except Exception:
         LOGGER.exception(
@@ -667,38 +648,35 @@ async def _run_handlers(  # noqa: PLR0913
     project_id: ProjectId,
     project_slug: str,
     team_slug: str | None,
-    service_slug: str,
-    service_endpoint: str | None,
+    integration_slug: str,
+    integration_options: dict[str, typing.Any],
+    capability_options: dict[str, typing.Any],
+    integration_credentials: dict[str, str],
     external_identifier: str,
     event: dict[str, typing.Any],
     user_id: str | None,
     rules: 'abc.Iterable[WebhookRule]',
-    plugins_by_slug: dict[str, dict[str, str]],
     outcomes: list[HandlerOutcome],
-    service_plugins: 'abc.Sequence[plugin_base.ServicePlugin]' = (),
+    resolver: 'abc.Callable[[str], abc.Awaitable[str | None]] | None' = None,
     webhook_id: str | None = None,
 ) -> None:
     LOGGER.debug(
-        'Running handlers for %s/%s (webhook_id=%r tps=%r)',
+        'Running handlers for %s/%s (webhook_id=%r integration=%r)',
         org_slug,
         project_id,
         webhook_id,
-        service_slug,
+        integration_slug,
     )
-    assignment_options: dict[str, typing.Any] = {'service_slug': service_slug}
-    if service_endpoint is not None:
-        assignment_options['service_endpoint'] = service_endpoint
     ctx = plugin_base.PluginContext(
         project_id=project_id,
         project_slug=project_slug,
         org_slug=org_slug,
         team_slug=team_slug,
         actor_user_id=user_id,
-        assignment_options=assignment_options,
-        service_plugins=list(service_plugins),
-        resolve_user_by_identity=_make_user_resolver(
-            [plugin.slug for plugin in service_plugins]
-        ),
+        integration_slug=integration_slug,
+        integration_options=integration_options,
+        capability_options=capability_options,
+        resolve_user_by_identity=resolver,
     )
     for rule in rules:
         resolved = _resolve_rule_handler(rule, webhook_id=webhook_id)
@@ -714,7 +692,7 @@ async def _run_handlers(  # noqa: PLR0913
         entry, descriptor = resolved
         credentials = _credentials_for_plugin(
             entry,
-            plugins_by_slug,
+            integration_credentials,
             webhook_id=webhook_id,
             rule_handler=rule.handler,
         )
@@ -733,14 +711,14 @@ async def _run_handlers(  # noqa: PLR0913
             )
         except pydantic.ValidationError as err:
             LOGGER.exception(
-                'Invalid handler_config for rule %r (webhook_id=%r tps=%r);'
-                ' skipping rule',
+                'Invalid handler_config for rule %r (webhook_id=%r'
+                ' integration=%r); skipping rule',
                 rule.handler,
                 webhook_id,
-                service_slug,
+                integration_slug,
                 extra={
                     'webhook_id': webhook_id,
-                    'tps_slug': service_slug,
+                    'integration_slug': integration_slug,
                     'rule_handler': rule.handler,
                     'rule_ordinal': rule.ordinal,
                 },
@@ -764,16 +742,16 @@ async def _run_handlers(  # noqa: PLR0913
             )
         except Exception as err:
             LOGGER.exception(
-                'Failure executing rule %r (webhook_id=%r tps=%r'
+                'Failure executing rule %r (webhook_id=%r integration=%r'
                 ' project=%s/%s)',
                 rule.handler,
                 webhook_id,
-                service_slug,
+                integration_slug,
                 org_slug,
                 project_id,
                 extra={
                     'webhook_id': webhook_id,
-                    'tps_slug': service_slug,
+                    'integration_slug': integration_slug,
                     'rule_handler': rule.handler,
                     'rule_ordinal': rule.ordinal,
                     'org_slug': org_slug,
@@ -801,78 +779,73 @@ async def _run_handlers(  # noqa: PLR0913
 
 def _credentials_for_plugin(
     entry: plugin_registry.RegistryEntry,
-    plugins_by_slug: dict[str, dict[str, str]],
+    integration_credentials: dict[str, str],
     *,
     webhook_id: str | None = None,
     rule_handler: str | None = None,
 ) -> dict[str, str] | None:
-    """Return decrypted credentials for ``entry`` or ``None`` to skip.
+    """Return the credentials for ``entry`` or ``None`` to skip the rule.
 
-    Plugins that declare no credentials always get ``{}``. Plugins
-    with declared credentials but no attached ``Plugin`` node are
-    skipped with a warning -- they require operator configuration the
-    TPS does not have.
+    Plugins that declare no credentials always get ``{}`` (e.g. the
+    built-in gateway actions). Plugins that declare credentials receive
+    the delivery Integration's decrypted blob; the rule is skipped with a
+    warning when the Integration carries no credentials, since the action
+    would fail without operator configuration.
     """
     if not entry.manifest.credentials:
         return {}
-    log_extra: dict[str, typing.Any] = {
-        'webhook_id': webhook_id,
-        'rule_handler': rule_handler,
-        'plugin_slug': entry.manifest.slug,
-    }
-    record = plugins_by_slug.get(entry.manifest.slug)
-    if record is None:
+    if not integration_credentials:
         LOGGER.warning(
-            'Plugin %r requires credentials but is not attached to the TPS;'
+            'Plugin %r requires credentials but the Integration has none;'
             ' skipping rule %r (webhook_id=%r)',
             entry.manifest.slug,
             rule_handler,
             webhook_id,
-            extra=log_extra,
+            extra={
+                'webhook_id': webhook_id,
+                'rule_handler': rule_handler,
+                'plugin_slug': entry.manifest.slug,
+            },
         )
         return None
-    credentials = _decrypt_plugin_credentials(record)
-    if not credentials:
-        LOGGER.warning(
-            'Plugin %r requires credentials but none could be loaded;'
-            ' skipping rule %r (webhook_id=%r)',
-            entry.manifest.slug,
-            rule_handler,
-            webhook_id,
-            extra=log_extra,
-        )
-        return None
-    return credentials
+    return integration_credentials
 
 
-def _filter_to_identity_plugins(slugs: list[str]) -> list[str]:
-    """Return only ``slugs`` registered as identity plugins.
+async def _resolve_identity(
+    subject: str,
+    identity_slugs: 'abc.Sequence[str]',
+    *,
+    webhook_id: str | None = None,
+) -> str | None:
+    """Map an identity ``subject`` to an Imbi user via ``identity_slugs``.
 
-    Slugs whose plugin is unknown, or registered as a non-identity type,
-    are dropped. This keeps the gateway from probing
-    ``/users/by-identity`` for plugins that cannot resolve a user.
+    Queries ``/users/by-identity`` for each candidate identity
+    Integration slug and returns the single matching user's email.
+    Returns ``None`` when nothing matches, or -- defensively -- when two
+    or more candidates resolve to *different* users (logged as an error;
+    the actor is left unattributed rather than mis-attributed).
     """
-    identity_slugs: list[str] = []
-    for slug in slugs:
-        try:
-            entry = plugin_registry.get_plugin(slug)
-        except PluginNotFoundError:
-            LOGGER.debug(
-                'Skipping unknown plugin %r during identity resolution', slug
-            )
-            continue
-        if entry.manifest.plugin_type != 'identity':
-            LOGGER.debug(
-                'Skipping non-identity plugin %r during identity resolution',
-                slug,
-            )
-            continue
-        identity_slugs.append(slug)
-    return identity_slugs
+    matches: set[str] = set()
+    async with actions.ImbiClient() as client:
+        for slug in identity_slugs:
+            user_id = await client.find_user_by_identity(slug, subject)
+            if user_id is not None:
+                matches.add(user_id)
+    if len(matches) > 1:
+        LOGGER.error(
+            'Identity subject %r resolved to multiple Imbi users via '
+            'integrations %r: %r — leaving unattributed (webhook_id=%r)',
+            subject,
+            list(identity_slugs),
+            sorted(matches),
+            webhook_id,
+        )
+        return None
+    return next(iter(matches), None)
 
 
 def _make_user_resolver(
-    candidate_plugin_slugs: list[str],
+    identity_slugs: 'abc.Sequence[str]',
 ) -> 'abc.Callable[[str], abc.Awaitable[str | None]] | None':
     """Build the ``PluginContext.resolve_user_by_identity`` resolver.
 
@@ -880,34 +853,15 @@ def _make_user_resolver(
     GitHub numeric user id) to the matching Imbi user's email, so an
     action (e.g. commit-sync author attribution) can resolve external
     actors via ``/users/by-identity`` without itself talking to the API.
-    The connected plugins are filtered to identity plugins; ``None`` is
-    returned when none qualify, so the action skips the lookups entirely.
-
-    Mirrors :func:`_resolve_user_id`'s multi-match handling: a subject
-    resolving to two or more *different* users via different identity
-    plugins is treated as unresolved (logged), never mis-attributed.
+    Returns ``None`` when there are no identity Integration candidates,
+    so the action skips the lookups entirely.
     """
-    identity_slugs = _filter_to_identity_plugins(candidate_plugin_slugs)
     if not identity_slugs:
         return None
+    candidates = list(identity_slugs)
 
     async def _resolve(subject: str) -> str | None:
-        matches: set[str] = set()
-        async with actions.ImbiClient() as client:
-            for slug in identity_slugs:
-                user_id = await client.find_user_by_identity(slug, subject)
-                if user_id is not None:
-                    matches.add(user_id)
-        if len(matches) > 1:
-            LOGGER.error(
-                'Identity subject %r resolved to multiple Imbi users via '
-                'plugins %r: %r — leaving unattributed',
-                subject,
-                identity_slugs,
-                sorted(matches),
-            )
-            return None
-        return next(iter(matches), None)
+        return await _resolve_identity(subject, candidates)
 
     return _resolve
 
@@ -943,60 +897,28 @@ async def _resolve_user_id(
     *,
     body: object,
     user_subject_selector: str | None,
-    edge_plugin_slug: str | None,
-    candidate_plugin_slugs: list[str],
+    candidate_identity_slugs: 'abc.Sequence[str]',
     webhook_id: str | None = None,
 ) -> str | None:
     """Resolve the Imbi ``user_id`` for a webhook delivery.
 
-    Returns ``None`` when the IMPLEMENTED_BY edge does not declare a
+    Returns ``None`` when the ``IMPLEMENTED_BY`` edge does not declare a
     ``user_subject_selector``, the selector does not resolve to a value,
-    no identity plugin yields a match, or two or more plugins yield
-    *different* user ids (logged as an error — handler still runs
-    without attribution).
-
-    Candidate slugs are filtered through the plugin registry so only
-    plugins with ``plugin_type == 'identity'`` are queried. This keeps
-    the gateway from probing ``/users/by-identity`` for configuration,
-    deployment, or webhook plugins -- the previous behavior produced
-    noisy 404s in the API access log.
+    there is no identity Integration candidate, or no candidate yields a
+    match. ``candidate_identity_slugs`` is resolved by the caller (see
+    :func:`_identity_candidate_slugs`) so this function performs no
+    registry filtering of its own.
     """
     subject = _extract_subject(
         body, user_subject_selector, webhook_id=webhook_id
     )
     if subject is None:
         return None
-    candidate_slugs: list[str] = (
-        [edge_plugin_slug] if edge_plugin_slug else candidate_plugin_slugs
+    if not candidate_identity_slugs:
+        return None
+    return await _resolve_identity(
+        subject, candidate_identity_slugs, webhook_id=webhook_id
     )
-    slugs = _filter_to_identity_plugins(candidate_slugs)
-    if not slugs:
-        return None
-
-    matches: set[str] = set()
-    async with actions.ImbiClient() as client:
-        for slug in slugs:
-            user_id = await client.find_user_by_identity(slug, subject)
-            if user_id is not None:
-                matches.add(user_id)
-
-    if len(matches) > 1:
-        LOGGER.error(
-            'Identity subject %r resolved to multiple Imbi users via '
-            'plugins %r: %r — passing user_id=None (webhook_id=%r)',
-            subject,
-            slugs,
-            sorted(matches),
-            webhook_id,
-            extra={
-                'webhook_id': webhook_id,
-                'identity_subject': subject,
-                'identity_plugins': slugs,
-                'identity_matches': sorted(matches),
-            },
-        )
-        return None
-    return next(iter(matches), None)
 
 
 def _set_access_log_context(
@@ -1136,7 +1058,7 @@ class DeliveryRecorder:
         self,
         records: 'abc.Sequence[abc.Mapping[str, typing.Any]]',
         *,
-        service_slug: str,
+        integration_slug: str,
         user_id: str | None,
         event_type: str,
         metadata: dict[str, typing.Any],
@@ -1167,7 +1089,7 @@ class DeliveryRecorder:
                 # events table can host non-webhook rows later without
                 # overloading this column.
                 type='webhook',
-                third_party_service=service_slug,
+                integration=integration_slug,
                 attributed_to=user_id or '',
                 metadata={
                     **metadata,
@@ -1202,7 +1124,7 @@ class DeliveryRecorder:
                 project_id=event.project_id,
                 recorded_at=event.recorded_at,
                 type=event.type,
-                third_party_service=event.third_party_service,
+                integration=event.integration,
                 attributed_to=event.attributed_to,
                 metadata={
                     **event.metadata,
@@ -1232,7 +1154,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     recorder: DeliveryRecorder,
     headers: 'abc.Mapping[str, str]',
     webhook_id: str,
-    service_slug: str,
+    integration_slug: str,
     user_id: str | None,
     event_type: str,
     body: object,
@@ -1247,7 +1169,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     matches on exactly what the activity feed records:
 
     - ``type`` — resolved event type (e.g. the ``X-GitHub-Event`` value)
-    - ``third_party_service`` — service slug
+    - ``integration`` — Integration slug
     - ``attributed_to`` — resolved Imbi user (``''`` when unattributed)
     - ``metadata.headers`` — request headers, keys lower-cased and
       sensitive values redacted
@@ -1263,7 +1185,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     payload = _payload_dict(body)
     await recorder.record_received(
         records,
-        service_slug=service_slug,
+        integration_slug=integration_slug,
         user_id=user_id,
         event_type=event_type,
         metadata=metadata,
@@ -1271,7 +1193,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     )
     return {
         'type': event_type,
-        'third_party_service': service_slug,
+        'integration': integration_slug,
         'attributed_to': user_id or '',
         'metadata': metadata,
         'payload': payload,

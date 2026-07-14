@@ -21,13 +21,10 @@ dependencies = [
 [project.scripts]
 imbi-gateway = "imbi_gateway.app:cli"
 
-[project.entry-points."imbi.plugins"]
-gateway-actions = "imbi_gateway.plugin:GatewayActionsPlugin"
-
 [project.optional-dependencies]
 plugins = [
-  "imbi-plugin-github~=1.0",
-  "imbi-plugin-sonarqube>=0.0.0",
+  "imbi-plugin-github==2.13.0",
+  "imbi-plugin-sonarqube==2.13.0",
 ]
 
 [dependency-groups]
