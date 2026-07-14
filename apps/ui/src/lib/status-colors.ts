@@ -1,6 +1,6 @@
 import type { BadgeProps } from '@/components/ui/badge'
 
-/** Map third-party-service status strings to semantic Badge variants. */
+/** Map integration status strings to semantic Badge variants. */
 const STATUS_VARIANTS: Record<string, BadgeProps['variant']> = {
   active: 'success',
   deprecated: 'warning',

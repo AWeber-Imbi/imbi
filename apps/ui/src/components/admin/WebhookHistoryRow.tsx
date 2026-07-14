@@ -65,7 +65,7 @@ export function WebhookHistoryRow({
         <span className="text-secondary text-sm tabular-nums">
           {new Date(event.recorded_at).toLocaleString()}
         </span>
-        <Badge variant="secondary">{event.third_party_service}</Badge>
+        <Badge variant="secondary">{event.integration}</Badge>
         <span className="text-primary text-sm font-medium">
           {eventTypeLabel}
         </span>

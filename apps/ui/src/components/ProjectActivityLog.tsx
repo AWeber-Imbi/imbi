@@ -498,8 +498,8 @@ function renderGenericEventBody(entry: EventRecord): React.ReactNode {
   return (
     <span>
       <span className="text-secondary">{label}</span>
-      {entry.third_party_service && (
-        <span className="text-tertiary"> via {entry.third_party_service}</span>
+      {entry.integration && (
+        <span className="text-tertiary"> via {entry.integration}</span>
       )}
     </span>
   )

@@ -61,8 +61,8 @@ export function WebhookForm({
   const [icon, setIcon] = useState(webhook?.icon || '')
   const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [secret, setSecret] = useState('')
-  const [tpsSlug, setTpsSlug] = useState(
-    (webhook?.third_party_service?.slug as string | undefined) ||
+  const [integrationSlug, setIntegrationSlug] = useState(
+    (webhook?.integration?.slug as string | undefined) ||
       defaultServiceSlug ||
       '',
   )
@@ -72,8 +72,8 @@ export function WebhookForm({
   const [userSubjectSelector, setUserSubjectSelector] = useState(
     webhook?.user_subject_selector || '',
   )
-  const [identityPluginSlug, setIdentityPluginSlug] = useState(
-    webhook?.identity_plugin_slug || '',
+  const [identityIntegrationSlug, setIdentityIntegrationSlug] = useState(
+    webhook?.identity_integration_slug || '',
   )
   const [eventTypeSelector, setEventTypeSelector] = useState(
     webhook?.event_type_selector || '',
@@ -107,21 +107,21 @@ export function WebhookForm({
           'Slug must start with a letter and contain only lowercase letters, numbers, and hyphens'
       }
     }
-    if (identifierSelector && !tpsSlug) {
+    if (identifierSelector && !integrationSlug) {
       newErrors.identifier_selector =
-        'Identifier selector requires a third-party service'
+        'Identifier selector requires an integration'
     }
-    if (userSubjectSelector && !tpsSlug) {
+    if (userSubjectSelector && !integrationSlug) {
       newErrors.user_subject_selector =
-        'User subject selector requires a third-party service'
+        'User subject selector requires an integration'
     }
-    if (identityPluginSlug && !tpsSlug) {
-      newErrors.identity_plugin_slug =
-        'Identity plugin slug requires a third-party service'
+    if (identityIntegrationSlug && !integrationSlug) {
+      newErrors.identity_integration_slug =
+        'Identity integration slug requires an integration'
     }
-    if (eventTypeSelector && !tpsSlug) {
+    if (eventTypeSelector && !integrationSlug) {
       newErrors.event_type_selector =
-        'Event type selector requires a third-party service'
+        'Event type selector requires an integration'
     }
     for (let i = 0; i < rules.length; i++) {
       if (!rules[i].filter_expression.trim()) {
@@ -143,7 +143,8 @@ export function WebhookForm({
       event_type_selector: eventTypeSelector.trim() || null,
       icon: icon.trim() || null,
       identifier_selector: identifierSelector.trim() || null,
-      identity_plugin_slug: identityPluginSlug.trim() || null,
+      identity_integration_slug: identityIntegrationSlug.trim() || null,
+      integration_slug: integrationSlug || null,
       name: name.trim(),
       rules: rules.map((r) => ({
         filter_expression: r.filter_expression.trim(),
@@ -151,7 +152,6 @@ export function WebhookForm({
         handler_config: r.handler_config,
       })),
       secret: secret.trim() || null,
-      third_party_service_slug: tpsSlug || null,
       user_subject_selector: userSubjectSelector.trim() || null,
       // Include slug only when editing so the PATCH can update it.
       ...(isEditing ? { slug: slug.trim() } : {}),
@@ -172,18 +172,18 @@ export function WebhookForm({
     }
   }
 
-  const handleServiceChange = (newTps: string) => {
-    setTpsSlug(newTps)
-    if (!newTps) {
+  const handleIntegrationChange = (newIntegration: string) => {
+    setIntegrationSlug(newIntegration)
+    if (!newIntegration) {
       setIdentifierSelector('')
       setUserSubjectSelector('')
-      setIdentityPluginSlug('')
+      setIdentityIntegrationSlug('')
       setEventTypeSelector('')
     }
     // In edit mode, auto-update the displayed slug to the computed value
     // so the user can see what will be saved if they don't override it.
     if (isEditing) {
-      setSlug(computePreviewSlug(newTps, name))
+      setSlug(computePreviewSlug(newIntegration, name))
     }
   }
 
@@ -290,7 +290,7 @@ export function WebhookForm({
               {!isEditing && name && (
                 <p className="text-tertiary mt-1 text-xs">
                   Slug will be auto-generated:{' '}
-                  <code>{computePreviewSlug(tpsSlug, name)}</code>
+                  <code>{computePreviewSlug(integrationSlug, name)}</code>
                 </p>
               )}
             </div>
@@ -421,15 +421,15 @@ export function WebhookForm({
           </CardContent>
         </Card>
 
-        {/* Third-Party Service Binding */}
+        {/* Integration Binding */}
         <Card>
           <CardContent className="space-y-4 pt-6">
             <p className="text-secondary mb-4 text-sm">
-              Optionally link this webhook to a third-party service for
-              automatic project resolution.{' '}
+              Optionally link this webhook to an integration for automatic
+              project resolution.{' '}
               {isEditing && (
                 <span className="text-tertiary text-xs">
-                  Changing the service will auto-regenerate the slug.
+                  Changing the integration will auto-regenerate the slug.
                 </span>
               )}
             </p>
@@ -438,20 +438,20 @@ export function WebhookForm({
               <div>
                 <Label
                   className="text-secondary mb-1.5 block text-sm"
-                  htmlFor="webhook-tps"
+                  htmlFor="webhook-integration"
                 >
-                  Third-Party Service
+                  Integration
                 </Label>
                 {/* Radix disallows '' as a SelectItem value, so 'none' is
                     the empty sentinel and gets translated at the boundary. */}
                 <Select
                   disabled={isLoading}
                   onValueChange={(v) =>
-                    handleServiceChange(v === 'none' ? '' : v)
+                    handleIntegrationChange(v === 'none' ? '' : v)
                   }
-                  value={tpsSlug || 'none'}
+                  value={integrationSlug || 'none'}
                 >
-                  <SelectTrigger id="webhook-tps">
+                  <SelectTrigger id="webhook-integration">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -465,7 +465,7 @@ export function WebhookForm({
                 </Select>
               </div>
 
-              {tpsSlug && (
+              {integrationSlug && (
                 <>
                   <div>
                     <Label className="text-secondary mb-1.5 block text-sm">
@@ -528,32 +528,34 @@ export function WebhookForm({
 
                   <div>
                     <Label className="text-secondary mb-1.5 block text-sm">
-                      Identity Plugin Slug{' '}
+                      Identity Integration Slug{' '}
                       <span className="text-tertiary text-xs">(optional)</span>
                     </Label>
                     <Input
                       className={`font-mono text-sm ${
-                        errors.identity_plugin_slug ? 'border-red-500' : ''
+                        errors.identity_integration_slug ? 'border-red-500' : ''
                       }`}
                       disabled={isLoading}
-                      onChange={(e) => setIdentityPluginSlug(e.target.value)}
+                      onChange={(e) =>
+                        setIdentityIntegrationSlug(e.target.value)
+                      }
                       placeholder="e.g., github"
-                      value={identityPluginSlug}
+                      value={identityIntegrationSlug}
                     />
-                    {errors.identity_plugin_slug && (
+                    {errors.identity_integration_slug && (
                       <div
                         className={
                           'text-danger mt-1 flex items-center gap-1 text-xs'
                         }
                       >
                         <AlertCircle className="size-3" />
-                        {errors.identity_plugin_slug}
+                        {errors.identity_integration_slug}
                       </div>
                     )}
                     <p className="text-tertiary mt-1 text-xs">
                       Override which identity plugin resolves the user. Leave
                       blank to fall back to identity plugins attached to the
-                      third-party service.
+                      integration.
                     </p>
                   </div>
 

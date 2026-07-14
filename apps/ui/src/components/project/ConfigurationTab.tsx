@@ -68,6 +68,7 @@ interface ConfigurationTabProps {
   orgSlug: string
   projectId: string
   projectSlug: string
+  projectTypeSlug: string
   teamSlug: string
 }
 
@@ -130,6 +131,7 @@ export function ConfigurationTab({
   orgSlug,
   projectId,
   projectSlug,
+  projectTypeSlug,
   teamSlug,
 }: ConfigurationTabProps) {
   const queryClient = useQueryClient()
@@ -208,6 +210,7 @@ export function ConfigurationTab({
       org_slug: orgSlug,
       project_id: projectId,
       project_slug: projectSlug,
+      project_type_slug: projectTypeSlug,
       team_slug: teamSlug,
     }
     return raw.replace(/\$\{([^}]+)\}/g, (match, name: string) =>

@@ -91,9 +91,9 @@ export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
               </div>
             </div>
             <div>
-              <div className="text-secondary text-sm">Third-Party Service</div>
+              <div className="text-secondary text-sm">Integration</div>
               <div className="text-primary mt-1">
-                {(webhook.third_party_service?.name as string | undefined) || (
+                {(webhook.integration?.name as string | undefined) || (
                   <span className="text-tertiary">None</span>
                 )}
               </div>
@@ -122,14 +122,14 @@ export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
                 </div>
               </div>
             )}
-            {webhook.identity_plugin_slug && (
+            {webhook.identity_integration_slug && (
               <div>
                 <div className="text-secondary text-sm">
-                  Identity Plugin Slug
+                  Identity Integration Slug
                 </div>
                 <div className="mt-1">
                   <code className="bg-secondary text-primary rounded px-2 py-1 text-sm">
-                    {webhook.identity_plugin_slug}
+                    {webhook.identity_integration_slug}
                   </code>
                 </div>
               </div>

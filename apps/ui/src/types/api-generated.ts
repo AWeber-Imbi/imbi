@@ -3322,8 +3322,8 @@ export interface components {
          * @description Request model for creating a Project EXISTS_IN link.
          */
         ExistsInCreate: {
-            /** Third Party Service Slug */
-            third_party_service_slug: string;
+            /** Integration Slug */
+            integration_slug: string;
             /** Identifier */
             identifier: string;
             /** Canonical Url */
@@ -3336,10 +3336,10 @@ export interface components {
          * @description Response model for a Project EXISTS_IN link.
          */
         ExistsInResponse: {
-            /** Third Party Service Slug */
-            third_party_service_slug: string;
-            /** Third Party Service Name */
-            third_party_service_name: string;
+            /** Integration Slug */
+            integration_slug: string;
+            /** Integration Name */
+            integration_name: string;
             /** Identifier */
             identifier: string;
             /** Canonical Url */
@@ -4897,8 +4897,8 @@ export interface components {
             icon?: string | null;
             /** Secret */
             secret?: string | null;
-            /** Third Party Service Slug */
-            third_party_service_slug?: string | null;
+            /** Integration Slug */
+            integration_slug?: string | null;
             /**
              * Identifier Selector
              * @description JSON Path expression to extract project identifier
@@ -4910,10 +4910,10 @@ export interface components {
              */
             user_subject_selector?: string | null;
             /**
-             * Identity Plugin Slug
-             * @description Optional override for the identity plugin slug used to resolve the Imbi user; falls back to identity plugins attached to the third-party service when unset.
+             * Identity Integration Slug
+             * @description Optional override for the identity integration slug used to resolve the Imbi user; falls back to identity plugins attached to the integration when unset.
              */
-            identity_plugin_slug?: string | null;
+            identity_integration_slug?: string | null;
             /**
              * Event Type Selector
              * @description Resolves the activity-feed event type for each webhook. Values starting with "/" are JSON pointers evaluated against the request body; otherwise the value is treated as an HTTP header name (case-insensitive). When the header is absent, the literal selector value is used as the label.
@@ -4939,16 +4939,16 @@ export interface components {
             icon?: string | null;
             /** Notification Path — system-generated, read-only */
             notification_path: string;
-            /** Third Party Service */
-            third_party_service?: {
+            /** Integration */
+            integration?: {
                 [key: string]: unknown;
             } | null;
             /** Identifier Selector */
             identifier_selector?: string | null;
             /** User Subject Selector */
             user_subject_selector?: string | null;
-            /** Identity Plugin Slug */
-            identity_plugin_slug?: string | null;
+            /** Identity Integration Slug */
+            identity_integration_slug?: string | null;
             /** Event Type Selector */
             event_type_selector?: string | null;
             /**
@@ -5010,8 +5010,8 @@ export interface components {
             notification_path: string;
             /** Secret */
             secret?: string | null;
-            /** Third Party Service Slug */
-            third_party_service_slug?: string | null;
+            /** Integration Slug */
+            integration_slug?: string | null;
             /**
              * Identifier Selector
              * @description JSON Path expression to extract project identifier
@@ -5023,10 +5023,10 @@ export interface components {
              */
             user_subject_selector?: string | null;
             /**
-             * Identity Plugin Slug
-             * @description Optional override for the identity plugin slug used to resolve the Imbi user; falls back to identity plugins attached to the third-party service when unset.
+             * Identity Integration Slug
+             * @description Optional override for the identity integration slug used to resolve the Imbi user; falls back to identity plugins attached to the integration when unset.
              */
-            identity_plugin_slug?: string | null;
+            identity_integration_slug?: string | null;
             /**
              * Event Type Selector
              * @description Resolves the activity-feed event type for each webhook. Values starting with "/" are JSON pointers evaluated against the request body; otherwise the value is treated as an HTTP header name (case-insensitive). When the header is absent, the literal selector value is used as the label.

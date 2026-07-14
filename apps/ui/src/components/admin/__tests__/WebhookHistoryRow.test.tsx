@@ -9,11 +9,11 @@ function makeEvent(overrides: Partial<EventRecord> = {}): EventRecord {
   return {
     attributed_to: '',
     id: 'evt-1',
+    integration: 'github-enterprise-cloud',
     metadata: {},
     payload: {},
     project_id: 'proj-1',
     recorded_at: '2026-04-01T12:00:00Z',
-    third_party_service: 'github-enterprise-cloud',
     type: 'pull_request',
     ...overrides,
   }

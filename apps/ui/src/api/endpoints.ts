@@ -633,9 +633,9 @@ export interface AdminEventsFilters {
    *  configured selector. Used together with `type='webhook'` to
    *  narrow within the webhook category. */
   event_type?: string
+  integration?: string
   project_id?: string
   since?: string
-  third_party_service?: string
   /** Event *category*. `'webhook'` for inbound webhook deliveries.
    *  Wider categories (e.g. system-generated events) may land in
    *  the same table later. */
@@ -658,11 +658,11 @@ export interface EventHandlerOutcome {
 export interface EventRecord {
   attributed_to: string
   id: string
+  integration: string
   metadata: Record<string, unknown>
   payload: Record<string, unknown>
   project_id: string
   recorded_at: string
-  third_party_service: string
   type: string
   /** Increments with each phase of the gateway's two-phase recording.
    *  0 = phase-1 (initial record), 1 = phase-2 (dispatch outcome). */

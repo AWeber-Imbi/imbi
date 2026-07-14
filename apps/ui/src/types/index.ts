@@ -270,7 +270,7 @@ export interface Project {
     team?: RelationshipLink
   }
   score?: null | number
-  // Read-only EXISTS_IN connections (third-party service relationships).
+  // Read-only EXISTS_IN connections (integration relationships).
   // Maintained via the project-services endpoints / Integrations panel,
   // not by editing `identifiers`.
   services?: ProjectServiceEdge[]
@@ -1127,7 +1127,7 @@ export interface PluginAssignmentResponse {
   plugin_id: string
   plugin_slug: string
   plugin_type: PluginType
-  // Parent third-party service so the UI can show which service
+  // Parent integration so the UI can show which integration
   // powers the tab.
   service_icon?: null | string
   service_name?: null | string

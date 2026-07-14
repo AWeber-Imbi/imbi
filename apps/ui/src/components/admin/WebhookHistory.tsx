@@ -38,7 +38,7 @@ export function WebhookHistory({ eventId }: WebhookHistoryProps) {
   const orgSlug = selectedOrganization?.slug ?? ''
   const { projectsById } = useProjectsSlimMap(orgSlug)
 
-  const [tps, setTps] = useState('')
+  const [integration, setIntegration] = useState('')
   const [eventType, setEventType] = useState('')
   const [projectId, setProjectId] = useState('')
   const [timeRange, setTimeRange] = useState<TimeRange>('7d')
@@ -50,13 +50,13 @@ export function WebhookHistory({ eventId }: WebhookHistoryProps) {
     // (e.g. `pull_request`) sits in `metadata.event_type` and the API
     // exposes that as the `event_type` query parameter.
     const f: AdminEventsFilters = { type: 'webhook' }
-    if (tps) f.third_party_service = tps
+    if (integration) f.integration = integration
     if (eventType) f.event_type = eventType
     if (projectId) f.project_id = projectId
     const since = sinceFromRange(timeRange)
     if (since) f.since = since
     return f
-  }, [tps, eventType, projectId, timeRange])
+  }, [integration, eventType, projectId, timeRange])
 
   const {
     data,
@@ -71,10 +71,10 @@ export function WebhookHistory({ eventId }: WebhookHistoryProps) {
   const pinnedQuery = useWebhookEvent(eventId)
 
   // fallow-ignore-next-line complexity
-  const tpsOptions = useMemo(() => {
+  const integrationOptions = useMemo(() => {
     const set = new Set<string>()
     for (const e of data?.entries ?? []) {
-      if (e.third_party_service) set.add(e.third_party_service)
+      if (e.integration) set.add(e.integration)
     }
     return Array.from(set).sort()
   }, [data?.entries])
@@ -86,19 +86,22 @@ export function WebhookHistory({ eventId }: WebhookHistoryProps) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-40">
-          <label className="text-secondary mb-1 block text-xs" htmlFor="wh-tps">
-            Third-party service
+          <label
+            className="text-secondary mb-1 block text-xs"
+            htmlFor="wh-integration"
+          >
+            Integration
           </label>
           <Select
-            onValueChange={(v) => setTps(v === '__all' ? '' : v)}
-            value={tps || '__all'}
+            onValueChange={(v) => setIntegration(v === '__all' ? '' : v)}
+            value={integration || '__all'}
           >
-            <SelectTrigger className="h-8" id="wh-tps">
-              <SelectValue placeholder="All services" />
+            <SelectTrigger className="h-8" id="wh-integration">
+              <SelectValue placeholder="All integrations" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all">All services</SelectItem>
-              {tpsOptions.map((slug) => (
+              <SelectItem value="__all">All integrations</SelectItem>
+              {integrationOptions.map((slug) => (
                 <SelectItem key={slug} value={slug}>
                   {slug}
                 </SelectItem>

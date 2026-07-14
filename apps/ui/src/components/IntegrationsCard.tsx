@@ -140,8 +140,8 @@ export function IntegrationsCard({
         <div className="space-y-1.5">
           <CardTitle>Integrations</CardTitle>
           <CardDescription>
-            Third-party services this project exists in, with the stable
-            identifier and the canonical API and dashboard URLs.
+            Integrations this project exists in, with the stable identifier and
+            the canonical API and dashboard URLs.
           </CardDescription>
         </div>
         <Button
@@ -162,13 +162,13 @@ export function IntegrationsCard({
           <IntegrationsSkeleton />
         ) : services.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            This project is not connected to any third-party services.
+            This project is not connected to any integrations.
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Service</TableHead>
+                <TableHead>Integration</TableHead>
                 <TableHead>Identifier</TableHead>
                 <TableHead>API URL</TableHead>
                 <TableHead>Dashboard URL</TableHead>
@@ -212,7 +212,7 @@ export function IntegrationsCard({
           </DialogHeader>
           <div className="space-y-4 p-6">
             <div className="space-y-2">
-              <Label htmlFor="integration-service">Service</Label>
+              <Label htmlFor="integration-service">Integration</Label>
               <Select
                 onValueChange={(value) =>
                   setForm((f) => ({ ...f, serviceSlug: value }))
@@ -220,7 +220,7 @@ export function IntegrationsCard({
                 value={form.serviceSlug}
               >
                 <SelectTrigger id="integration-service">
-                  <SelectValue placeholder="Select a service…" />
+                  <SelectValue placeholder="Select an integration…" />
                 </SelectTrigger>
                 <SelectContent>
                   {connectableServices.map((svc) => (

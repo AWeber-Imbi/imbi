@@ -157,10 +157,10 @@ export function WebhookManagement() {
         <Card>
           <CardContent className="p-4">
             <CardDescription className="text-secondary">
-              With Service
+              With Integration
             </CardDescription>
             <div className="text-info mt-1 text-2xl">
-              {filteredWebhooks.filter((w) => w.third_party_service).length}
+              {filteredWebhooks.filter((w) => w.integration).length}
             </div>
           </CardContent>
         </Card>
@@ -221,11 +221,11 @@ export function WebhookManagement() {
           },
           {
             cellAlign: 'left',
-            header: 'Service',
+            header: 'Integration',
             headerAlign: 'left',
             key: 'service',
             render: (wh) =>
-              (wh.third_party_service?.name as string | undefined) || (
+              (wh.integration?.name as string | undefined) || (
                 <span className="text-tertiary">--</span>
               ),
           },

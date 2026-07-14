@@ -112,9 +112,7 @@ export function IntegrationDetail({
   })
   const webhookUrls = webhooks
     .filter(
-      (w) =>
-        (w.third_party_service?.slug as string | undefined) ===
-        integration?.slug,
+      (w) => (w.integration?.slug as string | undefined) === integration?.slug,
     )
     .map((w) => ({
       name: w.name,
@@ -162,6 +160,28 @@ export function IntegrationDetail({
     onError: (err) => toast.error(`Save failed: ${extractApiErrorDetail(err)}`),
     onSuccess: invalidate,
   })
+
+  // Inline rename of the integration's display name. The slug is immutable
+  // via the API, so only ``name`` is patched here.
+  const [savingName, setSavingName] = useState(false)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const nameEdit = useInlineEdit<string>({
+    initial: integration?.name ?? '',
+    onCommit: async (next) => {
+      const trimmed = next.trim()
+      if (trimmed === integration?.name) return
+      if (!trimmed) throw new Error('Name is required')
+      setSavingName(true)
+      try {
+        await patchMutation.mutateAsync({ name: trimmed })
+      } finally {
+        setSavingName(false)
+      }
+    },
+  })
+  useEffect(() => {
+    if (nameEdit.isEditing) nameInputRef.current?.focus()
+  }, [nameEdit.isEditing])
 
   const assignmentMutation = useMutation({
     mutationFn: ({ kind, slugs }: { kind: string; slugs: string[] }) =>
@@ -273,9 +293,34 @@ export function IntegrationDetail({
 
             <div className="mb-6 flex items-start justify-between gap-5">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-primary text-2xl font-semibold tracking-tight">
-                  {integration.name}
-                </h1>
+                {nameEdit.isEditing ? (
+                  <div className="flex flex-col">
+                    <Input
+                      className="h-9 w-72 text-2xl font-semibold"
+                      onBlur={nameEdit.handleBlur}
+                      onChange={(e) => nameEdit.setDraft(e.target.value)}
+                      onKeyDown={nameEdit.handleKeyDown}
+                      ref={nameInputRef}
+                      value={nameEdit.draft}
+                    />
+                    {nameEdit.error && (
+                      <span className="mt-1 text-xs text-red-600">
+                        {nameEdit.error}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <InlineDisplay
+                    hasValue
+                    onClick={nameEdit.enter}
+                    pending={savingName}
+                    readOnly={!editable}
+                  >
+                    <h1 className="text-primary text-2xl font-semibold tracking-tight">
+                      {integration.name}
+                    </h1>
+                  </InlineDisplay>
+                )}
                 <span className="text-tertiary inline-flex items-center gap-1 font-mono text-xs">
                   <Package className="size-3" />
                   {integration.plugin}

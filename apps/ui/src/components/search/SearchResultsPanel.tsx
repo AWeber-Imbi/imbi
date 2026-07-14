@@ -65,6 +65,13 @@ const ENTITY_STYLES: Record<
     label: 'Environment',
     text: 'text-entity-config',
   },
+  Integration: {
+    dot: 'bg-entity-config',
+    hex: '#7A7873',
+    label: 'Integration',
+    round: true,
+    text: 'text-entity-config',
+  },
   LinkDefinition: {
     dot: 'bg-entity-schema',
     hex: '#8C82D4',
@@ -115,13 +122,6 @@ const ENTITY_STYLES: Record<
     dot: 'bg-entity-config',
     hex: '#7A7873',
     label: 'Team',
-    round: true,
-    text: 'text-entity-config',
-  },
-  ThirdPartyService: {
-    dot: 'bg-entity-config',
-    hex: '#7A7873',
-    label: '3rd-Party Service',
     round: true,
     text: 'text-entity-config',
   },

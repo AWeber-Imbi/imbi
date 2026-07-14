@@ -51,7 +51,7 @@ describe('IntegrationsCard', () => {
     render(<IntegrationsCard orgSlug="aweber" projectId="p1" />)
 
     expect(
-      await screen.findByText(/not connected to any third-party services/i),
+      await screen.findByText(/not connected to any integrations/i),
     ).toBeInTheDocument()
   })
 

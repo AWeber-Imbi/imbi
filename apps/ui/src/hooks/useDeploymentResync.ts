@@ -39,7 +39,7 @@ function onResyncError(err: unknown): void {
 }
 
 // Build the "X event(s) recorded • Y release(s) created" headline shown
-// on both the project-level and TPS-wide success toasts. Skips counters
+// on both the project-level and integration-wide success toasts. Skips counters
 // that are zero so the summary stays short on idle remotes.
 // fallow-ignore-next-line complexity
 function summarize(s: DeploymentResyncSummary): string {
