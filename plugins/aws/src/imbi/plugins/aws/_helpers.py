@@ -13,6 +13,9 @@ def template_vars(ctx: PluginContext) -> dict[str, str | None]:
         'team_slug': ctx.team_slug,
         'environment': ctx.environment,
         'project_id': ctx.project_id,
+        'project_type_slug': (
+            ctx.project_type_slugs[0] if ctx.project_type_slugs else None
+        ),
     }
 
 

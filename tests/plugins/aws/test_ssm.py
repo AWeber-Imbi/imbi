@@ -28,6 +28,7 @@ def _ctx(
     environment: str | None = 'prod',
     region: str = 'us-east-1',
     extras: dict[str, object] | None = None,
+    project_type_slugs: list[str] | None = None,
 ) -> PluginContext:
     capability: dict[str, object] = {'path_prefix': path_prefix}
     if extras:
@@ -39,6 +40,7 @@ def _ctx(
         environment=environment,
         integration_options={'region': region},
         capability_options=capability,
+        project_type_slugs=project_type_slugs or [],
     )
 
 
@@ -184,6 +186,29 @@ class GetValuesTestCase(unittest.IsolatedAsyncioTestCase):
             sorted(captured[0]['Names']),
             ['/imbi/prod/widget/db/url', '/imbi/prod/widget/missing'],
         )
+
+    @respx.mock
+    async def test_project_type_slug_expanded_in_prefix(self) -> None:
+        captured: list[dict[str, typing.Any]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={'Parameters': [], 'InvalidParameters': []},
+            )
+
+        respx.post(_SSM_URL).mock(side_effect=handler)
+        plugin = SSMConfiguration()
+        await plugin.get_values(
+            _ctx(
+                path_prefix='/imbi/${project_type_slug}/${project_slug}/',
+                project_type_slugs=['apis', 'consumers'],
+            ),
+            _creds(),
+            keys=['db/url'],
+        )
+        self.assertEqual(captured[0]['Names'], ['/imbi/apis/widget/db/url'])
 
     @respx.mock
     async def test_missing_names_swallowed(self) -> None:
