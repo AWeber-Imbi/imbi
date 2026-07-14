@@ -2209,20 +2209,31 @@ export const syncProjectLifecycle = (
 // Identity Plugins (org-scoped)
 export interface IdentityPluginRef {
   label: string
-  plugin_id: string
+  // Integration id, or null for legacy integrations created before ids were
+  // persisted. Matched by strict equality against a deployment binding's
+  // `identity_plugin_id`; the slug-based fallback still resolves these.
+  plugin_id: null | string
   plugin_slug: string
 }
 
+// Identity plugins the actor can authenticate against, one ref per configured
+// integration that enables the `identity` capability. Derived from the org's
+// integrations because the dedicated `/identity-plugins/` route was removed in
+// the Plugin Architecture v3 rewrite; `plugin_id` maps to the integration id
+// (matched against a deployment binding's `identity_plugin_id`) and
+// `plugin_slug` to the plugin package slug (matched against `myIdentities`).
 export const listIdentityPlugins = async (
   orgSlug: string,
   signal?: AbortSignal,
 ): Promise<IdentityPluginRef[]> => {
-  const response = await apiClient.get<IdentityPluginRef[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/identity-plugins/`,
-    undefined,
-    signal,
-  )
-  return Array.isArray(response) ? response : []
+  const integrations = await listIntegrations(orgSlug, signal)
+  return integrations
+    .filter((integration) => integration.capabilities?.identity?.enabled)
+    .map((integration) => ({
+      label: integration.name,
+      plugin_id: integration.id ?? null,
+      plugin_slug: integration.plugin,
+    }))
 }
 
 export const listProjectPlugins = (

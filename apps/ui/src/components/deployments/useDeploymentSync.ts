@@ -6,14 +6,18 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { resyncProjectDeployments } from '@/api/endpoints'
+import { useAuth } from '@/hooks/useAuth'
 import { useCommitSync } from '@/hooks/useCommitSync'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { DEEP_RESYNC_LIMIT } from '@/lib/resync'
+import type { UserResponse } from '@/types'
 
 const DATA_KEYS = ['recentCommits', 'releaseHistory', 'currentReleases']
 
 export function useDeploymentSync(orgSlug: string, projectId: string) {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const commitSyncAllowed = canSyncCommits(user)
   const invalidate = () => {
     for (const key of DATA_KEYS) {
       void queryClient.invalidateQueries({
@@ -22,7 +26,12 @@ export function useDeploymentSync(orgSlug: string, projectId: string) {
     }
   }
 
-  const commitSync = useCommitSync(orgSlug, projectId, true, invalidate)
+  const commitSync = useCommitSync(
+    orgSlug,
+    projectId,
+    commitSyncAllowed,
+    invalidate,
+  )
   const resyncMutation = useMutation({
     mutationFn: () =>
       resyncProjectDeployments(orgSlug, projectId, {
@@ -49,8 +58,19 @@ export function useDeploymentSync(orgSlug: string, projectId: string) {
   return {
     isSyncing: commitSync.isSyncing || resyncMutation.isPending,
     sync: () => {
-      commitSync.sync()
+      if (commitSyncAllowed) commitSync.sync()
       resyncMutation.mutate()
     },
   }
+}
+
+// Commit sync (POST /commits/sync) is independently permissioned. Gating this
+// arm lets a user with deployment:write but not commits:write still get a
+// clean release resync instead of a confusing 403 from the commit-sync call.
+function canSyncCommits(user: null | UserResponse): boolean {
+  if (!user) return false
+  return (
+    user.is_admin === true ||
+    (user.permissions ?? []).includes('project:commits:write')
+  )
 }
