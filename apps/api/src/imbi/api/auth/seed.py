@@ -378,6 +378,19 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'plugins:manage',
         'Install and uninstall plugins',
     ),
+    # Global maintenance operations
+    (
+        'admin:maintenance:read',
+        'admin',
+        'maintenance:read',
+        'View global maintenance operations',
+    ),
+    (
+        'admin:maintenance:manage',
+        'admin',
+        'maintenance:manage',
+        'Run and cancel global maintenance operations',
+    ),
     # Project plugin access
     (
         'project:configuration:read',

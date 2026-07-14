@@ -18,6 +18,7 @@ from imbi_api.commit_sync import queue as commit_sync_queue
 from imbi_api.email.client import EmailClient
 from imbi_api.email.templates import TemplateManager
 from imbi_api.identity import sweeper as identity_sweeper
+from imbi_api.maintenance import worker as maintenance_worker
 from imbi_api.plugins import lifecycle as plugin_lifecycle
 from imbi_api.pr_sync import queue as pr_sync_queue
 from imbi_api.scoring import queue as score_queue
@@ -196,6 +197,39 @@ async def pr_sync_worker_hook() -> abc.AsyncGenerator[None]:
         except Exception:  # noqa: BLE001
             LOGGER.warning(
                 'PR-sync worker task exited with error', exc_info=True
+            )
+
+
+@contextlib.asynccontextmanager
+async def maintenance_worker_hook() -> abc.AsyncGenerator[None]:
+    """Run the global maintenance operation consumer loop."""
+    try:
+        client = valkey.get_client()
+    except RuntimeError:
+        LOGGER.warning('Valkey unavailable; maintenance worker not started')
+        yield None
+        return
+    if _graph is None:
+        LOGGER.warning('Graph not ready; maintenance worker not started')
+        yield None
+        return
+    stop = asyncio.Event()
+    LOGGER.info('Maintenance worker starting')
+    consumer_task = asyncio.create_task(
+        maintenance_worker.run_worker(client, _graph, stop=stop)
+    )
+    try:
+        yield None
+    finally:
+        stop.set()
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Maintenance worker task exited with error', exc_info=True
             )
 
 

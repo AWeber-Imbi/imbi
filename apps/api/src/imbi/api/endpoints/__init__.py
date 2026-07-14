@@ -16,6 +16,7 @@ from .dashboard import dashboard_router
 from .events import events_router
 from .graph_query import graph_query_router
 from .local_auth import local_auth_router
+from .maintenance import maintenance_router
 from .mcp_servers import mcp_servers_router
 from .mfa import mfa_router
 from .oauth_metadata import oauth_metadata_router
@@ -46,6 +47,7 @@ prefixed_routers: list[fastapi.APIRouter] = [
     events_router,
     graph_query_router,
     local_auth_router,
+    maintenance_router,
     mcp_servers_router,
     me_identities_router,
     mfa_router,

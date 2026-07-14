@@ -499,7 +499,7 @@ async def _collect_results(
     return results
 
 
-async def _run_and_persist(
+async def run_and_persist(
     db: graph.Graph,
     org_slug: str,
     project_id: str,
@@ -526,7 +526,7 @@ async def run_project_analysis(
         fastapi.Depends(permissions.require_permission('project:write')),
     ],
 ) -> AnalysisReport:
-    return await _run_and_persist(db, org_slug, project_id, auth)
+    return await run_and_persist(db, org_slug, project_id, auth)
 
 
 class RemediateRequest(pydantic.BaseModel):
@@ -659,7 +659,7 @@ async def remediate_project_finding(
     result = await _remediate_one(
         db, org_slug, project_id, body.plugin_id, body.remediation_id, auth
     )
-    report = await _run_and_persist(db, org_slug, project_id, auth)
+    report = await run_and_persist(db, org_slug, project_id, auth)
     return RemediateResponse(result=result, report=report)
 
 
@@ -728,5 +728,5 @@ async def remediate_all_project_findings(
                 result=result,
             )
         )
-    fresh = await _run_and_persist(db, org_slug, project_id, auth)
+    fresh = await run_and_persist(db, org_slug, project_id, auth)
     return RemediateAllResponse(outcomes=outcomes, report=fresh)
