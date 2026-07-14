@@ -957,6 +957,54 @@ export const rescoreProject = (projectId: string) =>
     project_id: projectId,
   })
 
+// Global maintenance operations (admin Maintenance page)
+
+export interface MaintenanceOperation {
+  completed_at?: null | string
+  description?: null | string
+  failures?: null | Record<string, string>
+  label: string
+  progress?: MaintenanceProgress | null
+  running: boolean
+  slug: string
+  started_at?: null | string
+  started_by?: null | string
+  state: MaintenanceRunState
+}
+
+export interface MaintenanceProgress {
+  failed?: null | number
+  in_flight?: null | number
+  remaining?: null | number
+  skipped?: null | number
+  succeeded?: null | number
+  total?: null | number
+}
+
+export type MaintenanceRunState =
+  | 'abandoned'
+  | 'cancelled'
+  | 'completed'
+  | 'idle'
+  | 'running'
+
+export const getMaintenanceOperations = (signal?: AbortSignal) =>
+  apiClient.get<MaintenanceOperation[]>(
+    '/maintenance/operations',
+    undefined,
+    signal,
+  )
+
+export const runMaintenanceOperation = (slug: string) =>
+  apiClient.post<{ run_id: string; total: number }>(
+    `/maintenance/operations/${encodeURIComponent(slug)}/run`,
+  )
+
+export const cancelMaintenanceOperation = (slug: string) =>
+  apiClient.post<MaintenanceOperation>(
+    `/maintenance/operations/${encodeURIComponent(slug)}/cancel`,
+  )
+
 export interface AnalysisReport {
   created_at: string
   id: string

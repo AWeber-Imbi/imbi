@@ -26,6 +26,7 @@ import {
   Users,
   UsersRound,
   Webhook,
+  Wrench,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { GraphQueryManagement } from './admin/GraphQueryManagement'
 import { IntegrationsManagement } from './admin/integrations/IntegrationsManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
+import { MaintenanceManagement } from './admin/MaintenanceManagement'
 import { OrganizationManagement } from './admin/OrganizationManagement'
 import { PluginsManagement } from './admin/PluginsManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
@@ -61,6 +63,7 @@ type AdminSection =
   | 'graph-query'
   | 'integrations'
   | 'link-definitions'
+  | 'maintenance'
   | 'oauth'
   | 'organizations'
   | 'overview'
@@ -86,6 +89,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'integrations',
   'link-definitions',
   'document-templates',
+  'maintenance',
   'oauth',
   'organizations',
   'overview',
@@ -236,6 +240,13 @@ export function Admin() {
       icon: Network,
       id: 'graph-query',
       label: 'Graph Query',
+      scope: 'system',
+    },
+    {
+      description: 'Run global background maintenance operations',
+      icon: Wrench,
+      id: 'maintenance',
+      label: 'Maintenance',
       scope: 'system',
     },
     {
@@ -433,6 +444,7 @@ export function Admin() {
             {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
             {currentSection === 'graph-query' && <GraphQueryManagement />}
+            {currentSection === 'maintenance' && <MaintenanceManagement />}
             {currentSection === 'plugins' && <PluginsManagement />}
           </div>
         </main>
