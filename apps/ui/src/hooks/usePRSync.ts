@@ -38,15 +38,22 @@ export function usePRSync(
       isActive(query.state.data?.status) ? POLL_MS : false,
   })
 
-  // Toast the terminal result when a poll observes the run leaving the
-  // active state. The ref guards against toasting stale state on mount.
+  // The backend reports the persistent status of the project's most recent
+  // run (any requester), so a toast is only warranted when this user asked
+  // for a sync (`watching`) and a poll then observes the run leaving the
+  // active state. `onComplete` still fires on any observed active → success
+  // transition so background refreshes happen for other users' runs too.
+  const watching = useRef(false)
   const previous = useRef<PRSyncState | undefined>(undefined)
   // fallow-ignore-next-line complexity
   useEffect(() => {
     const data = statusQuery.data
     if (!data) return
-    if (!isActive(data.status) && data.status !== previous.current) {
-      announceTerminal(data)
+    if (isActive(previous.current) && !isActive(data.status)) {
+      if (watching.current) {
+        announceTerminal(data)
+        watching.current = false
+      }
       if (data.status === 'success') onCompleteRef.current?.()
     }
     previous.current = data.status
@@ -57,14 +64,24 @@ export function usePRSync(
     onError: (err) =>
       toast.error(extractApiErrorDetail(err) ?? 'Failed to start PR sync'),
     onSuccess: (res) => {
+      // The user asked for this run (or joined the one already in
+      // progress), so watch for its terminal result.
+      watching.current = true
+      // The POST returning means the backend flipped the run to queued;
+      // prime `previous` so a fast job whose first refetch already reads
+      // a terminal status still counts as an active → terminal transition.
+      previous.current = 'queued'
       if (res.enqueued) {
         toast.success('PR sync started')
-        void queryClient.invalidateQueries({
-          queryKey: ['prSyncStatus', orgSlug, projectId],
-        })
       } else {
         toast.info('A PR sync is already in progress')
       }
+      // Refresh even when joining an existing run: a stale cached 'idle'
+      // status would otherwise keep refetchInterval off and this client
+      // would never observe the run finishing.
+      void queryClient.invalidateQueries({
+        queryKey: ['prSyncStatus', orgSlug, projectId],
+      })
     },
   })
 
