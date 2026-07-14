@@ -16,6 +16,7 @@ import {
   listCapabilityAssignments,
   listPluginPackages,
   listProjectTypes,
+  listWebhooks,
   replaceCapabilityAssignments,
   updateIntegration,
   updateIntegrationCredentials,
@@ -97,6 +98,28 @@ export function IntegrationDetail({
   const plugin = plugins.find((p) => p.slug === integration?.plugin) ?? null
   const pluginAvailable = !!plugin && plugin.enabled
   const editable = pluginAvailable
+
+  // Gateway delivery URLs for the webhook-actions capability: the org's
+  // webhooks implemented by this integration, each reachable externally
+  // at <origin>/gateway/notifications<notification_path>.
+  const hasWebhookCapability = !!plugin?.capabilities.some(
+    (c) => c.kind === 'webhook-actions',
+  )
+  const { data: webhooks = [] } = useQuery({
+    enabled: !!orgSlug && hasWebhookCapability,
+    queryFn: ({ signal }) => listWebhooks(orgSlug!, signal),
+    queryKey: ['webhooks', orgSlug],
+  })
+  const webhookUrls = webhooks
+    .filter(
+      (w) =>
+        (w.third_party_service?.slug as string | undefined) ===
+        integration?.slug,
+    )
+    .map((w) => ({
+      name: w.name,
+      url: `${gatewayOrigin()}/gateway/notifications${w.notification_path}`,
+    }))
 
   // Load current project-type assignments for each project-scoped capability.
   const scopedKinds =
@@ -369,6 +392,11 @@ export function IntegrationDetail({
                           optionValues={options}
                           projectScoped={cap.project_scoped}
                           projectTypes={projectTypes}
+                          webhookUrls={
+                            cap.kind === 'webhook-actions'
+                              ? webhookUrls
+                              : undefined
+                          }
                         />
                       )
                     })}
@@ -551,6 +579,17 @@ function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   return String(value)
+}
+
+// The gateway is served from the same public origin as the API (the
+// ingress mounts /api and /gateway side by side). API_URL may be
+// path-only in same-origin deployments, so fall back to the page origin.
+function gatewayOrigin(): string {
+  try {
+    return new URL(API_URL).origin
+  } catch {
+    return window.location.origin
+  }
 }
 
 // One integration-level option (host, flavor, …), click-to-edit inline and

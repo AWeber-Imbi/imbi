@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { Link } from 'react-router-dom'
+
 import {
   Box,
   Check,
@@ -50,6 +52,17 @@ export interface CapabilityRowProps {
   optionValues: Record<string, unknown>
   projectScoped: boolean
   projectTypes: CapabilityProjectType[]
+  /**
+   * Gateway delivery URLs for this integration's webhooks. Only passed
+   * for webhook-surface capabilities; an empty array renders a hint to
+   * create a webhook first.
+   */
+  webhookUrls?: null | WebhookDeliveryUrl[]
+}
+
+export interface WebhookDeliveryUrl {
+  name: string
+  url: string
 }
 
 interface CapabilityOptionFieldProps {
@@ -79,6 +92,7 @@ export function CapabilityRow({
   optionValues,
   projectScoped,
   projectTypes,
+  webhookUrls,
 }: CapabilityRowProps) {
   const meta = capabilityMeta(kind)
   const Icon = meta?.icon ?? Circle
@@ -87,9 +101,11 @@ export function CapabilityRow({
   const [expanded, setExpanded] = useState(enabled)
   const [assignMode, setAssignMode] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copiedWebhook, setCopiedWebhook] = useState<null | string>(null)
 
   const hasOptions = options.length > 0
-  const hasPanel = hasOptions || projectScoped || !!note || !!callbackUrl
+  const hasPanel =
+    hasOptions || projectScoped || !!note || !!callbackUrl || !!webhookUrls
   const showPanel = enabled && expanded && hasPanel
 
   const handleToggle = (next: boolean) => {
@@ -113,6 +129,19 @@ export function CapabilityRow({
     }
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1600)
+  }
+
+  const copyWebhookUrl = (url: string) => {
+    if (navigator.clipboard) {
+      void navigator.clipboard.writeText(url).catch(() => {})
+    }
+    setCopiedWebhook(url)
+    // Only clear if this URL is still the one showing "Copied" — a stale
+    // timer from an earlier copy must not clear a newer indicator.
+    window.setTimeout(
+      () => setCopiedWebhook((current) => (current === url ? null : current)),
+      1600,
+    )
   }
 
   return (
@@ -287,6 +316,61 @@ export function CapabilityRow({
                 Add this as an authorized redirect URL in the plugin's OAuth
                 settings.
               </div>
+            </div>
+          )}
+
+          {webhookUrls && (
+            <div>
+              <div className="text-tertiary mb-2 text-xs font-semibold tracking-wide uppercase">
+                Delivery URL{webhookUrls.length > 1 ? 's' : ''}
+              </div>
+              {webhookUrls.length === 0 ? (
+                <div className="text-tertiary text-xs">
+                  No webhooks are configured for this integration yet. Create
+                  one under{' '}
+                  <Link
+                    className="text-amber-text-mid hover:underline"
+                    to="/admin/webhooks"
+                  >
+                    Admin → Webhooks
+                  </Link>{' '}
+                  to get a delivery URL.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {webhookUrls.map((hook) => (
+                    <div key={hook.url}>
+                      {webhookUrls.length > 1 && (
+                        <div className="text-secondary mb-1 text-xs">
+                          {hook.name}
+                        </div>
+                      )}
+                      <div className="flex max-w-130 items-center gap-2">
+                        <code className="border-tertiary bg-secondary text-primary min-w-0 flex-1 truncate rounded-md border px-3 py-2 font-mono text-xs">
+                          {hook.url}
+                        </code>
+                        <Button
+                          className="shrink-0"
+                          onClick={() => copyWebhookUrl(hook.url)}
+                          size="sm"
+                          variant="secondary"
+                        >
+                          {copiedWebhook === hook.url ? (
+                            <Check className="size-3.5" />
+                          ) : (
+                            <Copy className="size-3.5" />
+                          )}
+                          {copiedWebhook === hook.url ? 'Copied' : 'Copy'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-tertiary text-xs">
+                    Configure the remote service (e.g. GitHub) to send webhook
+                    deliveries to this URL.
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
