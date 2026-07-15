@@ -167,14 +167,21 @@ export function IntegrationsManagement() {
             ) : (
               <Blocks className="text-tertiary size-5 shrink-0" />
             )}
-            <span
-              className={cn(
-                'truncate font-semibold',
-                unavailable ? 'text-tertiary' : 'text-primary',
+            <div className="flex min-w-0 flex-col">
+              <span
+                className={cn(
+                  'truncate font-semibold',
+                  unavailable ? 'text-tertiary' : 'text-primary',
+                )}
+              >
+                {i.name}
+              </span>
+              {i.id && (
+                <span className="text-tertiary truncate font-mono text-xs">
+                  {i.id}
+                </span>
               )}
-            >
-              {i.name}
-            </span>
+            </div>
           </div>
         )
       },
