@@ -52,6 +52,76 @@ class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('maintenance', args[3].principal_name)
 
 
+def _remediate_response(*statuses: str) -> mock.Mock:
+    """A fake RemediateAllResponse carrying outcomes of the given statuses."""
+    outcomes = [
+        mock.Mock(result=mock.Mock(status=status)) for status in statuses
+    ]
+    return mock.Mock(outcomes=outcomes)
+
+
+class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
+    def _patch(self, remediate: mock.AsyncMock) -> contextlib.ExitStack:
+        stack = contextlib.ExitStack()
+        stack.enter_context(
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org'))
+        )
+        stack.enter_context(
+            mock.patch(
+                'imbi_api.endpoints.project_analysis'
+                '.remediate_all_for_project',
+                remediate,
+            )
+        )
+        return stack
+
+    async def test_skipped_without_org(self) -> None:
+        with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
+            outcome = await operations.execute_remediate(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+
+    async def test_skipped_without_report(self) -> None:
+        remediate = mock.AsyncMock(return_value=None)
+        with self._patch(remediate):
+            outcome = await operations.execute_remediate(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual(
+            'maintenance', remediate.await_args.kwargs['auth'].principal_name
+        )
+
+    async def test_skipped_without_fixable_findings(self) -> None:
+        remediate = mock.AsyncMock(return_value=_remediate_response())
+        with self._patch(remediate):
+            outcome = await operations.execute_remediate(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+
+    async def test_all_fixed_is_succeeded(self) -> None:
+        remediate = mock.AsyncMock(
+            return_value=_remediate_response('fixed', 'noop')
+        )
+        with self._patch(remediate):
+            outcome = await operations.execute_remediate(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('succeeded', outcome)
+
+    async def test_any_failed_raises_item_failed(self) -> None:
+        remediate = mock.AsyncMock(
+            return_value=_remediate_response('fixed', 'failed')
+        )
+        with self._patch(remediate):
+            with self.assertRaises(operations.MaintenanceItemFailed):
+                await operations.execute_remediate(
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                )
+
+
 class ExecuteCommitSyncTests(unittest.IsolatedAsyncioTestCase):
     def _patches(
         self, run_sync: mock.AsyncMock

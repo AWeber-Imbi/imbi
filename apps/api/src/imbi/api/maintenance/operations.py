@@ -98,6 +98,36 @@ async def execute_analysis(
     return 'succeeded'
 
 
+async def execute_remediate(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Apply every fixable Project Doctor finding for one project.
+
+    Skipped when the project has no persisted report or no fixable
+    findings.  Each finding is applied best-effort; if any remediation
+    reports ``failed`` the item is a failure (with a count), otherwise it
+    succeeded.  The report is re-run and persisted so it reflects the
+    fixes, mirroring the per-project ``remediate-all`` endpoint.
+    """
+    from imbi_api.endpoints import project_analysis
+
+    org_slug = await _org_slug_for(db, project_id)
+    if org_slug is None:
+        return 'skipped'
+    response = await project_analysis.remediate_all_for_project(
+        db, org_slug=org_slug, project_id=project_id, auth=_system_auth()
+    )
+    if response is None or not response.outcomes:
+        return 'skipped'
+    failed = sum(1 for o in response.outcomes if o.result.status == 'failed')
+    if failed:
+        raise MaintenanceItemFailed(
+            f'{failed} of {len(response.outcomes)} remediations failed; '
+            'see server logs for details.'
+        )
+    return 'succeeded'
+
+
 async def execute_commit_sync(
     db: graph.Graph, client: valkey.Valkey, project_id: str
 ) -> ExecuteOutcome:

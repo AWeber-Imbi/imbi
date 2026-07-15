@@ -663,30 +663,26 @@ async def remediate_project_finding(
     return RemediateResponse(result=result, report=report)
 
 
-@project_analysis_router.post(
-    '/remediate-all', response_model=RemediateAllResponse
-)
-async def remediate_all_project_findings(
+async def remediate_all_for_project(
+    db: graph.Graph,
+    *,
     org_slug: str,
     project_id: str,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('project:write')),
-    ],
-) -> RemediateAllResponse:
-    """Apply every fixable finding in the current report (best-effort).
+    auth: permissions.AuthContext,
+) -> RemediateAllResponse | None:
+    """Apply every fixable finding in a project's report (best-effort).
 
-    Each finding is remediated independently; a failure on one is
-    captured in its outcome rather than aborting the rest. Analysis is
+    Returns ``None`` when the project has no persisted report (nothing to
+    remediate). Each finding is remediated independently; a failure on one
+    is captured in its outcome rather than aborting the rest. Analysis is
     re-run once at the end so the returned report reflects every fix.
+
+    Shared by the per-project endpoint and the ``remediate`` maintenance
+    sweep, so both apply findings identically.
     """
     report = await _fetch_report(db, project_id)
     if report is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail='No analysis report exists for this project',
-        )
+        return None
     # Resolve plugins and project-type slugs once and reuse them across
     # every finding, rather than re-running these graph queries per
     # finding inside _remediate_one.
@@ -730,3 +726,27 @@ async def remediate_all_project_findings(
         )
     fresh = await run_and_persist(db, org_slug, project_id, auth)
     return RemediateAllResponse(outcomes=outcomes, report=fresh)
+
+
+@project_analysis_router.post(
+    '/remediate-all', response_model=RemediateAllResponse
+)
+async def remediate_all_project_findings(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('project:write')),
+    ],
+) -> RemediateAllResponse:
+    """Apply every fixable finding in the current report (best-effort)."""
+    response = await remediate_all_for_project(
+        db, org_slug=org_slug, project_id=project_id, auth=auth
+    )
+    if response is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail='No analysis report exists for this project',
+        )
+    return response

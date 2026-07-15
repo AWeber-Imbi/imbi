@@ -21,6 +21,7 @@ from imbi_api.pr_sync import queue as pr_sync_queue
 
 MaintenanceSlug = typing.Literal[
     'run-analysis',
+    'remediate',
     'rescore',
     'deployment-resync',
     'commit-sync',
@@ -57,6 +58,18 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_analysis,
+        ),
+        OperationDefinition(
+            slug='remediate',
+            label='Remediate Findings',
+            description=(
+                'Apply every fixable Project Doctor finding for every '
+                'project, then refresh its report. Projects with no '
+                'report or no fixable findings are skipped.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_remediate,
         ),
         OperationDefinition(
             slug='rescore',
