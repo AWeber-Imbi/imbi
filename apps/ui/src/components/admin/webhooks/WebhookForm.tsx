@@ -469,7 +469,7 @@ export function WebhookForm({
                 <>
                   <div>
                     <Label className="text-secondary mb-1.5 block text-sm">
-                      Identifier Selector (JSON Path)
+                      Identifier Selector (JSON Pointer)
                     </Label>
                     <Input
                       className={`font-mono text-sm ${
@@ -477,7 +477,7 @@ export function WebhookForm({
                       }`}
                       disabled={isLoading}
                       onChange={(e) => setIdentifierSelector(e.target.value)}
-                      placeholder="e.g., $.repository.full_name"
+                      placeholder="e.g., /repository/id"
                       value={identifierSelector}
                     />
                     {errors.identifier_selector && (
@@ -491,8 +491,8 @@ export function WebhookForm({
                       </div>
                     )}
                     <p className="text-tertiary mt-1 text-xs">
-                      JSON Path expression to extract the project identifier
-                      from the webhook payload.
+                      JSON Pointer to extract the project identifier from the
+                      webhook payload.
                     </p>
                   </div>
 
