@@ -169,6 +169,38 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
     @respx.mock
+    async def test_repo_gone_404_skips(self) -> None:
+        # IMBI-36: a renamed/removed repo returns 404 on the pulls list;
+        # the backfill must skip cleanly (return 0, log a warning) so the
+        # worker doesn't emit a Sentry error.
+        pulls = respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        handler = pull_requests.GitHubPullRequestSync()
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert:
+            with self.assertLogs(pull_requests.LOGGER, level='WARNING') as cm:
+                count = await handler.sync_all_history(
+                    ctx=_ctx(), credentials=_CREDS
+                )
+        self.assertEqual(count, 0)
+        self.assertEqual(1, pulls.call_count)
+        insert.assert_not_awaited()
+        self.assertTrue(any('nothing to sync' in x for x in cm.output))
+
+    @respx.mock
+    async def test_pulls_non_404_propagates(self) -> None:
+        # A non-404 failure on the pulls list is a real error and must
+        # still propagate rather than be swallowed as "repo gone".
+        respx.get(f'{_REPO}/pulls').mock(
+            return_value=httpx.Response(500, json={'message': 'boom'})
+        )
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()):
+            with self.assertRaises(httpx.HTTPStatusError):
+                await pull_requests.GitHubPullRequestSync().sync_all_history(
+                    ctx=_ctx(), credentials=_CREDS
+                )
+
+    @respx.mock
     async def test_app_not_installed_skips(self) -> None:
         # IMBI-37: the shared GitHub App discovery 404s when the App is
         # not installed for the repo; the backfill must skip cleanly.
