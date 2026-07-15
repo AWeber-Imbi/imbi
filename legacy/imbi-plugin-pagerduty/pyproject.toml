@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-pagerduty"
-version = "2.13.3"
+version = "2.14.0"
 description = "PagerDuty lifecycle, webhook, and incidents plugins for Imbi"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common[databases]==2.13.3",
+  "imbi-common[databases]==2.14.0",
   "pydantic>=2",
 ]
 
@@ -24,7 +24,7 @@ dependencies = [
 dev = [
   "basedpyright",
   "coverage[toml]",
-  "imbi-common[server,databases]==2.13.3",
+  "imbi-common[server,databases]==2.14.0",
   "pre-commit",
   "pytest",
   "pytest-asyncio",
