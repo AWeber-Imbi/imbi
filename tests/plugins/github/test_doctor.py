@@ -98,6 +98,11 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].slug, 'exists-in')
         self.assertEqual(results[0].status, 'warn')
+        # The no-edge warning offers a Fix action to create the edge.
+        offer = results[0].remediation
+        self.assertIsNotNone(offer)
+        assert offer is not None
+        self.assertEqual(offer.id, _REPAIR_EDGE)
 
     async def test_warns_when_no_integration_flavor(self) -> None:
         # Without a valid integration flavor the host cannot be resolved.
@@ -407,10 +412,45 @@ class RemediateTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(PluginRemediationNotSupported):
             await plugin.remediate(_ctx(), _CREDS, 'bogus')
 
-    async def test_no_connection_failed(self) -> None:
+    async def test_no_service_binding_failed(self) -> None:
         plugin = GitHubDoctor()
         result = await plugin.remediate(
-            _ctx(connections=[]), _CREDS, _REPAIR_EDGE
+            _ctx(service_slug=None), _CREDS, _REPAIR_EDGE
+        )
+        self.assertEqual(result.status, 'failed')
+
+    async def test_github_link_repair_no_connection_failed(self) -> None:
+        # The github-repository link repair still requires an edge.
+        plugin = GitHubDoctor()
+        result = await plugin.remediate(
+            _ctx(connections=[]), _CREDS, _REPAIR_GITHUB_LINK
+        )
+        self.assertEqual(result.status, 'failed')
+
+    @respx.mock
+    async def test_edge_create_when_no_connection(self) -> None:
+        # No EXISTS_IN edge yet: the repo is resolved from the project
+        # links and a ServiceWriteback is emitted to create the edge.
+        repo_url = f'{_API_BASE}/repos/aweber/demo'
+        respx.get(repo_url).mock(
+            return_value=httpx.Response(200, json=_REPO_PAYLOAD)
+        )
+        plugin = GitHubDoctor()
+        ctx = _ctx(connections=[])
+        result = await plugin.remediate(ctx, _CREDS, _REPAIR_EDGE)
+        self.assertEqual(result.status, 'fixed')
+        assert ctx.service_writeback is not None
+        self.assertEqual(ctx.service_writeback.identifier, '134741')
+        self.assertEqual(ctx.service_writeback.canonical_url, _CANONICAL)
+        self.assertEqual(
+            ctx.service_writeback.dashboard_links, {_TPS_SLUG: _DASHBOARD}
+        )
+
+    async def test_edge_create_unresolvable_repo_failed(self) -> None:
+        # No edge and no resolvable link -> cannot determine the repo.
+        plugin = GitHubDoctor()
+        result = await plugin.remediate(
+            _ctx(connections=[], links={}), _CREDS, _REPAIR_EDGE
         )
         self.assertEqual(result.status, 'failed')
 
