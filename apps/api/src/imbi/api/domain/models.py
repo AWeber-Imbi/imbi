@@ -974,7 +974,10 @@ class WebhookCreate(pydantic.BaseModel):
     integration_slug: str | None = None
     identifier_selector: str | None = pydantic.Field(
         default=None,
-        description='JSON Path expression to extract project identifier',
+        description=(
+            'JSON Pointer that extracts the project identifier from the '
+            'webhook payload (e.g. /repository/id).'
+        ),
     )
     user_subject_selector: str | None = pydantic.Field(
         default=None,
@@ -1041,7 +1044,10 @@ class WebhookUpdate(pydantic.BaseModel):
     integration_slug: str | None = None
     identifier_selector: str | None = pydantic.Field(
         default=None,
-        description='JSON Path expression to extract project identifier',
+        description=(
+            'JSON Pointer that extracts the project identifier from the '
+            'webhook payload (e.g. /repository/id).'
+        ),
     )
     user_subject_selector: str | None = pydantic.Field(
         default=None,
