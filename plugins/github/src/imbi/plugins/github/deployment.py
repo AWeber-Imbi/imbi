@@ -322,15 +322,25 @@ class GitHubDeployment(DeploymentCapability):
             return value.strip()
         return default
 
-    @staticmethod
-    def _token(credentials: dict[str, str]) -> str:
-        token = credentials.get('access_token') or credentials.get('token')
-        if not token:
-            raise ValueError(
-                'GitHub deployment plugin requires an OAuth access token; '
-                'expected ``credentials["access_token"]``'
-            )
-        return token
+    async def _bearer(
+        self, ctx: PluginContext, credentials: dict[str, str]
+    ) -> str:
+        """Resolve the Bearer token for this deployment call.
+
+        Prefers the per-user OAuth token the host threads in as
+        ``access_token``; when a service configured with only GitHub App
+        credentials drives the call (e.g. the headless deployment-resync
+        sweep, which has no acting user), mints an installation token
+        from ``app_id`` + ``private_key`` instead.
+        """
+        # Local import: ``_app_auth`` imports this module for its shared
+        # HTTP helpers, so a top-level import here would be circular.
+        from imbi_plugin_github import _app_auth
+
+        owner, repo = self._owner_repo(ctx)
+        return await _app_auth.resolve_bearer(
+            credentials, self._api_base(ctx), owner, repo
+        )
 
     @contextlib.asynccontextmanager
     async def _client(
@@ -358,7 +368,7 @@ class GitHubDeployment(DeploymentCapability):
 
         client = httpx.AsyncClient(
             timeout=_HTTP_TIMEOUT_SECONDS,
-            headers=_auth_headers(self._token(credentials)),
+            headers=_auth_headers(await self._bearer(ctx, credentials)),
             base_url=self._repo_url(ctx),
             follow_redirects=True,
             event_hooks={'response': [_capture_redirect, _raise_on_401]},
