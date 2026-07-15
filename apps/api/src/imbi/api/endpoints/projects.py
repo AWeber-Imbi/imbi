@@ -3226,15 +3226,27 @@ async def delete_project(
     were assigned, or ``delete_repository=false`` short-circuited the
     dispatch.
     """
-    # Capture the lifecycle context bundle *before* the DETACH DELETE
-    # so the project's links / slug / type slugs survive the write and
-    # the downstream dispatcher doesn't try to look them up against a
-    # node that no longer exists.
-    bundle = (
-        await build_lifecycle_context_bundle(db, project_id)
-        if delete_repository
-        else None
-    )
+    # Capture the lifecycle context bundle *and* the resolved plugin
+    # bindings *before* the DETACH DELETE so both survive the write and
+    # the downstream dispatcher never looks them up against a node that
+    # no longer exists.  Resolving bindings after the delete raised
+    # ``LookupError`` -> a spurious "Project not found" (IMBI-3T).
+    bundle = None
+    resolved_lifecycle = None
+    if delete_repository:
+        try:
+            bundle = await build_lifecycle_context_bundle(db, project_id)
+            resolved_lifecycle = await resolve_all_capabilities(
+                db, project_id, 'lifecycle'
+            )
+        except Exception:
+            LOGGER.exception(
+                'Unable to snapshot lifecycle bindings for project %s; '
+                'proceeding with delete and skipping dispatch',
+                project_id,
+            )
+            bundle = None
+            resolved_lifecycle = None
 
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
@@ -3271,6 +3283,7 @@ async def delete_project(
                 'deleted',
                 auth,
                 bundle=bundle,
+                resolved_list=resolved_lifecycle,
             )
         except Exception:
             LOGGER.exception(

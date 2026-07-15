@@ -9,6 +9,7 @@ from urllib import parse as urlparse
 
 import fastapi
 import jwt
+import psycopg
 import pydantic
 from imbi_common import graph
 from imbi_common.auth import core
@@ -921,11 +922,29 @@ async def _handle_refresh_reuse(
         'SET t.revoked = true, t.revoked_at = {revoked_at} '
         'RETURN count(t) AS revoked_count'
     )
-    cascade_rows = await db.execute(
-        cascade,
-        {'family_id': family_id_val, 'revoked_at': revoked_at_iso},
-        columns=['revoked_count'],
-    )
+    # AGE sporadically raises "Entity failed to be updated" on this
+    # multi-row SET even when the entities exist -- transient write
+    # concurrency that clears on retry. Wrap the cascade in a short
+    # bounded retry loop so a leaked-token cascade isn't dropped.
+    cascade_rows: list[dict[str, typing.Any]] = []
+    for attempt in range(3):
+        try:
+            cascade_rows = await db.execute(
+                cascade,
+                {'family_id': family_id_val, 'revoked_at': revoked_at_iso},
+                columns=['revoked_count'],
+            )
+            break
+        except psycopg.errors.InternalError as e:
+            if 'Entity failed to be updated' not in str(e) or attempt == 2:
+                raise
+            LOGGER.warning(
+                'AGE cascade-revoke retry %d/3 for family %r: %s',
+                attempt + 1,
+                family_id_val,
+                e,
+            )
+            await asyncio.sleep(0.05 * (attempt + 1))
     cascaded = 0
     if cascade_rows:
         raw = graph.parse_agtype(cascade_rows[0].get('revoked_count'))

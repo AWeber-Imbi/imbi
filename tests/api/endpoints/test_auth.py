@@ -1330,6 +1330,61 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         third_call_params = self.mock_db.execute.call_args_list[2][0][1]
         self.assertEqual(third_call_params['family_id'], 'fam-leak')
 
+    def test_refresh_reuse_cascade_retries_on_age_write_error(self) -> None:
+        """The family cascade retries transient AGE write failures.
+
+        AGE sporadically raises ``InternalError: Entity failed to be
+        updated`` on the multi-row cascade SET even when the entities
+        exist. The write must be retried so a leaked-token cascade is
+        not dropped; here the first cascade attempt fails and the
+        second succeeds.
+        """
+        import psycopg
+        from imbi_common.auth import core
+
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+        refresh_token = core.create_refresh_token(
+            'test@example.com',
+            auth_settings=auth_settings,
+        )
+
+        self.mock_db.execute.side_effect = [
+            # Atomic revoke matches nothing (already revoked).
+            [],
+            # Reuse lookup finds the row revoked w/ family_id.
+            [{'revoked': True, 'family_id': 'fam-leak'}],
+            # First cascade attempt hits transient AGE write error.
+            psycopg.errors.InternalError('Entity failed to be updated: 3'),
+            # Retry succeeds and reports the siblings revoked.
+            [{'revoked_count': 3}],
+        ]
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+                return_value=auth_settings,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.auth.asyncio.sleep',
+                new_callable=mock.AsyncMock,
+            ) as mock_sleep,
+        ):
+            response = self.client.post(
+                '/auth/token/refresh',
+                json={'refresh_token': refresh_token},
+            )
+
+        self.assertEqual(response.status_code, 401)
+        # 4 execute() calls: atomic SET, reuse lookup, failed cascade,
+        # retried cascade.
+        self.assertEqual(self.mock_db.execute.call_count, 4)
+        mock_sleep.assert_awaited_once()
+        # Both cascade attempts carry the family_id from the lookup.
+        cascade_params = self.mock_db.execute.call_args_list[3][0][1]
+        self.assertEqual(cascade_params['family_id'], 'fam-leak')
+
 
 class LogoutTestCase(support.SharedAppTestCase):
     """Test logout endpoint."""

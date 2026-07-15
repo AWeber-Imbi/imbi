@@ -400,10 +400,22 @@ async def _list_impl(
 
     where = ' AND '.join(clauses)
     params['row_limit'] = limit + 1
+    # operations_log is sorted by ``(project_id, id)``, so ordering by
+    # ``occurred_at`` can't short-circuit the LIMIT against the sort key.
+    # ``SELECT * ... FINAL`` therefore reads and merges *every* column --
+    # including the unbounded ``description``/``notes`` text -- for the
+    # entire filter universe before sorting and discarding all but the
+    # page, exhausting ClickHouse memory. Select the page's keys first
+    # using only the light ``(occurred_at, id)`` columns (FINAL kept so
+    # dedup/tombstone hiding is honored), then read the heavy columns
+    # FINAL for just those rows.
     sql: str = (
-        'SELECT * FROM operations_log FINAL WHERE '  # noqa: S608
+        'SELECT * FROM operations_log FINAL '  # noqa: S608
+        'WHERE (occurred_at, id) IN ('
+        'SELECT occurred_at, id FROM operations_log FINAL WHERE '
         + where
-        + ' ORDER BY occurred_at DESC, id DESC LIMIT {row_limit:UInt32}'
+        + ' ORDER BY occurred_at DESC, id DESC LIMIT {row_limit:UInt32})'
+        ' ORDER BY occurred_at DESC, id DESC'
     )
 
     rows = await clickhouse.query(sql, params)

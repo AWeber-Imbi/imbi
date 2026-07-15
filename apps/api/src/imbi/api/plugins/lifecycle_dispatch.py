@@ -153,6 +153,7 @@ async def dispatch_lifecycle(
     auth: permissions.AuthContext,
     *,
     bundle: LifecycleContextBundle | None = None,
+    resolved_list: list[ResolvedCapability] | None = None,
     previous_project_slug: str | None = None,
     previous_project_type_slugs: list[str] | None = None,
     previous_team_slug: str | None = None,
@@ -169,11 +170,19 @@ async def dispatch_lifecycle(
 
     Pass ``bundle`` for events like ``'deleted'`` where the caller
     needs to capture project context before a destructive write;
-    otherwise the dispatcher looks the data up.  The optional
-    ``previous_*`` fields populate :class:`PluginContext` for plugins
-    that need a before/after view (``'updated'`` / ``'relocated'``).
+    otherwise the dispatcher looks the data up.  ``resolved_list`` is
+    the sibling escape hatch for the bound capabilities: on ``'deleted'``
+    the project node is already gone by dispatch time, so resolving its
+    bindings here would raise ``LookupError`` ("Project not found") --
+    the caller resolves them before the ``DETACH DELETE`` and passes
+    them in.  The optional ``previous_*`` fields populate
+    :class:`PluginContext` for plugins that need a before/after view
+    (``'updated'`` / ``'relocated'``).
     """
-    resolved_list = await resolve_all_capabilities(db, project_id, 'lifecycle')
+    if resolved_list is None:
+        resolved_list = await resolve_all_capabilities(
+            db, project_id, 'lifecycle'
+        )
     if not resolved_list:
         return []
 

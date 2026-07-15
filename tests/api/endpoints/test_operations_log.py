@@ -321,6 +321,32 @@ class ListEntriesTests(_OpsLogTestBase):
         response = self.client.get('/operations-log/?limit=501')
         self.assertEqual(response.status_code, 400)
 
+    def test_list_reads_payload_only_for_the_selected_page(self) -> None:
+        # operations_log is sorted by ``(project_id, id)``, so ordering
+        # by ``occurred_at`` can't short-circuit the LIMIT. Reading and
+        # merging every column (including the unbounded ``description``/
+        # ``notes`` text) for the whole filter universe before discarding
+        # all but the page exhausted ClickHouse memory. The query must
+        # pick the page keys from the light ``(occurred_at, id)`` columns
+        # in a subquery, then read the full row only for those keys.
+        self._stub_list([])
+        response = self.client.get('/operations-log/')
+        self.assertEqual(response.status_code, 200)
+        sql = self.mock_query.await_args_list[0].args[0]
+        # Outer query reads the full (heavy) row exactly once...
+        self.assertEqual(sql.count('SELECT * FROM operations_log FINAL'), 1)
+        # ...and only for the page selected by the light-column subquery.
+        self.assertIn('(occurred_at, id) IN (', sql)
+        self.assertIn(
+            'SELECT occurred_at, id FROM operations_log FINAL WHERE', sql
+        )
+        inner = sql.split('(occurred_at, id) IN (', 1)[1]
+        inner_page = inner.split('LIMIT', 1)[0]
+        self.assertNotIn('SELECT *', inner_page)
+        self.assertNotIn('description', inner_page)
+        self.assertNotIn('notes', inner_page)
+        self.assertIn('LIMIT {row_limit:UInt32}', inner)
+
     def test_list_project_slug_filter(self) -> None:
         self._stub_list(self._rows(1))
         response = self.client.get('/operations-log/?project_slug=imbi-api')

@@ -86,6 +86,17 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self._bundle_patcher.start()
         self.addCleanup(self._bundle_patcher.stop)
 
+        # ``delete_project`` resolves the bound lifecycle capabilities
+        # before the DETACH DELETE (so they survive the write); stub it
+        # so CRUD tests don't need to seed the binding-resolution
+        # ``db.execute`` side-effects. Dispatch tests override locally.
+        self._resolve_patcher = mock.patch(
+            'imbi_api.endpoints.projects.resolve_all_capabilities',
+            new=mock.AsyncMock(return_value=[]),
+        )
+        self._resolve_patcher.start()
+        self.addCleanup(self._resolve_patcher.stop)
+
         self.client = TestClient(self.test_app)
 
     def _project_data(self, **overrides: typing.Any) -> dict:
@@ -1108,6 +1119,38 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    def test_delete_succeeds_when_snapshot_raises(self) -> None:
+        """A lifecycle snapshot failure must not abort the delete.
+
+        ``build_lifecycle_context_bundle`` /
+        ``resolve_all_capabilities`` run before the ``DETACH DELETE``;
+        a transient failure there must be logged, the delete must still
+        proceed, and dispatch must be skipped (no complete snapshot).
+        """
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                new=mock.AsyncMock(side_effect=RuntimeError('boom')),
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+        ):
+            response = self.client.delete(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'lifecycle_results': []})
+        mock_dispatch.assert_not_awaited()
+
     # -- Archive -------------------------------------------------------
 
     def test_archive_success(self) -> None:
@@ -1797,6 +1840,72 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.json(), {'lifecycle_results': []})
         mock_dispatch.assert_not_awaited()
         mock_bundle.assert_not_awaited()
+
+    def test_delete_resolves_bindings_before_delete(self) -> None:
+        """Lifecycle bindings resolve *before* the DETACH DELETE.
+
+        Regression for IMBI-3T: resolving the project's plugin bindings
+        after the node was deleted raised ``LookupError`` -> a spurious
+        "Project not found" logged from the dispatcher. The endpoint must
+        resolve them first and hand the snapshot to ``dispatch_lifecycle``
+        so no post-delete lookup happens.
+        """
+        from imbi_api.plugins.resolution import ResolvedCapability
+
+        resolved = ResolvedCapability(
+            integration_id='p-a',
+            integration_slug='gh-a',
+            plugin_slug='gh-a',
+            kind='lifecycle',
+            entry=mock.MagicMock(),
+            capability_cls=lambda: mock.AsyncMock(),  # type: ignore[arg-type]
+            integration={},
+            integration_options={},
+            capability_options={},
+            encrypted_credentials={},
+        )
+
+        order: list[str] = []
+
+        async def _resolve(
+            *_a: typing.Any, **_k: typing.Any
+        ) -> list[ResolvedCapability]:
+            order.append('resolve')
+            return [resolved]
+
+        async def _delete(*_a: typing.Any, **_k: typing.Any) -> list[dict]:
+            order.append('delete')
+            return [{'deleted': 1}]
+
+        self.mock_db.execute.side_effect = _delete
+
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.resolve_all_capabilities',
+                new=mock.AsyncMock(side_effect=_resolve),
+            ),
+            mock.patch(
+                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                new=mock.AsyncMock(return_value=[]),
+            ) as mock_dispatch,
+        ):
+            response = self.client.delete(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        # Bindings resolved before the DETACH DELETE ran.
+        self.assertEqual(order, ['resolve', 'delete'])
+        # ...and the pre-delete snapshot was handed to the dispatcher so
+        # it never re-resolves against the deleted node.
+        mock_dispatch.assert_awaited_once()
+        self.assertEqual(
+            mock_dispatch.await_args.kwargs['resolved_list'], [resolved]
+        )
 
     def test_preview_returns_would_relocate_per_plugin(self) -> None:
         """``GET /lifecycle/preview`` fans out per plugin and flags diffs.
