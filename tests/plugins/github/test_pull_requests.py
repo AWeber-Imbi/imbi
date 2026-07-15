@@ -188,6 +188,33 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any('nothing to sync' in x for x in cm.output))
 
     @respx.mock
+    async def test_later_page_404_keeps_partial(self) -> None:
+        # A 404 on a later page (not the first) stops pagination but keeps
+        # the PRs already collected; the count and warning must reflect the
+        # partial result rather than claiming "nothing to sync".
+        link = f'<{_REPO}/pulls?page=2>; rel="next"'
+        pulls = respx.get(f'{_REPO}/pulls').mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[_pr(id=1, number=1)],
+                    headers={'link': link},
+                ),
+                httpx.Response(404, json={'message': 'Not Found'}),
+            ]
+        )
+        handler = pull_requests.GitHubPullRequestSync()
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert:
+            with self.assertLogs(pull_requests.LOGGER, level='WARNING') as cm:
+                count = await handler.sync_all_history(
+                    ctx=_ctx(), credentials=_CREDS
+                )
+        self.assertEqual(count, 1)
+        self.assertEqual(2, pulls.call_count)
+        insert.assert_awaited_once()
+        self.assertTrue(any('stopping after 1 PRs' in x for x in cm.output))
+
+    @respx.mock
     async def test_pulls_non_404_propagates(self) -> None:
         # A non-404 failure on the pulls list is a real error and must
         # still propagate rather than be swallowed as "repo gone".

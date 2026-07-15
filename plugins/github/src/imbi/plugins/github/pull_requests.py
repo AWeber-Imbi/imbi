@@ -135,11 +135,19 @@ async def _fetch_all_prs(
             client, 'GET', '/pulls', params=params, max_wait=max_wait
         )
         if resp.status_code == 404:
-            LOGGER.warning(
-                'github-pr-sync: repository %s returned 404 (renamed or '
-                'removed); nothing to sync',
-                str(client.base_url).rstrip('/'),
-            )
+            if out:
+                LOGGER.warning(
+                    'github-pr-sync: repository %s returned 404; stopping '
+                    'after %d PRs',
+                    str(client.base_url).rstrip('/'),
+                    len(out),
+                )
+            else:
+                LOGGER.warning(
+                    'github-pr-sync: repository %s returned 404 (renamed '
+                    'or removed); nothing to sync',
+                    str(client.base_url).rstrip('/'),
+                )
             return out
         resp.raise_for_status()
         page: list[dict[str, typing.Any]] = resp.json()
@@ -310,8 +318,10 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         only when the host or repository can't be resolved; ClickHouse
         failures are swallowed (the count reflects what was written).
         Returns ``0`` (logged as a warning, no error) when the GitHub App
-        is not installed for the repo or the repo was renamed/removed, so
-        neither condition fails the backfill worker.
+        is not installed for the repo, or when the first page returns 404
+        (repo renamed/removed); a 404 on a later page stops pagination and
+        returns the PRs collected so far.  Neither condition fails the
+        backfill worker.
         Propagates :class:`PluginRateLimited` when a GitHub rate-limit
         reset is further out than ``_BACKFILL_MAX_WAIT_SECONDS`` so the
         host can pause the worker and keep the job queued until GitHub
