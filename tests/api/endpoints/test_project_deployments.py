@@ -6,6 +6,7 @@ import typing
 import unittest
 from unittest import mock
 
+import fastapi
 from fastapi import testclient
 from imbi_common import graph
 from imbi_common.llm import AnthropicClient, CompletionResult
@@ -1475,6 +1476,66 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
                 '/organizations/myorg/projects/proj1/deployments/resync'
             )
         self.assertEqual(response.status_code, 403)
+
+    def test_resync_falls_back_to_app_credentials_without_identity(
+        self,
+    ) -> None:
+        """Identity-gated integration + no user connection must not 401.
+
+        The backfill acts with the Integration's own GitHub App
+        credentials (which the plugin turns into an installation token),
+        so a headless sweep still records deployments.
+        """
+        self._arm([self._observed()], release_exists=False)
+
+        def _identity_required(
+            _db: object, _ctx: object, _resolved: object, _auth: object
+        ) -> typing.NoReturn:
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail={
+                    'error': 'identity_required',
+                    'integration_id': 'int-1',
+                    'start_url': '/me/identities/int-1/start',
+                },
+            )
+
+        self.mocks['attach_identity'].side_effect = _identity_required
+        self.mocks['decrypt_integration_credentials'].return_value = {
+            'app_id': '971',
+            'private_key': 'PEM',
+        }
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['observed'], 1)
+
+    def test_resync_503_when_no_service_credentials(self) -> None:
+        """No identity connection *and* no service secret is a genuine
+        misconfiguration -- surface it rather than silently no-op."""
+        self._arm([self._observed()])
+
+        def _identity_required(
+            _db: object, _ctx: object, _resolved: object, _auth: object
+        ) -> typing.NoReturn:
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail={
+                    'error': 'identity_required',
+                    'integration_id': 'int-1',
+                    'start_url': '/me/identities/int-1/start',
+                },
+            )
+
+        self.mocks['attach_identity'].side_effect = _identity_required
+        self.mocks['decrypt_integration_credentials'].return_value = {}
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 503, response.text)
 
 
 class FallbackNotesTestCase(unittest.TestCase):

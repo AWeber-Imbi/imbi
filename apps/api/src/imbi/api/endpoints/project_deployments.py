@@ -328,8 +328,19 @@ async def _resolve_and_context(
     *,
     source: str | None = None,
     environment: str | None = None,
+    best_effort_identity: bool = False,
 ) -> tuple[ResolvedCapability, PluginContext, dict[str, str]]:
-    """Common boilerplate: resolve plugin, attach identity, build creds."""
+    """Common boilerplate: resolve plugin, attach identity, build creds.
+
+    When ``best_effort_identity`` is set (the resync/backfill path), a
+    missing per-user identity connection is not fatal: the actor is still
+    stamped for attribution, but credential resolution falls back to the
+    Integration's own service credentials (a PAT or GitHub App) rather
+    than raising ``identity_required``.  This lets the headless
+    deployment-resync sweep -- which acts as a synthetic principal with
+    no user -- backfill via the App installation token, mirroring how
+    project analysis and pr-sync already behave.
+    """
     resolved = await resolve_capability(db, project_id, 'deployment', source)
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
@@ -356,7 +367,10 @@ async def _resolve_and_context(
         project_links=project_links,
         project_type_slugs=project_type_slugs,
     )
-    ctx = await attach_identity(db, ctx, resolved, auth)
+    if best_effort_identity:
+        ctx = await _attach_identity_best_effort(db, ctx, resolved, auth)
+    else:
+        ctx = await attach_identity(db, ctx, resolved, auth)
 
     if ctx.identity and ctx.identity.access_token:
         credentials: dict[str, str] = {
@@ -366,8 +380,8 @@ async def _resolve_and_context(
         credentials = decrypt_integration_credentials(
             resolved.encrypted_credentials
         )
-        if not credentials.get('access_token') and not credentials.get(
-            'token'
+        if not _has_service_credentials(
+            credentials, allow_app=best_effort_identity
         ):
             raise fastapi.HTTPException(
                 status_code=503,
@@ -377,6 +391,56 @@ async def _resolve_and_context(
                 ),
             )
     return resolved, ctx, credentials
+
+
+async def _attach_identity_best_effort(
+    db: graph.Graph,
+    ctx: PluginContext,
+    resolved: ResolvedCapability,
+    auth: permissions.AuthContext,
+) -> PluginContext:
+    """Attach the actor's identity when available, else proceed without.
+
+    Resync backfills historical remote activity and must not hard-fail
+    when the acting principal (or a headless sweep) has no per-user
+    identity connection.  On ``identity_required`` we keep the actor
+    stamped and let the caller fall back to the Integration's service
+    credentials.
+    """
+    try:
+        return await attach_identity(db, ctx, resolved, auth)
+    except fastapi.HTTPException as exc:
+        detail: object = exc.detail
+        if not (
+            isinstance(detail, dict)
+            and typing.cast('dict[str, object]', detail).get('error')
+            == 'identity_required'
+        ):
+            raise
+        LOGGER.info(
+            'No identity connection for the deployment integration on '
+            'project %s; falling back to service credentials',
+            ctx.project_id,
+        )
+        actor_user_id = auth.user.id if auth.user else None
+        return ctx.model_copy(update={'actor_user_id': actor_user_id})
+
+
+def _has_service_credentials(
+    credentials: dict[str, str], *, allow_app: bool
+) -> bool:
+    """Whether *credentials* carry a usable non-identity secret.
+
+    A PAT (``access_token``/``token``) always qualifies.  GitHub App
+    credentials (``app_id`` + ``private_key``) qualify only when
+    ``allow_app`` is set -- the backfill paths that can mint an
+    installation token without an acting user.
+    """
+    if credentials.get('access_token') or credentials.get('token'):
+        return True
+    return allow_app and bool(
+        credentials.get('app_id') and credentials.get('private_key')
+    )
 
 
 async def _resolve_tag_formats(
@@ -783,7 +847,12 @@ async def resync_for_project(
     """
     summary = ResyncSummary(projects=1)
     resolved, ctx, credentials = await _resolve_and_context(
-        db, org_slug, project_id, auth, source=source
+        db,
+        org_slug,
+        project_id,
+        auth,
+        source=source,
+        best_effort_identity=True,
     )
     deployment_capability = resolved.entry.manifest.get_capability(
         'deployment'
