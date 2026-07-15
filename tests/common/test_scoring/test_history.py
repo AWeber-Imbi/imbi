@@ -40,6 +40,9 @@ class RecordScoreChangeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(80.0, row[2])
         self.assertEqual(70.0, row[3])
         self.assertEqual('attribute_change', row[4])
+        query = graph.execute.call_args.args[0]
+        self.assertTrue(query.rstrip().endswith('RETURN p'))
+        self.assertEqual(['p'], graph.execute.call_args.kwargs['columns'])
 
     async def test_age_failure_leaves_history_durable(self) -> None:
         clickhouse = mock.AsyncMock()
@@ -65,6 +68,8 @@ class ClearScoreTests(unittest.IsolatedAsyncioTestCase):
         query = graph.execute.call_args.args[0]
         self.assertIn('p.score = null', query)
         self.assertIn('p.previous_score = {previous_score}', query)
+        self.assertTrue(query.rstrip().endswith('RETURN p'))
+        self.assertEqual(['p'], graph.execute.call_args.kwargs['columns'])
         params = graph.execute.call_args.args[1]
         self.assertEqual('proj-id', params['id'])
         self.assertEqual(75.0, params['previous_score'])

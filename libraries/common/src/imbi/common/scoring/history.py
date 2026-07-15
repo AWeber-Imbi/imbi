@@ -30,8 +30,10 @@ async def clear_score(
     """
     await database.execute(
         'MATCH (p:Project {{id: {id}}})'
-        ' SET p.previous_score = {previous_score}, p.score = null',
+        ' SET p.previous_score = {previous_score}, p.score = null'
+        ' RETURN p',
         {'id': project.id, 'previous_score': project.score},
+        columns=['p'],
     )
 
 
@@ -65,10 +67,12 @@ async def record_score_change(
     await clickhouse.insert('score_history', [row], _HISTORY_COLUMNS)
     await database.execute(
         'MATCH (p:Project {{id: {id}}})'
-        ' SET p.score = {score}, p.previous_score = {previous_score}',
+        ' SET p.score = {score}, p.previous_score = {previous_score}'
+        ' RETURN p',
         {
             'id': project.id,
             'score': new_score,
             'previous_score': previous_score,
         },
+        columns=['p'],
     )
