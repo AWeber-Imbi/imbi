@@ -33,6 +33,18 @@ from imbi_plugin_github.deployment import (
 
 LOGGER = logging.getLogger(__name__)
 
+
+class AppNotInstalledError(Exception):
+    """The GitHub App is not installed for the target repository.
+
+    Raised by :func:`_discover_installation_id` when GitHub answers the
+    installation lookup with a 404 -- the App has not been installed on
+    the repo/org, or the repo was renamed/removed.  Sync callers treat
+    this as a clean skip rather than a hard failure, so an uninstalled
+    App never surfaces as a Sentry error on a backfill worker.
+    """
+
+
 _HTTP_TIMEOUT_SECONDS = 10.0
 # GitHub rejects an App JWT whose ``exp`` is more than 10 minutes out;
 # sign for 9 to leave room for clock skew between us and GitHub.
@@ -114,11 +126,15 @@ async def _discover_installation_id(
     client: httpx.AsyncClient, owner: str, repo: str
 ) -> str:
     resp = await client.get(f'/repos/{owner}/{repo}/installation')
+    if resp.status_code == 404:
+        raise AppNotInstalledError(
+            f'no GitHub App installation found for {owner}/{repo}'
+        )
     resp.raise_for_status()
     data = typing.cast('dict[str, typing.Any]', resp.json())
     install_id = data.get('id')
     if install_id is None:
-        raise ValueError(
+        raise AppNotInstalledError(
             f'no GitHub App installation found for {owner}/{repo}'
         )
     return str(install_id)

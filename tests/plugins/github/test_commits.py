@@ -1337,6 +1337,43 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, token_route.call_count)
 
     @respx.mock
+    async def test_app_not_installed_skips(self) -> None:
+        # IMBI-37: a backfill for a repo the GitHub App isn't installed
+        # on must skip cleanly -- return (0, 0), log a warning -- rather
+        # than fail the worker with a Sentry error.
+        _app_auth.reset_cache()
+        self.addCleanup(_app_auth.reset_cache)
+        discovery = respx.get(
+            'https://api.github.com/repos/octo/demo/installation'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        creds = {'app_id': '971', 'private_key': _APP_KEY_PEM}
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            with self.assertLogs(commits.LOGGER, level='WARNING') as cm:
+                result = await commits.GitHubCommitSync().sync_all_history(
+                    ctx=self._ctx(), credentials=creds
+                )
+        self.assertEqual((0, 0), result)
+        self.assertEqual(1, discovery.call_count)
+        insert.assert_not_awaited()
+        self.assertTrue(any('skipping backfill' in x for x in cm.output))
+
+    @respx.mock
+    async def test_app_discovery_non_404_propagates(self) -> None:
+        # A non-404 discovery failure is a real error and must NOT be
+        # swallowed as an app-not-installed skip.
+        _app_auth.reset_cache()
+        self.addCleanup(_app_auth.reset_cache)
+        respx.get('https://api.github.com/repos/octo/demo/installation').mock(
+            return_value=httpx.Response(500, json={'message': 'boom'})
+        )
+        creds = {'app_id': '971', 'private_key': _APP_KEY_PEM}
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            with self.assertRaises(httpx.HTTPStatusError):
+                await commits.GitHubCommitSync().sync_all_history(
+                    ctx=self._ctx(), credentials=creds
+                )
+
+    @respx.mock
     async def test_annotated_tags_enriched_with_metadata(self) -> None:
         self._mock_default_branch()
         respx.get(f'{self._REPO}/commits').mock(
