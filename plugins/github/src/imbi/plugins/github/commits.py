@@ -254,30 +254,11 @@ async def _resolve_bearer(
 ) -> str:
     """Resolve the Bearer token used for the repo's GitHub API calls.
 
-    Prefers an explicit PAT (``access_token``/``token``).  Otherwise
-    mints a short-lived GitHub App installation token from ``app_id`` +
-    ``private_key`` (with an optional ``installation_id`` that skips
-    per-repo installation discovery).  Tokens are cached process-wide by
-    :mod:`imbi_plugin_github._app_auth`.
+    Thin wrapper over :func:`imbi_plugin_github._app_auth.resolve_bearer`
+    (the single source of truth), kept as a module-local name for the
+    commit-sync call sites and tests.
     """
-    token = credentials.get('access_token') or credentials.get('token')
-    if token:
-        return token
-    app_id = credentials.get('app_id')
-    private_key = credentials.get('private_key')
-    if app_id and private_key:
-        return await _app_auth.installation_token(
-            base=base,
-            app_id=app_id,
-            private_key=private_key,
-            installation_id=credentials.get('installation_id') or None,
-            owner=owner,
-            repo=repo,
-        )
-    raise ValueError(
-        'github-commit-sync requires either an access_token (PAT) or '
-        'app_id + private_key (GitHub App) credentials'
-    )
+    return await _app_auth.resolve_bearer(credentials, base, owner, repo)
 
 
 def _resolve(pointer: jsonpointer.JsonPointer, event: object) -> object:

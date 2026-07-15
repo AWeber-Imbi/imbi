@@ -193,3 +193,37 @@ async def installation_token(
         _token_deadline(expires_at),
     )
     return token
+
+
+async def resolve_bearer(
+    credentials: dict[str, str], base: str, owner: str, repo: str
+) -> str:
+    """Resolve the Bearer token used for a repo's GitHub API calls.
+
+    Prefers an explicit PAT (``access_token``/``token``).  Otherwise mints
+    a short-lived GitHub App installation token from ``app_id`` +
+    ``private_key`` (with an optional ``installation_id`` that skips
+    per-repo installation discovery).  Tokens are cached process-wide.
+
+    Shared by every host-agnostic behavioral plugin (commit-sync,
+    pr-sync, deployment) so a service configured with only App
+    credentials -- and therefore no acting user -- can still act.
+    """
+    token = credentials.get('access_token') or credentials.get('token')
+    if token:
+        return token
+    app_id = credentials.get('app_id')
+    private_key = credentials.get('private_key')
+    if app_id and private_key:
+        return await installation_token(
+            base=base,
+            app_id=app_id,
+            private_key=private_key,
+            installation_id=credentials.get('installation_id') or None,
+            owner=owner,
+            repo=repo,
+        )
+    raise ValueError(
+        'GitHub plugin requires either an access_token (PAT) or '
+        'app_id + private_key (GitHub App) credentials'
+    )

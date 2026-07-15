@@ -1,5 +1,6 @@
 """Smoke tests for the GitHub deployment capability handler."""
 
+import asyncio
 import datetime
 import json
 import time
@@ -256,12 +257,15 @@ class ManifestTestCase(unittest.TestCase):
         dep._record_checks_disabled({}, 'github.com', 'octo', 'demo')
         self.assertEqual(dep._CHECKS_DISABLED_TOKENS, original)
 
-    def test_token_required(self) -> None:
+    def test_bearer_requires_credentials(self) -> None:
         with self.assertRaises(ValueError):
-            GitHubDeployment._token({})
+            asyncio.run(GitHubDeployment()._bearer(_ctx(), {}))
 
-    def test_token_accepts_token_alias(self) -> None:
-        self.assertEqual(GitHubDeployment._token({'token': 'abc'}), 'abc')
+    def test_bearer_accepts_token_alias(self) -> None:
+        token = asyncio.run(
+            GitHubDeployment()._bearer(_ctx(), {'token': 'abc'})
+        )
+        self.assertEqual(token, 'abc')
 
     def test_api_base_dot_com(self) -> None:
         plugin = GitHubDeployment()
@@ -851,6 +855,56 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_app_credentials_mint_installation_token(self) -> None:
+        # A service configured with only GitHub App credentials (no acting
+        # user, e.g. the headless deployment-resync sweep) must mint an
+        # installation token and still backfill deployments.
+        from imbi_plugin_github import _app_auth
+        from tests.test_commits import _APP_KEY_PEM, _FAR_FUTURE
+
+        _app_auth.reset_cache()
+        self.addCleanup(_app_auth.reset_cache)
+        token_route = respx.post(
+            'https://api.github.com/app/installations/42/access_tokens'
+        ).mock(
+            return_value=httpx.Response(
+                201, json={'token': 'ghs_minted', 'expires_at': _FAR_FUTURE}
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '1'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 7,
+                        'sha': 'appsha',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/7/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(),
+            {
+                'app_id': '971',
+                'private_key': _APP_KEY_PEM,
+                'installation_id': '42',
+            },
+            ['production'],
+        )
+        self.assertTrue(token_route.called)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].sha, 'appsha')
+
     @respx.mock
     async def test_one_env_one_deployment_success(self) -> None:
         respx.get(
