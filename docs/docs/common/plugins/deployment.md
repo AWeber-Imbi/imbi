@@ -117,7 +117,11 @@ implement only what the remote supports.
   Imbi user, populate `creator` (the remote login, for display) and
   `creator_subject` (the remote's stable identity subject — e.g. the
   numeric GitHub user id); the host resolves the latter through the
-  Integration's identity capability.
+  Integration's identity capability. When the deployment targets a tagged
+  release, populate `release_notes` with the release's notes body (e.g. a
+  GitHub release's "What's Changed" markdown); the host persists it as the
+  `Release` node's notes, distinct from the short `description` deploy
+  note.
 
 ## Hints
 

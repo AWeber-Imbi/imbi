@@ -830,6 +830,13 @@ class RemoteDeployment(pydantic.BaseModel):
     run_url: str | None = None
     deployment_url: str | None = None
     description: str | None = None
+    #: The remote release's notes body (e.g. a GitHub release's
+    #: "What's Changed" markdown) when the deployment targets a tagged
+    #: release the capability can resolve one for.  Distinct from
+    #: ``description`` (a short deploy note): the host persists this as the
+    #: ``Release`` node's notes.  ``None`` when the remote has no release
+    #: body for the deployed ref.
+    release_notes: str | None = None
     #: Identifier (typically a username/login) of whoever originated the
     #: deployment on the remote. ``None`` when the remote doesn't expose
     #: the creator or the capability can't determine one.
@@ -1266,7 +1273,10 @@ class DeploymentCapability(CapabilityHandler):
         Capabilities should ignore environments their remote does not know
         about (rather than raising) so a partial resync still succeeds.
         Returned events MUST carry a stable ``external_run_id`` so the
-        host can dedupe.
+        host can dedupe.  When a deployment targets a tagged release,
+        populate ``release_notes`` with the release's notes body (distinct
+        from the short ``description`` deploy note) so the host can persist
+        it as the ``Release`` node's notes.
         """
         del ctx, credentials, environments, limit
         raise NotImplementedError
