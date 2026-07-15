@@ -1217,6 +1217,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         external_run_id: str = '12345',
         creator: str | None = 'octocat',
         creator_subject: str | None = None,
+        release_notes: str | None = None,
     ) -> RemoteDeployment:
         return RemoteDeployment(
             environment=environment,
@@ -1232,6 +1233,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
                 'https://api.github.com/repos/octo/demo/deployments/12345'
             ),
             description='Bump foo',
+            release_notes=release_notes,
             creator=creator,
             creator_subject=creator_subject,
         )
@@ -1281,6 +1283,46 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         upsert_call = self.mocks['upsert_release_node'].call_args
         self.assertEqual(upsert_call.kwargs['tag'], 'v1.2.3')
         self.assertEqual(upsert_call.kwargs['committish'], 'deadbee')
+
+    def test_resync_prefers_release_notes_over_description(self) -> None:
+        # A deployment against a release tag carries the release body; it
+        # becomes the Release node's notes while the short deploy
+        # description still supplies the title.
+        self._arm(
+            [
+                self._observed(
+                    ref='v2.0.0',
+                    sha='deadbeefcafebabe',
+                    release_notes="## What's Changed\n- servicelib",
+                )
+            ],
+            release_exists=False,
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        upsert_call = self.mocks['upsert_release_node'].call_args
+        self.assertEqual(
+            upsert_call.kwargs['notes_markdown'],
+            "## What's Changed\n- servicelib",
+        )
+        self.assertEqual(upsert_call.kwargs['title'], 'Bump foo')
+
+    def test_resync_falls_back_to_description_without_release_notes(
+        self,
+    ) -> None:
+        # No release body (branch/SHA deploy) keeps the prior behavior:
+        # the short deploy description supplies the notes.
+        self._arm([self._observed(release_notes=None)], release_exists=False)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        upsert_call = self.mocks['upsert_release_node'].call_args
+        self.assertEqual(upsert_call.kwargs['notes_markdown'], 'Bump foo')
 
     def test_resync_400_when_plugin_opts_out(self) -> None:
         # Override the resolved plugin to advertise the no-sync flavor.

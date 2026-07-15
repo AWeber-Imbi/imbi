@@ -999,7 +999,7 @@ async def _apply_remote_deployment(
         tag=tag,
         committish=committish,
         title=title,
-        notes_markdown=observed.description or '',
+        notes_markdown=observed.release_notes or observed.description or '',
         release_url=observed.deployment_url,
         created_by=recorded_by,
     )
