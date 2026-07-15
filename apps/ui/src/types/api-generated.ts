@@ -3958,10 +3958,6 @@ export interface paths {
         /**
          * Remediate All Project Findings
          * @description Apply every fixable finding in the current report (best-effort).
-         *
-         *     Each finding is remediated independently; a failure on one is
-         *     captured in its outcome rather than aborting the rest. Analysis is
-         *     re-run once at the end so the returned report reflects every fix.
          */
         post: operations["remediate_all_project_findings_organizations__org_slug__projects__project_id__analysis_remediate_all_post"];
         delete?: never;
