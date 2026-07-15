@@ -11,10 +11,12 @@ if [ -n "$conflict_files" ]; then
   done || exit 1
 fi
 
-# Check for large files (>500KB) among staged files (skip lock files)
+# Check for large files (>500KB) among staged files (skip lock files and
+# generated API types)
 git diff --cached --diff-filter=ACM --name-only | while read -r file; do
   case "$file" in
     *-lock.json|*.lock) continue ;;
+    src/types/api-generated.ts) continue ;;
   esac
   size=$(git cat-file -s ":$file" 2>/dev/null || echo 0)
   if [ "$size" -gt 512000 ]; then

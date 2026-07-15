@@ -4,6 +4,91 @@
  */
 
 export interface paths {
+    "/admin/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Installed Plugins
+         * @description List installed plugin packages with their enabled state.
+         */
+        get: operations["list_installed_plugins_admin_plugins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/plugins/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Installed Plugin
+         * @description Get details for a single installed plugin package.
+         */
+        get: operations["get_installed_plugin_admin_plugins__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/plugins/{slug}/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Plugin Registration
+         * @description Enable or disable an installed plugin package.
+         */
+        put: operations["update_plugin_registration_admin_plugins__slug__registration_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/plugins/{slug}/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plugin Edges
+         * @description Bulk-fetch every Environment-anchored edge of ``rel_type`` for an org.
+         *
+         *     Returns ``{env_slug: [edges]}`` for every environment in ``org_slug``,
+         *     including environments with no outgoing edge (empty list). Used by
+         *     the plugin admin UI to render the per-org edge mapping table without
+         *     one HTTP request per environment.
+         */
+        get: operations["list_plugin_edges_admin_plugins__slug__edges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/settings": {
         parameters: {
             query?: never;
@@ -141,6 +226,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/login-providers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Login Providers
+         * @description List every global (org-less) login-provider Integration.
+         */
+        get: operations["list_login_providers_login_providers__get"];
+        put?: never;
+        /**
+         * Create Login Provider
+         * @description Create a global login provider (an org-less identity Integration).
+         *
+         *     Raises:
+         *         400: The plugin is not installed or does not declare a
+         *             login-capable identity capability.
+         *         409: An Integration with this slug already exists.
+         */
+        post: operations["create_login_provider_login_providers__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/login-providers/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Login Provider
+         * @description Get a global login provider by slug.
+         *
+         *     Raises:
+         *         404: No org-less Integration with this slug exists.
+         */
+        get: operations["get_login_provider_login_providers__slug__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Login Provider
+         * @description Delete a global login provider.
+         *
+         *     Raises:
+         *         404: Login provider not found.
+         */
+        delete: operations["delete_login_provider_login_providers__slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Login Provider
+         * @description Partially update a global login provider (options/capabilities/name).
+         *
+         *     Raises:
+         *         404: No org-less Integration with this slug exists.
+         */
+        patch: operations["update_login_provider_login_providers__slug__patch"];
+        trace?: never;
+    };
+    "/login-providers/{slug}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Login Provider Credentials
+         * @description Patch a global login provider's encrypted credentials.
+         *
+         *     Raises:
+         *         404: Login provider not found.
+         *         409: Concurrent modification; retry.
+         */
+        put: operations["update_login_provider_credentials_login_providers__slug__credentials_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/login-providers/{slug}/used-as-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Used As Login
+         * @description Promote/demote a login provider as the instance-wide SSO provider.
+         *
+         *     At most one login provider may be active across the whole instance, so
+         *     promoting one demotes any other. Login happens before org context, so
+         *     this flag is global, not per-organization.
+         *
+         *     Raises:
+         *         404: Login provider not found.
+         */
+        put: operations["set_used_as_login_login_providers__slug__used_as_login_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/providers": {
         parameters: {
             query?: never;
@@ -178,20 +380,68 @@ export interface paths {
         put?: never;
         /**
          * Token
-         * @description OAuth2 token endpoint for client credentials grant.
+         * @description OAuth2 token endpoint (RFC 6749), form-encoded.
          *
-         *     Accepts form-encoded parameters per RFC 6749.
+         *     Dispatches on ``grant_type``:
          *
-         *     Args:
-         *         grant_type: Must be 'client_credentials'
-         *         client_id: Client credential ID (cc_...)
-         *         client_secret: Client secret
-         *         scope: Optional space-separated scopes
+         *     * ``authorization_code`` -- exchange a PKCE-protected code minted by
+         *       ``/auth/authorize`` for an Imbi access+refresh pair (public client,
+         *       no secret).
+         *     * ``refresh_token`` -- rotate an Imbi refresh token.
+         *     * ``client_credentials`` -- service-account machine-to-machine grant
+         *       (requires ``client_id`` + ``client_secret``).
          *
          *     Returns:
-         *         OAuth2TokenResponse with access and refresh tokens
+         *         OAuth2TokenResponse with access and (for code/refresh) refresh
+         *         tokens.
          */
         post: operations["token_auth_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Authorize
+         * @description OAuth2 authorization endpoint (authorization_code + PKCE).
+         *
+         *     Validates the client and redirect URI, requires an authenticated
+         *     Imbi user (bouncing through the SPA login if absent), then issues a
+         *     single-use authorization code bound to the PKCE challenge and the
+         *     user. The Imbi login may itself delegate to an upstream IdP — that
+         *     is transparent here; only the resulting Imbi session matters.
+         */
+        get: operations["authorize_auth_authorize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Oauth Client
+         * @description Dynamic Client Registration (RFC 7591) for public OAuth clients.
+         */
+        post: operations["register_oauth_client_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -305,15 +555,21 @@ export interface paths {
          * Oauth Login
          * @description Initiate OAuth login flow.
          *
+         *     Every login provider is now a login-capable ``Integration`` whose
+         *     plugin implements the ``identity`` capability; the authorization
+         *     URL and token exchange are owned entirely by that plugin's
+         *     handler via :mod:`imbi_api.identity.flows`.
+         *
          *     Args:
-         *         provider: OAuth provider ('google', 'github', 'oidc')
+         *         provider: Login-Integration slug
          *         redirect_uri: Where to redirect after successful auth
          *
          *     Returns:
-         *         Redirect to OAuth provider's authorization page
+         *         Redirect to the provider's authorization page
          *
          *     Raises:
-         *         HTTPException: 400 if provider not enabled or invalid
+         *         HTTPException: 404 if provider not enabled or invalid, 503 if
+         *             its plugin isn't loaded
          */
         get: operations["oauth_login_auth_oauth__provider__get"];
         put?: never;
@@ -414,11 +670,7 @@ export interface paths {
          * @description Retrieve a blueprint by type (or 'relationship') and slug.
          */
         get: operations["get_blueprint_blueprints__type___slug__get"];
-        /**
-         * Update Blueprint
-         * @description Update or create a blueprint (upsert).
-         */
-        put: operations["update_blueprint_blueprints__type___slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Blueprint
@@ -561,6 +813,583 @@ export interface paths {
          */
         post: operations["rotate_client_credential_service_accounts__slug__client_credentials__client_id__rotate_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/dashboard/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dashboard Status
+         * @description Return a system-health snapshot of datastores and services.
+         */
+        get: operations["get_dashboard_status_admin_dashboard_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/dashboard/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dashboard Metrics
+         * @description Return 7-day activity metrics with per-day counts for the tiles.
+         */
+        get: operations["get_dashboard_metrics_admin_dashboard_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description List events across every organization (admin / audit feed).
+         *
+         *     ``type`` is the event *category* (e.g. 'webhook'); ``event_type``
+         *     narrows further by the per-source label in
+         *     ``metadata.event_type`` (e.g. 'pull_request', 'push').
+         *
+         *     Per-project event access lives on the org-scoped router; this
+         *     endpoint is gated on ``admin:events:read`` because the unscoped
+         *     cursor would otherwise expose events for projects the caller has
+         *     no permission on.
+         */
+        get: operations["list_events_events__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Event
+         * @description Fetch a single event by id.
+         *
+         *     Powers the webhook-history deep-link landing in the admin UI:
+         *     visiting a shared event URL must work even when the event has
+         *     aged past the default cursor page.
+         */
+        get: operations["get_event_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/graph/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Graph Query
+         * @description Execute an ad-hoc Cypher query against the graph.
+         */
+        post: operations["run_graph_query_admin_graph_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/graph/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Graph Schema
+         * @description Return labels, edge types, and sampled property keys.
+         */
+        get: operations["get_graph_schema_admin_graph_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/local-auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Local Auth
+         * @description Return the current local-auth config (defaults to enabled).
+         */
+        get: operations["get_local_auth_admin_local_auth_get"];
+        /**
+         * Set Local Auth
+         * @description Persist the local-auth toggle.
+         */
+        put: operations["set_local_auth_admin_local_auth_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Maintenance Operations
+         * @description The operation registry merged with each operation's run state.
+         */
+        get: operations["list_maintenance_operations_maintenance_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance/operations/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Maintenance Operation
+         * @description One operation's run state, including per-project failures.
+         */
+        get: operations["get_maintenance_operation_maintenance_operations__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance/operations/{slug}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Maintenance Operation
+         * @description Start a global run of the operation across all projects.
+         */
+        post: operations["run_maintenance_operation_maintenance_operations__slug__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance/operations/{slug}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Maintenance Operation
+         * @description Cancel the operation's in-progress run.
+         */
+        post: operations["cancel_maintenance_operation_maintenance_operations__slug__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-servers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mcp Servers
+         * @description List all MCP servers ordered by name.
+         *
+         *     Returns:
+         *         Every MCP server, without any secret values.
+         */
+        get: operations["list_mcp_servers_mcp_servers__get"];
+        put?: never;
+        /**
+         * Create Mcp Server
+         * @description Create a new MCP server.
+         *
+         *     Parameters:
+         *         data: MCP server data; ``slug`` must be unique. ``static_value``
+         *             and ``oauth_client_secret`` are plaintext and are encrypted
+         *             before persistence.
+         *
+         *     Returns:
+         *         The created MCP server, without any secret values.
+         *
+         *     Raises:
+         *         409: If an MCP server with the same slug already exists.
+         */
+        post: operations["create_mcp_server_mcp_servers__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-servers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mcp Server
+         * @description Get an MCP server by id.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *
+         *     Returns:
+         *         The MCP server, without any secret values.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        get: operations["get_mcp_server_mcp_servers__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Mcp Server
+         * @description Delete an MCP server by id.
+         *
+         *     Parameters:
+         *         id: The id of the MCP server to delete.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        delete: operations["delete_mcp_server_mcp_servers__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Mcp Server
+         * @description Partially update an MCP server.
+         *
+         *     Omitted fields are left unchanged. For the secret fields
+         *     (``static_value``/``oauth_client_secret``): an omitted field leaves
+         *     the stored ciphertext unchanged; an explicit ``null``/empty value
+         *     clears it; a new value re-encrypts it.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *         data: Fields to update.
+         *
+         *     Returns:
+         *         The updated MCP server, without any secret values.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         *         409: If the new slug collides with another MCP server.
+         */
+        patch: operations["update_mcp_server_mcp_servers__id__patch"];
+        trace?: never;
+    };
+    "/mcp-servers/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Mcp Server
+         * @description Test connectivity to a saved MCP server and persist the result.
+         *
+         *     Opens a streamable-HTTP session using the server's stored
+         *     configuration and secrets, lists its tools, and records the outcome
+         *     (``status``, ``last_tested_at``, latency, tool count, and any error)
+         *     on the node.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *
+         *     Returns:
+         *         The test result, including discovered tool names.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        post: operations["test_mcp_server_mcp_servers__id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-servers/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Mcp Server Config
+         * @description Test an unsaved MCP server configuration without persisting it.
+         *
+         *     Used by the create form's "Test connection" action, where secrets are
+         *     supplied as plaintext in the request and no record exists yet.
+         *
+         *     Parameters:
+         *         data: The candidate configuration; secrets are plaintext.
+         *
+         *     Returns:
+         *         The test result, including discovered tool names.
+         *
+         *     Raises:
+         *         400: If the configuration is invalid for its ``auth_type``.
+         */
+        post: operations["test_mcp_server_config_mcp_servers_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-servers/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Mcp Server Status
+         * @description Record a runtime health observation for an MCP server.
+         *
+         *     Posted by the assistant when a live tool call against this server
+         *     succeeds or fails, so the admin list reflects real usage health
+         *     without a manual test. Updates ``status``, ``last_error``, and
+         *     ``last_tested_at``; leaves configuration untouched.
+         *
+         *     Parameters:
+         *         id: The MCP server id.
+         *         data: The observed status and optional error message.
+         *
+         *     Returns:
+         *         The updated MCP server, without any secret values.
+         *
+         *     Raises:
+         *         404: If no MCP server with the given id exists.
+         */
+        post: operations["report_mcp_server_status_mcp_servers__id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Identities
+         * @description List the caller's identity connections.
+         */
+        get: operations["list_my_identities_me_identities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/identities/{integration_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Connect
+         * @description Begin a connect flow.
+         *
+         *     Returns the authorization URL (and a polling descriptor for
+         *     device-flow plugins).  The browser then either redirects to the
+         *     URL (redirect flows) or polls ``/poll`` (device flows).
+         */
+        post: operations["start_connect_me_identities__integration_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/identities/{integration_id}/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Poll Connect
+         * @description Drive one tick of a device-code identity flow.
+         *
+         *     The UI calls this on a timer at the interval reported by the
+         *     ``polling`` descriptor returned from ``/start``.  Returns
+         *     ``status='pending'`` with HTTP 202 while the user is still
+         *     authorizing at the IdP; ``status='complete'`` (HTTP 200) once
+         *     tokens are persisted.  The ``return_to`` field, if set, mirrors
+         *     the value the caller provided to ``/start`` so the UI can land
+         *     the user back where they came from.
+         */
+        post: operations["poll_connect_me_identities__integration_id__poll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/identities/{integration_id}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Callback
+         * @description Browser callback handler — exchanges ``code`` and persists the
+         *     connection.  The state JWT carries the actor identity (the user may
+         *     not have a session yet during a login flow) and its nonce is
+         *     enforced single-use via Valkey to prevent replay.
+         */
+        get: operations["callback_me_identities__integration_id__callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/identities/{integration_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh
+         * @description Force-refresh the actor's connection.
+         */
+        post: operations["refresh_me_identities__integration_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/identities/{integration_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect
+         * @description Revoke + delete the actor's connection for ``integration_id``.
+         *
+         *     Returns ``204 No Content`` when both local and IdP revocation
+         *     succeed (or no IdP call was needed). When the IdP-side revoke
+         *     fails the local state is still recorded as revoked, but the
+         *     response is ``200 OK`` with a JSON body so the UI can flag the
+         *     partial state — the user needs to know the IdP still has live
+         *     credentials and may need manual cleanup.
+         */
+        delete: operations["disconnect_me_identities__integration_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -715,6 +1544,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/operations-log/plugin-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plugin Ops Log Templates
+         * @description Return every registered plugin's ops-log render templates.
+         *
+         *     The UI fetches this once per session and applies templates by
+         *     ``(plugin_slug, action)`` to format rows in the operations log
+         *     and recent-activity views.  Plugins without ``ops_log_templates``
+         *     declared simply emit an empty ``templates`` dict.
+         */
+        get: operations["list_plugin_ops_log_templates_operations_log_plugin_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/operations-log/{entry_id}": {
         parameters: {
             query?: never;
@@ -808,23 +1662,7 @@ export interface paths {
          *         404: Team not found
          */
         get: operations["get_team_organizations__org_slug__teams__slug__get"];
-        /**
-         * Update Team
-         * @description Update a team.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from URL path.
-         *         slug: Team slug from URL.
-         *         data: Updated team data.
-         *
-         *     Returns:
-         *         The updated team.
-         *
-         *     Raises:
-         *         400: Slug mismatch or validation error
-         *         404: Team not found
-         */
-        put: operations["update_team_organizations__org_slug__teams__slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Team
@@ -1000,23 +1838,7 @@ export interface paths {
          *         404: Environment not found
          */
         get: operations["get_environment_organizations__org_slug__environments__slug__get"];
-        /**
-         * Update Environment
-         * @description Update an environment.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from URL path.
-         *         slug: Environment slug from URL.
-         *         data: Updated environment data.
-         *
-         *     Returns:
-         *         The updated environment.
-         *
-         *     Raises:
-         *         400: Validation error
-         *         404: Environment not found
-         */
-        put: operations["update_environment_organizations__org_slug__environments__slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Environment
@@ -1051,6 +1873,34 @@ export interface paths {
          *         422: Patch test operation failed.
          */
         patch: operations["patch_environment_organizations__org_slug__environments__slug__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/environments/{slug}/edges/{rel_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Environment Edges
+         * @description List edges of ``rel_type`` from this environment.
+         */
+        get: operations["list_environment_edges_organizations__org_slug__environments__slug__edges__rel_type__get"];
+        /**
+         * Set Environment Edge
+         * @description Replace this environment's edge of ``rel_type``.
+         */
+        put: operations["set_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__put"];
+        post?: never;
+        /**
+         * Delete Environment Edge
+         * @description Remove every edge of ``rel_type`` from this environment.
+         */
+        delete: operations["delete_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/organizations/{org_slug}/link-definitions/": {
@@ -1118,23 +1968,7 @@ export interface paths {
          *         404: Link definition not found
          */
         get: operations["get_link_definition_organizations__org_slug__link_definitions__slug__get"];
-        /**
-         * Update Link Definition
-         * @description Update a link definition.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from URL path.
-         *         slug: Link definition slug from URL.
-         *         data: Updated link definition data.
-         *
-         *     Returns:
-         *         The updated link definition.
-         *
-         *     Raises:
-         *         400: Validation error
-         *         404: Link definition not found
-         */
-        put: operations["update_link_definition_organizations__org_slug__link_definitions__slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Link Definition
@@ -1184,6 +2018,11 @@ export interface paths {
          *
          *     Parameters:
          *         org_slug: Organization slug from URL path.
+         *         include_schema: When true, each project type gains a
+         *             ``schema`` key listing the blueprint-defined attributes
+         *             (``field``, ``type``, ``format``, ``enum``) that projects
+         *             of that type can be filtered on via the project listing's
+         *             ``filter`` parameter.
          *
          *     Returns:
          *         Project types ordered by name, each including their
@@ -1236,23 +2075,7 @@ export interface paths {
          *         404: Project type not found
          */
         get: operations["get_project_type_organizations__org_slug__project_types__slug__get"];
-        /**
-         * Update Project Type
-         * @description Update a project type.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from URL path.
-         *         slug: Project type slug from URL.
-         *         data: Updated project type data.
-         *
-         *     Returns:
-         *         The updated project type.
-         *
-         *     Raises:
-         *         400: Validation error
-         *         404: Project type not found
-         */
-        put: operations["update_project_type_organizations__org_slug__project_types__slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Project Type
@@ -1298,7 +2121,31 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description List all projects, optionally filtered by type.
+         * @description List projects in the organization.
+         *
+         *     By default archived projects are excluded.  Pass
+         *     ``include_archived=true`` to include them.
+         *
+         *     ``filter`` predicates match against blueprint-defined attributes
+         *     stored on the project (e.g. ``framework``, ``programming_language``)
+         *     using the field/operator grammar described on the parameter.
+         *
+         *     ``integration_slug`` restricts the listing to projects that
+         *     have an ``EXISTS_IN`` relationship to that integration within the
+         *     organization; adding ``identifier`` further restricts to the
+         *     project(s) whose edge carries that external identifier. ``identifier``
+         *     is only meaningful alongside ``integration_slug`` and is
+         *     rejected on its own. An unknown integration slug simply matches nothing.
+         *
+         *     ``slim=true`` returns a stripped payload tailored to the
+         *     projects-list UI: only the fields the list view reads (id, name,
+         *     score, team slug+name, project_type slug+name+deployable,
+         *     environment slug+name+label_color+sort_order, PR counts,
+         *     current releases). Strips the embedded organization,
+         *     blueprint dynamic fields, ``links``, ``identifiers``,
+         *     DEPLOYED_IN edge properties, and the hypermedia
+         *     ``relationships`` block. Cuts the response from megabytes to
+         *     kilobytes for large orgs.
          */
         get: operations["list_projects_organizations__org_slug__projects__get"];
         put?: never;
@@ -1337,6 +2184,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organizations/{org_slug}/projects/{project_id}/environments/{env_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Project Environment
+         * @description Update ``DEPLOYED_IN`` edge properties for a single environment.
+         *
+         *     Performs targeted per-key ``SET`` / ``REMOVE`` on the one
+         *     ``(project)-[:DEPLOYED_IN]->(environment)`` edge, so it neither
+         *     rewrites the other environments' edges nor relies on edge deletion
+         *     (both of which behave unreliably on some Apache AGE builds). Protected
+         *     structural keys are rejected. Returns the updated edge properties.
+         */
+        patch: operations["patch_project_environment_organizations__org_slug__projects__project_id__environments__env_slug__patch"];
+        trace?: never;
+    };
     "/organizations/{org_slug}/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -1349,15 +2222,24 @@ export interface paths {
          * @description Get a project by ID.
          */
         get: operations["get_project_organizations__org_slug__projects__project_id__get"];
-        /**
-         * Update Project
-         * @description Update a project.
-         */
-        put: operations["update_project_organizations__org_slug__projects__project_id__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Project
          * @description Delete a project.
+         *
+         *     When ``delete_repository`` is true (the default), each assigned
+         *     lifecycle plugin's ``on_project_deleted`` hook is also invoked so
+         *     the backing remote (e.g. a GitHub repo) is removed alongside the
+         *     Imbi project node.  Set ``delete_repository=false`` to keep the
+         *     remote in place -- useful when the repository has historical value
+         *     that should survive the project being retired.
+         *
+         *     Returns a 200 with the per-plugin :class:`LifecycleInvocation`
+         *     list rather than the bare 204 the pre-2.8 endpoint emitted.  An
+         *     empty ``lifecycle_results`` list means either no lifecycle plugins
+         *     were assigned, or ``delete_repository=false`` short-circuited the
+         *     dispatch.
          */
         delete: operations["delete_project_organizations__org_slug__projects__project_id__delete"];
         options?: never;
@@ -1370,6 +2252,13 @@ export interface paths {
          *         org_slug: Organization slug from URL path.
          *         project_id: Project nano-ID from URL.
          *         operations: JSON Patch operations list.
+         *         transfer_repository: When the patch changes
+         *             ``project_type_slugs`` and the operator opted in (via the
+         *             ``/lifecycle/preview`` UI affordance), also dispatch
+         *             ``'relocated'`` so lifecycle plugins can move the backing
+         *             remote (e.g. a GitHub repo transfer) to the new mapping.
+         *             Defaults to ``False`` so a type change alone never moves
+         *             the remote.
          *
          *     Returns:
          *         The updated project.
@@ -1391,149 +2280,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Project Relationships
+         * Get Project Relationships
          * @description List every DEPENDS_ON edge touching the project.
          *
          *     Returns both inbound and outbound edges in a flat list with a
          *     ``direction`` field. Rows are sorted inbound first, then by
          *     the related project's name.
          */
-        get: operations["list_project_relationships_organizations__org_slug__projects__project_id__relationships_get"];
-        /**
-         * Set Project Relationships
-         * @description Replace the outbound DEPENDS_ON edges for a project.
-         *
-         *     Deletes all existing outbound DEPENDS_ON edges and creates new
-         *     ones for each project ID in ``depends_on``.  Self-references
-         *     are silently ignored.
-         */
-        put: operations["set_project_relationships_organizations__org_slug__projects__project_id__relationships_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/organizations/{org_slug}/third-party-services/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Third Party Services
-         * @description List third-party services for an organization.
-         *
-         *     Returns:
-         *         Services ordered by name, each including their
-         *         organization and optional team.
-         */
-        get: operations["list_third_party_services_organizations__org_slug__third_party_services__get"];
-        put?: never;
-        /**
-         * Create Third Party Service
-         * @description Create a new third-party service linked to an organization.
-         *
-         *     Returns:
-         *         The created third-party service.
-         *
-         *     Raises:
-         *         404: Organization or team not found
-         *         409: Service with slug already exists
-         */
-        post: operations["create_third_party_service_organizations__org_slug__third_party_services__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/organizations/{org_slug}/third-party-services/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Third Party Service
-         * @description Get a third-party service by slug.
-         *
-         *     Parameters:
-         *         slug: Service slug identifier.
-         *
-         *     Returns:
-         *         Service with organization and optional team.
-         *
-         *     Raises:
-         *         404: Service not found
-         */
-        get: operations["get_third_party_service_organizations__org_slug__third_party_services__slug__get"];
-        /**
-         * Update Third Party Service
-         * @description Update a third-party service.
-         *
-         *     Parameters:
-         *         slug: Service slug from URL.
-         *         data: Updated service data.
-         *
-         *     Returns:
-         *         The updated service.
-         *
-         *     Raises:
-         *         404: Service not found
-         *         409: Slug conflict
-         */
-        put: operations["update_third_party_service_organizations__org_slug__third_party_services__slug__put"];
-        post?: never;
-        /**
-         * Delete Third Party Service
-         * @description Delete a third-party service.
-         *
-         *     Parameters:
-         *         slug: Service slug to delete.
-         *
-         *     Raises:
-         *         404: Service not found
-         */
-        delete: operations["delete_third_party_service_organizations__org_slug__third_party_services__slug__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Third Party Service
-         * @description Partially update a third-party service using JSON Patch (RFC 6902).
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from URL path.
-         *         slug: Third-party service slug from URL.
-         *         operations: JSON Patch operations.
-         *
-         *     Returns:
-         *         The updated third-party service.
-         *
-         *     Raises:
-         *         400: Invalid patch or read-only path.
-         *         404: Service not found.
-         *         409: Slug conflict.
-         *         422: Patch test failed or validation error.
-         */
-        patch: operations["patch_third_party_service_organizations__org_slug__third_party_services__slug__patch"];
-        trace?: never;
-    };
-    "/organizations/{org_slug}/third-party-services/{slug}/webhooks/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Service Webhooks
-         * @description List webhooks linked to a third-party service.
-         */
-        get: operations["list_service_webhooks_organizations__org_slug__third_party_services__slug__webhooks__get"];
+        get: operations["get_project_relationships_organizations__org_slug__projects__project_id__relationships_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1542,7 +2296,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/third-party-services/{slug}/applications/": {
+    "/organizations/{org_slug}/projects/{project_id}/relationships/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Project Relationship
+         * @description Create a single ``DEPENDS_ON`` edge from source to target project.
+         *
+         *     Idempotent: if the edge already exists, returns 204 without error.
+         *
+         *     Raises:
+         *         400: ``project_id`` equals ``target_id`` (self-reference).
+         *         404: Source or target project does not exist within ``org_slug``.
+         */
+        post: operations["create_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__post"];
+        /**
+         * Delete Project Relationship
+         * @description Remove a ``DEPENDS_ON`` edge from source to target project.
+         *
+         *     Raises:
+         *         404: The edge does not exist (source, target, or the edge
+         *             itself may be missing).
+         */
+        delete: operations["delete_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/lifecycle/preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -1550,57 +2338,72 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Service Applications
-         * @description List applications registered in a third-party service.
+         * Preview Lifecycle
+         * @description Preview the relocation outcome of a project-type change.
+         *
+         *     Resolves every lifecycle plugin assigned to the project (project- +
+         *     project-type-level), then asks each plugin's
+         *     :meth:`LifecycleCapability.resolve_relocation_target` what target it
+         *     would route to *today* vs *given the hypothetical type set*.  The UI
+         *     uses ``would_relocate=True`` rows to surface the "Also move
+         *     repository to ``<display>``?" opt-in checkbox on the project-type
+         *     edit dialog.
+         *
+         *     The plugin contract requires ``resolve_relocation_target`` to be
+         *     local-only (no remote calls), so this endpoint is cheap to poll on
+         *     every selection change.  Per-plugin exceptions are swallowed -- a
+         *     broken plugin must not block the rest of the preview.
          */
-        get: operations["list_service_applications_organizations__org_slug__third_party_services__slug__applications__get"];
+        get: operations["preview_lifecycle_organizations__org_slug__projects__project_id__lifecycle_preview_get"];
         put?: never;
-        /**
-         * Create Service Application
-         * @description Create an application under a third-party service.
-         */
-        post: operations["create_service_application_organizations__org_slug__third_party_services__slug__applications__post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/third-party-services/{slug}/applications/{app_slug}": {
+    "/organizations/{org_slug}/projects/{project_id}/archive": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
-         * Get Service Application
-         * @description Get a single application by slug.
-         *
-         *     Secret fields are not included in the response. Use the
-         *     ``/secrets`` sub-resource to retrieve or update secrets.
+         * Archive Project
+         * @description Archive a project (soft-hide from default listings).
          */
-        get: operations["get_service_application_organizations__org_slug__third_party_services__slug__applications__app_slug__get"];
-        /**
-         * Update Service Application
-         * @description Update non-secret application fields.
-         *
-         *     Secret fields cannot be updated via this endpoint. Use
-         *     ``PUT /secrets`` instead.
-         */
-        put: operations["update_service_application_organizations__org_slug__third_party_services__slug__applications__app_slug__put"];
-        post?: never;
-        /**
-         * Delete Service Application
-         * @description Delete a service application.
-         */
-        delete: operations["delete_service_application_organizations__org_slug__third_party_services__slug__applications__app_slug__delete"];
+        post: operations["archive_project_organizations__org_slug__projects__project_id__archive_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/third-party-services/{slug}/applications/{app_slug}/secrets": {
+    "/organizations/{org_slug}/projects/{project_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive Project
+         * @description Restore an archived project to the active state.
+         */
+        post: operations["unarchive_project_organizations__org_slug__projects__project_id__unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/integrations/": {
         parameters: {
             query?: never;
             header?: never;
@@ -1608,20 +2411,152 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Application Secrets
-         * @description Retrieve decrypted application secrets.
-         *
-         *     Requires admin privileges.
+         * List Integrations
+         * @description List integrations configured in an organization.
          */
-        get: operations["get_application_secrets_organizations__org_slug__third_party_services__slug__applications__app_slug__secrets_get"];
+        get: operations["list_integrations_organizations__org_slug__integrations__get"];
+        put?: never;
         /**
-         * Update Application Secrets
-         * @description Update one or more application secrets.
+         * Create Integration
+         * @description Create a new Integration -- a configured instance of a plugin.
          *
-         *     Only provided (non-null) fields are updated. Requires admin
-         *     privileges.
+         *     Raises:
+         *         400: The referenced plugin is not installed.
+         *         404: Organization or team not found.
+         *         409: An integration with this slug already exists.
          */
-        put: operations["update_application_secrets_organizations__org_slug__third_party_services__slug__applications__app_slug__secrets_put"];
+        post: operations["create_integration_organizations__org_slug__integrations__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/integrations/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Integration
+         * @description Get an Integration by slug.
+         *
+         *     Raises:
+         *         404: Integration not found.
+         */
+        get: operations["get_integration_organizations__org_slug__integrations__slug__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Integration
+         * @description Delete an Integration.
+         *
+         *     Raises:
+         *         404: Integration not found.
+         */
+        delete: operations["delete_integration_organizations__org_slug__integrations__slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Integration
+         * @description Partially update an Integration.
+         *
+         *     Only fields present in the request body are applied. ``capabilities``
+         *     and ``options`` are merged into the existing values rather than
+         *     replaced wholesale.
+         *
+         *     Raises:
+         *         404: Integration not found.
+         *         409: Slug conflict (name/team rename collisions are not possible
+         *             here since slug is immutable via this endpoint).
+         */
+        patch: operations["update_integration_organizations__org_slug__integrations__slug__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/integrations/{slug}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Integration Credentials
+         * @description Patch an Integration's encrypted credentials.
+         *
+         *     Raises:
+         *         404: Integration not found.
+         *         409: Concurrent modification; retry.
+         */
+        put: operations["update_integration_credentials_organizations__org_slug__integrations__slug__credentials_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/integrations/{slug}/login-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Login Provider
+         * @description Promote or demote an Integration as the org's SSO login provider.
+         *
+         *     Setting ``used_as_login=true`` requires the Integration's plugin to
+         *     declare an ``identity`` capability carrying the ``login_capable``
+         *     hint, and demotes any other login provider in the organization so at
+         *     most one is flagged per org. The login-provider cache is invalidated
+         *     on any change.
+         *
+         *     Raises:
+         *         400: The plugin does not declare a login-capable identity
+         *             capability.
+         *         404: Integration not found.
+         */
+        put: operations["set_login_provider_organizations__org_slug__integrations__slug__login_provider_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Capability Assignments
+         * @description List an Integration capability's project-type assignments.
+         */
+        get: operations["list_capability_assignments_organizations__org_slug__integrations__slug__capabilities__kind__assignments_get"];
+        /**
+         * Replace Capability Assignments Endpoint
+         * @description Replace a capability's project-type assignments for one Integration.
+         *
+         *     Only ``USES`` edges of ``kind`` from *this* Integration are replaced;
+         *     other integrations' assignments for the same capability are untouched
+         *     (unlike :func:`imbi_api.plugins.assignment_writer.replace_capability_
+         *     assignments`, which is scoped per-parent and would wipe every
+         *     integration bound to that project type).
+         *
+         *     Raises:
+         *         404: Integration, a referenced project type, or a referenced
+         *             identity integration was not found.
+         */
+        put: operations["replace_capability_assignments_endpoint_organizations__org_slug__integrations__slug__capabilities__kind__assignments_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1645,6 +2580,11 @@ export interface paths {
         /**
          * Create Webhook
          * @description Create a new webhook linked to an organization.
+         *
+         *     The slug, id, and notification_path are system-generated:
+         *     - slug: ``{service_slug}-{slugified_name}`` or just the slugified name
+         *     - id: nanoid (21-char URL-safe string, stable surrogate key)
+         *     - notification_path: ``/{id}``
          */
         post: operations["create_webhook_organizations__org_slug__webhooks__post"];
         delete?: never;
@@ -1653,7 +2593,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/webhooks/{slug}": {
+    "/organizations/{org_slug}/webhooks/{webhook}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1662,27 +2602,50 @@ export interface paths {
         };
         /**
          * Get Webhook
-         * @description Get a webhook by slug.
+         * @description Get a webhook by slug or id.
          */
-        get: operations["get_webhook_organizations__org_slug__webhooks__slug__get"];
-        /**
-         * Update Webhook
-         * @description Update a webhook (full replacement including rules).
-         */
-        put: operations["update_webhook_organizations__org_slug__webhooks__slug__put"];
+        get: operations["get_webhook_organizations__org_slug__webhooks__webhook__get"];
+        put?: never;
         post?: never;
         /**
          * Delete Webhook
          * @description Delete a webhook and its rules.
          */
-        delete: operations["delete_webhook_organizations__org_slug__webhooks__slug__delete"];
+        delete: operations["delete_webhook_organizations__org_slug__webhooks__webhook__delete"];
         options?: never;
         head?: never;
         /**
          * Patch Webhook
          * @description Partially update a webhook using JSON Patch (RFC 6902).
+         *
+         *     The ``id`` and ``notification_path`` fields are read-only;
+         *     patch operations targeting them are rejected with 400.
+         *
+         *     When ``integration_slug`` is changed and ``slug`` is not
+         *     explicitly set in the same patch, the slug is auto-regenerated
+         *     from the new integration slug and webhook name.
          */
-        patch: operations["patch_webhook_organizations__org_slug__webhooks__slug__patch"];
+        patch: operations["patch_webhook_organizations__org_slug__webhooks__webhook__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/events/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Events
+         * @description List events for a specific project.
+         */
+        get: operations["list_project_events_organizations__org_slug__projects__project_id__events__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/organizations/{org_slug}/projects/{project_id}/operations-log/": {
@@ -1714,7 +2677,12 @@ export interface paths {
         };
         /**
          * List Releases
-         * @description List all releases for a project, newest first.
+         * @description List releases for a project, newest first.
+         *
+         *     Optional ``committish`` and ``tag`` query parameters filter the
+         *     result; when both are omitted every release is returned. Both are
+         *     matched exactly. A null parameter is interpolated as Cypher ``null``
+         *     and short-circuits the corresponding clause via ``null IS NULL``.
          */
         get: operations["list_releases_organizations__org_slug__projects__project_id__releases__get"];
         put?: never;
@@ -1729,7 +2697,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{version}": {
+    "/organizations/{org_slug}/projects/{project_id}/releases/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Current Releases
+         * @description List the most-current release per environment for a project.
+         *
+         *     For each environment the project is configured to deploy in
+         *     (``DEPLOYED_IN``), returns the release whose ``DEPLOYED_TO`` edge
+         *     contains the deployment event with the latest timestamp.
+         *     Environments with no deployment events are returned with
+         *     ``release=None``. Results are sorted by ``Environment.sort_order``
+         *     ascending, then by name.
+         *
+         *     The deployment plugin (when bound) is consulted for live workflow
+         *     run status on any in-flight ``DeploymentEvent`` and aggregate CI
+         *     check-runs status on each env's currently-deployed version.
+         *     Hydration failures are tolerated silently.
+         */
+        get: operations["list_current_releases_organizations__org_slug__projects__project_id__releases_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1738,9 +2738,9 @@ export interface paths {
         };
         /**
          * Get Release
-         * @description Get a single release by version.
+         * @description Get a single release by id.
          */
-        get: operations["get_release_organizations__org_slug__projects__project_id__releases__version__get"];
+        get: operations["get_release_organizations__org_slug__projects__project_id__releases__release_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1750,10 +2750,10 @@ export interface paths {
          * Patch Release
          * @description Apply a JSON Patch (RFC 6902) to a release.
          */
-        patch: operations["patch_release_organizations__org_slug__projects__project_id__releases__version__patch"];
+        patch: operations["patch_release_organizations__org_slug__projects__project_id__releases__release_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{version}/environments/{env_slug}": {
+    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments/{env_slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1764,20 +2764,20 @@ export interface paths {
          * Get Deployment Edge
          * @description Get a single deployment edge by environment slug.
          */
-        get: operations["get_deployment_edge_organizations__org_slug__projects__project_id__releases__version__environments__env_slug__get"];
+        get: operations["get_deployment_edge_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__get"];
         put?: never;
         /**
          * Record Deployment
          * @description Record a deployment event for a release in an environment.
          */
-        post: operations["record_deployment_organizations__org_slug__projects__project_id__releases__version__environments__env_slug__post"];
+        post: operations["record_deployment_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{version}/environments": {
+    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments": {
         parameters: {
             query?: never;
             header?: never;
@@ -1788,7 +2788,58 @@ export interface paths {
          * List Deployment Edges
          * @description List every environment edge for a release.
          */
-        get: operations["list_deployment_edges_organizations__org_slug__projects__project_id__releases__version__environments_get"];
+        get: operations["list_deployment_edges_organizations__org_slug__projects__project_id__releases__release_id__environments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/sbom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Release Sbom
+         * @description Ingest a CycloneDX 1.7 SBoM for a release.
+         *
+         *     The payload is the verbatim CycloneDX document — no envelope.
+         *     The PUT is idempotent: existing dependency edges from this
+         *     release are dropped and rebuilt from the new SBoM, while
+         *     ``Component`` / ``ComponentRelease`` / ``ComponentIdentifier``
+         *     nodes are MERGE-ed so other projects keep their references.
+         */
+        put: operations["put_release_sbom_organizations__org_slug__projects__project_id__releases__release_id__sbom_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Release Dependencies
+         * @description List the components ingested for a release.
+         *
+         *     Returns an empty ``components`` list when no SBoM has been
+         *     ingested yet — the release existing without an SBoM is the
+         *     common bootstrap case, not an error. ``404`` is returned only
+         *     when the release itself is unknown.
+         */
+        get: operations["list_release_dependencies_organizations__org_slug__projects__project_id__releases__release_id__dependencies_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1806,7 +2857,7 @@ export interface paths {
         };
         /**
          * List Project Services
-         * @description List third-party services this project exists in.
+         * @description List integrations this project exists in.
          */
         get: operations["list_project_services_organizations__org_slug__projects__project_id__services__get"];
         put?: never;
@@ -1836,6 +2887,1277 @@ export interface paths {
          * @description Remove an EXISTS_IN link.
          */
         delete: operations["delete_project_service_organizations__org_slug__projects__project_id__services__service_slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/tags/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tags
+         * @description List tags in an organization, each with a document count.
+         */
+        get: operations["list_tags_organizations__org_slug__tags__get"];
+        put?: never;
+        /**
+         * Create Tag
+         * @description Create a new tag in an organization.
+         */
+        post: operations["create_tag_organizations__org_slug__tags__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/tags/{tag_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tag
+         * @description Retrieve a single tag by slug.
+         */
+        get: operations["get_tag_organizations__org_slug__tags__tag_slug__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Tag
+         * @description Delete a tag. Any ``TAGGED_WITH`` edges are removed.
+         */
+        delete: operations["delete_tag_organizations__org_slug__tags__tag_slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Tag
+         * @description Update a tag via JSON Patch (name/slug/description).
+         */
+        patch: operations["patch_tag_organizations__org_slug__tags__tag_slug__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description Org-wide document index.
+         *
+         *     Filter by tag slug, project id, project-type slug, and/or user
+         *     email.
+         */
+        get: operations["list_documents_organizations__org_slug__documents__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Org Document
+         * @description Retrieve a single document regardless of attachment kind.
+         */
+        get: operations["get_org_document_organizations__org_slug__documents__document_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Org Document
+         * @description Delete a document regardless of attachment kind.
+         */
+        delete: operations["delete_org_document_organizations__org_slug__documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Org Document
+         * @description Update a document via JSON Patch regardless of attachment kind.
+         */
+        patch: operations["patch_org_document_organizations__org_slug__documents__document_id__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/documents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Documents
+         * @description List documents attached to a specific project.
+         */
+        get: operations["list_project_documents_organizations__org_slug__projects__project_id__documents__get"];
+        put?: never;
+        /**
+         * Create Document
+         * @description Create a document attached to a project, optionally with tags.
+         */
+        post: operations["create_document_organizations__org_slug__projects__project_id__documents__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document
+         * @description Retrieve a single project document.
+         */
+        get: operations["get_document_organizations__org_slug__projects__project_id__documents__document_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document
+         * @description Delete a project document.
+         */
+        delete: operations["delete_document_organizations__org_slug__projects__project_id__documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document
+         * @description Update document content and/or tag attachments via JSON Patch.
+         */
+        patch: operations["patch_document_organizations__org_slug__projects__project_id__documents__document_id__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/project-types/{type_slug}/documents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Type Documents
+         * @description List documents attached to a specific project type.
+         */
+        get: operations["list_project_type_documents_organizations__org_slug__project_types__type_slug__documents__get"];
+        put?: never;
+        /**
+         * Create Project Type Document
+         * @description Create a document attached to a project type.
+         */
+        post: operations["create_project_type_document_organizations__org_slug__project_types__type_slug__documents__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/users/{email}/documents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List User Documents
+         * @description List documents attached to a specific user.
+         */
+        get: operations["list_user_documents_organizations__org_slug__users__email__documents__get"];
+        put?: never;
+        /**
+         * Create User Document
+         * @description Create a document attached to a user (org member).
+         */
+        post: operations["create_user_document_organizations__org_slug__users__email__documents__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comment Threads
+         * @description List every comment thread on a document, comments oldest-first.
+         */
+        get: operations["list_comment_threads_organizations__org_slug__projects__project_id__documents__document_id__comments_get"];
+        put?: never;
+        /**
+         * Create Comment Thread
+         * @description Create a thread, its ``ON_DOCUMENT`` edge, and the root comment.
+         */
+        post: operations["create_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Reply
+         * @description Add a reply comment to an existing thread.
+         */
+        post: operations["create_reply_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Comment Thread
+         * @description Resolve or reopen a thread via JSON Patch (only ``/resolved``).
+         */
+        patch: operations["patch_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Comment
+         * @description Delete a comment. Author-only. Deletes the thread if it was the
+         *     root and no other comments remain.
+         */
+        delete: operations["delete_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Comment
+         * @description Edit a comment via JSON Patch (only ``/body`` and ``/mentions``).
+         *
+         *     Author-only.
+         */
+        patch: operations["patch_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Comment
+         * @description Toggle the principal in the comment's ``acknowledged_by`` array.
+         */
+        post: operations["acknowledge_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comment Threads
+         * @description List every comment thread on a document, comments oldest-first.
+         */
+        get: operations["list_comment_threads_organizations__org_slug__documents__document_id__comments_get"];
+        put?: never;
+        /**
+         * Create Comment Thread
+         * @description Create a thread, its ``ON_DOCUMENT`` edge, and the root comment.
+         */
+        post: operations["create_comment_thread_organizations__org_slug__documents__document_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Reply
+         * @description Add a reply comment to an existing thread.
+         */
+        post: operations["create_reply_organizations__org_slug__documents__document_id__comments__thread_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Comment Thread
+         * @description Resolve or reopen a thread via JSON Patch (only ``/resolved``).
+         */
+        patch: operations["patch_comment_thread_organizations__org_slug__documents__document_id__comments__thread_id__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Comment
+         * @description Delete a comment. Author-only. Deletes the thread if it was the
+         *     root and no other comments remain.
+         */
+        delete: operations["delete_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Comment
+         * @description Edit a comment via JSON Patch (only ``/body`` and ``/mentions``).
+         *
+         *     Author-only.
+         */
+        patch: operations["patch_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Comment
+         * @description Toggle the principal in the comment's ``acknowledged_by`` array.
+         */
+        post: operations["acknowledge_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/document-templates/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Templates
+         * @description List document templates for an organization.
+         *
+         *     ``project_type`` (optional): when provided, only templates that
+         *     apply to the given project-type slug are returned. Templates with
+         *     an empty ``project_type_slugs`` apply to every project type.
+         *
+         *     ``context`` (optional): when provided, only templates whose
+         *     ``type`` matches the attachment context (or is ``'global'``) are
+         *     returned.
+         */
+        get: operations["list_document_templates_organizations__org_slug__document_templates__get"];
+        put?: never;
+        /**
+         * Create Document Template
+         * @description Create a document template scoped to ``org_slug``.
+         */
+        post: operations["create_document_template_organizations__org_slug__document_templates__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/document-templates/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Template
+         * @description Get a document template by slug.
+         */
+        get: operations["get_document_template_organizations__org_slug__document_templates__slug__get"];
+        /**
+         * Update Document Template
+         * @description Update a document template (whole-or-partial replace).
+         */
+        put: operations["update_document_template_organizations__org_slug__document_templates__slug__put"];
+        post?: never;
+        /**
+         * Delete Document Template
+         * @description Delete a document template.
+         */
+        delete: operations["delete_document_template_organizations__org_slug__document_templates__slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document Template
+         * @description Partially update a document template using JSON Patch (RFC 6902).
+         */
+        patch: operations["patch_document_template_organizations__org_slug__document_templates__slug__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/configuration/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Configuration
+         * @description List configuration keys for a project via the assigned plugin.
+         */
+        get: operations["get_configuration_organizations__org_slug__projects__project_id__configuration__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/configuration/values:fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch Values
+         * @description Fetch values for specific configuration keys.
+         */
+        post: operations["fetch_values_organizations__org_slug__projects__project_id__configuration_values_fetch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/configuration/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Configuration Value
+         * @description Set a configuration value via the assigned plugin.
+         */
+        put: operations["set_configuration_value_organizations__org_slug__projects__project_id__configuration__key__put"];
+        post?: never;
+        /**
+         * Delete Configuration Key
+         * @description Delete a configuration key via the assigned plugin.
+         */
+        delete: operations["delete_configuration_key_organizations__org_slug__projects__project_id__configuration__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/logs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Logs
+         * @description Search project logs via the assigned logs plugin.
+         *
+         *     ``environment`` is a repeated query param: ``?environment=production
+         *     &environment=staging``.  When two or more envs are passed, the
+         *     endpoint fans out one identity-scoped search per env in parallel,
+         *     merges entries by timestamp (desc), and returns the first ``limit``
+         *     entries.  Pagination via ``cursor`` is only supported for
+         *     single-env searches; multi-env returns ``next_cursor=None`` and
+         *     surfaces partial-failure / truncation notes via ``warnings``.
+         *
+         *     ``level`` is a repeated query param (``?level=ERROR&level=WARN``)
+         *     that pushes severity filtering down into the plugin's underlying
+         *     query so rare levels can still be located even when total volume
+         *     is high.
+         */
+        get: operations["search_logs_organizations__org_slug__projects__project_id__logs__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/logs/histogram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Log Histogram
+         * @description Return time-bucketed event counts for the histogram view.
+         *
+         *     Returns an empty list when the assigned plugin does not support
+         *     histograms (``PluginManifest.supports_histogram`` is ``False``).
+         *     Multi-env requests fan out one histogram per env and sum bucket
+         *     counts at matching timestamps; per-level counts are aggregated
+         *     across envs.
+         */
+        get: operations["get_log_histogram_organizations__org_slug__projects__project_id__logs_histogram_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/logs/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Log Schema
+         * @description Get the log schema (available fields) for the assigned logs plugin.
+         */
+        get: operations["get_log_schema_organizations__org_slug__projects__project_id__logs_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/incidents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Incidents
+         * @description List the project's incidents via the assigned incidents plugin.
+         *
+         *     Live-queries the incident-management system (e.g. PagerDuty) for the
+         *     project's service over ``[start_time, end_time]`` (default: the last
+         *     7 days), optionally filtered by ``status`` (a repeated query param:
+         *     ``?status=triggered&status=acknowledged``). Read-only -- there is no
+         *     local incident store; the source system stays authoritative.
+         */
+        get: operations["list_incidents_organizations__org_slug__projects__project_id__incidents__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/lifecycle/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Project Lifecycle
+         * @description Push current Imbi state to the remote for one project.
+         *
+         *     Re-dispatches each assigned lifecycle plugin's ``on_project_updated``
+         *     upsert, so a sync both provisions a missing remote and updates an
+         *     existing one.  Returns aggregate per-plugin counts; a project with
+         *     no lifecycle plugins returns a zeroed summary.
+         */
+        post: operations["sync_project_lifecycle_organizations__org_slug__projects__project_id__lifecycle_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Refs
+         * @description List branches, tags, or the default ref for the project's repo.
+         */
+        get: operations["list_refs_organizations__org_slug__projects__project_id__deployments_refs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/refs/{ref}/commits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Commits
+         * @description List recent commits on a branch / tag / SHA.
+         */
+        get: operations["list_commits_organizations__org_slug__projects__project_id__deployments_refs__ref__commits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/commits/{committish}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Commit
+         * @description Resolve a SHA / branch / tag / ``refs/pull/N/head``.
+         */
+        get: operations["resolve_commit_organizations__org_slug__projects__project_id__deployments_commits__committish__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Refs
+         * @description Compare two refs (``base..head``).
+         */
+        get: operations["compare_refs_organizations__org_slug__projects__project_id__deployments_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Deployment
+         * @description Trigger a deploy / redeploy / promote.
+         *
+         *     For ``deploy`` / ``redeploy``, dispatches the workflow with the
+         *     chosen committish; if the committish (or its ``ref_label``) matches
+         *     an existing ``Release`` version on the project, also appends a
+         *     ``DeploymentEvent`` to the ``DEPLOYED_TO`` edge.
+         *
+         *     For ``promote``: cuts a tag at ``from_committish``, creates a
+         *     release with the supplied notes on the remote, dispatches the
+         *     workflow against the tag for ``to_environment``, upserts the
+         *     matching ``Release`` node, and records the deployment event.
+         */
+        post: operations["trigger_deployment_organizations__org_slug__projects__project_id__deployments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/resync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resync Project Deployments
+         * @description Backfill Release nodes + DEPLOYED_TO edges from the remote.
+         *
+         *     Asks the project's deployment plugin for the most recent ``limit``
+         *     deployments per environment, upserts any missing ``Release`` nodes,
+         *     and dedup-appends ``DeploymentEvent`` rows so the badges advance
+         *     even when the gateway webhook flow has lapsed.  No ``operations_log``
+         *     audit row is written -- the ``DEPLOYED_TO`` edge already carries the
+         *     original creator via ``DeploymentEvent.performed_by``.
+         *
+         *     ``limit`` defaults to 1 (cheap webhook-lapse catch-up).  Raise it
+         *     (up to 100, the GitHub per-page ceiling) for a deeper backfill that
+         *     re-resolves ``performed_by`` on historical events -- e.g. to fix
+         *     stale deploy attribution after a user links their identity.
+         *
+         *     Surfaces 400 when the project's deployment plugin does not
+         *     advertise ``supports_deployment_sync`` -- callers should hide the
+         *     button using the plugin manifest flag.
+         */
+        post: operations["resync_project_deployments_organizations__org_slug__projects__project_id__deployments_resync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Deployment Run
+         * @description Fetch live status for an in-flight deployment workflow run.
+         *
+         *     Pass-through to plugin ``get_deployment_status``.  Used by the UI's
+         *     TanStack Query ``refetchInterval`` hook to flip
+         *     ``in_progress → success / failed`` without a page reload.
+         */
+        get: operations["get_deployment_run_organizations__org_slug__projects__project_id__deployments_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/draft-release-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Release Notes
+         * @description Draft release notes for a tag promotion.
+         *
+         *     Calls the project's deployment plugin ``compare(base..head)`` to
+         *     enumerate the commits being promoted, asks Claude for a structured
+         *     ``{bump, version, reasoning, notes_markdown}`` payload, and returns
+         *     it.  Falls back to a deterministic conventional-commit-prefix
+         *     grouping with ``degraded=true`` when Claude is unavailable, the
+         *     response can't be parsed, or schema validation fails.
+         */
+        post: operations["draft_release_notes_organizations__org_slug__projects__project_id__deployments_draft_release_notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/promotion-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Promotion Options
+         * @description Enumerate the from→to promotion gaps the popover offers.
+         *
+         *     For each consecutive pair of envs (sorted by ``sort_order``)
+         *     where the from-env has a release deployed, returns the gap with
+         *     the from-env's current version + SHA, the to-env's current
+         *     version + SHA (when present), and the count of commits between
+         *     them via ``plugin.compare()``.  Plugin failures are tolerated:
+         *     the entry returns ``commits_pending=None``.
+         */
+        get: operations["list_promotion_options_organizations__org_slug__projects__project_id__deployments_promotion_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/recent-commits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recent Commits
+         * @description Recent commits for the project, newest first, from ClickHouse.
+         *
+         *     Ordered by push then author time across all synced refs; pass ``ref``
+         *     to scope to one branch.  Capped at 200.
+         */
+        get: operations["list_recent_commits_organizations__org_slug__projects__project_id__deployments_recent_commits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/release-drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Release Drift
+         * @description Commits awaiting a release: the delta from the latest tag to HEAD.
+         *
+         *     Computed from ClickHouse: find the latest tag, the HEAD commit, and
+         *     the commits authored after the tag's commit.  With no prior tag the
+         *     drift is the full (capped) history and the suggestion is ``v0.1.0``.
+         */
+        get: operations["get_release_drift_organizations__org_slug__projects__project_id__deployments_release_drift_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/release-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Release History
+         * @description Release history: ClickHouse tags joined to their ``Release`` nodes.
+         */
+        get: operations["get_release_history_organizations__org_slug__projects__project_id__deployments_release_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/releases/cut": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cut Release
+         * @description Cut a git tag + GitHub release at ``committish`` -- no deployment.
+         *
+         *     The build-and-release-only (library / image) flow: validate the
+         *     tag against the configured formats and the committish, cut the tag +
+         *     release via the deployment plugin (reusing the promote machinery
+         *     minus the deploy step), upsert the matching ``Release`` node, and
+         *     record an audit row.
+         */
+        post: operations["cut_release_organizations__org_slug__projects__project_id__deployments_releases_cut_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/analysis/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Analysis */
+        get: operations["get_project_analysis_organizations__org_slug__projects__project_id__analysis__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/analysis/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Project Analysis */
+        post: operations["run_project_analysis_organizations__org_slug__projects__project_id__analysis_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/analysis/remediate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remediate Project Finding
+         * @description Apply one finding's fix, then return the refreshed report.
+         */
+        post: operations["remediate_project_finding_organizations__org_slug__projects__project_id__analysis_remediate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/analysis/remediate-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remediate All Project Findings
+         * @description Apply every fixable finding in the current report (best-effort).
+         *
+         *     Each finding is remediated independently; a failure on one is
+         *     captured in its outcome rather than aborting the rest. Analysis is
+         *     re-run once at the end so the returned report reflects every fix.
+         */
+        post: operations["remediate_all_project_findings_organizations__org_slug__projects__project_id__analysis_remediate_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/commits/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Commits And Tags
+         * @description Enqueue a full commit + tag history backfill for the project.
+         *
+         *     Resolves the project's ``commit-sync`` capability (404 when no
+         *     integration provides it, 400 when several are bound and none is the
+         *     default -- pass ``?source=<integration_slug>``) and confirms the
+         *     resolved integration can run a sync right now.  Returns
+         *     ``enqueued=False`` when the job was debounced or Valkey is
+         *     unavailable.
+         */
+        post: operations["sync_commits_and_tags_organizations__org_slug__projects__project_id__commits_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/commits/sync-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Commit Sync Status
+         * @description Return the project's last commit/tag sync state.
+         */
+        get: operations["get_commit_sync_status_organizations__org_slug__projects__project_id__commits_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/pull-requests/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Pull Requests
+         * @description Enqueue a full pull-request history backfill for the project.
+         *
+         *     Resolves the project's ``pr-sync`` capability (404 when no
+         *     integration provides it, 400 when several are bound and none is the
+         *     default -- pass ``?source=<integration_slug>``) and confirms the
+         *     resolved integration can run a sync right now.  Returns
+         *     ``enqueued=False`` when the job was debounced or Valkey is
+         *     unavailable.
+         */
+        post: operations["sync_pull_requests_organizations__org_slug__projects__project_id__pull_requests_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/pull-requests/sync-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pr Sync Status
+         * @description Return the project's last PR sync state.
+         */
+        get: operations["get_pr_sync_status_organizations__org_slug__projects__project_id__pull_requests_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/pull-requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Pull Requests
+         * @description List pull requests for a single project.
+         *
+         *     Optional ``state`` filter accepts ``open`` or ``closed``.
+         *     Optional ``author`` filter accepts a GitHub login.
+         *     Results are ordered newest first.
+         */
+        get: operations["list_project_pull_requests_organizations__org_slug__projects__project_id__pull_requests__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/pull-requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Org Pull Requests
+         * @description List pull requests across all projects in the organization.
+         *
+         *     The set of projects is resolved from the graph so results are
+         *     scoped to the calling user's org.  Optional ``state`` filter
+         *     accepts ``open`` or ``closed``.  Optional ``author`` filter
+         *     accepts a GitHub login.  Results are ordered newest first.
+         */
+        get: operations["list_org_pull_requests_organizations__org_slug__pull_requests__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/pull-requests/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pull Request Activity
+         * @description Per-team-member PR activity (created/merged) across the org.
+         *
+         *     ``since`` is an inclusive lower bound (``YYYY-MM-DD`` or ISO
+         *     timestamp); it defaults to 30 days ago.  Authors are resolved to
+         *     Imbi users via their GitHub identity connections where possible;
+         *     unresolved logins are returned as-is.  Rows are ordered by merged
+         *     then created, descending.
+         */
+        get: operations["pull_request_activity_organizations__org_slug__pull_requests_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search
+         * @description Search nodes by semantic similarity within an organization.
+         *
+         *     Results are ordered by cosine distance ascending (most similar
+         *     first). ``threshold`` is a distance ceiling: 0.0 = identical,
+         *     2.0 = maximally dissimilar.
+         */
+        get: operations["search_organizations__org_slug__search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1898,22 +4220,7 @@ export interface paths {
          *         404: Organization not found.
          */
         get: operations["get_organization_organizations__slug__get"];
-        /**
-         * Update Organization
-         * @description Update an existing organization.
-         *
-         *     Parameters:
-         *         slug: Organization slug from URL (identifies existing record).
-         *         org: Updated organization data.
-         *
-         *     Returns:
-         *         The updated organization.
-         *
-         *     Raises:
-         *         404: Organization not found.
-         *         409: Slug rename conflicts with existing organization.
-         */
-        put: operations["update_organization_organizations__slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Organization
@@ -1969,6 +4276,165 @@ export interface paths {
          *         404: Organization not found.
          */
         get: operations["list_organization_members_organizations__slug__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/plugins/{slug}/entities/{label}/_schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entity Schema
+         * @description Return the JSON schema for a plugin entity model.
+         */
+        get: operations["get_entity_schema_admin_plugins__slug__entities__label___schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/plugins/{slug}/entities/{label}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entities
+         * @description List every node of the plugin's declared label.
+         */
+        get: operations["list_entities_admin_plugins__slug__entities__label__get"];
+        put?: never;
+        /**
+         * Create Entity
+         * @description Create a new node of the plugin's declared label.
+         */
+        post: operations["create_entity_admin_plugins__slug__entities__label__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/plugins/{slug}/entities/{label}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entity
+         * @description Read a single node by its id.
+         */
+        get: operations["get_entity_admin_plugins__slug__entities__label___id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Entity
+         * @description Hard-delete the node and any edges touching it.
+         */
+        delete: operations["delete_entity_admin_plugins__slug__entities__label___id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Entity
+         * @description Partial update by id.
+         *
+         *     Unset fields are left alone; sending ``null`` clears optional fields.
+         *     Sending ``id`` is rejected (the URL param is canonical).
+         */
+        patch: operations["update_entity_admin_plugins__slug__entities__label___id__patch"];
+        trace?: never;
+    };
+    "/plugins/{slug}/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plugin Manifest
+         * @description Return a plugin's manifest for Integration-form rendering.
+         *
+         *     Gated on authentication only — the manifest is static metadata
+         *     shipped in the plugin's Python package and is not sensitive.
+         *     Project editors need this to render a typed Integration options /
+         *     credentials / capabilities form.
+         */
+        get: operations["get_plugin_manifest_plugins__slug__manifest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/integrations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Integrations
+         * @description List a project's ``USES`` capability overrides.
+         */
+        get: operations["list_project_integrations_organizations__org_slug__projects__project_id__integrations__get"];
+        /**
+         * Replace Project Integrations
+         * @description Replace a project's ``USES`` capability overrides.
+         *
+         *     Every submitted integration slug must belong to the project's
+         *     organization and have the targeted capability enabled. Rows are
+         *     grouped by capability kind and each kind's assignments are replaced
+         *     atomically via
+         *     :func:`imbi_api.plugins.assignment_writer.replace_capability_assignments`.
+         *
+         *     Raises:
+         *         404: Project not found, or an integration/identity-integration
+         *             slug does not resolve within the organization.
+         *         400: A referenced integration does not have the targeted
+         *             capability enabled.
+         */
+        put: operations["replace_project_integrations_organizations__org_slug__projects__project_id__integrations__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/plugins/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Plugins
+         * @description Effective capability bindings for a project's UI (merged view).
+         *
+         *     Raises:
+         *         404: Project not found.
+         */
+        get: operations["list_project_plugins_organizations__org_slug__projects__project_id__plugins__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2035,21 +4501,7 @@ export interface paths {
          *         404: If no role with the given slug exists.
          */
         get: operations["get_role_roles__slug__get"];
-        /**
-         * Update Role
-         * @description Update or create a role identified by slug.
-         *
-         *     Parameters:
-         *         slug: The role slug from the URL.
-         *         role: Role data to upsert.
-         *
-         *     Returns:
-         *         The updated or newly created role.
-         *
-         *     Raises:
-         *         400: If attempting to modify a system role.
-         */
-        put: operations["update_role_roles__slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Role
@@ -2156,7 +4608,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Grant Permission
+         * Role Permissions
          * @description Grant the named permission to the role.
          *
          *     Parameters:
@@ -2166,7 +4618,7 @@ export interface paths {
          *     Raises:
          *         404: If the role or the permission does not exist.
          */
-        post: operations["grant_permission_roles__slug__permissions_post"];
+        post: operations["role_permissions_roles__slug__permissions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2320,6 +4772,191 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scoring/policies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Policies */
+        get: operations["list_policies_scoring_policies__get"];
+        put?: never;
+        /** Create Policy */
+        post: operations["create_policy_scoring_policies__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scoring/policies/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Policy */
+        get: operations["get_policy_scoring_policies__slug__get"];
+        put?: never;
+        post?: never;
+        /** Delete Policy */
+        delete: operations["delete_policy_scoring_policies__slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Policy
+         * @description Partially update a scoring policy using JSON Patch (RFC 6902).
+         *
+         *     The fields ``slug`` and ``category`` are immutable. ``targets`` (a
+         *     list of project-type slugs) may be replaced via a JSON Pointer
+         *     ``/targets`` replace operation.
+         */
+        patch: operations["update_policy_scoring_policies__slug__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/score/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Score History */
+        get: operations["get_score_history_organizations__org_slug__projects__project_id__score_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/score/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Score Trend
+         * @description Return the current score and its change over the last *days* days.
+         */
+        get: operations["get_score_trend_organizations__org_slug__projects__project_id__score_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scores/rollup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Score Rollup
+         * @description Return current-score rollup for *org*, grouped by *dimension*.
+         *
+         *     Uses ``score_latest`` (one row per project, current score only)
+         *     so projects with many history entries do not skew aggregates.
+         */
+        get: operations["score_rollup_scores_rollup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scores/monthly-improvement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Score Monthly Improvement
+         * @description Return avg-score and improvement per dimension group for a month.
+         *
+         *     Improvement = avg(last project score in *selected* month)
+         *                 - avg(last project score in *previous* month).
+         *     Only projects scored in the selected month are counted.
+         */
+        get: operations["score_monthly_improvement_scores_monthly_improvement_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scores/history-by-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Score History By Team
+         * @description Return avg score history per team for *org*, bucketed by granularity.
+         */
+        get: operations["score_history_by_team_scores_history_by_team_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scores/history-feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Score History Feed
+         * @description Return recent raw score change events for *org*'s projects.
+         */
+        get: operations["score_history_feed_scores_history_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scoring/rescore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rescore */
+        post: operations["rescore_scoring_rescore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/service-accounts": {
         parameters: {
             query?: never;
@@ -2356,11 +4993,7 @@ export interface paths {
          * @description Get a service account by slug.
          */
         get: operations["get_service_account_service_accounts__slug__get"];
-        /**
-         * Update Service Account
-         * @description Update a service account.
-         */
-        put: operations["update_service_account_service_accounts__slug__put"];
+        put?: never;
         post?: never;
         /**
          * Delete Service Account
@@ -2416,11 +5049,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /**
-         * Update Organization Role
-         * @description Change a service account's role in an organization.
-         */
-        put: operations["update_organization_role_service_accounts__slug__organizations__org_slug__put"];
+        put?: never;
         post?: never;
         /**
          * Remove From Organization
@@ -2429,7 +5058,21 @@ export interface paths {
         delete: operations["remove_from_organization_service_accounts__slug__organizations__org_slug__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Organization Role
+         * @description Change a service account's role in an organization via JSON Patch.
+         *
+         *     Parameters:
+         *         slug (str): Service account slug.
+         *         org_slug (str): Organization slug.
+         *         operations (list): JSON Patch operations. Exactly one
+         *             ``replace`` or ``add`` op targeting ``/role_slug``.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 400 on malformed patch, HTTP 404
+         *             if membership or role not found.
+         */
+        patch: operations["update_organization_role_service_accounts__slug__organizations__org_slug__patch"];
         trace?: never;
     };
     "/status": {
@@ -2624,6 +5267,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/by-identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User By Identity
+         * @description Look up a user by an external identity subject on an Integration.
+         *
+         *     Used by inbound webhook gateways to attribute external events
+         *     (e.g. a GitHub deployment) to the corresponding Imbi user.
+         *     Returns 404 when no active ``IdentityConnection`` matches.
+         */
+        get: operations["get_user_by_identity_users_by_identity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Current User Profile
+         * @description Return the authenticated user's own profile and permissions.
+         *
+         *     Unlike ``GET /users/{email}``, this includes the caller's effective
+         *     permission set so the UI can gate features without a second request.
+         *     Requires a human user; service-account tokens receive HTTP 403.
+         *
+         *     Returns:
+         *         models.CurrentUserResponse: The caller's profile with loaded
+         *             organization memberships and effective permissions.
+         */
+        get: operations["get_current_user_profile_users_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/{email}": {
         parameters: {
             query?: never;
@@ -2646,22 +5341,7 @@ export interface paths {
          *         fastapi.HTTPException: HTTP 404 if user not found.
          */
         get: operations["get_user_users__email__get"];
-        /**
-         * Update User
-         * @description Update an existing user account.
-         *
-         *     Parameters:
-         *         email (str): Email from URL path.
-         *         user_update (models.UserCreate): Updated user data.
-         *
-         *     Returns:
-         *         models.UserResponse: The updated user (without password_hash).
-         *
-         *     Raises:
-         *         fastapi.HTTPException: HTTP 400 if URL email doesn't match
-         *             body email, or HTTP 404 if user not found.
-         */
-        put: operations["update_user_users__email__put"];
+        put?: never;
         post?: never;
         /**
          * Delete User
@@ -2764,20 +5444,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /**
-         * Update Organization Role
-         * @description Change a user's role in an organization.
-         *
-         *     Parameters:
-         *         email (str): Email of user.
-         *         org_slug (str): Organization slug.
-         *         role_data (dict): Dictionary with 'role_slug' key.
-         *
-         *     Raises:
-         *         fastapi.HTTPException: HTTP 400 if role_slug missing,
-         *             HTTP 404 if membership or role not found.
-         */
-        put: operations["update_organization_role_users__email__organizations__org_slug__put"];
+        put?: never;
         post?: never;
         /**
          * Remove From Organization
@@ -2791,6 +5458,104 @@ export interface paths {
          *         fastapi.HTTPException: HTTP 404 if membership not found.
          */
         delete: operations["remove_from_organization_users__email__organizations__org_slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Organization Role
+         * @description Change a user's role in an organization via JSON Patch.
+         *
+         *     Parameters:
+         *         email (str): Email of user.
+         *         org_slug (str): Organization slug.
+         *         operations (list): JSON Patch operations. Exactly one
+         *             ``replace`` or ``add`` op targeting ``/role_slug``.
+         *
+         *     Raises:
+         *         fastapi.HTTPException: HTTP 400 on malformed patch, HTTP 404
+         *             if membership or role not found.
+         */
+        patch: operations["update_organization_role_users__email__organizations__org_slug__patch"];
+        trace?: never;
+    };
+    "/users/{email}/contributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Contributions
+         * @description Return per-day contribution counts for the user.
+         *
+         *     Aggregates ClickHouse opslog/events with graph-authored items (Document,
+         *     Release, Upload, Conversation) into one daily map keyed by the
+         *     requested ``tz``.
+         */
+        get: operations["get_user_contributions_users__email__contributions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{email}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Stats
+         * @description Return summary deployment / project tiles for the profile page.
+         */
+        get: operations["get_user_stats_users__email__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{email}/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Identities
+         * @description Return the user's linked OAuth identities (no tokens).
+         */
+        get: operations["get_user_identities_users__email__identities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{email}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Activity
+         * @description Cursor-paginated, mixed-source activity feed for the user.
+         */
+        get: operations["get_user_activity_users__email__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2915,6 +5680,38 @@ export interface components {
              */
             revoked: boolean;
         };
+        /** ActivityRecord */
+        ActivityRecord: {
+            /** Id */
+            id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "operations_log" | "events" | "document" | "release" | "upload" | "conversation";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Summary */
+            summary: string;
+            /** Type */
+            type: string;
+            /** Environment Slug */
+            environment_slug?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Slug */
+            project_slug?: string | null;
+            /** Link */
+            link?: string | null;
+        };
+        /** ActivityResponse */
+        ActivityResponse: {
+            /** Data */
+            data: components["schemas"]["ActivityRecord"][];
+        };
         /**
          * AdminSettings
          * @description Reference data for the admin UI.
@@ -2928,6 +5725,232 @@ export interface components {
             auth_methods: string[];
             /** Auth Types */
             auth_types: string[];
+        };
+        /**
+         * AgePolicy
+         * @description Score based on age of a datetime attribute.
+         *
+         *     ``age_score_map`` keys use the same threshold DSL the UI's
+         *     ``color-age`` map uses: operator (``<``, ``<=``, ``==``, ``>``,
+         *     ``>=``) followed by a duration with unit ``s``/``m``/``h``/``d``/``w``
+         *     (e.g. ``">90d"``, ``"<=7d"``). The elapsed seconds since *value*
+         *     is compared to each threshold in document order; **first match wins**.
+         *
+         *     Because Python preserves ``dict`` insertion order, the order keys
+         *     appear in ``age_score_map`` is significant — list the most specific
+         *     or highest-priority thresholds first. For example, to score a stale
+         *     item ``0`` only when older than 30 days but ``50`` between 7 and 30
+         *     days, put ``">30d"`` before ``">7d"``.
+         */
+        AgePolicy: {
+            /** Id */
+            id?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /**
+             * Category
+             * @default age
+             * @constant
+             */
+            category: "age";
+            /** Attribute Name */
+            attribute_name: string;
+            /** Age Score Map */
+            age_score_map: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * AnalysisReport
+         * @description The latest analysis report for a project.
+         */
+        AnalysisReport: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Overall Status
+             * @enum {string}
+             */
+            overall_status: "pass" | "warn" | "fail";
+            /** Triggered By User Id */
+            triggered_by_user_id?: string | null;
+            /** Results */
+            results: components["schemas"]["AnalysisResult"][];
+        };
+        /**
+         * AnalysisResult
+         * @description A single finding belonging to an :class:`AnalysisReport`.
+         */
+        AnalysisResult: {
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "warn" | "fail";
+            /** Plugin Slug */
+            plugin_slug: string;
+            /** Plugin Id */
+            plugin_id: string;
+            remediation?: components["schemas"]["RemediationOffer"] | null;
+        };
+        /**
+         * AnalysisResultPolicy
+         * @description Score a project by the status of a specific analysis result.
+         *
+         *     The scoring engine looks up the project's latest
+         *     ``AnalysisResult`` whose ``slug`` matches ``result_slug``, then
+         *     maps the result's ``status`` to a 0-100 score via
+         *     ``status_score_map``. When no matching result exists,
+         *     :meth:`evaluate` returns ``None`` (consistent with how the
+         *     attribute / age categories treat missing data).
+         */
+        AnalysisResultPolicy: {
+            /** Id */
+            id?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /**
+             * Category
+             * @default analysis_result
+             * @constant
+             */
+            category: "analysis_result";
+            /** Result Slug */
+            result_slug: string;
+            /** Status Score Map */
+            status_score_map?: {
+                [key: string]: number;
+            };
+        };
+        /** AnchorModel */
+        AnchorModel: {
+            /** Quote */
+            quote: string;
+            /** Prefix */
+            prefix: string;
+            /** Suffix */
+            suffix: string;
+            /** Start */
+            start: number;
+        };
+        /**
+         * AttachmentRef
+         * @description The vertex a document hangs off of.
+         *
+         *     ``id`` is the project id, the project-type slug, or the user
+         *     email depending on ``kind``. ``team`` and ``project_types`` are
+         *     only populated for ``kind='project'``.
+         */
+        AttachmentRef: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "project" | "project_type" | "user";
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Team */
+            team?: string | null;
+            /**
+             * Project Types
+             * @default []
+             */
+            project_types: string[];
+        };
+        /**
+         * AttributePolicy
+         * @description Map an attribute value to 0-100 via a value or range table.
+         */
+        AttributePolicy: {
+            /** Id */
+            id?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /**
+             * Category
+             * @default attribute
+             * @constant
+             */
+            category: "attribute";
+            /** Attribute Name */
+            attribute_name: string;
+            /** Value Score Map */
+            value_score_map?: {
+                [key: string]: number;
+            } | null;
+            /** Range Score Map */
+            range_score_map?: {
+                [key: string]: number;
+            } | null;
         };
         /**
          * AuthProvider
@@ -2989,7 +6012,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "ThirdPartyService") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -3040,7 +6063,7 @@ export interface components {
              */
             kind: "node" | "relationship";
             /** Type */
-            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "ThirdPartyService") | null;
+            type?: ("Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration") | null;
             /** Source */
             source?: string | null;
             /** Target */
@@ -3096,6 +6119,12 @@ export interface components {
             slug: string;
             /** Description */
             description?: string | null;
+            /**
+             * Scope
+             * @default project
+             * @enum {string}
+             */
+            scope: "project" | "environment";
             /** Properties */
             properties: {
                 [key: string]: components["schemas"]["BlueprintSectionProperty"];
@@ -3126,6 +6155,10 @@ export interface components {
             "x-ui"?: {
                 [key: string]: unknown;
             };
+            /** X-Display */
+            "x-display"?: {
+                [key: string]: unknown;
+            };
         };
         /** Body_create_upload_uploads__post */
         Body_create_upload_uploads__post: {
@@ -3139,11 +6172,6 @@ export interface components {
             /** Mfa Code */
             mfa_code?: string | null;
         };
-        /** Body_grant_permission_roles__slug__permissions_post */
-        Body_grant_permission_roles__slug__permissions_post: {
-            /** Permission Name */
-            permission_name: string;
-        };
         /** Body_login_auth_login_post */
         Body_login_auth_login_post: {
             /**
@@ -3156,16 +6184,76 @@ export interface components {
             /** Mfa Code */
             mfa_code?: string | null;
         };
+        /** Body_role_permissions_roles__slug__permissions_post */
+        Body_role_permissions_roles__slug__permissions_post: {
+            /** Permission Name */
+            permission_name: string;
+        };
         /** Body_token_auth_token_post */
         Body_token_auth_token_post: {
             /** Grant Type */
             grant_type: string;
             /** Client Id */
-            client_id: string;
+            client_id?: string | null;
             /** Client Secret */
-            client_secret: string;
+            client_secret?: string | null;
             /** Scope */
             scope?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Redirect Uri */
+            redirect_uri?: string | null;
+            /** Code Verifier */
+            code_verifier?: string | null;
+            /** Refresh Token */
+            refresh_token?: string | null;
+        };
+        /**
+         * CapabilityAssignment
+         * @description One project-type assignment of an Integration's capability.
+         *
+         *     Binds ``(:ProjectType)-[:USES {capability}]->(:Integration)``.
+         */
+        CapabilityAssignment: {
+            /** Project Type Slug */
+            project_type_slug: string;
+            /**
+             * Default
+             * @default false
+             */
+            default: boolean;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+            /** Env Payloads */
+            env_payloads?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Identity Integration Slug */
+            identity_integration_slug?: string | null;
+        };
+        /**
+         * CapabilityAssignmentsUpdate
+         * @description Replace-all body for a capability's project-type assignments.
+         */
+        CapabilityAssignmentsUpdate: {
+            /** Assignments */
+            assignments?: components["schemas"]["CapabilityAssignment"][];
+        };
+        /**
+         * CapabilityToggle
+         * @description Per-capability state on an Integration: enabled + capability options.
+         */
+        CapabilityToggle: {
+            /** Enabled */
+            enabled: boolean;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ClientCredentialCreate
@@ -3243,6 +6331,554 @@ export interface components {
             /** Revoked At */
             revoked_at?: string | null;
         };
+        /** CommentBodyCreate */
+        CommentBodyCreate: {
+            /** Body */
+            body: string;
+            /**
+             * Mentions
+             * @default []
+             */
+            mentions: string[];
+        };
+        /** CommentResponse */
+        CommentResponse: {
+            /** Id */
+            id: string;
+            /** Thread Id */
+            thread_id: string;
+            /** Author */
+            author: string;
+            /** Body */
+            body: string;
+            /**
+             * Mentions
+             * @default []
+             */
+            mentions: string[];
+            /**
+             * Acknowledged By
+             * @default []
+             */
+            acknowledged_by: string[];
+            /**
+             * Edited
+             * @default false
+             */
+            edited: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** CommentThreadCreate */
+        CommentThreadCreate: {
+            /**
+             * Kind
+             * @default page
+             * @enum {string}
+             */
+            kind: "page" | "inline";
+            /** Body */
+            body: string;
+            anchor?: components["schemas"]["AnchorModel"] | null;
+            /**
+             * Mentions
+             * @default []
+             */
+            mentions: string[];
+        };
+        /** CommentThreadListResponse */
+        CommentThreadListResponse: {
+            /** Data */
+            data: components["schemas"]["CommentThreadResponse"][];
+        };
+        /** CommentThreadResponse */
+        CommentThreadResponse: {
+            /** Id */
+            id: string;
+            /** Document Id */
+            document_id: string;
+            /** Kind */
+            kind: string;
+            /** Resolved */
+            resolved: boolean;
+            /** Resolved By */
+            resolved_by?: string | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            anchor?: components["schemas"]["AnchorModel"] | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Comments
+             * @default []
+             */
+            comments: components["schemas"]["CommentResponse"][];
+        };
+        /**
+         * Commit
+         * @description A commit on a deployable repo, hydrated for UI display.
+         */
+        Commit: {
+            /** Sha */
+            sha: string;
+            /** Short Sha */
+            short_sha: string;
+            /** Message */
+            message: string;
+            /** Author */
+            author?: string | null;
+            /** Authored At */
+            authored_at?: string | null;
+            /** Url */
+            url?: string | null;
+            /**
+             * Ci Status
+             * @default unknown
+             * @enum {string}
+             */
+            ci_status: "pass" | "fail" | "warn" | "unknown";
+            /** Pr Number */
+            pr_number?: number | null;
+            /**
+             * Is Head
+             * @default false
+             */
+            is_head: boolean;
+        };
+        /**
+         * CommitSyncEnqueueResponse
+         * @description Result of enqueueing a commit/tag sync.
+         */
+        CommitSyncEnqueueResponse: {
+            /** Enqueued */
+            enqueued: boolean;
+        };
+        /**
+         * CommitSyncStatus
+         * @description Last-sync state for a project's commit/tag history.
+         */
+        CommitSyncStatus: {
+            /**
+             * Status
+             * @default idle
+             * @enum {string}
+             */
+            status: "idle" | "queued" | "running" | "success" | "failed";
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Commits Synced */
+            commits_synced?: number | null;
+            /** Tags Synced */
+            tags_synced?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
+        };
+        /**
+         * CompareResult
+         * @description Result of comparing two commit-ish refs (``base..head``).
+         */
+        CompareResult: {
+            /** Base Sha */
+            base_sha: string;
+            /** Head Sha */
+            head_sha: string;
+            /** Ahead */
+            ahead: number;
+            /** Behind */
+            behind: number;
+            /**
+             * Commits
+             * @default []
+             */
+            commits: components["schemas"]["Commit"][];
+            /**
+             * Files Changed
+             * @default 0
+             */
+            files_changed: number;
+            /**
+             * Additions
+             * @default 0
+             */
+            additions: number;
+            /**
+             * Deletions
+             * @default 0
+             */
+            deletions: number;
+            /**
+             * Pr Numbers
+             * @default []
+             */
+            pr_numbers: number[];
+        };
+        /**
+         * Condition
+         * @description A node in a boolean condition tree.
+         *
+         *     Exactly one node shape is populated:
+         *
+         *     * combinator — ``all`` / ``any`` (lists of child nodes) or ``not``
+         *       (a single child),
+         *     * attribute leaf — ``attribute`` + ``op`` (+ ``value`` unless the op is
+         *       ``present`` / ``absent``), a predicate on the project being scored,
+         *     * relationship leaf — ``relationship``, a predicate on the project's
+         *       outgoing ``DEPENDS_ON`` neighbours.
+         *
+         *     ``all``/``any``/``not`` are stored under aliases because they collide
+         *     with Python builtins/keywords.
+         */
+        "Condition-Input": {
+            /** All */
+            all?: components["schemas"]["Condition-Input"][] | null;
+            /** Any */
+            any?: components["schemas"]["Condition-Input"][] | null;
+            not?: components["schemas"]["Condition-Input"] | null;
+            /** Attribute */
+            attribute?: string | null;
+            /** Op */
+            op?: ("eq" | "ne" | "gt" | "ge" | "lt" | "le" | "present" | "absent") | null;
+            /** Value */
+            value?: unknown;
+            relationship?: components["schemas"]["RelationshipSpec-Input"] | null;
+        };
+        /**
+         * Condition
+         * @description A node in a boolean condition tree.
+         *
+         *     Exactly one node shape is populated:
+         *
+         *     * combinator — ``all`` / ``any`` (lists of child nodes) or ``not``
+         *       (a single child),
+         *     * attribute leaf — ``attribute`` + ``op`` (+ ``value`` unless the op is
+         *       ``present`` / ``absent``), a predicate on the project being scored,
+         *     * relationship leaf — ``relationship``, a predicate on the project's
+         *       outgoing ``DEPENDS_ON`` neighbours.
+         *
+         *     ``all``/``any``/``not`` are stored under aliases because they collide
+         *     with Python builtins/keywords.
+         */
+        "Condition-Output": {
+            /** All */
+            all?: components["schemas"]["Condition-Output"][] | null;
+            /** Any */
+            any?: components["schemas"]["Condition-Output"][] | null;
+            not?: components["schemas"]["Condition-Output"] | null;
+            /** Attribute */
+            attribute?: string | null;
+            /** Op */
+            op?: ("eq" | "ne" | "gt" | "ge" | "lt" | "le" | "present" | "absent") | null;
+            /** Value */
+            value?: unknown;
+            relationship?: components["schemas"]["RelationshipSpec-Output"] | null;
+        };
+        /**
+         * ConditionPolicy
+         * @description Score a project by whether a boolean condition tree holds.
+         *
+         *     The tree combines attribute predicates on the project with predicates
+         *     on its outgoing ``DEPENDS_ON`` neighbours (see :class:`Condition`). The
+         *     result maps to ``true_score`` / ``false_score`` and participates as an
+         *     ordinary weighted policy. Unlike the value-mapped categories, it never
+         *     returns ``None`` — quantifiers give an empty neighbour set a definite
+         *     answer, so a condition policy always contributes.
+         */
+        ConditionPolicy: {
+            /** Id */
+            id?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /**
+             * Category
+             * @default condition
+             * @constant
+             */
+            category: "condition";
+            condition: components["schemas"]["Condition-Output"];
+            /**
+             * True Score
+             * @default 100
+             */
+            true_score: number;
+            /**
+             * False Score
+             * @default 0
+             */
+            false_score: number;
+        };
+        /**
+         * ConfigKeyResponse
+         * @description Response model for a configuration key (no value).
+         */
+        ConfigKeyResponse: {
+            /** Key */
+            key: string;
+            /** Data Type */
+            data_type: string;
+            /** Last Modified */
+            last_modified?: string | null;
+            /**
+             * Secret
+             * @default false
+             */
+            secret: boolean;
+        };
+        /**
+         * ConfigKeyValueResponse
+         * @description Response model for a configuration key with its value.
+         */
+        ConfigKeyValueResponse: {
+            /** Key */
+            key: string;
+            /** Data Type */
+            data_type: string;
+            /** Last Modified */
+            last_modified?: string | null;
+            /**
+             * Secret
+             * @default false
+             */
+            secret: boolean;
+            /** Value */
+            value: string;
+        };
+        /** ConfigValue */
+        ConfigValue: {
+            /** Data Type */
+            data_type: string;
+            /** Value */
+            value: string;
+            /**
+             * Secret
+             * @default false
+             */
+            secret: boolean;
+        };
+        /** ContributionBucket */
+        ContributionBucket: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Count */
+            count: number;
+            /** By Source */
+            by_source: {
+                [key: string]: number;
+            };
+        };
+        /** ContributionsResponse */
+        ContributionsResponse: {
+            /** Total */
+            total: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+            /** Tz */
+            tz: string;
+            /** Buckets */
+            buckets: components["schemas"]["ContributionBucket"][];
+        };
+        /**
+         * CurrentReleaseEnvironment
+         * @description Latest deployment state for one environment of a project.
+         *
+         *     ``release`` and ``current_status`` are ``None`` when the project is
+         *     configured to deploy in the environment but has no recorded
+         *     deployment events there yet.
+         *
+         *     ``external_run_url`` and ``ci_status`` are populated by the
+         *     deployment-plugin hydration pass: the former is the workflow run
+         *     URL of the latest event (when present), the latter the aggregate
+         *     check-runs status of the deployed version (``None`` when the
+         *     plugin can't or won't report it).
+         */
+        CurrentReleaseEnvironment: {
+            environment: components["schemas"]["ReleaseEnvironmentRef"];
+            release?: components["schemas"]["ReleaseResponse"] | null;
+            /** Current Status */
+            current_status?: ("pending" | "in_progress" | "success" | "failed" | "rolled_back") | null;
+            /** Last Event At */
+            last_event_at?: string | null;
+            /** External Run Url */
+            external_run_url?: string | null;
+            /** Ci Status */
+            ci_status?: ("pass" | "fail" | "warn" | "unknown") | null;
+            /** Performed By */
+            performed_by?: string | null;
+            /** Performed By Email */
+            performed_by_email?: string | null;
+        };
+        /**
+         * CurrentUserResponse
+         * @description Response model for the authenticated user's own profile.
+         *
+         *     Extends ``UserResponse`` with the caller's effective permission set
+         *     and team memberships so the UI can gate features and offer
+         *     membership-scoped filters in a single request. Only exposed via
+         *     ``GET /users/me`` — the per-email endpoint deliberately omits
+         *     permissions to avoid disclosing one user's grants to another.
+         */
+        CurrentUserResponse: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Display Name */
+            display_name: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Admin */
+            is_admin: boolean;
+            /** Is Service Account */
+            is_service_account: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Login */
+            last_login?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /**
+             * Email Notifications
+             * @default true
+             */
+            email_notifications: boolean;
+            /**
+             * Organizations
+             * @default []
+             */
+            organizations: components["schemas"]["OrgMembership"][];
+            /**
+             * Permissions
+             * @default []
+             */
+            permissions: string[];
+            /**
+             * Teams
+             * @default []
+             */
+            teams: components["schemas"]["TeamMembership"][];
+        };
+        /**
+         * DashboardMetrics
+         * @description 7-day activity metrics with daily breakdowns for the tiles.
+         */
+        DashboardMetrics: {
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            releases: components["schemas"]["MetricSeries"];
+            events: components["schemas"]["MetricSeries"];
+            ops_log: components["schemas"]["MetricSeries"];
+            pull_requests: components["schemas"]["MetricSeries"];
+            /** Releases By Environment */
+            releases_by_environment: components["schemas"]["EnvironmentCount"][];
+        };
+        /**
+         * DashboardStatus
+         * @description Aggregate system-health snapshot for the admin dashboard.
+         */
+        DashboardStatus: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Datastores */
+            datastores: components["schemas"]["DatastoreStatus"][];
+            /** Services */
+            services: components["schemas"]["ServiceStatus"][];
+        };
+        /**
+         * DatastoreStatus
+         * @description Health of a single backing datastore.
+         */
+        DatastoreStatus: {
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "error";
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Total Bytes */
+            total_bytes?: number | null;
+            /** Detail */
+            detail?: string | null;
+        };
+        /**
+         * DeployActionRequest
+         * @description Body for ``POST /deployments`` with ``action='deploy'|'redeploy'``.
+         */
+        DeployActionRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            action: "deploy" | "redeploy";
+            /** Environment */
+            environment: string;
+            /** Committish */
+            committish: string;
+            /** Ref Label */
+            ref_label?: string | null;
+            /** Inputs */
+            inputs?: {
+                [key: string]: string;
+            } | null;
+        };
         /**
          * DeploymentEvent
          * @description A single status transition for a release deployment.
@@ -3263,6 +6899,12 @@ export interface components {
             status: "pending" | "in_progress" | "success" | "failed" | "rolled_back";
             /** Note */
             note?: string | null;
+            /** External Run Id */
+            external_run_id?: string | null;
+            /** External Run Url */
+            external_run_url?: string | null;
+            /** Performed By */
+            performed_by?: string | null;
         };
         /**
          * DeploymentEventInput
@@ -3276,6 +6918,390 @@ export interface components {
             status: "pending" | "in_progress" | "success" | "failed" | "rolled_back";
             /** Note */
             note?: string | null;
+            /** External Run Id */
+            external_run_id?: string | null;
+        };
+        /**
+         * DeploymentRun
+         * @description A workflow / pipeline run triggered by ``trigger_deployment``.
+         */
+        DeploymentRun: {
+            /** Run Id */
+            run_id: string;
+            /** Run Url */
+            run_url?: string | null;
+            /**
+             * Status
+             * @default queued
+             * @enum {string}
+             */
+            status: "queued" | "in_progress" | "success" | "failure" | "cancelled" | "unknown";
+            /** Started At */
+            started_at?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+        };
+        /** DeploymentStats */
+        DeploymentStats: {
+            /** Total */
+            total: number;
+            /** Rolled Back */
+            rolled_back: number;
+            /** Success Rate */
+            success_rate: number | null;
+        };
+        /**
+         * DeploymentStatusPolicy
+         * @description Score a project by its latest deployment status in an environment.
+         *
+         *     The scoring engine resolves the project's current deployment status
+         *     in ``environment_slug`` — the ``status`` of the most recent
+         *     ``DeploymentEvent`` across the project's releases deployed there —
+         *     then maps it to a 0-100 score via ``status_score_map``.
+         *
+         *     The synthetic ``'missing'`` key scores environments the project has
+         *     not deployed to yet (default 100, i.e. no penalty). A status present
+         *     on the edge but absent from the map falls back to the ``'missing'``
+         *     score, so omitting a status (e.g. ``'rolled_back'``) can never
+         *     implicitly score it 0.
+         */
+        DeploymentStatusPolicy: {
+            /** Id */
+            id?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /**
+             * Category
+             * @default deployment_status
+             * @constant
+             */
+            category: "deployment_status";
+            /** Environment Slug */
+            environment_slug: string;
+            /** Status Score Map */
+            status_score_map?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * DeploymentTriggerResponse
+         * @description Response shape for a successful deploy/redeploy/promote action.
+         */
+        DeploymentTriggerResponse: {
+            run: components["schemas"]["DeploymentRun"];
+            /** Plugin Id */
+            plugin_id: string;
+            /** Plugin Slug */
+            plugin_slug: string;
+            /**
+             * Recorded
+             * @default false
+             */
+            recorded: boolean;
+            /** Release Url */
+            release_url?: string | null;
+            /** Tag */
+            tag?: string | null;
+            /** Warning */
+            warning?: string | null;
+        };
+        /** DocumentCreate */
+        DocumentCreate: {
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /**
+             * Tags
+             * @description Tag slugs to attach. Must already exist in the org.
+             */
+            tags?: string[];
+        };
+        /** DocumentListResponse */
+        DocumentListResponse: {
+            /** Data */
+            data: components["schemas"]["DocumentResponse"][];
+        };
+        /** DocumentResponse */
+        DocumentResponse: {
+            /** Id */
+            id: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Content */
+            content: string;
+            /** Created By */
+            created_by: string;
+            /** Created By Name */
+            created_by_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated By */
+            updated_by?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            attached_to?: components["schemas"]["AttachmentRef"] | null;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /**
+             * Comment Count
+             * @default 0
+             */
+            comment_count: number;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["TagRef"][];
+        };
+        /** DocumentTemplateCreate */
+        DocumentTemplateCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Type
+             * @description Which attachment contexts may use this template: project, user, or project_type documents; global applies everywhere.
+             * @default project
+             * @enum {string}
+             */
+            type: "project" | "global" | "user" | "project_type";
+            /**
+             * Tags
+             * @description Tag slugs to attach. Must already exist in the org.
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Project Type Slugs
+             * @default []
+             */
+            project_type_slugs: string[];
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+        };
+        /** DocumentTemplateResponse */
+        DocumentTemplateResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Type
+             * @default project
+             * @enum {string}
+             */
+            type: "project" | "global" | "user" | "project_type";
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["TagRef"][];
+            /**
+             * Project Type Slugs
+             * @default []
+             */
+            project_type_slugs: string[];
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            organization: components["schemas"]["OrganizationRef"];
+        };
+        /** DocumentTemplateUpdate */
+        DocumentTemplateUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Content */
+            content?: string | null;
+            /** Type */
+            type?: ("project" | "global" | "user" | "project_type") | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Project Type Slugs */
+            project_type_slugs?: string[] | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
+        /**
+         * DraftReleaseNotesRequest
+         * @description Body for ``POST /deployments/draft-release-notes``.
+         */
+        DraftReleaseNotesRequest: {
+            /** Base Sha */
+            base_sha: string;
+            /** Head Sha */
+            head_sha: string;
+            /** Last Tag */
+            last_tag?: string | null;
+        };
+        /**
+         * DraftReleaseNotesResponse
+         * @description Response shape for the release-notes drafting endpoint.
+         */
+        DraftReleaseNotesResponse: {
+            /**
+             * Bump
+             * @enum {string}
+             */
+            bump: "major" | "minor" | "patch";
+            /** Version */
+            version: string;
+            /** Reasoning */
+            reasoning: string;
+            /** Notes Markdown */
+            notes_markdown: string;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Commits Considered
+             * @default 0
+             */
+            commits_considered: number;
+        };
+        /**
+         * EdgePutBody
+         * @description Request body for the PUT-edge endpoint.
+         *
+         *     ``target_id`` is the node id of the target (the value stored in
+         *     ``n.id``, not the AGE internal id).  ``properties`` is validated
+         *     against the manifest's declared property schema; unknown keys are
+         *     rejected.
+         */
+        EdgePutBody: {
+            /** Target Label */
+            target_label: string;
+            /** Target Id */
+            target_id: string;
+            /** Properties */
+            properties?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * EdgeResponse
+         * @description A single materialized edge.
+         */
+        EdgeResponse: {
+            /** Rel Type */
+            rel_type: string;
+            /** Target Label */
+            target_label: string;
+            /** Target */
+            target: {
+                [key: string]: unknown;
+            };
+            /** Properties */
+            properties?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * EdgeTypeCount
+         * @description An edge type with its instance count.
+         */
+        EdgeTypeCount: {
+            /** Type */
+            type: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * EnvironmentCount
+         * @description Release count for one environment over the window.
+         */
+        EnvironmentCount: {
+            /** Slug */
+            slug: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * EnvironmentEdgeUpdate
+         * @description Edge-property updates for a project's ``DEPLOYED_IN`` edge.
+         *
+         *     Keys are blueprint-defined edge attributes (accepted via
+         *     ``extra='allow'``). A non-null value sets the property; a ``null``
+         *     value removes it.
+         */
+        EnvironmentEdgeUpdate: {
+            [key: string]: unknown;
         };
         /**
          * EnvironmentRef
@@ -3313,9 +7339,50 @@ export interface components {
              * @description Hex color for environment labels (e.g. #3B82F6)
              */
             label_color?: string | null;
+            /**
+             * Can Deploy
+             * @default true
+             */
+            can_deploy: boolean;
+            /**
+             * Can Promote
+             * @default false
+             */
+            can_promote: boolean;
             organization: components["schemas"]["Organization"];
         } & {
             [key: string]: unknown;
+        };
+        /** EventRecord */
+        EventRecord: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Type */
+            type: string;
+            /** Integration */
+            integration: string;
+            /** Attributed To */
+            attributed_to: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /** EventsPage */
+        EventsPage: {
+            /** Data */
+            data: components["schemas"]["EventRecord"][];
         };
         /**
          * ExistsInCreate
@@ -3353,10 +7420,647 @@ export interface components {
          * @enum {string}
          */
         FormatType: "date-time" | "date" | "time" | "duration" | "email" | "idn-email" | "hostname" | "idn-hostname" | "ipv4" | "ipv6" | "uri" | "uri-reference" | "iri" | "iri-reference" | "uuid" | "uri-template" | "json-pointer" | "relative-json-pointer" | "regex";
+        /** GlobalScoreEvent */
+        GlobalScoreEvent: {
+            /** Timestamp */
+            timestamp: string;
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Team Key */
+            team_key: string;
+            /** Score */
+            score: number;
+            /** Previous Score */
+            previous_score?: number | null;
+            /** Change Reason */
+            change_reason?: string | null;
+        };
+        /**
+         * GraphEdge
+         * @description An edge extracted from query results.
+         */
+        GraphEdge: {
+            /** Id */
+            id: string;
+            /** Type */
+            type: string;
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+            /** Properties */
+            properties: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * GraphNode
+         * @description A vertex extracted from query results.
+         */
+        GraphNode: {
+            /** Id */
+            id: string;
+            /** Labels */
+            labels: string[];
+            /** Properties */
+            properties: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * GraphQueryRequest
+         * @description Request body for ``POST /admin/graph/query``.
+         */
+        GraphQueryRequest: {
+            /** Query */
+            query: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * GraphQueryResponse
+         * @description Response body for a successful query.
+         */
+        GraphQueryResponse: {
+            /** Columns */
+            columns: string[];
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Nodes */
+            nodes: components["schemas"]["GraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["GraphEdge"][];
+            /** Elapsed Ms */
+            elapsed_ms: number;
+        };
+        /**
+         * GraphSchemaResponse
+         * @description Response body for ``GET /admin/graph/schema``.
+         */
+        GraphSchemaResponse: {
+            /** Node Labels */
+            node_labels: components["schemas"]["LabelCount"][];
+            /** Edge Types */
+            edge_types: components["schemas"]["EdgeTypeCount"][];
+            /** Property Keys */
+            property_keys: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IdentitiesResponse */
+        IdentitiesResponse: {
+            primary: components["schemas"]["IdentityRecord"] | null;
+            /** All */
+            all: components["schemas"]["IdentityRecord"][];
+        };
+        /**
+         * IdentityConnectionPollRequest
+         * @description Body for ``POST /me/identities/{integration_id}/poll``.
+         */
+        IdentityConnectionPollRequest: {
+            /** State */
+            state: string;
+        };
+        /**
+         * IdentityConnectionPollResponse
+         * @description Reply to ``POST /me/identities/{integration_id}/poll``.
+         *
+         *     ``status`` is ``'pending'`` while the user has not yet authorized
+         *     out-of-band, ``'complete'`` once the IdP has issued tokens and the
+         *     connection has been persisted.
+         */
+        IdentityConnectionPollResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "pending";
+            /** Return To */
+            return_to?: string | null;
+        };
+        /**
+         * IdentityConnectionResponse
+         * @description Public read model for a user's identity connection.
+         *
+         *     Tokens — encrypted or plaintext — never appear here.
+         */
+        IdentityConnectionResponse: {
+            /** Id */
+            id: string;
+            /** Integration Id */
+            integration_id: string;
+            /** Integration Slug */
+            integration_slug: string;
+            /** Integration Name */
+            integration_name?: string | null;
+            /** Plugin */
+            plugin?: string | null;
+            /** Subject */
+            subject: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "revoked" | "expired";
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Scopes
+             * @default []
+             */
+            scopes: string[];
+            /** Last Used At */
+            last_used_at?: string | null;
+            /**
+             * Metadata
+             * @default {}
+             */
+            metadata: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * IdentityConnectionStartRequest
+         * @description Body for ``POST /me/identities/{integration_id}/start``.
+         */
+        IdentityConnectionStartRequest: {
+            /** Return To */
+            return_to?: string | null;
+            /** Scopes */
+            scopes?: string[] | null;
+        };
+        /**
+         * IdentityConnectionStartResponse
+         * @description Reply to ``POST /me/identities/{integration_id}/start``.
+         */
+        IdentityConnectionStartResponse: {
+            /** Authorization Url */
+            authorization_url: string;
+            /** State */
+            state: string;
+            polling?: components["schemas"]["PollingDescriptor"] | null;
+        };
+        /** IdentityRecord */
+        IdentityRecord: {
+            /** Provider */
+            provider: string;
+            /** Provider User Id */
+            provider_user_id: string;
+            /** Email */
+            email?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Linked At */
+            linked_at?: string | null;
+            /** Last Used */
+            last_used?: string | null;
+        };
+        /** IncidentResult */
+        IncidentResult: {
+            /**
+             * Incidents
+             * @default []
+             */
+            incidents: components["schemas"]["IncidentView"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Total */
+            total?: number | null;
+        };
+        /**
+         * IncidentView
+         * @description A single incident row in an :class:`IncidentResult`.
+         */
+        IncidentView: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Urgency */
+            urgency?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Url */
+            url: string;
+            /** Service */
+            service?: string | null;
+        };
+        /**
+         * InstalledPluginResponse
+         * @description Response model for an installed plugin package.
+         *
+         *     The manifest is serialized as pure data (capability ``handler``
+         *     bindings are excluded by the manifest itself) plus the package
+         *     identity and registration state.
+         */
+        InstalledPluginResponse: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Api Version */
+            api_version: number;
+            /** Auth Type */
+            auth_type: string;
+            /**
+             * Options
+             * @default []
+             */
+            options: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Credentials
+             * @default []
+             */
+            credentials: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Capabilities
+             * @default []
+             */
+            capabilities: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Data Types
+             * @default []
+             */
+            data_types: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Vertex Labels
+             * @default []
+             */
+            vertex_labels: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Edge Labels
+             * @default []
+             */
+            edge_labels: {
+                [key: string]: unknown;
+            }[];
+            /** Package Name */
+            package_name: string;
+            /** Package Version */
+            package_version: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * IntegrationCreate
+         * @description Request model for creating an Integration (a plugin instance).
+         */
+        IntegrationCreate: {
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Team Slug */
+            team_slug?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Service Url */
+            service_url?: string | null;
+            /** Category */
+            category?: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "deprecated" | "evaluating" | "inactive";
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+            /** Credentials */
+            credentials?: {
+                [key: string]: string;
+            };
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: components["schemas"]["CapabilityToggle"];
+            };
+            /** Links */
+            links?: {
+                [key: string]: string;
+            };
+            /** Identifiers */
+            identifiers?: {
+                [key: string]: number | string;
+            };
+        };
+        /**
+         * IntegrationCredentialsUpdate
+         * @description Write-only credential patch for an Integration.
+         *
+         *     Maps credential field name to a new plaintext value; ``None`` (or an
+         *     empty string) removes the field. Fields not present are preserved.
+         */
+        IntegrationCredentialsUpdate: {
+            /** Credentials */
+            credentials?: {
+                [key: string]: string | null;
+            };
+        };
+        /** IntegrationResponse */
+        IntegrationResponse: {
+            /** Id */
+            id?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
+            /** @default null */
+            organization: components["schemas"]["Organization"] | null;
+            /** @default null */
+            team: components["schemas"]["Team"] | null;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Options
+             * @default {}
+             */
+            options: {
+                [key: string]: unknown;
+            };
+            /**
+             * Encrypted Credentials
+             * @default {}
+             */
+            encrypted_credentials: {
+                [key: string]: string;
+            };
+            /**
+             * Capabilities
+             * @default {}
+             */
+            capabilities: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Vendor
+             * @default null
+             */
+            vendor: string | null;
+            /**
+             * Service Url
+             * @default null
+             */
+            service_url: string | null;
+            /**
+             * Category
+             * @default null
+             */
+            category: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "deprecated" | "evaluating" | "inactive";
+            /**
+             * Links
+             * @default {}
+             */
+            links: {
+                [key: string]: string;
+            };
+            /**
+             * Identifiers
+             * @default {}
+             */
+            identifiers: {
+                [key: string]: number | string;
+            };
+            /**
+             * Relationships
+             * @default null
+             */
+            relationships: {
+                [key: string]: components["schemas"]["RelationshipLink"];
+            } | null;
+        };
+        /**
+         * IntegrationUpdate
+         * @description Request model for patching an Integration.
+         *
+         *     All fields are optional; only those present in the request body are
+         *     applied (tri-state via ``model_fields_set``). Credentials are updated
+         *     through the dedicated credentials endpoint, not here.
+         */
+        IntegrationUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Team Slug */
+            team_slug?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Service Url */
+            service_url?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Status */
+            status?: ("active" | "deprecated" | "evaluating" | "inactive") | null;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            } | null;
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: components["schemas"]["CapabilityToggle"];
+            } | null;
+            /** Links */
+            links?: {
+                [key: string]: string;
+            } | null;
+            /** Identifiers */
+            identifiers?: {
+                [key: string]: number | string;
+            } | null;
+        };
+        /**
+         * LabelCount
+         * @description A node label with its instance count.
+         */
+        LabelCount: {
+            /** Label */
+            label: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * LifecycleInvocation
+         * @description Per-plugin outcome surfaced to the operator after a lifecycle event.
+         */
+        LifecycleInvocation: {
+            /** Integration Id */
+            integration_id: string;
+            /** Plugin Slug */
+            plugin_slug: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "skipped" | "failed";
+            /** Message */
+            message?: string | null;
+            /**
+             * Artifacts
+             * @default {}
+             */
+            artifacts: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * LifecyclePreviewEntry
+         * @description One row of the ``/lifecycle/preview`` response.
+         *
+         *     Lets the UI decide whether to surface a "move repository" affordance
+         *     for the hypothetical ``project_type_slugs`` set: ``would_relocate``
+         *     is true when the plugin would route the link somewhere different
+         *     than where it points today.  ``current_target`` may be ``None`` if
+         *     the project has no project types assigned today (a brand-new
+         *     project being type-tagged for the first time).
+         */
+        LifecyclePreviewEntry: {
+            /** Integration Id */
+            integration_id: string;
+            /** Plugin Slug */
+            plugin_slug: string;
+            current_target?: components["schemas"]["RelocationTarget"] | null;
+            next_target?: components["schemas"]["RelocationTarget"] | null;
+            /**
+             * Would Relocate
+             * @default false
+             */
+            would_relocate: boolean;
+        };
+        /**
+         * LifecyclePreviewResponse
+         * @description Per-plugin preview for a hypothetical project-type change.
+         *
+         *     Empty ``previews`` when the project has no lifecycle plugins
+         *     assigned, or when none of the assigned plugins implement
+         *     :meth:`LifecycleCapability.resolve_relocation_target` (the default
+         *     base implementation returns ``None``).
+         */
+        LifecyclePreviewResponse: {
+            /**
+             * Previews
+             * @default []
+             */
+            previews: components["schemas"]["LifecyclePreviewEntry"][];
+        };
+        /**
+         * LifecycleSyncError
+         * @description One non-fatal failure encountered during a lifecycle sync.
+         */
+        LifecycleSyncError: {
+            /** Project Id */
+            project_id: string;
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * LifecycleSyncSummary
+         * @description Aggregate outcome of a lifecycle push-sync run.
+         *
+         *     A sync re-dispatches each project's ``on_project_updated`` -- an
+         *     upsert that creates the remote when missing and updates it
+         *     otherwise -- so the per-project outcome is the plugin's
+         *     ``LifecycleResult.status``: ``synced`` counts ``ok`` results,
+         *     ``skipped`` counts ``skipped`` (e.g. an unmapped team), and
+         *     ``failed`` counts ``failed`` results plus dispatches that raised
+         *     (each captured in ``errors``).
+         */
+        LifecycleSyncSummary: {
+            /**
+             * Projects
+             * @default 0
+             */
+            projects: number;
+            /**
+             * Synced
+             * @default 0
+             */
+            synced: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Errors
+             * @default []
+             */
+            errors: components["schemas"]["LifecycleSyncError"][];
         };
         /**
          * LinkDefinitionCreate
@@ -3375,20 +8079,428 @@ export interface components {
             url_template?: string | null;
         };
         /**
-         * LinkDefinitionUpdate
-         * @description Request model for updating a link definition.
+         * LinkPresencePolicy
+         * @description Score based on whether a project has a link of *link_slug*.
          */
-        LinkDefinitionUpdate: {
+        LinkPresencePolicy: {
+            /** Id */
+            id?: string;
             /** Name */
-            name?: string | null;
+            name: string;
             /** Slug */
-            slug?: string | null;
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /**
+             * Category
+             * @default link_presence
+             * @constant
+             */
+            category: "link_presence";
+            /** Link Slug */
+            link_slug: string;
+            /**
+             * Present Score
+             * @default 100
+             */
+            present_score: number;
+            /**
+             * Missing Score
+             * @default 0
+             */
+            missing_score: number;
+        };
+        /**
+         * LocalAuthRead
+         * @description Response model for the local-auth config.
+         */
+        LocalAuthRead: {
+            /** Enabled */
+            enabled: boolean;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * LocalAuthWrite
+         * @description Request body for ``PUT /admin/local-auth``.
+         */
+        LocalAuthWrite: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * LogEntryResponse
+         * @description Response model for a single log entry.
+         */
+        LogEntryResponse: {
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Message */
+            message: string;
+            /** Level */
+            level?: string | null;
+            /**
+             * Raw
+             * @default {}
+             */
+            raw: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * LogHistogramBucketResponse
+         * @description A single time bucket in a log histogram response.
+         */
+        LogHistogramBucketResponse: {
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Count */
+            count: number;
+            /**
+             * Levels
+             * @default {}
+             */
+            levels: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * LogResultResponse
+         * @description Paginated log search result.
+         */
+        LogResultResponse: {
+            /** Entries */
+            entries: components["schemas"]["LogEntryResponse"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Total */
+            total?: number | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+        };
+        /**
+         * LoginProviderUpdate
+         * @description Promote/demote an Integration as the org's SSO login provider.
+         */
+        LoginProviderUpdate: {
+            /** Used As Login */
+            used_as_login: boolean;
+        };
+        /**
+         * MCPServerCreate
+         * @description Request model for creating an MCP server.
+         *
+         *     Secrets (``static_value`` and ``oauth_client_secret``) are plaintext
+         *     here and are encrypted before persistence.
+         */
+        MCPServerCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
             /** Description */
             description?: string | null;
             /** Icon */
             icon?: string | null;
-            /** Url Template */
-            url_template?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Tool Prefix */
+            tool_prefix?: string | null;
+            /**
+             * Timeout
+             * @default 30
+             */
+            timeout: number;
+            /**
+             * Verify Ssl
+             * @default true
+             */
+            verify_ssl: boolean;
+            /** Ignored Tools */
+            ignored_tools?: string[];
+            /**
+             * Auth Type
+             * @default none
+             * @enum {string}
+             */
+            auth_type: "none" | "static" | "oauth_client_credentials";
+            /** Static Header */
+            static_header?: string | null;
+            /** Static Value */
+            static_value?: string | null;
+            /** Oauth Token Url */
+            oauth_token_url?: string | null;
+            /** Oauth Client Id */
+            oauth_client_id?: string | null;
+            /** Oauth Client Secret */
+            oauth_client_secret?: string | null;
+            /** Oauth Scope */
+            oauth_scope?: string | null;
+        };
+        /**
+         * MCPServerResponse
+         * @description Response model for an MCP server.
+         *
+         *     Secrets are never returned; their presence is surfaced via the
+         *     ``has_static_value`` and ``has_oauth_client_secret`` booleans.
+         */
+        MCPServerResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Tool Prefix */
+            tool_prefix?: string | null;
+            /**
+             * Timeout
+             * @default 30
+             */
+            timeout: number;
+            /**
+             * Verify Ssl
+             * @default true
+             */
+            verify_ssl: boolean;
+            /** Ignored Tools */
+            ignored_tools?: string[];
+            /**
+             * Auth Type
+             * @default none
+             * @enum {string}
+             */
+            auth_type: "none" | "static" | "oauth_client_credentials";
+            /** Static Header */
+            static_header?: string | null;
+            /**
+             * Has Static Value
+             * @default false
+             */
+            has_static_value: boolean;
+            /** Oauth Token Url */
+            oauth_token_url?: string | null;
+            /** Oauth Client Id */
+            oauth_client_id?: string | null;
+            /**
+             * Has Oauth Client Secret
+             * @default false
+             */
+            has_oauth_client_secret: boolean;
+            /** Oauth Scope */
+            oauth_scope?: string | null;
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "unknown" | "healthy" | "degraded" | "unreachable";
+            /** Last Tested At */
+            last_tested_at?: string | null;
+            /** Last Tested Latency Ms */
+            last_tested_latency_ms?: number | null;
+            /** Tools Discovered */
+            tools_discovered?: number | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * MCPServerStatusReport
+         * @description Runtime status report, posted by the assistant on tool failure.
+         */
+        MCPServerStatusReport: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "degraded" | "unreachable";
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * MCPServerTestConfig
+         * @description Request body for testing an unsaved configuration.
+         *
+         *     Same shape as :class:`MCPServerCreate`, but ``name`` and ``slug`` are
+         *     optional because the connection test only needs the URL and auth.
+         */
+        MCPServerTestConfig: {
+            /**
+             * Name
+             * @default __connection_test__
+             */
+            name: string;
+            /**
+             * Slug
+             * @default __connection_test__
+             */
+            slug: string;
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Tool Prefix */
+            tool_prefix?: string | null;
+            /**
+             * Timeout
+             * @default 30
+             */
+            timeout: number;
+            /**
+             * Verify Ssl
+             * @default true
+             */
+            verify_ssl: boolean;
+            /** Ignored Tools */
+            ignored_tools?: string[];
+            /**
+             * Auth Type
+             * @default none
+             * @enum {string}
+             */
+            auth_type: "none" | "static" | "oauth_client_credentials";
+            /** Static Header */
+            static_header?: string | null;
+            /** Static Value */
+            static_value?: string | null;
+            /** Oauth Token Url */
+            oauth_token_url?: string | null;
+            /** Oauth Client Id */
+            oauth_client_id?: string | null;
+            /** Oauth Client Secret */
+            oauth_client_secret?: string | null;
+            /** Oauth Scope */
+            oauth_scope?: string | null;
+        };
+        /**
+         * MCPServerTestResult
+         * @description Outcome of an MCP server connection test.
+         */
+        MCPServerTestResult: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "degraded" | "unreachable";
+            /** Latency Ms */
+            latency_ms: number;
+            /** Tools */
+            tools: string[];
+            /** Tools Discovered */
+            tools_discovered: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Tested At
+             * Format: date-time
+             */
+            tested_at: string;
+        };
+        /**
+         * MCPServerUpdate
+         * @description Request model for partially updating an MCP server.
+         *
+         *     Every field is optional. An omitted secret field leaves the stored
+         *     ciphertext unchanged; an explicit ``null``/empty value clears it; a
+         *     new value re-encrypts it. ``exclude_unset`` on the parsed model is
+         *     used to distinguish "omitted" from "explicitly null".
+         */
+        MCPServerUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Tool Prefix */
+            tool_prefix?: string | null;
+            /** Timeout */
+            timeout?: number | null;
+            /** Verify Ssl */
+            verify_ssl?: boolean | null;
+            /** Ignored Tools */
+            ignored_tools?: string[] | null;
+            /** Auth Type */
+            auth_type?: ("none" | "static" | "oauth_client_credentials") | null;
+            /** Static Header */
+            static_header?: string | null;
+            /** Static Value */
+            static_value?: string | null;
+            /** Oauth Token Url */
+            oauth_token_url?: string | null;
+            /** Oauth Client Id */
+            oauth_client_id?: string | null;
+            /** Oauth Client Secret */
+            oauth_client_secret?: string | null;
+            /** Oauth Scope */
+            oauth_scope?: string | null;
         };
         /**
          * MFASetupResponse
@@ -3444,6 +8556,123 @@ export interface components {
             code: string;
         };
         /**
+         * MaintenanceOperation
+         * @description One registry operation merged with its run state.
+         */
+        MaintenanceOperation: {
+            /** Slug */
+            slug: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Running */
+            running: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "running" | "completed" | "cancelled" | "abandoned";
+            progress?: components["schemas"]["MaintenanceProgress"] | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Started By */
+            started_by?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Failures */
+            failures?: {
+                [key: string]: string;
+            } | null;
+        };
+        /**
+         * MaintenanceProgress
+         * @description Counters for an operation's current or last run.
+         */
+        MaintenanceProgress: {
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Remaining
+             * @default 0
+             */
+            remaining: number;
+            /**
+             * In Flight
+             * @default 0
+             */
+            in_flight: number;
+            /**
+             * Succeeded
+             * @default 0
+             */
+            succeeded: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+        };
+        /**
+         * MaintenanceRunResponse
+         * @description Acknowledgement that a run was started.
+         */
+        MaintenanceRunResponse: {
+            /** Run Id */
+            run_id: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * MatchedNeighbour
+         * @description A dependency that satisfied a condition's relationship predicate.
+         *
+         *     Surfaced on :class:`PolicyContribution` so the UI can name *which*
+         *     outgoing dependency triggered a condition (e.g. the deprecated
+         *     service a project depends on) rather than only reporting true/false.
+         */
+        MatchedNeighbour: {
+            /** Id */
+            id: string;
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+        };
+        /**
+         * MetricSeries
+         * @description A windowed count plus per-day counts (oldest day first).
+         */
+        MetricSeries: {
+            /** Total */
+            total: number;
+            /** Daily */
+            daily: number[];
+        };
+        /** MonthlyImprovementRow */
+        MonthlyImprovementRow: {
+            /** Dimension */
+            dimension: string;
+            /** Key */
+            key: string;
+            /** Current Avg Score */
+            current_avg_score: number | null;
+            /** Previous Avg Score */
+            previous_avg_score: number | null;
+            /** Improvement */
+            improvement: number | null;
+            /** Project Count */
+            project_count: number;
+        };
+        /**
          * OAuth2TokenResponse
          * @description OAuth2 token response per RFC 6749.
          */
@@ -3461,6 +8690,60 @@ export interface components {
             scope?: string | null;
             /** Refresh Token */
             refresh_token?: string | null;
+        };
+        /**
+         * OAuthClientRegistrationRequest
+         * @description RFC 7591 dynamic client registration request.
+         */
+        OAuthClientRegistrationRequest: {
+            /** Redirect Uris */
+            redirect_uris: string[];
+            /** Client Name */
+            client_name?: string | null;
+            /**
+             * Grant Types
+             * @default [
+             *       "authorization_code",
+             *       "refresh_token"
+             *     ]
+             */
+            grant_types: string[];
+            /**
+             * Response Types
+             * @default [
+             *       "code"
+             *     ]
+             */
+            response_types: string[];
+            /**
+             * Token Endpoint Auth Method
+             * @default none
+             */
+            token_endpoint_auth_method: string;
+            /** Scope */
+            scope?: string | null;
+        };
+        /**
+         * OAuthClientRegistrationResponse
+         * @description RFC 7591 dynamic client registration response.
+         */
+        OAuthClientRegistrationResponse: {
+            /** Client Id */
+            client_id: string;
+            /** Client Name */
+            client_name?: string | null;
+            /** Redirect Uris */
+            redirect_uris: string[];
+            /** Grant Types */
+            grant_types: string[];
+            /** Response Types */
+            response_types: string[];
+            /** Token Endpoint Auth Method */
+            token_endpoint_auth_method: string;
+            /** Scope */
+            scope?: string | null;
+            /** Client Id Issued At */
+            client_id_issued_at: number;
         };
         /** OperationLogListResponse */
         OperationLogListResponse: {
@@ -3529,6 +8812,28 @@ export interface components {
             ticket_slug?: string | null;
             /** Version */
             version?: string | null;
+            /**
+             * Plugin Slug
+             * @default
+             */
+            plugin_slug: string;
+        };
+        /**
+         * OpsLogTemplate
+         * @description Plugin-supplied formatter for an operations-log entry.
+         *
+         *     Keyed off the ``action`` value the API writes into the ops-log
+         *     ``description`` payload (e.g. ``promote`` / ``deploy`` for
+         *     deployment capabilities, ``set_value`` / ``delete_key`` for config
+         *     capabilities).  The UI substitutes ``{{name}}`` placeholders against
+         *     the payload merged with row-level fields (``version``,
+         *     ``environment``, ``project``, ``performer``).
+         */
+        OpsLogTemplate: {
+            /** Label */
+            label: string;
+            /** Summary */
+            summary?: string | null;
         };
         /**
          * OrgMembership
@@ -3561,6 +8866,83 @@ export interface components {
             description?: string | null;
             /** Icon */
             icon?: string | null;
+            /**
+             * Tag Formats
+             * @default []
+             */
+            tag_formats: components["schemas"]["TagFormat"][];
+        };
+        /** OrganizationRef */
+        OrganizationRef: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * PRActivityResponse
+         * @description PR activity for the org, one row per GitHub author.
+         */
+        PRActivityResponse: {
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Members */
+            members: number;
+            /** Rows */
+            rows: components["schemas"]["PRActivityRow"][];
+        };
+        /**
+         * PRActivityRow
+         * @description Per-author PR activity counts with the resolved Imbi user.
+         *
+         *     ``login`` is always the raw GitHub login from the PR record.  The
+         *     user fields are populated only when the login resolves to an Imbi
+         *     user via that user's GitHub ``IdentityConnection``.
+         */
+        PRActivityRow: {
+            /** Login */
+            login: string;
+            /** Email */
+            email?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Created */
+            created: number;
+            /** Merged */
+            merged: number;
+        };
+        /**
+         * PRSyncEnqueueResponse
+         * @description Result of enqueueing a PR history sync.
+         */
+        PRSyncEnqueueResponse: {
+            /** Enqueued */
+            enqueued: boolean;
+        };
+        /**
+         * PRSyncStatus
+         * @description Last-sync state for a project's pull-request history.
+         */
+        PRSyncStatus: {
+            /**
+             * Status
+             * @default idle
+             * @enum {string}
+             */
+            status: "idle" | "queued" | "running" | "success" | "failed";
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Prs Synced */
+            prs_synced?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
         };
         /**
          * PasswordChangeRequest
@@ -3619,6 +9001,266 @@ export interface components {
             description?: string | null;
         };
         /**
+         * PluginAssignmentResponse
+         * @description One effective capability binding, as the project UI reads it.
+         */
+        PluginAssignmentResponse: {
+            /** Plugin Id */
+            plugin_id: string;
+            /** Plugin Slug */
+            plugin_slug: string;
+            /** Label */
+            label: string;
+            /** Plugin Type */
+            plugin_type: string;
+            /**
+             * Default
+             * @default false
+             */
+            default: boolean;
+            /**
+             * Options
+             * @default {}
+             */
+            options: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source
+             * @default merged
+             * @enum {string}
+             */
+            source: "project" | "project_type" | "merged";
+            /** Identity Plugin Id */
+            identity_plugin_id?: string | null;
+            /**
+             * Supports Histogram
+             * @default false
+             */
+            supports_histogram: boolean;
+            /**
+             * Supports Deployment Sync
+             * @default false
+             */
+            supports_deployment_sync: boolean;
+            /**
+             * Supports Lifecycle Sync
+             * @default false
+             */
+            supports_lifecycle_sync: boolean;
+            /** Service Name */
+            service_name?: string | null;
+            /** Service Icon */
+            service_icon?: string | null;
+        };
+        /**
+         * PluginOpsLogTemplate
+         * @description One plugin's set of ops-log templates as exposed to the UI.
+         */
+        PluginOpsLogTemplate: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /**
+             * Templates
+             * @default {}
+             */
+            templates: {
+                [key: string]: components["schemas"]["OpsLogTemplate"];
+            };
+        };
+        /** PluginOpsLogTemplatesResponse */
+        PluginOpsLogTemplatesResponse: {
+            /** Plugins */
+            plugins: components["schemas"]["PluginOpsLogTemplate"][];
+        };
+        /**
+         * PluginRegistrationUpdate
+         * @description Request model for enabling/disabling an installed plugin package.
+         */
+        PluginRegistrationUpdate: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * PolicyContribution
+         * @description Per-policy contribution to a project's base score.
+         */
+        PolicyContribution: {
+            /** Policy Slug */
+            policy_slug: string;
+            /**
+             * Category
+             * @default attribute
+             * @enum {string}
+             */
+            category: "attribute" | "presence" | "link_presence" | "age" | "analysis_result" | "deployment_status" | "condition";
+            /** Attribute Name */
+            attribute_name?: string | null;
+            /** Link Slug */
+            link_slug?: string | null;
+            /** Result Slug */
+            result_slug?: string | null;
+            /** Environment Slug */
+            environment_slug?: string | null;
+            /** Condition Result */
+            condition_result?: boolean | null;
+            /**
+             * Matched Neighbours
+             * @default []
+             */
+            matched_neighbours: components["schemas"]["MatchedNeighbour"][];
+            /** Value */
+            value?: unknown | null;
+            /** Mapped Score */
+            mapped_score: number;
+            /** Weight */
+            weight: number;
+            /** Weighted Contribution */
+            weighted_contribution: number;
+        };
+        /**
+         * PolicyCreate
+         * @description Request body for creating a scoring policy.
+         *
+         *     The shape is intentionally loose: the endpoint reshapes this into
+         *     the appropriate ``ScoringPolicy`` discriminated-union variant and
+         *     relies on the variant validator to enforce required fields per
+         *     category.
+         */
+        PolicyCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Category
+             * @default attribute
+             * @enum {string}
+             */
+            category: "attribute" | "presence" | "link_presence" | "age" | "analysis_result" | "deployment_status" | "condition";
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /** Attribute Name */
+            attribute_name?: string | null;
+            /** Link Slug */
+            link_slug?: string | null;
+            /** Result Slug */
+            result_slug?: string | null;
+            /** Environment Slug */
+            environment_slug?: string | null;
+            /** Present Score */
+            present_score?: number | null;
+            /** Missing Score */
+            missing_score?: number | null;
+            /** Value Score Map */
+            value_score_map?: {
+                [key: string]: number;
+            } | null;
+            /** Range Score Map */
+            range_score_map?: {
+                [key: string]: number;
+            } | null;
+            /** Age Score Map */
+            age_score_map?: {
+                [key: string]: number;
+            } | null;
+            /** Status Score Map */
+            status_score_map?: {
+                [key: string]: number;
+            } | null;
+            condition?: components["schemas"]["Condition-Input"] | null;
+            /** True Score */
+            true_score?: number | null;
+            /** False Score */
+            false_score?: number | null;
+        };
+        /**
+         * PollingDescriptor
+         * @description Descriptor for device-flow style polling.
+         *
+         *     Returned by identity capabilities whose authorization flow is not a
+         *     redirect (e.g. AWS IAM Identity Center device authorization).  The
+         *     UI polls ``/me/identities/{integration_id}/poll`` every ``interval``
+         *     seconds, surfacing ``user_code`` to the user.
+         */
+        PollingDescriptor: {
+            /** User Code */
+            user_code: string;
+            /** Verification Uri */
+            verification_uri: string;
+            /** Verification Uri Complete */
+            verification_uri_complete?: string | null;
+            /**
+             * Interval
+             * @default 5
+             */
+            interval: number;
+            /** Expires In */
+            expires_in: number;
+        };
+        /**
+         * PresencePolicy
+         * @description Score based on whether an attribute is present (non-empty).
+         */
+        PresencePolicy: {
+            /** Id */
+            id?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Weight */
+            weight: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Priority
+             * @default 0
+             */
+            priority: number;
+            /** Targets */
+            targets?: string[];
+            /**
+             * Category
+             * @default presence
+             * @constant
+             */
+            category: "presence";
+            /** Attribute Name */
+            attribute_name: string;
+            /**
+             * Present Score
+             * @default 100
+             */
+            present_score: number;
+            /**
+             * Missing Score
+             * @default 0
+             */
+            missing_score: number;
+        };
+        /**
          * ProjectCreate
          * @description Request body for creating a project.
          *
@@ -3664,6 +9306,268 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * ProjectDeletedResponse
+         * @description Response for a successful project delete.
+         *
+         *     The project node is gone by the time the response is built, so
+         *     the body carries only the per-plugin lifecycle results -- empty
+         *     when ``delete_repository=false`` short-circuits the dispatch.
+         */
+        ProjectDeletedResponse: {
+            /**
+             * Lifecycle Results
+             * @default []
+             */
+            lifecycle_results: components["schemas"]["LifecycleInvocation"][];
+        };
+        /**
+         * ProjectIntegrationAssignment
+         * @description One project-level ``USES`` override of an Integration capability.
+         */
+        ProjectIntegrationAssignment: {
+            /** Integration Slug */
+            integration_slug: string;
+            /** Capability */
+            capability: string;
+            /**
+             * Default
+             * @default false
+             */
+            default: boolean;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+            /** Env Payloads */
+            env_payloads?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Identity Integration Slug */
+            identity_integration_slug?: string | null;
+        };
+        /**
+         * ProjectIntegrationsUpdate
+         * @description Replace-all body for a project's ``USES`` overrides.
+         */
+        ProjectIntegrationsUpdate: {
+            /** Assignments */
+            assignments?: components["schemas"]["ProjectIntegrationAssignment"][];
+        };
+        /**
+         * ProjectListEnvironmentRef
+         * @description Minimal environment identity for the projects-list view.
+         */
+        ProjectListEnvironmentRef: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Label Color */
+            label_color?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+        };
+        /**
+         * ProjectListItem
+         * @description Slim project payload returned from ``GET /projects/?slim=true``.
+         *
+         *     Stripped to the fields the projects-list page actually reads --
+         *     no ``links``, ``identifiers``, ``relationships``, embedded
+         *     organizations, blueprint dynamic fields, or ``DEPLOYED_IN`` edge
+         *     properties. Cuts the response shape from kilobytes-per-project
+         *     down to a few hundred bytes.
+         *
+         *     The page-equivalent fetcher in imbi-ui calls this endpoint with
+         *     ``slim=true`` to keep the cached array compact in memory.
+         */
+        ProjectListItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Score */
+            score?: number | null;
+            team: components["schemas"]["ProjectListTeamRef"];
+            /**
+             * Project Types
+             * @default []
+             */
+            project_types: components["schemas"]["ProjectListProjectTypeRef"][];
+            /**
+             * Environments
+             * @default []
+             */
+            environments: components["schemas"]["ProjectListEnvironmentRef"][];
+            /**
+             * Open Pr Count
+             * @default 0
+             */
+            open_pr_count: number;
+            /**
+             * Closed Pr Count
+             * @default 0
+             */
+            closed_pr_count: number;
+            /**
+             * Viewer Open Pr Count
+             * @default 0
+             */
+            viewer_open_pr_count: number;
+            /**
+             * Viewer Closed Pr Count
+             * @default 0
+             */
+            viewer_closed_pr_count: number;
+            /** Current Releases */
+            current_releases?: {
+                [key: string]: components["schemas"]["ReleaseInfo"];
+            };
+            release_summary?: components["schemas"]["ReleaseSummary"] | null;
+        };
+        /**
+         * ProjectListProjectTypeRef
+         * @description Minimal project-type identity for the projects-list view.
+         */
+        ProjectListProjectTypeRef: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Deployable
+             * @default false
+             */
+            deployable: boolean;
+            /**
+             * Releasable
+             * @default false
+             */
+            releasable: boolean;
+        };
+        /**
+         * ProjectListTeamRef
+         * @description Minimal team identity for the projects-list view.
+         */
+        ProjectListTeamRef: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * ProjectMutationResponse
+         * @description Response for any project mutation that triggers a lifecycle dispatch.
+         *
+         *     Mirrors :class:`ProjectResponse` and appends one
+         *     :class:`LifecycleInvocation` per assigned lifecycle plugin so the
+         *     UI can surface third-party outcomes (GitHub repo created /
+         *     renamed, archive succeeded, etc.) without a follow-up request.
+         *     Used by create / patch / archive / unarchive.  Empty when no
+         *     lifecycle plugins are assigned.
+         */
+        ProjectMutationResponse: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Archived At */
+            archived_at?: string | null;
+            team: components["schemas"]["Team"];
+            /**
+             * Project Types
+             * @default []
+             */
+            project_types: components["schemas"]["ProjectType"][];
+            /**
+             * Environments
+             * @default []
+             */
+            environments: components["schemas"]["EnvironmentRef"][];
+            /**
+             * Links
+             * @default {}
+             */
+            links: {
+                [key: string]: string;
+            };
+            /**
+             * Identifiers
+             * @default {}
+             */
+            identifiers: {
+                [key: string]: number | string;
+            };
+            /**
+             * Services
+             * @default []
+             */
+            services: components["schemas"]["ExistsInResponse"][];
+            /** Score */
+            score?: number | null;
+            breakdown?: components["schemas"]["ScoreBreakdown"] | null;
+            relationships?: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Open Pr Count
+             * @default 0
+             */
+            open_pr_count: number;
+            /**
+             * Closed Pr Count
+             * @default 0
+             */
+            closed_pr_count: number;
+            /**
+             * Viewer Open Pr Count
+             * @default 0
+             */
+            viewer_open_pr_count: number;
+            /**
+             * Viewer Closed Pr Count
+             * @default 0
+             */
+            viewer_closed_pr_count: number;
+            /** Current Releases */
+            current_releases?: {
+                [key: string]: components["schemas"]["ReleaseInfo"];
+            };
+            /**
+             * Lifecycle Results
+             * @default []
+             */
+            lifecycle_results: components["schemas"]["LifecycleInvocation"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * ProjectRelationship
          * @description A single DEPENDS_ON edge touching the project.
          */
@@ -3698,10 +9602,21 @@ export interface components {
             project_type?: string | null;
             /** Project Type Icon */
             project_type_icon?: string | null;
+            /**
+             * Deprecated
+             * @default false
+             */
+            deprecated: boolean;
         };
         /**
          * ProjectRelationships
-         * @description Typed relationship links and counts for a project.
+         * @description Typed relationship links and counts for a project response.
+         *
+         *     Lives in imbi-common (rather than only inside imbi-api) so the
+         *     OpenAPI schema generated for ``ProjectResponse`` matches the runtime
+         *     shape: ``make_response_model`` skips re-injecting ``relationships``
+         *     when the base model already declares it, leaving this typed model
+         *     as the canonical schema.
          */
         ProjectRelationships: {
             team: components["schemas"]["RelationshipLink"];
@@ -3726,17 +9641,6 @@ export interface components {
         ProjectRelationshipsResponse: {
             /** Relationships */
             relationships: components["schemas"]["ProjectRelationship"][];
-        };
-        /**
-         * ProjectRelationshipsUpdate
-         * @description Request body for replacing outbound DEPENDS_ON edges.
-         */
-        ProjectRelationshipsUpdate: {
-            /**
-             * Depends On
-             * @description Project IDs that this project depends on.
-             */
-            depends_on: string[];
         };
         /** ProjectResponse */
         ProjectResponse: {
@@ -3792,12 +9696,12 @@ export interface components {
                 [key: string]: number | string;
             };
             /**
-             * Relationships
+             * Score
              * @default null
              */
-            relationships: {
-                [key: string]: components["schemas"]["RelationshipLink"];
-            } | null;
+            score: number | null;
+            /** @default null */
+            relationships: components["schemas"]["ProjectRelationships"] | null;
         };
         /**
          * ProjectSchemaResponse
@@ -3826,46 +9730,196 @@ export interface components {
             description?: string | null;
             /** Icon */
             icon?: string | null;
+            /**
+             * Deployable
+             * @default false
+             */
+            deployable: boolean;
+            /**
+             * Releasable
+             * @default false
+             */
+            releasable: boolean;
             organization: components["schemas"]["Organization"];
+            /**
+             * Tag Formats
+             * @default []
+             */
+            tag_formats: components["schemas"]["TagFormat"][];
         };
         /**
-         * ProjectUpdate
-         * @description Request body for updating a project.
+         * PromoteActionRequest
+         * @description Body for ``POST /deployments`` with ``action='promote'``.
          *
-         *     Blueprint-defined fields are accepted as extra properties.
+         *     Cuts a new tag at ``from_committish`` (the build being promoted),
+         *     creates a release on the remote, then dispatches the workflow with
+         *     the tag as the ref.
          */
-        ProjectUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Slug */
-            slug?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Icon */
-            icon?: string | null;
-            /** Team Slug */
-            team_slug?: string | null;
-            /** Project Type Slugs */
-            project_type_slugs?: string[] | null;
+        PromoteActionRequest: {
             /**
-             * Environments
-             * @description Map of environment slug to edge properties. Replaces all environment assignments when provided.
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            environments?: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
-            } | null;
-            /** Links */
-            links?: {
-                [key: string]: string;
-            } | null;
-            /** Identifiers */
-            identifiers?: {
-                [key: string]: number | string;
-            } | null;
-        } & {
-            [key: string]: unknown;
+            action: "promote";
+            /** From Environment */
+            from_environment: string;
+            /** To Environment */
+            to_environment: string;
+            /** From Committish */
+            from_committish: string;
+            /** Tag */
+            tag: string;
+            /** Release Name */
+            release_name?: string | null;
+            /**
+             * Release Notes Markdown
+             * @default
+             */
+            release_notes_markdown: string;
+            /**
+             * Prerelease
+             * @default false
+             */
+            prerelease: boolean;
+        };
+        /**
+         * PromotionOption
+         * @description One promotion gap for the popover.
+         *
+         *     Pairs a from-env (whose current SHA we'd promote) with a to-env
+         *     (the target).  ``commits_pending`` is the size of the
+         *     ``from..to`` compare; ``None`` means we couldn't ask the plugin
+         *     (e.g. no current release on either side).
+         */
+        PromotionOption: {
+            /** From Environment */
+            from_environment: string;
+            /** To Environment */
+            to_environment: string;
+            /** From Version */
+            from_version?: string | null;
+            /** To Version */
+            to_version?: string | null;
+            /** From Sha */
+            from_sha?: string | null;
+            /** To Sha */
+            to_sha?: string | null;
+            /** Commits Pending */
+            commits_pending?: number | null;
+        };
+        /** PullRequestListResponse */
+        PullRequestListResponse: {
+            /** Data */
+            data: components["schemas"]["PullRequestResponse"][];
+            /** Project Count */
+            project_count: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PullRequestResponse
+         * @description A single pull request record from ClickHouse.
+         */
+        PullRequestResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Pr Id */
+            pr_id: string;
+            /** Pr Number */
+            pr_number: number;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** State */
+            state: string;
+            /** Author */
+            author: string;
+            /** Draft */
+            draft: boolean;
+            /** Merged */
+            merged: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Merged At */
+            merged_at?: string | null;
+            /** Additions */
+            additions: number;
+            /** Deletions */
+            deletions: number;
+            /** Changed Files */
+            changed_files: number;
+        };
+        /**
+         * RecentCommit
+         * @description A commit row read from the ClickHouse ``commits`` table.
+         *
+         *     Powers the Releases-tab commit picker / drift list.  ``ci_status``
+         *     is the rolled-up check state captured at sync time (``'unknown'``
+         *     when not yet hydrated).  The table carries no PR number, so none is
+         *     surfaced here.
+         */
+        RecentCommit: {
+            /** Sha */
+            sha: string;
+            /** Short Sha */
+            short_sha: string;
+            /** Message */
+            message: string;
+            /** Author */
+            author?: string | null;
+            /** Author Email */
+            author_email?: string | null;
+            /**
+             * Authored At
+             * Format: date-time
+             */
+            authored_at: string;
+            /**
+             * Ci Status
+             * @default unknown
+             */
+            ci_status: string;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * Ref
+         * @description A branch, tag, or default-ref pointer on a deployable repo.
+         */
+        Ref: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "branch" | "tag" | "default";
+            /** Sha */
+            sha: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Ahead */
+            ahead?: number | null;
+            /** Behind */
+            behind?: number | null;
+            /** Pr Number */
+            pr_number?: number | null;
+            /** Pr Title */
+            pr_title?: string | null;
+            /** Pr State */
+            pr_state?: ("open" | "closed" | "merged") | null;
         };
         /**
          * RelationshipLink
@@ -3878,12 +9932,75 @@ export interface components {
             count: number;
         };
         /**
+         * RelationshipSpec
+         * @description Traverse an edge and test ``where`` against the reached projects.
+         *
+         *     v1 supports only outgoing ``DEPENDS_ON`` edges (the projects a project
+         *     depends on). ``quantifier`` reduces the per-neighbour results to one
+         *     boolean: ``any`` (∃ match), ``all`` (∀ match, vacuously true when there
+         *     are no neighbours), ``none`` (no match, vacuously true when empty).
+         */
+        "RelationshipSpec-Input": {
+            /**
+             * Edge
+             * @default DEPENDS_ON
+             * @constant
+             */
+            edge: "DEPENDS_ON";
+            /**
+             * Direction
+             * @default outgoing
+             * @constant
+             */
+            direction: "outgoing";
+            /**
+             * Quantifier
+             * @enum {string}
+             */
+            quantifier: "any" | "all" | "none";
+            where: components["schemas"]["Condition-Input"];
+        };
+        /**
+         * RelationshipSpec
+         * @description Traverse an edge and test ``where`` against the reached projects.
+         *
+         *     v1 supports only outgoing ``DEPENDS_ON`` edges (the projects a project
+         *     depends on). ``quantifier`` reduces the per-neighbour results to one
+         *     boolean: ``any`` (∃ match), ``all`` (∀ match, vacuously true when there
+         *     are no neighbours), ``none`` (no match, vacuously true when empty).
+         */
+        "RelationshipSpec-Output": {
+            /**
+             * Edge
+             * @default DEPENDS_ON
+             * @constant
+             */
+            edge: "DEPENDS_ON";
+            /**
+             * Direction
+             * @default outgoing
+             * @constant
+             */
+            direction: "outgoing";
+            /**
+             * Quantifier
+             * @enum {string}
+             */
+            quantifier: "any" | "all" | "none";
+            where: components["schemas"]["Condition-Output"];
+        };
+        /**
          * ReleaseCreate
          * @description Request body for creating a release.
          */
         ReleaseCreate: {
-            /** Version */
-            version: string;
+            /** Tag */
+            tag?: string | null;
+            /**
+             * Committish
+             * @description Short commit SHA (7 lowercase hexadecimal chars) identifying the source revision for this release.
+             */
+            committish: string;
             /** Title */
             title: string;
             /** Description */
@@ -3895,6 +10012,145 @@ export interface components {
             links: components["schemas"]["ReleaseLink"][];
             /** Created By */
             created_by?: string | null;
+        };
+        /**
+         * ReleaseCutRequest
+         * @description Body for ``POST /deployments/releases/cut``.
+         *
+         *     Cuts a git tag + GitHub release at ``committish`` with no deployment
+         *     step -- the build-and-release-only (library / image) flow.
+         */
+        ReleaseCutRequest: {
+            /** Committish */
+            committish: string;
+            /** Tag */
+            tag: string;
+            /** Release Name */
+            release_name?: string | null;
+            /**
+             * Release Notes Markdown
+             * @default
+             */
+            release_notes_markdown: string;
+            /**
+             * Prerelease
+             * @default false
+             */
+            prerelease: boolean;
+        };
+        /**
+         * ReleaseCutResponse
+         * @description Response shape for a successful ``releases/cut`` action.
+         */
+        ReleaseCutResponse: {
+            /** Tag */
+            tag: string;
+            /** Release Url */
+            release_url?: string | null;
+            /** Committish */
+            committish: string;
+            /**
+             * Recorded
+             * @default false
+             */
+            recorded: boolean;
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
+         * ReleaseDependenciesResponse
+         * @description Response body for ``GET .../releases/{release_id}/dependencies``.
+         */
+        ReleaseDependenciesResponse: {
+            /** Release Id */
+            release_id: string;
+            /** Components */
+            components?: components["schemas"]["ReleaseDependencyComponent"][];
+        };
+        /**
+         * ReleaseDependencyComponent
+         * @description One row in the dependency listing for a release.
+         *
+         *     ``scope`` and ``groups`` are per-release usage facts populated
+         *     from the ``USES_COMPONENT_RELEASE`` edge — a given component
+         *     version can be ``required`` in one release and a dev group in
+         *     another. See ADR 0015 for the producer-side semantics.
+         */
+        ReleaseDependencyComponent: {
+            /** Purl Name */
+            purl_name: string;
+            /** Name */
+            name: string;
+            /** Ecosystem */
+            ecosystem: string;
+            /** Description */
+            description?: string | null;
+            /** Version */
+            version: string;
+            /** License */
+            license?: string | null;
+            /** Supplier */
+            supplier?: string | null;
+            /** Hashes */
+            hashes?: {
+                [key: string]: string;
+            };
+            /** Identifiers */
+            identifiers?: components["schemas"]["ReleaseDependencyIdentifier"][];
+            /** Scope */
+            scope?: ("required" | "optional" | "excluded") | null;
+            /** Groups */
+            groups?: string[];
+        };
+        /**
+         * ReleaseDependencyIdentifier
+         * @description One ``(kind, value)`` pair on a component in the GET response.
+         */
+        ReleaseDependencyIdentifier: {
+            /** Kind */
+            kind: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * ReleaseDriftResponse
+         * @description Commits awaiting a release: the delta between the latest tag and HEAD.
+         *
+         *     Computed entirely from the ClickHouse ``commits`` / ``tags`` tables.
+         *     ``commits`` is newest-first and capped; ``commits_since_tag`` is the
+         *     exact count (uncapped).  ``suggested_tag`` / ``suggested_bump`` are a
+         *     cheap conventional-commit heuristic the UI can override.
+         */
+        ReleaseDriftResponse: {
+            /** Latest Tag */
+            latest_tag?: string | null;
+            /** Latest Tag Sha */
+            latest_tag_sha?: string | null;
+            /** Latest Tag At */
+            latest_tag_at?: string | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /**
+             * Commits Since Tag
+             * @default 0
+             */
+            commits_since_tag: number;
+            /**
+             * Commits
+             * @default []
+             */
+            commits: components["schemas"]["RecentCommit"][];
+            /**
+             * Suggested Bump
+             * @default patch
+             * @enum {string}
+             */
+            suggested_bump: "major" | "minor" | "patch";
+            /**
+             * Suggested Tag
+             * @default v0.1.0
+             */
+            suggested_tag: string;
         };
         /**
          * ReleaseEnvironmentEdgeResponse
@@ -3919,6 +10175,61 @@ export interface components {
             slug: string;
             /** Name */
             name: string;
+        };
+        /**
+         * ReleaseHistoryEntry
+         * @description One published release: a ClickHouse tag joined to its Release node.
+         */
+        ReleaseHistoryEntry: {
+            /** Tag */
+            tag: string;
+            /** Sha */
+            sha: string;
+            /** Short Sha */
+            short_sha: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Author */
+            author?: string | null;
+            /** Author Email */
+            author_email?: string | null;
+            /**
+             * Ci Status
+             * @default unknown
+             */
+            ci_status: string;
+            /** Title */
+            title?: string | null;
+            /** Notes Markdown */
+            notes_markdown?: string | null;
+            /** Release Url */
+            release_url?: string | null;
+            /** Tag Url */
+            tag_url?: string | null;
+            /** Package Url */
+            package_url?: string | null;
+        };
+        /**
+         * ReleaseInfo
+         * @description Current release for a project in an environment.
+         *
+         *     ``tag`` is the optional human-readable label (e.g. ``1.0.0``);
+         *     ``committish`` is the 7-char short SHA. The UI displays
+         *     ``tag ?? committish`` and uses ``committish`` equality to group
+         *     environments showing the same release.
+         */
+        ReleaseInfo: {
+            /**
+             * Deployed At
+             * Format: date-time
+             */
+            deployed_at: string;
+            /** Performed By */
+            performed_by?: string | null;
+            /** Tag */
+            tag?: string | null;
+            /** Committish */
+            committish?: string | null;
         };
         /**
          * ReleaseLink
@@ -3947,8 +10258,10 @@ export interface components {
             id: string;
             /** Project Id */
             project_id: string;
-            /** Version */
-            version: string;
+            /** Tag */
+            tag?: string | null;
+            /** Committish */
+            committish?: string | null;
             /** Title */
             title: string;
             /** Description */
@@ -3967,6 +10280,217 @@ export interface components {
             updated_at?: string | null;
             /** Created By */
             created_by: string;
+        };
+        /**
+         * ReleaseSummary
+         * @description Minimal release-drift summary for the projects-list view.
+         *
+         *     head_sha is the latest commit on main; latest_tag is the most recent
+         *     semver release tag; commits_since_tag is the number of unreleased
+         *     commits.
+         */
+        ReleaseSummary: {
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Head Short Sha */
+            head_short_sha?: string | null;
+            /** Head Author */
+            head_author?: string | null;
+            /** Head Author Login */
+            head_author_login?: string | null;
+            /** Head Authored At */
+            head_authored_at?: string | null;
+            /** Latest Tag */
+            latest_tag?: string | null;
+            /** Latest Tag Sha */
+            latest_tag_sha?: string | null;
+            /** Latest Tag At */
+            latest_tag_at?: string | null;
+            /** Latest Tag Author */
+            latest_tag_author?: string | null;
+            /**
+             * Commits Since Tag
+             * @default 0
+             */
+            commits_since_tag: number;
+        };
+        /**
+         * RelocationTarget
+         * @description Where a lifecycle capability would route a project's external link.
+         *
+         *     Returned by :meth:`LifecycleCapability.resolve_relocation_target` so
+         *     the host can answer "would changing this project's types move its
+         *     repository?" without inlining plugin-specific resolution (e.g.
+         *     GitHub org mapping, GitLab namespace) into the API layer.
+         *
+         *     The host treats ``identifier`` as opaque -- it compares two
+         *     :class:`RelocationTarget` instances by ``link_key`` + ``identifier``
+         *     and surfaces ``display`` to the operator for confirmation.
+         *     Capabilities typically use ``"<owner>/<repo>"`` or an equivalent
+         *     stable handle for ``identifier`` and the same string for ``display``
+         *     unless a nicer label is available.
+         */
+        RelocationTarget: {
+            /** Link Key */
+            link_key: string;
+            /** Identifier */
+            identifier: string;
+            /** Display */
+            display?: string | null;
+        };
+        /** RemediateAllResponse */
+        RemediateAllResponse: {
+            /** Outcomes */
+            outcomes: components["schemas"]["RemediateOutcome"][];
+            report: components["schemas"]["AnalysisReport"];
+        };
+        /** RemediateOutcome */
+        RemediateOutcome: {
+            /** Slug */
+            slug: string;
+            /** Plugin Id */
+            plugin_id: string;
+            result: components["schemas"]["RemediationResult"];
+        };
+        /**
+         * RemediateRequest
+         * @description Identify the finding to fix.
+         *
+         *     ``remediation_id`` is the offer id the plugin emitted; ``plugin_id``
+         *     routes to the emitting plugin (or ``'built-in'`` for the blueprint
+         *     compliance check). ``finding_slug`` is carried for audit/logging.
+         */
+        RemediateRequest: {
+            /** Plugin Id */
+            plugin_id: string;
+            /** Finding Slug */
+            finding_slug: string;
+            /** Remediation Id */
+            remediation_id: string;
+        };
+        /** RemediateResponse */
+        RemediateResponse: {
+            result: components["schemas"]["RemediationResult"];
+            report: components["schemas"]["AnalysisReport"];
+        };
+        /**
+         * RemediationOffer
+         * @description An offer to fix the finding it is attached to.
+         *
+         *     A finding is *fixable* iff it carries a ``RemediationOffer``.  The
+         *     Doctor panel renders a button labelled ``label``; clicking it asks
+         *     the host to call the emitting capability's
+         *     :meth:`AnalysisCapability.remediate` with this offer's ``id``.  The
+         *     ``id`` is opaque and plugin-defined (it only has to be unique within
+         *     the capability's own findings) — it round-trips back unchanged so the
+         *     capability knows which fix to perform.
+         */
+        RemediationOffer: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Confirm */
+            confirm?: string | null;
+            /**
+             * Destructive
+             * @default false
+             */
+            destructive: boolean;
+        };
+        /**
+         * RemediationResult
+         * @description Outcome of an :meth:`AnalysisCapability.remediate` call.
+         *
+         *     ``status`` is ``fixed`` when the capability changed state, ``noop``
+         *     when the finding was already resolved (so a double-click or a bulk
+         *     "fix all" pass is safe), and ``failed`` when the fix could not be
+         *     applied.  ``message`` is human-facing and rendered as Markdown.
+         */
+        RemediationResult: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fixed" | "noop" | "failed";
+            /** Message */
+            message: string;
+        };
+        /** RescoreRequest */
+        RescoreRequest: {
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Type Slug */
+            project_type_slug?: string | null;
+            /** Blueprint Slug */
+            blueprint_slug?: string | null;
+            /** Policy Slug */
+            policy_slug?: string | null;
+        };
+        /** RescoreResponse */
+        RescoreResponse: {
+            /** Enqueued */
+            enqueued: number;
+        };
+        /**
+         * ResyncProjectError
+         * @description One non-fatal failure encountered during a resync.
+         */
+        ResyncProjectError: {
+            /** Project Id */
+            project_id?: string | null;
+            /** Environment */
+            environment?: string | null;
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * ResyncSummary
+         * @description Aggregate counts returned by a resync run.
+         *
+         *     ``observed`` is the number of remote deployments the plugin returned;
+         *     ``releases_created`` / ``releases_updated`` count distinct
+         *     ``Release`` nodes affected; ``events_recorded`` counts the
+         *     ``DeploymentEvent`` rows actually appended (dedupe-suppressed rows
+         *     do not count); ``events_skipped`` counts rows the dedupe path
+         *     short-circuited.
+         */
+        ResyncSummary: {
+            /**
+             * Projects
+             * @default 0
+             */
+            projects: number;
+            /**
+             * Observed
+             * @default 0
+             */
+            observed: number;
+            /**
+             * Releases Created
+             * @default 0
+             */
+            releases_created: number;
+            /**
+             * Releases Updated
+             * @default 0
+             */
+            releases_updated: number;
+            /**
+             * Events Recorded
+             * @default 0
+             */
+            events_recorded: number;
+            /**
+             * Events Skipped
+             * @default 0
+             */
+            events_skipped: number;
+            /**
+             * Errors
+             * @default []
+             */
+            errors: components["schemas"]["ResyncProjectError"][];
         };
         /**
          * Role
@@ -4325,6 +10849,106 @@ export interface components {
          */
         SchemaType: "array" | "boolean" | "integer" | "null" | "number" | "object" | "string";
         /**
+         * ScoreBreakdown
+         * @description Result of scoring a project across all applicable policies.
+         */
+        ScoreBreakdown: {
+            /** Base Score */
+            base_score: number;
+            /** Unfloored Total */
+            unfloored_total: number;
+            /**
+             * Attribute Contributions
+             * @default []
+             */
+            attribute_contributions: components["schemas"]["PolicyContribution"][];
+        };
+        /** ScoreHistoryByTeamResponse */
+        ScoreHistoryByTeamResponse: {
+            /**
+             * Granularity
+             * @enum {string}
+             */
+            granularity: "hour" | "day";
+            /** Teams */
+            teams: components["schemas"]["TeamScoreSeries"][];
+        };
+        /** ScoreHistoryPoint */
+        ScoreHistoryPoint: {
+            /** Timestamp */
+            timestamp: string;
+            /** Score */
+            score: number;
+            /** Previous Score */
+            previous_score?: number | null;
+            /** Change Reason */
+            change_reason?: string | null;
+        };
+        /** ScoreHistoryResponse */
+        ScoreHistoryResponse: {
+            /** Project Id */
+            project_id: string;
+            /**
+             * Granularity
+             * @enum {string}
+             */
+            granularity: "raw" | "hour" | "day";
+            /** Points */
+            points: components["schemas"]["ScoreHistoryPoint"][];
+        };
+        /** ScoreRollupRow */
+        ScoreRollupRow: {
+            /** Dimension */
+            dimension: string;
+            /** Key */
+            key: string;
+            /** Latest Score */
+            latest_score: number;
+            /** Avg Score */
+            avg_score: number;
+            /** Last Updated */
+            last_updated?: string | null;
+        };
+        /** ScoreTrend */
+        ScoreTrend: {
+            /** Current */
+            current: number | null;
+            /** Previous */
+            previous: number | null;
+            /** Delta */
+            delta: number | null;
+            /** Period Days */
+            period_days: number;
+        };
+        /**
+         * SearchResult
+         * @description A single vector search result.
+         *
+         *     ``name``, ``slug``, and ``project_id`` are enrichment fields the UI
+         *     uses to build a route to the node: ``slug`` for the admin-scoped
+         *     node types, ``project_id`` for the project-nested Document and
+         *     Release detail pages. They are ``None`` for nodes that don't carry
+         *     the corresponding property.
+         */
+        SearchResult: {
+            /** Node Label */
+            node_label: string;
+            /** Node Id */
+            node_id: string;
+            /** Attribute */
+            attribute: string;
+            /** Chunk Text */
+            chunk_text: string;
+            /** Distance */
+            distance: number;
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /**
          * ServiceAccountCreate
          * @description Request model for creating service accounts.
          */
@@ -4377,161 +11001,43 @@ export interface components {
             organizations: components["schemas"]["OrgMembership"][];
         };
         /**
-         * ServiceAccountUpdate
-         * @description Request model for updating service accounts.
+         * ServiceStatus
+         * @description Health of a single Imbi service.
          */
-        ServiceAccountUpdate: {
-            /**
-             * Slug
-             * @description Unique slug identifier (lowercase, hyphens)
-             */
-            slug: string;
-            /** Display Name */
-            display_name: string;
-            /** Description */
-            description?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-        };
-        /**
-         * ServiceApplicationCreate
-         * @description Request model for creating a service application.
-         */
-        ServiceApplicationCreate: {
-            /** Slug */
-            slug: string;
+        ServiceStatus: {
             /** Name */
             name: string;
-            /** Description */
-            description?: string | null;
-            /** App Type */
-            app_type: string;
-            /** Application Url */
-            application_url?: string | null;
-            /** Callback Url */
-            callback_url?: string | null;
-            /** Client Id */
-            client_id: string;
-            /** Client Secret */
-            client_secret: string;
-            /** Scopes */
-            scopes?: string[];
-            /** Webhook Secret */
-            webhook_secret?: string | null;
-            /** Private Key */
-            private_key?: string | null;
-            /** Signing Secret */
-            signing_secret?: string | null;
-            /** Settings */
-            settings?: {
-                [key: string]: string | number | boolean;
-            };
             /**
              * Status
-             * @default active
              * @enum {string}
              */
-            status: "active" | "inactive" | "revoked";
+            status: "up" | "down";
+            /** Version */
+            version?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Detail */
+            detail?: string | null;
         };
-        /**
-         * ServiceApplicationResponse
-         * @description Response model for service applications (no secrets).
-         */
-        ServiceApplicationResponse: {
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** App Type */
-            app_type: string;
-            /** Application Url */
-            application_url?: string | null;
-            /** Callback Url */
-            callback_url?: string | null;
-            /** Client Id */
-            client_id: string;
+        /** StatsResponse */
+        StatsResponse: {
             /**
-             * Scopes
-             * @default []
+             * Since
+             * Format: date-time
              */
-            scopes: string[];
+            since: string;
             /**
-             * Settings
-             * @default {}
+             * Until
+             * Format: date-time
              */
-            settings: {
-                [key: string]: string | number | boolean;
+            until: string;
+            deployments: components["schemas"]["DeploymentStats"];
+            /** Projects Touched */
+            projects_touched: number;
+            /** Deployments By Environment */
+            deployments_by_environment: {
+                [key: string]: number;
             };
-            /**
-             * Status
-             * @default active
-             */
-            status: string;
-        };
-        /**
-         * ServiceApplicationSecrets
-         * @description Response model for application secrets (decrypted).
-         */
-        ServiceApplicationSecrets: {
-            /** Client Secret */
-            client_secret: string;
-            /** Webhook Secret */
-            webhook_secret?: string | null;
-            /** Private Key */
-            private_key?: string | null;
-            /** Signing Secret */
-            signing_secret?: string | null;
-        };
-        /**
-         * ServiceApplicationSecretsUpdate
-         * @description Request model for updating application secrets.
-         */
-        ServiceApplicationSecretsUpdate: {
-            /** Client Secret */
-            client_secret?: string | null;
-            /** Webhook Secret */
-            webhook_secret?: string | null;
-            /** Private Key */
-            private_key?: string | null;
-            /** Signing Secret */
-            signing_secret?: string | null;
-        };
-        /**
-         * ServiceApplicationUpdate
-         * @description Request model for updating non-secret application fields.
-         */
-        ServiceApplicationUpdate: {
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** App Type */
-            app_type: string;
-            /** Application Url */
-            application_url?: string | null;
-            /** Callback Url */
-            callback_url?: string | null;
-            /** Client Id */
-            client_id: string;
-            /** Scopes */
-            scopes?: string[];
-            /** Settings */
-            settings?: {
-                [key: string]: string | number | boolean;
-            };
-            /**
-             * Status
-             * @default active
-             * @enum {string}
-             */
-            status: "active" | "inactive" | "revoked";
         };
         /**
          * StatusResponse
@@ -4544,15 +11050,65 @@ export interface components {
              */
             service: string;
             /**
-             * Version
-             * @default 2.0.0a0
-             */
-            version: string;
-            /**
              * Status
              * @enum {string}
              */
             status: "ok" | "initializing" | "error";
+        };
+        /** TagCreate */
+        TagCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug?: string | null;
+            /** Description */
+            description?: string | null;
+        };
+        /**
+         * TagFormat
+         * @description A named release/deploy tag-format policy.
+         *
+         *     ``label`` is the human-facing name shown in the UI (e.g. ``Semver``
+         *     or ``CalVer``); ``pattern`` is a regular expression a tag must match.
+         *     A tag is accepted when it matches *any* configured ``TagFormat`` --
+         *     see ``imbi_common.versioning.matches_tag_formats``.
+         *
+         *     Patterns are matched with :func:`re.fullmatch` and validated as
+         *     compilable at assignment time so an invalid expression is rejected at
+         *     the API boundary rather than at deploy/release time.
+         */
+        TagFormat: {
+            /** Label */
+            label: string;
+            /** Pattern */
+            pattern: string;
+        };
+        /** TagRef */
+        TagRef: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** TagResponse */
+        TagResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            organization: components["schemas"]["OrganizationRef"];
+            /** Relationships */
+            relationships?: {
+                [key: string]: components["schemas"]["RelationshipLink"];
+            } | null;
         };
         /** Team */
         Team: {
@@ -4576,158 +11132,30 @@ export interface components {
             organization: components["schemas"]["Organization"];
         };
         /**
-         * ThirdPartyServiceCreate
-         * @description Request model for creating a third-party service.
+         * TeamMembership
+         * @description Team membership for API responses.
          */
-        ThirdPartyServiceCreate: {
+        TeamMembership: {
+            /** Team Name */
+            team_name: string;
             /** Team Slug */
-            team_slug?: string | null;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Vendor */
-            vendor: string;
-            /** Description */
-            description?: string | null;
-            /** Icon */
-            icon?: string | null;
-            /** Service Url */
-            service_url?: string | null;
-            /** Api Endpoint */
-            api_endpoint?: string | null;
-            /** Authorization Endpoint */
-            authorization_endpoint?: string | null;
-            /** Token Endpoint */
-            token_endpoint?: string | null;
-            /** Revoke Endpoint */
-            revoke_endpoint?: string | null;
-            /** Use Pkce */
-            use_pkce?: boolean | null;
-            /** Category */
-            category?: string | null;
-            /**
-             * Status
-             * @default active
-             * @enum {string}
-             */
-            status: "active" | "deprecated" | "evaluating" | "inactive";
-            /** Links */
-            links?: {
-                [key: string]: string;
-            };
-            /** Identifiers */
-            identifiers?: {
-                [key: string]: number | string;
-            };
+            team_slug: string;
+            /** Organization Slug */
+            organization_slug: string;
         };
-        /**
-         * ThirdPartyServiceResponse
-         * @description Response model for a third-party service.
-         */
-        ThirdPartyServiceResponse: {
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Vendor */
-            vendor: string;
-            /** Description */
-            description?: string | null;
-            /** Icon */
-            icon?: string | null;
-            /** Service Url */
-            service_url?: string | null;
-            /** Api Endpoint */
-            api_endpoint?: string | null;
-            /** Authorization Endpoint */
-            authorization_endpoint?: string | null;
-            /** Token Endpoint */
-            token_endpoint?: string | null;
-            /** Revoke Endpoint */
-            revoke_endpoint?: string | null;
-            /** Use Pkce */
-            use_pkce?: boolean | null;
-            /** Category */
-            category?: string | null;
-            /**
-             * Status
-             * @default active
-             */
-            status: string;
-            /**
-             * Links
-             * @default {}
-             */
-            links: {
-                [key: string]: unknown;
-            };
-            /**
-             * Identifiers
-             * @default {}
-             */
-            identifiers: {
-                [key: string]: unknown;
-            };
-            /** Organization */
-            organization?: {
-                [key: string]: unknown;
-            } | null;
-            /** Team */
-            team?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
+        /** TeamScoreHistoryPoint */
+        TeamScoreHistoryPoint: {
+            /** Timestamp */
+            timestamp: string;
+            /** Score */
+            score: number;
         };
-        /**
-         * ThirdPartyServiceUpdate
-         * @description Request model for updating a third-party service.
-         *
-         *     Designed for GET-modify-PUT: the client fetches the full resource,
-         *     modifies fields, and sends the complete object back. All fields
-         *     that exist on the response are required (no silent defaults).
-         */
-        ThirdPartyServiceUpdate: {
-            /** Team Slug */
-            team_slug?: string | null;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Vendor */
-            vendor: string;
-            /** Description */
-            description?: string | null;
-            /** Icon */
-            icon?: string | null;
-            /** Service Url */
-            service_url?: string | null;
-            /** Api Endpoint */
-            api_endpoint?: string | null;
-            /** Authorization Endpoint */
-            authorization_endpoint?: string | null;
-            /** Token Endpoint */
-            token_endpoint?: string | null;
-            /** Revoke Endpoint */
-            revoke_endpoint?: string | null;
-            /** Use Pkce */
-            use_pkce?: boolean | null;
-            /** Category */
-            category?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "active" | "deprecated" | "evaluating" | "inactive";
-            /** Links */
-            links?: {
-                [key: string]: string;
-            };
-            /** Identifiers */
-            identifiers?: {
-                [key: string]: number | string;
-            };
+        /** TeamScoreSeries */
+        TeamScoreSeries: {
+            /** Key */
+            key: string;
+            /** Points */
+            points: components["schemas"]["TeamScoreHistoryPoint"][];
         };
         /**
          * TokenRefreshRequest
@@ -4803,6 +11231,11 @@ export interface components {
              * @default false
              */
             is_service_account: boolean;
+            /**
+             * Email Notifications
+             * @default true
+             */
+            email_notifications: boolean;
             /** Organization Slug */
             organization_slug: string;
             /** Role Slug */
@@ -4836,40 +11269,15 @@ export interface components {
             /** Avatar Url */
             avatar_url?: string | null;
             /**
+             * Email Notifications
+             * @default true
+             */
+            email_notifications: boolean;
+            /**
              * Organizations
              * @default []
              */
             organizations: components["schemas"]["OrgMembership"][];
-        };
-        /**
-         * UserUpdate
-         * @description Request model for updating users.
-         */
-        UserUpdate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Display Name */
-            display_name: string;
-            /** Password */
-            password?: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /**
-             * Is Admin
-             * @default false
-             */
-            is_admin: boolean;
-            /**
-             * Is Service Account
-             * @default false
-             */
-            is_service_account: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -4886,7 +11294,9 @@ export interface components {
         };
         /**
          * WebhookCreate
-         * @description Request model for creating a webhook. slug, id, and notification_path are system-generated.
+         * @description Request model for creating a webhook.
+         *
+         *     The slug, id, and notification_path are system-generated.
          */
         WebhookCreate: {
             /** Name */
@@ -4901,7 +11311,7 @@ export interface components {
             integration_slug?: string | null;
             /**
              * Identifier Selector
-             * @description JSON Path expression to extract project identifier
+             * @description JSON Pointer that extracts the project identifier from the webhook payload (e.g. /repository/id).
              */
             identifier_selector?: string | null;
             /**
@@ -4911,7 +11321,7 @@ export interface components {
             user_subject_selector?: string | null;
             /**
              * Identity Integration Slug
-             * @description Optional override for the identity integration slug used to resolve the Imbi user; falls back to identity plugins attached to the integration when unset.
+             * @description Optional override for the identity integration slug used to resolve the Imbi user; falls back to identity integrations attached to the integration when unset.
              */
             identity_integration_slug?: string | null;
             /**
@@ -4927,17 +11337,17 @@ export interface components {
          * @description Response model for a webhook.
          */
         WebhookResponse: {
-            /** Id — stable surrogate key, never changes */
+            /** Id */
             id: string;
             /** Name */
             name: string;
-            /** Slug — editable unique key */
+            /** Slug */
             slug: string;
             /** Description */
             description?: string | null;
             /** Icon */
             icon?: string | null;
-            /** Notification Path — system-generated, read-only */
+            /** Notification Path */
             notification_path: string;
             /** Integration */
             integration?: {
@@ -4956,8 +11366,6 @@ export interface components {
              * @default []
              */
             rules: components["schemas"]["WebhookRuleResponse"][];
-        } & {
-            [key: string]: unknown;
         };
         /**
          * WebhookRuleCreate
@@ -4992,48 +11400,6 @@ export interface components {
             handler_config?: {
                 [key: string]: unknown;
             } | unknown[];
-        };
-        /**
-         * WebhookUpdate
-         * @description Request model for updating a webhook (GET-modify-PUT).
-         */
-        WebhookUpdate: {
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Description */
-            description?: string | null;
-            /** Icon */
-            icon?: string | null;
-            /** Notification Path */
-            notification_path: string;
-            /** Secret */
-            secret?: string | null;
-            /** Integration Slug */
-            integration_slug?: string | null;
-            /**
-             * Identifier Selector
-             * @description JSON Path expression to extract project identifier
-             */
-            identifier_selector?: string | null;
-            /**
-             * User Subject Selector
-             * @description JSON Pointer that locates the external identity subject (e.g. /deployment/creator/id) used to resolve the Imbi user.
-             */
-            user_subject_selector?: string | null;
-            /**
-             * Identity Integration Slug
-             * @description Optional override for the identity integration slug used to resolve the Imbi user; falls back to identity plugins attached to the integration when unset.
-             */
-            identity_integration_slug?: string | null;
-            /**
-             * Event Type Selector
-             * @description Resolves the activity-feed event type for each webhook. Values starting with "/" are JSON pointers evaluated against the request body; otherwise the value is treated as an HTTP header name (case-insensitive). When the header is absent, the literal selector value is used as the label.
-             */
-            event_type_selector?: string | null;
-            /** Rules */
-            rules?: components["schemas"]["WebhookRuleCreate"][];
         };
         /** Environment */
         EnvironmentRequest: {
@@ -5074,6 +11440,16 @@ export interface components {
              * @default null
              */
             label_color: string | null;
+            /**
+             * Can Deploy
+             * @default true
+             */
+            can_deploy: boolean;
+            /**
+             * Can Promote
+             * @default false
+             */
+            can_promote: boolean;
             organization: components["schemas"]["Organization"];
         };
         /** EnvironmentResponse */
@@ -5115,6 +11491,16 @@ export interface components {
              * @default null
              */
             label_color: string | null;
+            /**
+             * Can Deploy
+             * @default true
+             */
+            can_deploy: boolean;
+            /**
+             * Can Promote
+             * @default false
+             */
+            can_promote: boolean;
             organization: components["schemas"]["Organization"];
             /**
              * Relationships
@@ -5201,6 +11587,99 @@ export interface components {
                 [key: string]: components["schemas"]["RelationshipLink"];
             } | null;
         };
+        /** Integration */
+        IntegrationRequest: {
+            /** Id */
+            id?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
+            /** @default null */
+            organization: components["schemas"]["Organization"] | null;
+            /** @default null */
+            team: components["schemas"]["Team"] | null;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Options
+             * @default {}
+             */
+            options: {
+                [key: string]: unknown;
+            };
+            /**
+             * Encrypted Credentials
+             * @default {}
+             */
+            encrypted_credentials: {
+                [key: string]: string;
+            };
+            /**
+             * Capabilities
+             * @default {}
+             */
+            capabilities: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Vendor
+             * @default null
+             */
+            vendor: string | null;
+            /**
+             * Service Url
+             * @default null
+             */
+            service_url: string | null;
+            /**
+             * Category
+             * @default null
+             */
+            category: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "deprecated" | "evaluating" | "inactive";
+            /**
+             * Links
+             * @default {}
+             */
+            links: {
+                [key: string]: string;
+            };
+            /**
+             * Identifiers
+             * @default {}
+             */
+            identifiers: {
+                [key: string]: number | string;
+            };
+        };
         /** Organization */
         OrganizationRequest: {
             /** Id */
@@ -5229,6 +11708,11 @@ export interface components {
              * @default null
              */
             icon: string | null;
+            /**
+             * Tag Formats
+             * @default []
+             */
+            tag_formats: components["schemas"]["TagFormat"][];
         };
         /** OrganizationResponse */
         OrganizationResponse: {
@@ -5258,6 +11742,11 @@ export interface components {
              * @default null
              */
             icon: string | null;
+            /**
+             * Tag Formats
+             * @default []
+             */
+            tag_formats: components["schemas"]["TagFormat"][];
             /**
              * Relationships
              * @default null
@@ -5319,6 +11808,13 @@ export interface components {
             identifiers: {
                 [key: string]: number | string;
             };
+            /**
+             * Score
+             * @default null
+             */
+            score: number | null;
+            /** @default null */
+            relationships: components["schemas"]["ProjectRelationships"] | null;
         };
         /** ProjectType */
         ProjectTypeRequest: {
@@ -5348,7 +11844,22 @@ export interface components {
              * @default null
              */
             icon: string | null;
+            /**
+             * Deployable
+             * @default false
+             */
+            deployable: boolean;
+            /**
+             * Releasable
+             * @default false
+             */
+            releasable: boolean;
             organization: components["schemas"]["Organization"];
+            /**
+             * Tag Formats
+             * @default []
+             */
+            tag_formats: components["schemas"]["TagFormat"][];
         };
         /** ProjectTypeResponse */
         ProjectTypeResponse: {
@@ -5378,7 +11889,22 @@ export interface components {
              * @default null
              */
             icon: string | null;
+            /**
+             * Deployable
+             * @default false
+             */
+            deployable: boolean;
+            /**
+             * Releasable
+             * @default false
+             */
+            releasable: boolean;
             organization: components["schemas"]["Organization"];
+            /**
+             * Tag Formats
+             * @default []
+             */
+            tag_formats: components["schemas"]["TagFormat"][];
             /**
              * Relationships
              * @default null
@@ -5493,22 +12019,17 @@ export interface components {
              * @default null
              */
             label_color: string | null;
+            /**
+             * Can Deploy
+             * @default true
+             */
+            can_deploy: boolean;
+            /**
+             * Can Promote
+             * @default false
+             */
+            can_promote: boolean;
             organization: components["schemas"]["Organization"];
-        };
-        /** ProjectDeployedInEnvironmentEdge */
-        Project_Environment_DEPLOYED_INEdgeProperties: {
-            /**
-             * Url
-             * @description The deployment URL for this project in this environment
-             * @default null
-             */
-            url: string | null;
-            /**
-             * Version
-             * @description Commit hash or Version String
-             * @default null
-             */
-            version: string | null;
         };
     };
     responses: never;
@@ -5519,6 +12040,128 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_installed_plugins_admin_plugins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledPluginResponse"][];
+                };
+            };
+        };
+    };
+    get_installed_plugin_admin_plugins__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledPluginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plugin_registration_admin_plugins__slug__registration_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginRegistrationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledPluginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plugin_edges_admin_plugins__slug__edges_get: {
+        parameters: {
+            query: {
+                rel_type: string;
+                org_slug: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["EdgeResponse"][];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_admin_settings_admin_settings_get: {
         parameters: {
             query?: never;
@@ -5652,6 +12295,226 @@ export interface operations {
             };
         };
     };
+    list_login_providers_login_providers__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"][];
+                };
+            };
+        };
+    };
+    create_login_provider_login_providers__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_login_provider_login_providers__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_login_provider_login_providers__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_login_provider_login_providers__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_login_provider_credentials_login_providers__slug__credentials_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationCredentialsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string[];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_used_as_login_login_providers__slug__used_as_login_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_auth_providers_auth_providers_get: {
         parameters: {
             query?: never;
@@ -5705,6 +12568,76 @@ export interface operations {
             };
         };
     };
+    authorize_auth_authorize_get: {
+        parameters: {
+            query?: {
+                response_type?: string;
+                client_id?: string;
+                redirect_uri?: string;
+                code_challenge?: string;
+                code_challenge_method?: string;
+                scope?: string | null;
+                state?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_oauth_client_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthClientRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientRegistrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_auth_login_post: {
         parameters: {
             query?: never;
@@ -5745,9 +12678,9 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["TokenRefreshRequest"];
+                "application/json": components["schemas"]["TokenRefreshRequest"] | null;
             };
         };
         responses: {
@@ -5940,7 +12873,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "ThirdPartyService" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
             };
             cookie?: never;
         };
@@ -5971,7 +12904,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "ThirdPartyService" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -5998,48 +12931,12 @@ export interface operations {
             };
         };
     };
-    update_blueprint_blueprints__type___slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "ThirdPartyService" | "relationship";
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Blueprint-Input"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Blueprint-Output"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     delete_blueprint_blueprints__type___slug__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "ThirdPartyService" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -6069,7 +12966,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "ThirdPartyService" | "relationship";
+                type: "Team" | "Environment" | "ProjectType" | "Project" | "Organization" | "Integration" | "relationship";
                 slug: string;
             };
             cookie?: never;
@@ -6215,6 +13112,770 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClientCredentialCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dashboard_status_admin_dashboard_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardStatus"];
+                };
+            };
+        };
+    };
+    get_dashboard_metrics_admin_dashboard_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardMetrics"];
+                };
+            };
+        };
+    };
+    list_events_events__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                project_id?: string | null;
+                type?: string | null;
+                event_type?: string | null;
+                attributed_to?: string | null;
+                integration?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_graph_query_admin_graph_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphQueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_graph_schema_admin_graph_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphSchemaResponse"];
+                };
+            };
+        };
+    };
+    get_local_auth_admin_local_auth_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAuthRead"];
+                };
+            };
+        };
+    };
+    set_local_auth_admin_local_auth_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalAuthWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAuthRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_maintenance_operations_maintenance_operations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceOperation"][];
+                };
+            };
+        };
+    };
+    get_maintenance_operation_maintenance_operations__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_maintenance_operation_maintenance_operations__slug__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_maintenance_operation_maintenance_operations__slug__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mcp_servers_mcp_servers__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"][];
+                };
+            };
+        };
+    };
+    create_mcp_server_mcp_servers__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_server_mcp_servers__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_server_mcp_servers__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_server_mcp_servers__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_mcp_server_mcp_servers__id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_mcp_server_config_mcp_servers_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerTestConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_mcp_server_status_mcp_servers__id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerStatusReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_identities_me_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityConnectionResponse"][];
+                };
+            };
+        };
+    };
+    start_connect_me_identities__integration_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityConnectionStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityConnectionStartResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    poll_connect_me_identities__integration_id__poll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityConnectionPollRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityConnectionPollResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    callback_me_identities__integration_id__callback_get: {
+        parameters: {
+            query: {
+                code: string;
+                state: string;
+            };
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_me_identities__integration_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_me_identities__integration_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6405,6 +14066,26 @@ export interface operations {
             };
         };
     };
+    list_plugin_ops_log_templates_operations_log_plugin_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginOpsLogTemplatesResponse"];
+                };
+            };
+        };
+    };
     get_operation_log_operations_log__entry_id__get: {
         parameters: {
             query?: never;
@@ -6577,42 +14258,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_team_organizations__org_slug__teams__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TeamRequest"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6903,42 +14548,6 @@ export interface operations {
             };
         };
     };
-    update_environment_organizations__org_slug__environments__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EnvironmentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvironmentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     delete_environment_organizations__org_slug__environments__slug__delete: {
         parameters: {
             query?: never;
@@ -6993,6 +14602,107 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EnvironmentResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_environment_edges_organizations__org_slug__environments__slug__edges__rel_type__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                rel_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                rel_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EdgePutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                rel_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -7109,44 +14819,6 @@ export interface operations {
             };
         };
     };
-    update_link_definition_organizations__org_slug__link_definitions__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LinkDefinitionUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     delete_link_definition_organizations__org_slug__link_definitions__slug__delete: {
         parameters: {
             query?: never;
@@ -7217,7 +14889,9 @@ export interface operations {
     };
     list_project_types_organizations__org_slug__project_types__get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_schema?: boolean;
+            };
             header?: never;
             path: {
                 org_slug: string;
@@ -7313,42 +14987,6 @@ export interface operations {
             };
         };
     };
-    update_project_type_organizations__org_slug__project_types__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProjectTypeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectTypeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     delete_project_type_organizations__org_slug__project_types__slug__delete: {
         parameters: {
             query?: never;
@@ -7419,6 +15057,14 @@ export interface operations {
         parameters: {
             query?: {
                 project_type?: string | null;
+                include_archived?: boolean;
+                slim?: boolean;
+                /** @description Restrict results to projects that have an EXISTS_IN relationship to the integration with this slug in the organization. Combine with ``identifier`` to match a specific external identifier on that integration. */
+                integration_slug?: string | null;
+                /** @description Restrict results to projects whose EXISTS_IN edge to ``integration_slug`` carries this external identifier (exact match). Requires ``integration_slug``. */
+                identifier?: string | null;
+                /** @description Filter projects by blueprint attribute, as ``field:op[:value]`` (repeatable; combined with AND). Operators: eq, ne, in, not_in (comma-separated values), exists, not_exists. ne/not_in exclude projects where the attribute is unset. Valid fields and enum values per project type come from the project-type listing with ``include_schema=true``. Example: framework:ne:http-service-lib */
+                filter?: string[] | null;
             };
             header?: never;
             path: {
@@ -7515,17 +15161,22 @@ export interface operations {
             };
         };
     };
-    get_project_organizations__org_slug__projects__project_id__get: {
+    patch_project_environment_organizations__org_slug__projects__project_id__environments__env_slug__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 project_id: string;
+                env_slug: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnvironmentEdgeUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -7533,7 +15184,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -7547,9 +15200,11 @@ export interface operations {
             };
         };
     };
-    update_project_organizations__org_slug__projects__project_id__put: {
+    get_project_organizations__org_slug__projects__project_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                breakdown?: boolean;
+            };
             header?: never;
             path: {
                 org_slug: string;
@@ -7557,11 +15212,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProjectUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -7585,7 +15236,9 @@ export interface operations {
     };
     delete_project_organizations__org_slug__projects__project_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                delete_repository?: boolean;
+            };
             header?: never;
             path: {
                 org_slug: string;
@@ -7596,11 +15249,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProjectDeletedResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -7615,7 +15270,9 @@ export interface operations {
     };
     patch_project_organizations__org_slug__projects__project_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                transfer_repository?: boolean;
+            };
             header?: never;
             path: {
                 org_slug: string;
@@ -7635,7 +15292,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectResponse"];
+                    "application/json": components["schemas"]["ProjectMutationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7649,7 +15306,7 @@ export interface operations {
             };
         };
     };
-    list_project_relationships_organizations__org_slug__projects__project_id__relationships_get: {
+    get_project_relationships_organizations__org_slug__projects__project_id__relationships_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7681,7 +15338,104 @@ export interface operations {
             };
         };
     };
-    set_project_relationships_organizations__org_slug__projects__project_id__relationships_put: {
+    create_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_lifecycle_organizations__org_slug__projects__project_id__lifecycle_preview_get: {
+        parameters: {
+            query: {
+                /** @description Hypothetical project-type slug set to evaluate. Repeatable, e.g. ``?project_type_slugs=api&project_type_slugs=consumer``. */
+                project_type_slugs: string[];
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LifecyclePreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_project_organizations__org_slug__projects__project_id__archive_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -7691,11 +15445,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProjectRelationshipsUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -7703,7 +15453,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectRelationshipsResponse"];
+                    "application/json": components["schemas"]["ProjectMutationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7717,7 +15467,39 @@ export interface operations {
             };
         };
     };
-    list_third_party_services_organizations__org_slug__third_party_services__get: {
+    unarchive_project_organizations__org_slug__projects__project_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_integrations_organizations__org_slug__integrations__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7734,7 +15516,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ThirdPartyServiceResponse"][];
+                    "application/json": components["schemas"]["IntegrationResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -7748,7 +15530,7 @@ export interface operations {
             };
         };
     };
-    create_third_party_service_organizations__org_slug__third_party_services__post: {
+    create_integration_organizations__org_slug__integrations__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -7759,7 +15541,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ThirdPartyServiceCreate"];
+                "application/json": components["schemas"]["IntegrationCreate"];
             };
         };
         responses: {
@@ -7769,7 +15551,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ThirdPartyServiceResponse"];
+                    "application/json": components["schemas"]["IntegrationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7783,7 +15565,7 @@ export interface operations {
             };
         };
     };
-    get_third_party_service_organizations__org_slug__third_party_services__slug__get: {
+    get_integration_organizations__org_slug__integrations__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7801,7 +15583,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ThirdPartyServiceResponse"];
+                    "application/json": components["schemas"]["IntegrationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7815,43 +15597,7 @@ export interface operations {
             };
         };
     };
-    update_third_party_service_organizations__org_slug__third_party_services__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ThirdPartyServiceUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ThirdPartyServiceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_third_party_service_organizations__org_slug__third_party_services__slug__delete: {
+    delete_integration_organizations__org_slug__integrations__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -7881,7 +15627,7 @@ export interface operations {
             };
         };
     };
-    patch_third_party_service_organizations__org_slug__third_party_services__slug__patch: {
+    update_integration_organizations__org_slug__integrations__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -7893,7 +15639,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PatchOperation"][];
+                "application/json": components["schemas"]["IntegrationUpdate"];
             };
         };
         responses: {
@@ -7903,7 +15649,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ThirdPartyServiceResponse"];
+                    "application/json": components["schemas"]["IntegrationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7917,71 +15663,7 @@ export interface operations {
             };
         };
     };
-    list_service_webhooks_organizations__org_slug__third_party_services__slug__webhooks__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WebhookResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_service_applications_organizations__org_slug__third_party_services__slug__applications__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ServiceApplicationResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_service_application_organizations__org_slug__third_party_services__slug__applications__post: {
+    update_integration_credentials_organizations__org_slug__integrations__slug__credentials_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -7993,42 +15675,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ServiceApplicationCreate"];
+                "application/json": components["schemas"]["IntegrationCredentialsUpdate"];
             };
         };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ServiceApplicationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_service_application_organizations__org_slug__third_party_services__slug__applications__app_slug__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-                app_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -8036,7 +15685,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServiceApplicationResponse"];
+                    "application/json": {
+                        [key: string]: string[];
+                    };
                 };
             };
             /** @description Validation Error */
@@ -8050,20 +15701,19 @@ export interface operations {
             };
         };
     };
-    update_service_application_organizations__org_slug__third_party_services__slug__applications__app_slug__put: {
+    set_login_provider_organizations__org_slug__integrations__slug__login_provider_put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 slug: string;
-                app_slug: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ServiceApplicationUpdate"];
+                "application/json": components["schemas"]["LoginProviderUpdate"];
             };
         };
         responses: {
@@ -8073,7 +15723,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServiceApplicationResponse"];
+                    "application/json": components["schemas"]["IntegrationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8087,45 +15737,14 @@ export interface operations {
             };
         };
     };
-    delete_service_application_organizations__org_slug__third_party_services__slug__applications__app_slug__delete: {
+    list_capability_assignments_organizations__org_slug__integrations__slug__capabilities__kind__assignments_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 slug: string;
-                app_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_application_secrets_organizations__org_slug__third_party_services__slug__applications__app_slug__secrets_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-                app_slug: string;
+                kind: string;
             };
             cookie?: never;
         };
@@ -8137,7 +15756,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServiceApplicationSecrets"];
+                    "application/json": components["schemas"]["CapabilityAssignment"][];
                 };
             };
             /** @description Validation Error */
@@ -8151,20 +15770,20 @@ export interface operations {
             };
         };
     };
-    update_application_secrets_organizations__org_slug__third_party_services__slug__applications__app_slug__secrets_put: {
+    replace_capability_assignments_endpoint_organizations__org_slug__integrations__slug__capabilities__kind__assignments_put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 slug: string;
-                app_slug: string;
+                kind: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ServiceApplicationSecretsUpdate"];
+                "application/json": components["schemas"]["CapabilityAssignmentsUpdate"];
             };
         };
         responses: {
@@ -8174,7 +15793,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ServiceApplicationSecrets"];
+                    "application/json": components["schemas"]["CapabilityAssignment"][];
                 };
             };
             /** @description Validation Error */
@@ -8254,13 +15873,13 @@ export interface operations {
             };
         };
     };
-    get_webhook_organizations__org_slug__webhooks__slug__get: {
+    get_webhook_organizations__org_slug__webhooks__webhook__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
-                slug: string;
+                webhook: string;
             };
             cookie?: never;
         };
@@ -8286,49 +15905,13 @@ export interface operations {
             };
         };
     };
-    update_webhook_organizations__org_slug__webhooks__slug__put: {
+    delete_webhook_organizations__org_slug__webhooks__webhook__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WebhookUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WebhookResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_webhook_organizations__org_slug__webhooks__slug__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
+                webhook: string;
             };
             cookie?: never;
         };
@@ -8352,13 +15935,13 @@ export interface operations {
             };
         };
     };
-    patch_webhook_organizations__org_slug__webhooks__slug__patch: {
+    patch_webhook_organizations__org_slug__webhooks__webhook__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
-                slug: string;
+                webhook: string;
             };
             cookie?: never;
         };
@@ -8375,6 +15958,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_events_organizations__org_slug__projects__project_id__events__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                type?: string | null;
+                event_type?: string | null;
+                attributed_to?: string | null;
+                since?: string | null;
+                until?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsPage"];
                 };
             };
             /** @description Validation Error */
@@ -8431,7 +16054,12 @@ export interface operations {
     };
     list_releases_organizations__org_slug__projects__project_id__releases__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional 7-character committish to filter releases by. */
+                committish?: string | null;
+                /** @description Optional tag to filter releases by. */
+                tag?: string | null;
+            };
             header?: never;
             path: {
                 org_slug: string;
@@ -8497,14 +16125,46 @@ export interface operations {
             };
         };
     };
-    get_release_organizations__org_slug__projects__project_id__releases__version__get: {
+    list_current_releases_organizations__org_slug__projects__project_id__releases_current_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 project_id: string;
-                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentReleaseEnvironment"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_organizations__org_slug__projects__project_id__releases__release_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                release_id: string;
             };
             cookie?: never;
         };
@@ -8530,14 +16190,14 @@ export interface operations {
             };
         };
     };
-    patch_release_organizations__org_slug__projects__project_id__releases__version__patch: {
+    patch_release_organizations__org_slug__projects__project_id__releases__release_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 project_id: string;
-                version: string;
+                release_id: string;
             };
             cookie?: never;
         };
@@ -8567,14 +16227,14 @@ export interface operations {
             };
         };
     };
-    get_deployment_edge_organizations__org_slug__projects__project_id__releases__version__environments__env_slug__get: {
+    get_deployment_edge_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 project_id: string;
-                version: string;
+                release_id: string;
                 env_slug: string;
             };
             cookie?: never;
@@ -8601,14 +16261,14 @@ export interface operations {
             };
         };
     };
-    record_deployment_organizations__org_slug__projects__project_id__releases__version__environments__env_slug__post: {
+    record_deployment_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 project_id: string;
-                version: string;
+                release_id: string;
                 env_slug: string;
             };
             cookie?: never;
@@ -8639,14 +16299,14 @@ export interface operations {
             };
         };
     };
-    list_deployment_edges_organizations__org_slug__projects__project_id__releases__version__environments_get: {
+    list_deployment_edges_organizations__org_slug__projects__project_id__releases__release_id__environments_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 org_slug: string;
                 project_id: string;
-                version: string;
+                release_id: string;
             };
             cookie?: never;
         };
@@ -8659,6 +16319,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReleaseEnvironmentEdgeResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_release_sbom_organizations__org_slug__projects__project_id__releases__release_id__sbom_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description SBoM ingested successfully. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload is not a valid CycloneDX document. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project or release not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unsupported CycloneDX specVersion. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_release_dependencies_organizations__org_slug__projects__project_id__releases__release_id__dependencies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseDependenciesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8771,6 +16522,2547 @@ export interface operations {
             };
         };
     };
+    list_tags_organizations__org_slug__tags__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_tag_organizations__org_slug__tags__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tag_organizations__org_slug__tags__tag_slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                tag_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tag_organizations__org_slug__tags__tag_slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                tag_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_tag_organizations__org_slug__tags__tag_slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                tag_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_organizations__org_slug__documents__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                tag?: string | null;
+                project_id?: string | null;
+                project_type?: string | null;
+                user?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_org_document_organizations__org_slug__documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_org_document_organizations__org_slug__documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_org_document_organizations__org_slug__documents__document_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_documents_organizations__org_slug__projects__project_id__documents__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                tag?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_organizations__org_slug__projects__project_id__documents__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_organizations__org_slug__projects__project_id__documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_organizations__org_slug__projects__project_id__documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_organizations__org_slug__projects__project_id__documents__document_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_type_documents_organizations__org_slug__project_types__type_slug__documents__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                tag?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                type_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_type_document_organizations__org_slug__project_types__type_slug__documents__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                type_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_documents_organizations__org_slug__users__email__documents__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                tag?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                email: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_document_organizations__org_slug__users__email__documents__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                email: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comment_threads_organizations__org_slug__projects__project_id__documents__document_id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                project_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreadListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                project_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentThreadCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_reply_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                project_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentBodyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                project_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                comment_id: string;
+                project_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                comment_id: string;
+                project_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                comment_id: string;
+                project_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comment_threads_organizations__org_slug__documents__document_id__comments_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreadListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_comment_thread_organizations__org_slug__documents__document_id__comments_post: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentThreadCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_reply_organizations__org_slug__documents__document_id__comments__thread_id__comments_post: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentBodyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_comment_thread_organizations__org_slug__documents__document_id__comments__thread_id__patch: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentThreadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__delete: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__patch: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                thread_id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_templates_organizations__org_slug__document_templates__get: {
+        parameters: {
+            query?: {
+                project_type?: string | null;
+                context?: ("project" | "user" | "project_type") | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTemplateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_template_organizations__org_slug__document_templates__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTemplateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_template_organizations__org_slug__document_templates__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTemplateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_document_template_organizations__org_slug__document_templates__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTemplateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_template_organizations__org_slug__document_templates__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_template_organizations__org_slug__document_templates__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTemplateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_configuration_organizations__org_slug__projects__project_id__configuration__get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigKeyResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_values_organizations__org_slug__projects__project_id__configuration_values_fetch_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigKeyValueResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_configuration_value_organizations__org_slug__projects__project_id__configuration__key__put: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigKeyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_configuration_key_organizations__org_slug__projects__project_id__configuration__key__delete: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_logs_organizations__org_slug__projects__project_id__logs__get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string[];
+                start_time?: string | null;
+                end_time?: string | null;
+                cursor?: string | null;
+                limit?: number;
+                filter?: string[];
+                level?: string[];
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogResultResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_log_histogram_organizations__org_slug__projects__project_id__logs_histogram_get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string[];
+                start_time?: string | null;
+                end_time?: string | null;
+                bucket_count?: number;
+                filter?: string[];
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogHistogramBucketResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_log_schema_organizations__org_slug__projects__project_id__logs_schema_get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_incidents_organizations__org_slug__projects__project_id__incidents__get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                start_time?: string | null;
+                end_time?: string | null;
+                status?: string[];
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_project_lifecycle_organizations__org_slug__projects__project_id__lifecycle_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LifecycleSyncSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_refs_organizations__org_slug__projects__project_id__deployments_refs_get: {
+        parameters: {
+            query?: {
+                kind?: "default" | "branch" | "tag" | "all";
+                q?: string | null;
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ref"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_commits_organizations__org_slug__projects__project_id__deployments_refs__ref__commits_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Commit"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_commit_organizations__org_slug__projects__project_id__deployments_commits__committish__get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                committish: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Commit"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_refs_organizations__org_slug__projects__project_id__deployments_compare_get: {
+        parameters: {
+            query: {
+                base: string;
+                head: string;
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompareResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trigger_deployment_organizations__org_slug__projects__project_id__deployments_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployActionRequest"] | components["schemas"]["PromoteActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentTriggerResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resync_project_deployments_organizations__org_slug__projects__project_id__deployments_resync_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResyncSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_deployment_run_organizations__org_slug__projects__project_id__deployments_runs__run_id__get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_release_notes_organizations__org_slug__projects__project_id__deployments_draft_release_notes_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftReleaseNotesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftReleaseNotesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_promotion_options_organizations__org_slug__projects__project_id__deployments_promotion_options_get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_recent_commits_organizations__org_slug__projects__project_id__deployments_recent_commits_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                ref?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentCommit"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_drift_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseDriftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_history_organizations__org_slug__projects__project_id__deployments_release_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseHistoryEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cut_release_organizations__org_slug__projects__project_id__deployments_releases_cut_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseCutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseCutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_analysis_organizations__org_slug__projects__project_id__analysis__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_project_analysis_organizations__org_slug__projects__project_id__analysis_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remediate_project_finding_organizations__org_slug__projects__project_id__analysis_remediate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemediateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemediateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remediate_all_project_findings_organizations__org_slug__projects__project_id__analysis_remediate_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemediateAllResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_commits_and_tags_organizations__org_slug__projects__project_id__commits_sync_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitSyncEnqueueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_commit_sync_status_organizations__org_slug__projects__project_id__commits_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitSyncStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_pull_requests_organizations__org_slug__projects__project_id__pull_requests_sync_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PRSyncEnqueueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pr_sync_status_organizations__org_slug__projects__project_id__pull_requests_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PRSyncStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_pull_requests_organizations__org_slug__projects__project_id__pull_requests__get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+                author?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_org_pull_requests_organizations__org_slug__pull_requests__get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+                author?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pull_request_activity_organizations__org_slug__pull_requests_activity_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PRActivityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_organizations__org_slug__search_get: {
+        parameters: {
+            query: {
+                q: string;
+                node_label?: string | null;
+                attribute?: string | null;
+                model?: string;
+                limit?: number;
+                threshold?: number | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_organizations_organizations__get: {
         parameters: {
             query?: never;
@@ -8838,43 +19130,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_organization_organizations__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Organization"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -8997,6 +19252,354 @@ export interface operations {
             };
         };
     };
+    get_entity_schema_admin_plugins__slug__entities__label___schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entities_admin_plugins__slug__entities__label__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entity_admin_plugins__slug__entities__label__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_entity_admin_plugins__slug__entities__label___id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                label: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entity_admin_plugins__slug__entities__label___id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                label: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_entity_admin_plugins__slug__entities__label___id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                label: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plugin_manifest_plugins__slug__manifest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_integrations_organizations__org_slug__projects__project_id__integrations__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectIntegrationAssignment"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_project_integrations_organizations__org_slug__projects__project_id__integrations__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectIntegrationsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectIntegrationAssignment"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_plugins_organizations__org_slug__projects__project_id__plugins__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginAssignmentResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_roles_roles__get: {
         parameters: {
             query?: never;
@@ -9072,41 +19675,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_role_roles__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Role-Input"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Role-Output"];
                 };
             };
             /** @description Validation Error */
@@ -9248,7 +19816,7 @@ export interface operations {
             };
         };
     };
-    grant_permission_roles__slug__permissions_post: {
+    role_permissions_roles__slug__permissions_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -9259,7 +19827,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_grant_permission_roles__slug__permissions_post"];
+                "application/json": components["schemas"]["Body_role_permissions_roles__slug__permissions_post"];
             };
         };
         responses: {
@@ -9439,6 +20007,404 @@ export interface operations {
             };
         };
     };
+    list_policies_scoring_policies__get: {
+        parameters: {
+            query?: {
+                category?: string | null;
+                enabled?: boolean | null;
+                attribute_name?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": (components["schemas"]["AttributePolicy"] | components["schemas"]["PresencePolicy"] | components["schemas"]["LinkPresencePolicy"] | components["schemas"]["AgePolicy"] | components["schemas"]["AnalysisResultPolicy"] | components["schemas"]["DeploymentStatusPolicy"] | components["schemas"]["ConditionPolicy"])[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_policy_scoring_policies__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributePolicy"] | components["schemas"]["PresencePolicy"] | components["schemas"]["LinkPresencePolicy"] | components["schemas"]["AgePolicy"] | components["schemas"]["AnalysisResultPolicy"] | components["schemas"]["DeploymentStatusPolicy"] | components["schemas"]["ConditionPolicy"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_policy_scoring_policies__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributePolicy"] | components["schemas"]["PresencePolicy"] | components["schemas"]["LinkPresencePolicy"] | components["schemas"]["AgePolicy"] | components["schemas"]["AnalysisResultPolicy"] | components["schemas"]["DeploymentStatusPolicy"] | components["schemas"]["ConditionPolicy"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_policy_scoring_policies__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_policy_scoring_policies__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributePolicy"] | components["schemas"]["PresencePolicy"] | components["schemas"]["LinkPresencePolicy"] | components["schemas"]["AgePolicy"] | components["schemas"]["AnalysisResultPolicy"] | components["schemas"]["DeploymentStatusPolicy"] | components["schemas"]["ConditionPolicy"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_score_history_organizations__org_slug__projects__project_id__score_history_get: {
+        parameters: {
+            query?: {
+                granularity?: "raw" | "hour" | "day";
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_score_trend_organizations__org_slug__projects__project_id__score_trend_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreTrend"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    score_rollup_scores_rollup_get: {
+        parameters: {
+            query: {
+                org: string;
+                dimension?: "team" | "project_type" | "organization";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRollupRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    score_monthly_improvement_scores_monthly_improvement_get: {
+        parameters: {
+            query: {
+                org: string;
+                year: number;
+                month: number;
+                dimension?: "team" | "project_type" | "organization";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyImprovementRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    score_history_by_team_scores_history_by_team_get: {
+        parameters: {
+            query: {
+                org: string;
+                granularity?: "hour" | "day";
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreHistoryByTeamResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    score_history_feed_scores_history_feed_get: {
+        parameters: {
+            query: {
+                org: string;
+                from?: string | null;
+                to?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalScoreEvent"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rescore_scoring_rescore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RescoreRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescoreResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_service_accounts_service_accounts_get: {
         parameters: {
             query?: {
@@ -9513,41 +20479,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ServiceAccountResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_service_account_service_accounts__slug__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ServiceAccountUpdate"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -9668,7 +20599,7 @@ export interface operations {
             };
         };
     };
-    update_organization_role_service_accounts__slug__organizations__org_slug__put: {
+    remove_from_organization_service_accounts__slug__organizations__org_slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -9678,13 +20609,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: string;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             204: {
@@ -9704,7 +20629,7 @@ export interface operations {
             };
         };
     };
-    remove_from_organization_service_accounts__slug__organizations__org_slug__delete: {
+    update_organization_role_service_accounts__slug__organizations__org_slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -9714,7 +20639,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -10006,13 +20935,14 @@ export interface operations {
             };
         };
     };
-    get_user_users__email__get: {
+    get_user_by_identity_users_by_identity_get: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                email: string;
+            query: {
+                integration_slug: string;
+                subject: string;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -10037,7 +20967,27 @@ export interface operations {
             };
         };
     };
-    update_user_users__email__put: {
+    get_current_user_profile_users_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+        };
+    };
+    get_user_users__email__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -10046,11 +20996,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserUpdate"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -10204,7 +21150,37 @@ export interface operations {
             };
         };
     };
-    update_organization_role_users__email__organizations__org_slug__put: {
+    remove_from_organization_users__email__organizations__org_slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                email: string;
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_organization_role_users__email__organizations__org_slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -10216,9 +21192,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: string;
-                };
+                "application/json": components["schemas"]["PatchOperation"][];
             };
         };
         responses: {
@@ -10240,24 +21214,129 @@ export interface operations {
             };
         };
     };
-    remove_from_organization_users__email__organizations__org_slug__delete: {
+    get_user_contributions_users__email__contributions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                since?: string | null;
+                until?: string | null;
+                tz?: string;
+            };
             header?: never;
             path: {
                 email: string;
-                org_slug: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ContributionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_stats_users__email__stats_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                until?: string | null;
+                tz?: string;
+            };
+            header?: never;
+            path: {
+                email: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_identities_users__email__identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                email: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentitiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_activity_users__email__activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                email: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
