@@ -398,7 +398,7 @@ class GitHubDeployment(DeploymentCapability):
             return
         try:
             resp = await client.get(repo_root)
-        except (httpx.HTTPError, PluginAuthenticationFailed):
+        except httpx.HTTPError, PluginAuthenticationFailed:
             # The user-facing request already succeeded; a probe failure
             # (network, or a 401 surfaced by the response hook) must not
             # turn that success into an error during teardown.
@@ -1032,6 +1032,11 @@ class GitHubDeployment(DeploymentCapability):
         )
         ref_value = deployment.get('ref')
         description = deployment.get('description')
+        release_notes = (
+            await self._release_notes_for_ref(client, str(ref_value))
+            if ref_value
+            else None
+        )
         deployment_url = deployment.get('url') or deployment.get('html_url')
         creator_login: str | None = None
         creator_subject: str | None = None
@@ -1056,9 +1061,36 @@ class GitHubDeployment(DeploymentCapability):
             run_url=status_url,
             deployment_url=str(deployment_url) if deployment_url else None,
             description=str(description) if description else None,
+            release_notes=release_notes,
             creator=creator_login,
             creator_subject=creator_subject,
         )
+
+    async def _release_notes_for_ref(
+        self, client: httpx.AsyncClient, ref: str
+    ) -> str | None:
+        """Return the GitHub release notes body for a deployed ref.
+
+        A deployment created against a semver tag has a matching GitHub
+        release whose ``body`` is the "What's Changed" markdown the host
+        persists on the ``Release`` node.  Refs that aren't a release tag
+        (branches, raw SHAs) 404 here and yield ``None`` -- resync is
+        never blocked by a missing or unreadable release.
+        """
+        try:
+            resp = await client.get(
+                f'/releases/tags/{urllib.parse.quote(ref, safe="")}'
+            )
+        except httpx.HTTPError:
+            return None
+        if resp.status_code != 200:
+            return None
+        try:
+            data = typing.cast(dict[str, typing.Any], resp.json())
+        except ValueError:
+            return None
+        body = data.get('body')
+        return str(body) if body else None
 
     async def _latest_status(
         self, client: httpx.AsyncClient, deployment_id: str
