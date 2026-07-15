@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import imbi_common.plugins as plugins
 
+from imbi_plugin_aws import _helpers
 from imbi_plugin_aws.cloudwatch import CloudWatchLogs
 from imbi_plugin_aws.identity import (
     DEFAULT_SCOPES,
@@ -36,7 +37,7 @@ _IDENTITY_WIDGET_TEXT = (
 
 _ROLE_TEMPLATE_HELP = (
     'Supports ${project_slug}, ${org_slug}, ${team_slug}, '
-    '${environment}, ${project_id}.'
+    '${environment}, ${project_id}, ${project_type_slug}.'
 )
 
 
@@ -73,6 +74,19 @@ class AWSPlugin(plugins.Plugin):
                     'IAM role assumed when a per-environment AwsAccount '
                     'binding does not specify one of its own. '
                     + _ROLE_TEMPLATE_HELP
+                ),
+            ),
+            plugins.PluginOption(
+                name=_helpers.PROJECT_TYPE_PATH_MAP,
+                label='Project Type Path Overrides',
+                type='mapping',
+                required=False,
+                description=(
+                    'Optional map of imbi project-type slug to the segment '
+                    'used in AWS resource paths, applied to '
+                    '${project_type_slug} during template expansion '
+                    '(e.g. apis -> api). Project-type slugs with no entry '
+                    'are used unchanged.'
                 ),
             ),
         ],
@@ -223,7 +237,9 @@ class AWSPlugin(plugins.Plugin):
                         description=(
                             "Path prefix under which this project's "
                             'parameters live. Supports ${project_slug}, '
-                            '${org_slug}, ${environment}, ${project_id}. '
+                            '${org_slug}, ${team_slug}, ${environment}, '
+                            '${project_id}, ${project_type_slug} (subject '
+                            'to the Project Type Path Overrides map). '
                             'Must start with /. Example: '
                             '/imbi/${environment}/${project_slug}/'
                         ),

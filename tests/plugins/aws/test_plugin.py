@@ -36,7 +36,7 @@ class ManifestTestCase(unittest.TestCase):
         self.assertEqual(self.manifest.auth_type, 'aws-iam-ic')
         self.assertEqual(
             {o.name for o in self.manifest.options},
-            {'region', 'default_role_name'},
+            {'region', 'default_role_name', 'project_type_path_map'},
         )
         # Credentials are declared once, at the Integration level.
         self.assertEqual(
