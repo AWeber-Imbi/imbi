@@ -11,7 +11,6 @@ import {
   FileJson,
   FolderTree,
   Globe,
-  History,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -51,8 +50,7 @@ import { ScoringPolicyManagement } from './admin/ScoringPolicyManagement'
 import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { UserManagement } from './admin/UserManagement'
-import { WebhookHistory } from './admin/WebhookHistory'
-import { WebhookManagement } from './admin/WebhookManagement'
+import { Webhooks } from './admin/Webhooks'
 
 type AdminSection =
   | 'assistant'
@@ -74,7 +72,6 @@ type AdminSection =
   | 'service-accounts'
   | 'teams'
   | 'users'
-  | 'webhook-history'
   | 'webhooks'
 
 // The admin section shown when none is specified in the URL.
@@ -100,7 +97,6 @@ const VALID_SECTIONS: AdminSection[] = [
   'service-accounts',
   'teams',
   'users',
-  'webhook-history',
   'webhooks',
 ]
 
@@ -204,15 +200,7 @@ export function Admin() {
       scope: 'org',
     },
     {
-      description:
-        'Browse recent inbound webhook deliveries and dispatch outcomes',
-      icon: History,
-      id: 'webhook-history',
-      label: 'Webhook History',
-      scope: 'org',
-    },
-    {
-      description: 'Configure inbound webhook processing',
+      description: 'Inbound endpoints and their delivery activity',
       icon: Webhook,
       id: 'webhooks',
       label: 'Webhooks',
@@ -421,10 +409,7 @@ export function Admin() {
             {currentSection === 'environments' && <EnvironmentManagement />}
             {currentSection === 'project-types' && <ProjectTypeManagement />}
             {currentSection === 'integrations' && <IntegrationsManagement />}
-            {currentSection === 'webhooks' && <WebhookManagement />}
-            {currentSection === 'webhook-history' && (
-              <WebhookHistory eventId={slug} />
-            )}
+            {currentSection === 'webhooks' && <Webhooks />}
             {currentSection === 'link-definitions' && (
               <LinkDefinitionManagement />
             )}

@@ -46,7 +46,7 @@ export function WebhookHistoryRow({
         : 'secondary'
 
   const onCopyLink = () => {
-    const url = `${window.location.origin}/admin/webhook-history/${encodeURIComponent(event.id)}`
+    const url = `${window.location.origin}/admin/webhooks?tab=history&event=${encodeURIComponent(event.id)}`
     void navigator.clipboard.writeText(url)
   }
 
