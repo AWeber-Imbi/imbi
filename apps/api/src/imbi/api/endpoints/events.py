@@ -189,10 +189,21 @@ async def _list_impl(
 
     where = ' AND '.join(clauses) if clauses else '1=1'
     params['row_limit'] = limit + 1
+    # The events table is sorted by ``(project_id, id)``, so ordering by
+    # ``recorded_at`` can't short-circuit the LIMIT against the sort key.
+    # A naive ``SELECT ..., payload ... ORDER BY recorded_at LIMIT n`` thus
+    # forces ClickHouse to read the full ``payload``/``metadata`` JSON for
+    # *every* matching row before sorting and discarding all but the page —
+    # enough to exhaust server memory on a busy project or the global feed.
+    # Select the page's keys first using only the light ``(recorded_at, id)``
+    # columns, then read the heavy JSON for just those rows.
     sql: str = (
-        f'SELECT {_SELECT_COLUMNS} FROM events WHERE '  # noqa: S608
+        f'SELECT {_SELECT_COLUMNS} FROM events '  # noqa: S608
+        'WHERE (recorded_at, id) IN ('
+        'SELECT recorded_at, id FROM events WHERE '
         + where
-        + ' ORDER BY recorded_at DESC, id DESC LIMIT {row_limit:UInt32}'
+        + ' ORDER BY recorded_at DESC, id DESC LIMIT {row_limit:UInt32})'
+        ' ORDER BY recorded_at DESC, id DESC'
     )
 
     rows = await clickhouse.query(sql, params)

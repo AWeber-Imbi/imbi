@@ -265,6 +265,29 @@ class GlobalListTests(_EventsTestBase):
         sql = self.mock_query.await_args.args[0]
         self.assertIn('FROM events WHERE', sql)
 
+    def test_list_reads_payload_only_for_the_selected_page(self) -> None:
+        # The events table is sorted by ``(project_id, id)``, so ordering
+        # by ``recorded_at`` can't short-circuit the LIMIT. Reading the
+        # heavy ``payload`` JSON for every matching row before discarding
+        # all but the page exhausted ClickHouse memory. The query must
+        # pick the page keys from the light ``(recorded_at, id)`` columns
+        # in a subquery, then read the JSON only for those rows.
+        self.mock_query.return_value = []
+        response = self.client.get('/events/')
+        self.assertEqual(response.status_code, 200)
+        sql = self.mock_query.await_args.args[0]
+        # Outer query reads the heavy JSON columns exactly once...
+        self.assertEqual(sql.count('toJSONString(payload)'), 1)
+        self.assertEqual(sql.count('toJSONString(metadata)'), 1)
+        # ...and only for the page selected by the light-column subquery.
+        self.assertIn('(recorded_at, id) IN (', sql)
+        self.assertIn('SELECT recorded_at, id FROM events WHERE', sql)
+        inner = sql.split('(recorded_at, id) IN (', 1)[1]
+        inner_page = inner.split('LIMIT', 1)[0]
+        self.assertNotIn('payload', inner_page)
+        self.assertNotIn('metadata', inner_page)
+        self.assertIn('LIMIT {row_limit:UInt32}', inner)
+
     def test_list_with_since_until(self) -> None:
         self.mock_query.return_value = []
         response = self.client.get(
