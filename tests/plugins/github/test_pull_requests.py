@@ -6,13 +6,28 @@ from unittest import mock
 
 import httpx
 import respx
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from imbi_common.plugins.base import PluginContext
 
-from imbi_plugin_github import pull_requests
+from imbi_plugin_github import _app_auth, pull_requests
 from imbi_plugin_github.plugin import GitHubPlugin, GitHubWebhookActions
 
 _CREDS = {'access_token': 'gho_test'}
 _REPO = 'https://api.github.com/repos/octo/demo'
+
+
+def _gen_pem() -> str:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+
+
+# Generated once for the module; signing only needs a valid RSA key.
+_APP_KEY_PEM = _gen_pem()
 # ``sync_all_history`` inserts through ``_insert_best_effort`` (defined in
 # commits.py), so its ClickHouse call resolves in the commits namespace.
 _INSERT_BACKFILL = 'imbi_plugin_github.commits.clickhouse.insert'
@@ -152,6 +167,27 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             await pull_requests.GitHubPullRequestSync().sync_all_history(
                 ctx=_ctx(connection={}), credentials=_CREDS
             )
+
+    @respx.mock
+    async def test_app_not_installed_skips(self) -> None:
+        # IMBI-37: the shared GitHub App discovery 404s when the App is
+        # not installed for the repo; the backfill must skip cleanly.
+        _app_auth.reset_cache()
+        self.addCleanup(_app_auth.reset_cache)
+        discovery = respx.get(f'{_REPO}/installation').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        creds = {'app_id': '971', 'private_key': _APP_KEY_PEM}
+        handler = pull_requests.GitHubPullRequestSync()
+        with mock.patch(_INSERT_BACKFILL, new=mock.AsyncMock()) as insert:
+            with self.assertLogs(pull_requests.LOGGER, level='WARNING') as cm:
+                count = await handler.sync_all_history(
+                    ctx=_ctx(), credentials=creds
+                )
+        self.assertEqual(count, 0)
+        self.assertEqual(1, discovery.call_count)
+        insert.assert_not_awaited()
+        self.assertTrue(any('skipping backfill' in x for x in cm.output))
 
 
 class CheckAvailableTestCase(unittest.IsolatedAsyncioTestCase):

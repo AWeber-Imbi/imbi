@@ -37,6 +37,7 @@ from imbi_common.plugins.base import (
     PullRequestSyncCapability,
 )
 
+from imbi_plugin_github._app_auth import AppNotInstalledError
 from imbi_plugin_github._hosts import host_to_api_base
 from imbi_plugin_github._repos import resolve_owner_repo
 from imbi_plugin_github.commits import (
@@ -301,6 +302,9 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
         Returns the number of PRs recorded.  Raises :class:`ValueError`
         only when the host or repository can't be resolved; ClickHouse
         failures are swallowed (the count reflects what was written).
+        Returns ``0`` (logged as a warning, no error) when the GitHub App
+        is not installed for the repo, so that condition never fails the
+        backfill worker.
         Propagates :class:`PluginRateLimited` when a GitHub rate-limit
         reset is further out than ``_BACKFILL_MAX_WAIT_SECONDS`` so the
         host can pause the worker and keep the job queued until GitHub
@@ -314,7 +318,15 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
             )
         base = host_to_api_base(host)
         owner, repo = resolve_owner_repo(ctx, host, _SELF_SLUG)
-        token = await _resolve_bearer(credentials, base, owner, repo)
+        try:
+            token = await _resolve_bearer(credentials, base, owner, repo)
+        except AppNotInstalledError as exc:
+            LOGGER.warning(
+                'github-pr-sync: %s; skipping backfill for project %s',
+                exc,
+                ctx.project_id,
+            )
+            return 0
         async with _client(base, owner, repo, token) as client:
             raw_prs = await _fetch_all_prs(
                 client, max_wait=_BACKFILL_MAX_WAIT_SECONDS

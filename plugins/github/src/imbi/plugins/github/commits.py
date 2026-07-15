@@ -1273,7 +1273,10 @@ class GitHubCommitSync(CommitSyncCapability):
         Returns ``(commits_recorded, tags_recorded)``.  Raises
         :class:`ValueError` only when the host or repository can't be
         resolved; ClickHouse failures are swallowed (the count reflects
-        what was written).  Propagates :class:`PluginRateLimited` when a
+        what was written).  Returns ``(0, 0)`` (logged as a warning, no
+        error) when the GitHub App is not installed for the repo, so an
+        uninstalled App never fails the backfill worker.  Propagates
+        :class:`PluginRateLimited` when a
         GitHub rate-limit reset is further out than
         ``_BACKFILL_MAX_WAIT_SECONDS`` so the host can pause the worker and
         keep the job queued until GitHub resumes rather than fail it.
@@ -1287,7 +1290,15 @@ class GitHubCommitSync(CommitSyncCapability):
         base = host_to_api_base(host)
         owner, repo = resolve_owner_repo(ctx, host, 'github-commit-sync')
         pushed_at = datetime.datetime.now(datetime.UTC)
-        token = await _resolve_bearer(credentials, base, owner, repo)
+        try:
+            token = await _resolve_bearer(credentials, base, owner, repo)
+        except _app_auth.AppNotInstalledError as exc:
+            LOGGER.warning(
+                'github-commit-sync: %s; skipping backfill for project %s',
+                exc,
+                ctx.project_id,
+            )
+            return 0, 0
         async with _client(base, owner, repo, token) as client:
             branch = await _fetch_default_branch(
                 client, max_wait=_BACKFILL_MAX_WAIT_SECONDS
