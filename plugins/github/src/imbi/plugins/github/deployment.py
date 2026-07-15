@@ -236,6 +236,49 @@ def _record_checks_disabled(
     _CHECKS_DISABLED_TOKENS[key] = now
 
 
+# Process-wide 403 suppression for release-notes lookups, mirroring the
+# check-runs cache above: a token that lacks the scope to read releases
+# must not re-issue ``GET /releases/tags/{ref}`` for every deployment on
+# every resync sweep.  Keyed by a hash of the repo-scoped client's base
+# URL (host + ``owner/repo``) plus its bearer header (the token), so a
+# single forbidden repo doesn't suppress release reads elsewhere.
+_RELEASES_FORBIDDEN_TOKENS: dict[str, float] = {}
+
+
+def _releases_cache_key(client: httpx.AsyncClient) -> str:
+    material = f'{client.base_url}\n{client.headers.get("authorization", "")}'
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
+def _releases_forbidden(client: httpx.AsyncClient) -> bool:
+    """Whether this client's token has recently 403'd on releases."""
+    key = _releases_cache_key(client)
+    recorded = _RELEASES_FORBIDDEN_TOKENS.get(key)
+    if recorded is None:
+        return False
+    if time.monotonic() - recorded > _CHECKS_DISABLED_TTL_SECONDS:
+        _RELEASES_FORBIDDEN_TOKENS.pop(key, None)
+        return False
+    return True
+
+
+def _record_releases_forbidden(client: httpx.AsyncClient) -> None:
+    """Mark this client's token as forbidden from releases for the TTL.
+
+    Opportunistically evicts expired entries so the dict can't grow
+    unbounded, mirroring :func:`_record_checks_disabled`.
+    """
+    now = time.monotonic()
+    expired = [
+        k
+        for k, recorded in _RELEASES_FORBIDDEN_TOKENS.items()
+        if now - recorded > _CHECKS_DISABLED_TTL_SECONDS
+    ]
+    for k in expired:
+        _RELEASES_FORBIDDEN_TOKENS.pop(k, None)
+    _RELEASES_FORBIDDEN_TOKENS[_releases_cache_key(client)] = now
+
+
 def _commit_from_payload(payload: dict[str, typing.Any]) -> Commit:
     """Convert a GitHub commit list/object payload into a :class:`Commit`."""
     sha = str(payload.get('sha', ''))
@@ -1075,13 +1118,21 @@ class GitHubDeployment(DeploymentCapability):
         release whose ``body`` is the "What's Changed" markdown the host
         persists on the ``Release`` node.  Refs that aren't a release tag
         (branches, raw SHAs) 404 here and yield ``None`` -- resync is
-        never blocked by a missing or unreadable release.
+        never blocked by a missing or unreadable release.  A ``403``
+        (token lacks scope to read releases) is cached process-wide so a
+        forbidden token short-circuits instead of re-issuing the request
+        for every deployment on every resync sweep.
         """
+        if _releases_forbidden(client):
+            return None
         try:
             resp = await client.get(
                 f'/releases/tags/{urllib.parse.quote(ref, safe="")}'
             )
         except httpx.HTTPError:
+            return None
+        if resp.status_code == 403:
+            _record_releases_forbidden(client)
             return None
         if resp.status_code != 200:
             return None

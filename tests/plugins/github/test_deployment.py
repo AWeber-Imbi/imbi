@@ -1249,6 +1249,54 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(events[0].release_notes)
 
+    @respx.mock
+    async def test_release_notes_403_suppresses_further_lookups(self) -> None:
+        # A token that can't read releases 403s once; the process-wide
+        # cache then short-circuits subsequent lookups (same repo+token)
+        # so resync doesn't re-issue the failing request per deployment.
+        from imbi_plugin_github.deployment import _RELEASES_FORBIDDEN_TOKENS
+
+        _RELEASES_FORBIDDEN_TOKENS.clear()
+        self.addCleanup(_RELEASES_FORBIDDEN_TOKENS.clear)
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 51,
+                        'sha': 'sha1',
+                        'ref': 'v1.0.0',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    },
+                    {
+                        'id': 52,
+                        'sha': 'sha2',
+                        'ref': 'v2.0.0',
+                        'created_at': '2026-05-13T14:05:00Z',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/51/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/52/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        # Only the first release lookup is mocked (403).  The second
+        # (v2.0.0) is deliberately left unmocked: if the 403 weren't
+        # cached, resync would issue it and respx would raise.
+        first = respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v1.0.0'
+        ).mock(return_value=httpx.Response(403, json={'message': 'Forbidden'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production'], limit=2
+        )
+        self.assertEqual(len(events), 2)
+        self.assertTrue(all(e.release_notes is None for e in events))
+        self.assertEqual(first.call_count, 1)
+
 
 class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
