@@ -4,6 +4,8 @@ import unittest
 
 import httpx
 import respx
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from imbi_common.plugins.base import (
     AnalysisResultItem,
     PluginContext,
@@ -14,6 +16,7 @@ from imbi_common.plugins.errors import (
     PluginRemediationNotSupported,
 )
 
+from imbi_plugin_github import _app_auth
 from imbi_plugin_github.doctor import (
     _REPAIR_EDGE,
     _REPAIR_GITHUB_LINK,
@@ -28,6 +31,20 @@ _REPO_PAYLOAD = {'id': 134741, 'html_url': _DASHBOARD, 'name': 'demo'}
 
 _TPS_SLUG = 'aweber-github'
 _CREDS = {'access_token': 'gho_test'}
+
+
+def _gen_pem() -> str:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+
+
+# Generated once for the module; signing only needs a valid RSA key.
+_APP_KEY_PEM = _gen_pem()
+_FAR_FUTURE = '2099-01-01T00:00:00Z'
 
 
 def _ctx(
@@ -111,6 +128,11 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].slug, 'connection')
         self.assertEqual(results[0].status, 'warn')
+
+    def tearDown(self) -> None:
+        # App installation tokens are cached process-wide; reset so an
+        # App-cred test doesn't leak a minted token into later tests.
+        _app_auth.reset_cache()
 
     @respx.mock
     async def test_happy_path(self) -> None:
@@ -317,6 +339,37 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubDoctor()
         results = await plugin.analyze(_ctx(), _CREDS)
         self.assertEqual(_by_slug(results)['canonical-url'].status, 'fail')
+
+    @respx.mock
+    async def test_app_credentials_mint_token_for_analysis(self) -> None:
+        # An App-only integration (app_id + private_key) must analyze
+        # successfully by minting an installation token via the sync
+        # path's resolver -- not warn "no token configured".
+        token_route = respx.post(
+            'https://api.aweber.ghe.com/app/installations/55/access_tokens'
+        ).mock(
+            return_value=httpx.Response(
+                201, json={'token': 'ghs_minted', 'expires_at': _FAR_FUTURE}
+            )
+        )
+        repo_route = respx.get(_CANONICAL).mock(
+            return_value=httpx.Response(200, json=_REPO_PAYLOAD)
+        )
+        plugin = GitHubDoctor()
+        results = await plugin.analyze(
+            _ctx(),
+            {
+                'app_id': '971',
+                'private_key': _APP_KEY_PEM,
+                'installation_id': '55',
+            },
+        )
+        self.assertEqual(_by_slug(results)['canonical-url'].status, 'pass')
+        self.assertEqual(token_route.call_count, 1)
+        self.assertEqual(
+            'Bearer ghs_minted',
+            repo_route.calls.last.request.headers['authorization'],
+        )
 
     @respx.mock
     async def test_canonical_fetch_404(self) -> None:

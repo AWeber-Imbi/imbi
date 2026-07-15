@@ -15,6 +15,7 @@ its own.
 
 from __future__ import annotations
 
+import logging
 import re
 import typing
 
@@ -37,6 +38,11 @@ from imbi_plugin_github._hosts import (
     host_to_api_base,
 )
 from imbi_plugin_github._repos import derive_owner_repo_from_links
+from imbi_plugin_github.commits import (
+    _resolve_bearer,  # pyright: ignore[reportPrivateUsage]
+)
+
+LOGGER = logging.getLogger(__name__)
 
 _TIMEOUT = 15.0
 # Matches the canonical URL shape written by the lifecycle plugin:
@@ -149,6 +155,38 @@ def _find_connection(
     )
 
 
+async def _resolve_doctor_bearer(
+    credentials: dict[str, str],
+    api_base: str,
+    ctx: PluginContext,
+    host: str,
+) -> str | None:
+    """Resolve a Bearer token for analysis / remediation, or ``None``.
+
+    Accepts the same credential shapes as the sync capabilities via
+    :func:`_resolve_bearer` — a PAT (``access_token`` / ``token``) or
+    GitHub App creds (``app_id`` + ``private_key``, minting a short-lived
+    installation token).  App-token minting needs ``(owner, repo)`` for
+    installation discovery, derived from the project links (an explicit
+    ``installation_id`` credential skips that).  Never raises: the doctor
+    must not hard-fail on a missing or unusable credential, so it degrades
+    to an unauthenticated request, which the caller reports softly.
+    """
+    derived = derive_owner_repo_from_links(
+        ctx.project_links, host, preferred_key=ctx.integration_slug
+    )
+    owner, repo = derived or ('', '')
+    try:
+        return await _resolve_bearer(credentials, api_base, owner, repo)
+    except Exception:  # noqa: BLE001 -- analysis is best-effort
+        LOGGER.warning(
+            'github-doctor: could not resolve a GitHub credential; '
+            'proceeding unauthenticated',
+            exc_info=True,
+        )
+        return None
+
+
 class GitHubDoctor(AnalysisCapability):
     """GitHub project-doctor analysis capability.
 
@@ -211,8 +249,11 @@ class GitHubDoctor(AnalysisCapability):
             )
         )
 
-        # Step 2: build the Bearer token (optional).
-        token = credentials.get('access_token') or credentials.get('token')
+        # Step 2: build the Bearer token (optional).  Accepts both a PAT
+        # and GitHub App creds (minting an installation token), matching
+        # the sync capabilities -- an App-only integration must not be
+        # reported as "no token configured".
+        token = await _resolve_doctor_bearer(credentials, api_base, ctx, host)
         headers: dict[str, str] = {}
         if token:
             headers['Authorization'] = f'Bearer {token}'
@@ -263,9 +304,10 @@ class GitHubDoctor(AnalysisCapability):
             else:
                 status = 'warn'
                 hint = (
-                    'No access token configured; the repository may be '
-                    'private.  Configure an access_token credential to '
-                    'inspect private repositories.'
+                    'No usable GitHub credential was resolved; the '
+                    'repository may be private.  Configure an access_token '
+                    '(PAT) or app_id + private_key (GitHub App) credential '
+                    'to inspect private repositories.'
                 )
             results.append(
                 _item(
@@ -331,7 +373,7 @@ class GitHubDoctor(AnalysisCapability):
         # identifier-type
         try:
             int(connection.identifier)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             results.append(
                 _item(
                     'identifier-type',
@@ -571,7 +613,7 @@ class GitHubDoctor(AnalysisCapability):
                 ),
             )
 
-        token = credentials.get('access_token') or credentials.get('token')
+        token = await _resolve_doctor_bearer(credentials, api_base, ctx, host)
         headers: dict[str, str] = {}
         if token:
             headers['Authorization'] = f'Bearer {token}'
