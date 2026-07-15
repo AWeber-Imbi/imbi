@@ -891,6 +891,9 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/7/statuses'
         ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
         plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(),
