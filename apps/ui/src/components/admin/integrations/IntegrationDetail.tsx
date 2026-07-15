@@ -29,6 +29,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { InlineDisplay } from '@/components/ui/inline-edit/InlineDisplay'
 import { Input } from '@/components/ui/input'
+import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import {
   Select,
   SelectContent,
@@ -690,6 +691,38 @@ function OptionRow({
           disabled={readOnly || pending}
           onCheckedChange={(checked) => onSave(checked)}
         />
+      </div>
+    )
+  }
+
+  if (option.type === 'mapping') {
+    const record =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, number | string>)
+        : {}
+    const entries = Object.entries(record)
+    return (
+      <div className="border-tertiary flex flex-col gap-2 border-b py-2.5 last:border-b-0">
+        {label}
+        {readOnly ? (
+          entries.length === 0 ? (
+            <span className="text-primary font-mono text-sm">—</span>
+          ) : (
+            <div className="space-y-1">
+              {entries.map(([k, v]) => (
+                <span className="text-primary block font-mono text-sm" key={k}>
+                  {k} → {String(v)}
+                </span>
+              ))}
+            </div>
+          )
+        ) : (
+          <KeyValueEditor
+            disabled={pending}
+            onChange={(next) => onSave(next)}
+            value={record}
+          />
+        )}
       </div>
     )
   }
