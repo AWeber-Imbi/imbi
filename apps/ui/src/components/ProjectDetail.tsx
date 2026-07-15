@@ -1051,8 +1051,9 @@ export function ProjectDetail({
               </Card>
 
               {/* Environments — nests here when the right column is taller
-                  than Project details; otherwise drops below (see envSpanFull). */}
-              {!envSpanFull && sortedEnvironments.length > 0 && (
+                  than Project details; otherwise drops below (see envSpanFull).
+                  Rendered even when empty so environments can be added. */}
+              {!envSpanFull && (
                 <Swap
                   ready={envCardReady}
                   skeleton={
@@ -1153,7 +1154,7 @@ export function ProjectDetail({
 
           {/* Environments — full-width row below both columns when the right
               column is shorter than Project details. */}
-          {envSpanFull && sortedEnvironments.length > 0 && (
+          {envSpanFull && (
             <Swap
               ready={envCardReady}
               skeleton={

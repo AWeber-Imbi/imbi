@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import { patchEnvironmentEdge } from '@/api/endpoints'
+import { patchEnvironmentEdge, patchProject } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 export interface UseEnvironmentEdgePatchResult {
@@ -11,6 +11,15 @@ export interface UseEnvironmentEdgePatchResult {
   patch: (envSlug: string, key: string, value: unknown) => Promise<void>
   /** `${envSlug}/${key}` of the in-flight save, for per-field pending UI. */
   pendingKey: null | string
+  /**
+   * Replace the project's full environment set. Takes the complete
+   * slug -> edge-props map — the backend swaps the DEPLOYED_IN edges
+   * wholesale, so omitted environments (or omitted attributes on kept
+   * environments) are dropped.
+   */
+  replaceAll: (map: Record<string, Record<string, unknown>>) => Promise<void>
+  /** True while a replaceAll save is in flight. */
+  replacing: boolean
 }
 
 /**
@@ -25,6 +34,14 @@ export function useEnvironmentEdgePatch(
 ): UseEnvironmentEdgePatchResult {
   const qc = useQueryClient()
   const [pendingKey, setPendingKey] = useState<null | string>(null)
+  const [replacing, setReplacing] = useState(false)
+
+  const invalidate = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['project', orgSlug, projectId] })
+    qc.invalidateQueries({
+      queryKey: ['currentReleases', orgSlug, projectId],
+    })
+  }, [qc, orgSlug, projectId])
 
   const patch = useCallback(
     async (envSlug: string, key: string, value: unknown) => {
@@ -34,10 +51,7 @@ export function useEnvironmentEdgePatch(
         await patchEnvironmentEdge(orgSlug, projectId, envSlug, {
           [key]: value === '' || value === undefined ? null : value,
         })
-        qc.invalidateQueries({ queryKey: ['project', orgSlug, projectId] })
-        qc.invalidateQueries({
-          queryKey: ['currentReleases', orgSlug, projectId],
-        })
+        invalidate()
       } catch (error) {
         toast.error(`Save failed: ${extractApiErrorDetail(error)}`)
         throw error
@@ -45,8 +59,28 @@ export function useEnvironmentEdgePatch(
         setPendingKey(null)
       }
     },
-    [qc, orgSlug, projectId],
+    [orgSlug, projectId, invalidate],
   )
 
-  return { patch, pendingKey }
+  const replaceAll = useCallback(
+    async (map: Record<string, Record<string, unknown>>) => {
+      setReplacing(true)
+      try {
+        // `add` upserts the member, so the first-ever environment
+        // assignment succeeds against an RFC 6902 strict server.
+        await patchProject(orgSlug, projectId, [
+          { op: 'add', path: '/environments', value: map },
+        ])
+        invalidate()
+      } catch (error) {
+        toast.error(`Save failed: ${extractApiErrorDetail(error)}`)
+        throw error
+      } finally {
+        setReplacing(false)
+      }
+    },
+    [orgSlug, projectId, invalidate],
+  )
+
+  return { patch, pendingKey, replaceAll, replacing }
 }
