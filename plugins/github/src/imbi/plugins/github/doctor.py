@@ -100,7 +100,7 @@ def _item(
 
 
 def _repo_fetch_url(
-    connection: ServiceConnection,
+    connection: ServiceConnection | None,
     ctx: PluginContext,
     host: str,
     api_base: str,
@@ -109,7 +109,9 @@ def _repo_fetch_url(
 
     Prefer the rename-stable canonical URL on the ``EXISTS_IN`` edge;
     otherwise derive ``(owner, repo)`` from the project links. Returns
-    ``None`` when neither is available.
+    ``None`` when neither is available. ``connection`` is ``None`` when
+    no ``EXISTS_IN`` edge exists yet (the create-edge remediation), in
+    which case the URL is derived from the project links alone.
 
     The stored canonical URL is never fetched verbatim: only the numeric
     repository id is trusted from it, and the request URL is rebuilt
@@ -117,7 +119,7 @@ def _repo_fetch_url(
     truth). This keeps the Bearer token from ever being sent to an
     arbitrary host smuggled onto the ``EXISTS_IN`` edge.
     """
-    if connection.canonical_url:
+    if connection is not None and connection.canonical_url:
         match = _REPO_ID_RE.fullmatch(connection.canonical_url)
         if match is not None:
             return f'{api_base}/repositories/{match.group(1)}'
@@ -189,8 +191,13 @@ class GitHubDoctor(AnalysisCapability):
                     'EXISTS_IN edge',
                     'warn',
                     f'No EXISTS_IN edge found for service {slug!r}. '
-                    'Run the lifecycle plugin to create the repository '
-                    'link and re-index this project.',
+                    'Use the Fix action to create the repository link '
+                    'from GitHub, or run the lifecycle plugin to '
+                    're-index this project.',
+                    RemediationOffer(
+                        id=_REPAIR_EDGE,
+                        label='Create the EXISTS_IN edge from GitHub',
+                    ),
                 )
             ]
 
@@ -506,19 +513,22 @@ class GitHubDoctor(AnalysisCapability):
 
         return results
 
-    async def remediate(
+    async def remediate(  # noqa: C901 — flat sequence of guard clauses
         self,
         ctx: PluginContext,
         credentials: dict[str, str],
         remediation_id: str,
     ) -> RemediationResult:
-        """Repair the EXISTS_IN edge or github-repository link from GitHub.
+        """Create or repair the EXISTS_IN edge / github-repository link.
 
         Re-fetches the repository (the live source of truth) and emits a
         ``ServiceWriteback`` / ``LinkWriteback`` on ``ctx`` for the host
-        to persist.  Idempotent: returns ``noop`` when Imbi already
-        matches GitHub.  A 401 propagates as ``PluginAuthenticationFailed``
-        so the host can refresh the actor's identity and retry once.
+        to persist.  ``_REPAIR_EDGE`` also creates the edge when none
+        exists yet (the host's writeback is an upsert), deriving the repo
+        from the project links.  Idempotent: returns ``noop`` when Imbi
+        already matches GitHub.  A 401 propagates as
+        ``PluginAuthenticationFailed`` so the host can refresh the actor's
+        identity and retry once.
         """
         if remediation_id not in (_REPAIR_EDGE, _REPAIR_GITHUB_LINK):
             return await super().remediate(ctx, credentials, remediation_id)
@@ -529,10 +539,20 @@ class GitHubDoctor(AnalysisCapability):
             return RemediationResult(status='failed', message=str(exc))
         api_base = host_to_api_base(host)
         slug = ctx.integration_slug
-        connection = (
-            _find_connection(ctx.service_connections, slug) if slug else None
-        )
-        if slug is None or connection is None:
+        if slug is None:
+            return RemediationResult(
+                status='failed',
+                message=(
+                    'This plugin is not bound to a service — no EXISTS_IN '
+                    'edge to create or repair.'
+                ),
+            )
+        connection = _find_connection(ctx.service_connections, slug)
+        # ``_REPAIR_EDGE`` creates a missing edge from GitHub, so a
+        # missing connection is only fatal for the github-repository
+        # link repair (which never needs the edge but is only ever
+        # offered once the edge is present).
+        if connection is None and remediation_id == _REPAIR_GITHUB_LINK:
             return RemediationResult(
                 status='failed',
                 message=(
@@ -613,28 +633,30 @@ class GitHubDoctor(AnalysisCapability):
                 message=f'Set github-repository link to {html_url}.',
             )
 
-        # _REPAIR_EDGE: rewrite identifier + canonical URL + dashboard
-        # link in one ServiceWriteback.
+        # _REPAIR_EDGE: create or rewrite identifier + canonical URL +
+        # dashboard link in one ServiceWriteback.
         desired_canonical = f'{api_base}/repositories/{api_id}'
-        already_correct = (
-            connection.identifier == str(api_id)
-            and connection.canonical_url == desired_canonical
-            and ctx.project_links.get(slug) == html_url
-        )
-        if already_correct:
-            return RemediationResult(
-                status='noop',
-                message='EXISTS_IN edge already matches GitHub.',
+        if connection is not None:
+            already_correct = (
+                connection.identifier == str(api_id)
+                and connection.canonical_url == desired_canonical
+                and ctx.project_links.get(slug) == html_url
             )
+            if already_correct:
+                return RemediationResult(
+                    status='noop',
+                    message='EXISTS_IN edge already matches GitHub.',
+                )
         ctx.service_writeback = ServiceWriteback(
             identifier=str(api_id),
             canonical_url=desired_canonical,
             dashboard_links={slug: html_url},
         )
+        verb = 'Repaired' if connection is not None else 'Created'
         return RemediationResult(
             status='fixed',
             message=(
-                f'Repaired the EXISTS_IN edge for {slug!r} '
+                f'{verb} the EXISTS_IN edge for {slug!r} '
                 f'(identifier={api_id}).'
             ),
         )
