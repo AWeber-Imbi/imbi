@@ -891,6 +891,9 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/7/statuses'
         ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
         plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(),
@@ -943,12 +946,18 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
+        # ``main`` is a branch, not a release tag -- the release lookup
+        # 404s and ``release_notes`` stays ``None``.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
         plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['infrastructure-testing']
         )
         self.assertEqual(len(events), 1)
         event = events[0]
+        self.assertIsNone(event.release_notes)
         self.assertEqual(event.environment, 'infrastructure-testing')
         self.assertEqual(event.sha, '2668cd0abc')
         self.assertEqual(event.ref, 'main')
@@ -1014,6 +1023,12 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/2/statuses'
         ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v1.0.0'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
         plugin = GitHubDeployment()
         events = await plugin.list_recent_deployments(
             _ctx(), _CREDS, ['production', 'staging']
@@ -1159,6 +1174,128 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
             _ctx(), _CREDS, ['staging']
         )
         self.assertEqual([e.external_run_id for e in events], ['11'])
+
+    @respx.mock
+    async def test_release_notes_populated_for_tag_ref(self) -> None:
+        # A deployment against a release tag carries the release body so
+        # the host can persist it as the Release node's notes.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 42,
+                        'sha': 'relsha',
+                        'ref': '5.9.0',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/42/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/5.9.0'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'tag_name': '5.9.0',
+                    'body': "## What's Changed\n- Migrated to servicelib",
+                    'published_at': '2026-05-13T13:55:00Z',
+                },
+            )
+        )
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(
+            events[0].release_notes,
+            "## What's Changed\n- Migrated to servicelib",
+        )
+
+    @respx.mock
+    async def test_release_notes_none_when_body_empty(self) -> None:
+        # A release with an empty body yields ``None`` rather than an
+        # empty string, matching the "no notes" host semantics.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 43,
+                        'sha': 'relsha2',
+                        'ref': '6.0.0',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/43/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/6.0.0'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'tag_name': '6.0.0', 'body': ''}
+            )
+        )
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertIsNone(events[0].release_notes)
+
+    @respx.mock
+    async def test_release_notes_403_suppresses_further_lookups(self) -> None:
+        # A token that can't read releases 403s once; the process-wide
+        # cache then short-circuits subsequent lookups (same repo+token)
+        # so resync doesn't re-issue the failing request per deployment.
+        from imbi_plugin_github.deployment import _RELEASES_FORBIDDEN_TOKENS
+
+        _RELEASES_FORBIDDEN_TOKENS.clear()
+        self.addCleanup(_RELEASES_FORBIDDEN_TOKENS.clear)
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 51,
+                        'sha': 'sha1',
+                        'ref': 'v1.0.0',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    },
+                    {
+                        'id': 52,
+                        'sha': 'sha2',
+                        'ref': 'v2.0.0',
+                        'created_at': '2026-05-13T14:05:00Z',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/51/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/52/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        # Only the first release lookup is mocked (403).  The second
+        # (v2.0.0) is deliberately left unmocked: if the 403 weren't
+        # cached, resync would issue it and respx would raise.
+        first = respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v1.0.0'
+        ).mock(return_value=httpx.Response(403, json={'message': 'Forbidden'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production'], limit=2
+        )
+        self.assertEqual(len(events), 2)
+        self.assertTrue(all(e.release_notes is None for e in events))
+        self.assertEqual(first.call_count, 1)
 
 
 class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
