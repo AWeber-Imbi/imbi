@@ -1,6 +1,6 @@
 [project]
 name = "imbi-common"
-version = "2.13.3"
+version = "2.14.0"
 description = "Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models"
 readme = "README.md"
 requires-python = ">=3.14"
