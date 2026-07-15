@@ -33,6 +33,7 @@ import {
   getScoreTrend,
   listCurrentReleases,
   listIdentityPlugins,
+  listIntegrations,
   listLinkDefinitions,
   listProjectDocuments,
   listProjectPlugins,
@@ -300,6 +301,16 @@ export function ProjectDetail({
     queryFn: ({ signal }) => listLinkDefinitions(orgSlug, signal),
     queryKey: ['linkDefinitions', orgSlug],
   })
+
+  // Org integrations supply the name/icon for integration dashboard links in
+  // the header bar; shares IntegrationsCard's cache key.
+  const { data: orgIntegrations = [], isPending: orgIntegrationsPending } =
+    useQuery({
+      enabled: !!orgSlug,
+      queryFn: ({ signal }) => listIntegrations(orgSlug, signal),
+      queryKey: ['integrations', orgSlug],
+      staleTime: 60 * 1000,
+    })
 
   // Overview-tab-only queries: skip when the user lands on a deeper tab
   // (e.g. /projects/:id/logs via deep link) — the overview cards that
@@ -659,25 +670,63 @@ export function ProjectDetail({
     [linkDefs],
   )
 
-  const externalLinks = useMemo(
-    () =>
-      Object.entries(project.links || {})
-        // fallow-ignore-next-line complexity
-        .map(([key, url]) => {
-          const safeUrl = sanitizeHttpUrl(url)
-          if (!safeUrl) return null
-          const def = linkDefMap[key]
-          return {
-            Icon: getIcon(def?.icon),
-            key,
-            label: def?.name || key.replace(/_/g, ' '),
-            url: safeUrl,
-          }
-        })
-        .filter((link): link is NonNullable<typeof link> => link !== null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [project.links, linkDefMap, iconRegistryVersion],
+  const integrationMap = useMemo(
+    () => Object.fromEntries(orgIntegrations.map((i) => [i.slug, i])),
+    [orgIntegrations],
   )
+
+  // The header bar merges two sources, sorted together alphabetically:
+  //   1. project.links entries that resolve to an org link definition
+  //      (name/icon from the definition). Keys without a definition are
+  //      skipped — integration dashboard links live in links keyed by
+  //      integration slug and are rendered from `services` below, and any
+  //      other undefined key is an orphaned link we no longer surface.
+  //   2. live integration dashboard links from project.services (edges only,
+  //      so orphaned link entries never appear), name/icon from the
+  //      integration.
+  const externalLinks = useMemo(() => {
+    const defLinks = Object.entries(project.links || {})
+      .map(([key, url]) => {
+        const def = linkDefMap[key]
+        if (!def) return null
+        const safeUrl = sanitizeHttpUrl(url)
+        if (!safeUrl) return null
+        return {
+          Icon: getIcon(def.icon),
+          key,
+          label: def.name || key.replace(/_/g, ' '),
+          url: safeUrl,
+        }
+      })
+      .filter((link): link is NonNullable<typeof link> => link !== null)
+
+    const serviceLinks = (project.services || [])
+      .map((svc) => {
+        const safeUrl = svc.dashboard_url
+          ? sanitizeHttpUrl(svc.dashboard_url)
+          : null
+        if (!safeUrl) return null
+        const integration = integrationMap[svc.integration_slug]
+        return {
+          Icon: getIcon(integration?.icon),
+          key: `service:${svc.integration_slug}`,
+          label: integrationLinkLabel(integration, svc),
+          url: safeUrl,
+        }
+      })
+      .filter((link): link is NonNullable<typeof link> => link !== null)
+
+    return [...defLinks, ...serviceLinks].sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    project.links,
+    project.services,
+    linkDefMap,
+    integrationMap,
+    iconRegistryVersion,
+  ])
 
   const teamOptions = useMemo(
     () => teams.map((t) => ({ label: t.name, value: t.slug })),
@@ -858,7 +907,7 @@ export function ProjectDetail({
         {externalLinks.length > 0 && (
           <Swap
             className="mt-3"
-            ready={!linkDefsPending}
+            ready={!linkDefsPending && !orgIntegrationsPending}
             skeleton={<LinksSkeleton count={externalLinks.length} />}
           >
             <div className="flex flex-wrap items-center gap-3">
@@ -1443,6 +1492,16 @@ function fmtAttributeValue(value: unknown): string {
   return isFinite(n) && String(value).trim() !== ''
     ? String(Math.round(n))
     : String(value)
+}
+
+// Label for an integration dashboard link in the header bar: prefer the org
+// integration's name, then the name carried on the service edge, then the raw
+// slug as a last resort.
+function integrationLinkLabel(
+  integration: undefined | { name?: null | string },
+  svc: { integration_name: null | string; integration_slug: string },
+): string {
+  return integration?.name || svc.integration_name || svc.integration_slug
 }
 
 function LinksSkeleton({ count }: { count: number }) {
