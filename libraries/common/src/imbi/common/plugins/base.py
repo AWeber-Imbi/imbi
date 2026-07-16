@@ -1281,6 +1281,29 @@ class DeploymentCapability(CapabilityHandler):
         del ctx, credentials, environments, limit
         raise NotImplementedError
 
+    async def get_release_notes(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        tag: str,
+    ) -> str | None:
+        """Return the remote release's notes body for ``tag``.
+
+        Optional -- lets the host enrich a ``Release`` node's notes with
+        the remote release body (e.g. a GitHub release's "What's Changed"
+        markdown) on paths that only know the tag, such as a webhook that
+        created the release from a deployment event (which carries no
+        body) or a resync whose deployment ``ref`` was a raw SHA.  This is
+        the tag-keyed counterpart to the ``release_notes`` field
+        :meth:`list_recent_deployments` populates from a deployment's ref.
+
+        Best-effort: capabilities without a release concept, or that
+        cannot resolve one for ``tag``, return ``None`` (the default) so
+        the host never fails a write on a missing or unreadable release.
+        """
+        del ctx, credentials, tag
+        return None
+
 
 class LifecycleCapability(CapabilityHandler):
     """React to project state changes -- create, update, archive,

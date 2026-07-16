@@ -95,8 +95,8 @@ class GitHubDeployment(DeploymentCapability):
 
 ## Optional methods
 
-These default to returning `'unknown'` / raising `NotImplementedError`;
-implement only what the remote supports.
+These default to returning `'unknown'` or `None`, or raising
+`NotImplementedError`; implement only what the remote supports.
 
 - **`get_check_status`** — aggregate CI check-runs into a single
   `CheckStatus` (`pass` / `fail` / `warn` / `unknown`) for a ref. Powers
@@ -122,6 +122,15 @@ implement only what the remote supports.
   GitHub release's "What's Changed" markdown); the host persists it as the
   `Release` node's notes, distinct from the short `description` deploy
   note.
+- **`get_release_notes`** — return the remote release's notes body for a
+  given tag. The tag-keyed counterpart to `list_recent_deployments`'
+  `release_notes` field: it lets the host enrich a `Release` node's notes
+  on paths that only know the tag — a webhook that created the release
+  from a deployment event (which carries no body), or a resync whose
+  deployment `ref` was a raw SHA. Best-effort: capabilities without a
+  release concept, or that cannot resolve one for the tag, return `None`
+  (the default) so the host never fails a write on a missing or unreadable
+  release.
 
 ## Hints
 
