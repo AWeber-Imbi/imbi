@@ -1011,6 +1011,25 @@ class GitHubDeployment(DeploymentCapability):
             )
         return [observed for group in per_env for observed in group]
 
+    async def get_release_notes(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        tag: str,
+    ) -> str | None:
+        """Return the GitHub release body for ``tag``.
+
+        Tag-keyed enrichment path: the host calls this when it knows the
+        release tag but not its notes -- a webhook that created the
+        ``Release`` node from a deployment event (whose payload carries no
+        body), or a resync whose deployment ``ref`` was a raw SHA.  Opens
+        a repo-scoped client and defers to :meth:`_release_notes_for_ref`,
+        which 404s to ``None`` for tags without a release and caches 403s
+        so a scope-limited token short-circuits.
+        """
+        async with self._client(ctx, credentials) as client:
+            return await self._release_notes_for_ref(client, tag)
+
     async def _list_deployments_for_env(
         self,
         client: httpx.AsyncClient,

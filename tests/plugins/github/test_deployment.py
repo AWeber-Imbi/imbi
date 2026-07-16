@@ -1298,6 +1298,38 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first.call_count, 1)
 
 
+class GetReleaseNotesTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_returns_release_body_for_tag(self) -> None:
+        # The tag-keyed enrichment path: the host knows only the tag and
+        # asks the plugin for the release body.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/3.23.4'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'tag_name': '3.23.4',
+                    'body': "## What's Changed\n- Fixed the thing",
+                },
+            )
+        )
+        plugin = GitHubDeployment()
+        notes = await plugin.get_release_notes(_ctx(), _CREDS, '3.23.4')
+        self.assertEqual(notes, "## What's Changed\n- Fixed the thing")
+
+    @respx.mock
+    async def test_returns_none_when_no_release(self) -> None:
+        # A tag without a GitHub release 404s and yields ``None`` so the
+        # host never fails a write on a missing release.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/9.9.9'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        notes = await plugin.get_release_notes(_ctx(), _CREDS, '9.9.9')
+        self.assertIsNone(notes)
+
+
 class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_check_status_pass(self) -> None:
