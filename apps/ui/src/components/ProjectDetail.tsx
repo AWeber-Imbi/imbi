@@ -43,6 +43,7 @@ import {
   type ScoreTrend,
 } from '@/api/endpoints'
 import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
+import { ConnectIdentityPrompt } from '@/components/deploy/ConnectIdentityPrompt'
 import {
   type DeploymentRunStarted,
   ReleaseModal,
@@ -1285,11 +1286,43 @@ export function ProjectDetail({
         </TabsContent>
         {isReleaseOnly && (
           <TabsContent value="releases">
+            {deploymentReadiness === 'disconnected' &&
+              resolvedIdentityPlugin && (
+                <div className="mb-4">
+                  <ConnectIdentityPrompt
+                    action="release"
+                    label={deploymentConnectLabel}
+                    onConnect={() =>
+                      navigate(
+                        `/settings/connections?connect=${encodeURIComponent(resolvedIdentityPlugin.plugin_slug)}`,
+                      )
+                    }
+                    onManage={() => navigate('/settings/connections')}
+                    serviceIcon={deploymentPlugin?.service_icon ?? null}
+                  />
+                </div>
+              )}
             <ReleasesTab orgSlug={orgSlug} project={project} />
           </TabsContent>
         )}
         {hasDeploymentsTab && (
           <TabsContent value="deployments">
+            {deploymentReadiness === 'disconnected' &&
+              resolvedIdentityPlugin && (
+                <div className="mb-4">
+                  <ConnectIdentityPrompt
+                    action="deploy"
+                    label={deploymentConnectLabel}
+                    onConnect={() =>
+                      navigate(
+                        `/settings/connections?connect=${encodeURIComponent(resolvedIdentityPlugin.plugin_slug)}`,
+                      )
+                    }
+                    onManage={() => navigate('/settings/connections')}
+                    serviceIcon={deploymentPlugin?.service_icon ?? null}
+                  />
+                </div>
+              )}
             <DeploymentsTab
               canTrigger={canTriggerDeployments}
               connectLabel={deploymentConnectLabel}
