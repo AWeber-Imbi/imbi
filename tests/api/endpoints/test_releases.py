@@ -73,6 +73,18 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        # The create path enriches a tagged, note-less release from the
+        # remote release body; that resolves the deployment capability and
+        # makes its own DB/HTTP calls. Neutralize it here so create-logic
+        # tests exercise only the create query sequence; the enrichment
+        # itself is covered by a dedicated test.
+        self._notes_patch = mock.patch(
+            'imbi_api.endpoints.project_deployments'
+            '.fetch_release_notes_for_tag',
+            new=mock.AsyncMock(return_value=None),
+        )
+        self._notes_patch.start()
+        self.addCleanup(self._notes_patch.stop)
         self.client = fastapi.testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
 
@@ -152,6 +164,82 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()['created_by'], 'deploy-bot')
+
+    def test_create_enriches_notes_from_remote_release(self) -> None:
+        # A release created from a deployment webhook (tag present, no
+        # description) is enriched with the remote release body so the
+        # UI's release history shows the "What's Changed" markdown.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],  # project_exists
+            [],  # version uniqueness check
+            [{'release': _release_row()}],  # create
+        ]
+        notes = "## What's Changed\n- Fixed the breadcrumb"
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.releases.nanoid.generate',
+                return_value=RELEASE_ID,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.project_deployments'
+                '.fetch_release_notes_for_tag',
+                new=mock.AsyncMock(return_value=notes),
+            ) as enrich,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '3.23.4',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'Deploy 3.23.4',
+                },
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        enrich.assert_awaited_once()
+        self.assertEqual(enrich.await_args.kwargs['tag'], '3.23.4')
+        # The fetched body is what gets persisted as the node description.
+        create_params = self.mock_db.execute.call_args_list[2].args[1]
+        self.assertEqual(create_params['description'], notes)
+
+    def test_create_does_not_enrich_when_description_supplied(self) -> None:
+        # An explicit description is authoritative; no remote lookup runs.
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],
+            [{'release': _release_row()}],
+        ]
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.releases.nanoid.generate',
+                return_value=RELEASE_ID,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.project_deployments'
+                '.fetch_release_notes_for_tag',
+                new=mock.AsyncMock(return_value='ignored'),
+            ) as enrich,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '3.23.4',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'Deploy 3.23.4',
+                    'description': 'Author-supplied notes',
+                },
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        enrich.assert_not_awaited()
+        create_params = self.mock_db.execute.call_args_list[2].args[1]
+        self.assertEqual(create_params['description'], 'Author-supplied notes')
 
     def test_create_project_not_found(self) -> None:
         self.mock_db.execute.side_effect = [[]]  # project_exists -> no rows

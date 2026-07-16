@@ -815,6 +815,104 @@ async def _release_id_for(
     return str(rid) if rid else None
 
 
+async def _existing_tag_for_committish(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    committish: str,
+) -> str | None:
+    """Return a tag already recorded for ``committish`` on this project.
+
+    The resync path uses this to reconcile a deployment whose ``ref`` was
+    a raw SHA (so ``_resync_release_identity`` derives no tag) onto the
+    existing tagged ``Release`` node -- the one the release-history UI
+    reads, keyed by tag -- rather than spawning a duplicate untagged node
+    the UI never surfaces.  Returns ``None`` when no tagged release exists
+    for the commit, and raises ``ValueError`` when the commit carries more
+    than one distinct tag -- a retagged commit is ambiguous, so we fail the
+    observation rather than silently attaching notes to the wrong release.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+        -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
+    WHERE r.tag IS NOT NULL
+    RETURN r.tag AS tag
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'committish': committish},
+        ['tag'],
+    )
+    tags: set[str] = set()
+    for row in rows:
+        tag = graph.parse_agtype(row.get('tag'))
+        if tag:
+            tags.add(str(tag))
+    if len(tags) == 1:
+        return tags.pop()
+    if len(tags) > 1:
+        raise ValueError(
+            'Multiple tagged Releases match this deployment committish'
+        )
+    return None
+
+
+async def _get_release_notes(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    tag: str,
+) -> str | None:
+    """Best-effort fetch of the remote release body for ``tag``.
+
+    Wraps the deployment capability's optional ``get_release_notes`` so
+    callers can enrich a ``Release`` node's notes when they know the tag
+    but not the body (a webhook-created release, a SHA-ref resync).  Any
+    failure -- the capability doesn't implement it, the remote 404s/403s,
+    a timeout -- degrades to ``None`` so a notes lookup never blocks the
+    surrounding write.
+    """
+    try:
+        return await call_with_timeout(
+            handler.get_release_notes(ctx, credentials, tag)
+        )
+    except NotImplementedError:
+        return None
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'get_release_notes failed for tag=%s', tag, exc_info=True
+        )
+        return None
+
+
+async def fetch_release_notes_for_tag(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    auth: permissions.AuthContext,
+) -> str | None:
+    """Resolve the project's deployment capability and fetch ``tag``'s notes.
+
+    Used by the release-create path to enrich a ``Release`` created from a
+    deployment webhook, whose payload carries no release body.  Best-effort:
+    a project without a deployment capability, missing service credentials,
+    or a remote error all yield ``None`` so release creation is never
+    blocked on the notes lookup.
+    """
+    try:
+        resolved, ctx, credentials = await _resolve_and_context(
+            db, org_slug, project_id, auth, best_effort_identity=True
+        )
+    except fastapi.HTTPException:
+        return None
+    handler = _handler(resolved)
+    return await _get_release_notes(
+        handler, ctx, _resolve_credentials(ctx, credentials), tag
+    )
+
+
 async def resync_for_project(
     db: graph.Graph,
     *,
@@ -910,6 +1008,15 @@ async def resync_for_project(
         db, project_id
     )
     resolve_user = attribution.make_user_resolver(db, integration_ids)
+
+    async def _fetch_notes(tag: str) -> str | None:
+        # Enrichment for deployments whose ref was a raw SHA (so the
+        # plugin couldn't populate ``release_notes`` from the ref): once
+        # the tag is known, ask the remote for the release body by tag.
+        return await _get_release_notes(
+            handler, ctx, _resolve_credentials(ctx, credentials), tag
+        )
+
     # Track identities we've already touched so ``releases_created`` /
     # ``releases_updated`` are counted once per distinct
     # ``(committish, tag)`` pair -- the same tag promoted across
@@ -927,6 +1034,7 @@ async def resync_for_project(
                 summary=summary,
                 seen_identities=seen_identities,
                 resolve_user=resolve_user,
+                fetch_notes=_fetch_notes,
             )
         except Exception as exc:
             LOGGER.exception(
@@ -964,6 +1072,10 @@ async def _apply_remote_deployment(
         [str], collections.abc.Awaitable[str | None]
     ]
     | None = None,
+    fetch_notes: collections.abc.Callable[
+        [str], collections.abc.Awaitable[str | None]
+    ]
+    | None = None,
 ) -> None:
     """Persist one observed remote deployment.
 
@@ -979,8 +1091,24 @@ async def _apply_remote_deployment(
     ``releases_created`` / ``releases_updated`` during this resync,
     so a tag promoted across multiple environments is counted as one
     Release node, not N.
+
+    ``fetch_notes`` (optional) resolves a release body by tag; it is used
+    to enrich notes when the deployment ``ref`` was a raw SHA, so the
+    plugin couldn't populate ``release_notes`` from the ref itself.
     """
     tag, committish = _resync_release_identity(observed)
+    # A deployment whose ref was a raw SHA carries no semver tag.  Reconcile
+    # onto the existing tagged Release for this commit (the node the UI
+    # reads, keyed by tag) instead of spawning a duplicate untagged node.
+    if tag is None:
+        tag = await _existing_tag_for_committish(
+            db, project_id=project_id, committish=committish
+        )
+    # Prefer notes the plugin already fetched from the deployment ref; when
+    # absent but the tag is now known, ask the remote for the body by tag.
+    notes = observed.release_notes
+    if not notes and tag is not None and fetch_notes is not None:
+        notes = await fetch_notes(tag)
     title = observed.description or observed.ref or tag or committish
     identity = (committish, tag)
     first_time_this_resync = identity not in seen_identities
@@ -999,7 +1127,7 @@ async def _apply_remote_deployment(
         tag=tag,
         committish=committish,
         title=title,
-        notes_markdown=observed.release_notes or observed.description or '',
+        notes_markdown=notes or observed.description or '',
         release_url=observed.deployment_url,
         created_by=recorded_by,
     )
@@ -1875,12 +2003,19 @@ async def _upsert_release_node(
     # Update notes / links on a pre-existing release (idempotent re-run).
     # Match on (committish, tag) — tag matching uses COALESCE so a NULL
     # tag compares equal to a NULL tag (AGE has no NULL equality).
+    #
+    # Never overwrite existing data with nothing: an empty ``description``
+    # (no notes could be resolved) or an empty ``links`` (no release URL)
+    # preserves whatever the node already holds.  Without this guard a
+    # resync that can't fetch notes would wipe the "What's Changed" body a
+    # promote (or an earlier enriched create) had already written.
     update_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
     WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
-    SET r.description = {description},
-        r.links = {links},
+    SET r.description = CASE WHEN {description} = ''
+            THEN r.description ELSE {description} END,
+        r.links = CASE WHEN {links} = '[]' THEN r.links ELSE {links} END,
         r.updated_at = {now}
     RETURN r.id AS rid
     """

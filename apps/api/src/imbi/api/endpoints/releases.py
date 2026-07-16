@@ -533,13 +533,34 @@ async def create_release(
     # ``principal_name`` returns the user's email or the service
     # account's slug — matching the convention used by opslog.
     created_by = data.created_by or auth.principal_name
+    # A release created from a deployment webhook carries no notes body --
+    # the ``deployment_status`` payload has none. When a tag is present and
+    # no description was supplied, enrich from the remote release (keyed by
+    # tag) so the release-history UI shows the "What's Changed" markdown.
+    # Best-effort: a missing capability / release / credential yields None
+    # and the release is still created (identified by committish + tag).
+    description = data.description
+    if data.tag and not description:
+        # Local import avoids a circular import: project_deployments
+        # imports append_deployment_event from this module.
+        from imbi_api.endpoints.project_deployments import (
+            fetch_release_notes_for_tag,
+        )
+
+        description = await fetch_release_notes_for_tag(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            tag=data.tag,
+            auth=auth,
+        )
     now = datetime.datetime.now(datetime.UTC)
     props: dict[str, typing.Any] = {
         'id': nanoid.generate(),
         'tag': data.tag,
         'committish': data.committish,
         'title': data.title,
-        'description': data.description,
+        'description': description,
         'links': _serialize_links(data.links),
         'created_by': created_by,
         'created_at': now.isoformat(),

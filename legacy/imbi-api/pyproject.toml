@@ -225,6 +225,15 @@ max-complexity = 15
 exclude-newer = "7 days"
 exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false }
 
+# TEMPORARY: resolve imbi-common from a pinned git commit for the
+# unreleased get_release_notes capability (AWeber-Imbi/imbi-common#187).
+# The rev is the reviewed merge state on main; it is still 2.14.0 so the
+# ==2.14.0 pin is satisfied. An immutable rev (not a branch) keeps re-locks
+# reproducible. Revert to the plain PyPI pin once imbi-common cuts a
+# release. See AWeber-Imbi/imbi-api#480.
+[tool.uv.sources]
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "1ac105c7aad0624e9e3b8b9ae7a4ef150b6294c4" }
+
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
 default = true

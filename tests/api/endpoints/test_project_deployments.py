@@ -1192,6 +1192,14 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
                 return_value='upserted-release-id',
             )
         )
+        # No pre-existing tagged Release for the commit by default; a
+        # reconcile test overrides this to exercise the SHA-ref path.
+        self.mocks['existing_tag'] = self._start(
+            mock.patch(
+                f'{_MODULE}._existing_tag_for_committish',
+                return_value=None,
+            )
+        )
         if edge_status == 'missing':
             self.mocks['append_deployment_event'].return_value = None
         else:
@@ -1323,6 +1331,28 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         upsert_call = self.mocks['upsert_release_node'].call_args
         self.assertEqual(upsert_call.kwargs['notes_markdown'], 'Bump foo')
+
+    def test_resync_reconciles_sha_ref_onto_existing_tag(self) -> None:
+        # A deployment whose ref was a raw SHA carries no semver tag. When
+        # a tagged Release already exists for the commit (created by the
+        # webhook), resync reconciles onto that tag -- rather than spawning
+        # a duplicate untagged node -- and enriches its notes by tag.
+        self._arm([self._observed(ref='main')], release_exists=True)
+        self.mocks['existing_tag'].return_value = '3.23.4'
+        notes = "## What's Changed\n- Fixed the breadcrumb"
+        self.mocks['get_release_notes'] = self._start(
+            mock.patch(f'{_MODULE}._get_release_notes', return_value=notes)
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/resync'
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        upsert_call = self.mocks['upsert_release_node'].call_args
+        # Reconciled onto the existing tag, and notes fetched by that tag.
+        self.assertEqual(upsert_call.kwargs['tag'], '3.23.4')
+        self.assertEqual(upsert_call.kwargs['committish'], '2668cd0')
+        self.assertEqual(upsert_call.kwargs['notes_markdown'], notes)
 
     def test_resync_400_when_plugin_opts_out(self) -> None:
         # Override the resolved plugin to advertise the no-sync flavor.
@@ -2386,3 +2416,41 @@ class ResolveTagFormatsTestCase(unittest.IsolatedAsyncioTestCase):
             db, 'org', 'pid'
         )
         self.assertEqual([f.label for f in result], ['Org'])
+
+
+class ExistingTagForCommittishTestCase(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for the ``_existing_tag_for_committish`` reconcile helper."""
+
+    @staticmethod
+    def _db(rows: list[dict[str, typing.Any]]) -> mock.AsyncMock:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=rows)
+        return db
+
+    async def test_returns_none_when_no_tagged_release(self) -> None:
+        db = self._db([])
+        result = await project_deployments._existing_tag_for_committish(
+            db, project_id='pid', committish='deadbeef'
+        )
+        self.assertIsNone(result)
+
+    async def test_returns_single_tag(self) -> None:
+        db = self._db([{'tag': 'v1.0.0'}])
+        result = await project_deployments._existing_tag_for_committish(
+            db, project_id='pid', committish='deadbeef'
+        )
+        self.assertEqual(result, 'v1.0.0')
+
+    async def test_deduplicates_repeated_tag(self) -> None:
+        db = self._db([{'tag': 'v1.0.0'}, {'tag': 'v1.0.0'}])
+        result = await project_deployments._existing_tag_for_committish(
+            db, project_id='pid', committish='deadbeef'
+        )
+        self.assertEqual(result, 'v1.0.0')
+
+    async def test_raises_when_commit_has_multiple_tags(self) -> None:
+        db = self._db([{'tag': 'v1.0.0'}, {'tag': 'v2.0.0'}])
+        with self.assertRaises(ValueError):
+            await project_deployments._existing_tag_for_committish(
+                db, project_id='pid', committish='deadbeef'
+            )
