@@ -1016,7 +1016,7 @@ wheels = [
 
 [[package]]
 name = "imbi-api"
-version = "2.14.0"
+version = "2.14.1"
 source = { editable = "." }
 dependencies = [
     { name = "aioboto3" },
@@ -1088,7 +1088,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
-    { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=1ac105c7aad0624e9e3b8b9ae7a4ef150b6294c4" },
+    { name = "imbi-common", extras = ["databases", "llm", "sentry", "server"], specifier = "==2.14.1" },
     { name = "jinja2" },
     { name = "jsonpatch", specifier = ">=1.33" },
     { name = "mcp", specifier = ">=1.26.0" },
@@ -1136,8 +1136,8 @@ docs = [
 
 [[package]]
 name = "imbi-common"
-version = "2.14.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=1ac105c7aad0624e9e3b8b9ae7a4ef150b6294c4#1ac105c7aad0624e9e3b8b9ae7a4ef150b6294c4" }
+version = "2.14.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
@@ -1151,6 +1151,10 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-slugify" },
     { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/d4/89469d23277342ab5c234e789f5545df367349914fbf7a5b21444d41e5e8/imbi_common-2.14.1.tar.gz", hash = "sha256:d2b0df3bfedf71fafcb1477bf4fe40ad4d3432d91421f2d3e51ea90a6c77d9b2", size = 361560, upload-time = "2026-07-16T22:25:17.428Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/dc/c92a9972d7ca02b4710a042572deba2bfba9435cb22f7faf985952dd714c/imbi_common-2.14.1-py3-none-any.whl", hash = "sha256:23e1bb4ec45bbfe26760474621c62584b85bbb4032fa7c47327ba49837476048", size = 121047, upload-time = "2026-07-16T22:25:16.006Z" },
 ]
 
 [package.optional-dependencies]
