@@ -8,11 +8,13 @@ import { History } from 'lucide-react'
 
 import {
   listEnvironments,
+  listIntegrations,
   listOperationsLog,
   listProjectEvents,
 } from '@/api/endpoints'
 import type { EventRecord } from '@/api/endpoints'
 import { renderEntryLabel } from '@/components/operations-log/renderEntryLabel'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { Sk } from '@/components/ui/skeleton'
 import {
@@ -26,7 +28,7 @@ import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import type { PluginOpsLogTemplateMap } from '@/hooks/usePluginOpsLogTemplates'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { formatFieldKey } from '@/lib/project-field-formatting'
-import type { Environment, OperationsLogRecord } from '@/types'
+import type { Environment, Integration, OperationsLogRecord } from '@/types'
 
 const MAX_ROWS = 20
 
@@ -108,7 +110,24 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
     return m
   }, [environments])
 
-  const isPending = eventsPending || opsPending
+  const { data: integrations = [], isPending: integrationsPending } = useQuery({
+    enabled: Boolean(orgSlug),
+    queryFn: ({ signal }) => listIntegrations(orgSlug, signal),
+    queryKey: ['integrations', orgSlug],
+    staleTime: 10 * 60_000,
+  })
+
+  const integrationMap = useMemo(() => {
+    const m = new Map<string, Integration>()
+    for (const i of integrations) m.set(i.slug, i)
+    return m
+  }, [integrations])
+
+  // Include integrations: the feed is one region with one footprint-matched
+  // skeleton, and rows resolve their identity (name/avatar) from the
+  // integration map. Gating on it too keeps unattributed rows from flashing a
+  // raw slug or unknown avatar before their identity resolves.
+  const isPending = eventsPending || opsPending || integrationsPending
 
   const merged: ActivityItem[] = useMemo(() => {
     const events: ActivityItem[] = (eventsPage?.entries ?? []).map((e) => ({
@@ -160,6 +179,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
                   item.kind === 'event' ? (
                     <EventEntry
                       displayNames={displayNames}
+                      integrationMap={integrationMap}
                       item={item}
                       key={`event-${item.data.id}-${i}`}
                       projectId={projectId}
@@ -209,6 +229,10 @@ function ActivityLogSkeleton() {
   )
 }
 
+function asStr(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
 /** Deep-link to a comment's document, focusing the thread via ?thread=. */
 // fallow-ignore-next-line complexity
 function commentHref(projectId: string, payload: unknown): string | undefined {
@@ -231,6 +255,63 @@ function dayLabel(d: Date): string {
   return d
     .toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
     .toUpperCase()
+}
+
+/** Map a webhook event_type + payload to a "{subject} · {outcome}" pair. */
+// fallow-ignore-next-line complexity
+function describeWebhook(
+  eventType: string,
+  payload: Record<string, unknown>,
+): { outcome: string; subject: string } {
+  const action = asStr(payload.action)
+  switch (eventType) {
+    case 'deployment': {
+      const env = asStr(pick(payload, 'deployment', 'environment'))
+      return {
+        outcome: humanizeState(action),
+        subject: env ? `Deployment to ${env}` : 'Deployment',
+      }
+    }
+    case 'deployment_status': {
+      const env =
+        asStr(pick(payload, 'deployment_status', 'environment')) ||
+        asStr(pick(payload, 'deployment', 'environment'))
+      const state = asStr(pick(payload, 'deployment_status', 'state'))
+      return {
+        outcome: humanizeState(state || action),
+        subject: env ? `Deployment to ${env}` : 'Deployment',
+      }
+    }
+    case 'workflow_job': {
+      const jobName = asStr(pick(payload, 'workflow_job', 'name'))
+      return {
+        outcome: humanizeState(
+          asStr(pick(payload, 'workflow_job', 'conclusion')) ||
+            asStr(pick(payload, 'workflow_job', 'status')) ||
+            action,
+        ),
+        subject: jobName ? `Job ${jobName}` : 'Workflow job',
+      }
+    }
+    case 'workflow_run': {
+      const runName =
+        asStr(pick(payload, 'workflow_run', 'name')) ||
+        asStr(pick(payload, 'workflow', 'name'))
+      return {
+        outcome: humanizeState(
+          asStr(pick(payload, 'workflow_run', 'conclusion')) ||
+            asStr(pick(payload, 'workflow_run', 'status')) ||
+            action,
+        ),
+        subject: runName ? `${runName} run` : 'Workflow run',
+      }
+    }
+    default:
+      return {
+        outcome: humanizeState(action),
+        subject: eventType ? humanizeEventType(eventType) : '',
+      }
+  }
 }
 
 // fallow-ignore-next-line complexity
@@ -259,9 +340,11 @@ function diffObjects(
   return changes.sort((a, b) => a.key.localeCompare(b.key))
 }
 
+// fallow-ignore-next-line complexity
 function EntryRow({
   actor,
   avatarColor,
+  avatarIcon,
   body,
   href,
   name,
@@ -269,6 +352,8 @@ function EntryRow({
 }: {
   actor: string
   avatarColor: AvatarColor
+  /** When set, render this brand icon instead of the actor avatar. */
+  avatarIcon?: string
   body: React.ReactNode
   href?: string
   name: string
@@ -287,14 +372,18 @@ function EntryRow({
           className={`ring-primary relative z-10 mt-1.5 size-2 shrink-0 rounded-full ring-2 ${DOT_CLASS[avatarColor]}`}
         />
       </div>
-      <UserIdentity
-        actor={actor}
-        displayName={name}
-        email={email}
-        hideName
-        linkToProfile={false}
-        size="floating"
-      />
+      {avatarIcon ? (
+        <IntegrationAvatar icon={avatarIcon} title={name} />
+      ) : (
+        <UserIdentity
+          actor={actor}
+          displayName={name}
+          email={email}
+          hideName
+          linkToProfile={false}
+          size="floating"
+        />
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <span className="text-primary truncate font-semibold">{name}</span>
@@ -326,39 +415,48 @@ function EnvChip({ env }: { env?: Environment }) {
   return null
 }
 
+// fallow-ignore-next-line complexity
 function EventEntry({
   displayNames,
+  integrationMap,
   item,
   projectId,
 }: {
   displayNames: Map<string, string>
+  integrationMap: Map<string, Integration>
   item: ActivityItem & { kind: 'event' }
   projectId: string
 }) {
   const entry = item.data
-  const name = getDisplayName(entry.attributed_to, displayNames)
+  const integration = entry.integration
+    ? integrationMap.get(entry.integration)
+    : undefined
+  const integrationLabel =
+    integration?.name || entry.integration || 'Unknown integration'
 
-  let body: React.ReactNode
-  let href: string | undefined
-  if (
-    entry.type === 'project-change' &&
-    isProjectChangePayload(entry.payload)
-  ) {
-    body = renderProjectChangeBody(entry.payload)
-  } else if (entry.type === 'document-comment') {
-    body = renderDocumentCommentBody(entry.payload)
-    href = commentHref(projectId, entry.payload)
-  } else {
-    body = renderGenericEventBody(entry)
-  }
+  // Attribution first (a real actor), then fall back to the integration's own
+  // identity so a webhook row is never a nameless "?" bubble.
+  const actor = resolveEventActor(entry)
+  const hasActor = Boolean(actor)
+  const { body, href } = renderEventBody(
+    entry,
+    projectId,
+    integrationLabel,
+    hasActor,
+  )
 
   return (
     <EntryRow
-      actor={entry.attributed_to}
+      actor={actor}
       avatarColor="info"
+      avatarIcon={
+        hasActor
+          ? undefined
+          : integrationAvatarIcon(integration) || 'lucide-webhook'
+      }
       body={body}
       href={href}
-      name={name}
+      name={hasActor ? getDisplayName(actor, displayNames) : integrationLabel}
       ts={item.ts}
     />
   )
@@ -381,6 +479,32 @@ function getDisplayName(
 
 function humanizeEventType(type: string): string {
   return type.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/** Turn a GitHub-style status token ("in_progress") into prose. */
+function humanizeState(state: string): string {
+  return state.replace(/[-_]+/g, ' ').trim().toLowerCase()
+}
+
+function IntegrationAvatar({ icon, title }: { icon: string; title?: string }) {
+  return (
+    <span
+      className="bg-secondary text-secondary relative inline-flex size-6 flex-none items-center justify-center overflow-hidden rounded-full"
+      style={{ boxShadow: 'inset 0 0 0 1px var(--color-border)' }}
+      title={title}
+    >
+      <EntityIcon className="size-3.5" icon={icon} />
+    </span>
+  )
+}
+
+/**
+ * Brand icon for an event we couldn't attribute to a person/bot; falls back to
+ * a generic webhook glyph when the integration has no icon configured.
+ */
+function integrationAvatarIcon(integration?: Integration): string | undefined {
+  if (!integration) return undefined
+  return integration.icon ?? 'lucide-webhook'
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -475,6 +599,16 @@ function OpsEntry({
   )
 }
 
+/** Safely read a nested string-ish value out of an untyped payload. */
+function pick(obj: unknown, ...path: string[]): unknown {
+  let cur = obj
+  for (const key of path) {
+    if (!isPlainObject(cur)) return undefined
+    cur = cur[key]
+  }
+  return cur
+}
+
 // fallow-ignore-next-line complexity
 function renderDocumentCommentBody(payload: unknown): React.ReactNode {
   const p: DocumentCommentPayload = isPlainObject(payload) ? payload : {}
@@ -493,13 +627,53 @@ function renderDocumentCommentBody(payload: unknown): React.ReactNode {
   )
 }
 
-function renderGenericEventBody(entry: EventRecord): React.ReactNode {
+/** Pick the body (and optional deep-link) for an event row by its type. */
+// fallow-ignore-next-line complexity
+function renderEventBody(
+  entry: EventRecord,
+  projectId: string,
+  integrationLabel: string,
+  hasActor: boolean,
+): { body: React.ReactNode; href?: string } {
+  if (
+    entry.type === 'project-change' &&
+    isProjectChangePayload(entry.payload)
+  ) {
+    return { body: renderProjectChangeBody(entry.payload) }
+  }
+  if (entry.type === 'document-comment') {
+    return {
+      body: renderDocumentCommentBody(entry.payload),
+      href: commentHref(projectId, entry.payload),
+    }
+  }
+  if (entry.type === 'webhook') {
+    // Only append "via <integration>" when the row is attributed to an actor;
+    // otherwise the integration is already the row's name and avatar.
+    return {
+      body: renderWebhookBody(entry, hasActor ? integrationLabel : undefined),
+    }
+  }
+  // Match the webhook branch: only append "via <integration>" when the row is
+  // attributed to an actor; otherwise the integration is already the identity.
+  return {
+    body: renderGenericEventBody(
+      entry,
+      hasActor ? integrationLabel : undefined,
+    ),
+  }
+}
+
+function renderGenericEventBody(
+  entry: EventRecord,
+  integrationLabel?: string,
+): React.ReactNode {
   const label = humanizeEventType(entry.type)
   return (
     <span>
       <span className="text-secondary">{label}</span>
-      {entry.integration && (
-        <span className="text-tertiary"> via {entry.integration}</span>
+      {integrationLabel && (
+        <span className="text-tertiary"> via {integrationLabel}</span>
       )}
     </span>
   )
@@ -549,6 +723,48 @@ function renderProjectChangeBody(
         </>
       )}
     </span>
+  )
+}
+
+/**
+ * Rich, subject-aware summary for an integration webhook. Reads
+ * `metadata.event_type` + the event-specific payload (environment, workflow
+ * name, action/state/conclusion) so a row reads e.g. "Deployment to testing ·
+ * in progress" instead of the useless "Webhook via ghec".
+ */
+// fallow-ignore-next-line complexity
+function renderWebhookBody(
+  entry: EventRecord,
+  integrationLabel?: string,
+): React.ReactNode {
+  const eventType = asStr(entry.metadata?.event_type)
+  const { outcome, subject } = describeWebhook(eventType, entry.payload)
+  const label = subject || humanizeEventType(entry.type)
+  return (
+    <span>
+      <span className="text-secondary">{label}</span>
+      {outcome && <span className="text-tertiary"> · {outcome}</span>}
+      {integrationLabel && (
+        <span className="text-tertiary"> via {integrationLabel}</span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * Best-effort actor for an event: the recorded attribution when present,
+ * otherwise the sender/triggering login carried in the webhook payload.
+ */
+// fallow-ignore-next-line complexity
+function resolveEventActor(entry: EventRecord): string {
+  if (entry.attributed_to) return entry.attributed_to
+  const p = entry.payload
+  return (
+    asStr(pick(p, 'workflow_run', 'triggering_actor', 'login')) ||
+    asStr(pick(p, 'workflow_run', 'actor', 'login')) ||
+    asStr(pick(p, 'sender', 'login')) ||
+    asStr(pick(p, 'deployment', 'creator', 'login')) ||
+    ''
   )
 }
 
