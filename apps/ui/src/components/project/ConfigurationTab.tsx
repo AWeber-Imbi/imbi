@@ -68,7 +68,6 @@ interface ConfigurationTabProps {
   orgSlug: string
   projectId: string
   projectSlug: string
-  projectTypeSlug: string
   teamSlug: string
 }
 
@@ -131,7 +130,6 @@ export function ConfigurationTab({
   orgSlug,
   projectId,
   projectSlug,
-  projectTypeSlug,
   teamSlug,
 }: ConfigurationTabProps) {
   const queryClient = useQueryClient()
@@ -202,15 +200,19 @@ export function ConfigurationTab({
   const configuredPrefix = (() => {
     const raw = activeAssignment?.options?.path_prefix
     if (typeof raw !== 'string' || !raw) return ''
-    // Expand the same variables the backend's plugin template expander
-    // supports, so users see a concrete prefix instead of `${...}`.
+    // Expand the variables we can resolve client-side, so users see a
+    // concrete prefix instead of `${...}`.
     // ${environment} stays unexpanded — it varies per row, and rendering
     // any single env's value would be misleading at the panel level.
+    // ${project_type_slug} also stays unexpanded: a plugin may remap it
+    // (e.g. the AWS integration's project_type_path_map: apis -> api) via
+    // an integration-level option the client doesn't have, so the raw
+    // project-type slug would be wrong wherever a mapping exists. The
+    // backend applies the mapping when it resolves real keys.
     const vars: Record<string, string> = {
       org_slug: orgSlug,
       project_id: projectId,
       project_slug: projectSlug,
-      project_type_slug: projectTypeSlug,
       team_slug: teamSlug,
     }
     return raw.replace(/\$\{([^}]+)\}/g, (match, name: string) =>

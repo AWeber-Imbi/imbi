@@ -1228,11 +1228,6 @@ export function ProjectDetail({
               orgSlug={orgSlug}
               projectId={project.id}
               projectSlug={project.slug}
-              projectTypeSlug={
-                project.project_types?.[0]?.slug ??
-                project.project_type?.slug ??
-                ''
-              }
               teamSlug={project.team.slug}
             />
           </TabsContent>
