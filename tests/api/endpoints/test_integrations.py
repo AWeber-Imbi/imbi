@@ -156,6 +156,51 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         response = self.client.get('/organizations/myorg/integrations/missing')
         self.assertEqual(response.status_code, 404)
 
+    def test_icon_falls_back_to_plugin_manifest(self) -> None:
+        """With no icon of its own, an Integration inherits its plugin's."""
+        manifest = _create_manifest()
+        manifest.icon = 'si-logzio'
+        self.mock_db.execute.return_value = [{'integration': _node()}]
+        with mock.patch(
+            'imbi_api.endpoints.integrations.get_plugin',
+            return_value=_entry(manifest),
+        ):
+            response = self.client.get(
+                '/organizations/myorg/integrations/logzio-prod'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['icon'], 'si-logzio')
+
+    def test_icon_prefers_integration_over_plugin(self) -> None:
+        """An Integration's own icon overrides the plugin manifest icon."""
+        manifest = _create_manifest()
+        manifest.icon = 'si-logzio'
+        self.mock_db.execute.return_value = [
+            {'integration': _node(icon='si-custom')}
+        ]
+        with mock.patch(
+            'imbi_api.endpoints.integrations.get_plugin',
+            return_value=_entry(manifest),
+        ):
+            response = self.client.get(
+                '/organizations/myorg/integrations/logzio-prod'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['icon'], 'si-custom')
+
+    def test_icon_none_when_plugin_missing(self) -> None:
+        """No plugin registered and no own icon → icon stays null."""
+        self.mock_db.execute.return_value = [{'integration': _node()}]
+        with mock.patch(
+            'imbi_api.endpoints.integrations.get_plugin',
+            side_effect=PluginNotFoundError('logzio'),
+        ):
+            response = self.client.get(
+                '/organizations/myorg/integrations/logzio-prod'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['icon'])
+
     # -- create ----------------------------------------------------------
 
     def _patch_encryptor(self) -> typing.Any:
@@ -547,6 +592,8 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
                 '.invalidate_cache'
             ) as invalidate,
         ):
+            # build_response consults the plugin only for the display icon.
+            get_plugin.return_value.manifest.icon = None
             response = self.client.put(
                 '/organizations/myorg/integrations/ghlogin-prod'
                 '/login-provider',
@@ -554,7 +601,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 200)
         # Demotion never checks login capability.
-        get_plugin.assert_not_called()
+        get_plugin.return_value.manifest.get_capability.assert_not_called()
         invalidate.assert_called_once()
 
     def test_set_login_provider_not_login_capable(self) -> None:

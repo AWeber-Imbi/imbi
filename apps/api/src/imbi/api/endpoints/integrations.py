@@ -51,7 +51,8 @@ def build_response(
         name=integration['name'],
         slug=integration['slug'],
         description=integration.get('description'),
-        icon=integration.get('icon'),
+        icon=integration.get('icon')
+        or _plugin_icon(str(integration.get('plugin') or '')),
         vendor=integration.get('vendor'),
         service_url=integration.get('service_url'),
         category=integration.get('category'),
@@ -66,6 +67,21 @@ def build_response(
         used_as_login=bool(integration.get('used_as_login')),
         credential_values=credential_values,
     )
+
+
+def _plugin_icon(plugin_slug: str) -> str | None:
+    """The backing plugin manifest's brand icon (e.g. ``si-github``).
+
+    Integration dashboard links render this so they show the plugin's icon
+    rather than a generic glyph. An Integration's own ``icon`` overrides it
+    when set; this is the fallback.
+    """
+    if not plugin_slug:
+        return None
+    try:
+        return get_plugin(plugin_slug).manifest.icon
+    except PluginNotFoundError:
+        return None
 
 
 def _non_secret_credential_values(
