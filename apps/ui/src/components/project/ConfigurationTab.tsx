@@ -627,9 +627,7 @@ export function ConfigurationTab({
             <ConfigLoadError error={loadError} />
           ) : filtered.length === 0 ? (
             <div className="text-tertiary px-5 py-10 text-center text-sm">
-              {filter
-                ? `No parameters match "${filter}"`
-                : 'No configuration keys yet.'}
+              {emptyStateLabel(filter, sortedEnvironments.length > 0)}
             </div>
           ) : (
             <ParamList
@@ -1038,6 +1036,18 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       </Button>
     </div>
   )
+}
+
+// Message for the empty key list. A project with no environments never
+// runs a per-environment query, so distinguish that from a project whose
+// environments simply have no keys yet.
+function emptyStateLabel(filter: string, hasEnvironments: boolean): string {
+  const normalizedFilter = filter.trim()
+  if (normalizedFilter) return `No parameters match "${normalizedFilter}"`
+  if (!hasEnvironments) {
+    return 'No environments are configured for this project, so there is nothing to read.'
+  }
+  return 'No configuration keys yet.'
 }
 
 function EnvRow({
