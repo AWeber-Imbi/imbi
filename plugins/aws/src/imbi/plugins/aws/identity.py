@@ -51,6 +51,7 @@ from imbi_common.plugins.base import (
     PluginContext,
     PollingDescriptor,
 )
+from imbi_common.plugins.errors import PluginCredentialsMissing
 from imbi_common.plugins.templates import expand_template
 
 from imbi_plugin_aws._helpers import template_vars
@@ -308,7 +309,11 @@ class AWSIdentity(IdentityCapability):
         )
 
         if not account_id or not role_name:
-            raise ValueError(
+            # A config-time absence (no AwsAccount mapped for this
+            # environment, no connect-time fallback), not an internal
+            # error: surface it as PluginCredentialsMissing so the host
+            # returns 503 with this detail instead of an opaque 500.
+            raise PluginCredentialsMissing(
                 'AWSIdentity.materialize: could not resolve '
                 f'aws_account_id / aws_role_name for environment='
                 f'{ctx.environment!r}; expected an Environment-MAPS_TO->'
@@ -324,7 +329,7 @@ class AWSIdentity(IdentityCapability):
         if '${' in role_name:
             role_name = expand_template(role_name, template_vars(ctx))
             if not role_name:
-                raise ValueError(
+                raise PluginCredentialsMissing(
                     'AWSIdentity.materialize: role_name template '
                     f'expanded to empty string for environment='
                     f'{ctx.environment!r}, team_slug={ctx.team_slug!r}'
