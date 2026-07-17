@@ -855,6 +855,94 @@ async def create_project_service(
     )
 
 
+@project_services_router.put('/{service_slug}')
+async def update_project_service(
+    org_slug: str,
+    project_id: str,
+    service_slug: str,
+    data: models.ExistsInCreate,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:write'),
+        ),
+    ],
+) -> models.ExistsInResponse:
+    """Update an existing EXISTS_IN link's identifier and URLs.
+
+    The edge must already exist; the ``service_slug`` path segment is
+    authoritative for which link is updated. Clearing ``dashboard_url``
+    (empty/absent) removes the mirrored ``Project.links`` entry.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    MATCH (p)-[ei:EXISTS_IN]->
+          (tps:Integration {{slug: {tps_slug}}})
+    SET ei.identifier = {identifier},
+        ei.canonical_url = {canonical_url}
+    RETURN tps.slug AS service_slug,
+           tps.name AS service_name,
+           ei.identifier AS identifier,
+           ei.canonical_url AS canonical_url
+    """
+    records = await db.execute(
+        query,
+        {
+            'org_slug': org_slug,
+            'project_id': project_id,
+            'tps_slug': service_slug,
+            'identifier': data.identifier,
+            'canonical_url': data.canonical_url,
+        },
+        [
+            'service_slug',
+            'service_name',
+            'identifier',
+            'canonical_url',
+        ],
+    )
+
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'EXISTS_IN link between project '
+                f'{project_id!r} and integration '
+                f'{service_slug!r} not found'
+            ),
+        )
+
+    # Set or clear the mirrored dashboard link so an edit that empties the
+    # field drops the stale ``Project.links`` entry rather than leaving it.
+    dashboard_url = str(data.dashboard_url) if data.dashboard_url else None
+    if dashboard_url:
+        await merge_project_links(
+            db,
+            project_id,
+            add={service_slug: dashboard_url},
+        )
+    else:
+        await merge_project_links(db, project_id, remove=[service_slug])
+
+    r = records[0]
+    return models.ExistsInResponse(
+        integration_slug=graph.parse_agtype(
+            r['service_slug'],
+        ),
+        integration_name=graph.parse_agtype(
+            r['service_name'],
+        ),
+        identifier=graph.parse_agtype(r['identifier']),
+        canonical_url=graph.parse_agtype(
+            r.get('canonical_url'),
+        ),
+        dashboard_url=dashboard_url,
+    )
+
+
 @project_services_router.delete(
     '/{service_slug}',
     status_code=204,

@@ -1554,6 +1554,86 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    # -- Update --
+
+    def test_update_project_service(self) -> None:
+        self.mock_db.execute.return_value = [self.service_record]
+        merge = mock.AsyncMock(return_value=True)
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.webhooks.merge_project_links',
+                new=merge,
+            ),
+        ):
+            response = self.client.put(
+                '/organizations/engineering/projects/my-project/services/github',
+                json={
+                    'integration_slug': 'github',
+                    'identifier': 'org/repo',
+                    'canonical_url': 'https://github.com/org/repo',
+                    'dashboard_url': 'https://aweber.ghe.com/o/r',
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['identifier'], 'org/repo')
+        self.assertEqual(data['dashboard_url'], 'https://aweber.ghe.com/o/r')
+        merge.assert_awaited_once_with(
+            self.mock_db,
+            'my-project',
+            add={'github': 'https://aweber.ghe.com/o/r'},
+        )
+
+    def test_update_project_service_clears_dashboard(self) -> None:
+        self.mock_db.execute.return_value = [self.service_record]
+        merge = mock.AsyncMock(return_value=True)
+        with (
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.endpoints.webhooks.merge_project_links',
+                new=merge,
+            ),
+        ):
+            response = self.client.put(
+                '/organizations/engineering/projects/my-project/services/github',
+                json={
+                    'integration_slug': 'github',
+                    'identifier': 'org/repo',
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['dashboard_url'])
+        merge.assert_awaited_once_with(
+            self.mock_db, 'my-project', remove=['github']
+        )
+
+    def test_update_project_service_not_found(self) -> None:
+        self.mock_db.execute.return_value = []
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                '/organizations/engineering'
+                '/projects/my-project/services/nonexistent',
+                json={
+                    'integration_slug': 'nonexistent',
+                    'identifier': 'org/repo',
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
     # -- Dashboard URL folding --
 
     def test_list_includes_dashboard_url_from_links(self) -> None:
