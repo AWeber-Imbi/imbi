@@ -115,6 +115,7 @@ export function DocumentsTab({
         onTogglePin={() => ctl.togglePin(document)}
         orgSlug={orgSlug}
         projectId={scope.commentsProjectId}
+        showAttachment={scope.templateContext === 'org'}
       />
     )
   }

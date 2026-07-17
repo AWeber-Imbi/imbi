@@ -36,6 +36,7 @@ import { RightCommentBar } from './comments/RightCommentBar'
 import { SelectionToolbar } from './comments/SelectionToolbar'
 import { useCommentLastVisit } from './comments/useCommentLastVisit'
 import { useInlineComments } from './comments/useInlineComments'
+import { DocumentAttachmentBadge } from './DocumentAttachmentBadge'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
   documentTitle,
@@ -83,6 +84,9 @@ interface Props {
   onTogglePin: () => void
   orgSlug: string
   projectId: null | string
+  /** Show the attachment eyebrow — only in the org-wide reader, where the
+   * container no longer implies what the document is bound to. */
+  showAttachment?: boolean
 }
 
 // fallow-ignore-next-line complexity
@@ -107,6 +111,7 @@ export function DocumentsPinboardReader({
   onTogglePin,
   orgSlug,
   projectId,
+  showAttachment = false,
 }: Props) {
   const [search, setSearch] = useState('')
   const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
@@ -361,6 +366,9 @@ export function DocumentsPinboardReader({
           )}
         >
           <article className="border-tertiary bg-primary rounded-lg border px-8 py-7">
+            {showAttachment && document.attached_to && (
+              <DocumentAttachmentBadge attachment={document.attached_to} />
+            )}
             <h1 className="text-primary m-0 text-[26px] leading-[1.2] font-medium tracking-[-0.015em]">
               {title}
             </h1>
