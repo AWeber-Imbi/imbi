@@ -913,18 +913,25 @@ async def _fetch_release_summaries(
             ]
             if pid_cutoff:
                 cutoff_map = dict(pid_cutoff)
+                # Build the per-project cutoff map server-side from two
+                # parallel arrays.  Passing a dict for a Map(...) parameter
+                # trips a clickhouse-connect binding bug: dicts serialize as
+                # JSON (double-quoted), but ClickHouse's Map text parser
+                # requires single-quoted strings (CANNOT_PARSE_QUOTED_STRING).
+                # Arrays serialize correctly, so mapFromArrays sidesteps it.
                 count_rows = await clickhouse.query(
                     'SELECT project_id,'
-                    ' countIf(authored_at'
-                    ' > {cutoffs:Map(String,DateTime64(3))}'
+                    ' countIf(authored_at > mapFromArrays('
+                    '{pids:Array(String)},'
+                    ' {cuts:Array(DateTime64(3))})'
                     '[project_id]) AS c'
                     ' FROM commits FINAL'
                     ' WHERE project_id'
-                    ' IN {project_ids:Array(String)}'
+                    ' IN {pids:Array(String)}'
                     ' GROUP BY project_id',
                     {
-                        'project_ids': list(cutoff_map.keys()),
-                        'cutoffs': cutoff_map,
+                        'pids': list(cutoff_map.keys()),
+                        'cuts': list(cutoff_map.values()),
                     },
                 )
                 counts_since_tag = {
