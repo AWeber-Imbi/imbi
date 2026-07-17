@@ -54,7 +54,7 @@ export function DocumentsPinboard({
   const rest = useMemo(() => filtered.filter((n) => !n.is_pinned), [filtered])
 
   return (
-    <div className="grid grid-cols-[220px_1fr] gap-5">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
       <DocumentsFilterRail
         active={filter.active}
         counts={filter.counts}
@@ -67,9 +67,9 @@ export function DocumentsPinboard({
       />
 
       <div>
-        <section className="mb-6 flex items-start gap-3.5">
+        <section className="mb-6 flex flex-col items-stretch gap-3.5 sm:flex-row sm:items-start">
           {pinned.length > 0 && (
-            <div className="grid min-w-0 flex-1 grid-cols-2 gap-3.5">
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-3.5 sm:grid-cols-2">
               {pinned.map((n) => (
                 <HeroCard
                   displayNames={displayNames}
@@ -89,8 +89,8 @@ export function DocumentsPinboard({
           />
         </section>
 
-        <section>
-          <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
+        <section className="overflow-x-auto">
+          <div className="border-tertiary bg-primary min-w-160 overflow-hidden rounded-lg border">
             <div
               className="border-tertiary bg-secondary text-overline text-tertiary grid items-center gap-3.5 border-b px-3.5 py-2 uppercase"
               style={{ gridTemplateColumns: gridColumns(showAuthor) }}

@@ -37,10 +37,10 @@ function DocumentsFeedSkeleton() {
  */
 function DocumentsPinboardSkeleton() {
   return (
-    <div aria-busy className="grid grid-cols-[220px_1fr] gap-5">
+    <div aria-busy className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
       <FilterRailSkeleton />
       <div>
-        <section className="mb-6 grid grid-cols-2 gap-3.5">
+        <section className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
           <HeroCardSkeleton />
           <HeroCardSkeleton />
         </section>

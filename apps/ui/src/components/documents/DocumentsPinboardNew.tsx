@@ -107,7 +107,7 @@ export function DocumentsPinboardNew({
   const showPreview = mode !== 'write'
 
   return (
-    <div className="grid grid-cols-[220px_1fr] gap-5">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
       {/* Rail stays visible but disabled while composing — preserves spatial continuity. */}
       <DocumentsFilterRail
         active={EMPTY_ACTIVE}
@@ -195,14 +195,14 @@ export function DocumentsPinboardNew({
           <div
             className={cn(
               'mt-5 grid min-h-140 border-t border-tertiary',
-              mode === 'split' ? 'grid-cols-2' : 'grid-cols-1',
+              mode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1',
             )}
           >
             {showEditor && (
               <textarea
                 className={cn(
                   'min-h-140 w-full resize-none border-0 bg-primary px-7 py-5 font-mono text-[13px] leading-[1.65] text-primary outline-none placeholder:text-tertiary',
-                  mode === 'split' && 'border-r border-tertiary',
+                  mode === 'split' && 'border-tertiary md:border-r',
                 )}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Start writing… Markdown supported."
@@ -211,7 +211,14 @@ export function DocumentsPinboardNew({
               />
             )}
             {showPreview && (
-              <div className="flex flex-col">
+              // In split view the preview needs a second column — below md
+              // there isn't one, so fall back to a single writing pane.
+              <div
+                className={cn(
+                  mode === 'split' ? 'hidden md:flex' : 'flex',
+                  'flex-col',
+                )}
+              >
                 <div className="border-tertiary bg-primary text-overline text-tertiary flex items-center gap-1.5 border-b px-5 py-2 uppercase">
                   <Eye className="size-3" />
                   Preview

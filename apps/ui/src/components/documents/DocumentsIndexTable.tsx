@@ -36,7 +36,7 @@ export function DocumentsIndexTable({
   const { filtered } = filter
 
   return (
-    <div className="grid grid-cols-[220px_1fr] items-start gap-5">
+    <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[220px_1fr]">
       <DocumentsFilterRail
         active={filter.active}
         counts={filter.counts}
@@ -49,32 +49,34 @@ export function DocumentsIndexTable({
       />
 
       <div>
-        <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
-          <div
-            className="border-tertiary bg-secondary text-overline text-tertiary grid items-center gap-3.5 border-b px-3.5 py-2 uppercase"
-            style={{ gridTemplateColumns: GRID_COLUMNS }}
-          >
-            <span>Attached to</span>
-            <span>Document</span>
-            <span>Tags</span>
-            <span>Author</span>
-            <span className="text-right">Updated</span>
-            <span />
-          </div>
-          {filtered.map((n) => (
-            <IndexRow
-              displayNames={displayNames}
-              document={n}
-              key={n.id}
-              onOpen={onOpen}
-              onTogglePin={onTogglePin}
-            />
-          ))}
-          {filtered.length === 0 && (
-            <div className="text-tertiary px-8 py-10 text-center text-sm">
-              No documents match.
+        <div className="overflow-x-auto">
+          <div className="border-tertiary bg-primary min-w-180 overflow-hidden rounded-lg border">
+            <div
+              className="border-tertiary bg-secondary text-overline text-tertiary grid items-center gap-3.5 border-b px-3.5 py-2 uppercase"
+              style={{ gridTemplateColumns: GRID_COLUMNS }}
+            >
+              <span>Attached to</span>
+              <span>Document</span>
+              <span>Tags</span>
+              <span>Author</span>
+              <span className="text-right">Updated</span>
+              <span />
             </div>
-          )}
+            {filtered.map((n) => (
+              <IndexRow
+                displayNames={displayNames}
+                document={n}
+                key={n.id}
+                onOpen={onOpen}
+                onTogglePin={onTogglePin}
+              />
+            ))}
+            {filtered.length === 0 && (
+              <div className="text-tertiary px-8 py-10 text-center text-sm">
+                No documents match.
+              </div>
+            )}
+          </div>
         </div>
         <div className="text-tertiary mt-3 text-xs">
           {filtered.length} {filtered.length === 1 ? 'document' : 'documents'}

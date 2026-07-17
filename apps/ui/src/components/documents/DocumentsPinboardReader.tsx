@@ -239,7 +239,7 @@ export function DocumentsPinboardReader({
 
   // Reader is navigable from the same tab; filter rail keeps rail semantics.
   return (
-    <div className="grid grid-cols-[220px_1fr] gap-5">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
       <DocumentsFilterRail
         active={EMPTY_ACTIVE}
         counts={counts}
@@ -253,67 +253,72 @@ export function DocumentsPinboardReader({
       />
 
       <div>
-        <div className="mb-3.5 grid grid-cols-[minmax(0,1fr)_260px] items-start gap-5">
+        <div className="mb-3.5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
           <div className="flex flex-wrap items-center gap-2.5">
             <Button onClick={onBack} size="sm" variant="ghost">
               <ArrowLeft className="size-3" />
               All documents
             </Button>
             <div className="ml-auto flex items-center gap-1">
-              {showComments && (
-                <SegmentedControl
-                  ariaLabel="Comment filter"
-                  className="mr-1"
-                  onValueChange={(v) => setCommentFilter(v as CommentFilter)}
-                  value={commentFilter}
-                >
-                  <SegmentedControlItem value="open">
-                    <CircleDot className="size-3" />
-                    Open
-                    <span className="text-tertiary tabular-nums">
-                      {commentCounts.open}
-                    </span>
-                  </SegmentedControlItem>
-                  <SegmentedControlItem value="resolved">
-                    <CheckCircle2 className="size-3" />
-                    Resolved
-                    <span className="text-tertiary tabular-nums">
-                      {commentCounts.resolved}
-                    </span>
-                  </SegmentedControlItem>
-                  <SegmentedControlItem value="all">
-                    <List className="size-3" />
-                    All
-                    <span className="text-tertiary tabular-nums">
-                      {commentCounts.all}
-                    </span>
-                  </SegmentedControlItem>
-                </SegmentedControl>
-              )}
-              <Button
-                className="gap-1.5"
-                onClick={() => setShowComments((v) => !v)}
-                size="sm"
-                variant="ghost"
-              >
-                {showComments ? (
-                  <>
-                    <EyeOff className="size-3" />
-                    Hide inline comments
-                  </>
-                ) : (
-                  <>
-                    <Eye className="size-3" />
-                    Show inline comments
-                    {inlineThreads.length > 0 && (
+              {/* Inline comments are a desktop-width affordance — the margin
+                  needs room the phone doesn't have; the bottom discussion
+                  still carries the conversation there. */}
+              <div className="hidden items-center gap-1 lg:flex">
+                {showComments && (
+                  <SegmentedControl
+                    ariaLabel="Comment filter"
+                    className="mr-1"
+                    onValueChange={(v) => setCommentFilter(v as CommentFilter)}
+                    value={commentFilter}
+                  >
+                    <SegmentedControlItem value="open">
+                      <CircleDot className="size-3" />
+                      Open
                       <span className="text-tertiary tabular-nums">
-                        {inlineThreads.length}
+                        {commentCounts.open}
                       </span>
-                    )}
-                  </>
+                    </SegmentedControlItem>
+                    <SegmentedControlItem value="resolved">
+                      <CheckCircle2 className="size-3" />
+                      Resolved
+                      <span className="text-tertiary tabular-nums">
+                        {commentCounts.resolved}
+                      </span>
+                    </SegmentedControlItem>
+                    <SegmentedControlItem value="all">
+                      <List className="size-3" />
+                      All
+                      <span className="text-tertiary tabular-nums">
+                        {commentCounts.all}
+                      </span>
+                    </SegmentedControlItem>
+                  </SegmentedControl>
                 )}
-              </Button>
-              <span className="bg-tertiary mx-1 h-5 w-px" />
+                <Button
+                  className="gap-1.5"
+                  onClick={() => setShowComments((v) => !v)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {showComments ? (
+                    <>
+                      <EyeOff className="size-3" />
+                      Hide inline comments
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="size-3" />
+                      Show inline comments
+                      {inlineThreads.length > 0 && (
+                        <span className="text-tertiary tabular-nums">
+                          {inlineThreads.length}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </Button>
+                <span className="bg-tertiary mx-1 h-5 w-px" />
+              </div>
               <Button
                 className="gap-1.5"
                 onClick={onTogglePin}
@@ -359,17 +364,17 @@ export function DocumentsPinboardReader({
 
         <div
           className={cn(
-            'grid items-start gap-5',
+            'grid grid-cols-1 items-start gap-5',
             showComments
-              ? 'grid-cols-[minmax(0,1fr)_220px_300px]'
-              : 'grid-cols-[minmax(0,1fr)_260px]',
+              ? 'lg:grid-cols-[minmax(0,1fr)_220px_300px]'
+              : 'lg:grid-cols-[minmax(0,1fr)_260px]',
           )}
         >
-          <article className="border-tertiary bg-primary rounded-lg border px-8 py-7">
+          <article className="border-tertiary bg-primary rounded-lg border px-5 py-6 lg:px-8 lg:py-7">
             {showAttachment && document.attached_to && (
               <DocumentAttachmentBadge attachment={document.attached_to} />
             )}
-            <h1 className="text-primary m-0 text-[26px] leading-[1.2] font-medium tracking-[-0.015em]">
+            <h1 className="text-primary m-0 text-[22px] leading-[1.2] font-medium tracking-[-0.015em] lg:text-[26px]">
               {title}
             </h1>
 
@@ -431,9 +436,9 @@ export function DocumentsPinboardReader({
             </div>
           </article>
 
-          <div className="sticky top-5 flex flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:sticky lg:top-5">
             {headings.length > 0 && (
-              <div>
+              <div className="hidden lg:block">
                 <div className="text-overline text-tertiary mb-2 uppercase">
                   On this page
                 </div>
@@ -500,7 +505,7 @@ export function DocumentsPinboardReader({
           </div>
 
           {showComments && (
-            <div className="relative" ref={marginRef}>
+            <div className="relative hidden lg:block" ref={marginRef}>
               <RightCommentBar
                 articleRef={articleRef}
                 busy={commentsBusy}
@@ -527,7 +532,7 @@ export function DocumentsPinboardReader({
           )}
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_260px] gap-5">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
           <BottomDiscussion
             busy={commentsBusy}
             currentUserEmail={currentUserEmail}

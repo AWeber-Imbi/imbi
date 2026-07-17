@@ -1,4 +1,6 @@
-import { Search } from 'lucide-react'
+import { useState } from 'react'
+
+import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,24 +35,53 @@ export function DocumentsFilterRail({
   totalFiltered,
 }: Props) {
   const activeCount = active.size
+  // Below `lg` the rail sits above content as a bar; tags collapse behind a
+  // "Filters" disclosure so they don't push the content down. At `lg`+ it is
+  // the sticky sidebar and tags are always shown.
+  const [open, setOpen] = useState(false)
   return (
     <aside
       aria-disabled={disabled || undefined}
       className={cn(
-        'sticky top-5 self-start',
+        'lg:sticky lg:top-5 lg:self-start',
         disabled && 'pointer-events-none opacity-50 select-none',
       )}
     >
-      <div className="relative mb-3">
-        <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-        <Input
-          className="h-8 pl-8 text-xs"
-          disabled={disabled}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search documents"
-          tabIndex={disabled ? -1 : undefined}
-          value={search}
-        />
+      <div className="mb-3 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="text-tertiary pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+          <Input
+            className="h-8 pl-8 text-xs"
+            disabled={disabled}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search documents"
+            tabIndex={disabled ? -1 : undefined}
+            value={search}
+          />
+        </div>
+        {tags.length > 0 && (
+          <Button
+            aria-expanded={open}
+            className="shrink-0 gap-1.5 lg:hidden"
+            disabled={disabled}
+            onClick={() => setOpen((o) => !o)}
+            size="sm"
+            tabIndex={disabled ? -1 : undefined}
+            variant="outline"
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Filters
+            {activeCount > 0 && (
+              <span className="text-tertiary tabular-nums">{activeCount}</span>
+            )}
+            <ChevronDown
+              className={cn(
+                'size-3 transition-transform',
+                open && 'rotate-180',
+              )}
+            />
+          </Button>
+        )}
       </div>
 
       {activeCount > 0 && (
@@ -71,11 +102,11 @@ export function DocumentsFilterRail({
       )}
 
       {tags.length > 0 && (
-        <div>
+        <div className={cn(open ? 'block' : 'hidden', 'lg:block')}>
           <div className="text-overline text-tertiary mb-1.5 uppercase">
             Tags
           </div>
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-wrap gap-1.5 lg:flex-col lg:flex-nowrap lg:gap-0.5">
             {tags.map((t) => {
               const count = counts[t.slug] ?? 0
               if (!count) return null
@@ -114,7 +145,7 @@ function TagButton({
   return (
     <button
       className={cn(
-        'flex w-full items-center gap-2 rounded-md border-0 px-2 py-1 text-left transition-colors',
+        'flex w-auto items-center gap-2 rounded-md border-0 px-2 py-1 text-left transition-colors lg:w-full',
         active ? 'bg-secondary' : 'bg-transparent hover:bg-secondary',
       )}
       onClick={onClick}
@@ -132,7 +163,7 @@ function TagButton({
       />
       <span
         className={cn(
-          'flex-1 truncate text-[12.5px]',
+          'truncate text-[12.5px] lg:flex-1',
           active || highlighted ? 'font-medium text-primary' : 'text-secondary',
         )}
       >
