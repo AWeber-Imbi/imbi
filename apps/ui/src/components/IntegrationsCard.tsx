@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, Plus, Trash2 } from 'lucide-react'
+import { ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -9,6 +9,7 @@ import {
   deleteProjectService,
   listIntegrations,
   listProjectServices,
+  updateProjectService,
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import {
@@ -65,6 +66,9 @@ export function IntegrationsCard({
 }: IntegrationsCardProps) {
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
+  // When set, the dialog edits the connected integration with this slug
+  // instead of adding a new one.
+  const [editSlug, setEditSlug] = useState<null | string>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [deleteTarget, setDeleteTarget] = useState<null | string>(null)
 
@@ -117,6 +121,27 @@ export function IntegrationsCard({
     },
   })
 
+  const updateMutation = useMutation({
+    mutationFn: (serviceSlug: string) =>
+      updateProjectService(orgSlug, projectId, serviceSlug, {
+        canonical_url: form.canonicalUrl.trim() || null,
+        dashboard_url: form.dashboardUrl.trim() || null,
+        identifier: form.identifier.trim(),
+        integration_slug: serviceSlug,
+      }),
+    onError: (error) => {
+      toast.error(
+        `Failed to update integration: ${extractApiErrorDetail(error)}`,
+      )
+    },
+    onSuccess: () => {
+      toast.success('Integration updated')
+      setEditSlug(null)
+      setForm(EMPTY_FORM)
+      invalidate()
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (serviceSlug: string) =>
       deleteProjectService(orgSlug, projectId, serviceSlug),
@@ -131,8 +156,17 @@ export function IntegrationsCard({
     },
   })
 
+  const isEdit = editSlug !== null
+  const dialogOpen = addOpen || isEdit
+  const submitting = createMutation.isPending || updateMutation.isPending
   const canSubmit =
-    !!form.serviceSlug && !!form.identifier.trim() && !createMutation.isPending
+    !!form.serviceSlug && !!form.identifier.trim() && !submitting
+
+  const closeDialog = () => {
+    setAddOpen(false)
+    setEditSlug(null)
+    setForm(EMPTY_FORM)
+  }
 
   return (
     <Card>
@@ -172,7 +206,7 @@ export function IntegrationsCard({
                 <TableHead>Identifier</TableHead>
                 <TableHead>API URL</TableHead>
                 <TableHead>Dashboard URL</TableHead>
-                <TableHead className="w-12" />
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -189,14 +223,32 @@ export function IntegrationsCard({
                     <UrlCell url={svc.dashboard_url} />
                   </TableCell>
                   <TableCell>
-                    <Button
-                      aria-label={`Remove ${svc.integration_name} integration`}
-                      onClick={() => setDeleteTarget(svc.integration_slug)}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        aria-label={`Edit ${svc.integration_name} integration`}
+                        onClick={() => {
+                          setForm({
+                            canonicalUrl: svc.canonical_url ?? '',
+                            dashboardUrl: svc.dashboard_url ?? '',
+                            identifier: svc.identifier,
+                            serviceSlug: svc.integration_slug,
+                          })
+                          setEditSlug(svc.integration_slug)
+                        }}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        aria-label={`Remove ${svc.integration_name} integration`}
+                        onClick={() => setDeleteTarget(svc.integration_slug)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -205,31 +257,49 @@ export function IntegrationsCard({
         )}
       </CardContent>
 
-      <Dialog onOpenChange={setAddOpen} open={addOpen}>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open && !submitting) closeDialog()
+        }}
+        open={dialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Integration</DialogTitle>
+            <DialogTitle>
+              {isEdit ? 'Edit Integration' : 'Add Integration'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 p-6">
             <div className="space-y-2">
               <Label htmlFor="integration-service">Integration</Label>
-              <Select
-                onValueChange={(value) =>
-                  setForm((f) => ({ ...f, serviceSlug: value }))
-                }
-                value={form.serviceSlug}
-              >
-                <SelectTrigger id="integration-service">
-                  <SelectValue placeholder="Select an integration…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {connectableServices.map((svc) => (
-                    <SelectItem key={svc.slug} value={svc.slug}>
-                      {svc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isEdit ? (
+                <Input
+                  disabled
+                  id="integration-service"
+                  value={
+                    services.find((s) => s.integration_slug === editSlug)
+                      ?.integration_name ?? editSlug
+                  }
+                />
+              ) : (
+                <Select
+                  onValueChange={(value) =>
+                    setForm((f) => ({ ...f, serviceSlug: value }))
+                  }
+                  value={form.serviceSlug}
+                >
+                  <SelectTrigger id="integration-service">
+                    <SelectValue placeholder="Select an integration…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connectableServices.map((svc) => (
+                      <SelectItem key={svc.slug} value={svc.slug}>
+                        {svc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="integration-identifier">Identifier</Label>
@@ -266,14 +336,21 @@ export function IntegrationsCard({
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={() => setAddOpen(false)} variant="outline">
+            <Button
+              disabled={submitting}
+              onClick={closeDialog}
+              variant="outline"
+            >
               Cancel
             </Button>
             <Button
               disabled={!canSubmit}
-              onClick={() => createMutation.mutate()}
+              onClick={() => {
+                if (editSlug) updateMutation.mutate(editSlug)
+                else createMutation.mutate()
+              }}
             >
-              Add
+              {isEdit ? 'Save' : 'Add'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -186,6 +186,9 @@ export function ProjectSettingsTab({ project }: { project: Project }) {
       )}
       {!linkDefsLoading && !linkDefsError && linkDefs.length > 0 && (
         <EditLinksCard
+          integrationSlugs={
+            new Set((project.services || []).map((s) => s.integration_slug))
+          }
           linkDefs={linkDefs}
           links={project.links || {}}
           onPatch={(entries) => patch('/links', entries)}

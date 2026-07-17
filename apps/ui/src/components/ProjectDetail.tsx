@@ -685,8 +685,17 @@ export function ProjectDetail({
   //   2. live integration dashboard links from project.services (edges only,
   //      so orphaned link entries never appear), name/icon from the
   //      integration.
+  // An integration's dashboard is mirrored into project.links keyed by the
+  // integration slug. When that slug also matches a link definition it would
+  // otherwise render twice (once here, once from `services`), so skip any
+  // links key that belongs to a connected integration and let `services`
+  // own it.
   const externalLinks = useMemo(() => {
+    const serviceSlugs = new Set(
+      (project.services || []).map((svc) => svc.integration_slug),
+    )
     const defLinks = Object.entries(project.links || {})
+      .filter(([key]) => !serviceSlugs.has(key))
       .map(([key, url]) => {
         const def = linkDefMap[key]
         if (!def) return null

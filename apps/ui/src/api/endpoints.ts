@@ -1838,6 +1838,17 @@ export const createProjectService = (
     data,
   )
 
+export const updateProjectService = (
+  orgSlug: string,
+  projectId: string,
+  serviceSlug: string,
+  data: ProjectServiceEdgeCreate,
+) =>
+  apiClient.put<ProjectServiceEdge>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/${encodeURIComponent(serviceSlug)}`,
+    data,
+  )
+
 export const deleteProjectService = (
   orgSlug: string,
   projectId: string,

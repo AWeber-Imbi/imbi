@@ -6,12 +6,22 @@ import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import type { LinkDefinition } from '@/types'
 
 interface EditLinksCardProps {
+  /**
+   * Slugs of integrations the project is connected to. An integration's
+   * dashboard URL is mirrored into `links` keyed by the integration slug and
+   * is managed from the Integrations card, so those keys are hidden here: they
+   * never render as an editable link row and are never offered as a link type
+   * to add. This keeps the two from colliding when an integration slug also
+   * matches a link definition.
+   */
+  integrationSlugs?: Set<string>
   linkDefs: LinkDefinition[]
   links: Record<string, string>
   onPatch: (links: Record<string, string>) => Promise<void>
 }
 
 export function EditLinksCard({
+  integrationSlugs,
   linkDefs,
   links,
   onPatch,
@@ -33,23 +43,28 @@ export function EditLinksCard({
     return m
   }, [linkDefs])
 
+  const isIntegrationKey = useMemo(
+    () => (slug: string) => integrationSlugs?.has(slug) ?? false,
+    [integrationSlugs],
+  )
+
   const visibleKeys = useMemo(
     () =>
       Object.keys(serverMap)
-        .filter((slug) => defBySlug.has(slug))
+        .filter((slug) => defBySlug.has(slug) && !isIntegrationKey(slug))
         .sort((a, b) =>
           defBySlug.get(a)!.name.localeCompare(defBySlug.get(b)!.name),
         ),
-    [serverMap, defBySlug],
+    [serverMap, defBySlug, isIntegrationKey],
   )
 
   const unassignedKeys = useMemo(() => {
     const visible = new Set(visibleKeys)
     return linkDefs
-      .filter((d) => !visible.has(d.slug))
+      .filter((d) => !visible.has(d.slug) && !isIntegrationKey(d.slug))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((d) => d.slug)
-  }, [linkDefs, visibleKeys])
+  }, [linkDefs, visibleKeys, isIntegrationKey])
 
   return (
     <EditableKeyValueMap
