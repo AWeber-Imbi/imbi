@@ -39,6 +39,7 @@ import type { IdentityConnectionResponse } from '@/types'
 import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCountsWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
+import { ProjectActivityWidget } from './dashboard/widgets/ProjectActivityWidget'
 import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
 import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
 import { StatWidget } from './dashboard/widgets/StatWidget'
@@ -65,6 +66,7 @@ type WidgetId =
   | 'my-pull-request-counts'
   | 'my-pull-requests'
   | 'outdated-components'
+  | 'project-activity'
   | 'recent-activity'
   | 'recent-deployments'
   | 'stat-active-deployments'
@@ -110,7 +112,6 @@ const availableWidgets: WidgetConfig[] = [
     category: 'activity',
     columnSpan: 2,
     description: 'Latest actions and updates across projects',
-    hidden: true,
     icon: '📝',
     id: 'recent-activity',
     name: 'Recent Activity',
@@ -122,6 +123,14 @@ const availableWidgets: WidgetConfig[] = [
     icon: '🚀',
     id: 'recent-deployments',
     name: 'Recent Deployments',
+  },
+  {
+    category: 'activity',
+    columnSpan: 2,
+    description: 'Compact, project-centric feed of recent activity',
+    icon: '📌',
+    id: 'project-activity',
+    name: 'Project Activity',
   },
   {
     category: 'stats',
@@ -163,6 +172,7 @@ const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
   'my-pull-request-counts',
   'my-pull-requests',
   'outdated-components',
+  'project-activity',
   'recent-activity',
   'recent-deployments',
   'stat-active-deployments',
@@ -358,6 +368,9 @@ export function Dashboard({
     'my-pull-requests': () => <MyPullRequestsWidget />,
     'outdated-components': () => (
       <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
+    ),
+    'project-activity': () => (
+      <ProjectActivityWidget onProjectSelect={onProjectSelect} />
     ),
     'recent-activity': () => (
       <RecentActivityWidget

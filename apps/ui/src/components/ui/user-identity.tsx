@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useState } from 'react'
 
 import { Link } from 'react-router-dom'
@@ -59,6 +60,11 @@ const SIZES: Record<Size, SizeSpec> = {
   large: { av: 44, font: 17, gap: 12, sub: true, weight: 600 },
   medium: { av: 28, font: 14, gap: 9, sub: true, weight: 500 },
   small: { av: 20, font: 13.5, gap: 7, sub: false, weight: 500 },
+}
+
+/** Whether an actor login/name reads as a bot or automation account. */
+export function isBotActor(value: null | string | undefined): boolean {
+  return value != null && BOT_PATTERN.test(value)
 }
 
 /**
@@ -255,11 +261,6 @@ function initialsOf(name: null | string): string {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
   }
   return (parts[0]?.[0] ?? '?').toUpperCase()
-}
-
-/** Whether an actor login/name reads as a bot or automation account. */
-function isBotActor(value: null | string | undefined): boolean {
-  return value != null && BOT_PATTERN.test(value)
 }
 
 /** Resolve the rendered display name from the available identity fields. */

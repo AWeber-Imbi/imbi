@@ -1,23 +1,54 @@
 import type { ReactElement } from 'react'
+import { useMemo, useState } from 'react'
 
+import { ChevronRight } from 'lucide-react'
+
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
-import { formatRelativeDate } from '@/lib/formatDate'
 import type { ActivityFeedEntry, OperationsLogEntry } from '@/types'
 
+import {
+  ActivityFilter,
+  ALL_ACTORS,
+  filterEntries,
+} from './activityFeed/ActivityFilter'
+import type { ActivityFilterValue } from './activityFeed/ActivityFilter'
+import { ClusterEvents } from './activityFeed/ClusterEvents'
+import { clusterView } from './activityFeed/clusterView'
+import {
+  ACTIVITY_GROUP_WINDOW_MS,
+  entryClusterKey,
+  entryTimeIso,
+  entryTimeMs,
+} from './activityFeed/entryAdapters'
+import { expandableRowProps } from './activityFeed/expandableRow'
+import { sectionByDay } from './activityFeed/grouping'
+import type { ActivityCluster } from './activityFeed/grouping'
 import { renderActivityTemplate } from './activityFeed/renderActivityTemplate'
+import { StatusChip, StatusDot } from './activityFeed/StatusChip'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
+
+// NOTE: The feed API has no correlation/run id, so groups are approximated by
+// clustering consecutive same-actor+project entries (see grouping.ts). A
+// backend `group_id` would let clusterMeta report true per-run breakdowns
+// (e.g. "1 failed · 6 skipped") instead of a per-change_type count.
 
 interface ActivityLineProps {
   activity: ActivityFeedEntry
   onProjectSelect?: (projectName: string) => void
   onUserSelect?: (userName: string) => void
-  // When the activity is an ops-log entry whose plugin ships a template
-  // for the embedded ``action``, return the rendered label string;
-  // otherwise return ``null`` so the line falls back to the legacy
-  // hand-built sentence.
+  renderTemplate: (entry: OperationsLogEntry) => null | string
+}
+
+interface ClusterRowProps {
+  cluster: ActivityCluster<ActivityFeedEntry>
+  expanded: boolean
+  onProjectSelect?: (projectName: string) => void
+  onToggle: () => void
+  onUserSelect?: (userName: string) => void
   renderTemplate: (entry: OperationsLogEntry) => null | string
 }
 
@@ -54,12 +85,23 @@ export function RecentActivity({
   onUserSelect,
 }: RecentActivityProps) {
   const { templates } = usePluginOpsLogTemplates()
+  const [filter, setFilter] = useState<ActivityFilterValue>(ALL_ACTORS)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  const sections = useMemo(
+    () =>
+      sectionByDay(filterEntries(activities ?? [], filter), {
+        keyOf: entryClusterKey,
+        timeOf: entryTimeMs,
+        windowMs: ACTIVITY_GROUP_WINDOW_MS,
+      }),
+    [activities, filter],
+  )
+
   if (isLoading) {
     return (
       <Card className="p-6">
-        {!hideHeading && (
-          <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
-        )}
+        <Heading hidden={hideHeading} />
         <ActivityFeedSkeleton rows={5} />
       </Card>
     )
@@ -68,9 +110,7 @@ export function RecentActivity({
   if (!activities || activities.length === 0) {
     return (
       <Card className="p-6">
-        {!hideHeading && (
-          <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
-        )}
+        <Heading hidden={hideHeading} />
         <div className="text-muted-foreground py-8 text-center">
           No recent activity
         </div>
@@ -78,67 +118,64 @@ export function RecentActivity({
     )
   }
 
-  const activityList = (
-    <div className="max-h-[calc(100vh-380px)] space-y-4 overflow-y-auto pr-2">
-      {activities.map((activity) => (
-        <div
-          className="border-tertiary border-b pb-4 last:border-0 last:pb-0"
-          key={activityKey(activity)}
-        >
-          <div className="flex gap-3">
-            <UserIdentity
-              displayName={activity.display_name}
-              email={activity.email_address}
-              hideName
-              linkToProfile={false}
-              size="floating"
-            />
+  const toggle = (key: string) =>
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
 
-            <div className="min-w-0 flex-1">
-              <ActivityLine
-                activity={activity}
-                onProjectSelect={onProjectSelect}
-                onUserSelect={onUserSelect}
-                renderTemplate={(opsEntry) =>
-                  renderActivityTemplate(opsEntry, templates)
-                }
-              />
-
-              <p className="text-tertiary mt-1 text-xs">
-                {formatRelativeDate(
-                  activity.occurred_at ||
-                    (activity.type === 'ProjectFeedEntry'
-                      ? activity.when
-                      : undefined),
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {isLoadingMore && <ActivityFeedSkeleton rows={3} />}
-      {/* Load More Button */}
-      {onLoadMore && !isLoadingMore && (
-        <div className="pt-4 text-center">
-          <Button
-            className="text-info hover:text-info/80 h-auto p-0 text-sm transition-colors"
-            onClick={onLoadMore}
-            variant="link"
-          >
-            Load more activity
-          </Button>
-        </div>
-      )}
-    </div>
-  )
+  const renderTemplate = (opsEntry: OperationsLogEntry) =>
+    renderActivityTemplate(opsEntry, templates)
 
   return (
     <Card className="p-6">
-      {!hideHeading && (
-        <h2 className="text-primary mb-6 text-xl">Recent Activity</h2>
-      )}
-      {activityList}
+      <div className="mb-1 flex items-center justify-between">
+        <Heading hidden={hideHeading} />
+        <ActivityFilter onChange={setFilter} value={filter} />
+      </div>
+
+      <div className="max-h-[calc(100vh-380px)] overflow-y-auto pr-2">
+        {sections.length === 0 ? (
+          <div className="text-tertiary py-8 text-center text-sm">
+            No activity matches the filter
+          </div>
+        ) : (
+          sections.map((section) => (
+            <div key={section.key}>
+              <div className="text-tertiary pt-3.5 pb-1 text-[11.5px] font-semibold tracking-wider uppercase">
+                {section.label}
+              </div>
+              <div className="relative">
+                <div
+                  className="bg-tertiary absolute w-0.5 rounded"
+                  style={{ bottom: 22, left: 5, top: 22 }}
+                />
+                {section.clusters.map((cluster) => (
+                  <ClusterRow
+                    cluster={cluster}
+                    expanded={isExpanded(cluster, expanded)}
+                    key={cluster.key}
+                    onProjectSelect={onProjectSelect}
+                    onToggle={() => toggle(cluster.key)}
+                    onUserSelect={onUserSelect}
+                    renderTemplate={renderTemplate}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+
+        {isLoadingMore && <ActivityFeedSkeleton rows={3} />}
+        {onLoadMore && !isLoadingMore && (
+          <div className="pt-4 text-center">
+            <Button
+              className="text-info hover:text-info/80 h-auto p-0 text-sm transition-colors"
+              onClick={onLoadMore}
+              variant="link"
+            >
+              Load more activity
+            </Button>
+          </div>
+        )}
+      </div>
     </Card>
   )
 }
@@ -160,13 +197,6 @@ function ActivityFeedSkeleton({ rows }: { rows: number }) {
       ))}
     </div>
   )
-}
-
-function activityKey(activity: ActivityFeedEntry): string {
-  if (activity.type === 'OperationsLogEntry') {
-    return `ops-${activity.id}`
-  }
-  return `feed-${activity.project_id}-${activity.what}-${activity.when ?? activity.occurred_at ?? ''}`
 }
 
 function ActivityLine({
@@ -212,6 +242,90 @@ function ActivityLine({
       userButton={userButton}
     />
   )
+}
+
+function ClusterRow({
+  cluster,
+  expanded,
+  onProjectSelect,
+  onToggle,
+  onUserSelect,
+  renderTemplate,
+}: ClusterRowProps) {
+  const { isGroup, lead, meta, tone } = clusterView(cluster)
+
+  return (
+    <div className="border-tertiary relative z-1 border-b py-3 last:border-0">
+      <div className="grid grid-cols-[26px_1fr] gap-x-3">
+        <StatusDot tone={tone} />
+        <div
+          className={`flex items-start gap-2.5 ${isGroup ? 'cursor-pointer' : ''}`}
+          {...expandableRowProps(isGroup, expanded, onToggle)}
+        >
+          <UserIdentity
+            displayName={lead.display_name}
+            email={lead.email_address}
+            hideName
+            linkToProfile={false}
+            size="floating"
+          />
+          <div className="min-w-0 flex-1">
+            {isGroup ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[13.5px] font-semibold">
+                    {lead.display_name}
+                  </span>
+                  <StatusChip label={meta.statusLabel} tone={tone} />
+                  <span className="bg-secondary text-secondary rounded-full px-2 font-mono text-[11px]">
+                    {cluster.items.length}
+                  </span>
+                </div>
+                <div className="text-tertiary mt-0.5 text-[12.5px]">
+                  {meta.summary}
+                </div>
+              </>
+            ) : (
+              <ActivityLine
+                activity={lead}
+                onProjectSelect={onProjectSelect}
+                onUserSelect={onUserSelect}
+                renderTemplate={renderTemplate}
+              />
+            )}
+          </div>
+          <div className="mt-0.5 flex shrink-0 items-center gap-2.5">
+            <RelativeTime
+              className="text-tertiary font-mono text-[11.5px] whitespace-nowrap"
+              value={entryTimeIso(lead)}
+              variant="short"
+            />
+            {isGroup && (
+              <ChevronRight
+                className="text-tertiary size-3.75 transition-transform"
+                style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+      {isGroup && expanded && <ClusterEvents items={cluster.items} />}
+    </div>
+  )
+}
+
+function Heading({ hidden }: { hidden?: boolean }) {
+  if (hidden) return null
+  return <h2 className="text-primary text-xl">Recent Activity</h2>
+}
+
+/** Danger clusters auto-expand (mockup's autoExpandFailed) until toggled. */
+function isExpanded(
+  cluster: ActivityCluster<ActivityFeedEntry>,
+  state: Record<string, boolean>,
+): boolean {
+  if (cluster.key in state) return state[cluster.key]
+  return cluster.items.length > 1 && clusterView(cluster).tone === 'danger'
 }
 
 function OpsLogActivityLine({
