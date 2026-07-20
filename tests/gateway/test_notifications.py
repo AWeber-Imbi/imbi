@@ -1077,6 +1077,7 @@ class ProcessNotificationTests(helpers.TestCase):
         *,
         identifier_selector: str = '/repo/id',
         user_subject_selector: str | None = None,
+        user_type_selector: str | None = None,
         identity_plugin_slug: str | None = None,
         event_type_selector: str | None = None,
     ) -> None:
@@ -1093,6 +1094,7 @@ class ProcessNotificationTests(helpers.TestCase):
             ' CREATE (w)-[:IMPLEMENTED_BY {{'
             'identifier_selector: {sel},'
             ' user_subject_selector: {uss},'
+            ' user_type_selector: {uts},'
             ' identity_plugin_slug: {ips},'
             ' event_type_selector: {ets}'
             '}}]->(intg) RETURN w',
@@ -1101,6 +1103,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 'islug': self.integration_slug,
                 'sel': identifier_selector,
                 'uss': user_subject_selector,
+                'uts': user_type_selector,
                 'ips': identity_plugin_slug,
                 'ets': event_type_selector,
             },
@@ -1221,6 +1224,82 @@ class ProcessNotificationTests(helpers.TestCase):
         mock_lookup.assert_not_awaited()
         ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
         self.assertIsNone(ctx.actor_user_id)
+
+    async def test_bot_sender_skips_identity_lookup(self) -> None:
+        # A Bot actor (per user_type_selector) is never an Imbi user, so
+        # the /users/by-identity lookup is skipped entirely.
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            user_type_selector='/sender/type',
+        )
+        body = {
+            'repo': {'id': self.ext_id},
+            'sender': {'id': 12345, 'type': 'Bot'},
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+
+    async def test_non_bot_sender_resolves_with_type_selector(self) -> None:
+        # A non-bot type (e.g. "User") does not suppress the lookup; the
+        # subject still resolves to an Imbi user.
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            user_type_selector='/sender/type',
+        )
+        body = {
+            'repo': {'id': self.ext_id},
+            'sender': {'id': 12345, 'type': 'User'},
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with(self.integration_slug, '12345')
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual('alice@example.com', ctx.actor_user_id)
+
+    async def test_unresolvable_type_selector_falls_through(self) -> None:
+        # A user_type_selector that does not resolve is treated as
+        # "not a bot", so attribution proceeds via the subject.
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            user_type_selector='/sender/type',
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with(self.integration_slug, '12345')
 
     async def test_no_identity_candidate_when_capability_disabled(
         self,

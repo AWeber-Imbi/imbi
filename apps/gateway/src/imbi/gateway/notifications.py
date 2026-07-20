@@ -312,6 +312,7 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
     user_id = await _resolve_user_id(
         body=body,
         user_subject_selector=sel.get('user_subject_selector'),
+        user_type_selector=sel.get('user_type_selector'),
         candidate_identity_slugs=identity_candidates,
         webhook_id=webhook_id,
     )
@@ -866,6 +867,42 @@ def _make_user_resolver(
     return _resolve
 
 
+def _actor_is_bot(
+    body: object,
+    user_type_selector: str | None,
+    *,
+    webhook_id: str | None = None,
+) -> bool:
+    """Return ``True`` when the delivery's actor is a bot account.
+
+    ``user_type_selector`` is an optional JSON pointer on the
+    ``IMPLEMENTED_BY`` edge that resolves to the sender's account type
+    (e.g. GitHub's ``/sender/type``, which is ``"Bot"`` for app/bot
+    actors). When it resolves to ``"Bot"`` (case-insensitive) the caller
+    skips the ``/users/by-identity`` lookup: bots are never Imbi users,
+    so the lookup only ever 404s. A missing selector, an unresolvable
+    pointer, or any non-bot value returns ``False`` so attribution
+    proceeds normally.
+    """
+    if not user_type_selector:
+        return False
+    try:
+        value = jsonpointer.JsonPointer(user_type_selector).resolve(body)
+    except jsonpointer.JsonPointerException:
+        LOGGER.debug(
+            'user_type_selector %r did not resolve in payload'
+            ' for webhook_id=%r',
+            user_type_selector,
+            webhook_id,
+            extra={
+                'webhook_id': webhook_id,
+                'user_type_selector': user_type_selector,
+            },
+        )
+        return False
+    return isinstance(value, str) and value.casefold() == 'bot'
+
+
 def _extract_subject(
     body: object,
     user_subject_selector: str | None,
@@ -897,18 +934,28 @@ async def _resolve_user_id(
     *,
     body: object,
     user_subject_selector: str | None,
+    user_type_selector: str | None,
     candidate_identity_slugs: 'abc.Sequence[str]',
     webhook_id: str | None = None,
 ) -> str | None:
     """Resolve the Imbi ``user_id`` for a webhook delivery.
 
-    Returns ``None`` when the ``IMPLEMENTED_BY`` edge does not declare a
-    ``user_subject_selector``, the selector does not resolve to a value,
-    there is no identity Integration candidate, or no candidate yields a
-    match. ``candidate_identity_slugs`` is resolved by the caller (see
+    Returns ``None`` when the delivery's actor is a bot (per
+    ``user_type_selector`` -- see :func:`_actor_is_bot`), the
+    ``IMPLEMENTED_BY`` edge does not declare a ``user_subject_selector``,
+    the selector does not resolve to a value, there is no identity
+    Integration candidate, or no candidate yields a match.
+    ``candidate_identity_slugs`` is resolved by the caller (see
     :func:`_identity_candidate_slugs`) so this function performs no
     registry filtering of its own.
     """
+    if _actor_is_bot(body, user_type_selector, webhook_id=webhook_id):
+        LOGGER.debug(
+            'Skipping identity lookup for bot actor (webhook_id=%r)',
+            webhook_id,
+            extra={'webhook_id': webhook_id},
+        )
+        return None
     subject = _extract_subject(
         body, user_subject_selector, webhook_id=webhook_id
     )
