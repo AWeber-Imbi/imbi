@@ -2880,7 +2880,15 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Update Project Service
+         * @description Update an existing EXISTS_IN link's identifier and URLs.
+         *
+         *     The edge must already exist; the ``service_slug`` path segment is
+         *     authoritative for which link is updated. Clearing ``dashboard_url``
+         *     (empty/absent) removes the mirrored ``Project.links`` entry.
+         */
+        put: operations["update_project_service_organizations__org_slug__projects__project_id__services__service_slug__put"];
         post?: never;
         /**
          * Delete Project Service
@@ -16469,6 +16477,43 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExistsInResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_service_organizations__org_slug__projects__project_id__services__service_slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                service_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExistsInCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
