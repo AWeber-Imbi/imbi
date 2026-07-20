@@ -1,6 +1,6 @@
 [project]
 name = "imbi-assistant"
-version = "2.15.0"
+version = "2.15.1"
 description = "Imbi AI assistant service"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -11,7 +11,7 @@ dependencies = [
   "fastapi>=0.135.1",
   "fastmcp>=2.0.0",
   "httpx>=0.28.1",
-  "imbi-common[databases,mcp,server]==2.15.0",
+  "imbi-common[databases,mcp,server]==2.15.1",
   "pydantic~=2.12",
   "sentry-sdk>=2.48.0",
 ]
