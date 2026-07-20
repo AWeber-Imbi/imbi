@@ -1,11 +1,12 @@
 """Imbi PagerDuty plugin.
 
 A single :class:`~imbi_common.plugins.base.Plugin` declaring one
-PagerDuty Integration with three capabilities: ``lifecycle`` (provision
+PagerDuty Integration with four capabilities: ``lifecycle`` (provision
 and maintain a service), ``incidents`` (live-query the Incidents tab),
-and ``webhook-actions`` (an empty v1 catalog). The REST API key
-credential and the escalation-policy / gateway options are declared once
-at the Integration level and shared by every capability.
+``webhook-actions`` (an empty v1 catalog), and ``analysis`` (the project
+doctor). The REST API key credential and the escalation-policy / gateway
+options are declared once at the Integration level and shared by every
+capability.
 """
 
 from imbi_common.plugins.base import (
@@ -16,6 +17,7 @@ from imbi_common.plugins.base import (
     PluginOption,
 )
 
+from imbi_plugin_pagerduty.doctor import PagerDutyDoctor
 from imbi_plugin_pagerduty.incidents import PagerDutyIncidents
 from imbi_plugin_pagerduty.lifecycle import PagerDutyLifecycle
 from imbi_plugin_pagerduty.webhook import PagerDutyWebhookActions
@@ -118,6 +120,16 @@ class PagerDutyPlugin(Plugin):
                 ),
                 handler=PagerDutyWebhookActions,
             ),
+            Capability(
+                kind='analysis',
+                label='Project doctor',
+                description=(
+                    "Validate the project's PagerDuty service link "
+                    '(EXISTS_IN edge) against the live API and offer a '
+                    'one-click search-and-create repair.'
+                ),
+                handler=PagerDutyDoctor,
+            ),
         ],
     )
 
@@ -126,6 +138,7 @@ PLUGIN = PagerDutyPlugin
 
 __all__ = [
     'PLUGIN',
+    'PagerDutyDoctor',
     'PagerDutyIncidents',
     'PagerDutyLifecycle',
     'PagerDutyPlugin',

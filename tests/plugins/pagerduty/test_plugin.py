@@ -6,6 +6,7 @@ from imbi_common.plugins.base import Plugin
 
 import imbi_plugin_pagerduty
 from imbi_plugin_pagerduty import PagerDutyPlugin
+from imbi_plugin_pagerduty.doctor import PagerDutyDoctor
 from imbi_plugin_pagerduty.incidents import PagerDutyIncidents
 from imbi_plugin_pagerduty.lifecycle import PagerDutyLifecycle
 from imbi_plugin_pagerduty.webhook import PagerDutyWebhookActions
@@ -41,8 +42,13 @@ class PluginTestCase(unittest.TestCase):
     def test_capability_kinds(self) -> None:
         kinds = [c.kind for c in PagerDutyPlugin.manifest.capabilities]
         self.assertCountEqual(
-            kinds, ['lifecycle', 'incidents', 'webhook-actions']
+            kinds, ['lifecycle', 'incidents', 'webhook-actions', 'analysis']
         )
+
+    def test_analysis_capability(self) -> None:
+        capability = PagerDutyPlugin.manifest.get_capability('analysis')
+        assert capability is not None
+        self.assertIs(capability.handler, PagerDutyDoctor)
 
     def test_lifecycle_capability(self) -> None:
         capability = PagerDutyPlugin.manifest.get_capability('lifecycle')
