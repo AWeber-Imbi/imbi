@@ -103,7 +103,13 @@ async def create_service(
     response = await client.post('/services', json=body)
     response.raise_for_status()
     payload: dict[str, typing.Any] = response.json()
-    return payload.get('service') or {}
+    service = as_dict(payload.get('service'))
+    if not service.get('id'):
+        # A malformed/empty create response would otherwise write an
+        # EXISTS_IN edge with an empty id (canonical_url .../services/),
+        # corrupting the binding for both lifecycle and doctor callers.
+        raise ValueError('PagerDuty did not return a created service id')
+    return service
 
 
 async def provision_subscription(

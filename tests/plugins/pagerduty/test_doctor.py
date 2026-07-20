@@ -11,7 +11,11 @@ from imbi_common.plugins.base import (
 )
 from imbi_common.plugins.errors import PluginRemediationNotSupported
 
-from imbi_plugin_pagerduty.doctor import _REPAIR_EDGE, PagerDutyDoctor
+from imbi_plugin_pagerduty.doctor import (
+    _RECONCILE_EDGE,
+    _REPAIR_EDGE,
+    PagerDutyDoctor,
+)
 
 _SLUG = 'pagerduty'
 _CREDS = {'api_key': 'k'}
@@ -35,12 +39,14 @@ def _ctx(
     links: dict[str, str] | None = None,
     options: dict[str, object] | None = None,
     team_slug: str | None = 'platform',
+    previous_project_slug: str | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
         project_slug='demo',
         org_slug='org',
         team_slug=team_slug,
+        previous_project_slug=previous_project_slug,
         integration_slug=integration_slug,
         integration_options=options
         if options is not None
@@ -156,6 +162,25 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(finding.remediation.destructive)
 
     @respx.mock
+    async def test_no_edge_service_found_by_previous_slug(self) -> None:
+        # A service under the pre-rename slug must be found at analysis
+        # time (matching remediate), so the non-destructive reconcile
+        # offer is surfaced rather than a destructive create.
+        respx.get('https://api.pagerduty.com/services').mock(
+            return_value=httpx.Response(
+                200, json={'services': [{**_SERVICE, 'name': 'old-name'}]}
+            )
+        )
+        results = await PagerDutyDoctor().analyze(
+            _ctx(previous_project_slug='old-name'), _CREDS
+        )
+        finding = _by_slug(results)['exists-in']
+        self.assertEqual(finding.status, 'warn')
+        assert finding.remediation is not None
+        self.assertEqual(finding.remediation.id, _RECONCILE_EDGE)
+        self.assertFalse(finding.remediation.destructive)
+
+    @respx.mock
     async def test_no_edge_not_found_offers_create(self) -> None:
         respx.get('https://api.pagerduty.com/services').mock(
             return_value=httpx.Response(200, json={'services': []})
@@ -265,6 +290,36 @@ class RemediateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(create.called)
         assert ctx.service_writeback is not None
         self.assertEqual(ctx.service_writeback.identifier, _SVC_ID)
+
+    @respx.mock
+    async def test_reconcile_only_missing_service_fails_fast(self) -> None:
+        # The non-destructive reconcile offer must never create a service:
+        # if it vanished since analysis, remediation fails rather than
+        # recreating it without the create confirmation.
+        respx.get('https://api.pagerduty.com/services').mock(
+            return_value=httpx.Response(200, json={'services': []})
+        )
+        create = respx.post('https://api.pagerduty.com/services')
+        result = await PagerDutyDoctor().remediate(
+            _ctx(), _CREDS, _RECONCILE_EDGE
+        )
+        self.assertEqual(result.status, 'failed')
+        self.assertFalse(create.called)
+
+    @respx.mock
+    async def test_create_empty_service_body_failed(self) -> None:
+        # A malformed create response (no service id) must not persist a
+        # writeback with an empty canonical URL.
+        respx.get('https://api.pagerduty.com/services').mock(
+            return_value=httpx.Response(200, json={'services': []})
+        )
+        respx.post('https://api.pagerduty.com/services').mock(
+            return_value=httpx.Response(201, json={})
+        )
+        ctx = _ctx()
+        result = await PagerDutyDoctor().remediate(ctx, _CREDS, _REPAIR_EDGE)
+        self.assertEqual(result.status, 'failed')
+        self.assertIsNone(ctx.service_writeback)
 
     @respx.mock
     async def test_no_edge_no_policy_failed(self) -> None:

@@ -37,11 +37,16 @@ from imbi_plugin_pagerduty import _client, _provisioning, _services
 
 LOGGER = logging.getLogger(__name__)
 
-#: The single remediation offered: search PagerDuty for the service and,
-#: if absent, create it, then write the EXISTS_IN edge + dashboard link.
-#: The same id also reconciles a drifted edge (identifier / canonical URL /
-#: dashboard link) against a live service.
+#: Create-capable remediation: search PagerDuty for the service and, if
+#: absent, create it, then write the EXISTS_IN edge + dashboard link. This
+#: is the confirm-gated, destructive offer.
 _REPAIR_EDGE = 'repair-edge'
+
+#: Reconcile-only remediation: re-point the EXISTS_IN edge / dashboard link
+#: at a service that already exists. Never creates a service — if the
+#: service has vanished since analysis, remediation fails fast rather than
+#: silently recreating it without the create confirmation.
+_RECONCILE_EDGE = 'reconcile-edge'
 
 _LINK_KEY = _services.SERVICE_LINK_KEY
 
@@ -79,7 +84,7 @@ def _create_offer() -> RemediationOffer:
 def _reconcile_offer() -> RemediationOffer:
     """A non-destructive offer that only reconciles Imbi state."""
     return RemediationOffer(
-        id=_REPAIR_EDGE,
+        id=_RECONCILE_EDGE,
         label='Repair the PagerDuty service link',
     )
 
@@ -291,9 +296,17 @@ class PagerDutyDoctor(AnalysisCapability):
         client: httpx.AsyncClient,
         policy_id: str | None,
     ) -> list[AnalysisResultItem]:
-        existing = await _services.find_service_by_name(
-            client, ctx.project_slug
-        )
+        # Match _remediate's lookup: a service may live under the prior
+        # slug mid-rename, in which case remediate() links it without
+        # creating anything — so analysis must not offer a destructive
+        # create here.
+        existing = None
+        for name in (ctx.project_slug, ctx.previous_project_slug):
+            if not name:
+                continue
+            existing = await _services.find_service_by_name(client, name)
+            if existing is not None:
+                break
         if existing is not None:
             return [
                 _item(
@@ -342,7 +355,7 @@ class PagerDutyDoctor(AnalysisCapability):
         service. Reuses :func:`_provisioning.provision_service` for the
         create path so a doctor-created service matches a lifecycle one.
         """
-        if remediation_id != _REPAIR_EDGE:
+        if remediation_id not in (_REPAIR_EDGE, _RECONCILE_EDGE):
             return await super().remediate(ctx, credentials, remediation_id)
         slug = ctx.integration_slug
         if slug is None:
@@ -350,9 +363,12 @@ class PagerDutyDoctor(AnalysisCapability):
                 status='failed',
                 message='Capability is not bound to an Integration.',
             )
+        allow_create = remediation_id == _REPAIR_EDGE
         try:
             async with _client.client(credentials) as client:
-                return await self._remediate(ctx, client)
+                return await self._remediate(
+                    ctx, client, allow_create=allow_create
+                )
         except ValueError as exc:
             return RemediationResult(status='failed', message=str(exc))
         except PluginRateLimited as exc:
@@ -372,7 +388,11 @@ class PagerDutyDoctor(AnalysisCapability):
             )
 
     async def _remediate(
-        self, ctx: PluginContext, client: httpx.AsyncClient
+        self,
+        ctx: PluginContext,
+        client: httpx.AsyncClient,
+        *,
+        allow_create: bool,
     ) -> RemediationResult:
         connection = _find_connection(
             ctx, typing.cast(str, ctx.integration_slug)
@@ -405,6 +425,17 @@ class PagerDutyDoctor(AnalysisCapability):
 
         # 3. Still nothing — create it (needs a mapped escalation policy).
         if service is None:
+            if not allow_create:
+                # A reconcile-only offer was accepted, but the service has
+                # since vanished. Do not recreate without the create
+                # confirmation — fail fast and let analysis re-offer.
+                return RemediationResult(
+                    status='failed',
+                    message=(
+                        'The PagerDuty service no longer exists; re-run the '
+                        'analysis to create and link a new one.'
+                    ),
+                )
             policy_id = _provisioning.escalation_policy_id(ctx, ctx.team_slug)
             if not policy_id:
                 return RemediationResult(
