@@ -116,7 +116,16 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
     },
   })
 
-  const resyncMutation = useProjectDeploymentResync(orgSlug, project.id)
+  // Invalidates the project + currentReleases + operationsLog query keys
+  // once the background backfill completes so badges and deploy widgets
+  // refresh.
+  const resync = useProjectDeploymentResync(orgSlug, project.id, () => {
+    for (const key of ['project', 'currentReleases', 'operationsLog']) {
+      void queryClient.invalidateQueries({
+        queryKey: [key, orgSlug, project.id],
+      })
+    }
+  })
 
   // Shares the deployment:write gate: the backend requires a GitHub
   // deployment plugin (eligibility) plus a connected commit-sync plugin.
@@ -194,12 +203,12 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
             )}
             {canResyncDeployments && (
               <Button
-                disabled={resyncMutation.isPending}
-                onClick={() => resyncMutation.mutate()}
+                disabled={resync.isSyncing}
+                onClick={() => resync.sync()}
                 size="sm"
                 variant="outline"
               >
-                {resyncMutation.isPending ? 'Syncing...' : 'Sync Deployments'}
+                {resync.isSyncing ? 'Syncing...' : 'Sync Deployments'}
               </Button>
             )}
             {canResyncDeployments && (

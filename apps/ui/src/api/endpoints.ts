@@ -2163,36 +2163,57 @@ export const getDeploymentRunStatus = (
 
 // Deployment resync
 
-export interface DeploymentResyncError {
-  detail: string
-  environment?: null | string
-  project_id?: null | string
+export interface DeploymentResyncEnqueueResponse {
+  enqueued: boolean
 }
 
-export interface DeploymentResyncSummary {
-  errors: DeploymentResyncError[]
-  events_recorded: number
-  events_skipped: number
-  observed: number
-  projects: number
-  releases_created: number
-  releases_updated: number
+export type DeploymentSyncState =
+  | 'failed'
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'success'
+
+export interface DeploymentSyncStatus {
+  error: null | string
+  errors: null | number
+  events_recorded: null | number
+  last_synced_at: null | string
+  observed: null | number
+  releases_created: null | number
+  releases_updated: null | number
+  requested_by: null | string
+  status: DeploymentSyncState
 }
 
+// Enqueue a deployment resync (background job). 202 + {enqueued} —
+// false when debounced or queueing is unavailable. Poll
+// getProjectDeploymentSyncStatus for the outcome.
 export const resyncProjectDeployments = (
   orgSlug: string,
   projectId: string,
   opts: { limit?: number; source?: string } = {},
-): Promise<DeploymentResyncSummary> => {
+): Promise<DeploymentResyncEnqueueResponse> => {
   const params = new URLSearchParams()
   if (opts.source) params.set('source', opts.source)
   if (opts.limit != null) params.set('limit', String(opts.limit))
   const query = params.toString()
   const search = query ? `?${query}` : ''
-  return apiClient.post<DeploymentResyncSummary>(
+  return apiClient.post<DeploymentResyncEnqueueResponse>(
     `${deploymentsBase(orgSlug, projectId)}/resync${search}`,
   )
 }
+
+export const getProjectDeploymentSyncStatus = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<DeploymentSyncStatus> =>
+  apiClient.get<DeploymentSyncStatus>(
+    `${deploymentsBase(orgSlug, projectId)}/sync-status`,
+    undefined,
+    signal,
+  )
 
 // Lifecycle push-sync
 

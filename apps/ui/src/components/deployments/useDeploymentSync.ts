@@ -1,15 +1,12 @@
 // Sidebar "sync" action: refreshes everything the Deployments tab reads
-// from imbi's own stores — the ClickHouse commit/tag history (background
-// job + poll, via useCommitSync) and the release/deployment state
-// resynced from the remote's deployment records.
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+// from imbi's own stores — the ClickHouse commit/tag history and the
+// release/deployment state resynced from the remote's deployment
+// records. Both arms are background jobs (enqueue + status poll).
+import { useQueryClient } from '@tanstack/react-query'
 
-import { resyncProjectDeployments } from '@/api/endpoints'
 import { useAuth } from '@/hooks/useAuth'
 import { useCommitSync } from '@/hooks/useCommitSync'
-import { extractApiErrorDetail } from '@/lib/apiError'
-import { DEEP_RESYNC_LIMIT } from '@/lib/resync'
+import { useProjectDeploymentResync } from '@/hooks/useDeploymentResync'
 import type { UserResponse } from '@/types'
 
 const DATA_KEYS = ['recentCommits', 'releaseHistory', 'currentReleases']
@@ -32,34 +29,13 @@ export function useDeploymentSync(orgSlug: string, projectId: string) {
     commitSyncAllowed,
     invalidate,
   )
-  const resyncMutation = useMutation({
-    mutationFn: () =>
-      resyncProjectDeployments(orgSlug, projectId, {
-        limit: DEEP_RESYNC_LIMIT,
-      }),
-    onError: (err) =>
-      toast.error(extractApiErrorDetail(err) ?? 'Failed to resync releases'),
-    onSuccess: (summary) => {
-      invalidate()
-      const releases = summary.releases_created + summary.releases_updated
-      toast.success(
-        `Releases resynced — ${releases} release(s) and ` +
-          `${summary.events_recorded} event(s) updated`,
-      )
-      if (summary.errors.length > 0) {
-        toast.warning(
-          `Release resync finished with ${summary.errors.length} error(s)`,
-          { description: summary.errors[0]?.detail },
-        )
-      }
-    },
-  })
+  const resync = useProjectDeploymentResync(orgSlug, projectId, invalidate)
 
   return {
-    isSyncing: commitSync.isSyncing || resyncMutation.isPending,
+    isSyncing: commitSync.isSyncing || resync.isSyncing,
     sync: () => {
       if (commitSyncAllowed) commitSync.sync()
-      resyncMutation.mutate()
+      resync.sync()
     },
   }
 }
