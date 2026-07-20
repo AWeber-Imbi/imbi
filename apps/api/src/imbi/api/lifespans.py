@@ -15,6 +15,7 @@ from imbi_common.llm import AnthropicClient
 
 from imbi_api import openapi
 from imbi_api.commit_sync import queue as commit_sync_queue
+from imbi_api.deployment_sync import queue as deployment_sync_queue
 from imbi_api.email.client import EmailClient
 from imbi_api.email.templates import TemplateManager
 from imbi_api.identity import sweeper as identity_sweeper
@@ -197,6 +198,43 @@ async def pr_sync_worker_hook() -> abc.AsyncGenerator[None]:
         except Exception:  # noqa: BLE001
             LOGGER.warning(
                 'PR-sync worker task exited with error', exc_info=True
+            )
+
+
+@contextlib.asynccontextmanager
+async def deployment_sync_worker_hook() -> abc.AsyncGenerator[None]:
+    """Run the on-demand deployment-resync consumer loop."""
+    try:
+        client = valkey.get_client()
+    except RuntimeError:
+        LOGGER.warning(
+            'Valkey unavailable; deployment-sync worker not started'
+        )
+        yield None
+        return
+    if _graph is None:
+        LOGGER.warning('Graph not ready; deployment-sync worker not started')
+        yield None
+        return
+    stop = asyncio.Event()
+    LOGGER.info('Deployment-sync worker starting')
+    consumer_task = asyncio.create_task(
+        deployment_sync_queue.consume_deployment_sync(
+            client, _graph, stop=stop
+        )
+    )
+    try:
+        yield None
+    finally:
+        stop.set()
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Deployment-sync worker task exited with error', exc_info=True
             )
 
 

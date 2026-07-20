@@ -27,6 +27,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.score_worker_hook,
             lifespans.commit_sync_worker_hook,
             lifespans.pr_sync_worker_hook,
+            lifespans.deployment_sync_worker_hook,
             lifespans.maintenance_worker_hook,
             lifespans.identity_refresh_hook,
         ),

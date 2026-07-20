@@ -39,6 +39,8 @@ from imbi_common.plugins.base import (
 )
 
 from imbi_api.auth import permissions
+from imbi_api.deployment_sync import queue as deployment_sync_queue
+from imbi_api.deployment_sync import service as deployment_sync_service
 from imbi_api.endpoints._helpers import (
     lookup_project_links,
     lookup_project_slugs,
@@ -58,6 +60,7 @@ from imbi_api.identity.host_integration import (
 from imbi_api.llm.dependencies import InjectAnthropicClient
 from imbi_api.plugins import call_with_timeout
 from imbi_api.plugins.resolution import ResolvedCapability, resolve_capability
+from imbi_api.scoring import OptionalValkeyClient
 
 LOGGER = logging.getLogger(__name__)
 
@@ -596,6 +599,29 @@ def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
+def _require_deployment_sync_support(resolved: ResolvedCapability) -> None:
+    """Raise 400 unless the plugin opts into deployment resync.
+
+    Shared by the enqueue endpoint and the worker-side
+    :func:`resync_for_project` so the gate cannot silently diverge.
+    """
+    deployment_capability = resolved.entry.manifest.get_capability(
+        'deployment'
+    )
+    supports_deployment_sync = bool(
+        deployment_capability
+        and deployment_capability.hints.get('supports_deployment_sync')
+    )
+    if not supports_deployment_sync:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Plugin {resolved.plugin_slug!r} does not support '
+                'deployment resync.'
+            ),
+        )
+
+
 def _resolve_credentials(
     ctx: PluginContext, fallback: dict[str, str]
 ) -> dict[str, str]:
@@ -952,34 +978,22 @@ async def resync_for_project(
         source=source,
         best_effort_identity=True,
     )
-    deployment_capability = resolved.entry.manifest.get_capability(
-        'deployment'
-    )
-    supports_deployment_sync = bool(
-        deployment_capability
-        and deployment_capability.hints.get('supports_deployment_sync')
-    )
-    if not supports_deployment_sync:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=(
-                f'Plugin {resolved.plugin_slug!r} does not support '
-                'deployment resync.'
-            ),
-        )
+    _require_deployment_sync_support(resolved)
     environments = await _load_resync_environments(db, project_id=project_id)
     if not environments:
         return summary
     handler = _handler(resolved)
 
     async def _fetch(c: PluginContext) -> list[RemoteDeployment]:
-        return await call_with_timeout(
-            handler.list_recent_deployments(
-                c,
-                _resolve_credentials(c, credentials),
-                environments=environments,
-                limit=limit,
-            )
+        # No per-call plugin timeout: a deep backfill (limit=100 across
+        # several environments) legitimately takes minutes of remote API
+        # calls, and every caller is a background worker (the
+        # deployment-sync queue or the maintenance sweep).
+        return await handler.list_recent_deployments(
+            c,
+            _resolve_credentials(c, credentials),
+            environments=environments,
+            limit=limit,
         )
 
     try:
@@ -1353,11 +1367,18 @@ async def trigger_deployment(
     )
 
 
-@project_deployments_router.post('/resync')
+class DeploymentResyncEnqueueResponse(pydantic.BaseModel):
+    """Result of enqueueing a deployment resync."""
+
+    enqueued: bool
+
+
+@project_deployments_router.post('/resync', status_code=202)
 async def resync_project_deployments(
     org_slug: str,
     project_id: str,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -1366,15 +1387,18 @@ async def resync_project_deployments(
     ],
     source: str | None = None,
     limit: int = fastapi.Query(default=1, ge=1, le=100),
-) -> ResyncSummary:
-    """Backfill Release nodes + DEPLOYED_TO edges from the remote.
+) -> DeploymentResyncEnqueueResponse:
+    """Enqueue a backfill of Release nodes + DEPLOYED_TO edges.
 
-    Asks the project's deployment plugin for the most recent ``limit``
-    deployments per environment, upserts any missing ``Release`` nodes,
-    and dedup-appends ``DeploymentEvent`` rows so the badges advance
-    even when the gateway webhook flow has lapsed.  No ``operations_log``
-    audit row is written -- the ``DEPLOYED_TO`` edge already carries the
-    original creator via ``DeploymentEvent.performed_by``.
+    The worker asks the project's deployment plugin for the most recent
+    ``limit`` deployments per environment, upserts any missing
+    ``Release`` nodes, and dedup-appends ``DeploymentEvent`` rows so the
+    badges advance even when the gateway webhook flow has lapsed.  A
+    deep backfill makes hundreds of remote API calls, so the work runs
+    as a Valkey-stream job; poll ``GET /deployments/sync-status`` for
+    the outcome.  No ``operations_log`` audit row is written -- the
+    ``DEPLOYED_TO`` edge already carries the original creator via
+    ``DeploymentEvent.performed_by``.
 
     ``limit`` defaults to 1 (cheap webhook-lapse catch-up).  Raise it
     (up to 100, the GitHub per-page ceiling) for a deeper backfill that
@@ -1383,16 +1407,52 @@ async def resync_project_deployments(
 
     Surfaces 400 when the project's deployment plugin does not
     advertise ``supports_deployment_sync`` -- callers should hide the
-    button using the plugin manifest flag.
+    button using the plugin manifest flag.  Returns ``enqueued=False``
+    when the job was debounced or Valkey is unavailable.
     """
-    return await resync_for_project(
-        db,
-        org_slug=org_slug,
-        project_id=project_id,
-        auth=auth,
-        source=source,
-        limit=limit,
+    resolved = await resolve_capability(db, project_id, 'deployment', source)
+    _require_deployment_sync_support(resolved)
+    requested_by = auth.principal_name
+    # Captured before the XADD: every worker write for this job lands
+    # after the enqueue, so guarding the optimistic ``queued`` on this
+    # timestamp keeps it from clobbering a worker that already advanced
+    # (or even finished) the run before this write executes.
+    enqueued_at = deployment_sync_service.now_iso()
+    enqueued = await deployment_sync_queue.enqueue_deployment_sync(
+        valkey_client, org_slug, project_id, requested_by, limit=limit
     )
+    if enqueued:
+        # Optimistic, best-effort: if the worker has already flipped the
+        # project to ``running``, that newer write must win -- so this
+        # one does not retry the concurrent-update conflict and skips
+        # the write entirely once ``deployment_sync_at`` has advanced
+        # past the enqueue time.
+        await deployment_sync_service.set_status(
+            db,
+            project_id,
+            status='queued',
+            requested_by=requested_by,
+            retry=False,
+            only_if_before=enqueued_at,
+        )
+    return DeploymentResyncEnqueueResponse(enqueued=enqueued)
+
+
+@project_deployments_router.get('/sync-status')
+async def get_deployment_sync_status(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+) -> deployment_sync_service.DeploymentSyncStatus:
+    """Return the project's last deployment-resync state."""
+    del org_slug
+    return await deployment_sync_service.read_status(db, project_id)
 
 
 @project_deployments_router.get('/runs/{run_id}')

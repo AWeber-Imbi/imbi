@@ -1,5 +1,6 @@
 """Tests for the project deployment plugin endpoints."""
 
+import asyncio
 import datetime
 import json
 import typing
@@ -1150,7 +1151,13 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
 
 
 class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
-    """End-to-end coverage for the per-project resync endpoint."""
+    """End-to-end coverage for the background resync flow.
+
+    The endpoint enqueues onto the deployment-sync stream; the worker
+    calls :func:`resync_for_project`, which these tests exercise
+    directly (endpoint behavior is covered by
+    :class:`ResyncEndpointTestCase`).
+    """
 
     def _arm(
         self,
@@ -1246,21 +1253,27 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             creator_subject=creator_subject,
         )
 
+    def _run_resync(self, limit: int = 1) -> project_deployments.ResyncSummary:
+        return asyncio.run(
+            project_deployments.resync_for_project(
+                self.mock_db,
+                org_slug='myorg',
+                project_id='proj1',
+                auth=self.auth_context,
+                limit=limit,
+            )
+        )
+
     def test_resync_persists_release_and_event_for_sha(self) -> None:
         observed = self._observed()
         self._arm([observed], release_exists=False)
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
-        data = response.json()
-        self.assertEqual(data['projects'], 1)
-        self.assertEqual(data['observed'], 1)
-        self.assertEqual(data['releases_created'], 1)
-        self.assertEqual(data['releases_updated'], 0)
-        self.assertEqual(data['events_recorded'], 1)
-        self.assertEqual(data['errors'], [])
+        summary = self._run_resync()
+        self.assertEqual(summary.projects, 1)
+        self.assertEqual(summary.observed, 1)
+        self.assertEqual(summary.releases_created, 1)
+        self.assertEqual(summary.releases_updated, 0)
+        self.assertEqual(summary.events_recorded, 1)
+        self.assertEqual(summary.errors, [])
         # Sha-style ref produces (tag=None, committish=sha[:7]).
         upsert_call = self.mocks['upsert_release_node'].call_args
         self.assertIsNone(upsert_call.kwargs['tag'])
@@ -1280,14 +1293,9 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             [self._observed(ref='v1.2.3', sha='deadbeefcafebabe')],
             release_exists=True,
         )
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
-        data = response.json()
-        self.assertEqual(data['releases_created'], 0)
-        self.assertEqual(data['releases_updated'], 1)
+        summary = self._run_resync()
+        self.assertEqual(summary.releases_created, 0)
+        self.assertEqual(summary.releases_updated, 1)
         upsert_call = self.mocks['upsert_release_node'].call_args
         self.assertEqual(upsert_call.kwargs['tag'], 'v1.2.3')
         self.assertEqual(upsert_call.kwargs['committish'], 'deadbee')
@@ -1306,11 +1314,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             ],
             release_exists=False,
         )
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         upsert_call = self.mocks['upsert_release_node'].call_args
         self.assertEqual(
             upsert_call.kwargs['notes_markdown'],
@@ -1324,11 +1328,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         # No release body (branch/SHA deploy) keeps the prior behavior:
         # the short deploy description supplies the notes.
         self._arm([self._observed(release_notes=None)], release_exists=False)
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         upsert_call = self.mocks['upsert_release_node'].call_args
         self.assertEqual(upsert_call.kwargs['notes_markdown'], 'Bump foo')
 
@@ -1343,11 +1343,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         self.mocks['get_release_notes'] = self._start(
             mock.patch(f'{_MODULE}._get_release_notes', return_value=notes)
         )
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         upsert_call = self.mocks['upsert_release_node'].call_args
         # Reconciled onto the existing tag, and notes fetched by that tag.
         self.assertEqual(upsert_call.kwargs['tag'], '3.23.4')
@@ -1363,37 +1359,26 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             sync=False,
             options={'owner': 'octo', 'repo': 'demo'},
         )
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('does not support', response.json()['detail'])
+        with self.assertRaises(fastapi.HTTPException) as cm:
+            self._run_resync()
+        self.assertEqual(cm.exception.status_code, 400)
+        self.assertIn('does not support', str(cm.exception.detail))
 
     def test_resync_no_environments_returns_zero(self) -> None:
         self._arm([], environments=[])
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()['observed'], 0)
+        summary = self._run_resync()
+        self.assertEqual(summary.observed, 0)
         self.mocks['upsert_release_node'].assert_not_called()
         self.mocks['append_deployment_event'].assert_not_called()
 
     def test_resync_records_missing_edge_as_error(self) -> None:
         self._arm([self._observed()], edge_status='missing')
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
-        data = response.json()
-        self.assertEqual(len(data['errors']), 1)
+        summary = self._run_resync()
+        self.assertEqual(len(summary.errors), 1)
         self.assertEqual(
-            data['errors'][0]['environment'], 'infrastructure-testing'
+            summary.errors[0].environment, 'infrastructure-testing'
         )
-        self.assertEqual(data['events_recorded'], 0)
+        self.assertEqual(summary.events_recorded, 0)
 
     def test_resync_does_not_write_operations_log_audit(self) -> None:
         """Resync must not poison ``argMax(performed_by, occurred_at)``.
@@ -1406,22 +1391,14 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         flows still write their own audit rows.
         """
         self._arm([self._observed()])
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         ch = self.mocks['clickhouse'].return_value
         ch.insert.assert_not_awaited()
 
     def test_resync_threads_creator_to_performed_by(self) -> None:
         """``observed.creator`` becomes ``DeploymentEvent.performed_by``."""
         self._arm([self._observed(creator='octocat')])
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         append_call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(append_call.kwargs['performed_by'], 'octocat')
 
@@ -1445,11 +1422,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
                 return_value=_resolver,
             )
         )
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         append_call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(
             append_call.kwargs['performed_by'], 'kevin@example.com'
@@ -1474,80 +1447,22 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
                 return_value=_resolver,
             )
         )
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         append_call = self.mocks['append_deployment_event'].call_args
         self.assertEqual(append_call.kwargs['performed_by'], 'kevinv')
 
     def test_resync_defaults_limit_to_one(self) -> None:
         """Absent ``limit`` keeps the cheap latest-per-env catch-up."""
         self._arm([self._observed()])
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync()
         self.assertEqual(self.mocks['handler'].return_value._last_limit, 1)
 
     def test_resync_threads_limit_to_plugin(self) -> None:
-        """``?limit=N`` reaches ``list_recent_deployments`` for a deeper
+        """``limit`` reaches ``list_recent_deployments`` for a deeper
         backfill that re-resolves historical attribution."""
         self._arm([self._observed()])
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-                '?limit=50'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
+        self._run_resync(limit=50)
         self.assertEqual(self.mocks['handler'].return_value._last_limit, 50)
-
-    def test_resync_rejects_out_of_range_limit(self) -> None:
-        """``limit`` is clamped to the 1..100 GitHub per-page window."""
-        self._arm([self._observed()])
-        with testclient.TestClient(self.test_app) as client:
-            self.assertEqual(
-                client.post(
-                    '/organizations/myorg/projects/proj1/deployments/'
-                    'resync?limit=0'
-                ).status_code,
-                422,
-            )
-            self.assertEqual(
-                client.post(
-                    '/organizations/myorg/projects/proj1/deployments/'
-                    'resync?limit=101'
-                ).status_code,
-                422,
-            )
-
-    def test_resync_requires_write_permission(self) -> None:
-        non_admin = models.User(
-            email='dev@example.com',
-            display_name='Dev',
-            is_active=True,
-            is_admin=False,
-            password_hash=password.hash_password('testpassword123'),
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-        self.auth_context = permissions.AuthContext(
-            user=non_admin,
-            session_id='test-session',
-            auth_method='jwt',
-            permissions={'project:deployment:read'},
-        )
-
-        async def _ctx() -> permissions.AuthContext:
-            return self.auth_context
-
-        self.test_app.dependency_overrides[permissions.get_current_user] = _ctx
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 403)
 
     def test_resync_falls_back_to_app_credentials_without_identity(
         self,
@@ -1577,12 +1492,8 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             'app_id': '971',
             'private_key': 'PEM',
         }
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                '/organizations/myorg/projects/proj1/deployments/resync'
-            )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()['observed'], 1)
+        summary = self._run_resync()
+        self.assertEqual(summary.observed, 1)
 
     def test_resync_503_when_no_service_credentials(self) -> None:
         """No identity connection *and* no service secret is a genuine
@@ -1603,11 +1514,130 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
 
         self.mocks['attach_identity'].side_effect = _identity_required
         self.mocks['decrypt_integration_credentials'].return_value = {}
+        with self.assertRaises(fastapi.HTTPException) as cm:
+            self._run_resync()
+        self.assertEqual(cm.exception.status_code, 503)
+
+
+class ResyncEndpointTestCase(ProjectDeploymentsTestCase):
+    """The resync endpoint validates, enqueues, and returns 202."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from imbi_api import scoring
+
+        self.test_app.dependency_overrides[scoring._inject_optional_client] = (
+            lambda: mock.AsyncMock()
+        )
+
+    def _post(self, query: str = '') -> typing.Any:
         with testclient.TestClient(self.test_app) as client:
-            response = client.post(
+            return client.post(
                 '/organizations/myorg/projects/proj1/deployments/resync'
+                + query
             )
-        self.assertEqual(response.status_code, 503, response.text)
+
+    def test_resync_enqueues(self) -> None:
+        with (
+            mock.patch.object(
+                project_deployments.deployment_sync_queue,
+                'enqueue_deployment_sync',
+                mock.AsyncMock(return_value=True),
+            ) as enqueue,
+            mock.patch.object(
+                project_deployments.deployment_sync_service,
+                'set_status',
+                mock.AsyncMock(),
+            ) as set_status,
+        ):
+            response = self._post('?limit=50')
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertTrue(response.json()['enqueued'])
+        self.assertEqual(enqueue.await_args.kwargs['limit'], 50)
+        kwargs = set_status.await_args.kwargs
+        self.assertEqual(kwargs['status'], 'queued')
+        # The optimistic write is guarded by a pre-enqueue timestamp so
+        # a worker that already finished the job cannot be clobbered.
+        self.assertIsInstance(kwargs['only_if_before'], str)
+        self.assertFalse(kwargs['retry'])
+
+    def test_resync_debounced_skips_status(self) -> None:
+        with (
+            mock.patch.object(
+                project_deployments.deployment_sync_queue,
+                'enqueue_deployment_sync',
+                mock.AsyncMock(return_value=False),
+            ),
+            mock.patch.object(
+                project_deployments.deployment_sync_service,
+                'set_status',
+                mock.AsyncMock(),
+            ) as set_status,
+        ):
+            response = self._post()
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertFalse(response.json()['enqueued'])
+        set_status.assert_not_awaited()
+
+    def test_resync_400_when_plugin_opts_out(self) -> None:
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _FakeNoSyncDeploymentPlugin,
+            slug='no-sync-deployment',
+            name='No-Sync Deployment',
+            sync=False,
+            options={'owner': 'octo', 'repo': 'demo'},
+        )
+        response = self._post()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('does not support', response.json()['detail'])
+
+    def test_resync_rejects_out_of_range_limit(self) -> None:
+        """``limit`` is clamped to the 1..100 GitHub per-page window."""
+        self.assertEqual(self._post('?limit=0').status_code, 422)
+        self.assertEqual(self._post('?limit=101').status_code, 422)
+
+    def test_resync_requires_write_permission(self) -> None:
+        non_admin = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            is_active=True,
+            is_admin=False,
+            password_hash=password.hash_password('testpassword123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=non_admin,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:deployment:read'},
+        )
+
+        async def _ctx() -> permissions.AuthContext:
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = _ctx
+        response = self._post()
+        self.assertEqual(response.status_code, 403)
+
+    def test_get_sync_status(self) -> None:
+        from imbi_api.deployment_sync import service as sync_service
+
+        status = sync_service.DeploymentSyncStatus(
+            status='success', observed=3, events_recorded=2
+        )
+        with mock.patch.object(
+            sync_service, 'read_status', mock.AsyncMock(return_value=status)
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.get(
+                    '/organizations/myorg/projects/proj1/deployments'
+                    '/sync-status'
+                )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['observed'], 3)
+        self.assertEqual(data['events_recorded'], 2)
 
 
 class FallbackNotesTestCase(unittest.TestCase):
