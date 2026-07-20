@@ -30,6 +30,13 @@ class SonarQubePluginManifestTests(unittest.TestCase):
         assert capability is not None
         self.assertIs(capability.handler, plugin.SonarQubeWebhookActions)
 
+    def test_manifest_declares_analysis_capability(self) -> None:
+        manifest = plugin.SonarQubePlugin.manifest
+        capability = manifest.get_capability('analysis')
+        self.assertIsNotNone(capability)
+        assert capability is not None
+        self.assertIs(capability.handler, plugin.SonarQubeDoctor)
+
 
 class SonarQubeWebhookActionsTests(unittest.TestCase):
     def test_actions_catalog_lists_known_action(self) -> None:

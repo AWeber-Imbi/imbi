@@ -2,13 +2,17 @@
 
 The package ships one :class:`SonarQubePlugin` whose manifest declares the
 SonarQube server URL as an integration-level option, the API token as the
-integration's only credential, and a single ``webhook-actions`` capability
-that catalogs the ``update_project_from_webhook`` action.
+integration's only credential, a ``webhook-actions`` capability that
+catalogs the ``update_project_from_webhook`` action, and an ``analysis``
+capability (the project doctor) that validates and repairs the project's
+SonarQube component binding.
 """
 
 import logging
 
 from imbi_common import plugins
+
+from imbi_plugin_sonarqube.doctor import SonarQubeDoctor
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,7 +83,9 @@ class SonarQubePlugin(plugins.Plugin):
                     'label': 'SonarQube API Token',
                     'description': (
                         'User or analysis token with read access to '
-                        '/api/measures/component.'
+                        '/api/measures/component, plus the Create Projects '
+                        'permission if the Project Doctor should search for '
+                        'and create SonarQube projects.'
                     ),
                 }
             ],
@@ -91,7 +97,17 @@ class SonarQubePlugin(plugins.Plugin):
                         'SonarQube webhook actions dispatched by imbi-gateway.'
                     ),
                     'handler': SonarQubeWebhookActions,
-                }
+                },
+                {
+                    'kind': 'analysis',
+                    'label': 'Project doctor',
+                    'description': (
+                        'Validate the SonarQube project component '
+                        '(EXISTS_IN edge) against the live API and offer a '
+                        'one-click search-and-create repair.'
+                    ),
+                    'handler': SonarQubeDoctor,
+                },
             ],
         }
     )

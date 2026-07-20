@@ -95,3 +95,162 @@ class FetchComponentMeasuresTests(unittest.IsolatedAsyncioTestCase):
                 component='c',
                 metric_keys=['coverage'],
             )
+
+
+class SearchProjectTests(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_returns_matching_component(self) -> None:
+        route = respx.get(
+            'https://sonarqube.example.com/api/projects/search'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={'components': [{'key': 'team:demo', 'name': 'demo'}]},
+            )
+        )
+        result = await client.search_project(
+            base_url='https://sonarqube.example.com/',
+            api_token='t',
+            key='team:demo',
+        )
+        assert result is not None
+        self.assertEqual('team:demo', result['key'])
+        self.assertEqual(
+            'team:demo', route.calls.last.request.url.params.get('projects')
+        )
+
+    @respx.mock
+    async def test_returns_none_when_absent(self) -> None:
+        respx.get('https://sonarqube.example.com/api/projects/search').mock(
+            return_value=httpx.Response(200, json={'components': []})
+        )
+        result = await client.search_project(
+            base_url='https://sonarqube.example.com',
+            api_token='t',
+            key='team:demo',
+        )
+        self.assertIsNone(result)
+
+    @respx.mock
+    async def test_ignores_non_exact_key(self) -> None:
+        respx.get('https://sonarqube.example.com/api/projects/search').mock(
+            return_value=httpx.Response(
+                200, json={'components': [{'key': 'team:demo-other'}]}
+            )
+        )
+        result = await client.search_project(
+            base_url='https://sonarqube.example.com',
+            api_token='t',
+            key='team:demo',
+        )
+        self.assertIsNone(result)
+
+    @respx.mock
+    async def test_non_2xx_raises(self) -> None:
+        respx.get('https://sonarqube.example.com/api/projects/search').mock(
+            return_value=httpx.Response(401, text='bad token')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.search_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+    @respx.mock
+    async def test_transport_error_raises(self) -> None:
+        respx.get('https://sonarqube.example.com/api/projects/search').mock(
+            side_effect=httpx.ConnectError('refused')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.search_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+    @respx.mock
+    async def test_non_json_raises(self) -> None:
+        respx.get('https://sonarqube.example.com/api/projects/search').mock(
+            return_value=httpx.Response(200, text='not-json')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.search_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+
+class CreateProjectTests(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_creates_and_returns_project(self) -> None:
+        route = respx.post(
+            'https://sonarqube.example.com/api/projects/create'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'project': {'key': 'team:demo', 'name': 'demo'}}
+            )
+        )
+        result = await client.create_project(
+            base_url='https://sonarqube.example.com/',
+            api_token='t',
+            key='team:demo',
+            name='demo',
+        )
+        self.assertEqual('team:demo', result['key'])
+        params = route.calls.last.request.url.params
+        self.assertEqual('team:demo', params.get('project'))
+        self.assertEqual('demo', params.get('name'))
+
+    @respx.mock
+    async def test_missing_project_object_returns_empty(self) -> None:
+        respx.post('https://sonarqube.example.com/api/projects/create').mock(
+            return_value=httpx.Response(200, json={})
+        )
+        result = await client.create_project(
+            base_url='https://sonarqube.example.com',
+            api_token='t',
+            key='team:demo',
+            name='demo',
+        )
+        self.assertEqual({}, result)
+
+    @respx.mock
+    async def test_non_2xx_raises(self) -> None:
+        respx.post('https://sonarqube.example.com/api/projects/create').mock(
+            return_value=httpx.Response(400, text='duplicate key')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.create_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+                name='demo',
+            )
+
+    @respx.mock
+    async def test_transport_error_raises(self) -> None:
+        respx.post('https://sonarqube.example.com/api/projects/create').mock(
+            side_effect=httpx.ConnectError('refused')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.create_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+                name='demo',
+            )
+
+    @respx.mock
+    async def test_non_json_raises(self) -> None:
+        respx.post('https://sonarqube.example.com/api/projects/create').mock(
+            return_value=httpx.Response(200, text='not-json')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.create_project(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+                name='demo',
+            )
