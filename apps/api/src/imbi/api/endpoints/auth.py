@@ -637,6 +637,31 @@ async def authorize(
     )
 
 
+def _reject_registration(
+    body: models.OAuthClientRegistrationRequest, detail: str
+) -> fastapi.HTTPException:
+    """Log and build the 400 for a rejected client registration.
+
+    A rejected DCR is otherwise invisible in the access log (only the
+    bare ``POST /auth/register 400`` line survives), which makes it very
+    hard to see why a remote MCP client -- e.g. Claude's connector --
+    cannot complete OAuth login. The request carries only public client
+    metadata (no secrets), so logging it is safe.
+    """
+    LOGGER.warning(
+        'Rejecting OAuth client registration (%s): client_name=%r '
+        'redirect_uris=%r grant_types=%r response_types=%r '
+        'token_endpoint_auth_method=%r',
+        detail,
+        body.client_name,
+        body.redirect_uris,
+        body.grant_types,
+        body.response_types,
+        body.token_endpoint_auth_method,
+    )
+    return fastapi.HTTPException(status_code=400, detail=detail)
+
+
 @auth_router.post(
     '/register',
     response_model=models.OAuthClientRegistrationResponse,
@@ -656,29 +681,34 @@ async def register_oauth_client(
             detail='Dynamic client registration is disabled',
         )
     if not body.redirect_uris:
-        raise fastapi.HTTPException(
-            status_code=400, detail='redirect_uris is required'
-        )
+        raise _reject_registration(body, 'redirect_uris is required')
     for uri in body.redirect_uris:
         if not oauth_clients.is_valid_redirect_uri(uri):
-            raise fastapi.HTTPException(
-                status_code=400, detail=f'Invalid redirect_uri: {uri}'
-            )
-    if set(body.grant_types) != {'authorization_code', 'refresh_token'}:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='Only authorization_code and refresh_token grants '
+            raise _reject_registration(body, f'Invalid redirect_uri: {uri}')
+    # A public client only needs the authorization-code grant; requesting
+    # refresh_token is optional (RFC 7591 clients need not ask for it, and
+    # many -- including Claude's connector -- register authorization_code
+    # alone). Grants beyond these two (e.g. client_credentials) are for
+    # confidential service accounts, which are provisioned out-of-band
+    # rather than via DCR.
+    if 'authorization_code' not in body.grant_types:
+        raise _reject_registration(
+            body, 'The authorization_code grant type is required'
+        )
+    if set(body.grant_types) - {'authorization_code', 'refresh_token'}:
+        raise _reject_registration(
+            body,
+            'Only the authorization_code and refresh_token grant types '
             'are supported',
         )
-    if body.response_types != ['code']:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail="Only response_types=['code'] is supported",
+    if set(body.response_types) != {'code'}:
+        raise _reject_registration(
+            body, "Only response_types=['code'] is supported"
         )
     if body.token_endpoint_auth_method != 'none':
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='Only public clients '
+        raise _reject_registration(
+            body,
+            'Only public clients '
             '(token_endpoint_auth_method=none) are supported',
         )
     client = await oauth_clients.register_client(

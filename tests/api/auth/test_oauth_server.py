@@ -184,6 +184,32 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         self.assertEqual(resp.status_code, 400)
         self.mock_db.create.assert_not_called()
 
+    def test_register_accepts_authorization_code_only(self) -> None:
+        # RFC 7591 clients need not request refresh_token. Public MCP
+        # clients (e.g. Claude's connector) may register the
+        # authorization_code grant on its own.
+        self.mock_db.create.return_value = None
+        resp = self.client.post(
+            '/auth/register',
+            json={
+                'redirect_uris': ['https://app.example/cb'],
+                'grant_types': ['authorization_code'],
+            },
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.mock_db.create.assert_awaited_once()
+
+    def test_register_rejects_extra_grant_alongside_supported(self) -> None:
+        resp = self.client.post(
+            '/auth/register',
+            json={
+                'redirect_uris': ['https://app.example/cb'],
+                'grant_types': ['authorization_code', 'client_credentials'],
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.mock_db.create.assert_not_called()
+
     # -- authorize --------------------------------------------------------
 
     def _authorize(self, **overrides: str) -> object:
