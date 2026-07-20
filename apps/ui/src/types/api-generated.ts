@@ -3704,14 +3704,17 @@ export interface paths {
         put?: never;
         /**
          * Resync Project Deployments
-         * @description Backfill Release nodes + DEPLOYED_TO edges from the remote.
+         * @description Enqueue a backfill of Release nodes + DEPLOYED_TO edges.
          *
-         *     Asks the project's deployment plugin for the most recent ``limit``
-         *     deployments per environment, upserts any missing ``Release`` nodes,
-         *     and dedup-appends ``DeploymentEvent`` rows so the badges advance
-         *     even when the gateway webhook flow has lapsed.  No ``operations_log``
-         *     audit row is written -- the ``DEPLOYED_TO`` edge already carries the
-         *     original creator via ``DeploymentEvent.performed_by``.
+         *     The worker asks the project's deployment plugin for the most recent
+         *     ``limit`` deployments per environment, upserts any missing
+         *     ``Release`` nodes, and dedup-appends ``DeploymentEvent`` rows so the
+         *     badges advance even when the gateway webhook flow has lapsed.  A
+         *     deep backfill makes hundreds of remote API calls, so the work runs
+         *     as a Valkey-stream job; poll ``GET /deployments/sync-status`` for
+         *     the outcome.  No ``operations_log`` audit row is written -- the
+         *     ``DEPLOYED_TO`` edge already carries the original creator via
+         *     ``DeploymentEvent.performed_by``.
          *
          *     ``limit`` defaults to 1 (cheap webhook-lapse catch-up).  Raise it
          *     (up to 100, the GitHub per-page ceiling) for a deeper backfill that
@@ -3720,9 +3723,30 @@ export interface paths {
          *
          *     Surfaces 400 when the project's deployment plugin does not
          *     advertise ``supports_deployment_sync`` -- callers should hide the
-         *     button using the plugin manifest flag.
+         *     button using the plugin manifest flag.  Returns ``enqueued=False``
+         *     when the job was debounced or Valkey is unavailable.
          */
         post: operations["resync_project_deployments_organizations__org_slug__projects__project_id__deployments_resync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/projects/{project_id}/deployments/sync-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Deployment Sync Status
+         * @description Return the project's last deployment-resync state.
+         */
+        get: operations["get_deployment_sync_status_organizations__org_slug__projects__project_id__deployments_sync_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6926,6 +6950,14 @@ export interface components {
             external_run_id?: string | null;
         };
         /**
+         * DeploymentResyncEnqueueResponse
+         * @description Result of enqueueing a deployment resync.
+         */
+        DeploymentResyncEnqueueResponse: {
+            /** Enqueued */
+            enqueued: boolean;
+        };
+        /**
          * DeploymentRun
          * @description A workflow / pipeline run triggered by ``trigger_deployment``.
          */
@@ -7004,6 +7036,34 @@ export interface components {
             status_score_map?: {
                 [key: string]: number;
             };
+        };
+        /**
+         * DeploymentSyncStatus
+         * @description Last-resync state for a project's deployments.
+         */
+        DeploymentSyncStatus: {
+            /**
+             * Status
+             * @default idle
+             * @enum {string}
+             */
+            status: "idle" | "queued" | "running" | "success" | "failed";
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Observed */
+            observed?: number | null;
+            /** Releases Created */
+            releases_created?: number | null;
+            /** Releases Updated */
+            releases_updated?: number | null;
+            /** Events Recorded */
+            events_recorded?: number | null;
+            /** Errors */
+            errors?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
         };
         /**
          * DeploymentTriggerResponse
@@ -10435,66 +10495,6 @@ export interface components {
         RescoreResponse: {
             /** Enqueued */
             enqueued: number;
-        };
-        /**
-         * ResyncProjectError
-         * @description One non-fatal failure encountered during a resync.
-         */
-        ResyncProjectError: {
-            /** Project Id */
-            project_id?: string | null;
-            /** Environment */
-            environment?: string | null;
-            /** Detail */
-            detail: string;
-        };
-        /**
-         * ResyncSummary
-         * @description Aggregate counts returned by a resync run.
-         *
-         *     ``observed`` is the number of remote deployments the plugin returned;
-         *     ``releases_created`` / ``releases_updated`` count distinct
-         *     ``Release`` nodes affected; ``events_recorded`` counts the
-         *     ``DeploymentEvent`` rows actually appended (dedupe-suppressed rows
-         *     do not count); ``events_skipped`` counts rows the dedupe path
-         *     short-circuited.
-         */
-        ResyncSummary: {
-            /**
-             * Projects
-             * @default 0
-             */
-            projects: number;
-            /**
-             * Observed
-             * @default 0
-             */
-            observed: number;
-            /**
-             * Releases Created
-             * @default 0
-             */
-            releases_created: number;
-            /**
-             * Releases Updated
-             * @default 0
-             */
-            releases_updated: number;
-            /**
-             * Events Recorded
-             * @default 0
-             */
-            events_recorded: number;
-            /**
-             * Events Skipped
-             * @default 0
-             */
-            events_skipped: number;
-            /**
-             * Errors
-             * @default []
-             */
-            errors: components["schemas"]["ResyncProjectError"][];
         };
         /**
          * Role
@@ -18431,12 +18431,44 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResyncEnqueueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_deployment_sync_status_organizations__org_slug__projects__project_id__deployments_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ResyncSummary"];
+                    "application/json": components["schemas"]["DeploymentSyncStatus"];
                 };
             };
             /** @description Validation Error */
