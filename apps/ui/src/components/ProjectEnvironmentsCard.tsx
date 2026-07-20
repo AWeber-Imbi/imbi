@@ -39,7 +39,7 @@ import { useEnvironmentEdgePatch } from '@/hooks/useEnvironmentEdgePatch'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { formatFieldKey } from '@/lib/project-field-formatting'
-import { sanitizeHttpUrl } from '@/lib/utils'
+import { sanitizeUri } from '@/lib/utils'
 import type { DeploymentStatus, Project } from '@/types'
 
 interface DeploymentInfo {
@@ -211,12 +211,19 @@ export function ProjectEnvironmentsCard({
         <div className="space-y-0">
           {/* fallow-ignore-next-line complexity */}
           {environments.map((env) => {
-            const url =
-              typeof env.url === 'string' ? sanitizeHttpUrl(env.url) : null
-            // Protocol/trailing-slash stripped for a shorter on-screen value.
-            const displayUrl = url
-              ? url.replace(/^https?:\/\//, '').replace(/\/$/, '')
-              : null
+            const rawUrl =
+              typeof env.url === 'string' && env.url !== '' ? env.url : null
+            // Clickable for any URI scheme except the XSS-dangerous ones
+            // (javascript:/data:/vbscript:).
+            const linkUrl = sanitizeUri(env.url)
+            // Protocol/trailing-slash stripped for a shorter on-screen value on
+            // http(s) links; other schemes (postgresql://, etc.) shown as-is.
+            let displayUrl = rawUrl
+            if (linkUrl) {
+              displayUrl = /^https?:\/\//.test(linkUrl)
+                ? linkUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')
+                : linkUrl
+            }
             const urlText = (
               <span className="text-primary text-sm">{displayUrl}</span>
             )
@@ -270,11 +277,11 @@ export function ProjectEnvironmentsCard({
                       ) : (
                         urlText
                       )}
-                      {url ? (
+                      {linkUrl ? (
                         <a
                           aria-label="Open URL"
                           className="text-warning shrink-0"
-                          href={url}
+                          href={linkUrl}
                           rel="noopener noreferrer"
                           target="_blank"
                         >
