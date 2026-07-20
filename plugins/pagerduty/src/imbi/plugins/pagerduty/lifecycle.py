@@ -30,7 +30,6 @@ import logging
 import typing
 
 import httpx
-from imbi_common.auth.encryption import TokenEncryption
 from imbi_common.plugins.base import (
     LifecycleCapability,
     LifecycleResult,
@@ -39,133 +38,18 @@ from imbi_common.plugins.base import (
     ServiceWriteback,
 )
 
-from imbi_plugin_pagerduty import _client, _services
+from imbi_plugin_pagerduty import _client, _provisioning, _services
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _as_dict(value: object) -> dict[str, typing.Any]:
-    """Narrow an arbitrary JSON value to a typed dict (or empty)."""
-    if isinstance(value, dict):
-        return typing.cast('dict[str, typing.Any]', value)
-    return {}
-
-
-_WEBHOOK_EVENTS = [
-    'incident.triggered',
-    'incident.acknowledged',
-    'incident.resolved',
-    'incident.escalated',
-    'incident.reopened',
-]
-
-
 class PagerDutyLifecycle(LifecycleCapability):
-    """Create / update / delete / relocate a project's PagerDuty service."""
+    """Create / update / delete / relocate a project's PagerDuty service.
 
-    # -- option resolution ------------------------------------------------
-
-    @staticmethod
-    def _escalation_policy_id(
-        ctx: PluginContext, team_slug: str | None
-    ) -> str | None:
-        """Resolve the escalation policy id for ``team_slug``.
-
-        Prefers the team mapping, then the ``default_escalation_policy_id``
-        fallback. Returns ``None`` when neither yields one.
-        """
-        options = ctx.integration_options
-        mapping_raw = options.get('team_escalation_policy_mapping')
-        if team_slug and isinstance(mapping_raw, dict):
-            mapping = typing.cast('dict[str, typing.Any]', mapping_raw)
-            value = mapping.get(team_slug)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        default = options.get('default_escalation_policy_id')
-        if isinstance(default, str) and default.strip():
-            return default.strip()
-        return None
-
-    @staticmethod
-    def _gateway_url(ctx: PluginContext) -> str | None:
-        raw = ctx.integration_options.get('gateway_webhook_url')
-        return raw.strip() if isinstance(raw, str) and raw.strip() else None
-
-    # -- service / subscription helpers -----------------------------------
-
-    @staticmethod
-    def _writeback(
-        ctx: PluginContext,
-        service: dict[str, typing.Any],
-        *,
-        webhook_secret_enc: str | None = None,
-    ) -> None:
-        """Record the EXISTS_IN edge + dashboard link for ``service``."""
-        service_id = str(service.get('id') or '')
-        html_url = str(service.get('html_url') or '')
-        ctx.service_writeback = ServiceWriteback(
-            identifier=service_id,
-            canonical_url=f'{_client.API_BASE}/services/{service_id}',
-            dashboard_links=(
-                {_services.SERVICE_LINK_KEY: html_url} if html_url else {}
-            ),
-            webhook_secret_enc=webhook_secret_enc,
-        )
-
-    async def _create_service(
-        self,
-        client: httpx.AsyncClient,
-        ctx: PluginContext,
-        policy_id: str,
-    ) -> dict[str, typing.Any]:
-        body = {
-            'service': {
-                'name': ctx.project_slug,
-                'description': ctx.project_description or '',
-                'escalation_policy': {
-                    'id': policy_id,
-                    'type': 'escalation_policy_reference',
-                },
-            }
-        }
-        response = await client.post('/services', json=body)
-        response.raise_for_status()
-        payload: dict[str, typing.Any] = response.json()
-        return payload.get('service') or {}
-
-    async def _provision_subscription(
-        self,
-        client: httpx.AsyncClient,
-        *,
-        service_id: str,
-        gateway_url: str,
-    ) -> str | None:
-        """Create the V3 webhook subscription; return the encrypted secret.
-
-        Returns ``None`` when PagerDuty does not surface a signing secret
-        (in which case the gateway simply won't verify signatures for this
-        service).
-        """
-        body = {
-            'webhook_subscription': {
-                'type': 'webhook_subscription',
-                'delivery_method': {
-                    'type': 'http_delivery_method',
-                    'url': gateway_url,
-                },
-                'filter': {'type': 'service_reference', 'id': service_id},
-                'events': _WEBHOOK_EVENTS,
-            }
-        }
-        response = await client.post('/webhook_subscriptions', json=body)
-        response.raise_for_status()
-        payload: dict[str, typing.Any] = response.json()
-        subscription = _as_dict(payload.get('webhook_subscription'))
-        delivery = _as_dict(subscription.get('delivery_method'))
-        secret = delivery.get('secret')
-        if not secret:
-            return None
-        return TokenEncryption.get_instance().encrypt(str(secret))
+    Service creation, webhook subscription, and edge writeback live in
+    :mod:`imbi_plugin_pagerduty._provisioning` so the doctor capability
+    shares exactly this create path.
+    """
 
     async def _delete_subscriptions_for(
         self, client: httpx.AsyncClient, service_id: str
@@ -178,7 +62,7 @@ class PagerDutyLifecycle(LifecycleCapability):
             payload.get('webhook_subscriptions') or []
         )
         for subscription in subscriptions:
-            filt = _as_dict(subscription.get('filter'))
+            filt = _provisioning.as_dict(subscription.get('filter'))
             if filt.get('id') == service_id and subscription.get('id'):
                 await client.delete(
                     f'/webhook_subscriptions/{subscription["id"]}'
@@ -198,7 +82,7 @@ class PagerDutyLifecycle(LifecycleCapability):
     async def on_project_created(
         self, ctx: PluginContext, credentials: dict[str, str]
     ) -> LifecycleResult:
-        policy_id = self._escalation_policy_id(ctx, ctx.team_slug)
+        policy_id = _provisioning.escalation_policy_id(ctx, ctx.team_slug)
         if not policy_id:
             return LifecycleResult(
                 status='skipped',
@@ -213,21 +97,16 @@ class PagerDutyLifecycle(LifecycleCapability):
                 client, ctx.project_slug
             )
             if existing is not None:
-                self._writeback(ctx, existing)
+                _provisioning.build_writeback(ctx, existing)
                 return LifecycleResult(
                     status='skipped',
                     message=f'PagerDuty service {ctx.project_slug!r} exists',
                     artifacts={'service_id': str(existing.get('id') or '')},
                 )
-            service = await self._create_service(client, ctx, policy_id)
+            service = await _provisioning.provision_service(
+                client, ctx, policy_id
+            )
             service_id = str(service.get('id') or '')
-            secret_enc: str | None = None
-            gateway_url = self._gateway_url(ctx)
-            if gateway_url and service_id:
-                secret_enc = await self._provision_subscription(
-                    client, service_id=service_id, gateway_url=gateway_url
-                )
-            self._writeback(ctx, service, webhook_secret_enc=secret_enc)
         return LifecycleResult(
             status='ok',
             message=f'Created PagerDuty service {ctx.project_slug!r}',
@@ -251,7 +130,7 @@ class PagerDutyLifecycle(LifecycleCapability):
             response = await client.put(f'/services/{service_id}', json=body)
             response.raise_for_status()
             payload: dict[str, typing.Any] = response.json()
-            self._writeback(ctx, payload.get('service') or {})
+            _provisioning.build_writeback(ctx, payload.get('service') or {})
         return LifecycleResult(
             status='ok',
             message=f'Updated PagerDuty service {ctx.project_slug!r}',
@@ -295,8 +174,10 @@ class PagerDutyLifecycle(LifecycleCapability):
     async def on_project_relocated(
         self, ctx: PluginContext, credentials: dict[str, str]
     ) -> LifecycleResult:
-        new_policy = self._escalation_policy_id(ctx, ctx.team_slug)
-        old_policy = self._escalation_policy_id(ctx, ctx.previous_team_slug)
+        new_policy = _provisioning.escalation_policy_id(ctx, ctx.team_slug)
+        old_policy = _provisioning.escalation_policy_id(
+            ctx, ctx.previous_team_slug
+        )
         if new_policy is None:
             return LifecycleResult(
                 status='skipped',
@@ -327,7 +208,7 @@ class PagerDutyLifecycle(LifecycleCapability):
             response = await client.put(f'/services/{service_id}', json=body)
             response.raise_for_status()
             payload: dict[str, typing.Any] = response.json()
-            self._writeback(ctx, payload.get('service') or {})
+            _provisioning.build_writeback(ctx, payload.get('service') or {})
         return LifecycleResult(
             status='ok',
             message=f'Repointed PagerDuty service {service_id}',
@@ -338,7 +219,7 @@ class PagerDutyLifecycle(LifecycleCapability):
         self, ctx: PluginContext, credentials: dict[str, str]
     ) -> RelocationTarget | None:
         del credentials
-        policy_id = self._escalation_policy_id(ctx, ctx.team_slug)
+        policy_id = _provisioning.escalation_policy_id(ctx, ctx.team_slug)
         if not policy_id:
             return None
         return RelocationTarget(
