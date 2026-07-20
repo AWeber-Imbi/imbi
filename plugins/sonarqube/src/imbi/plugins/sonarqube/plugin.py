@@ -54,7 +54,7 @@ class SonarQubePlugin(plugins.Plugin):
         {
             'slug': 'sonarqube',
             'name': 'SonarQube',
-            'icon': 'si-sonarqube',
+            'icon': 'si-sonarqubeserver',
             'description': (
                 'Fetches SonarQube measurements on demand from the gateway '
                 "webhook pipeline and patches the matching Imbi project's "
