@@ -149,6 +149,7 @@ RETURN w{{.*}} AS webhook,
        tps{{.*}} AS tps,
        impl.identifier_selector AS identifier_selector,
        impl.user_subject_selector AS user_subject_selector,
+       impl.user_type_selector AS user_type_selector,
        impl.identity_integration_slug AS identity_integration_slug,
        impl.event_type_selector AS event_type_selector,
        [x IN all_rules
@@ -169,6 +170,7 @@ _UPDATE_RETURN_TAIL_WITH_TPS: typing.LiteralString = (
     ' RETURN w{{.*}} AS webhook, tps{{.*}} AS tps,'
     ' impl.identifier_selector AS identifier_selector,'
     ' impl.user_subject_selector AS user_subject_selector,'
+    ' impl.user_type_selector AS user_type_selector,'
     ' impl.identity_integration_slug AS identity_integration_slug,'
     ' impl.event_type_selector AS event_type_selector,'
     ' [x IN all_rules'
@@ -188,6 +190,7 @@ _UPDATE_RETURN_TAIL_NO_TPS: typing.LiteralString = (
     ' RETURN w{{.*}} AS webhook, null AS tps,'
     ' null AS identifier_selector,'
     ' null AS user_subject_selector,'
+    ' null AS user_type_selector,'
     ' null AS identity_integration_slug,'
     ' null AS event_type_selector,'
     ' [x IN all_rules'
@@ -279,6 +282,7 @@ async def create_webhook(
             ' CREATE (w)-[:IMPLEMENTED_BY {{'
             'identifier_selector: {identifier_selector},'
             ' user_subject_selector: {user_subject_selector},'
+            ' user_type_selector: {user_type_selector},'
             ' identity_integration_slug: {identity_integration_slug},'
             ' event_type_selector: {event_type_selector}'
             '}}]->(tps)' + rule_clauses + ' RETURN w.id AS id'
@@ -288,6 +292,7 @@ async def create_webhook(
             'tps_slug': data.integration_slug,
             'identifier_selector': data.identifier_selector,
             'user_subject_selector': data.user_subject_selector,
+            'user_type_selector': data.user_type_selector,
             'identity_integration_slug': data.identity_integration_slug,
             'event_type_selector': data.event_type_selector,
         }
@@ -333,6 +338,7 @@ async def create_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
+            'user_type_selector',
             'identity_integration_slug',
             'event_type_selector',
             'rules',
@@ -371,6 +377,7 @@ async def list_webhooks(
            tps{{.*}} AS tps,
            impl.identifier_selector AS identifier_selector,
            impl.user_subject_selector AS user_subject_selector,
+           impl.user_type_selector AS user_type_selector,
            impl.identity_integration_slug AS identity_integration_slug,
            impl.event_type_selector AS event_type_selector,
            [x IN all_rules
@@ -387,6 +394,7 @@ async def list_webhooks(
             'tps',
             'identifier_selector',
             'user_subject_selector',
+            'user_type_selector',
             'identity_integration_slug',
             'event_type_selector',
             'rules',
@@ -416,6 +424,7 @@ async def get_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
+            'user_type_selector',
             'identity_integration_slug',
             'event_type_selector',
             'rules',
@@ -467,6 +476,7 @@ async def patch_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
+            'user_type_selector',
             'identity_integration_slug',
             'event_type_selector',
             'rules',
@@ -501,6 +511,9 @@ async def patch_webhook(
         ),
         'user_subject_selector': graph.parse_agtype(
             existing[0].get('user_subject_selector')
+        ),
+        'user_type_selector': graph.parse_agtype(
+            existing[0].get('user_type_selector')
         ),
         'identity_integration_slug': graph.parse_agtype(
             existing[0].get('identity_integration_slug')
@@ -606,6 +619,7 @@ async def patch_webhook(
             ' SET impl.identifier_selector'
             ' = {identifier_selector},'
             ' impl.user_subject_selector = {user_subject_selector},'
+            ' impl.user_type_selector = {user_type_selector},'
             ' impl.identity_integration_slug = {identity_integration_slug},'
             ' impl.event_type_selector = {event_type_selector}'
             + rule_clauses
@@ -618,6 +632,7 @@ async def patch_webhook(
             **props,
             'identifier_selector': data.identifier_selector,
             'user_subject_selector': data.user_subject_selector,
+            'user_type_selector': data.user_type_selector,
             'identity_integration_slug': data.identity_integration_slug,
             'event_type_selector': data.event_type_selector,
             **rules_params,
@@ -667,6 +682,7 @@ async def patch_webhook(
             'tps',
             'identifier_selector',
             'user_subject_selector',
+            'user_type_selector',
             'identity_integration_slug',
             'event_type_selector',
             'rules',

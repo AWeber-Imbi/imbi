@@ -986,6 +986,14 @@ class WebhookCreate(pydantic.BaseModel):
             '(e.g. /deployment/creator/id) used to resolve the Imbi user.'
         ),
     )
+    user_type_selector: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'JSON Pointer that locates the sender account type (e.g. '
+            "/sender/type). When it resolves to 'Bot' the identity lookup "
+            'is skipped, since bot senders are never Imbi users.'
+        ),
+    )
     identity_integration_slug: str | None = pydantic.Field(
         default=None,
         description=(
@@ -1015,6 +1023,8 @@ class WebhookCreate(pydantic.BaseModel):
             raise ValueError('identifier_selector requires integration_slug')
         if self.user_subject_selector and not self.integration_slug:
             raise ValueError('user_subject_selector requires integration_slug')
+        if self.user_type_selector and not self.integration_slug:
+            raise ValueError('user_type_selector requires integration_slug')
         if self.identity_integration_slug and not self.integration_slug:
             raise ValueError(
                 'identity_integration_slug requires integration_slug'
@@ -1056,6 +1066,14 @@ class WebhookUpdate(pydantic.BaseModel):
             '(e.g. /deployment/creator/id) used to resolve the Imbi user.'
         ),
     )
+    user_type_selector: str | None = pydantic.Field(
+        default=None,
+        description=(
+            'JSON Pointer that locates the sender account type (e.g. '
+            "/sender/type). When it resolves to 'Bot' the identity lookup "
+            'is skipped, since bot senders are never Imbi users.'
+        ),
+    )
     identity_integration_slug: str | None = pydantic.Field(
         default=None,
         description=(
@@ -1085,6 +1103,8 @@ class WebhookUpdate(pydantic.BaseModel):
             raise ValueError('identifier_selector requires integration_slug')
         if self.user_subject_selector and not self.integration_slug:
             raise ValueError('user_subject_selector requires integration_slug')
+        if self.user_type_selector and not self.integration_slug:
+            raise ValueError('user_type_selector requires integration_slug')
         if self.identity_integration_slug and not self.integration_slug:
             raise ValueError(
                 'identity_integration_slug requires integration_slug'
@@ -1118,6 +1138,7 @@ class WebhookResponse(pydantic.BaseModel):
     integration: dict[str, typing.Any] | None = None
     identifier_selector: str | None = None
     user_subject_selector: str | None = None
+    user_type_selector: str | None = None
     identity_integration_slug: str | None = None
     event_type_selector: str | None = None
     rules: list[WebhookRuleResponse] = []
@@ -1167,6 +1188,9 @@ class WebhookResponse(pydantic.BaseModel):
             ),
             user_subject_selector=graph.parse_agtype(
                 record.get('user_subject_selector')
+            ),
+            user_type_selector=graph.parse_agtype(
+                record.get('user_type_selector')
             ),
             identity_integration_slug=graph.parse_agtype(
                 record.get('identity_integration_slug')

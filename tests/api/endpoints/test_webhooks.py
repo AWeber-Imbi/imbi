@@ -35,6 +35,7 @@ class _WebhookRecord(typing.TypedDict):
     tps: typing.NotRequired[dict[str, str] | None]
     identifier_selector: typing.NotRequired[str | None]
     user_subject_selector: typing.NotRequired[str | None]
+    user_type_selector: typing.NotRequired[str | None]
     identity_integration_slug: typing.NotRequired[str | None]
     event_type_selector: typing.NotRequired[str | None]
     rules: list[_WebhookRule | None]
@@ -399,6 +400,61 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             json={
                 'name': 'Test',
                 'event_type_selector': 'x-github-event',
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_with_user_type_selector(self) -> None:
+        """user_type_selector round-trips through CREATE/GET."""
+        record = copy.deepcopy(self.webhook_record)
+        record['tps'] = {'name': 'GitHub', 'slug': 'github'}
+        record['identifier_selector'] = '/repository/full_name'
+        record['user_type_selector'] = '/sender/type'
+
+        self.mock_db.execute.return_value = [record]
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            payload = {
+                'name': 'GitHub Events',
+                'integration_slug': 'github',
+                'identifier_selector': '/repository/full_name',
+                'user_type_selector': '/sender/type',
+            }
+            response = self.client.post(
+                '/organizations/engineering/webhooks/',
+                json=payload,
+            )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['user_type_selector'], '/sender/type')
+
+        write_params = [
+            call.args[1]
+            for call in self.mock_db.execute.call_args_list
+            if len(call.args) > 1
+            and isinstance(call.args[1], dict)
+            and 'user_type_selector' in call.args[1]
+        ]
+        self.assertTrue(
+            any(
+                params['user_type_selector'] == '/sender/type'
+                for params in write_params
+            ),
+            'CREATE write must pass user_type_selector to the query',
+        )
+
+    def test_create_user_type_selector_without_service(self) -> None:
+        """user_type_selector requires a third-party service."""
+        response = self.client.post(
+            '/organizations/engineering/webhooks/',
+            json={
+                'name': 'Test',
+                'user_type_selector': '/sender/type',
             },
         )
         self.assertEqual(response.status_code, 422)
