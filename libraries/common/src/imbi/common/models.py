@@ -39,6 +39,7 @@ __all__ = [
     'OperationLog',
     'Organization',
     'Project',
+    'ProjectEnvironmentEdge',
     'ProjectRelationships',
     'ProjectType',
     'PullRequestRecord',
@@ -895,6 +896,27 @@ class ReleaseDeploymentEdge(RelationshipEdge):
     """
 
     deployments: list[DeploymentEvent] = []
+
+
+class ProjectEnvironmentEdge(RelationshipEdge):
+    """Edge properties for ``Project -[:DEPLOYED_IN]-> Environment``.
+
+    ``current_release`` holds the ``id`` of the ``Release`` currently
+    deployed to the environment for this project. It is updated by the
+    API on every ``success`` deployment event, letting the current
+    release per environment be read as a single edge-property lookup
+    rather than derived from the ``DEPLOYED_TO`` deployment history.
+
+    ``current_release_at`` is the UTC timestamp of the success event
+    that set ``current_release``. The API only advances
+    ``current_release`` when an incoming success event is newer than
+    this, so out-of-order replays (e.g. a deep resync backfill or a
+    delayed webhook) cannot regress the pointer to an older release.
+
+    """
+
+    current_release: str | None = None
+    current_release_at: datetime.datetime | None = None
 
 
 class ReleaseComponentEdge(RelationshipEdge):
