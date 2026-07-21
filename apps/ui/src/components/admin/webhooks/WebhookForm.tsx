@@ -72,6 +72,9 @@ export function WebhookForm({
   const [userSubjectSelector, setUserSubjectSelector] = useState(
     webhook?.user_subject_selector || '',
   )
+  const [userTypeSelector, setUserTypeSelector] = useState(
+    webhook?.user_type_selector || '',
+  )
   const [identityIntegrationSlug, setIdentityIntegrationSlug] = useState(
     webhook?.identity_integration_slug || '',
   )
@@ -115,6 +118,10 @@ export function WebhookForm({
       newErrors.user_subject_selector =
         'User subject selector requires an integration'
     }
+    if (userTypeSelector && !integrationSlug) {
+      newErrors.user_type_selector =
+        'User type selector requires an integration'
+    }
     if (identityIntegrationSlug && !integrationSlug) {
       newErrors.identity_integration_slug =
         'Identity integration slug requires an integration'
@@ -153,6 +160,7 @@ export function WebhookForm({
       })),
       secret: secret.trim() || null,
       user_subject_selector: userSubjectSelector.trim() || null,
+      user_type_selector: userTypeSelector.trim() || null,
       // Include slug only when editing so the PATCH can update it.
       ...(isEditing ? { slug: slug.trim() } : {}),
     }
@@ -177,6 +185,7 @@ export function WebhookForm({
     if (!newIntegration) {
       setIdentifierSelector('')
       setUserSubjectSelector('')
+      setUserTypeSelector('')
       setIdentityIntegrationSlug('')
       setEventTypeSelector('')
     }
@@ -523,6 +532,37 @@ export function WebhookForm({
                       JSON Pointer to the external identity subject in the
                       payload. Used to resolve the Imbi user attributed to
                       handler events.
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label className="text-secondary mb-1.5 block text-sm">
+                      User Type Selector (JSON Pointer){' '}
+                      <span className="text-tertiary text-xs">(optional)</span>
+                    </Label>
+                    <Input
+                      className={`font-mono text-sm ${
+                        errors.user_type_selector ? 'border-red-500' : ''
+                      }`}
+                      disabled={isLoading}
+                      onChange={(e) => setUserTypeSelector(e.target.value)}
+                      placeholder="e.g., /sender/type"
+                      value={userTypeSelector}
+                    />
+                    {errors.user_type_selector && (
+                      <div
+                        className={
+                          'text-danger mt-1 flex items-center gap-1 text-xs'
+                        }
+                      >
+                        <AlertCircle className="size-3" />
+                        {errors.user_type_selector}
+                      </div>
+                    )}
+                    <p className="text-tertiary mt-1 text-xs">
+                      JSON Pointer to the sender account type. When it resolves
+                      to <code>Bot</code>, the identity lookup is skipped since
+                      bot senders are never Imbi users.
                     </p>
                   </div>
 

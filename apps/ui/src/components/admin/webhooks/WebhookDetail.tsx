@@ -122,6 +122,16 @@ export function WebhookDetail({ onBack, onEdit, webhook }: WebhookDetailProps) {
                 </div>
               </div>
             )}
+            {webhook.user_type_selector && (
+              <div>
+                <div className="text-secondary text-sm">User Type Selector</div>
+                <div className="mt-1">
+                  <code className="bg-secondary text-primary rounded px-2 py-1 text-sm">
+                    {webhook.user_type_selector}
+                  </code>
+                </div>
+              </div>
+            )}
             {webhook.identity_integration_slug && (
               <div>
                 <div className="text-secondary text-sm">

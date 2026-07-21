@@ -11324,6 +11324,11 @@ export interface components {
              */
             user_subject_selector?: string | null;
             /**
+             * User Type Selector
+             * @description JSON Pointer that locates the sender account type (e.g. /sender/type). When it resolves to 'Bot' the identity lookup is skipped, since bot senders are never Imbi users.
+             */
+            user_type_selector?: string | null;
+            /**
              * Identity Integration Slug
              * @description Optional override for the identity integration slug used to resolve the Imbi user; falls back to identity integrations attached to the integration when unset.
              */
@@ -11361,6 +11366,8 @@ export interface components {
             identifier_selector?: string | null;
             /** User Subject Selector */
             user_subject_selector?: string | null;
+            /** User Type Selector */
+            user_type_selector?: string | null;
             /** Identity Integration Slug */
             identity_integration_slug?: string | null;
             /** Event Type Selector */
