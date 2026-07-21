@@ -72,6 +72,11 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(body['code_challenge_methods_supported'], ['S256'])
         self.assertIn('authorization_code', body['grant_types_supported'])
+        # DCR is public-only; advertising client_secret_post would lure
+        # clients into confidential registration that /auth/register rejects.
+        self.assertEqual(
+            body['token_endpoint_auth_methods_supported'], ['none']
+        )
 
     def test_metadata_reflects_trusted_request_host(self) -> None:
         """Issuer/endpoints name the trusted host the client reached.

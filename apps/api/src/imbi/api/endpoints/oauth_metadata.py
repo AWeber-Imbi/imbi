@@ -44,9 +44,13 @@ async def authorization_server_metadata(
             'client_credentials',
         ],
         'code_challenge_methods_supported': ['S256'],
-        'token_endpoint_auth_methods_supported': [
-            'none',
-            'client_secret_post',
-        ],
+        # Dynamic client registration only provisions public clients, so
+        # advertise ``none`` alone. Advertising ``client_secret_post`` led
+        # spec-compliant clients (e.g. Claude's connector) to self-register
+        # as confidential clients, which /auth/register then rejected --
+        # breaking OAuth login. Confidential service accounts do authenticate
+        # at the token endpoint with a secret, but they are provisioned
+        # out-of-band and do not rely on this discovery document.
+        'token_endpoint_auth_methods_supported': ['none'],
         'scopes_supported': ['imbi'],
     }
