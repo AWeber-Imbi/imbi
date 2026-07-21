@@ -1141,6 +1141,15 @@ async def append_deployment_event(
                     deployments=updated_list,
                     env=env,
                 )
+                if status == 'success':
+                    await _set_current_release(
+                        db,
+                        org_slug=org_slug,
+                        project_id=project_id,
+                        env_slug=env_slug,
+                        release_id=release_id,
+                        timestamp=refreshed.timestamp,
+                    )
                 return updated_edge, 'updated'
     event = models.DeploymentEvent(
         timestamp=timestamp or datetime.datetime.now(datetime.UTC),
@@ -1152,7 +1161,7 @@ async def append_deployment_event(
     )
     deployments = [*existing, event]
     if existing:
-        appended_edge = await _set_deployments(
+        edge = await _set_deployments(
             db,
             project_id=project_id,
             release_id=release_id,
@@ -1160,17 +1169,26 @@ async def append_deployment_event(
             deployments=deployments,
             env=env,
         )
-        return appended_edge, 'appended'
-    created_edge = await _create_deployments_edge(
-        db,
-        project_id=project_id,
-        release_id=release_id,
-        env_slug=env_slug,
-        org_slug=org_slug,
-        deployments=deployments,
-        env=env,
-    )
-    return created_edge, 'appended'
+    else:
+        edge = await _create_deployments_edge(
+            db,
+            project_id=project_id,
+            release_id=release_id,
+            env_slug=env_slug,
+            org_slug=org_slug,
+            deployments=deployments,
+            env=env,
+        )
+    if status == 'success':
+        await _set_current_release(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            env_slug=env_slug,
+            release_id=release_id,
+            timestamp=event.timestamp,
+        )
+    return edge, 'appended'
 
 
 async def _set_deployments(
@@ -1258,6 +1276,70 @@ async def _create_deployments_edge(
             ),
         )
     return _edge_to_response(env, deployments)
+
+
+async def _set_current_release(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    release_id: str,
+    timestamp: datetime.datetime,
+) -> None:
+    """Point the project's ``DEPLOYED_IN`` edge at the current release.
+
+    Records ``release_id`` as ``current_release`` on the
+    ``Project -[:DEPLOYED_IN]-> Environment`` edge so the release
+    currently deployed to an environment can be read as a single
+    edge-property lookup rather than derived from the ``DEPLOYED_TO``
+    deployment history. Called on every ``success`` deployment event.
+
+    The edge is ``MERGE``d: for the common case where the project is
+    already configured to deploy in the environment it reuses the
+    existing edge, and it creates one when a success event targets an
+    environment the project was not yet linked to.
+
+    The pointer only advances when ``timestamp`` is newer than the
+    ``current_release_at`` already stored, so an out-of-order replay (a
+    deep resync backfill returning deployments newest-first, or a
+    delayed webhook) cannot regress it to an older release. Timestamps
+    are normalized to UTC ISO-8601 so the stored string comparison is
+    chronologically correct.
+    """
+    ts = timestamp.astimezone(datetime.UTC).isoformat()
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+    MATCH (e:Environment {{slug: {env_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MERGE (p)-[d:DEPLOYED_IN]->(e)
+    SET d.current_release = CASE
+          WHEN d.current_release_at IS NULL OR d.current_release_at < {ts}
+          THEN {release_id} ELSE d.current_release END,
+        d.current_release_at = CASE
+          WHEN d.current_release_at IS NULL OR d.current_release_at < {ts}
+          THEN {ts} ELSE d.current_release_at END
+    RETURN d.current_release AS current_release
+    """
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'env_slug': env_slug,
+            'org_slug': org_slug,
+            'release_id': release_id,
+            'ts': ts,
+        },
+        ['current_release'],
+    )
+    if not rows:
+        LOGGER.warning(
+            'current_release update skipped: project %r or environment '
+            '%r in organization %r no longer exists',
+            project_id,
+            env_slug,
+            org_slug,
+        )
 
 
 @releases_router.post(
@@ -1348,6 +1430,18 @@ async def record_deployment(
                 'deployments': serialized,
             },
             ['deployments'],
+        )
+
+    if data.status == 'success':
+        # A successful deployment makes this release the current one for
+        # the environment; record it on the DEPLOYED_IN edge.
+        await _set_current_release(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            env_slug=env_slug,
+            release_id=release_id,
+            timestamp=event.timestamp,
         )
 
     if data.external_run_id and data.status in {

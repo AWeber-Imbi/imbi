@@ -686,6 +686,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
                 }
             ],
             [{'deployments': None}],
+            [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -777,6 +778,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
                 }
             ],
             [{'deployments': None}],
+            [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with (
             mock.patch(
@@ -901,6 +903,91 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         body = response.json()
         self.assertEqual(body['current_status'], 'success')
 
+    def _current_release_calls(self) -> list[typing.Any]:
+        # The current_release write is the only query that MERGEs the
+        # DEPLOYED_IN edge and sets current_release.
+        return [
+            call
+            for call in self.mock_db.execute.await_args_list
+            if 'DEPLOYED_IN' in call.args[0]
+            and 'current_release' in call.args[0]
+        ]
+
+    def test_record_deployment_success_sets_current_release(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
+            [{'deployments': None}],  # create edge
+            [{'current_release': RELEASE_ID}],  # current_release write
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url(f'/{RELEASE_ID}/environments/production'),
+                json={'status': 'success'},
+            )
+        self.assertEqual(response.status_code, 200)
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        params = calls[0].args[1]
+        self.assertEqual(params['release_id'], RELEASE_ID)
+        self.assertEqual(params['project_id'], PROJECT_ID)
+        self.assertEqual(params['env_slug'], 'production')
+        self.assertEqual(params['org_slug'], ORG)
+        # Timestamp is normalized to UTC so the stored-string comparison
+        # in the newer-only guard is chronologically correct.
+        self.assertTrue(params['ts'].endswith('+00:00'))
+        # The write is guarded so out-of-order replays cannot regress it.
+        self.assertIn('current_release_at', calls[0].args[0])
+
+    def test_record_deployment_non_success_skips_current_release(
+        self,
+    ) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
+            [{'deployments': None}],
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url(f'/{RELEASE_ID}/environments/production'),
+                json={'status': 'in_progress'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._current_release_calls(), [])
+
+    def test_record_deployment_current_release_empty_logs_warning(
+        self,
+    ) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
+            [{'deployments': None}],  # create edge
+            [],  # current_release write matched nothing
+        ]
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            with self.assertLogs(
+                'imbi_api.endpoints.releases', level='WARNING'
+            ) as logs:
+                response = self.client.post(
+                    self._url(f'/{RELEASE_ID}/environments/production'),
+                    json={'status': 'success'},
+                )
+        # The deployment write still succeeds; only the pointer is skipped.
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._current_release_calls()), 1)
+        self.assertTrue(
+            any('current_release update skipped' in m for m in logs.output)
+        )
+
 
 class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
     """Direct coverage for ``append_deployment_event`` dedupe semantics."""
@@ -927,6 +1014,8 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
                 }
             ],
             [{'deployments': None}],  # only consumed by append / set path
+            # only consumed by the current_release write on success writes
+            [{'current_release': RELEASE_ID}],
         ]
         with mock.patch(
             'imbi_common.graph.parse_agtype',
@@ -1044,6 +1133,26 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         )
         self.assertEqual(outcome, 'updated')
         self.assertEqual(edge.deployments[0].performed_by, 'octocat')
+
+    def _current_release_calls(self) -> list[typing.Any]:
+        return [
+            call
+            for call in self.mock_db.execute.await_args_list
+            if 'DEPLOYED_IN' in call.args[0]
+            and 'current_release' in call.args[0]
+        ]
+
+    def test_success_append_records_current_release(self) -> None:
+        _edge, outcome = self._call([], external_run_id=None, status='success')
+        self.assertEqual(outcome, 'appended')
+        calls = self._current_release_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].args[1]['release_id'], RELEASE_ID)
+
+    def test_non_success_append_skips_current_release(self) -> None:
+        _edge, outcome = self._call([], external_run_id=None, status='failed')
+        self.assertEqual(outcome, 'appended')
+        self.assertEqual(self._current_release_calls(), [])
 
     def test_performed_by_match_is_no_op(self) -> None:
         existing = [
@@ -1465,6 +1574,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             [{'release': _release_row(tag='1.0.0', id='r1')}],
             [{'env': self._env('production'), 'deployments': None}],
             [{'deployments': '[]'}],
+            [{'current_release': 'r1'}],  # current_release write on success
         ]
         with mock.patch(
             'imbi_common.graph.parse_agtype',
