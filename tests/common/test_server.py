@@ -75,7 +75,9 @@ class ServerCliTests(unittest.TestCase):
             server.uvicorn_available = saved_value
 
         self.assertNotEqual(0, result.exit_code)
-        self.assertIn('uvicorn is not installed', str(result.exception).lower())
+        self.assertIn(
+            'uvicorn is not installed', str(result.exception).lower()
+        )
 
     def test_in_dev_mode(self) -> None:
         result = typer.testing.CliRunner().invoke(

@@ -88,6 +88,20 @@ def _package_metadata(module_name: str) -> tuple[str, str]:
     return top_level, 'unknown'
 
 
+def _first_party_version(module_name: str) -> str:
+    """Resolve the version for an ``imbi.plugins.*`` module.
+
+    imbi.plugins.<name> ships as the imbi-plugin-<name> dist;
+    ``packages_distributions()`` cannot disambiguate the shared imbi
+    namespace, so resolve the distribution directly.
+    """
+    dist_name = 'imbi-plugin-' + module_name.rsplit('.', 1)[-1]
+    try:
+        return importlib.metadata.version(dist_name)
+    except importlib.metadata.PackageNotFoundError:
+        return _package_metadata(module_name)[1]
+
+
 def _discover_first_party() -> dict[str, str]:
     """Return ``{module_name: source_label}`` for ``imbi.plugins.*``."""
     try:
@@ -321,15 +335,7 @@ def load_plugins() -> LoadResult:
             LOGGER.exception('Failed to import plugin %r', module_name)
             errors[source] = str(exc)
             continue
-        # imbi.plugins.<name> ships as the imbi-plugin-<name> dist;
-        # packages_distributions() cannot disambiguate the shared
-        # imbi namespace, so resolve the version directly.
-        dist_name = 'imbi-plugin-' + module_name.rsplit('.', 1)[-1]
-        try:
-            version = importlib.metadata.version(dist_name)
-        except importlib.metadata.PackageNotFoundError:
-            version = _package_metadata(module_name)[1]
-        _register(source, cls, version)
+        _register(source, cls, _first_party_version(module_name))
 
     for module_name, source in _discover_convention().items():
         try:
