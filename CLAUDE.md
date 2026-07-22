@@ -30,8 +30,8 @@ PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 (`libraries/common/tests/`, `apps/api/tests/`, `plugins/github/tests/`);
 pytest runs them all in one session using `--import-mode=importlib` +
 namespace packages, and test helpers import rootdir-anchored
-(`apps.api.tests.support`). Docs are one mkdocs site rooted at
-`docs/mkdocs.yml`.
+(`apps.api.tests.support`). Docs are one Zensical site rooted at
+`docs/mkdocs.yml` (Zensical natively reads the mkdocs.yml config).
 
 All members share one `uv.lock`, one `.venv`, and the root tool config
 (ruff, basedpyright, mypy, coverage, pytest). Versions are lockstep:

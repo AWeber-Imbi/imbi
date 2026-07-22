@@ -239,7 +239,7 @@ imbi/
 ├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
 │   ├── aws/  github/  google/  logzio/  oidc/  pagerduty/  sonarqube/
 ├── ui/                # React frontend (npm, not a uv member)
-├── docs/              # unified mkdocs site
+├── docs/              # unified Zensical site
 ├── pyproject.toml     # workspace root + the `imbi` meta-package
 ├── Caddyfile          # Reverse proxy configuration
 ├── compose.yaml       # Local run of the production image
