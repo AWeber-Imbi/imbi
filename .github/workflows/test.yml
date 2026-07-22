@@ -1,102 +1,17 @@
-name: Testing
-
+name: "Pipeline"
 on:
   push:
-    branches: [main]
+    branches:
+      - "master"
   pull_request:
-    branches: [main]
-
 jobs:
-  python-lint:
-    runs-on: ubuntu-latest
+  ci:
+    name: "CI"
+    runs-on: "ubuntu-latest"
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install just
-        uses: extractions/setup-just@v4
-        with:
-          just-version: '1.47.1'
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          python-version: '3.14'
-          enable-cache: true
-      - name: Lint
-        run: just lint
-
-  python-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install just
-        uses: extractions/setup-just@v4
-        with:
-          just-version: '1.47.1'
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
-        with:
-          python-version: '3.14'
-          enable-cache: true
-      - name: Run tests
-        run: just test
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        with:
-          files: build/coverage.xml
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-  ui-lint:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ui
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: "actions/checkout@v4"
         with:
           fetch-depth: 0
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: Install dependencies
-        run: npm ci
-      - name: Lint
-        run: npm run lint
-      - name: Check formatting
-        run: npm run format:check
-      - name: Complexity audit
-        # Skip on the initial monorepo import: with no ui/ on the base
-        # branch every file counts as introduced, so the audit would
-        # gate on grandfathered complexity. Self-heals once ui/ is on
-        # main.
-        run: |
-          if git cat-file -e origin/main:ui 2>/dev/null; then
-            npx fallow audit --base origin/main
-          else
-            echo "ui/ does not exist on origin/main; skipping audit"
-          fi
-
-  ui-test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ui
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - name: Install dependencies
-        run: npm ci
-      - name: Test
-        run: npm run test
-      - name: Build
-        run: npm run build
+          filter: "blob:none"
+      - uses: "moonrepo/setup-toolchain@v0"
+      - run: "moon ci"

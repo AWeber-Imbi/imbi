@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/workspace.json
+
+projects:
+  # uv workspace members are discovered by glob; their ids come from the
+  # folder name (api, common, github, ...).
+  globs:
+    - 'apps/*'
+    - 'libraries/*'
+    - 'plugins/*'
+  # Named projects for the pieces that live outside the member globs.
+  sources:
+    root: '.'
+    docs: 'docs'
+    ui: 'ui'
+
+vcs:
+  defaultBranch: main
+  provider: github

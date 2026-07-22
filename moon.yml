@@ -1,0 +1,139 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+#
+# Workspace-wide tasks that operate on the repo root (docker stack, aggregate
+# coverage, production image). This project has no `python` tag, so it does not
+# inherit the per-member python tasks.
+layer: 'tool'
+stack: 'infrastructure'
+language: 'python'
+
+project:
+  name: 'imbi'
+  description: 'Imbi platform monorepo root'
+
+tasks:
+  # Install the whole workspace + pre-commit hooks.
+  setup:
+    script: |
+      uv sync --all-groups --all-extras --frozen
+      uv run pre-commit install --install-hooks --overwrite
+    options:
+      cache: false
+      runInCI: false
+
+  # Boot the backing services and (re)write /.env.test with resolved ports.
+  # Ported verbatim from the previous justfile `docker` recipe. Every python
+  # `test` task depends on this, and moon runs it once per graph execution.
+  services:
+    script: |
+      set -e
+      get_port() {
+          if port="$(docker compose -f compose.ci.yaml port "$@")"; then
+              echo "${port##*:}"
+              return 0
+          fi
+          echo "docker compose port $@ failed" >&2
+          return 1
+      }
+      docker compose -f compose.ci.yaml up -d --wait --wait-timeout 120 || (docker compose -f compose.ci.yaml logs && false)
+      docker compose -f compose.ci.yaml exec -T clickhouse clickhouse client -q "CREATE DATABASE IF NOT EXISTS imbi"
+      test_host="${TEST_HOST:-127.0.0.1}"
+      if test -f .env.test; then
+          if grep -q '^IMBI_AUTH_JWT_SECRET=' .env.test; then
+              jwt_secret=$(grep -m1 '^IMBI_AUTH_JWT_SECRET=' .env.test | cut -d= -f2- | tr -d '\r"')
+          fi
+          if grep -q '^IMBI_AUTH_ENCRYPTION_KEY=' .env.test; then
+              encryption_key=$(grep -m1 '^IMBI_AUTH_ENCRYPTION_KEY=' .env.test | cut -d= -f2- | tr -d '\r"')
+          fi
+      fi
+      if test -z "${jwt_secret:-}"; then
+          jwt_secret=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+      fi
+      if test -z "${encryption_key:-}"; then
+          encryption_key=$(python3 -c "import secrets; print(secrets.token_urlsafe(32) + '=')")
+      fi
+      cat>".env.test"<<-EOF
+      TEST_HOST="$test_host"
+      CLICKHOUSE_URL="clickhouse+http://default:password@$test_host:$(get_port clickhouse 8123)/imbi"
+      FILE_CACHE_ENABLED="no"
+      IMBI_AUTH_ENCRYPTION_KEY="$encryption_key"
+      IMBI_AUTH_JWT_SECRET="$jwt_secret"
+      IMBI_API_URL=http://localhost:8000
+      IMBI_EMAIL_ENABLED="true"
+      IMBI_EMAIL_SMTP_HOST="$test_host"
+      IMBI_EMAIL_SMTP_PORT="$(get_port mailpit 1025)"
+      IMBI_EMAIL_SMTP_USE_TLS="false"
+      IMBI_EMAIL_FROM_EMAIL="noreply@imbi.example"
+      IMBI_EMAIL_FROM_NAME="Imbi Development"
+      MAILPIT_SMTP_PORT="$(get_port mailpit 1025)"
+      MAILPIT_API_URL="http://$test_host:$(get_port mailpit 8025)"
+      MAILPIT_WEB_PORT="$(get_port mailpit 8025)"
+      OTEL_LOGS_EXPORTER="none"
+      OTEL_METRICS_EXPORTER="none"
+      OTEL_TRACES_EXPORTER="otlp"
+      OTEL_EXPORTER_OTLP_ENDPOINT="$test_host:$(get_port jaeger 4317)"
+      OTEL_EXPORTER_OTLP_TRACES_INSECURE="true"
+      OTEL_RESOURCE_ATTRIBUTES="service.name=imbi-api,service.environment=development"
+      OTEL_SERVICE_NAME="imbi-api"
+      POSTGRES_URL="postgresql://postgres:secret@$test_host:$(get_port postgres 5432)/imbi"
+      S3_ENDPOINT_URL="http://$test_host:$(get_port localstack 4566)"
+      S3_ACCESS_KEY="test"
+      S3_SECRET_KEY="test"
+      S3_BUCKET="imbi-uploads"
+      S3_REGION="us-east-1"
+      VALKEY_URL="valkey://$test_host:$(get_port valkey 6379)"
+      EOF
+    options:
+      cache: false
+      outputStyle: 'stream'
+
+  # Full-suite single-session run producing the aggregate coverage.xml. This is
+  # the CI test entrypoint: one pytest session over every member (DB-safe,
+  # unlike running the per-member `test` tasks in parallel). Not hermetic, not
+  # cached; `always` so it runs regardless of which project is affected.
+  coverage:
+    script: |
+      set -e
+      uv run --frozen --env-file .env.test coverage run -m pytest
+      uv run --frozen coverage report
+      uv run --frozen coverage xml -o build/coverage.xml
+    deps:
+      - '~:services'
+    options:
+      cache: false
+      runInCI: 'always'
+    outputs:
+      - 'build/coverage.xml'
+
+  # Build the production Docker image (Dockerfile lives in container/). Runs in
+  # `moon ci` as a build test only: `docker build` never pushes, and publishing
+  # remains release.yml's job. `always` so the image is validated on every CI
+  # run regardless of which project moon marks affected.
+  image:
+    command: 'docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'container/Dockerfile'
+      - '--build-arg'
+      - 'VITE_GIT_REF=latest'
+      - '-t'
+      - 'ghcr.io/aweber-imbi/imbi:latest'
+      - '.'
+    options:
+      cache: false
+      runInCI: 'always'
+
+  # Tear down the backing services and volumes.
+  teardown:
+    command: 'docker'
+    args:
+      - 'compose'
+      - '-f'
+      - 'compose.ci.yaml'
+      - 'down'
+      - '--remove-orphans'
+      - '--volumes'
+    options:
+      cache: false
+      runInCI: false

@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/toolchain.json
+#
+# Tool versions are pinned in `/.prototools` (the single source of truth) and
+# inherited here via `versionFromPrototools` (on by default). moon downloads
+# and manages them, so every machine and CI runner is deterministic.
+
+# Python + uv drive the entire uv workspace (one root pyproject, one uv.lock,
+# one shared .venv). `packageManager: uv` lets moon derive the project
+# dependency graph from the pyproject cross-member pins.
+#
+# We intentionally do NOT pin python/uv versions here: moon's unstable_uv
+# plugin (0.1.3) generates a `uv venv --no-managed-python` invocation that
+# conflicts with recent uv's `--python-preference` handling when moon manages
+# the interpreter. `versionFromPrototools: false` keeps moon off the managed
+# download path and uses the system python (3.14, per .python-version) + uv,
+# which is what the `uv run` tasks rely on anyway.
+unstable_python:
+  packageManager: 'uv'
+  venvName: '.venv'
+  versionFromPrototools: false
+
+unstable_uv:
+  versionFromPrototools: false
+
+# Node + npm build and test the UI (ui/).
+node: {}
+
+npm: {}

@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/tasks.json
+#
+# Global configuration inherited by every project. Language-specific tasks
+# live in .moon/tasks/python.yml (scoped by the `python` tag).
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+  tests:
+    - 'tests/**/*'
+
+# Shared, workspace-wide inputs. Because every member resolves against one
+# uv.lock and the root pyproject (ruff/pytest/coverage/basedpyright config all
+# live there), a change to any of them must bust every cached task.
+implicitInputs:
+  - '/pyproject.toml'
+  - '/uv.lock'
+  - '/.prototools'

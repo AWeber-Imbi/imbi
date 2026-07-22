@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+layer: 'application'
+stack: 'frontend'
+language: 'typescript'
+
+project:
+  name: 'imbi-ui-v2'
+  description: 'Imbi React UI (Vite :5173)'
+
+# npm scripts are the source of truth; moon wraps them for caching + graph
+# integration. moon's node toolchain does not auto-install node_modules, so an
+# explicit `install` task (cached on the manifests) gates the others.
+tasks:
+  install:
+    command: 'npm ci'
+    inputs:
+      - 'package.json'
+      - 'package-lock.json'
+    options:
+      runInCI: 'always'
+
+  lint:
+    command: 'npm run lint'
+    deps:
+      - '~:install'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - 'tools/**/*'
+      - '*.config.{js,ts}'
+      - '.oxlintrc.json'
+
+  format:
+    command: 'npm run format:check'
+    deps:
+      - '~:install'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - 'tools/**/*'
+      - '*.config.{js,ts}'
+      - 'package.json'
+
+  test:
+    command: 'npm run test'
+    deps:
+      - '~:install'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - '*.config.{js,ts}'
+
+  build:
+    command: 'npm run build'
+    deps:
+      - '~:install'
+    inputs:
+      - 'src/**/*'
+      - 'index.html'
+      - '*.config.{js,ts}'
+      - 'tsconfig*.json'
+    outputs:
+      - 'dist'
