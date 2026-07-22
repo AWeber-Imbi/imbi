@@ -74,13 +74,13 @@ COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
 COPY --from=sentry-cli /bin/sentry-cli /usr/local/bin/sentry-cli
 
 # Copy Caddyfile
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY container/Caddyfile /etc/caddy/Caddyfile
 
 # Copy UI static files
 COPY --from=ui-builder /tmp/build/dist/ /srv/ui/
 
 # Copy entrypoint
-COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chmod=755 container/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV PATH="/app/bin:$PATH"
 

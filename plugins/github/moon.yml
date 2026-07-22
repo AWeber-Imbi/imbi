@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+layer: 'library'
+stack: 'backend'
+language: 'python'
+tags:
+  - 'python'
+
+project:
+  name: 'imbi-plugin-github'
+  description: 'GitHub identity plugin for Imbi'
+
+dependsOn:
+  - 'common'
+
+# Inherits lint / format / typecheck / test from .moon/tasks/python.yml. Only
+# the coverage module for this member is member-specific.
+tasks:
+  test:
+    args:
+      - '--cov=imbi.plugins.github'
+      - '--cov-report=term-missing'

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+layer: 'application'
+stack: 'backend'
+language: 'python'
+tags:
+  - 'python'
+
+project:
+  name: 'imbi-api'
+  description: 'Imbi API service (:8000)'
+
+dependsOn:
+  - 'common'
+
+# Inherits lint / format / typecheck / test from .moon/tasks/python.yml. Only
+# the coverage module for this member is member-specific.
+tasks:
+  test:
+    args:
+      - '--cov=imbi.api'
+      - '--cov-report=term-missing'

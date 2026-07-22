@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/tasks.json
+#
+# Inherited by every project carrying the `python` tag (all uv workspace
+# members). Tasks run through `uv run` so they use the shared .venv and the
+# frozen lockfile, mirroring the repo's established idiom. Coverage modules are
+# appended per-member in each project's moon.yml.
+
+inheritedBy:
+  tags:
+    or:
+      - 'python'
+
+tasks:
+  lint:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - 'ruff'
+      - 'check'
+      - '$projectSource'
+    deps:
+      - 'root:setup-env'
+    options:
+      runFromWorkspaceRoot: true
+    inputs:
+      - 'src/**/*'
+      - 'tests/**/*'
+
+  format:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - 'ruff'
+      - 'format'
+      - '--check'
+      - '$projectSource'
+    deps:
+      - 'root:setup-env'
+    options:
+      runFromWorkspaceRoot: true
+    inputs:
+      - 'src/**/*'
+      - 'tests/**/*'
+
+  typecheck:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - 'basedpyright'
+      - '$projectSource/src'
+    deps:
+      - 'root:setup-env'
+    options:
+      runFromWorkspaceRoot: true
+    inputs:
+      - 'src/**/*'
+
+  # Per-member suite against live backing services, for targeted local runs
+  # (`moon run api:test`). `root:services` boots the docker compose stack and
+  # writes /.env.test once; uv loads it via --env-file. Not hermetic (hits
+  # Postgres/ClickHouse/etc.), so caching is keyed on the member's own sources
+  # + tests only.
+  #
+  # `runInCI: false` because the whole suite shares one database with no
+  # per-process isolation — running every member's suite concurrently under
+  # `moon ci` would clobber shared state. CI instead runs the single-session
+  # `root:coverage`. Flip this to `true` if/when the fixtures isolate per
+  # process.
+  test:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - '--env-file'
+      - '.env.test'
+      - 'pytest'
+      - '$projectSource/tests'
+    deps:
+      - 'root:setup-env'
+      - 'root:services'
+    options:
+      runFromWorkspaceRoot: true
+      outputStyle: 'stream'
+      runInCI: false
+      # The whole suite shares one database with no per-process isolation, so
+      # member suites must not run concurrently against it (see runInCI note).
+      mutex: 'imbi-test-db'
+    inputs:
+      - 'src/**/*'
+      - 'tests/**/*'
+      # root:services rewrites this file with resolved ports/secrets; it feeds
+      # the run via --env-file, so a change must bust the cached result.
+      - '/.env.test'

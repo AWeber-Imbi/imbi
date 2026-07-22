@@ -3,6 +3,7 @@ __pycache__
 *.pyc
 *.env
 .env
+.env.test
 build/
 dist/
 docs/site/
@@ -15,3 +16,7 @@ runtime/state/
 .ruff_cache/
 coverage.xml
 site/
+
+# moon
+.moon/cache
+.moon/docker

@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+layer: 'tool'
+stack: 'infrastructure'
+language: 'python'
+
+project:
+  name: 'imbi-docs'
+  description: 'Merged mkdocs documentation site'
+
+# Tasks run from this project's directory (docs/); uv resolves the workspace
+# root upward, so `--group docs` and the shared .venv still apply.
+tasks:
+  build:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - '--group'
+      - 'docs'
+      - 'mkdocs'
+      - 'build'
+      - '--strict'
+      - '-f'
+      - 'mkdocs.yml'
+    deps:
+      - 'root:setup-env'
+    inputs:
+      - 'docs/**/*'
+      - 'mkdocs.yml'
+    outputs:
+      - 'site'
+
+  serve:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - '--group'
+      - 'docs'
+      - 'mkdocs'
+      - 'serve'
+      - '-f'
+      - 'mkdocs.yml'
+      - '-a'
+      - 'localhost:8088'
+    options:
+      persistent: true
+      cache: false

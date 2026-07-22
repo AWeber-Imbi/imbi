@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/toolchain.json
+#
+# Python members carry `language: 'python'` but no python toolchain, so they
+# fall back to moon's built-in `system` toolchain: their tasks shell out to
+# `uv` (`uv run --frozen ...`) as plain system commands against the shared
+# .venv. uv itself is provisioned outside moon — installed locally, and via
+# astral-sh/setup-uv in CI — and uv downloads Python 3.14 (per .python-version)
+# during `uv sync`. A `root:setup-env` gate runs `uv sync` once before the
+# parallel tasks so they never race to populate the venv.
+
+# Node + npm build and test the UI (ui/). `javascript` is the ecosystem
+# toolchain that `node`/`npm` sit under; declared (empty) at the workspace
+# level so moon recognizes the JS/TS members.
+javascript: {}
+
+node: {}
+
+npm: {}

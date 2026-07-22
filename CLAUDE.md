@@ -40,21 +40,35 @@ together in one commit and released with one `v<version>` tag.
 
 ## Common Commands
 
+[moon](https://moonrepo.dev) (`.moon/`) is the task runner and owns
+lint/format/typecheck/test/build/docs plus the docker service + image
+tasks. Toolchains (python 3.14, uv, node, npm) are pinned in `.prototools`
+and downloaded/managed by moon on first use. Run `moon query tasks` to see
+everything. The `just` recipes are thin wrappers around moon.
+
 ```bash
-just setup                 # uv sync --all-groups --all-extras + pre-commit hooks
-just test                  # full suite w/ docker backing services (compose.ci.yaml)
-just test apps/api/tests/...  # single file/suite (pytest syntax)
-just test-suite apps/api   # one member with its own coverage floor
-just lint                  # pre-commit run --all-files + basedpyright
-just format [FILES]        # ruff + tombi via pre-commit
-just docs / docs-serve     # mkdocs build --strict / local serve
-just ui-lint / ui-test     # npm lint+format:check / vitest (ui/)
-just build [tag]           # build the production Docker image
-just bootstrap / teardown  # run/destroy the prod image locally (compose.yaml)
+moon ci                    # full pipeline (lint/format/typecheck, ui, docs,
+                           #   single-session coverage, docker image test build)
+moon run <proj>:<task>     # one task, e.g. `moon run api:test`, `moon run ui:build`
+moon run :lint             # a task across every project
+
+just setup                 # -> moon run root:setup (toolchains, deps, pre-commit)
+just services              # -> moon run root:services (compose.ci.yaml + .env.test)
+just test                  # -> moon run root:coverage (full suite, aggregate cov)
+just test-suite api        # -> moon run api:test (one member, its own coverage)
+just lint                  # -> moon run :lint :typecheck :format
+just format [FILES]        # ruff + tombi via pre-commit (write mode)
+just docs / docs-serve     # -> moon run docs:build / docs:serve
+just build                 # -> moon run root:image (production image, no push)
 ```
 
-Test env vars are written to `.env.test` by the docker recipe. Tests that need PostgreSQL are
-gated on `POSTGRES_URL` via the root `conftest.py`.
+Run the prod image locally with `docker compose up --build` (compose.yaml).
+
+Task granularity: per-member `test` tasks are for targeted local runs and are
+`runInCI: false` (the suite shares one database with no per-process isolation);
+CI runs the single-session `root:coverage` instead. Cross-member edges are
+explicit `dependsOn: [common]` in each member's `moon.yml`. Test env vars are
+written to `.env.test` by `root:services`.
 
 ## Conventions
 
