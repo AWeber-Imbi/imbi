@@ -8,7 +8,11 @@
 # during `uv sync`. A `root:setup-env` gate runs `uv sync` once before the
 # parallel tasks so they never race to populate the venv.
 
-# Node + npm build and test the UI (ui/).
+# Node + npm build and test the UI (ui/). `javascript` is the ecosystem
+# toolchain that `node`/`npm` sit under; declared (empty) at the workspace
+# level so moon recognizes the JS/TS members.
+javascript: {}
+
 node: {}
 
 npm: {}

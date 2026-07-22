@@ -39,6 +39,13 @@ teardown:
 lint:
     moon run :lint :typecheck :format
 
+[doc("Auto-format code (ruff + tombi via pre-commit); optionally pass files")]
+[group("Testing")]
+format *files:
+    -uv run pre-commit run ruff-check {{ if files == '' { '--all-files' } else { '--files ' + files } }}
+    -uv run pre-commit run ruff-format {{ if files == '' { '--all-files' } else { '--files ' + files } }}
+    -uv run pre-commit run tombi-format {{ if files == '' { '--all-files' } else { '--files ' + files } }}
+
 [doc("Run the full suite with aggregate coverage (single pytest session)")]
 [group("Testing")]
 test:
@@ -67,18 +74,3 @@ docs-serve:
 [group("Build Docker")]
 build:
     moon run root:image
-
-# ---------------------------------------------------------------------------
-# Production image (local, not moon-managed)
-# ---------------------------------------------------------------------------
-
-[doc("Build and initialize the production image locally")]
-[group("Development")]
-bootstrap:
-    docker compose up --build --wait --detach
-    docker compose exec imbi imbi-api setup
-
-[doc("Destroy the local production-image environment")]
-[group("Development")]
-prod-teardown:
-    docker compose down --remove-orphans --volumes

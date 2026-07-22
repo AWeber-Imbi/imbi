@@ -115,6 +115,7 @@ tasks:
       set -e
       uv run --frozen --env-file .env.test coverage run -m pytest
       uv run --frozen coverage report
+      mkdir -p build
       uv run --frozen coverage xml -o build/coverage.xml
     deps:
       - '~:setup-env'

@@ -13,6 +13,9 @@ jobs:
         with:
           fetch-depth: 0
           filter: "blob:none"
+          # moon ci only builds/tests (no push), so the token is not needed
+          # after checkout; don't persist it in .git/config for later steps.
+          persist-credentials: false
       # moon's unstable_uv toolchain installs uv, but with python left
       # unmanaged the `uv venv` env-setup step races ahead of that install
       # and fails with "uv: command not found" on fresh runners. Provision

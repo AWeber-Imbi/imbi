@@ -85,6 +85,12 @@ tasks:
       runFromWorkspaceRoot: true
       outputStyle: 'stream'
       runInCI: false
+      # The whole suite shares one database with no per-process isolation, so
+      # member suites must not run concurrently against it (see runInCI note).
+      mutex: 'imbi-test-db'
     inputs:
       - 'src/**/*'
       - 'tests/**/*'
+      # root:services rewrites this file with resolved ports/secrets; it feeds
+      # the run via --env-file, so a change must bust the cached result.
+      - '/.env.test'

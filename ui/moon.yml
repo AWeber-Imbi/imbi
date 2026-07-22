@@ -18,6 +18,9 @@ tasks:
       - 'package-lock.json'
     options:
       runInCI: 'always'
+      # No declared outputs, so there is nothing to cache/hydrate; always let
+      # npm ci reconcile node_modules against the lockfile.
+      cache: false
 
   lint:
     command: 'npm run lint'
@@ -29,6 +32,8 @@ tasks:
       - 'tools/**/*'
       - '*.config.{js,ts}'
       - '.oxlintrc.json'
+      - 'package.json'
+      - 'package-lock.json'
 
   format:
     command: 'npm run format:check'
@@ -40,6 +45,7 @@ tasks:
       - 'tools/**/*'
       - '*.config.{js,ts}'
       - 'package.json'
+      - 'package-lock.json'
 
   test:
     command: 'npm run test'
@@ -49,6 +55,8 @@ tasks:
       - 'src/**/*'
       - 'test/**/*'
       - '*.config.{js,ts}'
+      - 'package.json'
+      - 'package-lock.json'
 
   build:
     command: 'npm run build'
@@ -59,5 +67,7 @@ tasks:
       - 'index.html'
       - '*.config.{js,ts}'
       - 'tsconfig*.json'
+      - 'package.json'
+      - 'package-lock.json'
     outputs:
       - 'dist'

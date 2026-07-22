@@ -1,11 +1,10 @@
-# Runs the production all-in-one image locally (`just bootstrap`).
+# Runs the production all-in-one image locally (`docker compose up --build`).
 # The Okteto dev environment is compose.dev.yaml.
 services:
   imbi:
     build: .
     image: ghcr.io/aweber-imbi/imbi:local
     ports:
-      - "2019"
       - "8080:8080"
     environment:
       CLICKHOUSE_URL: clickhouse+http://default:password@clickhouse:8123/imbi

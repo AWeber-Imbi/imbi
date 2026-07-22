@@ -57,10 +57,12 @@ just services              # -> moon run root:services (compose.ci.yaml + .env.t
 just test                  # -> moon run root:coverage (full suite, aggregate cov)
 just test-suite api        # -> moon run api:test (one member, its own coverage)
 just lint                  # -> moon run :lint :typecheck :format
+just format [FILES]        # ruff + tombi via pre-commit (write mode)
 just docs / docs-serve     # -> moon run docs:build / docs:serve
 just build                 # -> moon run root:image (production image, no push)
-just bootstrap             # run the prod image locally (compose.yaml)
 ```
+
+Run the prod image locally with `docker compose up --build` (compose.yaml).
 
 Task granularity: per-member `test` tasks are for targeted local runs and are
 `runInCI: false` (the suite shares one database with no per-process isolation);

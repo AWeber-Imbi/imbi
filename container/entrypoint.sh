@@ -14,7 +14,7 @@ IMBI_SERVICE="${IMBI_SERVICE:-all}"
 errors=""
 
 require_var() {
-    eval val="\${$1:-}"
+    val="${!1:-}"
     if [ -z "$val" ]; then
         errors="${errors}  - $1: $2\n"
     fi
@@ -137,7 +137,12 @@ upload_sourcemaps() {
     echo "Source maps uploaded."
 }
 
-upload_sourcemaps
+# Only `all` mode serves the UI via the bundled Caddy, so only upload there.
+# Single-service replicas (api, gateway, mcp, ...) would otherwise redundantly
+# re-upload the same maps on every start/restart.
+if [ "$IMBI_SERVICE" = "all" ]; then
+    upload_sourcemaps
+fi
 
 # --------------------------------------------------------------------------
 # Service startup
@@ -204,7 +209,17 @@ case "$IMBI_SERVICE" in
         start_assistant
         start_gateway
         start_mcp
-        start_slackbot
+        # Slack bot is optional in 'all' mode: start it only when its tokens
+        # are present (mirroring the validation above). Unconfigured, it would
+        # exit immediately and trip the `wait -n` below, tearing down the whole
+        # container.
+        if [ -n "${SLACK_APP_TOKEN:-}" ] && \
+           [ -n "${SLACK_BOT_TOKEN:-}" ] && \
+           [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            start_slackbot
+        else
+            echo "imbi-slackbot disabled (needs SLACK_APP_TOKEN, SLACK_BOT_TOKEN, ANTHROPIC_API_KEY)"
+        fi
         start_caddy
         ;;
     api)
