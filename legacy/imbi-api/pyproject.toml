@@ -1,0 +1,230 @@
+[project]
+name = "imbi-api"
+version = "2.16.1"
+description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "BSD-3-Clause" }
+authors = [
+  { name = "Alex Campbell", email = "alexc@aweber.com" },
+  { name = "Dave Shawley", email = "daves@aweber.com" },
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" }
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "Pillow",
+  "aioboto3>=15.5.0",
+  "aiohttp",
+  "argon2-cffi>=25.1.0",
+  "authlib>=1.6.11",
+  "cyclonedx-python-lib>=11.7,<12",
+  "fastapi",
+  "filetype",
+  "httpx>=0.28.1,<1",
+  "imbi-common[databases,llm,sentry,server]==2.16.1",
+  "jinja2",
+  "jsonpatch>=1.33",
+  "mcp>=1.26.0",
+  "nanoid>=2.0.0",
+  "orjson>=3.11.6",
+  "pydantic[email]",
+  "pyotp>=2.9.0",
+  "python-multipart>=0.0.26",
+  "qrcode>=8.0",
+  "sentry-sdk>=2.48.0,<3",  # 3.0 line abandoned upstream; stay on 2.x
+  "slowapi==0.1.9",  # Pin: alpha quality, API may change
+  "typer",
+  "uvicorn",
+  "yarl",
+]
+license-file = "LICENSE"
+
+[project.scripts]
+imbi-api = "imbi_api.entrypoint:main"
+
+[project.optional-dependencies]
+otel = [
+  "opentelemetry-distro",
+  "opentelemetry-instrumentation-asyncio",
+  "opentelemetry-instrumentation-fastapi",
+  "opentelemetry-instrumentation-httpx",
+  "opentelemetry-instrumentation-jinja2",
+]
+sentry = ["sentry-sdk"]
+
+[dependency-groups]
+dev = [
+  "basedpyright",
+  "build",
+  "coverage[toml]",
+  "httpx",
+  "mypy",
+  "pre-commit",
+  "pytest",
+  "pytest-cov",
+  "ruff",
+  "watchfiles"
+]
+docs = [
+  "griffe-pydantic",
+  "mkdocs>=1.5,<2",
+  "mkdocs-material>9.5,<10",
+  "mkdocstrings-python-xref>=1.6,<2",
+  "mkdocstrings[python]"
+]
+
+[build-system]
+requires = ["build", "hatchling", "wheel"]
+build-backend = "hatchling.build"
+
+[tool.coverage.html]
+directory = "build/coverage"
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 85
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/imbi_api"]
+
+[tool.coverage.xml]
+output = "build/coverage.xml"
+
+[tool.hatch.build.targets.wheel]
+src-layout = true
+
+[tool.hatch.envs.default]
+python = "python3.14"
+features = ["dev"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.mkdocs]
+config-file = "mkdocs.yml"
+
+[tool.pyright]
+deprecateTypingAliases = true
+reportMissingSuperCall = "hint"
+typeCheckingMode = "strict"
+# ``@warnings.deprecated`` markers are intentional signals that a
+# helper is on its way out; we want IDE / type-checker visibility but
+# don't want every legacy call site to block CI until the migration
+# is complete. See CODE_REVIEW_PUNCHLIST entry L4 (parse_scopes).
+reportDeprecated = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "src/imbi_api/assistant"
+reportDeprecated = "none"
+reportConstantRedefinition = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests/assistant"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+extraPaths = ["src", "."]
+
+[[tool.pyright.executionEnvironments]]
+root = "src"
+reportUnusedFunction = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+extraPaths = ["src", "."]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--cov=src/imbi_api",
+  "--cov-report=xml:build/coverage.xml",
+  "--cov-report=term",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py314"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "BLE",  # flake8-blind-except
+  "C4",  # flake8-comprehensions
+  "C90",  # mccabe
+  "E",
+  "W",  # pycodestyle
+  "F",  # pyflakes
+  "G",  # flake8-logging-format
+  "I",  # isort
+  "N",  # pep8-naming
+  "Q",  # flake8-quotes
+  "S",  # flake8-bandit
+  "ASYNC",  # flake8-async
+  "B",  # flake8-bugbear
+  "DTZ",  # flake8-datetimez
+  "FURB",  # refurb
+  "RUF",  # ruff-specific
+  "T20",  # flake8-print
+  "UP",  # pyupgrade
+]
+ignore = [
+  "N818",  # exception class names are not required to end in Error
+  "RSE",  # contradicts Python Style Guide
+  "S105",  # false positive: hardcoded password (for literal strings like 'bearer', 'access', 'refresh')
+  "S106",  # false positive: hardcoded password in function argument
+  "TRY003",  # message text in exception initializers is okay
+  "TRY400",  # logging.exception is not always preferable
+  "UP040",  # allow non-pep695-type-alias
+  "UP047",  # allow non-pep695-generic-functions
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S"]
+
+[tool.uv]
+exclude-newer = "7 days"
+exclude-newer-package = { "clickhouse-connect" = false, "imbi-common" = false }
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true

@@ -1,0 +1,62 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123"
+      - "9000"
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'"]
+
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0
+    ports:
+      - "4317" # OTLP/HTTP
+      - "16686" # UI port
+
+  mailpit:
+    image: axllent/mailpit:v1.21.5
+    ports:
+      - "8025" # Web UI
+      - "1025" # SMTP
+    environment:
+      - MP_SMTP_AUTH_ACCEPT_ANY=1
+      - MP_SMTP_AUTH_ALLOW_INSECURE=1
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8025/api/v1/info"]
+
+  localstack:
+    image: localstack/localstack:community-archive
+    ports:
+      - "4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: ghcr.io/aweber-imbi/postgres:latest
+    ports:
+      - "5432"
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: imbi
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379"
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

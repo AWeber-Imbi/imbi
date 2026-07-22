@@ -1,0 +1,13 @@
+.*
+/build
+/dist
+/docs/superpowers
+/public
+/site
+VERSION
+__pycache__/
+*.pyc
+!/.github
+!/.gitignore
+!/.pre-commit-config.yaml
+!/.python-version

@@ -1,0 +1,58 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-05-01T00:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "cyclonedx-bom",
+          "version": "5.0.0"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "my-python-app",
+      "version": "0.5.2",
+      "purl": "pkg:pypi/my-python-app@0.5.2"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/fastapi@0.128.0",
+      "name": "fastapi",
+      "version": "0.128.0",
+      "purl": "pkg:pypi/fastapi@0.128.0",
+      "licenses": [{"license": {"id": "MIT"}}],
+      "supplier": {"name": "Sebastián Ramírez"}
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/pydantic@2.10.0",
+      "name": "pydantic",
+      "version": "2.10.0",
+      "purl": "pkg:pypi/pydantic@2.10.0",
+      "licenses": [{"license": {"id": "MIT"}}]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/httpx@0.27.2",
+      "name": "httpx",
+      "version": "0.27.2",
+      "purl": "pkg:pypi/httpx@0.27.2",
+      "licenses": [{"license": {"id": "BSD-3-Clause"}}]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:pypi/cryptography@43.0.1",
+      "name": "cryptography",
+      "version": "43.0.1",
+      "purl": "pkg:pypi/cryptography@43.0.1",
+      "licenses": [{"expression": "Apache-2.0 OR BSD-3-Clause"}]
+    }
+  ]
+}

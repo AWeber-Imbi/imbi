@@ -1,0 +1,13 @@
+{# Base template for plain text emails #}
+{% block header %}IMBI{% endblock %}
+{% block separator %}================================================================================{% endblock %}
+
+{% block body %}
+{# Content goes here #}
+{% endblock %}
+
+{% block footer %}
+--------------------------------------------------------------------------------
+This email was sent by Imbi, your DevOps Service Management Platform.
+If you have questions, please contact your administrator.
+{% endblock %}

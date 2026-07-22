@@ -1,0 +1,384 @@
+"""API-specific settings extending imbi-common shared settings.
+
+Import this module instead of imbi_common.settings in imbi-api code
+to get access to the full Auth settings (with password policy, OAuth,
+sessions, etc.) as well as Email and Storage settings.
+
+Re-exports all shared settings for convenience.
+"""
+
+import os
+import typing
+import urllib.parse
+
+import pydantic
+import pydantic_settings
+from imbi_common import settings
+
+
+def _parse_k8s_port(value: typing.Any) -> typing.Any:
+    """Extract port from K8s service-discovery URLs.
+
+    Kubernetes injects ``<SERVICE>_PORT=tcp://<ip>:<port>`` for every
+    service, which collides with pydantic ``port: int`` fields when the
+    env prefix matches. Detect that format and pull out the port number.
+    """
+    if isinstance(value, str):
+        parsed = urllib.parse.urlparse(value)
+        if parsed.scheme in ('tcp', 'udp') and parsed.port is not None:
+            return parsed.port
+    return value
+
+
+# Re-export shared settings
+Clickhouse = settings.Clickhouse
+Postgres = settings.Postgres
+base_settings_config = settings.base_settings_config
+
+
+class ServerConfig(pydantic_settings.BaseSettings):
+    """API server bind configuration."""
+
+    model_config = settings.base_settings_config(env_prefix='IMBI_API_')
+    environment: str = 'development'
+    host: str = 'localhost'
+    port: typing.Annotated[int, pydantic.BeforeValidator(_parse_k8s_port)] = (
+        8000
+    )
+    cors_allowed_origins: list[str] = []
+    # Comma-separated list (or '*') of trusted proxy IPs whose
+    # X-Forwarded-* headers are honored. Must be set when deploying
+    # behind a reverse proxy so rate limiting keys on the real client
+    # IP rather than the proxy address. Empty disables the middleware.
+    forwarded_allow_ips: str = ''
+    # Public URL where the API is reachable from a browser, including
+    # the path prefix it's mounted under (e.g.
+    # ``https://imbi.example.com/api``). The path component drives
+    # FastAPI route mounting and hypermedia link emission; the full
+    # URL is used to build OAuth redirect URIs and any other absolute
+    # URL handed to a third party. Falls back to
+    # ``http://{host}:{port}`` (no prefix) when unset so dev-loopback
+    # runs work out of the box. The /docs and /openapi.json endpoints
+    # are always served at the root regardless of the prefix.
+    url: str = pydantic.Field(default='', validation_alias='IMBI_API_URL')
+    # Public URL of the Imbi UI (no path -- routes are appended by
+    # callers).  Used to build deep links the API hands to third
+    # parties: lifecycle plugins receive ``project_ui_url`` so they can
+    # populate the equivalent of a GitHub repo ``homepage``.  Falls
+    # back to the empty string, in which case ``project_ui_url`` is
+    # ``None`` and plugins skip the homepage write.
+    ui_url: str = pydantic.Field(default='', validation_alias='IMBI_UI_URL')
+
+    @pydantic.field_validator('url', 'ui_url')
+    @classmethod
+    def _normalize_url(cls, value: str) -> str:
+        return value.rstrip('/')
+
+    @property
+    def api_prefix(self) -> str:
+        """Path prefix derived from the public URL's path component."""
+        if not self.url:
+            return ''
+        return urllib.parse.urlparse(self.url).path.rstrip('/')
+
+    @property
+    def public_base_url(self) -> str:
+        """Public base URL including the API prefix.
+
+        Returns ``self.url`` directly when configured (already includes
+        the prefix), otherwise the local host:port for dev-loopback.
+        """
+        return self.url or f'http://{self.host}:{self.port}'
+
+
+class Auth(settings.Auth):  # type: ignore[misc]
+    """Extended authentication settings for the API service.
+
+    Inherits JWT and encryption configuration from imbi-common's Auth
+    and adds password policy, session management, API key, MFA, rate
+    limiting, and OAuth provider settings.
+    """
+
+    # Password Policy
+    password_min_length: int = 12
+    password_require_uppercase: bool = True
+    password_require_lowercase: bool = True
+    password_require_digit: bool = True
+    password_require_special: bool = True
+
+    # API Key Configuration
+    api_key_max_lifetime_days: int = 365
+
+    # Throttle interval for ``last_used`` / ``last_activity`` stamps.
+    # Authentication runs on every request, but persisting the stamp
+    # every time spikes graph write pressure for no UX benefit -- the
+    # value only needs to be accurate to the nearest minute or so.
+    # Set to 0 to disable throttling.
+    last_used_throttle_seconds: int = 60
+
+    # MFA Configuration (Phase 5)
+    mfa_issuer_name: str = 'Imbi'
+    mfa_totp_period: int = 30  # seconds
+    mfa_totp_digits: int = 6
+
+    # Rate Limiting Configuration (Phase 5)
+    rate_limit_login: str = '5/minute'
+    rate_limit_token_refresh: str = '10/minute'
+    rate_limit_oauth_init: str = '3/minute'
+    rate_limit_api_key: str = '100/minute'
+
+    # OAuth Behavior
+    # Auto-link an incoming OAuth identity to an existing user when the
+    # email matches. Safe for verified-email IdPs (Google, GitHub, most
+    # OIDC). Disable for deployments that require an admin to manually
+    # link OAuth identities to local accounts.
+    oauth_auto_link_by_email: bool = True
+    oauth_auto_create_users: bool = True
+
+    # OAuth2 Authorization Server (MCP login)
+    # Allow OAuth clients to self-register via RFC 7591 dynamic client
+    # registration at /auth/register. Disable to require clients to be
+    # provisioned out of band.
+    dcr_enabled: bool = True
+
+
+class Email(pydantic_settings.BaseSettings):
+    """Email sending configuration."""
+
+    model_config = settings.base_settings_config(env_prefix='IMBI_EMAIL_')
+
+    # Feature flags
+    enabled: bool = True
+    dry_run: bool = False
+
+    # SMTP Configuration
+    smtp_host: str = 'localhost'
+    smtp_port: int = 587
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_timeout: int = 30
+
+    # Sender Configuration
+    from_email: pydantic.EmailStr = 'noreply@imbi.example.com'
+    from_name: str = 'Imbi'
+    reply_to: pydantic.EmailStr | None = None
+
+    # Retry Configuration
+    max_retries: int = 3
+    initial_retry_delay: float = 1.0
+    max_retry_delay: float = 60.0
+    retry_backoff_factor: float = 2.0
+
+    @pydantic.model_validator(mode='after')
+    def configure_mailpit_defaults(self) -> Email:
+        """Auto-configure for Mailpit in development."""
+        if os.getenv('ENVIRONMENT', 'development') != 'development':
+            return self
+        if self.smtp_host == 'localhost' and self.smtp_port == 587:
+            mailpit_port = os.getenv('MAILPIT_SMTP_PORT')
+            if mailpit_port:
+                self.smtp_port = int(mailpit_port)
+                if not os.getenv('IMBI_EMAIL_SMTP_USE_TLS'):
+                    self.smtp_use_tls = False
+        return self
+
+
+class Storage(pydantic_settings.BaseSettings):
+    """S3-compatible object storage configuration."""
+
+    model_config = settings.base_settings_config(env_prefix='S3_')
+
+    endpoint_url: str | None = None  # None = real AWS S3
+    access_key: str | None = None
+    secret_key: str | None = None
+    bucket: str = 'imbi-uploads'
+    region: str = 'us-east-1'
+    create_bucket_on_init: bool = True
+
+    # Upload constraints
+    max_file_size: int = 50 * 1024 * 1024  # 50 MB
+    allowed_content_types: list[str] = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+        'application/pdf',
+    ]
+
+    # Thumbnail settings
+    thumbnail_max_size: int = 256
+    thumbnail_quality: int = 85
+
+
+class InternalServices(pydantic_settings.BaseSettings):
+    """Internal base URLs of sibling services, for health probing.
+
+    Set per-deployment (cluster service URLs in compose/k8s). Empty
+    values mark a service as not deployed -- the dashboard status check
+    skips probing it.
+    """
+
+    model_config = settings.base_settings_config(env_prefix='IMBI_INTERNAL_')
+
+    assistant_url: str = ''
+    gateway_url: str = ''
+    mcp_url: str = ''
+    slackbot_url: str = ''
+
+    @pydantic.field_validator(
+        'assistant_url', 'gateway_url', 'mcp_url', 'slackbot_url'
+    )
+    @classmethod
+    def _strip_slash(cls, value: str) -> str:
+        return value.rstrip('/')
+
+
+# Module-level singletons for extended settings
+_auth_settings: Auth | None = None
+_server_config: ServerConfig | None = None
+_storage_settings: Storage | None = None
+_internal_services: InternalServices | None = None
+
+
+def get_auth_settings() -> Auth:
+    """Get the singleton extended Auth settings instance.
+
+    Returns the API-specific Auth settings which include password
+    policy, OAuth, sessions, etc. in addition to JWT configuration.
+
+    Returns:
+        The singleton Auth settings instance.
+
+    """
+    global _auth_settings
+    if _auth_settings is None:
+        _auth_settings = Auth()
+    return _auth_settings
+
+
+def get_server_config() -> ServerConfig:
+    """Get the singleton ServerConfig instance.
+
+    Prefers values from a config file (when discoverable) over a fresh
+    ``ServerConfig()`` so TOML overrides for ``[server]`` (notably the
+    public URL) win over env-only defaults. Falls back to a plain
+    ``ServerConfig()`` when no config file is found or it fails to
+    parse, preserving dev-loopback behavior.
+    """
+    global _server_config
+    if _server_config is None:
+        try:
+            _server_config = load_config().server
+        except FileNotFoundError, OSError, ValueError, TypeError:
+            _server_config = ServerConfig()
+    return _server_config
+
+
+def get_storage_settings() -> Storage:
+    """Get the singleton Storage settings instance.
+
+    Mirrors :func:`get_server_config` — prefers a TOML ``[storage]``
+    section when one is present, falling back to env-only defaults.
+    """
+    global _storage_settings
+    if _storage_settings is None:
+        try:
+            _storage_settings = load_config().storage
+        except FileNotFoundError, OSError, ValueError, TypeError:
+            _storage_settings = Storage()
+    return _storage_settings
+
+
+def get_internal_services() -> InternalServices:
+    """Get the singleton InternalServices settings instance."""
+    global _internal_services
+    if _internal_services is None:
+        _internal_services = InternalServices()
+    return _internal_services
+
+
+def clear_caches() -> None:
+    """Reset the module-level singletons.
+
+    Test-only escape hatch — production code should call the getters,
+    which lazily initialize once per process.
+    """
+    global _auth_settings, _server_config, _storage_settings
+    global _internal_services
+    _auth_settings = None
+    _server_config = None
+    _storage_settings = None
+    _internal_services = None
+
+
+def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:
+    """Build the public OAuth callback URL for a provider slug.
+
+    Appends the canonical ``/auth/oauth/{slug}/callback`` route to
+    *base_url* when given (the request's trusted public base, for
+    multi-host deployments), otherwise to ``IMBI_API_URL`` (or the local
+    host:port fallback).
+    """
+    base = (
+        base_url
+        if base_url is not None
+        else get_server_config().public_base_url
+    )
+    return f'{base.rstrip("/")}/auth/oauth/{provider_slug}/callback'
+
+
+class APIConfiguration(settings.Configuration):  # type: ignore[misc]
+    """Extended configuration for the API service.
+
+    Adds ServerConfig, Email, and Storage settings to the shared
+    Configuration.
+    """
+
+    @pydantic.model_validator(mode='before')
+    @classmethod
+    def merge_env_with_config(
+        cls, data: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
+        """Merge environment variables with config file data."""
+        settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
+            'clickhouse': settings.Clickhouse,
+            'postgres': settings.Postgres,
+            'server': ServerConfig,
+            'auth': Auth,
+            'email': Email,
+            'storage': Storage,
+        }
+        for field, settings_cls in settings_fields.items():
+            if field in data and data[field] is not None:
+                if isinstance(data[field], settings_cls):
+                    continue
+                data[field] = settings_cls(**data[field])
+        return data
+
+    server: ServerConfig = pydantic.Field(default_factory=ServerConfig)
+    auth: Auth = pydantic.Field(default_factory=Auth)  # pyright: ignore[reportIncompatibleVariableOverride]
+    email: Email = pydantic.Field(default_factory=Email)
+    storage: Storage = pydantic.Field(default_factory=Storage)
+
+
+# Alias so `from imbi_api import settings; settings.Configuration`
+# returns the API-extended type with email/storage sections.
+Configuration = APIConfiguration
+
+
+def load_config() -> APIConfiguration:
+    """Load configuration from config.toml files.
+
+    Uses the shared ``load_config`` file-discovery logic but validates
+    the raw TOML data directly against ``APIConfiguration`` so that
+    API-specific sections (``[server]``, ``[email]``, ``[storage]``)
+    are included.
+
+    """
+    data = settings.load_config_data()
+    return APIConfiguration.model_validate(  # type: ignore[no-any-return]
+        data
+    )

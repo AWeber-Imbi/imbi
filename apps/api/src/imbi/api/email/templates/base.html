@@ -1,0 +1,203 @@
+{# Base template for all HTML emails - uses email-safe HTML with inline styles #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>{% block title %}Imbi Notification{% endblock %}</title>
+    <style>
+        /* Reset and base styles for email clients */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f7;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+
+        table {
+            border-collapse: collapse;
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+        }
+
+        img {
+            border: 0;
+            height: auto;
+            line-height: 100%;
+            outline: none;
+            text-decoration: none;
+            -ms-interpolation-mode: bicubic;
+        }
+
+        /* Container styles */
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+
+        /* Header */
+        .email-header {
+            background-color: #1e3a8a;
+            color: #ffffff;
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        .email-header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        /* Body */
+        .email-body {
+            padding: 40px;
+            color: #374151;
+            line-height: 1.6;
+        }
+
+        .email-body h2 {
+            color: #1e3a8a;
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 0;
+            margin-bottom: 16px;
+        }
+
+        .email-body p {
+            margin: 0 0 16px 0;
+            font-size: 16px;
+        }
+
+        /* Button */
+        .button {
+            display: inline-block;
+            padding: 14px 28px;
+            background-color: #3b82f6;
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 16px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .button:hover {
+            background-color: #2563eb;
+        }
+
+        /* Code/Token display */
+        .code-block {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            text-align: center;
+            margin: 20px 0;
+            letter-spacing: 1px;
+        }
+
+        /* Info box */
+        .info-box {
+            background-color: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .info-box p {
+            margin: 0;
+            color: #1e40af;
+        }
+
+        /* Footer */
+        .email-footer {
+            background-color: #f9fafb;
+            padding: 30px 40px;
+            text-align: center;
+            font-size: 14px;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .email-footer a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+
+        .email-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media only screen and (max-width: 600px) {
+            .email-body {
+                padding: 24px !important;
+            }
+
+            .email-header {
+                padding: 24px !important;
+            }
+
+            .email-footer {
+                padding: 24px !important;
+            }
+
+            .button {
+                display: block !important;
+                width: 100% !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f4f4f7;">
+        <tr>
+            <td align="center" style="padding: 24px 16px;">
+                <table role="presentation" class="email-container" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td class="email-header" style="background-color: #1e3a8a; color: #ffffff; padding: 30px 40px; text-align: center;">
+                            <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.5px;">
+                                {% block header %}Imbi{% endblock %}
+                            </h1>
+                        </td>
+                    </tr>
+
+                    <!-- Body -->
+                    <tr>
+                        <td class="email-body" style="padding: 40px; color: #374151; line-height: 1.6;">
+                            {% block body %}
+                            <!-- Content goes here -->
+                            {% endblock %}
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td class="email-footer" style="background-color: #f9fafb; padding: 30px 40px; text-align: center; font-size: 14px; color: #6b7280; border-top: 1px solid #e5e7eb;">
+                            {% block footer %}
+                            <p style="margin: 0 0 8px 0;">
+                                This email was sent by <strong>Imbi</strong>, your DevOps Service Management Platform.
+                            </p>
+                            <p style="margin: 0;">
+                                If you have questions, please contact your administrator.
+                            </p>
+                            {% endblock %}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
