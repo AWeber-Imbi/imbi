@@ -144,15 +144,6 @@ just lint               # pre-commit (ruff, mypy) + basedpyright
 just format             # reformat
 ```
 
-The Okteto-based remote dev environment lives in `compose.dev.yaml` +
-`okteto.yml`:
-
-```bash
-just start              # okteto deploy + kubefwd forwards + okteto up sessions
-just seed               # create admin user / seed permissions in the dev env
-just stop               # tear it all down
-```
-
 ### Running the Docker Image
 
 ```bash
@@ -252,7 +243,6 @@ imbi/
 ├── pyproject.toml     # workspace root + the `imbi` meta-package
 ├── Caddyfile          # Reverse proxy configuration
 ├── compose.yaml       # Local run of the production image
-├── compose.dev.yaml   # Okteto dev environment
 ├── compose.ci.yaml    # Backing services for the test suites
 ├── helm/imbi/         # Helm chart for Kubernetes deployment
 ├── Dockerfile         # Multi-stage production image build

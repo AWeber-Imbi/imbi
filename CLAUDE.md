@@ -7,8 +7,8 @@ with code in this repository.
 
 The Imbi platform monorepo — a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)
 containing every Imbi service, library, and first-party plugin, plus the
-production Docker image, Helm chart, docs site, and the Okteto dev
-environment. Imbi is a DevOps Service Management Platform (FastAPI,
+production Docker image, Helm chart, and docs site. (Per-developer
+remote-dev orchestration, e.g. Okteto, lives outside this repo.) Imbi is a DevOps Service Management Platform (FastAPI,
 PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 
 ## Layout
@@ -51,13 +51,9 @@ just docs / docs-serve     # mkdocs build --strict / local serve
 just ui-lint / ui-test     # npm lint+format:check / vitest (apps/ui)
 just build [tag]           # build the production Docker image
 just bootstrap / teardown  # run/destroy the prod image locally (compose.yaml)
-just start / stop          # Okteto dev env: deploy + kubefwd + okteto up sessions
-just seed                  # imbi-api setup inside the Okteto pod
-just sync-prod-to-dev      # refresh dev databases from production backups
 ```
 
-Test env vars are written to `.env.test` by the docker recipe (never
-`.env`, which holds Okteto secrets). Tests that need PostgreSQL are
+Test env vars are written to `.env.test` by the docker recipe. Tests that need PostgreSQL are
 gated on `POSTGRES_URL` via the root `conftest.py`.
 
 ## Conventions
