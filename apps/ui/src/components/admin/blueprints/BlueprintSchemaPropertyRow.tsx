@@ -1,0 +1,605 @@
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import type { SchemaProperty } from '@/types'
+
+import {
+  ARRAY_ITEM_TYPES,
+  DISPLAY_FORMATS,
+  PROPERTY_TYPES,
+  STRING_FORMATS,
+} from './blueprint-schema-utils'
+import { BlueprintUiMapEditor } from './BlueprintUiMapEditor'
+
+interface BlueprintSchemaPropertyRowProps {
+  enumRawText: Record<string, string>
+  index: number
+  isExpanded: boolean
+  moveProperty: (index: number, direction: 'down' | 'up') => void
+  prop: SchemaProperty
+  removeProperty: (id: string) => void
+  setEnumRawText: (value: Record<string, string>) => void
+  setUiMapEntries: (value: Record<string, [string, string][]>) => void
+  toggleExpandProp: (id: string) => void
+  totalCount: number
+  uiMapEntries: Record<string, [string, string][]>
+  updateProperty: (id: string, updates: Partial<SchemaProperty>) => void
+}
+
+// fallow-ignore-next-line complexity
+export function BlueprintSchemaPropertyRow({
+  enumRawText,
+  index,
+  isExpanded,
+  moveProperty,
+  prop,
+  removeProperty,
+  setEnumRawText,
+  setUiMapEntries,
+  toggleExpandProp,
+  totalCount,
+  uiMapEntries,
+  updateProperty,
+}: BlueprintSchemaPropertyRowProps) {
+  // Property names must be lowercase, underscore-delimited (snake_case).
+  // Save is also blocked in BlueprintForm.validateForm; this is the inline cue.
+  const nameInvalid =
+    prop.name.trim() !== '' && !/^[a-z][a-z0-9_]*$/.test(prop.name)
+  return (
+    <div className="border-input bg-secondary rounded-lg border">
+      {/* Property Row */}
+      <div className="flex items-center gap-3 p-3">
+        <div className="flex flex-col gap-0.5">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    aria-label="Move property up"
+                    className="size-5"
+                    disabled={index === 0}
+                    onClick={() => moveProperty(index, 'up')}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <ChevronUp className="size-3" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Move up</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    aria-label="Move property down"
+                    className="size-5"
+                    disabled={index === totalCount - 1}
+                    onClick={() => moveProperty(index, 'down')}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Move down</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <Input
+          aria-invalid={nameInvalid}
+          className={`flex-1 font-mono text-sm${
+            nameInvalid ? ' border-danger focus-visible:ring-danger' : ''
+          }`}
+          onChange={(e) =>
+            updateProperty(prop.id, {
+              name: e.target.value,
+            })
+          }
+          placeholder="Property name"
+          title={
+            nameInvalid
+              ? 'Must be lowercase, underscore-delimited (e.g. acceptance_test_status)'
+              : undefined
+          }
+          value={prop.name}
+        />
+
+        <Select
+          onValueChange={(v) =>
+            updateProperty(prop.id, {
+              type: v as SchemaProperty['type'],
+            })
+          }
+          value={prop.type}
+        >
+          <SelectTrigger aria-label="Property type" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PROPERTY_TYPES.map((t) => (
+              <SelectItem key={t} value={t}>
+                {t}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-1.5">
+          <Checkbox
+            checked={prop.required}
+            id={`req-${prop.id}`}
+            onCheckedChange={(checked) =>
+              updateProperty(prop.id, {
+                required: checked === true,
+              })
+            }
+          />
+          <Label
+            className={'text-secondary cursor-pointer text-xs select-none'}
+            htmlFor={`req-${prop.id}`}
+          >
+            Required
+          </Label>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <Checkbox
+            checked={prop.editable !== false}
+            id={`editable-${prop.id}`}
+            onCheckedChange={(checked) =>
+              updateProperty(prop.id, {
+                editable: checked === true ? undefined : false,
+              })
+            }
+          />
+          <Label
+            className={'text-secondary cursor-pointer text-xs select-none'}
+            htmlFor={`editable-${prop.id}`}
+          >
+            Editable
+          </Label>
+        </div>
+
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={
+                  isExpanded
+                    ? 'Collapse advanced options'
+                    : 'Expand advanced options'
+                }
+                className="size-7"
+                onClick={() => toggleExpandProp(prop.id)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                {isExpanded ? (
+                  <ChevronUp className="size-3.5" />
+                ) : (
+                  <ChevronDown className="size-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Advanced options</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Remove property"
+                className="text-danger hover:bg-danger size-7"
+                onClick={() => removeProperty(prop.id)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Remove property</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      {/* Advanced Options */}
+      {isExpanded && (
+        <div className="border-secondary space-y-3 border-t px-3 pt-2 pb-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-secondary mb-1 block text-xs">
+                Description
+              </Label>
+              <Input
+                className="text-sm"
+                onChange={(e) =>
+                  updateProperty(prop.id, {
+                    description: e.target.value || undefined,
+                  })
+                }
+                placeholder="Property description"
+                value={prop.description || ''}
+              />
+            </div>
+            <div>
+              <Label className="text-secondary mb-1 block text-xs">
+                Default Value
+              </Label>
+              <Input
+                className="text-sm"
+                onChange={(e) =>
+                  updateProperty(prop.id, {
+                    defaultValue: e.target.value || undefined,
+                  })
+                }
+                placeholder="Default value"
+                value={prop.defaultValue || ''}
+              />
+            </div>
+          </div>
+
+          {prop.type === 'string' && (
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Format
+                </Label>
+                {/* Radix disallows '' as a SelectItem value; the empty
+                    STRING_FORMATS entry becomes "none" and gets translated
+                    back to undefined on store. */}
+                <Select
+                  onValueChange={(v) =>
+                    updateProperty(prop.id, {
+                      format: v === 'none' ? undefined : v,
+                    })
+                  }
+                  value={prop.format || 'none'}
+                >
+                  <SelectTrigger aria-label="Format">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STRING_FORMATS.map((f) => (
+                      <SelectItem key={f || 'none'} value={f || 'none'}>
+                        {f || '(none)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Min Length
+                </Label>
+                <Input
+                  className="text-sm"
+                  onChange={(e) =>
+                    updateProperty(prop.id, {
+                      minLength: e.target.value
+                        ? parseInt(e.target.value, 10)
+                        : undefined,
+                    })
+                  }
+                  type="number"
+                  value={prop.minLength ?? ''}
+                />
+              </div>
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Max Length
+                </Label>
+                <Input
+                  className="text-sm"
+                  onChange={(e) =>
+                    updateProperty(prop.id, {
+                      maxLength: e.target.value
+                        ? parseInt(e.target.value, 10)
+                        : undefined,
+                    })
+                  }
+                  type="number"
+                  value={prop.maxLength ?? ''}
+                />
+              </div>
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Display Format
+                </Label>
+                {/* Optional human-readable transform applied to the rendered
+                    value (serialized as x-display.format). 'none' clears it. */}
+                <Select
+                  onValueChange={(v) =>
+                    updateProperty(prop.id, {
+                      displayFormat: v === 'none' ? undefined : v,
+                    })
+                  }
+                  value={prop.displayFormat || 'none'}
+                >
+                  <SelectTrigger aria-label="Display Format">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">(none)</SelectItem>
+                    {DISPLAY_FORMATS.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {prop.type === 'array' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Items Type
+                </Label>
+                <Select
+                  onValueChange={(v) =>
+                    updateProperty(prop.id, {
+                      itemsType: v as SchemaProperty['itemsType'],
+                    })
+                  }
+                  value={prop.itemsType ?? 'string'}
+                >
+                  <SelectTrigger aria-label="Items type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ARRAY_ITEM_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Items Enum (comma-separated)
+                </Label>
+                <Input
+                  className="text-sm"
+                  onBlur={() => {
+                    const stateKey = `items:${prop.id}`
+                    const raw = enumRawText[stateKey]
+                    if (raw !== undefined) {
+                      const parsed = raw
+                        ? raw
+                            .split(',')
+                            .map((v) => v.trim())
+                            .filter(Boolean)
+                        : undefined
+                      updateProperty(prop.id, {
+                        itemsEnumValues:
+                          parsed && parsed.length > 0 ? parsed : undefined,
+                      })
+                      const next = { ...enumRawText }
+                      delete next[stateKey]
+                      setEnumRawText(next)
+                    }
+                  }}
+                  onChange={(e) =>
+                    setEnumRawText({
+                      ...enumRawText,
+                      [`items:${prop.id}`]: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. red, green, blue"
+                  value={
+                    enumRawText[`items:${prop.id}`] ??
+                    prop.itemsEnumValues?.join(', ') ??
+                    ''
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          {(prop.type === 'integer' || prop.type === 'number') && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Minimum
+                </Label>
+                <Input
+                  className="text-sm"
+                  onChange={(e) =>
+                    updateProperty(prop.id, {
+                      minimum: e.target.value
+                        ? Number(e.target.value)
+                        : undefined,
+                    })
+                  }
+                  type="number"
+                  value={prop.minimum ?? ''}
+                />
+              </div>
+              <div>
+                <Label className="text-secondary mb-1 block text-xs">
+                  Maximum
+                </Label>
+                <Input
+                  className="text-sm"
+                  onChange={(e) =>
+                    updateProperty(prop.id, {
+                      maximum: e.target.value
+                        ? Number(e.target.value)
+                        : undefined,
+                    })
+                  }
+                  type="number"
+                  value={prop.maximum ?? ''}
+                />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <Label className="text-secondary mb-1 block text-xs">
+              Enum Values (comma-separated)
+            </Label>
+            <Input
+              className="text-sm"
+              onBlur={() => {
+                const raw = enumRawText[prop.id]
+                if (raw !== undefined) {
+                  const parsed = raw
+                    ? raw
+                        .split(',')
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                    : undefined
+                  updateProperty(prop.id, {
+                    enumValues:
+                      parsed && parsed.length > 0 ? parsed : undefined,
+                  })
+                  const next = { ...enumRawText }
+                  delete next[prop.id]
+                  setEnumRawText(next)
+                }
+              }}
+              onChange={(e) =>
+                setEnumRawText({
+                  ...enumRawText,
+                  [prop.id]: e.target.value,
+                })
+              }
+              placeholder="e.g. small, medium, large"
+              value={enumRawText[prop.id] ?? prop.enumValues?.join(', ') ?? ''}
+            />
+          </div>
+
+          {/* UI Maps */}
+          {[
+            {
+              defaultVal: 'green',
+              isColor: true,
+              keyPh: 'value',
+              label: 'Color Map',
+              mapType: 'colorMap' as const,
+              valPh: 'e.g. green',
+            },
+            {
+              defaultVal: '',
+              isColor: false,
+              keyPh: 'value',
+              label: 'Icon Map',
+              mapType: 'iconMap' as const,
+              valPh: 'e.g. circle-check-big',
+            },
+            {
+              defaultVal: 'green',
+              isColor: true,
+              keyPh: 'e.g. >=90',
+              label: 'Color Range',
+              mapType: 'colorRange' as const,
+              valPh: 'e.g. green',
+            },
+            {
+              defaultVal: '',
+              isColor: false,
+              keyPh: 'e.g. >=90',
+              label: 'Icon Range',
+              mapType: 'iconRange' as const,
+              valPh: 'e.g. check-circle',
+            },
+            {
+              defaultVal: 'red',
+              isColor: true,
+              keyPh: 'e.g. >30d',
+              label: 'Color Age',
+              mapType: 'colorAge' as const,
+              valPh: 'e.g. red',
+            },
+            {
+              defaultVal: '',
+              isColor: false,
+              keyPh: 'e.g. >30d',
+              label: 'Icon Age',
+              mapType: 'iconAge' as const,
+              valPh: 'e.g. alert-triangle',
+            },
+          ].map(
+            ({
+              defaultVal,
+              isColor,
+              keyPh,
+              label: mapLabel,
+              mapType,
+              valPh,
+            }) => {
+              const stateKey = `${mapType}:${prop.id}`
+              const entries = uiMapEntries[stateKey] ?? []
+              const commit = (next: [string, string][]) => {
+                const map = Object.fromEntries(
+                  next.filter(([k]) => k.trim() !== ''),
+                )
+                updateProperty(prop.id, {
+                  [mapType]: Object.keys(map).length > 0 ? map : undefined,
+                })
+              }
+              const setEntries = (next: [string, string][]) => {
+                setUiMapEntries({
+                  ...uiMapEntries,
+                  [stateKey]: next,
+                })
+              }
+              return (
+                <BlueprintUiMapEditor
+                  commit={commit}
+                  defaultVal={defaultVal}
+                  entries={entries}
+                  isColor={isColor}
+                  key={mapType}
+                  keyPh={keyPh}
+                  label={mapLabel}
+                  mapType={mapType}
+                  setEntries={setEntries}
+                  valPh={valPh}
+                />
+              )
+            },
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

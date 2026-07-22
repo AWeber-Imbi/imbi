@@ -1,0 +1,35 @@
+# Imbi
+
+> Imbi is a DevOps service management platform. This file documents the URL
+> patterns of the Imbi web UI so AI assistants can construct deep links to
+> resources. Form a full link by appending one of the paths below to the Imbi
+> UI base URL — for example, base `https://imbi.example.com` + `/projects/42`
+> gives `https://imbi.example.com/projects/42`.
+
+## Routes
+
+- `/dashboard`: the signed-in user's dashboard (home page).
+- `/projects`: the project inventory list.
+- `/projects/{project_id}`: a project's detail page. `project_id` is the
+  project's `id` as returned by the Imbi API.
+- `/projects/{project_id}/{tab}`: a specific tab on a project. Tabs include
+  `overview`, `dependencies`, `relationships`, `documents`, `configuration`,
+  `logs`, and `operations-log`, plus any plugin-provided tabs.
+- `/operations-log`: the global operations log.
+- `/reports` and `/reports/{report_id}`: reports. `report_id` is one of a
+  fixed set of report keys: `monthly-improvement`, `open-pull-requests`,
+  `projects-graph`, `score-history`, and `team-kpi`.
+- `/settings` and `/settings/{tab}`: the current user's settings.
+- `/users/{email}`: a user's profile page.
+- `/admin/{section}`: an admin list view. Sections: `project-types`,
+  `environments`, `teams`, `organizations`, `blueprints`, `roles`, `users`,
+  `service-accounts`.
+- `/admin/{section}/new`: the create form for a section.
+- `/admin/{section}/{slug}`: an admin item's detail view.
+- `/admin/{section}/{slug}/edit`: an admin item's edit form.
+
+## Notes
+
+- Link using the identifiers returned by the Imbi API: project `id`, admin
+  item `slug`, and user `email`.
+- When you mention a project, team, or other resource, link to its page.

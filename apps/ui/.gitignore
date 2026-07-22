@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+tools/*.d.ts
+tools/*.js
+vite.config.d.ts
+vite.config.js
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+figma/
+.worktrees/
+
+# Large local design-spec export (exceeds the repo file-size gate);
+# the UserIdentity component is implemented against it but it is not tracked.
+docs/useridentity.html

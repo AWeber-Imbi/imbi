@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallowjs/fallow/main/schema/fallowrc.schema.json",
+  "ignoreDependencies": [
+    "aws-svg-icons",
+    "devicon",
+    "eslint-plugin-perfectionist",
+    "eslint-plugin-react-refresh",
+    "@oxlint/plugins"
+  ],
+  "ignorePatterns": [
+    "src/**/__mocks__/**",
+    "tools/**"
+  ],
+  "ignoreExports": [
+    {
+      "file": "src/components/ui/**/*.{ts,tsx}",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/api/endpoints.ts",
+      "exports": [
+        "getMonthlyImprovement",
+        "getOrgPullRequests",
+        "getProjectPullRequests",
+        "getScoreHistoryByTeam",
+        "getScoreHistoryFeed",
+        "getScoreRollup",
+        "ScoreRollupRow",
+        "GlobalScoreEvent",
+        "MonthlyImprovementRow",
+        "previewProjectLifecycle",
+        "TeamScoreSeries"
+      ]
+    },
+    {
+      "file": "src/lib/icon-sets/*.ts",
+      "exports": ["iconSet"]
+    }
+  ],
+  "overrides": [
+    {
+      "files": ["src/lib/icon-sets/*.ts"],
+      "rules": {
+        "duplicate-exports": "off"
+      }
+    }
+  ]
+}

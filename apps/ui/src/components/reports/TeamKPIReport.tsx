@@ -1,0 +1,437 @@
+import { useEffect, useRef, useState } from 'react'
+
+import { useQuery } from '@tanstack/react-query'
+import { RefreshCw } from 'lucide-react'
+
+import { getScoreRollup, listTeams, ScoreRollupRow } from '@/api/endpoints'
+import { Sk } from '@/components/ui/skeleton'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { Team } from '@/types'
+
+interface BarChartProps {
+  rows: TeamRow[]
+}
+
+interface TeamRow extends ScoreRollupRow {
+  name: string
+  project_count?: number
+}
+
+export function TeamKPIReport() {
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug ?? ''
+
+  const {
+    data: rollup,
+    error: rollupError,
+    isLoading: rollupLoading,
+    refetch: refetchRollup,
+  } = useQuery({
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) => getScoreRollup(orgSlug, 'team', signal),
+    queryKey: ['scoreRollup', orgSlug, 'team'],
+    staleTime: 60_000,
+  })
+
+  const {
+    data: teams,
+    error: teamsError,
+    isLoading: teamsLoading,
+    refetch: refetchTeams,
+  } = useQuery({
+    enabled: !!orgSlug,
+    queryFn: ({ signal }) => listTeams(orgSlug, signal),
+    queryKey: ['teams', orgSlug],
+    staleTime: 120_000,
+  })
+
+  const isLoading = rollupLoading || teamsLoading
+  const hasError = !!(rollupError || teamsError)
+
+  function refetchAll() {
+    void refetchRollup()
+    void refetchTeams()
+  }
+
+  const rows: TeamRow[] = (() => {
+    if (!rollup) return []
+    const teamBySlug = new Map<string, Team>(
+      (teams ?? []).map((t) => [t.slug, t]),
+    )
+    return rollup.map((r) => ({
+      ...r,
+      name: teamBySlug.get(r.key)?.name ?? r.key,
+    }))
+  })()
+
+  const sorted = [...rows].sort((a, b) => b.avg_score - a.avg_score)
+
+  const avgOfAvgs =
+    rows.length > 0
+      ? rows.reduce((s, r) => s + r.avg_score, 0) / rows.length
+      : null
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Summary stat row */}
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard
+          label="Teams tracked"
+          value={isLoading || hasError ? '—' : String(rows.length)}
+        />
+        <StatCard
+          label="Org avg score"
+          value={
+            isLoading || hasError || avgOfAvgs == null
+              ? '—'
+              : fmtScore(avgOfAvgs)
+          }
+          valueColor={avgOfAvgs != null ? scoreColor(avgOfAvgs) : undefined}
+        />
+        <StatCard
+          label="Top team score"
+          value={
+            isLoading || hasError || sorted.length === 0
+              ? '—'
+              : fmtScore(sorted[0].avg_score)
+          }
+          valueColor={
+            sorted.length > 0 ? scoreColor(sorted[0].avg_score) : undefined
+          }
+        />
+      </div>
+
+      {/* Bar chart card */}
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border p-[18px]">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="text-overline text-tertiary tracking-wide uppercase">
+              Avg score by team
+            </div>
+            <div className="text-tertiary mt-0.5 text-xs">
+              Bar = avg across all projects · tick = best project score
+            </div>
+          </div>
+          <button
+            className="border-tertiary text-primary hover:bg-secondary inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs transition-colors"
+            onClick={refetchAll}
+          >
+            <RefreshCw size={11} />
+            Refresh
+          </button>
+        </div>
+
+        {isLoading ? (
+          <Sk h={160} r={6} w="100%" />
+        ) : hasError ? (
+          <div className="text-danger flex h-40 items-center justify-center text-sm">
+            Failed to load report data. Please try again.
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="text-tertiary flex h-40 items-center justify-center text-sm">
+            No score data yet. Projects need to be scored first.
+          </div>
+        ) : (
+          <TeamBarChart rows={rows} />
+        )}
+      </div>
+
+      {/* Table card */}
+      <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
+        <div className="border-tertiary border-b px-[18px] py-3.5">
+          <div className="text-overline text-tertiary tracking-wide uppercase">
+            Team details
+          </div>
+        </div>
+
+        {isLoading ? (
+          <TeamRowsSkeleton />
+        ) : hasError ? (
+          <div className="text-danger py-10 text-center text-sm">
+            Failed to load report data.{' '}
+            <button className="underline" onClick={refetchAll}>
+              Retry
+            </button>
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="text-tertiary py-10 text-center text-sm">
+            No data available.
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-tertiary border-b">
+                <th className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase">
+                  Team
+                </th>
+                <th className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase">
+                  Avg score
+                </th>
+                <th className="text-overline text-tertiary px-4 py-2.5 text-right font-normal tracking-wide uppercase">
+                  Best project
+                </th>
+                <th className="text-overline text-tertiary px-[18px] py-2.5 text-right font-normal tracking-wide uppercase">
+                  Last scored
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row, i) => (
+                <tr
+                  className={`border-tertiary hover:bg-secondary transition-colors ${
+                    i === sorted.length - 1 ? 'border-0' : 'border-b'
+                  }`}
+                  key={row.key}
+                >
+                  <td className="text-primary px-[18px] py-3 font-medium">
+                    {row.name}
+                    <span className="text-tertiary ml-2 font-mono text-[11px]">
+                      {row.key}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <ScorePill score={row.avg_score} />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <ScorePill score={row.latest_score} />
+                  </td>
+                  <td className="text-tertiary px-[18px] py-3 text-right font-mono text-xs">
+                    {fmtRelative(row.last_updated)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function fmtRelative(iso: null | string): string {
+  if (!iso) return '—'
+  const ms =
+    Date.now() - new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()
+  const min = Math.round(ms / 60000)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  return `${Math.round(hr / 24)}d ago`
+}
+
+function fmtScore(n: number): string {
+  return n.toFixed(1)
+}
+
+function scoreBgColor(score: number): string {
+  if (score >= 85) return 'var(--background-color-success)'
+  if (score >= 70) return 'var(--background-color-warning)'
+  return 'var(--background-color-danger)'
+}
+
+function scoreColor(score: number): string {
+  if (score >= 85) return 'var(--text-color-success)'
+  if (score >= 70) return 'var(--text-color-warning)'
+  return 'var(--text-color-danger)'
+}
+
+function ScorePill({ score }: { score: number }) {
+  return (
+    <span
+      className="inline-flex h-6 items-center rounded px-2 font-mono text-xs font-medium tabular-nums"
+      style={{
+        background: scoreBgColor(score),
+        color: scoreColor(score),
+      }}
+    >
+      {fmtScore(score)}
+    </span>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string
+  value: string
+  valueColor?: string
+}) {
+  return (
+    <div className="border-tertiary bg-primary rounded-lg border p-[18px]">
+      <div className="text-overline text-tertiary tracking-wide uppercase">
+        {label}
+      </div>
+      <div
+        className="mt-2 font-mono text-[28px] leading-none tabular-nums"
+        style={{ color: valueColor ?? 'var(--text-color-primary)' }}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function TeamBarChart({ rows }: BarChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [W, setW] = useState(640)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width
+      if (w > 0) setW(Math.round(w))
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  if (rows.length === 0) return null
+
+  const BAR_H = 22
+  const GAP = 10
+  const PAD_TOP = 20
+  const PAD_LEFT = 140
+  const PAD_RIGHT = 60
+  const PAD_BOTTOM = 32
+  const innerW = W - PAD_LEFT - PAD_RIGHT
+
+  const sorted = [...rows].sort((a, b) => b.avg_score - a.avg_score)
+  const H = PAD_TOP + sorted.length * (BAR_H + GAP) - GAP + PAD_BOTTOM
+
+  const xFor = (score: number) => (score / 100) * innerW
+
+  const xTicks = [0, 25, 50, 75, 100]
+
+  return (
+    <div ref={containerRef} style={{ width: '100%' }}>
+      <svg
+        height={H}
+        style={{ display: 'block', overflow: 'visible' }}
+        width={W}
+      >
+        {/* x-axis grid lines */}
+        {xTicks.map((t) => (
+          <g key={t}>
+            <line
+              stroke="var(--border-color-tertiary)"
+              strokeWidth="1"
+              x1={PAD_LEFT + xFor(t)}
+              x2={PAD_LEFT + xFor(t)}
+              y1={PAD_TOP}
+              y2={H - PAD_BOTTOM}
+            />
+            <text
+              fill="var(--text-color-tertiary)"
+              fontFamily="var(--font-sans)"
+              fontSize="10"
+              textAnchor="middle"
+              x={PAD_LEFT + xFor(t)}
+              y={H - PAD_BOTTOM + 14}
+            >
+              {t}
+            </text>
+          </g>
+        ))}
+
+        {sorted.map((row, i) => {
+          const y = PAD_TOP + i * (BAR_H + GAP)
+          const barW = Math.max(2, xFor(row.avg_score))
+          const latestX = PAD_LEFT + xFor(row.latest_score)
+
+          return (
+            <g key={row.key}>
+              {/* Team label */}
+              <text
+                fill="var(--text-color-primary)"
+                fontFamily="var(--font-sans)"
+                fontSize="12"
+                textAnchor="end"
+                x={PAD_LEFT - 8}
+                y={y + BAR_H / 2 + 4}
+              >
+                {row.name.length > 18 ? row.name.slice(0, 17) + '…' : row.name}
+              </text>
+
+              {/* Avg score bar background */}
+              <rect
+                fill="var(--background-color-secondary)"
+                height={BAR_H}
+                rx="3"
+                width={innerW}
+                x={PAD_LEFT}
+                y={y}
+              />
+
+              {/* Avg score bar fill */}
+              <rect
+                fill={scoreBgColor(row.avg_score)}
+                height={BAR_H}
+                rx="3"
+                width={barW}
+                x={PAD_LEFT}
+                y={y}
+              />
+
+              {/* Latest score tick (max) */}
+              <line
+                stroke={scoreColor(row.latest_score)}
+                strokeWidth="2"
+                x1={latestX}
+                x2={latestX}
+                y1={y + 3}
+                y2={y + BAR_H - 3}
+              />
+
+              {/* Score label */}
+              <text
+                fill={scoreColor(row.avg_score)}
+                fontFamily="var(--font-mono)"
+                fontSize="11"
+                fontWeight="500"
+                textAnchor="start"
+                x={PAD_LEFT + barW + 6}
+                y={y + BAR_H / 2 + 4}
+              >
+                {fmtScore(row.avg_score)}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
+function TeamRowsSkeleton() {
+  return (
+    <table aria-busy className="w-full text-sm">
+      <tbody>
+        {Array.from({ length: 6 }, (_, i) => (
+          <tr className="border-tertiary border-b last:border-0" key={i}>
+            <td className="px-[18px] py-3">
+              <Sk line w={140} />
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex justify-end">
+                <Sk h={24} r={4} w={48} />
+              </div>
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex justify-end">
+                <Sk h={24} r={4} w={48} />
+              </div>
+            </td>
+            <td className="px-[18px] py-3">
+              <div className="flex justify-end">
+                <Sk line w={56} />
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
