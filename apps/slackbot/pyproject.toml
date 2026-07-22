@@ -8,8 +8,7 @@ license = "BSD-3-Clause"
 authors = [
   { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
 ]
-classifiers = [
-]
+classifiers = []
 dependencies = [
   "anthropic>=0.84.0",
   "fastapi>=0.135.1,<0.137",

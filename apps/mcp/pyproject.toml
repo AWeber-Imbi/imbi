@@ -8,8 +8,7 @@ license = "BSD-3-Clause"
 authors = [
   { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
 ]
-classifiers = [
-]
+classifiers = []
 dependencies = [
   "fastmcp>=3.4.4",
   "httpx>=0.28.1",

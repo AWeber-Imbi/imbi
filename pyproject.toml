@@ -21,12 +21,11 @@ classifiers = [
 ]
 # Meta-distribution: installing `imbi` installs the whole platform.
 dependencies = [
-  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.17.0",
   "imbi-api==2.17.0",
   "imbi-assistant==2.17.0",
+  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.17.0",
   "imbi-gateway==2.17.0",
   "imbi-mcp==2.17.0",
-  "imbi-slackbot==2.17.0",
   "imbi-plugin-aws==2.17.0",
   "imbi-plugin-github==2.17.0",
   "imbi-plugin-google==2.17.0",
@@ -34,6 +33,7 @@ dependencies = [
   "imbi-plugin-oidc==2.17.0",
   "imbi-plugin-pagerduty==2.17.0",
   "imbi-plugin-sonarqube==2.17.0",
+  "imbi-slackbot==2.17.0",
 ]
 
 [dependency-groups]
@@ -69,42 +69,6 @@ docs = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-# Meta-package: no code of its own.
-bypass-selection = true
-
-[tool.uv]
-# dependency groups that are installed by `uv run`
-# https://docs.astral.sh/uv/reference/settings/#default-groups
-default-groups = ["dev"]
-exclude-newer = "7 days"
-
-[tool.uv.exclude-newer-package]
-clickhouse-connect = false
-
-[tool.uv.workspace]
-members = ["apps/*", "libraries/*", "plugins/*"]
-exclude = ["apps/ui"]
-
-[tool.uv.sources]
-imbi-common = { workspace = true }
-imbi-api = { workspace = true }
-imbi-assistant = { workspace = true }
-imbi-gateway = { workspace = true }
-imbi-mcp = { workspace = true }
-imbi-slackbot = { workspace = true }
-imbi-plugin-aws = { workspace = true }
-imbi-plugin-github = { workspace = true }
-imbi-plugin-google = { workspace = true }
-imbi-plugin-logzio = { workspace = true }
-imbi-plugin-oidc = { workspace = true }
-imbi-plugin-pagerduty = { workspace = true }
-imbi-plugin-sonarqube = { workspace = true }
-
-[[tool.uv.index]]
-url = "https://pypi.org/simple"
-default = true
-
 [tool.coverage.html]
 directory = "build/coverage"
 
@@ -119,6 +83,10 @@ source_pkgs = ["imbi"]
 
 [tool.coverage.xml]
 output = "build/coverage.xml"
+
+[tool.hatch.build.targets.wheel]
+# Meta-package: no code of its own.
+bypass-selection = true
 
 [tool.mypy]
 strict = true
@@ -183,7 +151,14 @@ extraPaths = [
   "plugins/pagerduty/src",
   "plugins/sonarqube/src",
 ]
-exclude = ["**/node_modules", "**/__pycache__", ".venv", "apps/ui", "typings", "docs"]
+exclude = [
+  "**/node_modules",
+  "**/__pycache__",
+  ".venv",
+  "apps/ui",
+  "typings",
+  "docs"
+]
 
 [[tool.pyright.executionEnvironments]]
 # Not yet clean under the merged environment's newer dependencies
@@ -310,11 +285,106 @@ max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 # Suites not yet clean against the union rule set — burn down over time.
-"libraries/common/**" = ["A", "ANN", "ARG", "ERA", "FLY", "LOG", "PIE", "PL", "PTH", "RET", "RSE", "SIM", "TC", "TRY"]
-"apps/api/**" = ["A", "ANN", "ARG", "ERA", "FLY", "LOG", "PIE", "PL", "PTH", "RET", "RSE", "SIM", "TC", "TRY"]
-"plugins/**" = ["A", "ANN", "ARG", "ASYNC109", "ERA", "FLY", "LOG", "PIE", "PL", "PTH", "RET", "RSE", "SIM", "TC", "TRY"]
+"libraries/common/**" = [
+  "A",
+  "ANN",
+  "ARG",
+  "ERA",
+  "FLY",
+  "LOG",
+  "PIE",
+  "PL",
+  "PTH",
+  "RET",
+  "RSE",
+  "SIM",
+  "TC",
+  "TRY"
+]
+"apps/api/**" = [
+  "A",
+  "ANN",
+  "ARG",
+  "ERA",
+  "FLY",
+  "LOG",
+  "PIE",
+  "PL",
+  "PTH",
+  "RET",
+  "RSE",
+  "SIM",
+  "TC",
+  "TRY"
+]
+"plugins/**" = [
+  "A",
+  "ANN",
+  "ARG",
+  "ASYNC109",
+  "ERA",
+  "FLY",
+  "LOG",
+  "PIE",
+  "PL",
+  "PTH",
+  "RET",
+  "RSE",
+  "SIM",
+  "TC",
+  "TRY"
+]
 "apps/assistant/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "apps/gateway/**" = ["TC", "UP"]
 "apps/mcp/**" = ["UP"]
 "apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
-"tests/**/*.py" = ["A", "ANN", "ARG", "B018", "ERA", "N802", "PL", "PLC0415", "PTH", "RET", "RSE", "RUF059", "S", "SIM", "TC", "TRY"]
+"tests/**/*.py" = [
+  "A",
+  "ANN",
+  "ARG",
+  "B018",
+  "ERA",
+  "N802",
+  "PL",
+  "PLC0415",
+  "PTH",
+  "RET",
+  "RSE",
+  "RUF059",
+  "S",
+  "SIM",
+  "TC",
+  "TRY"
+]
+
+[tool.uv]
+# dependency groups that are installed by `uv run`
+# https://docs.astral.sh/uv/reference/settings/#default-groups
+default-groups = ["dev"]
+exclude-newer = "7 days"
+
+[tool.uv.exclude-newer-package]
+clickhouse-connect = false
+
+[tool.uv.workspace]
+members = ["apps/*", "libraries/*", "plugins/*"]
+exclude = ["apps/ui"]
+
+[tool.uv.sources]
+imbi-common = { workspace = true }
+imbi-api = { workspace = true }
+imbi-assistant = { workspace = true }
+imbi-gateway = { workspace = true }
+imbi-mcp = { workspace = true }
+imbi-slackbot = { workspace = true }
+imbi-plugin-aws = { workspace = true }
+imbi-plugin-github = { workspace = true }
+imbi-plugin-google = { workspace = true }
+imbi-plugin-logzio = { workspace = true }
+imbi-plugin-oidc = { workspace = true }
+imbi-plugin-pagerduty = { workspace = true }
+imbi-plugin-sonarqube = { workspace = true }
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
