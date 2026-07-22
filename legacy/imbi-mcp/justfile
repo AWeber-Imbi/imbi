@@ -1,0 +1,51 @@
+[doc("Bootstrap the environment and run the MCP server")]
+[group("Testing")]
+serve *ARGS: setup
+    -uv run --env-file=.env imbi-mcp serve {{ ARGS }}
+
+[default]
+[private]
+ci: lint test
+
+[doc("Set up your development environment")]
+[group("Environment")]
+setup:
+    uv sync --all-groups --all-extras --frozen
+    uv run pre-commit install --install-hooks --overwrite
+
+[doc("Run tests")]
+[group("Testing")]
+test: setup
+    uv run pytest
+
+[doc("Run linters")]
+[group("Testing")]
+lint: setup
+    uv run pre-commit run --all-files
+    uv run basedpyright
+    uv run mypy
+
+[doc("Reformat code (optionally pass specific files)")]
+[group("Development")]
+format *FILES: setup
+    #!/usr/bin/env sh
+    set -x
+    if [ "{{FILES}}" = '' ]; then
+        args='--all-files'
+    else
+        args='--files {{FILES}}'
+    fi
+    uv run pre-commit run ruff-format $args
+    uv run pre-commit run tombi-format $args
+
+[doc("Remove runtime artifacts")]
+[group("Environment")]
+clean:
+    rm -f .coverage
+    rm -fR build
+
+[confirm]
+[doc("Remove caches, virtual env, and output files")]
+[group("Environment")]
+real-clean: clean
+    rm -fR .venv .*_cache dist
