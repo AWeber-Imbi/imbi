@@ -2,7 +2,7 @@
 .github
 docs
 helm
-tests
+**/tests
 typings
 legacy
 *.md

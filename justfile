@@ -108,20 +108,24 @@ test *FILES: setup docker
     #!/usr/bin/env sh
     set -e
     if [ -z "{{ FILES }}" ]; then
-      uv run --env-file .env.test coverage run -m pytest tests
+      uv run --env-file .env.test coverage run -m pytest
       uv run coverage report
       uv run coverage xml -o build/coverage.xml
     else
       uv run --env-file .env.test pytest {{ FILES }}
     fi
 
-[doc("Run one suite with its own coverage floor, e.g. `just test-suite common 90`")]
+[doc("Run one member's suite with its own coverage floor, e.g. `just test-suite libraries/common 90`")]
 [group("Testing")]
-test-suite suite floor="85": setup docker
+test-suite member floor="85": setup docker
     #!/usr/bin/env sh
     set -e
-    module="imbi.$(echo '{{ suite }}' | tr / .)"
-    uv run --env-file .env.test pytest 'tests/{{ suite }}' \
+    m='{{ member }}'
+    case "$m" in
+        plugins/*) module="imbi.$(echo "$m" | tr / .)" ;;
+        *) module="imbi.${m#*/}" ;;
+    esac
+    uv run --env-file .env.test pytest "$m/tests" \
         --cov="$module" --cov-fail-under='{{ floor }}'
 
 [doc("Run linters")]

@@ -138,8 +138,8 @@ lockfile and one virtualenv.
 ```bash
 just setup              # uv sync + pre-commit hooks
 just test               # full test suite against dockerized backing services
-just test tests/api     # a single suite or test file
-just test-suite common 90  # one suite with its own coverage floor
+just test apps/api/tests   # a single suite or test file
+just test-suite libraries/common 90  # one member with its own coverage floor
 just lint               # pre-commit (ruff, mypy) + basedpyright
 just format             # reformat
 ```
@@ -238,6 +238,7 @@ meta-distribution that installs the whole platform.
 imbi/
 ├── libraries/
 │   └── common/        # imbi-common — shared library (imbi.common)
+│       └── {pyproject.toml, src/, tests/}   # every member carries its own tests
 ├── apps/
 │   ├── api/           # imbi-api — core REST API (imbi.api)
 │   ├── assistant/     # imbi-assistant — AI assistant (imbi.assistant)
@@ -247,7 +248,6 @@ imbi/
 │   └── ui/            # React frontend (npm, not a uv member)
 ├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
 │   ├── aws/  github/  google/  logzio/  oidc/  pagerduty/  sonarqube/
-├── tests/             # merged test suites (tests/<suite>/)
 ├── docs/              # unified mkdocs site
 ├── pyproject.toml     # workspace root + the `imbi` meta-package
 ├── Caddyfile          # Reverse proxy configuration

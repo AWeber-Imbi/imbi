@@ -26,10 +26,12 @@ PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 | root `pyproject.toml` | `imbi` meta-package (installs everything) | — |
 
 `imbi` is an implicit namespace package spanning members — there is no
-`src/imbi/__init__.py` anywhere. Tests are merged at the root:
-`tests/<suite>/` (e.g. `tests/common/`, `tests/api/`,
-`tests/plugins/github/`), each a package so duplicate basenames collect
-cleanly. Docs are one mkdocs site rooted at `docs/mkdocs.yml`.
+`src/imbi/__init__.py` anywhere. Every member carries its own tests
+(`libraries/common/tests/`, `apps/api/tests/`, `plugins/github/tests/`);
+pytest runs them all in one session using `--import-mode=importlib` +
+namespace packages, and test helpers import rootdir-anchored
+(`apps.api.tests.support`). Docs are one mkdocs site rooted at
+`docs/mkdocs.yml`.
 
 All members share one `uv.lock`, one `.venv`, and the root tool config
 (ruff, basedpyright, mypy, coverage, pytest). Versions are lockstep:
@@ -41,8 +43,8 @@ together in one commit and released with one `v<version>` tag.
 ```bash
 just setup                 # uv sync --all-groups --all-extras + pre-commit hooks
 just test                  # full suite w/ docker backing services (compose.ci.yaml)
-just test tests/api/...    # single file/suite (pytest syntax)
-just test-suite common 90  # one suite with its own coverage floor
+just test apps/api/tests/...  # single file/suite (pytest syntax)
+just test-suite apps/api   # one member with its own coverage floor
 just lint                  # pre-commit run --all-files + basedpyright
 just format [FILES]        # ruff + tombi via pre-commit
 just docs / docs-serve     # mkdocs build --strict / local serve
@@ -56,7 +58,7 @@ just sync-prod-to-dev      # refresh dev databases from production backups
 
 Test env vars are written to `.env.test` by the docker recipe (never
 `.env`, which holds Okteto secrets). Tests that need PostgreSQL are
-gated on `POSTGRES_URL` via the root `tests/conftest.py`.
+gated on `POSTGRES_URL` via the root `conftest.py`.
 
 ## Conventions
 
