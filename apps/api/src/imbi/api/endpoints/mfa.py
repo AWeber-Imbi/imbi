@@ -146,7 +146,7 @@ async def setup_mfa(
     )
 
     # Generate provisioning URI for authenticator apps
-    provisioning_uri = totp.provisioning_uri(
+    provisioning_uri = totp.provisioning_uri(  # pyright: ignore[reportUnknownMemberType]
         name=auth.require_user.email,
         issuer_name=auth_settings.mfa_issuer_name,
     )

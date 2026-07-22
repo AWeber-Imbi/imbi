@@ -1,3 +1,4 @@
+# mypy: disable-error-code="redundant-cast"
 """Generic OIDC identity plugin."""
 
 from __future__ import annotations

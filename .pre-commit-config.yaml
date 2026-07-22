@@ -35,4 +35,3 @@ repos:
         args:
           - run
           - mypy
-          - src

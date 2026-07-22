@@ -1,3 +1,4 @@
+# mypy: disable-error-code="redundant-cast"
 """AWS CloudWatch Logs (Insights) logs capability handler."""
 
 from __future__ import annotations

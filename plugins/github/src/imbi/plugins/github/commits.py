@@ -263,10 +263,7 @@ async def _resolve_bearer(
 
 def _resolve(pointer: jsonpointer.JsonPointer, event: object) -> object:
     """Resolve a JSON Pointer against the event, ``None`` if absent."""
-    return typing.cast(
-        'object',
-        pointer.resolve(event, None),  # pyright: ignore[reportUnknownMemberType]
-    )
+    return pointer.resolve(event, None)
 
 
 def _branch_short_name(ref: str) -> str:

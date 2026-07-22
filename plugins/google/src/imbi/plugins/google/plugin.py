@@ -1,3 +1,4 @@
+# mypy: disable-error-code="redundant-cast"
 """Google identity plugin.
 
 Sign in with Google (Google Workspace / consumer Google accounts) via the

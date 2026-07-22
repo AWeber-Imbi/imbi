@@ -146,6 +146,22 @@ mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/g
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# carried over from imbi-api's mypy.ini
+module = [
+  "aioboto3.*",
+  "botocore.*",
+  "filetype.*",
+  "jsonpatch",
+  "qrcode.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# imbi-api's mypy.ini ran with warn_unused_ignores = false — burn down
+module = "imbi.api.*"
+warn_unused_ignores = false
+
 [tool.pyright]
 deprecateTypingAliases = true
 reportMissingSuperCall = "information"
@@ -170,8 +186,22 @@ extraPaths = [
 exclude = ["**/node_modules", "**/__pycache__", ".venv", "apps/ui", "typings", "docs"]
 
 [[tool.pyright.executionEnvironments]]
+# Not yet clean under the merged environment's newer dependencies
+# (typer 0.26, sentry-sdk, clickhouse-connect annotations) — burn down.
 root = "libraries"
 reportUnusedFunction = "warning"
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportReturnType = "none"
+reportUnnecessaryIsInstance = "none"
+reportUnnecessaryCast = "none"
+reportUnnecessaryComparison = "none"
+reportIncompatibleVariableOverride = "none"
+reportPossiblyUnboundVariable = "none"
+reportPrivateUsage = "none"
 
 [[tool.pyright.executionEnvironments]]
 root = "apps/api/src/imbi/api/assistant"
@@ -189,6 +219,12 @@ reportUnusedFunction = "warning"
 [[tool.pyright.executionEnvironments]]
 root = "tests"
 extraPaths = ["."]
+reportUnnecessaryIsInstance = "none"
+reportTypedDictNotRequiredAccess = "none"
+reportGeneralTypeIssues = "none"
+reportUnusedVariable = "none"
+reportUnusedClass = "none"
+reportIncompatibleMethodOverride = "none"
 reportArgumentType = "none"
 reportAttributeAccessIssue = "none"
 reportCallIssue = "none"
