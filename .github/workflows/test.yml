@@ -13,5 +13,12 @@ jobs:
         with:
           fetch-depth: 0
           filter: "blob:none"
+      # moon's unstable_uv toolchain installs uv, but with python left
+      # unmanaged the `uv venv` env-setup step races ahead of that install
+      # and fails with "uv: command not found" on fresh runners. Provision
+      # uv on PATH first so it is available before `moon ci` runs any task.
+      - uses: "astral-sh/setup-uv@v5"
+        with:
+          version: "0.11.13"
       - uses: "moonrepo/setup-toolchain@v0"
       - run: "moon ci"
