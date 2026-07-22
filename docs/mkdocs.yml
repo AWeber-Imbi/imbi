@@ -68,6 +68,8 @@ nav:
           - 0012 Plugin Manifest Service Template: api/adr/0012-plugin-manifest-service-template.md
           - 0013 Deployment Plugin Type: api/adr/0013-deployment-plugin-type.md
           - 0014 Generic Plugin-Entity CRUD: api/adr/0014-generic-plugin-entity-abstraction.md
+          - 0015 CycloneDX 1.7 SBOM Standard: api/adr/0015-cyclonedx-1.7-sbom-standard.md
+          - 0016 Delegated Execution for Scheduled Jobs: api/adr/0016-delegated-execution-for-scheduled-jobs.md
   - Library Reference:
       - Overview: common/index.md
       - Installation: common/installation.md
@@ -96,6 +98,7 @@ nav:
       - Architecture Decision Records:
           - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
           - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md
+          - 0003 Use ClickHouse for PR Tracking: common/adr/0003-use-clickhouse-for-pr-tracking.md
   - Plugins:
       - Authoring Plugins: common/plugins/index.md
       - Configuration: common/plugins/configuration.md
