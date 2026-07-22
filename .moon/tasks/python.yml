@@ -19,6 +19,8 @@ tasks:
       - 'ruff'
       - 'check'
       - '$projectSource'
+    deps:
+      - 'root:setup-env'
     options:
       runFromWorkspaceRoot: true
     inputs:
@@ -34,6 +36,8 @@ tasks:
       - 'format'
       - '--check'
       - '$projectSource'
+    deps:
+      - 'root:setup-env'
     options:
       runFromWorkspaceRoot: true
     inputs:
@@ -47,6 +51,8 @@ tasks:
       - '--frozen'
       - 'basedpyright'
       - '$projectSource/src'
+    deps:
+      - 'root:setup-env'
     options:
       runFromWorkspaceRoot: true
     inputs:
@@ -73,6 +79,7 @@ tasks:
       - 'pytest'
       - '$projectSource/tests'
     deps:
+      - 'root:setup-env'
       - 'root:services'
     options:
       runFromWorkspaceRoot: true

@@ -21,6 +21,25 @@ tasks:
       cache: false
       runInCI: false
 
+  # Populate the shared .venv once, before any parallel python task runs.
+  # Without moon's python toolchain there is no built-in barrier that syncs
+  # the venv up front, so every `uv run --frozen` could otherwise try to
+  # create/populate .venv concurrently. This gate does the single write; the
+  # downstream tasks (lint/format/typecheck/coverage/docs:build) `deps` on it
+  # and their `uv run --frozen` calls then find a fully-synced venv (read-only,
+  # concurrency-safe). Syncs all groups + extras so on-demand `--group docs`
+  # runs never mutate the venv either.
+  setup-env:
+    command: 'uv'
+    args:
+      - 'sync'
+      - '--all-groups'
+      - '--all-extras'
+      - '--frozen'
+    options:
+      cache: false
+      runInCI: 'always'
+
   # Boot the backing services and (re)write /.env.test with resolved ports.
   # Ported verbatim from the previous justfile `docker` recipe. Every python
   # `test` task depends on this, and moon runs it once per graph execution.
@@ -98,6 +117,7 @@ tasks:
       uv run --frozen coverage report
       uv run --frozen coverage xml -o build/coverage.xml
     deps:
+      - '~:setup-env'
       - '~:services'
     options:
       cache: false

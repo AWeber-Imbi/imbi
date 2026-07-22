@@ -1,26 +1,12 @@
 # yaml-language-server: $schema=https://moonrepo.dev/schemas/toolchain.json
 #
-# Tool versions are pinned in `/.prototools` (the single source of truth) and
-# inherited here via `versionFromPrototools` (on by default). moon downloads
-# and manages them, so every machine and CI runner is deterministic.
-
-# Python + uv drive the entire uv workspace (one root pyproject, one uv.lock,
-# one shared .venv). `packageManager: uv` lets moon derive the project
-# dependency graph from the pyproject cross-member pins.
-#
-# moon installs uv (so it is present on fresh CI runners), but python is left
-# UNMANAGED (`versionFromPrototools: false`). When moon manages the
-# interpreter, the unstable_uv 0.1.3 plugin emits `uv venv --no-managed-python`,
-# which conflicts with recent uv's `--python-preference` handling. With python
-# unmanaged, moon runs a plain `uv venv` and uv itself provisions Python 3.14
-# (per .python-version) — downloading it on CI if needed.
-unstable_python:
-  packageManager: 'uv'
-  venvName: '.venv'
-  versionFromPrototools: false
-
-unstable_uv:
-  version: '0.11.13'
+# Python members carry `language: 'python'` but no python toolchain, so they
+# fall back to moon's built-in `system` toolchain: their tasks shell out to
+# `uv` (`uv run --frozen ...`) as plain system commands against the shared
+# .venv. uv itself is provisioned outside moon — installed locally, and via
+# astral-sh/setup-uv in CI — and uv downloads Python 3.14 (per .python-version)
+# during `uv sync`. A `root:setup-env` gate runs `uv sync` once before the
+# parallel tasks so they never race to populate the venv.
 
 # Node + npm build and test the UI (ui/).
 node: {}

@@ -22,6 +22,8 @@ tasks:
       - '--strict'
       - '-f'
       - 'mkdocs.yml'
+    deps:
+      - 'root:setup-env'
     inputs:
       - 'docs/**/*'
       - 'mkdocs.yml'
