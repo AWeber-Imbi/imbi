@@ -1,0 +1,10 @@
+.*
+/build
+/dist
+/docs/superpowers
+/public
+/site
+VERSION
+!/.github
+!/.gitignore
+!/.pre-commit-config.yaml
