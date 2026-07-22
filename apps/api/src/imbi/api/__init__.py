@@ -10,6 +10,6 @@ way to manage a large environment that contains many services and applications.
 from importlib import metadata
 
 try:
-    version = metadata.version('imbi')
+    version = metadata.version('imbi-api')
 except metadata.PackageNotFoundError:
     version = '0.0.0'

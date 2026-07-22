@@ -1,0 +1,284 @@
+[project]
+name = "imbi"
+version = "2.17.0"
+description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
+  { name = "Dave Shawley", email = "daves@aweber.com" },
+  { name = "Alex Campbell", email = "alexc@aweber.com" }
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+]
+# Meta-distribution: installing `imbi` installs the whole platform.
+dependencies = [
+  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.17.0",
+  "imbi-api==2.17.0",
+  "imbi-assistant==2.17.0",
+  "imbi-gateway==2.17.0",
+  "imbi-mcp==2.17.0",
+  "imbi-slackbot==2.17.0",
+  "imbi-plugin-aws==2.17.0",
+  "imbi-plugin-github==2.17.0",
+  "imbi-plugin-google==2.17.0",
+  "imbi-plugin-logzio==2.17.0",
+  "imbi-plugin-oidc==2.17.0",
+  "imbi-plugin-pagerduty==2.17.0",
+  "imbi-plugin-sonarqube==2.17.0",
+]
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.37.1",
+  "build",
+  "click~=8.2.1",  # 8.3 CliRunner drops stderr from result.output; also breaks mkdocs serve
+  "coverage[toml]>=7.13.1",
+  "httpcore",
+  "mypy~=1.19.1",
+  "pre-commit>=4.5.1",
+  "pytest~=9.0",
+  "pytest-asyncio",
+  "pytest-cov>=7.0.0",
+  "python-dotenv>=1.1.0",
+  "respx",
+  "ruff~=0.14.6",
+  "tomli-w~=1.2",
+  "types-nanoid>=2.0.0.20260408",
+  "watchfiles",
+]
+dist = ["build", "twine", "wheel"]
+docs = [
+  "click~=8.2.1",  # 8.3+ breaks mkdocs serve (https://github.com/mkdocs/mkdocs/issues/4032)
+  "griffe-pydantic",
+  "mkdocs>=1.5,<2",
+  "mkdocs-material>9.5,<10",
+  "mkdocstrings-python-xref>=1.6,<2",
+  "mkdocstrings[python]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Meta-package: no code of its own.
+bypass-selection = true
+
+[tool.uv]
+# dependency groups that are installed by `uv run`
+# https://docs.astral.sh/uv/reference/settings/#default-groups
+default-groups = ["dev"]
+exclude-newer = "7 days"
+
+[tool.uv.exclude-newer-package]
+clickhouse-connect = false
+
+[tool.uv.workspace]
+members = ["apps/*", "libraries/*", "plugins/*"]
+exclude = ["apps/ui"]
+
+[tool.uv.sources]
+imbi-common = { workspace = true }
+imbi-api = { workspace = true }
+imbi-assistant = { workspace = true }
+imbi-gateway = { workspace = true }
+imbi-mcp = { workspace = true }
+imbi-slackbot = { workspace = true }
+imbi-plugin-aws = { workspace = true }
+imbi-plugin-github = { workspace = true }
+imbi-plugin-google = { workspace = true }
+imbi-plugin-logzio = { workspace = true }
+imbi-plugin-oidc = { workspace = true }
+imbi-plugin-pagerduty = { workspace = true }
+imbi-plugin-sonarqube = { workspace = true }
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
+[tool.coverage.html]
+directory = "build/coverage"
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 85
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source_pkgs = ["imbi"]
+
+[tool.coverage.xml]
+output = "build/coverage.xml"
+
+[tool.mypy]
+strict = true
+python_executable = ".venv/bin/python"
+namespace_packages = true
+explicit_package_bases = true
+files = [
+  "libraries/common/src",
+  "apps/api/src",
+  "apps/assistant/src",
+  "apps/gateway/src",
+  "apps/mcp/src",
+  "apps/slackbot/src",
+  "plugins/aws/src",
+  "plugins/github/src",
+  "plugins/google/src",
+  "plugins/logzio/src",
+  "plugins/oidc/src",
+  "plugins/pagerduty/src",
+  "plugins/sonarqube/src",
+]
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/slackbot/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
+
+[[tool.mypy.overrides]]
+module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
+ignore_missing_imports = true
+
+[tool.pyright]
+deprecateTypingAliases = true
+reportMissingSuperCall = "information"
+reportMissingTypeStubs = false
+reportDeprecated = "warning"
+typeCheckingMode = "strict"
+extraPaths = [
+  "libraries/common/src",
+  "apps/api/src",
+  "apps/assistant/src",
+  "apps/gateway/src",
+  "apps/mcp/src",
+  "apps/slackbot/src",
+  "plugins/aws/src",
+  "plugins/github/src",
+  "plugins/google/src",
+  "plugins/logzio/src",
+  "plugins/oidc/src",
+  "plugins/pagerduty/src",
+  "plugins/sonarqube/src",
+]
+exclude = ["**/node_modules", "**/__pycache__", ".venv", "apps/ui", "typings", "docs"]
+
+[[tool.pyright.executionEnvironments]]
+root = "libraries"
+reportUnusedFunction = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "apps/api/src/imbi/api/assistant"
+reportDeprecated = "none"
+reportConstantRedefinition = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "apps"
+reportUnusedFunction = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "plugins"
+reportUnusedFunction = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 79
+target-version = "py314"
+extend-exclude = ["typings", "apps/ui", "legacy"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "A",  # flake8-builtins
+  "ANN",  # flake8-annotations
+  "ARG",  # flake8-unused-arguments
+  "ASYNC",  # flake8-async
+  "B",  # flake8-bugbear
+  "BLE",  # flake8-blind-except
+  "C4",  # flake8-comprehensions
+  "C90",  # mccabe
+  "DTZ",  # flake8-datetimez
+  "E",
+  "W",  # pycodestyle
+  "ERA",  # eradicate
+  "F",  # pyflakes
+  "FLY",  # flynt
+  "FURB",  # refurb
+  "G",  # flake8-logging-format
+  "I",  # isort
+  "LOG",  # flake8-logging
+  "N",  # pep8-naming
+  "PIE",  # flake8-pie
+  "PL",  # pylint
+  "PTH",  # flake8-use-pathlib
+  "Q",  # flake8-quotes
+  "RET",  # flake8-return
+  "RSE",  # flake8-raise
+  "RUF",  # ruff-specific
+  "S",  # flake8-bandit
+  "SIM",  # flake8-simplify
+  "T10",  # flake8-debugger
+  "T20",  # flake8-print
+  "TC",  # flake8-type-checking
+  "TRY",  # tryceratops
+  "UP",  # pyupgrade
+]
+ignore = [
+  "ANN401",  # typing.Any is acceptable in some signatures
+  "N818",  # exception class names are not required to end in Error
+  "S105",  # false positives on non-password strings
+  "S106",  # false positive: hardcoded password in function argument
+  "TRY003",  # message text in exception initializers is okay
+  "TRY400",  # logging.exception is not always preferable
+  "UP040",  # allow non-pep695-type-alias
+  "UP047",  # type parameter syntax not yet adopted
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.isort]
+known-first-party = ["imbi"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# Suites not yet clean against the union rule set — burn down over time.
+"libraries/common/**" = ["A", "ANN", "ARG", "ERA", "FLY", "LOG", "PIE", "PL", "PTH", "RET", "RSE", "SIM", "TC", "TRY"]
+"apps/api/**" = ["A", "ANN", "ARG", "ERA", "FLY", "LOG", "PIE", "PL", "PTH", "RET", "RSE", "SIM", "TC", "TRY"]
+"plugins/**" = ["A", "ANN", "ARG", "ASYNC109", "ERA", "FLY", "LOG", "PIE", "PL", "PTH", "RET", "RSE", "SIM", "TC", "TRY"]
+"apps/assistant/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
+"apps/gateway/**" = ["TC", "UP"]
+"apps/mcp/**" = ["UP"]
+"apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
+"tests/**/*.py" = ["A", "ANN", "ARG", "B018", "ERA", "N802", "PL", "PLC0415", "PTH", "RET", "RSE", "RUF059", "S", "SIM", "TC", "TRY"]

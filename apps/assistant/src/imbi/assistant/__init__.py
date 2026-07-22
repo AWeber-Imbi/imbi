@@ -2,7 +2,7 @@ import re as _re
 from importlib import metadata as _metadata
 
 try:
-    version = _metadata.version('imbi')
+    version = _metadata.version('imbi-assistant')
 except _metadata.PackageNotFoundError:
     version = '0.0.0'
 

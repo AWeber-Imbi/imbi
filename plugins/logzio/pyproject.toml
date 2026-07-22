@@ -1,0 +1,33 @@
+[project]
+name = "imbi-plugin-logzio"
+version = "2.17.0"
+description = "Logz.io logs plugin for Imbi"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "BSD-3-Clause"
+authors = [
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "httpx>=0.27",
+  "imbi-common==2.17.0",
+  "pydantic>=2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi"]
+include = [
+  "src/imbi/plugins/logzio/py.typed",
+]

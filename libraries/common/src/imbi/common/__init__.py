@@ -3,7 +3,7 @@
 from importlib import metadata
 
 try:
-    version = metadata.version('imbi')
+    version = metadata.version('imbi-common')
 except metadata.PackageNotFoundError:
     version = '0.0.0'
 

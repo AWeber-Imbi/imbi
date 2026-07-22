@@ -37,7 +37,7 @@ LOGGER = logging.getLogger(__name__)
 
 def _get_version() -> str:
     try:
-        return _pkg_version('imbi')
+        return _pkg_version('imbi-plugin-logzio')
     except PackageNotFoundError:
         return 'dev'
 

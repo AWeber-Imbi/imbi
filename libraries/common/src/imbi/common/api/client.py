@@ -12,7 +12,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _default_user_agent() -> str:
-    version = importlib.metadata.version('imbi')
+    version = importlib.metadata.version('imbi-common')
     return f'imbi-common/{version}'
 
 

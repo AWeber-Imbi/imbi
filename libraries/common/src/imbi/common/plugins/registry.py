@@ -305,12 +305,13 @@ def load_plugins() -> LoadResult:
         try:
             cls = _load_convention_plugin(module_name)
         except ImportError as exc:
-            # First-party plugin code always ships; a missing optional
-            # dependency means the matching imbi[plugin-*] extra is not
-            # installed, which is a normal deployment state.
+            # First-party plugin code is workspace-editable in dev; a
+            # missing optional dependency means the plugin's
+            # distribution is not installed, which is a normal
+            # deployment state.
             LOGGER.debug(
                 'Skipping first-party plugin %r: %s (install the matching '
-                'imbi[plugin-*] extra to enable it)',
+                'imbi-plugin-* distribution to enable it)',
                 module_name,
                 exc,
             )
@@ -320,7 +321,15 @@ def load_plugins() -> LoadResult:
             LOGGER.exception('Failed to import plugin %r', module_name)
             errors[source] = str(exc)
             continue
-        _register(source, cls, _package_metadata(module_name)[1])
+        # imbi.plugins.<name> ships as the imbi-plugin-<name> dist;
+        # packages_distributions() cannot disambiguate the shared
+        # imbi namespace, so resolve the version directly.
+        dist_name = 'imbi-plugin-' + module_name.rsplit('.', 1)[-1]
+        try:
+            version = importlib.metadata.version(dist_name)
+        except importlib.metadata.PackageNotFoundError:
+            version = _package_metadata(module_name)[1]
+        _register(source, cls, version)
 
     for module_name, source in _discover_convention().items():
         try:
