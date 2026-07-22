@@ -93,7 +93,7 @@ clean:
 [doc("Remove caches, virtual env, and output files")]
 [group("Environment")]
 real-clean: clean
-    rm -fR .venv .*_cache dist apps/ui/node_modules
+    rm -fR .venv .*_cache dist ui/node_modules
 
 # ---------------------------------------------------------------------------
 # Testing
@@ -149,26 +149,26 @@ format *FILES: setup
 
 [doc("Install UI dependencies")]
 [group("UI")]
-[working-directory("apps/ui")]
+[working-directory("ui")]
 ui-install:
     npm ci
 
 [doc("Lint the UI")]
 [group("UI")]
-[working-directory("apps/ui")]
+[working-directory("ui")]
 ui-lint: ui-install
     npm run lint
     npm run format:check
 
 [doc("Run the UI tests")]
 [group("UI")]
-[working-directory("apps/ui")]
+[working-directory("ui")]
 ui-test: ui-install
     npm run test
 
 [doc("Build the UI")]
 [group("UI")]
-[working-directory("apps/ui")]
+[working-directory("ui")]
 ui-build: ui-install
     npm run build
 

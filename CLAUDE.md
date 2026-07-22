@@ -21,7 +21,7 @@ PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 | `apps/gateway/` | `imbi-gateway` (:8003) | `imbi.gateway` |
 | `apps/mcp/` | `imbi-mcp` (:8001) | `imbi.mcp` |
 | `apps/slackbot/` | `imbi-slackbot` (:8004) | `imbi.slackbot` |
-| `apps/ui/` | npm package (Vite :5173) | — |
+| `ui/` | npm package (Vite :5173) | — |
 | `plugins/<name>/` | `imbi-plugin-<name>` | `imbi.plugins.<name>` |
 | root `pyproject.toml` | `imbi` meta-package (installs everything) | — |
 
@@ -48,7 +48,7 @@ just test-suite apps/api   # one member with its own coverage floor
 just lint                  # pre-commit run --all-files + basedpyright
 just format [FILES]        # ruff + tombi via pre-commit
 just docs / docs-serve     # mkdocs build --strict / local serve
-just ui-lint / ui-test     # npm lint+format:check / vitest (apps/ui)
+just ui-lint / ui-test     # npm lint+format:check / vitest (ui/)
 just build [tag]           # build the production Docker image
 just bootstrap / teardown  # run/destroy the prod image locally (compose.yaml)
 ```

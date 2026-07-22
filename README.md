@@ -100,7 +100,7 @@ docker compose up --build -d
 docker compose exec -it imbi imbi-api setup
 
 # 3. In the imbi-ui directory, point the dev proxy at the local backend
-cd apps/ui
+cd ui
 echo 'VITE_PROXY_TARGET=http://localhost:8080' > .env.local
 npm install
 npm run dev
@@ -235,10 +235,10 @@ imbi/
 │   ├── assistant/     # imbi-assistant — AI assistant (imbi.assistant)
 │   ├── gateway/       # imbi-gateway — webhook gateway (imbi.gateway)
 │   ├── mcp/           # imbi-mcp — MCP server (imbi.mcp)
-│   ├── slackbot/      # imbi-slackbot — Slack bot (imbi.slackbot)
-│   └── ui/            # React frontend (npm, not a uv member)
+│   └── slackbot/      # imbi-slackbot — Slack bot (imbi.slackbot)
 ├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
 │   ├── aws/  github/  google/  logzio/  oidc/  pagerduty/  sonarqube/
+├── ui/                # React frontend (npm, not a uv member)
 ├── docs/              # unified mkdocs site
 ├── pyproject.toml     # workspace root + the `imbi` meta-package
 ├── Caddyfile          # Reverse proxy configuration

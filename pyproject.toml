@@ -155,7 +155,7 @@ exclude = [
   "**/node_modules",
   "**/__pycache__",
   ".venv",
-  "apps/ui",
+  "ui",
   "typings",
   "docs"
 ]
@@ -526,7 +526,7 @@ asyncio_default_fixture_loop_scope = "function"
 [tool.ruff]
 line-length = 79
 target-version = "py314"
-extend-exclude = ["typings", "apps/ui", "legacy"]
+extend-exclude = ["typings", "ui", "legacy"]
 
 [tool.ruff.format]
 quote-style = "single"
@@ -671,7 +671,6 @@ clickhouse-connect = false
 
 [tool.uv.workspace]
 members = ["apps/*", "libraries/*", "plugins/*"]
-exclude = ["apps/ui"]
 
 [tool.uv.sources]
 imbi-common = { workspace = true }
