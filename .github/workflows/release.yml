@@ -2,8 +2,7 @@ name: Release
 
 on:
   push:
-    branches-ignore: ["*"]
-    tags: ["*"]
+    tags: ["v*"]
 
 env:
   GHCR_IMAGE: ghcr.io/aweber-imbi/imbi

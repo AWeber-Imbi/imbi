@@ -124,7 +124,20 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          paths: ["../src"]
+          paths:
+            - ../libraries/common/src
+            - ../apps/api/src
+            - ../apps/assistant/src
+            - ../apps/gateway/src
+            - ../apps/mcp/src
+            - ../apps/slackbot/src
+            - ../plugins/aws/src
+            - ../plugins/github/src
+            - ../plugins/google/src
+            - ../plugins/logzio/src
+            - ../plugins/oidc/src
+            - ../plugins/pagerduty/src
+            - ../plugins/sonarqube/src
           options:
             show_source: true
             show_root_heading: true

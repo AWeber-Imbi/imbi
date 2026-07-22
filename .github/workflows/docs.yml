@@ -6,7 +6,9 @@ on:
       - main
     paths:
       - 'docs/**'
-      - 'src/**'
+      - 'libraries/**'
+      - 'apps/**'
+      - 'plugins/**'
       - 'justfile'
       - 'pyproject.toml'
       - '.github/workflows/docs.yml'
