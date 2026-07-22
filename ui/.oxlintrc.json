@@ -1,0 +1,264 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "browser": true,
+    "builtin": true,
+    "es2020": true
+  },
+  "ignorePatterns": ["dist", "src/types/api-generated.ts"],
+  "settings": {
+    "cssVars": {
+      "cssFile": "src/index.css",
+      "ignorePrefixes": ["--radix-", "--assistant-", "--tw-"]
+    }
+  },
+  "jsPlugins": ["eslint-plugin-react-refresh", "eslint-plugin-perfectionist", "oxlint-tailwindcss", "./tools/oxlint-plugin-css-vars.ts"],
+  "overrides": [
+    {
+      "files": ["test/**/*.{ts,tsx}"],
+      "rules": {
+        "react-refresh/only-export-components": "off"
+      }
+    },
+    {
+      "files": ["tools/**/*.ts"],
+      "rules": {
+        "css-vars/no-unknown-css-var": "off",
+        "react/exhaustive-deps": "off",
+        "react/rules-of-hooks": "off",
+        "react-refresh/only-export-components": "off",
+        "tailwindcss/consistent-variant-order": "off",
+        "tailwindcss/enforce-canonical": "off",
+        "tailwindcss/enforce-consistent-important-position": "off",
+        "tailwindcss/enforce-consistent-variable-syntax": "off",
+        "tailwindcss/enforce-negative-arbitrary-values": "off",
+        "tailwindcss/enforce-shorthand": "off",
+        "tailwindcss/enforce-sort-order": "off",
+        "tailwindcss/no-conflicting-classes": "off",
+        "tailwindcss/no-contradicting-variants": "off",
+        "tailwindcss/no-dark-without-light": "off",
+        "tailwindcss/no-deprecated-classes": "off",
+        "tailwindcss/no-duplicate-classes": "off",
+        "tailwindcss/no-hardcoded-colors": "off",
+        "tailwindcss/no-unnecessary-arbitrary-value": "off",
+        "tailwindcss/no-unnecessary-whitespace": "off",
+        "tailwindcss/no-unknown-classes": "off"
+      }
+    }
+  ],
+  "plugins": ["typescript", "react", "oxc"],
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "react-refresh/only-export-components": [
+      "warn",
+      {
+        "allowConstantExport": true
+      }
+    ],
+    "react/exhaustive-deps": "warn",
+    "react/rules-of-hooks": "error",
+    "typescript/no-explicit-any": "warn",
+    "perfectionist/sort-variable-declarations": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-intersection-types": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-import-attributes": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-export-attributes": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-heritage-clauses": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-array-includes": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-named-imports": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-named-exports": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-object-types": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-union-types": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-switch-case": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-decorators": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-interfaces": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-jsx-props": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-modules": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-classes": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-imports": [
+      "error",
+      {
+        "customGroups": [
+          {
+            "elementNamePattern": "^react$",
+            "groupName": "react"
+          },
+          {
+            "elementNamePattern": "^react-router-dom$",
+            "groupName": "react-router"
+          }
+        ],
+        "groups": [
+          "react",
+          "react-router",
+          ["builtin", "external"],
+          "internal",
+          ["parent", "sibling", "index"]
+        ],
+        "ignoreCase": false,
+        "internalPattern": ["^@/"],
+        "newlinesBetween": 1,
+        "order": "asc",
+        "sortSideEffects": false,
+        "type": "natural"
+      }
+    ],
+    "perfectionist/sort-exports": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-objects": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-enums": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-sets": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "perfectionist/sort-maps": [
+      "error",
+      {
+        "type": "natural",
+        "order": "asc"
+      }
+    ],
+    "tailwindcss/consistent-variant-order": "warn",
+    "tailwindcss/enforce-canonical": "warn",
+    "tailwindcss/enforce-consistent-important-position": "warn",
+    "tailwindcss/enforce-consistent-variable-syntax": "warn",
+    "tailwindcss/enforce-negative-arbitrary-values": "warn",
+    "tailwindcss/enforce-shorthand": "warn",
+    "tailwindcss/enforce-sort-order": "warn",
+    "tailwindcss/no-conflicting-classes": "warn",
+    "tailwindcss/no-contradicting-variants": "warn",
+    "tailwindcss/no-dark-without-light": "warn",
+    "tailwindcss/no-deprecated-classes": "error",
+    "tailwindcss/no-duplicate-classes": "error",
+    "tailwindcss/no-hardcoded-colors": "warn",
+    "tailwindcss/no-unnecessary-arbitrary-value": "warn",
+    "tailwindcss/no-unnecessary-whitespace": "error",
+    "tailwindcss/no-unknown-classes": "error",
+    "css-vars/no-unknown-css-var": "error"
+  }
+}

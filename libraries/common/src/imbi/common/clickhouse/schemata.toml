@@ -1,0 +1,173 @@
+# Base ClickHouse schemas for imbi-common
+# These tables are used across multiple Imbi services
+#
+# Every DDL statement (CREATE/ALTER/DROP) must include the `{on_cluster}`
+# placeholder immediately after the object identifier. At setup time it is
+# replaced with `ON CLUSTER <name> ` when CLICKHOUSE_CLUSTER_NAME is set, or
+# with an empty string for single-node deployments.
+#
+# Each table engine must be prefixed with the `{replicated}` placeholder
+# (e.g. `{replicated}MergeTree()`). It becomes `Replicated` when a cluster
+# name is set so engines use their `Replicated*` variants, or an empty
+# string otherwise. Replicated engines rely on the server's
+# `default_replica_path`/`default_replica_name` macros for the Keeper path
+# and replica name.
+
+[events]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.events {on_cluster}(
+  id                   String           DEFAULT '',
+  project_id           LowCardinality(String),
+  recorded_at          DateTime64(3, 'UTC'),
+  type                 LowCardinality(String) DEFAULT '',
+  integration          LowCardinality(String) DEFAULT '',
+  attributed_to        LowCardinality(String) DEFAULT '',
+  metadata             JSON,
+  payload              JSON,
+  version              UInt8 DEFAULT 0
+) ENGINE = {replicated}ReplacingMergeTree(version)
+PARTITION BY toYYYYMM(recorded_at)
+ORDER BY (project_id, id);
+"""
+enabled = true
+
+[operations_log]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.operations_log {on_cluster}(
+    id                String,
+    occurred_at       DateTime64(3, 'UTC'),
+    recorded_at       DateTime64(3, 'UTC'),
+    recorded_by       LowCardinality(String),
+    performed_by      Nullable(String),
+    completed_at      Nullable(DateTime64(3, 'UTC')),
+    project_id        LowCardinality(String),
+    project_slug      LowCardinality(String),
+    environment_slug  LowCardinality(String),
+    entry_type        LowCardinality(String),
+    description       String,
+    link              Nullable(String),
+    notes             Nullable(String),
+    ticket_slug       Nullable(String),
+    version           Nullable(String),
+    _row_version      UInt64 DEFAULT 1,
+    is_deleted        UInt8  DEFAULT 0,
+    plugin_slug       LowCardinality(String) DEFAULT '',
+    external_run_id   Nullable(String),
+    INDEX idx_id id TYPE bloom_filter GRANULARITY 4,
+    INDEX idx_ext_run external_run_id TYPE bloom_filter GRANULARITY 4
+) ENGINE = {replicated}ReplacingMergeTree(_row_version)
+PARTITION BY toYYYYMM(occurred_at)
+ORDER BY (project_id, id);
+"""
+enabled = true
+
+[pull_requests]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.pull_requests {on_cluster}(
+    project_id      LowCardinality(String),
+    pr_id           String,
+    pr_number       UInt32,
+    title           String,
+    url             String,
+    state           LowCardinality(String),
+    author          String,
+    draft           Bool,
+    merged          Bool,
+    created_at      DateTime64(3, 'UTC'),
+    updated_at      DateTime64(3, 'UTC'),
+    merged_at       Nullable(DateTime64(3, 'UTC')),
+    additions       UInt32,
+    deletions       UInt32,
+    changed_files   UInt32,
+    recorded_at     DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, pr_id);
+"""
+enabled = true
+
+[score_history]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.score_history {on_cluster}(
+  project_id     LowCardinality(String),
+  timestamp      DateTime64(3, 'UTC'),
+  score          Float32,
+  previous_score Float32,
+  change_reason  LowCardinality(String),
+  breakdown      JSON
+) ENGINE = {replicated}MergeTree()
+PARTITION BY toYear(timestamp)
+ORDER BY (project_id, timestamp);
+"""
+enabled = true
+
+[score_latest_data]
+query = """
+CREATE MATERIALIZED VIEW IF NOT EXISTS imbi.score_latest_data {on_cluster}
+ENGINE = {replicated}AggregatingMergeTree()
+ORDER BY project_id
+AS SELECT
+    project_id,
+    argMaxState(score, timestamp)     AS latest_score,
+    avgState(score)                   AS avg_score,
+    maxState(timestamp)               AS last_updated
+FROM imbi.score_history
+GROUP BY project_id;
+"""
+enabled = true
+
+[score_latest]
+query = """
+CREATE VIEW IF NOT EXISTS imbi.score_latest {on_cluster}AS
+SELECT
+    project_id,
+    argMaxMerge(latest_score) AS latest_score,
+    avgMerge(avg_score)       AS avg_score,
+    maxMerge(last_updated)    AS last_updated
+FROM imbi.score_latest_data
+GROUP BY project_id;
+"""
+enabled = true
+
+[commits]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.commits {on_cluster}(
+  project_id    LowCardinality(String),
+  sha           String,
+  short_sha     String DEFAULT substring(sha, 1, 7),
+  ref           LowCardinality(String),
+  message       String,
+  author_name   String DEFAULT '',
+  author_email  String DEFAULT '',
+  author_login  LowCardinality(String) DEFAULT '',
+  author_user   LowCardinality(String) DEFAULT '',
+  committer_name  String DEFAULT '',
+  ci_status     LowCardinality(String) DEFAULT 'unknown',
+  authored_at   DateTime64(3, 'UTC'),
+  committed_at  Nullable(DateTime64(3, 'UTC')),
+  url           String DEFAULT '',
+  pushed_at     DateTime64(3, 'UTC'),
+  recorded_at   DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+PARTITION BY toYear(authored_at)
+ORDER BY (project_id, sha);
+"""
+enabled = true
+
+[tags]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.tags {on_cluster}(
+  project_id    LowCardinality(String),
+  name          String,
+  sha           String,
+  message       String DEFAULT '',
+  tagger_name   String DEFAULT '',
+  tagger_email  String DEFAULT '',
+  tagged_at     Nullable(DateTime64(3, 'UTC')),
+  url           String DEFAULT '',
+  recorded_at   DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+PARTITION BY toYear(recorded_at)
+ORDER BY (project_id, name);
+"""
+enabled = true

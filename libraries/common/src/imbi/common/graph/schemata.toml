@@ -1,0 +1,364 @@
+[[extensions]]
+name = "age"
+
+[[extensions]]
+name = "pg_cron"
+
+[[extensions]]
+name = "vector"
+
+[vlabels]
+name = [
+  "APIKey",
+  "AnalysisReport",
+  "AnalysisResult",
+  "Blueprint",
+  "ClientCredential",
+  "Comment",
+  "CommentThread",
+  "Component",
+  "ComponentIdentifier",
+  "ComponentRelease",
+  "Conversation",
+  "DocumentTemplate",
+  "Environment",
+  "IdentityConnection",
+  "Integration",
+  "LinkDefinition",
+  "MCPServer",
+  "Message",
+  "OAuthClient",
+  "OAuthIdentity",
+  "Organization",
+  "Permission",
+  "PluginRegistration",
+  "Project",
+  "ProjectType",
+  "Release",
+  "Role",
+  "ScoringPolicy",
+  "ServiceAccount",
+  "Session",
+  "TOTPSecret",
+  "Team",
+  "TokenMetadata",
+  "Upload",
+  "User",
+  "Webhook",
+  "WebhookImplementation",
+  "WebhookRule",
+]
+
+# Attribute indexes on vertex labels.
+# Each entry creates a B-tree index on the named agtype property.
+# `unique = true` creates a UNIQUE index.
+# `attributes` lists one or more property names; multiple names
+# produce a composite index.
+
+[[vlabel_indexes]]
+vlabel = "APIKey"
+attributes = ["key_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "APIKey"
+attributes = ["revoked"]
+
+# Per-project uniqueness of the latest report (currently only one
+# kept; future history would relax this) is enforced at the
+# application layer by delete-then-create on re-run.
+[[vlabel_indexes]]
+vlabel = "AnalysisReport"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "AnalysisReport"
+attributes = ["project_id"]
+
+[[vlabel_indexes]]
+vlabel = "AnalysisResult"
+attributes = ["report_id"]
+
+[[vlabel_indexes]]
+vlabel = "AnalysisResult"
+attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "Blueprint"
+attributes = ["name", "type"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ClientCredential"
+attributes = ["client_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Comment"
+attributes = ["id"]
+unique = true
+
+# Comments render in chronological order within a thread.
+[[vlabel_indexes]]
+vlabel = "Comment"
+attributes = ["created_at"]
+
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["id"]
+unique = true
+
+# Threads list newest-first per document.
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["created_at"]
+
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["kind"]
+
+[[vlabel_indexes]]
+vlabel = "CommentThread"
+attributes = ["resolved"]
+
+# A Component's identity is its version-stripped package URL
+# (e.g. "pkg:npm/express"). Globally unique so MERGE can dedup
+# across projects and releases without a separate uniqueness check.
+[[vlabel_indexes]]
+vlabel = "Component"
+attributes = ["purl_name"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Component"
+attributes = ["ecosystem"]
+
+# Per-component uniqueness of ComponentRelease.version is enforced
+# at the application layer via MERGE on the
+# (Component)-[:HAS_RELEASE]->(ComponentRelease) pattern — two
+# components may legitimately ship the same version string, so a
+# graph-wide UNIQUE index is not possible.
+[[vlabel_indexes]]
+vlabel = "ComponentRelease"
+attributes = ["version"]
+
+# A ComponentIdentifier is globally unique by (kind, value) — a
+# given purl or CPE points at exactly one Component.
+[[vlabel_indexes]]
+vlabel = "ComponentIdentifier"
+attributes = ["kind", "value"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Conversation"
+attributes = ["updated_at"]
+
+[[vlabel_indexes]]
+vlabel = "Conversation"
+attributes = ["user_email"]
+
+[[vlabel_indexes]]
+vlabel = "IdentityConnection"
+attributes = ["plugin_id", "user_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "IdentityConnection"
+attributes = ["status"]
+
+[[vlabel_indexes]]
+vlabel = "IdentityConnection"
+attributes = ["expires_at"]
+
+[[vlabel_indexes]]
+vlabel = "LinkDefinition"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "MCPServer"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Message"
+attributes = ["conversation_id"]
+
+[[vlabel_indexes]]
+vlabel = "DocumentTemplate"
+attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "OAuthClient"
+attributes = ["client_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "OAuthIdentity"
+attributes = ["email"]
+
+[[vlabel_indexes]]
+vlabel = "OAuthIdentity"
+attributes = ["provider_slug", "provider_user_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Permission"
+attributes = ["name"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Permission"
+attributes = ["resource_type"]
+
+[[vlabel_indexes]]
+vlabel = "Project"
+attributes = ["name"]
+
+[[vlabel_indexes]]
+vlabel = "Project"
+attributes = ["slug"]
+
+# Per-project uniqueness of `Release.version` is enforced at the
+# application layer — two projects may share e.g. "1.0.0" so a
+# graph-wide UNIQUE index is not possible.
+[[vlabel_indexes]]
+vlabel = "Release"
+attributes = ["version"]
+
+[[vlabel_indexes]]
+vlabel = "Role"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Role"
+attributes = ["priority"]
+
+# ScoringPolicy edges (e.g. (:ScoringPolicy)-[:TARGETS]->(:ProjectType))
+# are created on demand by the scoring engine — AGE elabels have no
+# schemata-driven creation path, matching every other edge in this graph.
+[[vlabel_indexes]]
+vlabel = "ScoringPolicy"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ScoringPolicy"
+attributes = ["category", "enabled"]
+
+[[vlabel_indexes]]
+vlabel = "ScoringPolicy"
+attributes = ["attribute_name"]
+
+[[vlabel_indexes]]
+vlabel = "Integration"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Integration"
+attributes = ["status"]
+
+[[vlabel_indexes]]
+vlabel = "Integration"
+attributes = ["plugin"]
+
+[[vlabel_indexes]]
+vlabel = "PluginRegistration"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ServiceAccount"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Session"
+attributes = ["session_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Session"
+attributes = ["expires_at"]
+
+[[vlabel_indexes]]
+vlabel = "Team"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Webhook"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Webhook"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "TokenMetadata"
+attributes = ["jti"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "User"
+attributes = ["email"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "User"
+attributes = ["is_active"]
+
+# Embeddings table for pgvector similarity search.
+[embeddings]
+table = "public.embeddings"
+
+[embeddings.columns]
+node_label = "TEXT NOT NULL"
+node_id = "TEXT NOT NULL"
+attribute = "TEXT NOT NULL"
+chunk_index = "INTEGER NOT NULL DEFAULT 0"
+model_name = "TEXT NOT NULL DEFAULT 'text'"
+chunk_text = "TEXT NOT NULL"
+embedding = "VECTOR NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[embeddings.primary_key]
+columns = ["node_label", "node_id", "attribute", "chunk_index", "model_name"]
+
+[[embeddings.indexes]]
+name = "embeddings_node_idx"
+columns = ["node_label", "node_id"]
+
+# HNSW vector index — dimensions and model_name are derived from
+# the embedding settings at runtime so they stay in sync with
+# the configured default model.
+[embeddings.hnsw_index]
+name = "embeddings_text_hnsw_idx"
+ops = "vector_cosine_ops"
+
+# UDF for Cypher-to-SQL bridge vector distance queries.
+[[functions]]
+name = "public.embedding_distance"
+language = "sql"
+args = """
+    p_node_label AGTYPE,
+    p_node_id    AGTYPE,
+    p_query_vec  AGTYPE,
+    p_model      AGTYPE
+"""
+returns = "AGTYPE"
+body = """
+ SELECT COALESCE(
+            MIN(e.embedding <=> p_query_vec::text::vector),
+            1.0
+        )::float8::agtype
+   FROM public.embeddings e
+  WHERE e.node_label = p_node_label::text
+    AND e.node_id = p_node_id::text
+    AND e.model_name = p_model::text;
+"""

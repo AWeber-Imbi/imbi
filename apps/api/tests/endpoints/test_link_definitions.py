@@ -1,0 +1,467 @@
+"""Tests for link definition CRUD endpoints."""
+
+import datetime
+import typing
+from unittest import mock
+
+import psycopg.errors
+from fastapi.testclient import TestClient
+
+from apps.api.tests import support
+from imbi.api import models
+from imbi.common import graph
+
+
+class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
+    """Test cases for link definition CRUD endpoints."""
+
+    def setUp(self) -> None:
+        """Set up test app with admin authentication."""
+        from imbi.api.auth import permissions
+
+        self.admin_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.auth_context = permissions.AuthContext(
+            user=self.admin_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={
+                'link_definition:create',
+                'link_definition:read',
+                'link_definition:write',
+                'link_definition:delete',
+            },
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = TestClient(self.test_app)
+
+    def _link_def_data(self, **overrides: typing.Any) -> dict:
+        """Return a default link definition record."""
+        data: dict[str, typing.Any] = {
+            'name': 'GitHub Repository',
+            'slug': 'github-repo',
+            'description': 'Link to GitHub repo',
+            'icon': 'https://github.com/favicon.ico',
+            'url_template': 'https://github.com/{org}/{repo}',
+            'created_at': '2026-03-17T12:00:00Z',
+            'updated_at': '2026-03-17T12:00:00Z',
+        }
+        data.update(overrides)
+        return data
+
+    def _org_data(self) -> dict:
+        """Return a default organization record."""
+        return {
+            'name': 'Engineering',
+            'slug': 'engineering',
+        }
+
+    # -- Create --------------------------------------------------------
+
+    def test_create_success(self) -> None:
+        """Test successful link definition creation."""
+        self.mock_db.execute.return_value = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+            },
+        ]
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                '/organizations/engineering/link-definitions/',
+                json={
+                    'name': 'GitHub Repository',
+                    'slug': 'github-repo',
+                    'description': 'Link to GitHub repo',
+                    'url_template': ('https://github.com/{org}/{repo}'),
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['slug'], 'github-repo')
+        self.assertEqual(data['name'], 'GitHub Repository')
+        self.assertIn('relationships', data)
+        self.assertEqual(
+            data['relationships']['projects']['count'],
+            0,
+        )
+
+    def test_create_validation_error(self) -> None:
+        """Test creating link definition with invalid data."""
+        response = self.client.post(
+            '/organizations/engineering/link-definitions/',
+            json={},
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_org_not_found(self) -> None:
+        """Test creating link definition when org does not exist."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                '/organizations/nonexistent/link-definitions/',
+                json={
+                    'name': 'GitHub Repository',
+                    'slug': 'github-repo',
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_create_slug_conflict(self) -> None:
+        """Test creating link definition with duplicate slug."""
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                '/organizations/engineering/link-definitions/',
+                json={
+                    'name': 'GitHub Repository',
+                    'slug': 'github-repo',
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn(
+            'already exists',
+            response.json()['detail'],
+        )
+
+    # -- List ----------------------------------------------------------
+
+    def test_list_success(self) -> None:
+        """Test listing link definitions."""
+        self.mock_db.execute.return_value = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+                'project_count': 5,
+            },
+            {
+                'ld': self._link_def_data(
+                    name='Grafana Dashboard',
+                    slug='grafana',
+                ),
+                'o': self._org_data(),
+                'project_count': 0,
+            },
+        ]
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/link-definitions/',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['slug'], 'github-repo')
+
+    # -- Get -----------------------------------------------------------
+
+    def test_get_success(self) -> None:
+        """Test retrieving a single link definition."""
+        self.mock_db.execute.return_value = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+                'project_count': 3,
+            },
+        ]
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/link-definitions/github-repo',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['slug'], 'github-repo')
+        self.assertIn('relationships', data)
+        self.assertEqual(data['relationships']['projects']['count'], 3)
+
+    def test_get_not_found(self) -> None:
+        """Test retrieving nonexistent link definition."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/link-definitions/nonexistent',
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    # -- Delete --------------------------------------------------------
+
+    def test_delete_success(self) -> None:
+        """Test deleting a link definition."""
+        self.mock_db.execute.return_value = [{'ld': True}]
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.delete(
+                '/organizations/engineering/link-definitions/github-repo',
+            )
+
+        self.assertEqual(response.status_code, 204)
+
+    def test_delete_not_found(self) -> None:
+        """Test deleting nonexistent link definition."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.delete(
+                '/organizations/engineering/link-definitions/nonexistent',
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    # -- Patch ---------------------------------------------------------
+
+    def test_patch_link_definition_name(self) -> None:
+        """Test patching only the link definition name."""
+        from imbi.common import models as common_models
+
+        existing_ld = {
+            'name': 'Repo',
+            'slug': 'repo',
+            'description': None,
+            'url_template': 'https://github.com/{}',
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'ld': existing_ld,
+                    'o': {
+                        'name': 'Engineering',
+                        'slug': 'engineering',
+                    },
+                }
+            ],
+            [
+                {
+                    'ld': {
+                        'name': 'Repository',
+                        'slug': 'repo',
+                        'url_template': 'https://github.com/{}',
+                    },
+                    'o': {
+                        'name': 'Engineering',
+                        'slug': 'engineering',
+                    },
+                    'project_count': 2,
+                }
+            ],
+        ]
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            with mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.LinkDefinition,
+            ):
+                response = self.client.patch(
+                    '/organizations/engineering/link-definitions/repo',
+                    json=[
+                        {
+                            'op': 'replace',
+                            'path': '/name',
+                            'value': 'Repository',
+                        }
+                    ],
+                )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_preserves_string_icon_byte_for_byte(self) -> None:
+        """Patching a non-icon field must not mutate a string ``icon``.
+
+        ``icon`` is an ``HttpUrl | str`` union. Under pydantic smart-union
+        mode a string value binds to the ``str`` arm and is left untouched,
+        so the ``model_dump(mode='json')`` round-trip in the patch path is
+        byte-stable. A bare-domain URL (no trailing slash) is the canary:
+        if a future pydantic upgrade switched to left-to-right union
+        resolution, the string would be coerced to ``HttpUrl`` and gain a
+        trailing slash. This guards M11.
+        """
+        from imbi.common import models as common_models
+
+        bare_icon = 'https://example.com'
+        existing_ld = {
+            'name': 'Repo',
+            'slug': 'repo',
+            'description': None,
+            'icon': bare_icon,
+            'url_template': 'https://github.com/{}',
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'ld': existing_ld,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                }
+            ],
+            [
+                {
+                    'ld': {**existing_ld, 'name': 'Repository'},
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.LinkDefinition,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/link-definitions/repo',
+                json=[
+                    {'op': 'replace', 'path': '/name', 'value': 'Repository'}
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        persist_params = self.mock_db.execute.call_args_list[1].args[1]
+        self.assertEqual(persist_params['icon'], bare_icon)
+
+    def test_patch_link_definition_not_found(self) -> None:
+        """Test patching non-existent link definition returns 404."""
+        from imbi.common import models as common_models
+
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi.common.blueprints.get_model',
+            return_value=common_models.LinkDefinition,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/link-definitions/nonexistent',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'X',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_link_definition_slug_conflict(self) -> None:
+        """Renaming slug to a conflicting value returns 409."""
+        from imbi.common import models as common_models
+
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'ld': self._link_def_data(),
+                    'o': self._org_data(),
+                },
+            ],
+            psycopg.errors.UniqueViolation(),
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.LinkDefinition,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/link-definitions/github-repo',
+                json=[{'op': 'replace', 'path': '/slug', 'value': 'taken'}],
+            )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_patch_link_definition_concurrent_delete(self) -> None:
+        """Update returning no rows yields 404."""
+        from imbi.common import models as common_models
+
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'ld': self._link_def_data(),
+                    'o': self._org_data(),
+                },
+            ],
+            [],
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.LinkDefinition,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/link-definitions/github-repo',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'New'}],
+            )
+
+        self.assertEqual(response.status_code, 404)

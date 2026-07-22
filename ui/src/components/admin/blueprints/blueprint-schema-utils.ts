@@ -1,0 +1,214 @@
+import Ajv from 'ajv'
+
+import type { SchemaProperty } from '@/types'
+
+export const ajv = new Ajv()
+
+// Known relationships keyed by "Source:Target"
+const RELATIONSHIP_MAP: Record<string, string[]> = {
+  'Environment:Organization': ['BELONGS_TO'],
+  'Project:Environment': ['DEPLOYED_IN'],
+  'Project:Project': ['DEPENDS_ON'],
+  'Project:ProjectType': ['TYPE'],
+  'Project:Team': ['OWNED_BY'],
+  'ProjectType:Organization': ['BELONGS_TO'],
+  'Team:Organization': ['BELONGS_TO'],
+}
+
+export function getRelationshipTypes(source: string, target: string): string[] {
+  if (!source || !target) {
+    // Show all unique types when pair not yet selected
+    const all = new Set<string>()
+    for (const types of Object.values(RELATIONSHIP_MAP)) {
+      for (const t of types) all.add(t)
+    }
+    return Array.from(all).sort()
+  }
+  return RELATIONSHIP_MAP[`${source}:${target}`] || []
+}
+
+export function toTitleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+export const PROPERTY_TYPES: SchemaProperty['type'][] = [
+  'string',
+  'integer',
+  'number',
+  'boolean',
+  'array',
+  'object',
+]
+
+export const ARRAY_ITEM_TYPES: NonNullable<SchemaProperty['itemsType']>[] = [
+  'string',
+  'integer',
+  'number',
+  'boolean',
+]
+
+export const STRING_FORMATS = [
+  '',
+  'date',
+  'date-time',
+  'email',
+  'uri',
+  'uri-reference',
+  'hostname',
+  'ipv4',
+  'ipv6',
+  'uuid',
+]
+
+// Value-display transforms (serialized as `x-display.format`). Applied to the
+// rendered value only; `x-ui` color/icon resolution still keys off the raw
+// value. Mirrors `applyDisplayFormat` in `lib/project-field-formatting`.
+export const DISPLAY_FORMATS: { label: string; value: string }[] = [
+  { label: 'Humanize (Title Case, _ → space)', value: 'humanize' },
+  { label: 'Title Case', value: 'titlecase' },
+  { label: 'UPPERCASE', value: 'uppercase' },
+  { label: 'lowercase', value: 'lowercase' },
+  { label: 'Capitalize first letter', value: 'capitalize' },
+]
+
+export type SchemaEditorMode = 'code' | 'visual'
+
+export function buildJsonSchema(
+  properties: SchemaProperty[],
+): Record<string, unknown> {
+  const schema: Record<string, unknown> = {
+    properties: {} as Record<string, unknown>,
+    type: 'object',
+  }
+  const required: string[] = []
+  const props = schema.properties as Record<string, Record<string, unknown>>
+
+  for (const prop of properties) {
+    const propSchema: Record<string, unknown> = { type: prop.type }
+
+    if (prop.description) propSchema.description = prop.description
+    if (prop.format) propSchema.format = prop.format
+    if (prop.defaultValue !== undefined && prop.defaultValue !== '') {
+      if (prop.type === 'integer' || prop.type === 'number') {
+        propSchema.default = Number(prop.defaultValue)
+      } else if (prop.type === 'boolean') {
+        propSchema.default = prop.defaultValue === 'true'
+      } else {
+        propSchema.default = prop.defaultValue
+      }
+    }
+    if (prop.enumValues && prop.enumValues.length > 0) {
+      propSchema.enum = prop.enumValues
+    }
+    if (prop.minimum !== undefined) propSchema.minimum = prop.minimum
+    if (prop.maximum !== undefined) propSchema.maximum = prop.maximum
+    if (prop.minLength !== undefined) propSchema.minLength = prop.minLength
+    if (prop.maxLength !== undefined) propSchema.maxLength = prop.maxLength
+
+    if (prop.type === 'array') {
+      const itemType = prop.itemsType ?? 'string'
+      const itemsSchema: Record<string, unknown> = {
+        type: itemType,
+      }
+      if (
+        itemType === 'string' &&
+        prop.itemsEnumValues &&
+        prop.itemsEnumValues.length > 0
+      ) {
+        itemsSchema.enum = prop.itemsEnumValues
+      }
+      propSchema.items = itemsSchema
+    }
+
+    const uiEntries: [string, Record<string, string> | undefined][] = [
+      ['color-map', prop.colorMap],
+      ['icon-map', prop.iconMap],
+      ['color-range', prop.colorRange],
+      ['icon-range', prop.iconRange],
+      ['color-age', prop.colorAge],
+      ['icon-age', prop.iconAge],
+    ]
+    const xUiObj: Record<string, unknown> = {}
+    if (prop.editable === false) xUiObj['editable'] = false
+    for (const [key, map] of uiEntries) {
+      if (map && Object.keys(map).length > 0) xUiObj[key] = map
+    }
+    if (Object.keys(xUiObj).length > 0) {
+      propSchema['x-ui'] = xUiObj
+    }
+
+    if (prop.displayFormat) {
+      propSchema['x-display'] = { format: prop.displayFormat }
+    }
+
+    props[prop.name] = propSchema
+    if (prop.required) required.push(prop.name)
+  }
+
+  if (required.length > 0) schema.required = required
+  return schema
+}
+
+export function generateId(): string {
+  return Math.random().toString(36).substring(2, 9)
+}
+
+export function schemaToProperties(
+  schema: Record<string, unknown>,
+): SchemaProperty[] {
+  const props = (schema.properties || {}) as Record<
+    string,
+    Record<string, unknown>
+  >
+  const required = (schema.required || []) as string[]
+  const result: SchemaProperty[] = []
+
+  for (const [name, propSchema] of Object.entries(props)) {
+    const xUi = propSchema['x-ui'] as Record<string, unknown> | undefined
+    const xDisplay = propSchema['x-display'] as
+      | Record<string, unknown>
+      | undefined
+    const items = propSchema.items as Record<string, unknown> | undefined
+    result.push({
+      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
+      colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
+      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
+      defaultValue:
+        propSchema.default !== undefined
+          ? String(propSchema.default)
+          : undefined,
+      description: propSchema.description as string | undefined,
+      displayFormat: xDisplay?.format as string | undefined,
+      editable: xUi?.['editable'] === false ? false : undefined,
+      enumValues: propSchema.enum as string[] | undefined,
+      format: propSchema.format as string | undefined,
+      iconAge: xUi?.['icon-age'] as Record<string, string> | undefined,
+      iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
+      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
+      id: generateId(),
+      itemsEnumValues: items?.enum as string[] | undefined,
+      itemsType: items?.type as SchemaProperty['itemsType'] | undefined,
+      maximum: propSchema.maximum as number | undefined,
+      maxLength: propSchema.maxLength as number | undefined,
+      minimum: propSchema.minimum as number | undefined,
+      minLength: propSchema.minLength as number | undefined,
+      name,
+      required: required.includes(name),
+      type: (propSchema.type as SchemaProperty['type']) || 'string',
+    })
+  }
+
+  return result
+}
+
+export function toSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}

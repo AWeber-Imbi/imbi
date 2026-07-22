@@ -1,0 +1,79 @@
+import { Link } from 'react-router-dom'
+
+import { useQuery } from '@tanstack/react-query'
+import { GitMerge } from 'lucide-react'
+
+import { getOrgPullRequests } from '@/api/endpoints'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Sk } from '@/components/ui/skeleton'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { useGithubLogin } from '@/hooks/useGithubLogin'
+
+// fallow-ignore-next-line complexity
+export function MyPullRequestCountsWidget() {
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug ?? ''
+
+  const {
+    hasIdentity,
+    isError: identitiesError,
+    isLoading: identitiesLoading,
+    login,
+    notConnected,
+  } = useGithubLogin()
+
+  const {
+    data: openData,
+    isError: openError,
+    isLoading: openLoading,
+  } = useQuery({
+    enabled: hasIdentity && !!orgSlug,
+    queryFn: ({ signal }) =>
+      getOrgPullRequests(
+        orgSlug,
+        { author: login, limit: 1, state: 'open' },
+        signal,
+      ),
+    queryKey: ['my-prs', orgSlug, login, 'open'],
+    staleTime: 60 * 1000,
+  })
+
+  const isLoading = identitiesLoading || openLoading
+  const isError = identitiesError || openError
+  const openCount = openData?.total ?? 0
+
+  return (
+    <Card className="hover:border-secondary relative flex h-full cursor-pointer flex-col transition-colors">
+      <Link
+        aria-label="View my open pull requests"
+        className="focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+        to="/projects?view=list&has_my_open_prs=1"
+      />
+      <GitMerge className="text-tertiary absolute top-6 right-6 size-9" />
+      <CardHeader className="pb-2">
+        <CardTitle className="text-secondary font-normal">
+          My Open PRs
+        </CardTitle>
+      </CardHeader>
+      <CardContent aria-busy={isLoading} className="mt-auto">
+        {isLoading ? (
+          <Sk h={30} r={6} w={80} />
+        ) : isError ? (
+          <p className="text-danger text-sm">Unavailable</p>
+        ) : notConnected ? (
+          <>
+            <p className="text-tertiary text-3xl">—</p>
+            <a
+              className="text-action relative z-10 mt-1 block text-xs hover:underline"
+              href="/settings/connections"
+            >
+              Connect GitHub
+            </a>
+          </>
+        ) : (
+          <p className="text-primary text-3xl">{openCount.toLocaleString()}</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

@@ -1,0 +1,143 @@
+import asyncio
+import unittest
+import unittest.mock
+
+from fastapi import testclient
+
+from imbi.api import app, lifespans
+
+
+class ApplicationLifespanTestCase(unittest.TestCase):
+    """Test cases for the application lifespan."""
+
+    def test_successful_lifespan_startup(self) -> None:
+        """Test initializing lifespan by fetching status."""
+        with testclient.TestClient(app.create_app()) as client:
+            response = client.get('/status')
+            self.assertEqual(response.status_code, 200)
+
+    def test_clickhouse_initialization_failure(self) -> None:
+        """Test initializing lifespan by fetching status."""
+        with unittest.mock.patch(
+            'imbi.api.lifespans.clickhouse.initialize',
+            new=unittest.mock.AsyncMock(),
+        ) as initialize:
+            initialize.return_value = False
+            with self.assertRaises(RuntimeError) as error:
+                with testclient.TestClient(app.create_app()):
+                    pass  # nothing to do here
+        initialize.assert_called_once()
+        self.assertEqual(
+            str(error.exception),
+            'ClickHouse initialization failed',
+        )
+
+    def test_score_worker_skipped_when_valkey_raises(self) -> None:
+        """score_worker_hook exits early when valkey.get_client() raises."""
+        loop = asyncio.new_event_loop()
+        try:
+            with (
+                unittest.mock.patch(
+                    'imbi.api.lifespans.valkey.get_client',
+                    side_effect=RuntimeError('no valkey'),
+                ),
+                self.assertLogs(lifespans.LOGGER, level='WARNING') as cm,
+            ):
+
+                async def _run() -> None:
+                    async with lifespans.score_worker_hook():
+                        pass
+
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        self.assertTrue(
+            any('Valkey unavailable' in line for line in cm.output)
+        )
+
+    def test_score_worker_skipped_when_graph_not_ready(self) -> None:
+        """score_worker_hook exits early when _graph is None."""
+        mock_client = unittest.mock.AsyncMock()
+        loop = asyncio.new_event_loop()
+        try:
+            with (
+                unittest.mock.patch(
+                    'imbi.api.lifespans.valkey.get_client',
+                    return_value=mock_client,
+                ),
+                unittest.mock.patch.object(lifespans, '_graph', None),
+                self.assertLogs(lifespans.LOGGER, level='WARNING') as cm,
+            ):
+
+                async def _run() -> None:
+                    async with lifespans.score_worker_hook():
+                        pass
+
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        self.assertTrue(any('Graph not ready' in line for line in cm.output))
+
+    def test_anthropic_hook_disabled_when_api_key_missing(self) -> None:
+        """anthropic_hook yields a disabled client when no API key is set."""
+        loop = asyncio.new_event_loop()
+        captured: list[object] = []
+        try:
+            with (
+                unittest.mock.patch.dict(
+                    'os.environ', {'ANTHROPIC_API_KEY': ''}, clear=False
+                ),
+                self.assertLogs(lifespans.LOGGER, level='INFO') as cm,
+            ):
+
+                async def _run() -> None:
+                    async with lifespans.anthropic_hook() as client:
+                        captured.append(client)
+
+                loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        self.assertEqual(len(captured), 1)
+        self.assertFalse(captured[0].available)  # type: ignore[attr-defined]
+        self.assertTrue(
+            any('Anthropic client disabled' in line for line in cm.output)
+        )
+        self.assertFalse(
+            any('Anthropic client initialized' in line for line in cm.output)
+        )
+
+    def test_openapi_refresh_blueprint_failure(self) -> None:
+        failure = RuntimeError('blueprint refresh failed')
+        with (
+            unittest.mock.patch(
+                'imbi.api.lifespans.openapi.refresh_blueprint_models',
+                new=unittest.mock.AsyncMock(
+                    side_effect=failure,
+                ),
+            ) as refresh_blueprint_models,
+            self.assertLogs(
+                lifespans.LOGGER,
+                level='ERROR',
+            ) as cm,
+        ):
+            with testclient.TestClient(app.create_app()):
+                pass
+
+        refresh_blueprint_models.assert_awaited_once()
+        # ``LOGGER.exception`` logs at ERROR and appends the traceback
+        # after the message. Match on the message + class name so the
+        # assertion is stable across Python tracebacks.
+        self.assertTrue(
+            any(
+                line.startswith(
+                    'ERROR:imbi.api.lifespans:'
+                    'Failed to refresh blueprint models'
+                )
+                and 'RuntimeError' in line
+                for line in cm.output
+            ),
+            cm.output,
+        )

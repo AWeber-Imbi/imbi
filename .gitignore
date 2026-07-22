@@ -8,3 +8,10 @@ dist/
 docs/site/
 helm/imbi/charts/
 runtime/state/
+.venv/
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+coverage.xml
+site/

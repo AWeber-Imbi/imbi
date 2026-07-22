@@ -1,0 +1,2837 @@
+import {
+  ENVIRONMENT_BASE_FIELDS,
+  PROJECT_TYPE_BASE_FIELDS,
+  TEAM_BASE_FIELDS,
+} from '@/lib/constants'
+import type {
+  AdminSettings,
+  AdminUser,
+  AdminUserCreate,
+  ApiKey,
+  ApiKeyCreated,
+  ArchiveProjectResponse,
+  AuthProvider,
+  Blueprint,
+  BlueprintCreate,
+  CapabilityAssignment,
+  CapabilityAssignmentsUpdate,
+  CapabilityKind,
+  ClientCredential,
+  ClientCredentialCreate,
+  ClientCredentialCreated,
+  ConfigKeyResponse,
+  ConfigKeyValueResponse,
+  CurrentReleaseEnvironment,
+  DashboardMetrics,
+  DashboardStatus,
+  DeploymentCommit,
+  DeploymentCompareResult,
+  DeploymentPromoteRequest,
+  DeploymentRef,
+  DeploymentRun,
+  DeploymentTriggerRequest,
+  DeploymentTriggerResponse,
+  Document,
+  DocumentCreate,
+  DocumentListResponse,
+  DocumentTemplate,
+  DocumentTemplateCreate,
+  DraftReleaseNotesRequest,
+  DraftReleaseNotesResponse,
+  Environment,
+  EnvironmentCreate,
+  GraphQueryResult,
+  GraphSchema,
+  IdentityConnectionPollResponse,
+  IdentityConnectionResponse,
+  IdentityConnectionStartRequest,
+  IdentityConnectionStartResponse,
+  IncidentResult,
+  Integration,
+  IntegrationCreate,
+  IntegrationUpdate,
+  LifecyclePreviewResponse,
+  LinkDefinition,
+  LinkDefinitionCreate,
+  LocalAuthConfig,
+  LogHistogramBucket,
+  LoginRequest,
+  LogResultResponse,
+  MCPServer,
+  MCPServerCreate,
+  MCPServerTestConfig,
+  MCPServerTestResult,
+  MCPServerUpdate,
+  OperationsLogFilters,
+  OperationsLogRecord,
+  Organization,
+  OrganizationCreate,
+  PatchOperation,
+  PluginAssignmentResponse,
+  PluginEdge,
+  PluginEdgePut,
+  PluginEntity,
+  PluginEntityCreate,
+  PluginPackage,
+  Project,
+  ProjectCreate,
+  ProjectDeletedResponse,
+  ProjectIntegrationAssignment,
+  ProjectIntegrationsUpdate,
+  ProjectMutationResponse,
+  ProjectRelationshipsResponse,
+  ProjectServiceEdge,
+  ProjectServiceEdgeCreate,
+  ProjectType,
+  ProjectTypeCreate,
+  PullRequestListResponse,
+  RecentCommit,
+  Release,
+  ReleaseDependenciesResponse,
+  Role,
+  RoleCreate,
+  RoleDetail,
+  RoleUser,
+  ScoringPolicy,
+  ScoringPolicyCategory,
+  ScoringPolicyCreate,
+  ServiceAccount,
+  ServiceAccountCreate,
+  Tag,
+  Team,
+  TeamCreate,
+  TeamMember,
+  TokenResponse,
+  Upload,
+  UserResponse,
+  Webhook,
+  WebhookCreate,
+} from '@/types'
+import type {
+  AddReplyBody,
+  Comment,
+  CommentThread,
+  CreateThreadBody,
+} from '@/types/comments'
+
+import { apiClient, apiUrl } from './client'
+
+// Re-export for backward compatibility with modules that import from here.
+export type { PatchOperation }
+
+export const executeGraphQuery = (
+  body: { params?: Record<string, unknown>; query: string },
+  signal?: AbortSignal,
+) => apiClient.post<GraphQueryResult>('/admin/graph/query', body, signal)
+
+export const getGraphSchema = (signal?: AbortSignal) =>
+  apiClient.get<GraphSchema>('/admin/graph/schema', undefined, signal)
+
+export const getAuthProviders = (signal?: AbortSignal) =>
+  apiClient.get<{ default_redirect: string; providers: AuthProvider[] }>(
+    '/auth/providers',
+    undefined,
+    signal,
+  )
+
+export const loginWithPassword = (credentials: LoginRequest) =>
+  apiClient.post<TokenResponse>('/auth/login', credentials)
+
+// The refresh token is sent as an HttpOnly cookie (C2), not in the body.
+export const refreshToken = () =>
+  apiClient.post<TokenResponse>('/auth/token/refresh')
+
+export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
+
+// GET /users/me resolves the caller from their token and, unlike
+// /users/{email}, includes the effective `permissions` set the UI gates on.
+export const getCurrentUser = (signal?: AbortSignal) =>
+  apiClient.get<UserResponse>('/users/me', undefined, signal)
+
+export const getProjects = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Project[]> => {
+  const response = await apiClient.get<Project[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+// Slim variant: returns a trimmed ``ProjectListItem`` payload (just
+// the fields the projects-list view reads). Used by the projects
+// page to keep the cached array compact in memory; other callers
+// can opt in once their consumers are audited.
+export interface ProjectListItem {
+  archived: boolean
+  closed_pr_count: number
+  current_releases: Record<
+    string,
+    {
+      committish?: null | string
+      deployed_at: string
+      performed_by?: null | string
+      tag?: null | string
+    }
+  >
+  description: null | string
+  environments: {
+    label_color?: null | string
+    name: string
+    slug: string
+    sort_order: number
+  }[]
+  id: string
+  name: string
+  open_pr_count: number
+  project_types: {
+    deployable: boolean
+    name: string
+    releasable: boolean
+    slug: string
+  }[]
+  release_summary: null | {
+    commits_since_tag: number
+    head_author: null | string
+    head_author_login: null | string
+    head_authored_at: null | string
+    head_sha: null | string
+    head_short_sha: null | string
+    latest_tag: null | string
+    latest_tag_at: null | string
+    latest_tag_author: null | string
+    latest_tag_sha: null | string
+  }
+  score: null | number
+  slug: string
+  team: { name: string; slug: string }
+  viewer_closed_pr_count: number
+  viewer_open_pr_count: number
+}
+
+export const getProjectsSlim = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<ProjectListItem[]> => {
+  const response = await apiClient.get<ProjectListItem[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/?slim=true`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getProject = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Project>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
+    undefined,
+    signal,
+  )
+
+export interface AttributeContribution {
+  attribute_name: string
+  category?: ScoringPolicyCategory
+  condition_result?: boolean | null
+  mapped_score: number
+  matched_neighbours?: MatchedNeighbour[]
+  policy_slug: string
+  value: unknown
+  weight: number
+  weighted_contribution: number
+}
+
+export interface MatchedNeighbour {
+  id: string
+  name?: null | string
+  slug?: null | string
+}
+
+interface ScoreBreakdown {
+  attribute_contributions: AttributeContribution[]
+  base_score: number
+  unfloored_total: number
+}
+
+export const getProjectBreakdown = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Project & { breakdown?: ScoreBreakdown }>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
+    { breakdown: true },
+    signal,
+  )
+
+export interface ProjectSchemaResponse {
+  sections: ProjectSchemaSection[]
+}
+
+export interface ProjectSchemaSection {
+  description?: null | string
+  name: string
+  properties: Record<string, ProjectSchemaSectionProperty>
+  // `environment` for relationship (DEPLOYED_IN) blueprints whose properties
+  // describe per-environment edge attributes; `project` (default) for node
+  // blueprints describing project-level attributes.
+  scope?: 'environment' | 'project'
+  slug: string
+}
+
+export interface ProjectSchemaSectionProperty {
+  default?: unknown
+  description?: null | string
+  enum?: null | string[]
+  format?: null | string
+  items?: null | {
+    enum?: null | string[]
+    type?: null | string
+  }
+  maximum?: null | number
+  minimum?: null | number
+  title?: null | string
+  type?: null | string
+  // Optional value-display transform applied to the rendered string
+  // (independent of `x-ui` color/icon resolution, which keys off the raw
+  // value). `format: "humanize"` → underscores/hyphens to spaces + Title Case.
+  'x-display'?: null | {
+    format?: null | string
+  }
+  'x-ui'?: null | {
+    'color-age'?: Record<string, string>
+    'color-map'?: Record<string, string>
+    'color-range'?: Record<string, string>
+    editable?: boolean
+    'icon-age'?: Record<string, string>
+    'icon-map'?: Record<string, string>
+    'icon-range'?: Record<string, string>
+  }
+}
+
+export const getProjectSchema = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ProjectSchemaResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/schema`,
+    undefined,
+    signal,
+  )
+
+export const getProjectRelationships = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ProjectRelationshipsResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships`,
+    undefined,
+    signal,
+  )
+
+export const addProjectRelationship = (
+  orgSlug: string,
+  projectId: string,
+  targetId: string,
+) =>
+  apiClient.post<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships/${encodeURIComponent(targetId)}`,
+  )
+
+export const removeProjectRelationship = (
+  orgSlug: string,
+  projectId: string,
+  targetId: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships/${encodeURIComponent(targetId)}`,
+  )
+
+export const createProject = (orgSlug: string, project: ProjectCreate) =>
+  apiClient.post<Project>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    project,
+  )
+
+// Targeted update of a project's DEPLOYED_IN edge attributes for one
+// environment (per-key set; a `null` value removes the property). Unlike a
+// project PATCH this touches only that one edge, so it's safe for inline
+// edits. Returns the updated edge properties.
+export const patchEnvironmentEdge = (
+  orgSlug: string,
+  projectId: string,
+  envSlug: string,
+  updates: Record<string, unknown>,
+) =>
+  apiClient.patch<Record<string, unknown>>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envSlug)}`,
+    updates,
+  )
+
+export const patchProject = (
+  orgSlug: string,
+  projectId: string,
+  operations: PatchOperation[],
+  options?: { transferRepository?: boolean },
+) => {
+  // ``transfer_repository`` is the opt-in for the relocate dispatch
+  // (lifecycle plugins moving the backing remote when project types
+  // change).  Default is ``false`` so the URL only carries the param
+  // when a caller explicitly opted in.
+  const query =
+    options?.transferRepository === true ? '?transfer_repository=true' : ''
+  return apiClient.patch<ProjectMutationResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}${query}`,
+    operations,
+  )
+}
+
+export const deleteProject = (
+  orgSlug: string,
+  projectId: string,
+  options?: { deleteRepository?: boolean },
+) => {
+  // ``delete_repository`` defaults server-side to ``true`` so the
+  // common case (delete project + remote together) needs no flag.
+  // Only emit the param when the operator explicitly opted *out*.
+  const query =
+    options?.deleteRepository === false ? '?delete_repository=false' : ''
+  return apiClient.delete<ProjectDeletedResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}${query}`,
+  )
+}
+
+export const previewProjectLifecycle = (
+  orgSlug: string,
+  projectId: string,
+  projectTypeSlugs: string[],
+  signal?: AbortSignal,
+) => {
+  const params = new URLSearchParams()
+  for (const slug of projectTypeSlugs) {
+    params.append('project_type_slugs', slug)
+  }
+  return apiClient.get<LifecyclePreviewResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/lifecycle/preview?${params.toString()}`,
+    undefined,
+    signal,
+  )
+}
+
+export const archiveProject = (orgSlug: string, projectId: string) =>
+  apiClient.post<ArchiveProjectResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/archive`,
+  )
+
+export const unarchiveProject = (orgSlug: string, projectId: string) =>
+  apiClient.post<ArchiveProjectResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/unarchive`,
+  )
+
+// Link Definitions (org-scoped)
+export const listLinkDefinitions = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<LinkDefinition[]> => {
+  const response = await apiClient.get<LinkDefinition[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createLinkDefinition = (
+  orgSlug: string,
+  data: LinkDefinitionCreate,
+) =>
+  apiClient.post<LinkDefinition>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`,
+    data,
+  )
+
+export const updateLinkDefinition = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<LinkDefinition>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
+  )
+
+// Document Templates (org-scoped). `context` keeps only templates whose
+// type matches the attachment context (or is 'global').
+export const listDocumentTemplates = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+  context?: 'project' | 'project_type' | 'user',
+): Promise<DocumentTemplate[]> => {
+  const response = await apiClient.get<DocumentTemplate[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/`,
+    context ? { context } : undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createDocumentTemplate = (
+  orgSlug: string,
+  data: DocumentTemplateCreate,
+) =>
+  apiClient.post<DocumentTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/`,
+    data,
+  )
+
+export const updateDocumentTemplate = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<DocumentTemplate>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteDocumentTemplate = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-templates/${encodeURIComponent(slug)}`,
+  )
+
+export interface OperationsLogMetrics {
+  deploys: number
+  deploys_by_environment: Record<string, number>
+  environments: number
+  event_count: number
+  projects: number
+  team_members: number
+}
+
+export interface OperationsLogPage {
+  entries: OperationsLogRecord[]
+  metrics?: OperationsLogMetrics
+  nextCursor?: string
+}
+
+interface OperationsLogEnvelope {
+  data: OperationsLogRecord[]
+  metrics: null | OperationsLogMetrics
+}
+
+function parseNextCursor(headers: Headers): string | undefined {
+  const link = headers.get('link')
+  if (!link) return undefined
+  const match = link.match(/<([^>]+)>;\s*rel="next"/)
+  if (!match) return undefined
+  try {
+    const url = new URL(match[1], window.location.origin)
+    return url.searchParams.get('cursor') || undefined
+  } catch {
+    return undefined
+  }
+}
+
+// fallow-ignore-next-line complexity
+export const listOperationsLog = async (
+  params: {
+    cursor?: string
+    filters?: OperationsLogFilters
+    limit?: number
+  },
+  signal?: AbortSignal,
+): Promise<OperationsLogPage> => {
+  const query: Record<string, unknown> = { limit: params.limit ?? 50 }
+  if (params.cursor) query.cursor = params.cursor
+  if (params.filters) {
+    for (const [k, v] of Object.entries(params.filters)) {
+      if (v) query[k] = v
+    }
+  }
+  const { data, headers } =
+    await apiClient.getWithHeaders<OperationsLogEnvelope>(
+      '/operations-log/',
+      query,
+      signal,
+    )
+  return {
+    entries: Array.isArray(data?.data) ? data.data : [],
+    metrics: data?.metrics ?? undefined,
+    nextCursor: parseNextCursor(headers),
+  }
+}
+
+export const getOperationsLogEntry = (entryId: string, signal?: AbortSignal) =>
+  apiClient.get<OperationsLogRecord>(
+    `/operations-log/${encodeURIComponent(entryId)}`,
+    undefined,
+    signal,
+  )
+
+export interface OperationsLogCreate {
+  completed_at?: null | string
+  description: string
+  entry_type: string
+  environment_slug: string
+  link?: null | string
+  notes?: null | string
+  occurred_at?: null | string
+  performed_by?: null | string
+  project_id: string
+  project_slug: string
+  ticket_slug?: null | string
+  version?: null | string
+}
+
+export const createOperationsLogEntry = (body: OperationsLogCreate) =>
+  apiClient.post<OperationsLogRecord>('/operations-log/', body)
+
+export interface OpsLogTemplate {
+  label: string
+  summary?: null | string
+}
+
+export interface PluginOpsLogTemplates {
+  name: string
+  slug: string
+  templates: Record<string, OpsLogTemplate>
+}
+
+interface PluginOpsLogTemplatesEnvelope {
+  plugins: PluginOpsLogTemplates[]
+}
+
+export const listPluginOpsLogTemplates = async (
+  signal?: AbortSignal,
+): Promise<PluginOpsLogTemplates[]> => {
+  const data = await apiClient.get<PluginOpsLogTemplatesEnvelope>(
+    '/operations-log/plugin-templates',
+    undefined,
+    signal,
+  )
+  return Array.isArray(data?.plugins) ? data.plugins : []
+}
+
+// Events
+
+export interface AdminEventsFilters {
+  attributed_to?: string
+  /** Filters on `metadata.event_type` (e.g. `'pull_request'`) — the
+   *  per-source label the gateway resolved from the webhook's
+   *  configured selector. Used together with `type='webhook'` to
+   *  narrow within the webhook category. */
+  event_type?: string
+  integration?: string
+  project_id?: string
+  since?: string
+  /** Event *category*. `'webhook'` for inbound webhook deliveries.
+   *  Wider categories (e.g. system-generated events) may land in
+   *  the same table later. */
+  type?: string
+  until?: string
+}
+
+/**
+ * Per-handler dispatch outcome attached to webhook events by the
+ * gateway's phase-2 metadata write. `status` may be 'succeeded',
+ * 'failed', or 'skipped'; `error` and `duration_ms` are optional.
+ */
+export interface EventHandlerOutcome {
+  duration_ms?: number
+  error?: string
+  handler: string
+  status: string
+}
+
+export interface EventRecord {
+  attributed_to: string
+  id: string
+  integration: string
+  metadata: Record<string, unknown>
+  payload: Record<string, unknown>
+  project_id: string
+  recorded_at: string
+  type: string
+  /** Increments with each phase of the gateway's two-phase recording.
+   *  0 = phase-1 (initial record), 1 = phase-2 (dispatch outcome). */
+  version?: number
+}
+
+export interface EventsPage {
+  entries: EventRecord[]
+  nextCursor?: string
+}
+
+interface EventsEnvelope {
+  data: EventRecord[]
+}
+
+export const listAdminEvents = async (
+  params: { cursor?: string; filters?: AdminEventsFilters; limit?: number },
+  signal?: AbortSignal,
+): Promise<EventsPage> => {
+  const query: Record<string, unknown> = { limit: params.limit ?? 100 }
+  if (params.cursor) query.cursor = params.cursor
+  if (params.filters) {
+    for (const [k, v] of Object.entries(params.filters)) {
+      if (v) query[k] = v
+    }
+  }
+  const { data, headers } = await apiClient.getWithHeaders<EventsEnvelope>(
+    '/events/',
+    query,
+    signal,
+  )
+  return {
+    entries: Array.isArray(data?.data) ? data.data : [],
+    nextCursor: parseNextCursor(headers),
+  }
+}
+
+export const getEvent = (eventId: string, signal?: AbortSignal) =>
+  apiClient.get<EventRecord>(
+    `/events/${encodeURIComponent(eventId)}`,
+    undefined,
+    signal,
+  )
+
+export const listProjectEvents = async (
+  params: {
+    cursor?: string
+    limit?: number
+    orgSlug: string
+    projectId: string
+    type?: string
+  },
+  signal?: AbortSignal,
+): Promise<EventsPage> => {
+  const query: Record<string, unknown> = { limit: params.limit ?? 50 }
+  if (params.cursor) query.cursor = params.cursor
+  if (params.type) query.type = params.type
+  const { data, headers } = await apiClient.getWithHeaders<EventsEnvelope>(
+    `/organizations/${encodeURIComponent(params.orgSlug)}/projects/${encodeURIComponent(params.projectId)}/events/`,
+    query,
+    signal,
+  )
+  return {
+    entries: Array.isArray(data?.data) ? data.data : [],
+    nextCursor: parseNextCursor(headers),
+  }
+}
+
+export const listEnvironments = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Environment[]> => {
+  const response = await apiClient.get<Environment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/environments/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createEnvironment = (orgSlug: string, env: EnvironmentCreate) =>
+  apiClient.post<Environment>(
+    `/organizations/${encodeURIComponent(orgSlug)}/environments/`,
+    env,
+  )
+
+export const updateEnvironment = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Environment>(
+    `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteEnvironment = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
+  )
+
+export const getEnvironmentSchema = (signal?: AbortSignal) =>
+  getDynamicSchema('EnvironmentRequest', ENVIRONMENT_BASE_FIELDS, signal)
+
+// Admin - Project Types
+export const listProjectTypes = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<ProjectType[]> => {
+  const response = await apiClient.get<ProjectType[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createProjectType = (orgSlug: string, pt: ProjectTypeCreate) =>
+  apiClient.post<ProjectType>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/`,
+    pt,
+  )
+
+export const updateProjectType = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<ProjectType>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteProjectType = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
+  )
+
+export const getProjectTypeSchema = (signal?: AbortSignal) =>
+  getDynamicSchema('ProjectTypeRequest', PROJECT_TYPE_BASE_FIELDS, signal)
+
+// Admin - User Management
+export const listAdminUsers = async (
+  params?: {
+    is_active?: boolean
+    is_admin?: boolean
+  },
+  signal?: AbortSignal,
+): Promise<AdminUser[]> => {
+  const response = await apiClient.get<AdminUser[]>('/users/', params, signal)
+  // Users endpoint returns array directly, not wrapped in { data: [] }
+  return Array.isArray(response) ? response : []
+}
+
+export const getAdminUser = (email: string, signal?: AbortSignal) =>
+  apiClient.get<AdminUser>(
+    `/users/${encodeURIComponent(email)}`,
+    undefined,
+    signal,
+  )
+
+export const createAdminUser = (user: AdminUserCreate) =>
+  apiClient.post<AdminUser>('/users/', user)
+
+export const updateAdminUser = (email: string, operations: PatchOperation[]) =>
+  apiClient.patch<AdminUser>(`/users/${encodeURIComponent(email)}`, operations)
+
+export const deleteAdminUser = (email: string) =>
+  apiClient.delete<void>(`/users/${encodeURIComponent(email)}`)
+
+// User organization membership
+export const addUserToOrg = (
+  email: string,
+  data: { organization_slug: string; role_slug: string },
+) => apiClient.post(`/users/${encodeURIComponent(email)}/organizations`, data)
+
+export const updateUserOrgRole = (
+  email: string,
+  orgSlug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch(
+    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`,
+    operations,
+  )
+
+export const removeUserFromOrg = (email: string, orgSlug: string) =>
+  apiClient.delete(
+    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`,
+  )
+
+// Admin - Roles Management
+export const getRoles = async (signal?: AbortSignal): Promise<Role[]> => {
+  const response = await apiClient.get<Role[]>('/roles/', undefined, signal)
+  return Array.isArray(response) ? response : []
+}
+
+export const getRole = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<RoleDetail>(
+    `/roles/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const createRole = (role: RoleCreate) =>
+  apiClient.post<RoleDetail>('/roles/', role)
+
+export const updateRole = (slug: string, operations: PatchOperation[]) =>
+  apiClient.patch<RoleDetail>(`/roles/${encodeURIComponent(slug)}`, operations)
+
+export const deleteRole = (slug: string) =>
+  apiClient.delete<void>(`/roles/${encodeURIComponent(slug)}`)
+
+export const grantPermission = (slug: string, permissionName: string) =>
+  apiClient.post<void>(`/roles/${encodeURIComponent(slug)}/permissions`, {
+    permission_name: permissionName,
+  })
+
+export const revokePermission = (slug: string, permissionName: string) =>
+  apiClient.delete<void>(
+    `/roles/${encodeURIComponent(slug)}/permissions/${encodeURIComponent(permissionName)}`,
+  )
+
+export const getRoleUsers = async (
+  slug: string,
+  signal?: AbortSignal,
+): Promise<RoleUser[]> => {
+  const response = await apiClient.get<RoleUser[]>(
+    `/roles/${encodeURIComponent(slug)}/users`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getRoleServiceAccounts = async (
+  slug: string,
+  signal?: AbortSignal,
+): Promise<ServiceAccount[]> => {
+  const response = await apiClient.get<ServiceAccount[]>(
+    `/roles/${encodeURIComponent(slug)}/service-accounts`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getRoleGroups = async (
+  slug: string,
+  signal?: AbortSignal,
+): Promise<{ name: string; slug: string }[]> => {
+  const response = await apiClient.get<{ name: string; slug: string }[]>(
+    `/roles/${encodeURIComponent(slug)}/groups`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+// Admin - Scoring Policies
+export const listScoringPolicies = async (
+  signal?: AbortSignal,
+): Promise<ScoringPolicy[]> => {
+  const response = await apiClient.get<ScoringPolicy[]>(
+    '/scoring/policies/',
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createScoringPolicy = (data: ScoringPolicyCreate) =>
+  apiClient.post<ScoringPolicy>('/scoring/policies/', data)
+
+export const updateScoringPolicy = (
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<ScoringPolicy>(
+    `/scoring/policies/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteScoringPolicy = (slug: string) =>
+  apiClient.delete<void>(`/scoring/policies/${encodeURIComponent(slug)}`)
+
+export const rescoreAll = () =>
+  apiClient.post<{ enqueued: number }>('/scoring/rescore')
+
+export const rescoreProject = (projectId: string) =>
+  apiClient.post<{ enqueued: number }>('/scoring/rescore', {
+    project_id: projectId,
+  })
+
+// Global maintenance operations (admin Maintenance page)
+
+export interface MaintenanceOperation {
+  completed_at?: null | string
+  description?: null | string
+  failures?: null | Record<string, string>
+  label: string
+  progress?: MaintenanceProgress | null
+  running: boolean
+  slug: string
+  started_at?: null | string
+  started_by?: null | string
+  state: MaintenanceRunState
+}
+
+export interface MaintenanceProgress {
+  failed?: null | number
+  in_flight?: null | number
+  remaining?: null | number
+  skipped?: null | number
+  succeeded?: null | number
+  total?: null | number
+}
+
+export type MaintenanceRunState =
+  | 'abandoned'
+  | 'cancelled'
+  | 'completed'
+  | 'idle'
+  | 'running'
+
+export const getMaintenanceOperations = (signal?: AbortSignal) =>
+  apiClient.get<MaintenanceOperation[]>(
+    '/maintenance/operations',
+    undefined,
+    signal,
+  )
+
+export const runMaintenanceOperation = (slug: string) =>
+  apiClient.post<{ run_id: string; total: number }>(
+    `/maintenance/operations/${encodeURIComponent(slug)}/run`,
+  )
+
+export const cancelMaintenanceOperation = (slug: string) =>
+  apiClient.post<MaintenanceOperation>(
+    `/maintenance/operations/${encodeURIComponent(slug)}/cancel`,
+  )
+
+export interface AnalysisReport {
+  created_at: string
+  id: string
+  overall_status: AnalysisResultStatus
+  project_id: string
+  results: AnalysisResult[]
+  triggered_by_user_id?: null | string
+}
+
+export interface AnalysisResult {
+  description: string
+  plugin_id: string
+  plugin_slug: string
+  remediation?: null | RemediationOffer
+  slug: string
+  status: AnalysisResultStatus
+  title: string
+}
+
+export type AnalysisResultStatus = 'fail' | 'pass' | 'warn'
+
+export interface RemediationOffer {
+  confirm?: null | string
+  destructive?: boolean
+  id: string
+  label: string
+}
+
+interface RemediateAllResponse {
+  outcomes: RemediateOutcome[]
+  report: AnalysisReport
+}
+
+interface RemediateOutcome {
+  plugin_id: string
+  result: RemediationResult
+  slug: string
+}
+
+interface RemediateResponse {
+  report: AnalysisReport
+  result: RemediationResult
+}
+
+interface RemediationResult {
+  message: string
+  status: 'failed' | 'fixed' | 'noop'
+}
+
+export const getProjectAnalysis = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AnalysisReport>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/`,
+    undefined,
+    signal,
+  )
+
+export const runProjectAnalysis = (orgSlug: string, projectId: string) =>
+  apiClient.post<AnalysisReport>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/run`,
+  )
+
+export const remediateAnalysisFinding = (
+  orgSlug: string,
+  projectId: string,
+  body: { finding_slug: string; plugin_id: string; remediation_id: string },
+) =>
+  apiClient.post<RemediateResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/remediate`,
+    body,
+  )
+
+export const remediateAllAnalysisFindings = (
+  orgSlug: string,
+  projectId: string,
+) =>
+  apiClient.post<RemediateAllResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/analysis/remediate-all`,
+  )
+
+export interface CommitSyncEnqueueResponse {
+  enqueued: boolean
+}
+
+export type CommitSyncState =
+  | 'failed'
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'success'
+
+export interface CommitSyncStatus {
+  commits_synced: null | number
+  error: null | string
+  last_synced_at: null | string
+  requested_by: null | string
+  status: CommitSyncState
+  tags_synced: null | number
+}
+
+// Enqueue a full commit + tag history backfill (background job). 202 +
+// {enqueued} — false when debounced or queueing is unavailable.
+export const syncProjectCommitsAndTags = (
+  orgSlug: string,
+  projectId: string,
+): Promise<CommitSyncEnqueueResponse> =>
+  apiClient.post<CommitSyncEnqueueResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/commits/sync`,
+  )
+
+export const getProjectCommitSyncStatus = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<CommitSyncStatus> =>
+  apiClient.get<CommitSyncStatus>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/commits/sync-status`,
+    undefined,
+    signal,
+  )
+
+export interface PRSyncEnqueueResponse {
+  enqueued: boolean
+}
+
+export type PRSyncState = CommitSyncState
+
+export interface PRSyncStatus {
+  error: null | string
+  last_synced_at: null | string
+  prs_synced: null | number
+  requested_by: null | string
+  status: PRSyncState
+}
+
+// Enqueue a full pull-request history backfill (background job). 202 +
+// {enqueued} — false when debounced or queueing is unavailable.
+export const syncProjectPullRequests = (
+  orgSlug: string,
+  projectId: string,
+): Promise<PRSyncEnqueueResponse> =>
+  apiClient.post<PRSyncEnqueueResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/pull-requests/sync`,
+  )
+
+export const getProjectPRSyncStatus = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<PRSyncStatus> =>
+  apiClient.get<PRSyncStatus>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/pull-requests/sync-status`,
+    undefined,
+    signal,
+  )
+
+export interface ScoreTrend {
+  current: null | number
+  delta: null | number
+  period_days: number
+  previous: null | number
+}
+
+export const getScoreTrend = (
+  orgSlug: string,
+  projectId: string,
+  days = 30,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ScoreTrend>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/score/trend`,
+    { days },
+    signal,
+  )
+
+export type ScoreChangeReason =
+  | 'attribute_change'
+  | 'blueprint_change'
+  | 'bulk_rescore'
+  | 'policy_change'
+  | 'system'
+
+export interface ScoreHistoryPoint {
+  change_reason: null | ScoreChangeReason
+  previous_score: null | number
+  score: number
+  timestamp: string
+}
+
+interface ScoreHistory {
+  granularity: 'day' | 'hour' | 'raw'
+  points: ScoreHistoryPoint[]
+  project_id: string
+}
+
+export const getScoreHistory = (
+  orgSlug: string,
+  projectId: string,
+  params?: {
+    from?: string
+    granularity?: 'day' | 'hour' | 'raw'
+    to?: string
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ScoreHistory>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/score/history`,
+    params,
+    signal,
+  )
+
+// Admin - Settings (reference data)
+export const getAdminSettings = (signal?: AbortSignal) =>
+  apiClient.get<AdminSettings>('/admin/settings', undefined, signal)
+
+export const getDashboardStatus = (signal?: AbortSignal) =>
+  apiClient.get<DashboardStatus>('/admin/dashboard/status', undefined, signal)
+
+export const getDashboardMetrics = (signal?: AbortSignal) =>
+  apiClient.get<DashboardMetrics>('/admin/dashboard/metrics', undefined, signal)
+
+// Admin - Blueprints
+export const listBlueprints = async (
+  params?: {
+    enabled?: boolean
+  },
+  signal?: AbortSignal,
+): Promise<Blueprint[]> => {
+  const response = await apiClient.get<Blueprint[]>(
+    '/blueprints/',
+    params,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getBlueprint = (
+  type: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Blueprint>(
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const createBlueprint = (blueprint: BlueprintCreate) =>
+  apiClient.post<Blueprint>('/blueprints/', blueprint)
+
+export const updateBlueprint = (
+  type: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Blueprint>(
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteBlueprint = (type: string, slug: string) =>
+  apiClient.delete<void>(
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
+  )
+
+// Admin - Organizations
+export const listOrganizations = async (
+  signal?: AbortSignal,
+): Promise<Organization[]> => {
+  const response = await apiClient.get<Organization[]>(
+    '/organizations/',
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createOrganization = (org: OrganizationCreate) =>
+  apiClient.post<Organization>('/organizations/', org)
+
+export const updateOrganization = (
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Organization>(
+    `/organizations/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteOrganization = (slug: string) =>
+  apiClient.delete<void>(`/organizations/${encodeURIComponent(slug)}`)
+
+// Dynamic blueprint schema extraction from OpenAPI spec
+
+export interface DynamicFieldSchema {
+  default?: unknown
+  description?: string
+  enum?: string[]
+  format?: string
+  maximum?: number
+  maxLength?: number
+  minimum?: number
+  minLength?: number
+  title?: string
+  type?: string
+}
+
+export interface DynamicSchema {
+  properties: Record<string, DynamicFieldSchema>
+  required?: string[]
+}
+
+interface OpenApiResponse {
+  components?: {
+    schemas?: Record<
+      string,
+      {
+        properties?: Record<string, Record<string, unknown>>
+        required?: string[]
+      }
+    >
+  }
+}
+
+// Flatten Pydantic/OpenAPI 3.1 anyOf nullable patterns.
+// e.g. { anyOf: [{type:"string",format:"email"},{type:"null"}] } → {type:"string",format:"email"}
+function flattenNullableAnyOf(
+  prop: Record<string, unknown>,
+): DynamicFieldSchema {
+  const anyOf = prop.anyOf as Record<string, unknown>[] | undefined
+  if (!Array.isArray(anyOf)) return prop as DynamicFieldSchema
+  const nonNull = anyOf.filter((v) => v.type !== 'null')
+  if (nonNull.length === 1) {
+    const { anyOf: _, ...rest } = prop
+    return { ...rest, ...nonNull[0] } as DynamicFieldSchema
+  }
+  return prop as DynamicFieldSchema
+}
+
+/**
+ * Fetch the dynamic (blueprint) fields for a given OpenAPI schema name,
+ * filtering out the provided base fields.
+ */
+const getDynamicSchema = async (
+  schemaName: string,
+  baseFields: string[],
+  signal?: AbortSignal,
+): Promise<DynamicSchema | null> => {
+  const response = await apiClient.get<OpenApiResponse>(
+    '/openapi.json',
+    undefined,
+    signal,
+  )
+  const schema = response.components?.schemas?.[schemaName]
+  if (!schema?.properties) return null
+  const baseSet = new Set(baseFields)
+  const dynamicProperties: Record<string, DynamicFieldSchema> = {}
+  for (const [key, value] of Object.entries(schema.properties)) {
+    if (!baseSet.has(key)) {
+      dynamicProperties[key] = flattenNullableAnyOf(value)
+    }
+  }
+  if (Object.keys(dynamicProperties).length === 0) return null
+  const dynamicRequired = Array.isArray(schema.required)
+    ? schema.required.filter((key) => !baseSet.has(key))
+    : []
+  return {
+    properties: dynamicProperties,
+    ...(dynamicRequired.length > 0 ? { required: dynamicRequired } : {}),
+  }
+}
+
+export const getTeamSchema = (signal?: AbortSignal) =>
+  getDynamicSchema('TeamRequest', TEAM_BASE_FIELDS, signal)
+
+// Admin - Teams
+export const listTeams = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Team[]> => {
+  const response = await apiClient.get<Team[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createTeam = (orgSlug: string, team: TeamCreate) =>
+  apiClient.post<Team>(
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/`,
+    team,
+  )
+
+export const updateTeam = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Team>(
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteTeam = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
+  )
+
+export const getTeamMembers = async (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<TeamMember[]> => {
+  const response = await apiClient.get<TeamMember[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const addTeamMember = (orgSlug: string, slug: string, email: string) =>
+  apiClient.post<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members`,
+    { email },
+  )
+
+export const removeTeamMember = (
+  orgSlug: string,
+  slug: string,
+  email: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(email)}`,
+  )
+
+// Uploads
+export const uploadFile = (file: File): Promise<Upload> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiClient.postFormData<Upload>('/uploads/', formData)
+}
+
+export const getUploadUrl = (id: string): string =>
+  apiUrl(`/uploads/${encodeURIComponent(id)}`)
+
+export const getUploadThumbnailUrl = (id: string): string =>
+  apiUrl(`/uploads/${encodeURIComponent(id)}/thumbnail`)
+
+export const deleteUpload = (id: string) =>
+  apiClient.delete<void>(`/uploads/${encodeURIComponent(id)}`)
+
+// API Keys (routes use the authenticated user, no user prefix)
+export const listApiKeys = async (signal?: AbortSignal): Promise<ApiKey[]> => {
+  const response = await apiClient.get<ApiKey[]>('/api-keys', undefined, signal)
+  return Array.isArray(response) ? response : []
+}
+
+export const createApiKey = (name?: string) =>
+  apiClient.post<ApiKeyCreated>('/api-keys', { name: name || 'default' })
+
+export const deleteApiKey = (keyId: string) =>
+  apiClient.delete<void>(`/api-keys/${encodeURIComponent(keyId)}`)
+
+// Service Accounts
+export const listServiceAccounts = (
+  params?: { is_active?: boolean },
+  signal?: AbortSignal,
+) => apiClient.get<ServiceAccount[]>('/service-accounts', params, signal)
+
+export const getServiceAccount = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<ServiceAccount>(
+    `/service-accounts/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const createServiceAccount = (data: ServiceAccountCreate) =>
+  apiClient.post<ServiceAccount>('/service-accounts', data)
+
+export const updateServiceAccount = (
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<ServiceAccount>(
+    `/service-accounts/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteServiceAccount = (slug: string) =>
+  apiClient.delete(`/service-accounts/${encodeURIComponent(slug)}`)
+
+export const addServiceAccountToOrg = (
+  slug: string,
+  data: { organization_slug: string; role_slug: string },
+) =>
+  apiClient.post(
+    `/service-accounts/${encodeURIComponent(slug)}/organizations`,
+    data,
+  )
+
+export const updateServiceAccountOrgRole = (
+  slug: string,
+  orgSlug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch(
+    `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`,
+    operations,
+  )
+
+export const removeServiceAccountFromOrg = (slug: string, orgSlug: string) =>
+  apiClient.delete(
+    `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`,
+  )
+
+// Service Account Client Credentials
+export const listClientCredentials = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<ClientCredential[]>(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials`,
+    undefined,
+    signal,
+  )
+
+export const createClientCredential = (
+  slug: string,
+  data: ClientCredentialCreate,
+) =>
+  apiClient.post<ClientCredentialCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials`,
+    data,
+  )
+
+export const revokeClientCredential = (slug: string, clientId: string) =>
+  apiClient.delete(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}`,
+  )
+
+export const rotateClientCredential = (slug: string, clientId: string) =>
+  apiClient.post<ClientCredentialCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}/rotate`,
+  )
+
+// Service Account API Keys
+export const listServiceAccountApiKeys = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<ApiKey[]>(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys`,
+    undefined,
+    signal,
+  )
+
+export const createServiceAccountApiKey = (
+  slug: string,
+  data: {
+    description?: string
+    expires_in_days?: number
+    name: string
+    scopes?: string[]
+  },
+) =>
+  apiClient.post<ApiKeyCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys`,
+    data,
+  )
+
+export const revokeServiceAccountApiKey = (slug: string, keyId: string) =>
+  apiClient.delete(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}`,
+  )
+
+export const rotateServiceAccountApiKey = (slug: string, keyId: string) =>
+  apiClient.post<ApiKeyCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}/rotate`,
+  )
+
+// Admin - Webhooks
+export const listWebhooks = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Webhook[]> => {
+  const response = await apiClient.get<Webhook[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createWebhook = (orgSlug: string, data: WebhookCreate) =>
+  apiClient.post<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`,
+    data,
+  )
+
+export const updateWebhook = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
+    operations,
+  )
+
+export const deleteWebhook = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
+  )
+
+// Admin - MCP Servers (global Assistant configuration)
+export const listMcpServers = async (
+  signal?: AbortSignal,
+): Promise<MCPServer[]> => {
+  const response = await apiClient.get<MCPServer[]>(
+    '/mcp-servers/',
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createMcpServer = (data: MCPServerCreate) =>
+  apiClient.post<MCPServer>('/mcp-servers/', data)
+
+// The MCP update endpoint takes a partial object (exclude_unset semantics),
+// not RFC-6902 json-patch — send only the changed fields.
+export const updateMcpServer = (id: string, data: MCPServerUpdate) =>
+  apiClient.patch<MCPServer>(`/mcp-servers/${encodeURIComponent(id)}`, data)
+
+export const deleteMcpServer = (id: string) =>
+  apiClient.delete<void>(`/mcp-servers/${encodeURIComponent(id)}`)
+
+// Test a saved server using its stored configuration and secrets; the
+// result is persisted onto the server (status, last_tested_at, …).
+export const testMcpServer = (id: string) =>
+  apiClient.post<MCPServerTestResult>(
+    `/mcp-servers/${encodeURIComponent(id)}/test`,
+  )
+
+// Test an unsaved configuration (create form); secrets are sent as
+// plaintext and nothing is persisted.
+export const testMcpServerConfig = (data: MCPServerTestConfig) =>
+  apiClient.post<MCPServerTestResult>('/mcp-servers/test', data)
+
+// Admin - Auth Providers (global). Login providers are org-less
+// Integrations backed by a login-capable identity plugin. Authentication
+// happens before any organization context exists, so they are managed
+// globally (not under /organizations/{org}/integrations) and at most one
+// may be flagged used_as_login across the whole instance.
+export const listLoginProviders = async (
+  signal?: AbortSignal,
+): Promise<Integration[]> => {
+  const response = await apiClient.get<Integration[]>(
+    '/login-providers/',
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createLoginProvider = (data: IntegrationCreate) =>
+  apiClient.post<Integration>('/login-providers/', data)
+
+// Promote/demote a login provider as the instance-wide SSO provider.
+export const setLoginProviderUsedAsLogin = (
+  slug: string,
+  usedAsLogin: boolean,
+) =>
+  apiClient.put<Integration>(
+    `/login-providers/${encodeURIComponent(slug)}/used-as-login`,
+    { used_as_login: usedAsLogin },
+  )
+
+export const deleteLoginProvider = (slug: string) =>
+  apiClient.delete<void>(`/login-providers/${encodeURIComponent(slug)}`)
+
+export const getLocalAuthConfig = (signal?: AbortSignal) =>
+  apiClient.get<LocalAuthConfig>('/admin/local-auth', undefined, signal)
+
+export const updateLocalAuthConfig = (
+  data: { enabled: boolean },
+  signal?: AbortSignal,
+) => apiClient.put<LocalAuthConfig>('/admin/local-auth', data, signal)
+
+export const listProjectDocuments = async (
+  orgSlug: string,
+  projectId: string,
+  params?: { cursor?: string; limit?: number; tag?: string },
+  signal?: AbortSignal,
+): Promise<Document[]> => {
+  const response = await apiClient.get<DocumentListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/`,
+    params,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const createProjectDocument = (
+  orgSlug: string,
+  projectId: string,
+  data: DocumentCreate,
+) =>
+  apiClient.post<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/`,
+    data,
+  )
+
+export const patchProjectDocument = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
+    operations,
+  )
+
+export const deleteProjectDocument = (
+  orgSlug: string,
+  projectId: string,
+  documentId: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}`,
+  )
+
+// Org-wide document index. Rows carry `attached_to` (project,
+// project type, or user), `comment_count`, and the author's display
+// name for the Documents index/feed.
+export const listOrgDocuments = async (
+  orgSlug: string,
+  params?: {
+    cursor?: string
+    limit?: number
+    project_id?: string
+    project_type?: string
+    tag?: string
+    user?: string
+  },
+  signal?: AbortSignal,
+): Promise<Document[]> => {
+  const response = await apiClient.get<DocumentListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/documents/`,
+    params,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+// Attachment-agnostic single-document operations — work regardless of
+// whether the document hangs off a project, a project type, or a user.
+export const patchOrgDocument = (
+  orgSlug: string,
+  documentId: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}`,
+    operations,
+  )
+
+export const deleteOrgDocument = (orgSlug: string, documentId: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}`,
+  )
+
+// Documents attached to a user (org member).
+export const listUserDocuments = async (
+  orgSlug: string,
+  email: string,
+  signal?: AbortSignal,
+): Promise<Document[]> => {
+  const response = await apiClient.get<DocumentListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/users/${encodeURIComponent(email)}/documents/`,
+    undefined,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const createUserDocument = (
+  orgSlug: string,
+  email: string,
+  data: DocumentCreate,
+) =>
+  apiClient.post<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/users/${encodeURIComponent(email)}/documents/`,
+    data,
+  )
+
+// Documents attached to a project type.
+export const createProjectTypeDocument = (
+  orgSlug: string,
+  typeSlug: string,
+  data: DocumentCreate,
+) =>
+  apiClient.post<Document>(
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(typeSlug)}/documents/`,
+    data,
+  )
+
+// Project integrations (EXISTS_IN edges). One row per third-party
+// service the project exists in; `createProjectService` also persists
+// the optional dashboard URL into the project's links.
+export const listProjectServices = async (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ProjectServiceEdge[]> => {
+  const response = await apiClient.get<ProjectServiceEdge[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createProjectService = (
+  orgSlug: string,
+  projectId: string,
+  data: ProjectServiceEdgeCreate,
+) =>
+  apiClient.post<ProjectServiceEdge>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/`,
+    data,
+  )
+
+export const updateProjectService = (
+  orgSlug: string,
+  projectId: string,
+  serviceSlug: string,
+  data: ProjectServiceEdgeCreate,
+) =>
+  apiClient.put<ProjectServiceEdge>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/${encodeURIComponent(serviceSlug)}`,
+    data,
+  )
+
+export const deleteProjectService = (
+  orgSlug: string,
+  projectId: string,
+  serviceSlug: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/services/${encodeURIComponent(serviceSlug)}`,
+  )
+
+// Document comments. Hand-written like the document endpoints above; the
+// comments API is not yet in the committed openapi snapshot. Base path:
+// /organizations/{orgSlug}/projects/{projectId}/documents/{documentId}/comments
+// for project documents, or the attachment-agnostic
+// /organizations/{orgSlug}/documents/{documentId}/comments when
+// `projectId` is null (user- and project-type-attached documents).
+const documentCommentsPath = (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+) =>
+  projectId === null
+    ? `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}/comments`
+    : `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}/comments`
+
+export const listDocumentComments = async (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<CommentThread[]> => {
+  const response = await apiClient.get<{ data: CommentThread[] }>(
+    documentCommentsPath(orgSlug, projectId, documentId),
+    undefined,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const createCommentThread = (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+  body: CreateThreadBody,
+) =>
+  apiClient.post<CommentThread>(
+    documentCommentsPath(orgSlug, projectId, documentId),
+    body,
+  )
+
+export const addCommentReply = (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+  threadId: string,
+  body: AddReplyBody,
+) =>
+  apiClient.post<Comment>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments`,
+    body,
+  )
+
+export const resolveCommentThread = (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+  threadId: string,
+  resolved: boolean,
+) =>
+  apiClient.patch<CommentThread>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}`,
+    [{ op: 'replace', path: '/resolved', value: resolved }],
+  )
+
+export const editComment = (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+  threadId: string,
+  commentId: string,
+  body: string,
+  mentions: string[],
+) =>
+  apiClient.patch<Comment>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}`,
+    [
+      { op: 'replace', path: '/body', value: body },
+      { op: 'replace', path: '/mentions', value: mentions },
+    ],
+  )
+
+export const acknowledgeComment = (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+  threadId: string,
+  commentId: string,
+) =>
+  apiClient.post<Comment>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}/acknowledge`,
+    {},
+  )
+
+export const deleteComment = (
+  orgSlug: string,
+  projectId: null | string,
+  documentId: string,
+  threadId: string,
+  commentId: string,
+) =>
+  apiClient.delete<void>(
+    `${documentCommentsPath(orgSlug, projectId, documentId)}/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}`,
+  )
+
+// Tags (org-scoped)
+export const listTags = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Tag[]> => {
+  const response = await apiClient.get<Tag[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/tags/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createTag = (
+  orgSlug: string,
+  data: { description?: null | string; name: string; slug?: null | string },
+) =>
+  apiClient.post<Tag>(
+    `/organizations/${encodeURIComponent(orgSlug)}/tags/`,
+    data,
+  )
+
+// Releases
+export const listCurrentReleases = async (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<CurrentReleaseEnvironment[]> => {
+  const response = await apiClient.get<CurrentReleaseEnvironment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/releases/current`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const listProjectReleases = async (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<Release[]> => {
+  const response = await apiClient.get<Release[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/releases/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const listReleaseDependencies = (
+  orgSlug: string,
+  projectId: string,
+  releaseId: string,
+  signal?: AbortSignal,
+): Promise<ReleaseDependenciesResponse> =>
+  apiClient.get<ReleaseDependenciesResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(releaseId)}/dependencies`,
+    undefined,
+    signal,
+  )
+
+// Deployments
+const deploymentsBase = (orgSlug: string, projectId: string): string =>
+  `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/deployments`
+
+export const listDeploymentRefs = async (
+  orgSlug: string,
+  projectId: string,
+  params: {
+    kind?: 'all' | 'branch' | 'default' | 'tag'
+    q?: string
+    source?: string
+  } = {},
+  signal?: AbortSignal,
+): Promise<DeploymentRef[]> => {
+  const search = new URLSearchParams()
+  if (params.kind) search.set('kind', params.kind)
+  if (params.q) search.set('q', params.q)
+  if (params.source) search.set('source', params.source)
+  const query = search.toString()
+  const response = await apiClient.get<DeploymentRef[]>(
+    `${deploymentsBase(orgSlug, projectId)}/refs${query ? `?${query}` : ''}`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const listRefCommits = async (
+  orgSlug: string,
+  projectId: string,
+  ref: string,
+  params: { limit?: number; source?: string } = {},
+  signal?: AbortSignal,
+): Promise<DeploymentCommit[]> => {
+  const search = new URLSearchParams()
+  if (params.limit != null) search.set('limit', String(params.limit))
+  if (params.source) search.set('source', params.source)
+  const query = search.toString()
+  const response = await apiClient.get<DeploymentCommit[]>(
+    `${deploymentsBase(orgSlug, projectId)}/refs/${encodeURIComponent(ref)}/commits${query ? `?${query}` : ''}`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+// Synced commit history from ClickHouse (newest first) — the Deployments
+// tab reads this instead of the live source host so it reflects imbi's
+// own data; the commit/tag sync keeps it fresh.
+export const listRecentCommits = async (
+  orgSlug: string,
+  projectId: string,
+  params: { limit?: number; ref?: string } = {},
+  signal?: AbortSignal,
+): Promise<RecentCommit[]> => {
+  const search = new URLSearchParams()
+  if (params.limit != null) search.set('limit', String(params.limit))
+  if (params.ref) search.set('ref', params.ref)
+  const query = search.toString()
+  const response = await apiClient.get<RecentCommit[]>(
+    `${deploymentsBase(orgSlug, projectId)}/recent-commits${query ? `?${query}` : ''}`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const compareDeploymentRefs = (
+  orgSlug: string,
+  projectId: string,
+  base: string,
+  head: string,
+  source?: string,
+  signal?: AbortSignal,
+): Promise<DeploymentCompareResult> => {
+  const search = new URLSearchParams({ base, head })
+  if (source) search.set('source', source)
+  return apiClient.get<DeploymentCompareResult>(
+    `${deploymentsBase(orgSlug, projectId)}/compare?${search.toString()}`,
+    undefined,
+    signal,
+  )
+}
+
+export const triggerDeployment = (
+  orgSlug: string,
+  projectId: string,
+  body: DeploymentTriggerRequest,
+  source?: string,
+): Promise<DeploymentTriggerResponse> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.post<DeploymentTriggerResponse>(
+    `${deploymentsBase(orgSlug, projectId)}${search}`,
+    body,
+  )
+}
+
+export const promoteDeployment = (
+  orgSlug: string,
+  projectId: string,
+  body: DeploymentPromoteRequest,
+  source?: string,
+): Promise<DeploymentTriggerResponse> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.post<DeploymentTriggerResponse>(
+    `${deploymentsBase(orgSlug, projectId)}${search}`,
+    body,
+  )
+}
+
+export const draftReleaseNotes = (
+  orgSlug: string,
+  projectId: string,
+  body: DraftReleaseNotesRequest,
+  source?: string,
+): Promise<DraftReleaseNotesResponse> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.post<DraftReleaseNotesResponse>(
+    `${deploymentsBase(orgSlug, projectId)}/draft-release-notes${search}`,
+    body,
+  )
+}
+
+export const getDeploymentRunStatus = (
+  orgSlug: string,
+  projectId: string,
+  runId: string,
+  source?: string,
+  signal?: AbortSignal,
+): Promise<DeploymentRun> => {
+  const search = source ? `?source=${encodeURIComponent(source)}` : ''
+  return apiClient.get<DeploymentRun>(
+    `${deploymentsBase(orgSlug, projectId)}/runs/${encodeURIComponent(runId)}${search}`,
+    undefined,
+    signal,
+  )
+}
+
+// Deployment resync
+
+export interface DeploymentResyncEnqueueResponse {
+  enqueued: boolean
+}
+
+export type DeploymentSyncState =
+  | 'failed'
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'success'
+
+export interface DeploymentSyncStatus {
+  error: null | string
+  errors: null | number
+  events_recorded: null | number
+  last_synced_at: null | string
+  observed: null | number
+  releases_created: null | number
+  releases_updated: null | number
+  requested_by: null | string
+  status: DeploymentSyncState
+}
+
+// Enqueue a deployment resync (background job). 202 + {enqueued} —
+// false when debounced or queueing is unavailable. Poll
+// getProjectDeploymentSyncStatus for the outcome.
+export const resyncProjectDeployments = (
+  orgSlug: string,
+  projectId: string,
+  opts: { limit?: number; source?: string } = {},
+): Promise<DeploymentResyncEnqueueResponse> => {
+  const params = new URLSearchParams()
+  if (opts.source) params.set('source', opts.source)
+  if (opts.limit != null) params.set('limit', String(opts.limit))
+  const query = params.toString()
+  const search = query ? `?${query}` : ''
+  return apiClient.post<DeploymentResyncEnqueueResponse>(
+    `${deploymentsBase(orgSlug, projectId)}/resync${search}`,
+  )
+}
+
+export const getProjectDeploymentSyncStatus = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<DeploymentSyncStatus> =>
+  apiClient.get<DeploymentSyncStatus>(
+    `${deploymentsBase(orgSlug, projectId)}/sync-status`,
+    undefined,
+    signal,
+  )
+
+// Lifecycle push-sync
+
+export interface LifecycleSyncError {
+  detail: string
+  project_id: string
+}
+
+export interface LifecycleSyncSummary {
+  errors: LifecycleSyncError[]
+  failed: number
+  projects: number
+  skipped: number
+  synced: number
+}
+
+export const syncProjectLifecycle = (
+  orgSlug: string,
+  projectId: string,
+): Promise<LifecycleSyncSummary> =>
+  apiClient.post<LifecycleSyncSummary>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/lifecycle/sync`,
+  )
+
+// Identity Plugins (org-scoped)
+export interface IdentityPluginRef {
+  label: string
+  // Integration id, or null for legacy integrations created before ids were
+  // persisted. Matched by strict equality against a deployment binding's
+  // `identity_plugin_id`; the slug-based fallback still resolves these.
+  plugin_id: null | string
+  plugin_slug: string
+}
+
+// Identity plugins the actor can authenticate against, one ref per configured
+// integration that enables the `identity` capability. Derived from the org's
+// integrations because the dedicated `/identity-plugins/` route was removed in
+// the Plugin Architecture v3 rewrite; `plugin_id` maps to the integration id
+// (matched against a deployment binding's `identity_plugin_id`) and
+// `plugin_slug` to the plugin package slug (matched against `myIdentities`).
+export const listIdentityPlugins = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<IdentityPluginRef[]> => {
+  const integrations = await listIntegrations(orgSlug, signal)
+  return integrations
+    .filter((integration) => integration.capabilities?.identity?.enabled)
+    .map((integration) => ({
+      label: integration.name,
+      plugin_id: integration.id ?? null,
+      plugin_slug: integration.plugin,
+    }))
+}
+
+export const listProjectPlugins = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginAssignmentResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/plugins/`,
+    undefined,
+    signal,
+  )
+
+// Project Configuration
+export const listConfigurationKeys = (
+  orgSlug: string,
+  projectId: string,
+  params?: { environment?: string; source?: string },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ConfigKeyResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/`,
+    params,
+    signal,
+  )
+
+export const fetchConfigurationValues = (
+  orgSlug: string,
+  projectId: string,
+  keys: string[],
+  params?: { environment?: string; source?: string },
+) =>
+  apiClient.post<ConfigKeyValueResponse[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/values:fetch${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+    { keys },
+  )
+
+export const setConfigurationValue = (
+  orgSlug: string,
+  projectId: string,
+  key: string,
+  data: { data_type: string; secret: boolean; value: unknown },
+  params?: { environment?: string; source?: string },
+) =>
+  apiClient.put<ConfigKeyResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+    data,
+  )
+
+export const deleteConfigurationKey = (
+  orgSlug: string,
+  projectId: string,
+  key: string,
+  params?: { environment?: string; source?: string },
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/${encodeURIComponent(key)}${params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v != null) as [string, string][]).toString()}` : ''}`,
+  )
+
+// Project Logs
+export interface LogSearchParams {
+  cursor?: string
+  end_time?: string
+  environment?: string | string[]
+  filter?: string[]
+  level?: string[]
+  limit?: number
+  source?: string
+  start_time?: string
+}
+
+export const getProjectLogsHistogram = (
+  orgSlug: string,
+  projectId: string,
+  params?: {
+    bucket_count?: number
+    end_time?: string
+    environment?: string | string[]
+    filter?: string[]
+    source?: string
+    start_time?: string
+  },
+  signal?: AbortSignal,
+) => {
+  const query: Record<string, string | string[]> = {}
+  if (params) {
+    if (params.source) query.source = params.source
+    if (params.environment) query.environment = params.environment
+    if (params.start_time) query.start_time = params.start_time
+    if (params.end_time) query.end_time = params.end_time
+    if (params.bucket_count != null)
+      query.bucket_count = String(params.bucket_count)
+    if (params.filter?.length) query.filter = params.filter
+  }
+  return apiClient.get<LogHistogramBucket[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/histogram`,
+    query,
+    signal,
+  )
+}
+
+// fallow-ignore-next-line complexity
+export const searchProjectLogs = (
+  orgSlug: string,
+  projectId: string,
+  params?: LogSearchParams,
+  signal?: AbortSignal,
+) => {
+  const query: Record<string, string | string[]> = {}
+  if (params) {
+    if (params.source) query.source = params.source
+    if (params.environment) query.environment = params.environment
+    if (params.start_time) query.start_time = params.start_time
+    if (params.end_time) query.end_time = params.end_time
+    if (params.cursor) query.cursor = params.cursor
+    if (params.limit != null) query.limit = String(params.limit)
+    if (params.filter?.length) query.filter = params.filter
+    if (params.level?.length) query.level = params.level
+  }
+  return apiClient.get<LogResultResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/logs/`,
+    query,
+    signal,
+  )
+}
+
+export interface IncidentSearchParams {
+  cursor?: string
+  end_time?: string
+  limit?: number
+  source?: string
+  start_time?: string
+  status?: string[]
+}
+
+export const searchProjectIncidents = (
+  orgSlug: string,
+  projectId: string,
+  params?: IncidentSearchParams,
+  signal?: AbortSignal,
+) => {
+  const query: Record<string, string | string[]> = {}
+  if (params) {
+    if (params.source) query.source = params.source
+    if (params.start_time) query.start_time = params.start_time
+    if (params.end_time) query.end_time = params.end_time
+    if (params.cursor) query.cursor = params.cursor
+    if (params.limit != null) query.limit = String(params.limit)
+    if (params.status?.length) query.status = params.status
+  }
+  return apiClient.get<IncidentResult>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/incidents/`,
+    query,
+    signal,
+  )
+}
+
+export interface ScoreRollupRow {
+  avg_score: number
+  dimension: 'organization' | 'project_type' | 'team'
+  key: string
+  last_updated: null | string
+  latest_score: number
+}
+
+export const getScoreRollup = (
+  org: string,
+  dimension: 'organization' | 'project_type' | 'team' = 'team',
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ScoreRollupRow[]>('/scores/rollup', { dimension, org }, signal)
+
+export interface GlobalScoreEvent {
+  change_reason: null | string
+  previous_score: null | number
+  project_id: string
+  project_name: string
+  score: number
+  team_key: string
+  timestamp: string
+}
+
+export interface MonthlyImprovementRow {
+  current_avg_score: null | number
+  dimension: string
+  improvement: null | number
+  key: string
+  previous_avg_score: null | number
+  project_count: number
+}
+
+export interface TeamScoreHistoryPoint {
+  score: number
+  timestamp: string
+}
+
+export interface TeamScoreSeries {
+  key: string
+  points: TeamScoreHistoryPoint[]
+}
+
+interface ScoreHistoryByTeamResponse {
+  granularity: 'day' | 'hour'
+  teams: TeamScoreSeries[]
+}
+
+export const getScoreHistoryFeed = (
+  params: {
+    from?: string
+    limit?: number
+    org: string
+    to?: string
+  },
+  signal?: AbortSignal,
+) => apiClient.get<GlobalScoreEvent[]>('/scores/history-feed', params, signal)
+
+export const getScoreHistoryByTeam = (
+  params: {
+    from?: string
+    granularity?: 'day' | 'hour'
+    org: string
+    to?: string
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ScoreHistoryByTeamResponse>(
+    '/scores/history-by-team',
+    params,
+    signal,
+  )
+
+export const getMonthlyImprovement = (
+  params: {
+    dimension?: 'organization' | 'project_type' | 'team'
+    month: number
+    org: string
+    year: number
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<MonthlyImprovementRow[]>(
+    '/scores/monthly-improvement',
+    {
+      dimension: params.dimension ?? 'team',
+      month: params.month,
+      org: params.org,
+      year: params.year,
+    },
+    signal,
+  )
+
+// Identity connections (per-user)
+export const getMyIdentities = (signal?: AbortSignal) =>
+  apiClient.get<IdentityConnectionResponse[]>(
+    '/me/identities',
+    undefined,
+    signal,
+  )
+
+export const startMyIdentity = (
+  pluginId: string,
+  body: IdentityConnectionStartRequest = {},
+) =>
+  apiClient.post<IdentityConnectionStartResponse>(
+    `/me/identities/${encodeURIComponent(pluginId)}/start`,
+    body,
+  )
+
+export const pollMyIdentity = (pluginId: string, state: string) =>
+  apiClient.post<IdentityConnectionPollResponse>(
+    `/me/identities/${encodeURIComponent(pluginId)}/poll`,
+    { state },
+  )
+
+export const refreshMyIdentity = (pluginId: string) =>
+  apiClient.post<{ status: string }>(
+    `/me/identities/${encodeURIComponent(pluginId)}/refresh`,
+    {},
+  )
+
+export const disconnectMyIdentity = (pluginId: string) =>
+  apiClient.delete<void>(`/me/identities/${encodeURIComponent(pluginId)}`)
+
+// ===========================================================================
+// Plugin Architecture v3 — installed plugins, integrations, capabilities
+// ===========================================================================
+
+// Installed plugin packages (system admin). GET returns a flat list of
+// manifests + package identity + system-wide enabled state.
+export const listPluginPackages = async (
+  signal?: AbortSignal,
+): Promise<PluginPackage[]> => {
+  const response = await apiClient.get<PluginPackage[]>(
+    '/admin/plugins',
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getPluginPackage = (slug: string, signal?: AbortSignal) =>
+  apiClient.get<PluginPackage>(
+    `/admin/plugins/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+// System-wide enable/disable kill switch for a plugin package.
+export const setPluginPackageEnabled = (slug: string, enabled: boolean) =>
+  apiClient.put<PluginPackage>(
+    `/admin/plugins/${encodeURIComponent(slug)}/registration`,
+    { enabled },
+  )
+
+// Integrations (org-scoped configured plugin instances).
+export const listIntegrations = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Integration[]> => {
+  const response = await apiClient.get<Integration[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getIntegration = (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Integration>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}`,
+    undefined,
+    signal,
+  )
+
+export const createIntegration = (orgSlug: string, data: IntegrationCreate) =>
+  apiClient.post<Integration>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/`,
+    data,
+  )
+
+// PATCH takes a partial IntegrationUpdate object (NOT a JSON-Patch array);
+// `capabilities` and `options` are merged server-side.
+export const updateIntegration = (
+  orgSlug: string,
+  slug: string,
+  data: IntegrationUpdate,
+) =>
+  apiClient.patch<Integration>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}`,
+    data,
+  )
+
+export const deleteIntegration = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}`,
+  )
+
+// Write-only credential patch: null/empty removes a field, absent preserved.
+export const updateIntegrationCredentials = (
+  orgSlug: string,
+  slug: string,
+  credentials: Record<string, null | string>,
+) =>
+  apiClient.put<{ credential_fields: string[] }>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}/credentials`,
+    { credentials },
+  )
+
+// Per-capability project-type assignments. Zero assignments for an enabled,
+// project-scoped capability means "all project types".
+export const listCapabilityAssignments = async (
+  orgSlug: string,
+  slug: string,
+  kind: CapabilityKind,
+  signal?: AbortSignal,
+): Promise<CapabilityAssignment[]> => {
+  const response = await apiClient.get<CapabilityAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}/capabilities/${encodeURIComponent(kind)}/assignments`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const replaceCapabilityAssignments = (
+  orgSlug: string,
+  slug: string,
+  kind: CapabilityKind,
+  body: CapabilityAssignmentsUpdate,
+) =>
+  apiClient.put<CapabilityAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/integrations/${encodeURIComponent(slug)}/capabilities/${encodeURIComponent(kind)}/assignments`,
+    body,
+  )
+
+// Project-level integration assignments (per-capability USES override).
+export const listProjectIntegrations = async (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ProjectIntegrationAssignment[]> => {
+  const response = await apiClient.get<ProjectIntegrationAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/integrations/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const replaceProjectIntegrations = (
+  orgSlug: string,
+  projectId: string,
+  body: ProjectIntegrationsUpdate,
+) =>
+  apiClient.put<ProjectIntegrationAssignment[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/integrations/`,
+    body,
+  )
+
+// ---------------------------------------------------------------------------
+// Generic plugin entities + edges (declared by the plugin manifest's
+// vertex_labels / edge_labels; the host serves CRUD without per-plugin code).
+// ---------------------------------------------------------------------------
+
+const pluginEntitiesPath = (slug: string, label: string) =>
+  `/admin/plugins/${encodeURIComponent(slug)}/entities/${encodeURIComponent(label)}`
+
+export const listPluginEntities = (
+  slug: string,
+  label: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginEntity[]>(
+    pluginEntitiesPath(slug, label),
+    undefined,
+    signal,
+  )
+
+export const createPluginEntity = (
+  slug: string,
+  label: string,
+  body: PluginEntityCreate,
+) => apiClient.post<PluginEntity>(pluginEntitiesPath(slug, label), body)
+
+const environmentEdgesPath = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(envSlug)}/edges/${encodeURIComponent(relType)}`
+
+export const listEnvironmentEdges = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PluginEdge[]>(
+    environmentEdgesPath(orgSlug, envSlug, relType),
+    undefined,
+    signal,
+  )
+
+export const setEnvironmentEdge = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+  body: PluginEdgePut,
+) =>
+  apiClient.put<PluginEdge>(
+    environmentEdgesPath(orgSlug, envSlug, relType),
+    body,
+  )
+
+export const deleteEnvironmentEdge = (
+  orgSlug: string,
+  envSlug: string,
+  relType: string,
+) => apiClient.delete<void>(environmentEdgesPath(orgSlug, envSlug, relType))
+
+export interface SearchResult {
+  attribute: string
+  chunk_text: string
+  distance: number
+  name?: null | string
+  node_id: string
+  node_label: string
+  project_id?: null | string
+  slug?: null | string
+}
+
+export const searchOrganization = (
+  orgSlug: string,
+  q: string,
+  params?: {
+    limit?: number
+    node_label?: string
+    threshold?: number
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<SearchResult[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/search`,
+    { limit: 20, threshold: 0.75, ...params, q },
+    signal,
+  )
+
+export const getProjectPullRequests = (
+  orgSlug: string,
+  projectId: string,
+  params?: {
+    author?: string
+    limit?: number
+    offset?: number
+    state?: 'closed' | 'open'
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PullRequestListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/pull-requests/`,
+    params,
+    signal,
+  )
+
+export const getOrgPullRequests = (
+  orgSlug: string,
+  params?: {
+    author?: string
+    limit?: number
+    offset?: number
+    state?: 'closed' | 'open'
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PullRequestListResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/pull-requests/`,
+    params,
+    signal,
+  )
+
+export interface PRActivityResponse {
+  members: number
+  rows: PRActivityRow[]
+  since: string
+}
+
+export interface PRActivityRow {
+  avatar_url: null | string
+  created: number
+  display_name: null | string
+  email: null | string
+  login: string
+  merged: number
+}
+
+export const getPRActivity = (
+  orgSlug: string,
+  since: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PRActivityResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/pull-requests/activity`,
+    { since },
+    signal,
+  )

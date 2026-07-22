@@ -1,97 +1,90 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working
+with code in this repository.
 
 ## What This Repo Is
 
-This is the **build and release** repo for Imbi. It does not contain application source code directly — it assembles all Imbi services (via git submodules) into a single Docker image with Caddy as a reverse proxy. The submodules live under `repositories/`:
+The Imbi platform monorepo — a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)
+containing every Imbi service, library, and first-party plugin, plus the
+production Docker image, Helm chart, and docs site. (Per-developer
+remote-dev orchestration, e.g. Okteto, lives outside this repo.) Imbi is a DevOps Service Management Platform (FastAPI,
+PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 
-- Services: `imbi-api`, `imbi-assistant`, `imbi-gateway`, `imbi-mcp`, `imbi-ui`
-- Plugins: `imbi-plugin-aws`, `imbi-plugin-github`, `imbi-plugin-google`, `imbi-plugin-logzio`, `imbi-plugin-oidc`, `imbi-plugin-pagerduty`, `imbi-plugin-sonarqube`
+## Layout
 
-`imbi-common` is consumed as a published dependency, **not** a submodule.
+| Path | Distribution | Import path |
+|---|---|---|
+| `libraries/common/` | `imbi-common` | `imbi.common` |
+| `apps/api/` | `imbi-api` (:8000) | `imbi.api` |
+| `apps/assistant/` | `imbi-assistant` (:8002) | `imbi.assistant` |
+| `apps/gateway/` | `imbi-gateway` (:8003) | `imbi.gateway` |
+| `apps/mcp/` | `imbi-mcp` (:8001) | `imbi.mcp` |
+| `apps/slackbot/` | `imbi-slackbot` (:8004) | `imbi.slackbot` |
+| `ui/` | npm package (Vite :5173) | — |
+| `plugins/<name>/` | `imbi-plugin-<name>` | `imbi.plugins.<name>` |
+| root `pyproject.toml` | `imbi` meta-package (installs everything) | — |
 
-## Build Commands
+`imbi` is an implicit namespace package spanning members — there is no
+`src/imbi/__init__.py` anywhere. Every member carries its own tests
+(`libraries/common/tests/`, `apps/api/tests/`, `plugins/github/tests/`);
+pytest runs them all in one session using `--import-mode=importlib` +
+namespace packages, and test helpers import rootdir-anchored
+(`apps.api.tests.support`). Docs are one mkdocs site rooted at
+`docs/mkdocs.yml`.
 
-Requires [just](https://github.com/casey/just) and Docker.
+All members share one `uv.lock`, one `.venv`, and the root tool config
+(ruff, basedpyright, mypy, coverage, pytest). Versions are lockstep:
+every member and the meta-package carry the same version, bumped
+together in one commit and released with one `v<version>` tag.
 
-```bash
-just build              # Build Docker image tagged :latest
-just build v1.0.0       # Build with specific tag
-just release v1.0.0     # Build tagged as both :v1.0.0 and :latest
-just checkout-submodules # Check out submodules at their recorded commits
-just update-submodules  # Update all submodules to latest on tracking branch
-just update-submodules-tag v1.0.0  # Pin all submodules to a tag
-just submodule-status   # Show current submodule commits
-just docs               # Build MkDocs documentation
-just docs-serve         # Serve docs locally on :8088
-```
-
-### Local Development (beta)
-
-```bash
-just bootstrap          # Build + start the compose stack, run setup, annotate Caddy routes
-just teardown           # Tear down the compose stack and clear runtime/ caches
-just start-dev imbi-api # Build + run a single service from local source, route traffic to it
-just stop-dev imbi-api  # Scale the dev service down and route traffic back to the all-in-one image
-```
-
-The `runtime/` directory backs this workflow: `Dockerfile.python` builds a per-service dev
-image (uv-based, mounts local source), `api-entrypoint.sh` is its entrypoint, `manage-caddy`
-flips Caddy routes between the all-in-one `imbi` container and a standalone dev container via
-the Caddy admin API, and `env-file` holds the local compose env vars.
-
-## Running Locally
+## Common Commands
 
 ```bash
-docker compose up --build -d                    # Start everything
-docker compose exec -it imbi imbi-api setup     # First-time setup (creates admin user)
-docker compose logs -f imbi                     # Tail logs
+just setup                 # uv sync --all-groups --all-extras + pre-commit hooks
+just test                  # full suite w/ docker backing services (compose.ci.yaml)
+just test apps/api/tests/...  # single file/suite (pytest syntax)
+just test-suite apps/api   # one member with its own coverage floor
+just lint                  # pre-commit run --all-files + basedpyright
+just format [FILES]        # ruff + tombi via pre-commit
+just docs / docs-serve     # mkdocs build --strict / local serve
+just ui-lint / ui-test     # npm lint+format:check / vitest (ui/)
+just build [tag]           # build the production Docker image
+just bootstrap / teardown  # run/destroy the prod image locally (compose.yaml)
 ```
 
-Only `imbi` is published on a fixed host port (`8080`). The backing services use
-**ephemeral** host ports — find a mapping with `docker compose port <service> <container-port>`:
+Test env vars are written to `.env.test` by the docker recipe. Tests that need PostgreSQL are
+gated on `POSTGRES_URL` via the root `conftest.py`.
 
-| Container port | Service |
-|------|---------|
-| 8080 | Imbi (Caddy → all backends + UI) — **fixed** host port |
-| 5432 | PostgreSQL (Apache AGE graph DB) |
-| 8123 | ClickHouse HTTP |
-| 8025 | Mailpit (email testing UI) |
-| 4566 | LocalStack (S3) |
+## Conventions
 
-The local stack uses PostgreSQL with Apache AGE as the graph database (no Neo4j).
+- Line length 79, single quotes, Python 3.14+, strict typing
+  (basedpyright + mypy). Rule set is unioned in the root pyproject with
+  per-subtree ignores being burned down over time.
+- Run `just format` on modified files before returning control, running
+  tests, or committing. Never `--no-verify`.
+- Cross-member deps are exact lockstep pins (`imbi-common==<version>`)
+  resolved from the workspace during development (`[tool.uv.sources]`).
+- Console-script names (`imbi-api`, `imbi-gateway`, …) are load-bearing:
+  `entrypoint.sh`, the Caddyfile, and the Helm chart dispatch on them.
+- Plugins are discovered by scanning `imbi.plugins.*` (first-party) and
+  top-level `imbi_plugin_*` modules (third-party) — no entry points.
+  `IMBI_PLUGINS_DISABLED` turns individual plugins off by slug.
+- Apache AGE does not implement Cypher `FOR EACH` — use `UNWIND` or
+  iterate in app code. Cypher params use `{param}`, property maps
+  double-escape braces, timestamps are ISO strings.
 
-## Docker Image Architecture
+## Releasing
 
-The Dockerfile is a multi-stage build:
-1. **ui-builder** — `npm run build` on `repositories/imbi-ui`
-2. **python-builder** — copies all of `repositories/`, builds a wheel for every Python project there (services + plugins), installs them into a venv at `/app`
-3. **caddy** — extracts the Caddy binary
-4. **sentry-cli** — extracts the Sentry CLI binary (used by `entrypoint.sh` to upload UI source maps)
-5. **runtime** — slim Python image with the venv, Caddy, Sentry CLI, UI static files, and `entrypoint.sh`
+Bump the version in the root pyproject **and every member pyproject**
+(lockstep), `uv lock`, commit, tag `v<version>`, push the tag.
+`release.yml` then builds the multi-arch Docker image
+(ghcr.io/aweber-imbi/imbi + aweber/imbi) and publishes every member
+wheel plus the `imbi` meta-package to PyPI via trusted publishing. The
+tag must match the pyproject version or the publish fails fast.
 
-## Caddy Routing (Caddyfile)
+## CI
 
-All services run on `:8080` behind Caddy:
-- `/api/*` → imbi-api (:8000)
-- `/assistant/*` → imbi-assistant (:8002)
-- `/gateway/*` → imbi-gateway (:8003)
-- `/mcp/*` → imbi-mcp (:8001)
-- Everything else → static UI files from `/srv/ui`
-
-## Entrypoint / Service Dispatch
-
-`entrypoint.sh` uses `IMBI_SERVICE` env var (`all` | `api` | `assistant` | `gateway` | `mcp`) to start one or all services. Passing `setup` as argument runs `imbi-api setup` for initial bootstrapping.
-
-## CI/CD
-
-GitHub Actions (`.github/workflows/build-and-deploy.yaml`) triggers on tag pushes only. Builds multi-arch (amd64/arm64) images and pushes to both GHCR (`ghcr.io/aweber-imbi/imbi`) and DockerHub (`aweber/imbi`).
-
-## Helm Chart
-
-`helm/imbi/` contains a Kubernetes deployment chart. It bundles **no** database subcharts — PostgreSQL (with Apache AGE) and ClickHouse must be provisioned externally (CloudNativePG and the Altinity ClickHouse operator are the recommended approaches). Set `externalPostgresql.url` and `externalClickhouse.url`.
-
-## GitHub CLI
-
-Always prefix `gh` commands with `GH_HOST=github.com` — the user's environment may have `GH_HOST` set to a GitHub Enterprise instance.
+`test.yml` (python lint+test, ui lint+test), `docs.yml` (Pages deploy of
+the merged site), `release.yml` (tag-driven image + PyPI publish).
+Reproduce CI failures locally with `just ci` before pushing.

@@ -100,7 +100,7 @@ docker compose up --build -d
 docker compose exec -it imbi imbi-api setup
 
 # 3. In the imbi-ui directory, point the dev proxy at the local backend
-cd repositories/imbi-ui
+cd ui
 echo 'VITE_PROXY_TARGET=http://localhost:8080' > .env.local
 npm install
 npm run dev
@@ -129,30 +129,20 @@ Mailpit (email) and PostgreSQL (graph data) are reachable on the ephemeral
 host ports reported by `docker compose port <service> <container-port>`
 (see the table above) for inspecting state during development.
 
-### Python Service Development (Beta)
+### Python Development
 
-> **Note:** This workflow is in beta. The existing Docker Compose workflow
-> above remains the recommended approach for most development.
-
-You can develop individual Python services locally with hot-reload while
-the rest of the stack runs in Docker. The `start-dev` and `stop-dev`
-commands manage the Caddy reverse proxy to route traffic to a standalone
-dev container that mounts your local source code:
+The repository is a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/):
+every library, app, and plugin is a workspace member sharing one
+lockfile and one virtualenv.
 
 ```bash
-# First-time setup (builds the image and annotates Caddy routes)
-just bootstrap
-
-# Start developing a service (builds, starts, and routes traffic)
-just start-dev imbi-api
-
-# Stop the dev service (scales down and reroutes traffic to the main container)
-just stop-dev imbi-api
+just setup              # uv sync + pre-commit hooks
+just test               # full test suite against dockerized backing services
+just test apps/api/tests   # a single suite or test file
+just test-suite libraries/common 90  # one member with its own coverage floor
+just lint               # pre-commit (ruff, mypy) + basedpyright
+just format             # reformat
 ```
-
-The dev container mounts the service's source directory and uses
-[uv](https://docs.astral.sh/uv/) for fast dependency installation.
-Changes to your local source files are reflected immediately.
 
 ### Running the Docker Image
 
@@ -203,15 +193,6 @@ just build
 
 # Build with a specific tag
 just build v1.0.0
-
-# Check out all submodules at their recorded commits
-just checkout-submodules
-
-# Update all submodules to latest main
-just update-submodules
-
-# Update all submodules to a specific tag
-just update-submodules-tag v1.0.0
 ```
 
 ## Environment Variables
@@ -240,34 +221,34 @@ just update-submodules-tag v1.0.0
 
 ## Project Structure
 
+The repository is a monorepo organized as a uv workspace. Every Python
+package publishes its own distribution; the root `imbi` package is a
+meta-distribution that installs the whole platform.
+
 ```
 imbi/
-├── repositories/                 # Git submodules for every service and plugin
-│   ├── imbi-api/                 # Core REST API
-│   ├── imbi-assistant/           # AI assistant service
-│   ├── imbi-gateway/             # Webhook gateway
-│   ├── imbi-mcp/                 # MCP server
-│   ├── imbi-ui/                  # React frontend
-│   ├── imbi-plugin-aws/          # AWS plugin
-│   ├── imbi-plugin-github/       # GitHub plugin
-│   ├── imbi-plugin-google/       # Google identity plugin
-│   ├── imbi-plugin-logzio/       # Logz.io plugin
-│   ├── imbi-plugin-oidc/         # OIDC authentication plugin
-│   ├── imbi-plugin-pagerduty/    # PagerDuty plugin
-│   ├── imbi-plugin-sonarqube/    # SonarQube plugin
-│   └── imbi-slackbot/            # Slack bot
-├── runtime/           # Per-service dev image + Caddy helper for `just start-dev`/`stop-dev`
+├── libraries/
+│   └── common/        # imbi-common — shared library (imbi.common)
+│       └── {pyproject.toml, src/, tests/}   # every member carries its own tests
+├── apps/
+│   ├── api/           # imbi-api — core REST API (imbi.api)
+│   ├── assistant/     # imbi-assistant — AI assistant (imbi.assistant)
+│   ├── gateway/       # imbi-gateway — webhook gateway (imbi.gateway)
+│   ├── mcp/           # imbi-mcp — MCP server (imbi.mcp)
+│   └── slackbot/      # imbi-slackbot — Slack bot (imbi.slackbot)
+├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
+│   ├── aws/  github/  google/  logzio/  oidc/  pagerduty/  sonarqube/
+├── ui/                # React frontend (npm, not a uv member)
+├── docs/              # unified mkdocs site
+├── pyproject.toml     # workspace root + the `imbi` meta-package
 ├── Caddyfile          # Reverse proxy configuration
-├── compose.yaml       # Local Docker Compose stack
-├── docs/              # Administration and usage documentation
+├── compose.yaml       # Local run of the production image
+├── compose.ci.yaml    # Backing services for the test suites
 ├── helm/imbi/         # Helm chart for Kubernetes deployment
-├── Dockerfile         # Multi-stage Docker build
+├── Dockerfile         # Multi-stage production image build
 ├── entrypoint.sh      # Container entrypoint with service dispatch
 └── justfile           # Build and development commands
 ```
-
-> `imbi-common` is the shared Python library; it is pulled in as a published
-> dependency rather than tracked as a submodule here.
 
 ## Documentation
 

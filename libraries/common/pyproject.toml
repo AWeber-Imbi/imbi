@@ -1,0 +1,81 @@
+[project]
+name = "imbi-common"
+version = "2.17.0"
+description = "Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "BSD-3-Clause"
+authors = [
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
+  { name = "Dave Shawley", email = "daves@aweber.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "cryptography>=42.0.4",
+  "httpx>=0.28.1,<1",
+  "jsonpointer>=3.1.1",
+  "jsonschema-models",
+  "markdown-it-py>=3.0",
+  "nanoid>=2.0.0",
+  "orjson",
+  "pydantic-settings",
+  "pydantic[email]>=2.0",
+  "pyjwt>=2.10.1",
+  "python-slugify",
+  "typer>=0.21.1",
+]
+
+[project.optional-dependencies]
+databases = [
+  "clickhouse-connect[async]==1.0.0",
+  "fastembed>=0.6",
+  "pgvector>=0.3",
+  "psycopg[binary,pool]>=3.3",
+  "valkey>=6",
+]
+llm = [
+  "anthropic>=0.40",
+]
+mcp = [
+  "fastmcp>=3,<4",
+]
+otel = [
+  "opentelemetry-api==1.41.1",
+  "opentelemetry-distro==0.62b1",
+  "opentelemetry-exporter-otlp-proto-http==1.41.1",
+  "opentelemetry-instrumentation-aiohttp-client==0.62b1",
+  "opentelemetry-instrumentation-asyncio==0.62b1",
+  "opentelemetry-instrumentation-fastapi==0.62b1",
+  "opentelemetry-instrumentation-httpx==0.62b1",
+  "opentelemetry-instrumentation-mcp==0.60.0",
+  "opentelemetry-instrumentation-psycopg==0.62b1",
+  "opentelemetry-instrumentation-redis==0.62b1",
+  "opentelemetry-sdk==1.41.1",
+]
+sentry = [
+  "sentry-sdk>=2.48.0",
+]
+server = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.40.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi"]
+include = [
+  "src/imbi/common/py.typed",
+  "src/imbi/common/log-config.toml",
+  "src/imbi/common/clickhouse/schemata.toml",
+  "src/imbi/common/graph/schemata.toml",
+]

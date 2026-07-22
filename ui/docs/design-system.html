@@ -1,0 +1,1121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Imbi — Design System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ==========================================================
+         DESIGN TOKENS — kept in sync with src/index.css
+         ========================================================== */
+      :root {
+        --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        --radius-sm: 4px;
+        --radius-md: 8px;
+        --radius-lg: 12px;
+        --radius-full: 9999px;
+
+        --bg-app: #f5f4f0;
+        --bg-surface: #ffffff;
+        --bg-sunken: #eeedea;
+        --fg-primary: #1a1a18;
+        --fg-secondary: #5f5e5a;
+        --fg-tertiary: #888780;
+        --fg-muted: #b4b2aa;
+        --border-subtle: rgba(26, 26, 24, 0.15);
+        --border-default: rgba(26, 26, 24, 0.3);
+        --border-strong: rgba(26, 26, 24, 0.4);
+
+        --info-bg: #e6f1fb;
+        --info-fg: #185fa5;
+        --info-line: #6db3f2;
+        --info-dot: #185fa5;
+        --danger-bg: #fcebeb;
+        --danger-fg: #a32d2d;
+        --danger-line: #f5b4b4;
+        --danger-dot: #a32d2d;
+        --success-bg: #eaf3de;
+        --success-fg: #27500a;
+        --success-line: #b4d99a;
+        --success-dot: #639922;
+        --warning-bg: #faeeda;
+        --warning-fg: #7c5900;
+        --warning-line: #e6c77a;
+        --warning-dot: #b8860b;
+        --accent-bg: #eeedfe;
+        --accent-fg: #3c3489;
+        --accent-dot: #7f77dd;
+        --neutral-bg: #f1efe8;
+        --neutral-fg: #444441;
+        --neutral-dot: #888780;
+
+        --amber-50: #fef9e8;
+        --amber-100: #faeeda;
+        --amber-200: #f5d88c;
+        --amber-400: #ef9f27;
+        --amber-500: #b8860b;
+        --amber-600: #a0740a;
+        --amber-700: #7c5900;
+        --amber-800: #5e4400;
+
+        --action-bg: #b8860b;
+        --action-bg-hover: #8f6a09;
+        --action-fg: #ffffff;
+
+        --env-testing-bg: rgba(200, 107, 94, 0.2);
+        --env-testing-fg: #803e33;
+        --env-staging-bg: rgba(201, 162, 39, 0.2);
+        --env-staging-fg: #7c5900;
+        --env-production-bg: rgba(90, 137, 201, 0.2);
+        --env-production-fg: #2c4972;
+
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.14);
+        --ring: 0 0 0 3px rgba(239, 159, 39, 0.25);
+      }
+      .dark {
+        --bg-app: #141413;
+        --bg-surface: #1e1e1c;
+        --bg-sunken: #2a2a27;
+        --fg-primary: #e8e7e3;
+        --fg-secondary: #a0a09a;
+        --fg-tertiary: #6b6b65;
+        --fg-muted: #4a4944;
+        --border-subtle: rgba(232, 231, 227, 0.15);
+        --border-default: rgba(232, 231, 227, 0.25);
+        --border-strong: rgba(232, 231, 227, 0.35);
+
+        --info-bg: #1a2a3d;
+        --info-fg: #6db3f2;
+        --info-line: #6db3f2;
+        --info-dot: #6db3f2;
+        --danger-bg: #3d1c1c;
+        --danger-fg: #f08a8a;
+        --danger-line: #8a3030;
+        --danger-dot: #f08a8a;
+        --success-bg: #1c2e12;
+        --success-fg: #7cbf4a;
+        --success-line: #4a7a1a;
+        --success-dot: #7cbf4a;
+        --warning-bg: #3d2e12;
+        --warning-fg: #e0a830;
+        --warning-line: #7a5818;
+        --warning-dot: #e0a830;
+        --accent-bg: #20204a;
+        --accent-fg: #9d95e8;
+        --accent-dot: #9d95e8;
+        --neutral-bg: #2a2a27;
+        --neutral-fg: #a0a09a;
+        --neutral-dot: #6b6b65;
+
+        --action-bg: #fbce39;
+        --action-bg-hover: #e0b525;
+        --action-fg: #1a1a18;
+      }
+
+      /* ==========================================================
+         DOC CHROME
+         ========================================================== */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        font-family: var(--font-sans);
+        font-size: 14.5px;
+        line-height: 1.55;
+        background: var(--bg-app);
+        color: var(--fg-primary);
+        -webkit-font-smoothing: antialiased;
+      }
+      code {
+        font-family: var(--font-mono);
+        font-size: 0.9em;
+        background: var(--bg-sunken);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      a { color: var(--amber-700); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .dark a { color: var(--amber-400); }
+
+      .doc {
+        display: grid;
+        grid-template-columns: 232px 1fr;
+        max-width: 1200px;
+        margin: 0 auto;
+        min-height: 100vh;
+      }
+      .sidebar {
+        padding: 28px 22px;
+        border-right: 1px solid var(--border-subtle);
+        position: sticky; top: 0; height: 100vh;
+        overflow-y: auto;
+      }
+      .sidebar h1 {
+        font-size: 15px; font-weight: 700; letter-spacing: -0.01em;
+        margin-bottom: 20px;
+      }
+      .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+      .sidebar a {
+        padding: 4px 8px; border-radius: 4px; font-size: 13px;
+        color: var(--fg-secondary);
+      }
+      .sidebar a:hover { background: var(--bg-sunken); text-decoration: none; }
+      .sidebar .section {
+        font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--fg-tertiary);
+        margin: 14px 8px 4px;
+      }
+
+      main { padding: 40px 48px 120px; min-width: 0; }
+      main > section { margin-bottom: 64px; scroll-margin-top: 24px; }
+
+      h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 8px; }
+      h3 { font-size: 13px; font-weight: 600; letter-spacing: 0.06em;
+           text-transform: uppercase; color: var(--fg-tertiary);
+           margin: 24px 0 12px; }
+      .lede { color: var(--fg-secondary); max-width: 68ch; margin-bottom: 20px; }
+      p { max-width: 68ch; color: var(--fg-secondary); }
+      p + p { margin-top: 8px; }
+      ul, ol { max-width: 68ch; color: var(--fg-secondary); padding-left: 20px; }
+      li { margin-bottom: 4px; }
+      li b { color: var(--fg-primary); font-weight: 600; }
+
+      .specimen {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        margin: 12px 0;
+      }
+      .caption {
+        font-size: 12.5px; color: var(--fg-tertiary); margin-top: 8px;
+      }
+      pre.code {
+        font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
+        background: var(--bg-sunken); color: var(--fg-primary);
+        padding: 14px 16px; border-radius: var(--radius-md);
+        overflow-x: auto;
+        white-space: pre;
+      }
+      pre.code .k { color: var(--amber-700); }
+      .dark pre.code .k { color: var(--amber-400); }
+      pre.code .v { color: var(--fg-secondary); }
+
+      /* ==========================================================
+         TABLES
+         ========================================================== */
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      table th, table td {
+        text-align: left; padding: 8px 12px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      table th {
+        font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--fg-tertiary);
+      }
+      table td.mono, table td .mono { font-family: var(--font-mono); font-size: 12px; color: var(--fg-secondary); }
+      table tbody tr:last-child td { border-bottom: 0; }
+
+      .swatch-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+      }
+      .swatch .tile {
+        aspect-ratio: 3 / 2; border-radius: var(--radius-md);
+        border: 1px solid var(--border-subtle);
+      }
+      .swatch .name { font-size: 12.5px; font-weight: 500; margin-top: 6px; }
+      .swatch .meta {
+        font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary);
+      }
+
+      /* ==========================================================
+         COMPONENT DEMOS
+         ========================================================== */
+      .btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-family: inherit; font-size: 13px; font-weight: 500;
+        padding: 8px 14px; border-radius: var(--radius-md);
+        border: 1px solid transparent; cursor: pointer;
+      }
+      .btn-primary { background: var(--action-bg); color: var(--action-fg); }
+      .btn-primary:hover { background: var(--action-bg-hover); }
+      .btn-secondary { background: var(--bg-surface); color: var(--fg-primary); border-color: var(--border-default); }
+      .btn-secondary:hover { background: var(--bg-sunken); }
+      .btn-ghost { background: transparent; color: var(--fg-secondary); }
+      .btn-ghost:hover { background: var(--bg-sunken); color: var(--fg-primary); }
+      .btn-sm { padding: 5px 10px; font-size: 12px; }
+      .btn-lg { padding: 10px 18px; font-size: 14px; }
+
+      .field {
+        font-family: inherit; font-size: 13.5px;
+        padding: 8px 12px; width: 100%;
+        background: var(--bg-surface); color: var(--fg-primary);
+        border: 1px solid var(--border-default); border-radius: var(--radius-md);
+        outline: none;
+      }
+      .field:focus { border-color: var(--amber-400); box-shadow: var(--ring); }
+
+      .chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        height: 22px; padding: 0 8px;
+        font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em;
+        border-radius: 5px;
+      }
+      .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+      .chip.info    { background: var(--info-bg); color: var(--info-fg); }
+      .chip.danger  { background: var(--danger-bg); color: var(--danger-fg); }
+      .chip.success { background: var(--success-bg); color: var(--success-fg); }
+      .chip.warning { background: var(--warning-bg); color: var(--warning-fg); }
+      .chip.accent  { background: var(--accent-bg); color: var(--accent-fg); }
+      .chip.neutral { background: var(--neutral-bg); color: var(--neutral-fg); }
+      .chip.testing    { background: var(--env-testing-bg); color: var(--env-testing-fg); }
+      .chip.staging    { background: var(--env-staging-bg); color: var(--env-staging-fg); }
+      .chip.production { background: var(--env-production-bg); color: var(--env-production-fg); }
+
+      .health {
+        width: 34px; height: 34px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+        position: relative;
+      }
+      .health::before {
+        content: ''; position: absolute; inset: -3px; border-radius: 50%;
+        border: 1.5px solid currentColor; opacity: 0.3;
+      }
+      .health.ok   { background: var(--success-bg); color: var(--success-fg); }
+      .health.warn { background: var(--warning-bg); color: var(--warning-fg); }
+      .health.bad  { background: var(--danger-bg); color: var(--danger-fg); }
+
+      /* Color picker demo */
+      .cp-wrap {
+        background: var(--bg-sunken); border-radius: var(--radius-md);
+        padding: 14px; max-width: 440px;
+      }
+      .cp-sw-row { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+      .cp-sw {
+        position: relative; aspect-ratio: 1/1; border-radius: 10px;
+        border: 2px solid transparent; display: flex;
+        align-items: center; justify-content: center; color: #fff;
+      }
+      .cp-sw.sel { border-color: var(--fg-primary); }
+      .cp-sw.sel::after {
+        content: ''; position: absolute; inset: -5px;
+        border-radius: 13px; border: 1.5px solid var(--fg-primary); opacity: 0.15;
+      }
+      .cp-sw.sel::before {
+        content: '✓'; font-size: 14px; font-weight: 600;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+      }
+      .cp-names {
+        display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-top: 6px;
+      }
+      .cp-names span {
+        text-align: center; font-family: var(--font-mono);
+        font-size: 10px; color: var(--fg-tertiary);
+      }
+      .cp-or {
+        display: flex; align-items: center; gap: 10px;
+        margin: 16px 0 10px;
+        font-size: 11px; letter-spacing: 0.05em;
+        text-transform: uppercase; color: var(--fg-muted); font-weight: 500;
+      }
+      .cp-or::before, .cp-or::after {
+        content: ''; flex: 1; height: 1px; background: var(--border-subtle);
+      }
+      .cp-hex {
+        display: flex; align-items: center; gap: 4px; padding: 4px;
+        background: var(--bg-surface); border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+      }
+      .cp-pip {
+        width: 28px; height: 28px; border-radius: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.05); background: #c9a227;
+      }
+      .cp-hex input {
+        flex: 1; border: 0; outline: none; background: transparent;
+        font-family: var(--font-mono); font-size: 13px;
+        color: var(--fg-primary);
+      }
+      .cp-hex .stat {
+        font-size: 11px; font-weight: 500; padding: 4px 8px; border-radius: 4px;
+        background: var(--success-bg); color: var(--success-fg);
+      }
+
+      /* Version chip train */
+      .vtrain {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: var(--bg-sunken); border: 1px solid var(--border-subtle);
+        border-radius: 8px; padding: 4px;
+      }
+      .vtrain .vc {
+        display: inline-flex; align-items: center; gap: 6px;
+        height: 24px; padding: 0 8px; border-radius: 5px;
+        font-size: 11.5px;
+      }
+      .vtrain .sep {
+        color: var(--fg-muted); padding: 0 2px; font-size: 12px;
+      }
+
+      /* Key/value rows */
+      .kv-rows { border: 1px solid var(--border-subtle); border-radius: 10px; }
+      .kv-row {
+        display: grid; grid-template-columns: 180px 1fr; gap: 14px;
+        padding: 10px 16px; font-size: 13px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .kv-row:last-child { border-bottom: 0; }
+      .kv-row .k { color: var(--fg-tertiary); }
+      .kv-row .v {
+        text-align: right; color: var(--fg-primary);
+        justify-self: end; font-variant-numeric: tabular-nums;
+      }
+
+      /* Segmented */
+      .segmented {
+        display: inline-flex; background: var(--bg-sunken);
+        border-radius: var(--radius-md); padding: 3px; gap: 2px;
+      }
+      .segmented button {
+        font-family: inherit; font-size: 12.5px;
+        padding: 5px 12px; border: 0; background: transparent;
+        color: var(--fg-secondary); border-radius: 6px; cursor: pointer;
+      }
+      .segmented button.is-active {
+        background: var(--bg-surface); color: var(--fg-primary);
+        box-shadow: var(--shadow-sm);
+      }
+      .filter-pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        height: 26px; padding: 0 10px; border-radius: 6px;
+        font-size: 12px; cursor: pointer; border: 1px solid var(--border-subtle);
+        background: var(--bg-surface); color: var(--fg-secondary);
+      }
+      .filter-pill.is-active {
+        background: var(--amber-100); color: var(--amber-700); border-color: transparent;
+      }
+      .dark .filter-pill.is-active { background: rgba(251, 206, 57, 0.12); color: #fbce39; }
+      .filter-pill .count {
+        font-variant-numeric: tabular-nums; font-size: 11px; color: var(--fg-tertiary);
+      }
+
+      /* Theme toggle */
+      .theme-toggle {
+        position: fixed; bottom: 20px; right: 20px;
+        width: 40px; height: 40px; border-radius: 50%;
+        background: var(--bg-surface); border: 1px solid var(--border-default);
+        color: var(--fg-primary); cursor: pointer; box-shadow: var(--shadow-md);
+        font-size: 16px;
+      }
+
+      @media (max-width: 800px) {
+        .doc { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        main { padding: 24px 20px 80px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="doc">
+      <aside class="sidebar">
+        <h1>Imbi · Design System</h1>
+        <nav>
+          <a href="#overview">Overview</a>
+          <a href="#principles">Principles</a>
+          <div class="section">Foundations</div>
+          <a href="#color">Color</a>
+          <a href="#semantic">Semantic palette</a>
+          <a href="#labels">Label colors</a>
+          <a href="#type">Typography</a>
+          <a href="#spacing">Spacing</a>
+          <a href="#radii">Radii &amp; elevation</a>
+          <div class="section">Components</div>
+          <a href="#buttons">Buttons</a>
+          <a href="#inputs">Inputs</a>
+          <a href="#chips">Chips &amp; badges</a>
+          <a href="#health">Health indicator</a>
+          <a href="#cards">Cards</a>
+          <a href="#tabs">Tabs</a>
+          <a href="#vertrain">Version chip train</a>
+          <a href="#kv">Key/value rows</a>
+          <a href="#segmented">Segmented &amp; filters</a>
+          <a href="#colorpicker">Color picker</a>
+          <div class="section">Reference</div>
+          <a href="#tokens">Token names</a>
+          <a href="#codemap">Codebase map</a>
+        </nav>
+      </aside>
+
+      <main>
+        <section id="overview">
+          <h2>Overview</h2>
+          <p class="lede">
+            Imbi is a DevOps Service Management Platform for managing large
+            environments containing many services and applications. It provides
+            a centralized service catalog with metadata management, dependency
+            tracking, ownership hierarchy, and AI-powered features. The UI is
+            a utility-forward, high-density tool: warm paper surfaces, a single
+            amber brand voice, muted semantic chips, and type chosen for reading
+            long lists of service names all day.
+          </p>
+          <p>
+            <b style="color:var(--fg-primary);">Stack:</b> React 18 · TypeScript ·
+            Vite · Tailwind · shadcn/ui primitives (Radix) · React Query ·
+            React Router v7.
+            <b style="color:var(--fg-primary);">Type:</b> Inter / JetBrains Mono.
+            <b style="color:var(--fg-primary);">Brand:</b> WorkerBee amber.
+          </p>
+          <p>
+            Tokens are defined once in <code>src/index.css</code> as CSS custom
+            properties and exposed through Tailwind utility classes via
+            <code>tailwind.config.js</code>. Dark mode is class-based (<code>.dark</code>
+            on <code>&lt;html&gt;</code>). A pre-React bootstrap in
+            <code>index.html</code> applies the saved theme before first paint
+            to avoid a flash.
+          </p>
+        </section>
+
+        <section id="principles">
+          <h2>Principles</h2>
+          <p class="lede">Four rules that set the line between <em>cleaner</em> and <em>busier</em>. When in doubt, remove.</p>
+          <ol>
+            <li><b>One brand voice, many muted helpers.</b> Amber is the only saturated color. Status and environment chips sit on quiet tinted backgrounds so a card reads as one object, not five.</li>
+            <li><b>Density over decoration.</b> 142 services want tight rows and small type, not generous gradients. Pad where type breathes; compress where the eye scans.</li>
+            <li><b>Warm grays, not cold.</b> Ink and paper are hue-shifted toward amber (~40° hue). Never pure black on pure white.</li>
+            <li><b>Tokens before exceptions.</b> If you reach for a raw hex in a component, it belongs in the token file. Hardcoded colors are the #1 source of theme drift — the tokens migration in commit <code>4cc2e78</code> exists to enforce this.</li>
+          </ol>
+        </section>
+
+        <section id="color">
+          <h2>Color</h2>
+          <p class="lede">Surface ramp is warm paper in light, warm ink in dark. Both share the same amber accent so the brand does not shift.</p>
+
+          <h3>Surfaces &amp; ink</h3>
+          <div class="specimen">
+            <table>
+              <thead><tr><th>Token</th><th>Light</th><th>Dark</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">--bg-app</td><td class="mono">#f5f4f0</td><td class="mono">#141413</td><td>page canvas</td></tr>
+                <tr><td class="mono">--bg-surface</td><td class="mono">#ffffff</td><td class="mono">#1e1e1c</td><td>cards, panels, nav</td></tr>
+                <tr><td class="mono">--bg-sunken</td><td class="mono">#eeedea</td><td class="mono">#2a2a27</td><td>toolbars, inputs-in-cards</td></tr>
+                <tr><td class="mono">--fg-primary</td><td class="mono">#1a1a18</td><td class="mono">#e8e7e3</td><td>titles, body</td></tr>
+                <tr><td class="mono">--fg-secondary</td><td class="mono">#5f5e5a</td><td class="mono">#a0a09a</td><td>descriptions, labels</td></tr>
+                <tr><td class="mono">--fg-tertiary</td><td class="mono">#888780</td><td class="mono">#6b6b65</td><td>meta, captions</td></tr>
+                <tr><td class="mono">--border-subtle</td><td class="mono">rgba(0,0,0,.15)</td><td class="mono">rgba(255,255,255,.15)</td><td>cards, dividers</td></tr>
+                <tr><td class="mono">--border-default</td><td class="mono">rgba(0,0,0,.3)</td><td class="mono">rgba(255,255,255,.25)</td><td>buttons, inputs</td></tr>
+                <tr><td class="mono">--border-strong</td><td class="mono">rgba(0,0,0,.4)</td><td class="mono">rgba(255,255,255,.35)</td><td>hover / active</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Brand — Amber</h3>
+          <p>Single ramp from <code>--amber-50</code> to <code>--amber-800</code>. The primary action is <code>--action-bg</code> which flips between <code>#b8860b</code> (light) and <code>#fbce39</code> (dark) to match the header logo in each theme.</p>
+          <div class="specimen">
+            <div class="swatch-grid">
+              <div class="swatch"><div class="tile" style="background:var(--amber-100);"></div><div class="name">amber-100</div><div class="meta">#faeeda · chip bg</div></div>
+              <div class="swatch"><div class="tile" style="background:var(--amber-400);"></div><div class="name">amber-400</div><div class="meta">#ef9f27 · focus ring</div></div>
+              <div class="swatch"><div class="tile" style="background:var(--amber-500);"></div><div class="name">amber-500</div><div class="meta">#b8860b · action bg</div></div>
+              <div class="swatch"><div class="tile" style="background:var(--amber-700);"></div><div class="name">amber-700</div><div class="meta">#7c5900 · amber ink</div></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="semantic">
+          <h2>Semantic palette</h2>
+          <p class="lede">
+            Six roles. Each exposes a <code>bg</code>, <code>fg</code>, and
+            <code>dot</code>. Backgrounds read at ≥7:1 against their fg; dots are
+            used for filter pills and chip leaders. Defined in
+            <code>src/index.css</code> and mapped to Tailwind utilities as
+            <code>bg-{role}</code> / <code>text-{role}</code> / <code>border-{role}</code>.
+          </p>
+          <div class="specimen">
+            <table>
+              <thead><tr><th>Role</th><th>Purpose</th><th>bg (light)</th><th>fg (light)</th><th>Tailwind</th></tr></thead>
+              <tbody>
+                <tr><td><span class="chip success"><span class="chip-dot"></span>Success</span></td><td>confirmed state, passing checks</td><td class="mono">#eaf3de</td><td class="mono">#27500a</td><td class="mono">bg-success / text-success</td></tr>
+                <tr><td><span class="chip warning"><span class="chip-dot"></span>Warning</span></td><td>needs feedback, pending</td><td class="mono">#faeeda</td><td class="mono">#7c5900</td><td class="mono">bg-warning / text-warning</td></tr>
+                <tr><td><span class="chip danger"><span class="chip-dot"></span>Danger</span></td><td>error, failed, blocked</td><td class="mono">#fcebeb</td><td class="mono">#a32d2d</td><td class="mono">bg-danger / text-danger</td></tr>
+                <tr><td><span class="chip info"><span class="chip-dot"></span>Info</span></td><td>neutral context, related link</td><td class="mono">#e6f1fb</td><td class="mono">#185fa5</td><td class="mono">bg-info / text-info</td></tr>
+                <tr><td><span class="chip accent"><span class="chip-dot"></span>Accent</span></td><td>implementing, follow-up</td><td class="mono">#eeedfe</td><td class="mono">#3c3489</td><td class="mono">bg-accent / text-accent</td></tr>
+                <tr><td><span class="chip neutral"><span class="chip-dot"></span>Neutral</span></td><td>queued, default</td><td class="mono">#f1efe8</td><td class="mono">#444441</td><td class="mono">bg-tertiary / text-secondary</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Example: environments</h3>
+          <p>
+            Environments are user-configurable (see <a href="#labels">Label colors</a>) —
+            Testing / Staging / Production are instances of the Label system with
+            default seed colors, not a parallel semantic role.
+          </p>
+          <div class="specimen">
+            <span class="chip testing">Testing</span>
+            <span class="chip staging" style="margin-left:6px;">Staging</span>
+            <span class="chip production" style="margin-left:6px;">Production</span>
+            <div class="caption">22px tall · 5px radius · 11.5px/500 · rendered by <code>EnvironmentBadge</code> (<code>src/components/ui/environment-badge.tsx</code>).</div>
+          </div>
+        </section>
+
+        <section id="labels">
+          <h2>Label colors</h2>
+          <p class="lede">
+            Environments, blueprints, teams — anywhere the product lets a user
+            tag an object with a color — share a single 8-swatch palette.
+            Saturation is capped at ~60 and lightness at ~58 so every swatch sits
+            on the same tonal plane as the amber brand and warm paper surface.
+          </p>
+
+          <h3>The palette</h3>
+          <div class="specimen">
+            <table id="labelTable">
+              <thead>
+                <tr><th>Name</th><th>Hex</th><th>Seeded use</th><th>Chip preview</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <h3>Chip derivation</h3>
+          <p>
+            Chips compute their own <code>bg</code> and <code>fg</code> from the
+            stored hex. Users never pick fg — the system guarantees contrast.
+          </p>
+          <pre class="code"><span class="k">// Light mode (matches ColorPicker preview + EnvironmentBadge style)</span>
+bg = rgba(r, g, b, 0.20)            <span class="k">// 20% alpha of swatch</span>
+fg = darken(hex, 0.35)              <span class="k">// multiply channels by 0.65</span>
+
+<span class="k">// Dark mode</span>
+fg = lighten(hex, 0.30)             <span class="k">// shift toward white</span></pre>
+
+          <h3>Rules</h3>
+          <ul>
+            <li>Never present the raw hex picker as the first interaction — the 8 swatches cover 95% of cases and enforce the system.</li>
+            <li>The free-form hex input is an escape hatch. When a user types a custom hex, clamp saturation to ≤65 silently before saving.</li>
+            <li>Semantic colors (success, danger, info, warning) are <b>not</b> in this palette. Those are reserved for system messaging.</li>
+            <li>A label's color is stored as raw hex, not a palette index — so adjusting defaults later won't repaint existing data.</li>
+            <li>The picker is defined once in <code>src/components/ui/color-picker.tsx</code> and reused anywhere a color is captured.</li>
+          </ul>
+        </section>
+
+        <section id="type">
+          <h2>Typography</h2>
+          <p class="lede">
+            Inter for UI, JetBrains Mono for IDs, hashes, and counts. The scale
+            is short on purpose — every size below is defined in
+            <code>tailwind.config.js</code> under <code>fontSize</code>.
+          </p>
+          <div class="specimen">
+            <table>
+              <thead><tr><th>Utility</th><th>Size</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">text-h1</td><td class="mono">24px / 500</td><td>Page title</td></tr>
+                <tr><td class="mono">text-h2</td><td class="mono">20px / 500</td><td>Section title</td></tr>
+                <tr><td class="mono">text-card-title</td><td class="mono">18px / 500</td><td>Card heading</td></tr>
+                <tr><td class="mono">text-task</td><td class="mono">16px / 500</td><td>Task / inline heading</td></tr>
+                <tr><td class="mono">text-base</td><td class="mono">15.5px / 400</td><td>Body</td></tr>
+                <tr><td class="mono">text-sm</td><td class="mono">15px / 400</td><td>Secondary body</td></tr>
+                <tr><td class="mono">text-badge</td><td class="mono">13.5px / 500</td><td>Badge text</td></tr>
+                <tr><td class="mono">text-xs</td><td class="mono">13.5px / 400</td><td>Meta</td></tr>
+                <tr><td class="mono">text-chip</td><td class="mono">13px / 400</td><td>Chip label</td></tr>
+                <tr><td class="mono">text-overline</td><td class="mono">13px / 500 · 0.5 tracking</td><td>Section eyebrow</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="spacing">
+          <h2>Spacing</h2>
+          <p class="lede">
+            Page and component spacing is centralized in
+            <code>tailwind.config.js</code> under <code>theme.extend.spacing</code>
+            and applied with named utilities instead of raw numbers.
+          </p>
+          <div class="specimen">
+            <table>
+              <thead><tr><th>Token</th><th>Value</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">nav-height</td><td class="mono">48px</td><td>Top navigation bar</td></tr>
+                <tr><td class="mono">page-x / page-y</td><td class="mono">20 / 28px</td><td>Page edge padding</td></tr>
+                <tr><td class="mono">card-x / card-y</td><td class="mono">18 / 14px</td><td>List card padding</td></tr>
+                <tr><td class="mono">card-detail-x / -y</td><td class="mono">22 / 18px</td><td>Detail card padding</td></tr>
+                <tr><td class="mono">tab-x / tab-y</td><td class="mono">18 / 11px</td><td>Tab button padding</td></tr>
+                <tr><td class="mono">tab-panel</td><td class="mono">22px</td><td>Tab content padding</td></tr>
+                <tr><td class="mono">form-gap</td><td class="mono">16px</td><td>Gap between form fields</td></tr>
+                <tr><td class="mono">meta-gap</td><td class="mono">8px</td><td>Meta row inline gap</td></tr>
+                <tr><td class="mono">avatar-gap</td><td class="mono">12px</td><td>Avatar + name gap</td></tr>
+                <tr><td class="mono">card-gap</td><td class="mono">8px</td><td>Chips inside a card</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="radii">
+          <h2>Radii &amp; elevation</h2>
+          <p class="lede">
+            Soft but not squishy. Tailwind's <code>rounded-{sm,md,lg,full}</code>
+            map to <code>4 / 8 / 12 / 9999 px</code> respectively.
+            <code>sm</code> for chips, <code>md</code> for controls,
+            <code>lg</code> for cards and panels.
+          </p>
+          <div class="specimen">
+            <table>
+              <thead><tr><th>Token</th><th>Value</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">rounded-sm · --radius-sm</td><td class="mono">4px</td><td>chips, badges</td></tr>
+                <tr><td class="mono">rounded-md · --radius-md</td><td class="mono">8px</td><td>buttons, inputs</td></tr>
+                <tr><td class="mono">rounded-lg · --radius-lg</td><td class="mono">12px</td><td>cards, dialogs, panels</td></tr>
+                <tr><td class="mono">rounded-full</td><td class="mono">9999px</td><td>pills, avatars, health</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Elevation</h3>
+          <div class="specimen">
+            <table>
+              <thead><tr><th>Token</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">--shadow-sm</td><td>card hover</td></tr>
+                <tr><td class="mono">--shadow-md</td><td>popovers, menus, dropdowns</td></tr>
+                <tr><td class="mono">--shadow-lg</td><td>modals, dialogs</td></tr>
+                <tr><td class="mono">--ring</td><td>focus ring (amber @ 25% alpha)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="buttons">
+          <h2>Buttons</h2>
+          <p class="lede">
+            Three variants, shadcn-based. Primary is amber; <code>sm</code> is the
+            default across the product except in empty states and modals.
+            Implementation lives in <code>src/components/ui/button.tsx</code>.
+          </p>
+          <div class="specimen" style="display:flex; gap:12px; flex-wrap:wrap;">
+            <button class="btn btn-primary">New Project</button>
+            <button class="btn btn-primary btn-sm">New</button>
+            <button class="btn btn-primary btn-lg">Create project</button>
+            <button class="btn btn-secondary">Export</button>
+            <button class="btn btn-secondary btn-sm">Cancel</button>
+            <button class="btn btn-ghost">Filter</button>
+            <button class="btn btn-primary" style="opacity:0.5; cursor:not-allowed;">Disabled</button>
+          </div>
+          <pre class="code"><span class="k">&lt;Button variant=</span><span class="v">"default"</span><span class="k"> size=</span><span class="v">"sm"</span><span class="k">&gt;</span>New<span class="k">&lt;/Button&gt;</span>
+<span class="k">// variants: default | secondary | ghost | outline | destructive | link</span>
+<span class="k">// sizes:    default | sm | lg | icon</span></pre>
+        </section>
+
+        <section id="inputs">
+          <h2>Inputs</h2>
+          <p class="lede">
+            Single field style. Implementation in
+            <code>src/components/ui/input.tsx</code> and
+            <code>src/components/ui/textarea.tsx</code>. Focus uses the amber
+            ring; error states swap the border to <code>border-danger</code>.
+          </p>
+          <div class="specimen" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div><label style="font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fg-tertiary); display:block; margin-bottom:6px;">Default</label>
+              <input class="field" placeholder="account-cleanup-consumers" /></div>
+            <div><label style="font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fg-tertiary); display:block; margin-bottom:6px;">Focus</label>
+              <input class="field" value="AWeber" style="border-color:var(--amber-400); box-shadow:var(--ring);" /></div>
+            <div><label style="font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fg-tertiary); display:block; margin-bottom:6px;">Error</label>
+              <input class="field" value="invalid-slug!" style="border-color:var(--danger-line); box-shadow:0 0 0 3px rgba(227,75,74,0.12);" /></div>
+            <div><label style="font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fg-tertiary); display:block; margin-bottom:6px;">Disabled</label>
+              <input class="field" value="read-only" disabled style="opacity:0.6;" /></div>
+          </div>
+        </section>
+
+        <section id="chips">
+          <h2>Chips &amp; badges</h2>
+          <p class="lede">
+            One shape, six semantic colorways plus three named environment
+            colorways. If you need a new state, extend the semantic set — no
+            custom shapes.
+          </p>
+          <h3>Semantic</h3>
+          <div class="specimen" style="display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="chip neutral"><span class="chip-dot"></span>Queued</span>
+            <span class="chip warning"><span class="chip-dot"></span>Needs feedback</span>
+            <span class="chip accent"><span class="chip-dot"></span>Implementing</span>
+            <span class="chip success"><span class="chip-dot"></span>In review</span>
+            <span class="chip danger"><span class="chip-dot"></span>Failed</span>
+            <span class="chip info"><span class="chip-dot"></span>Related</span>
+          </div>
+          <h3>Sizes</h3>
+          <div class="specimen" style="display:flex; gap:8px; align-items:center;">
+            <span class="chip success" style="height:20px; padding:0 6px; font-size:10.5px;"><span class="chip-dot"></span>sm</span>
+            <span class="chip success"><span class="chip-dot"></span>default · 22px</span>
+            <span class="chip success" style="height:26px; padding:0 10px; font-size:13px;"><span class="chip-dot"></span>lg</span>
+          </div>
+        </section>
+
+        <section id="health">
+          <h2>Health indicator</h2>
+          <p class="lede">
+            Tinted background + 1.5px ghost ring, not a heavy
+            <code>ring-4</code>. Thresholds: <code>≥85 ok</code>,
+            <code>75–84 warn</code>, <code>&lt;75 bad</code>.
+          </p>
+          <div class="specimen" style="display:flex; gap:22px;">
+            <div style="text-align:center;"><div class="health ok">93</div><div style="font-size:11px; color:var(--fg-tertiary); margin-top:8px; font-family:var(--font-mono);">≥ 85 · healthy</div></div>
+            <div style="text-align:center;"><div class="health warn">78</div><div style="font-size:11px; color:var(--fg-tertiary); margin-top:8px; font-family:var(--font-mono);">75–84 · watch</div></div>
+            <div style="text-align:center;"><div class="health bad">68</div><div style="font-size:11px; color:var(--fg-tertiary); margin-top:8px; font-family:var(--font-mono);">&lt; 75 · at risk</div></div>
+          </div>
+        </section>
+
+        <section id="cards">
+          <h2>Cards</h2>
+          <p class="lede">
+            One card shell — 12px radius, 1px subtle border, card padding tokens.
+            Implementation: <code>src/components/ui/card.tsx</code> (shadcn).
+            Composable with <code>CardHeader</code> / <code>CardContent</code> /
+            <code>CardFooter</code>.
+          </p>
+          <div class="specimen">
+            <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:12px; padding:14px 18px; max-width:380px; display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; align-items:flex-start; gap:12px;">
+                <div style="width:32px; height:32px; border-radius:7px; background:var(--info-bg); color:var(--info-fg); display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:13px; font-weight:600;">API</div>
+                <div style="flex:1; min-width:0;">
+                  <div style="font-size:14.5px; font-weight:600;">Address Verification</div>
+                  <div style="font-size:12px; color:var(--fg-tertiary);">API</div>
+                </div>
+                <div class="health ok">86</div>
+              </div>
+              <div style="font-size:13px; color:var(--fg-secondary);">Validates postal addresses in the US and internationally.</div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:11.5px; color:var(--fg-tertiary);">Conversions</span>
+                <span style="display:flex; gap:4px;">
+                  <span class="chip testing">Testing</span>
+                  <span class="chip staging">Staging</span>
+                  <span class="chip production">Production</span>
+                </span>
+              </div>
+            </div>
+            <div class="caption">Anatomy: 32px type icon · title + subtype · 34px health pill · 2-line description · team/envs meta row.</div>
+          </div>
+        </section>
+
+        <section id="tabs">
+          <h2>Tabs</h2>
+          <p class="lede">
+            Single-row tabs for object-level navigation (Overview, Configuration,
+            Dependencies, …). Active state is a 2px amber underline, not a filled
+            pill — filled pills are reserved for the top nav.
+          </p>
+          <div class="specimen">
+            <div style="display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--border-subtle);">
+              <button style="background:none; border:0; padding:10px 14px; font-size:13.5px; color:var(--fg-primary); font-weight:500; font-family:inherit; position:relative; cursor:pointer;">
+                Overview
+                <span style="position:absolute; left:8px; right:8px; bottom:-1px; height:2px; background:var(--amber-500); border-radius:2px 2px 0 0;"></span>
+              </button>
+              <button style="background:none; border:0; padding:10px 14px; font-size:13.5px; color:var(--fg-secondary); font-family:inherit; cursor:pointer;">Configuration</button>
+              <button style="background:none; border:0; padding:10px 14px; font-size:13.5px; color:var(--fg-secondary); font-family:inherit; cursor:pointer;">Dependencies</button>
+              <button style="background:none; border:0; padding:10px 14px; font-size:13.5px; color:var(--fg-secondary); font-family:inherit; cursor:pointer;">Logs</button>
+              <button style="background:none; border:0; padding:10px 14px; font-size:13.5px; color:var(--fg-secondary); font-family:inherit; cursor:pointer;">Notes</button>
+            </div>
+          </div>
+          <p>Never bold weight + underline on the same tab — one cue is enough. Count pills flip to amber on the active tab.</p>
+        </section>
+
+        <section id="vertrain">
+          <h2>Version chip train</h2>
+          <p class="lede">
+            Deploy state across environments in one row. Chips are grouped inside
+            a sunken surface, separated by right-arrows to imply promotion flow.
+            Hashes use JetBrains Mono with tabular-nums so they don't jiggle on
+            updates.
+          </p>
+          <div class="specimen">
+            <span class="vtrain">
+              <span class="vc" style="background:var(--env-testing-bg); color:var(--env-testing-fg);">Testing <span style="font-family:var(--font-mono); font-size:11px; opacity:.85;">1962b02</span></span>
+              <span class="sep">→</span>
+              <span class="vc" style="background:var(--env-staging-bg); color:var(--env-staging-fg);">Staging <span style="font-family:var(--font-mono); font-size:11px; opacity:.85;">1.0.11</span></span>
+              <span class="sep">→</span>
+              <span class="vc" style="background:var(--env-production-bg); color:var(--env-production-fg);">Production <span style="font-family:var(--font-mono); font-size:11px; opacity:.85;">1.0.10</span></span>
+            </span>
+          </div>
+        </section>
+
+        <section id="kv">
+          <h2>Key/value rows</h2>
+          <p class="lede">
+            Spine of every detail view. Label on the left in
+            <code>fg-tertiary</code>, value right-aligned in primary ink. Rows
+            separate with <code>border-subtle</code>, never alternating
+            backgrounds. Implementation: <code>src/components/EditableKeyValueCard.tsx</code>
+            and <code>src/components/ui/key-value-editor.tsx</code>.
+          </p>
+          <div class="specimen">
+            <div class="kv-rows">
+              <div class="kv-row"><span class="k">Team</span><span class="v">Conversions</span></div>
+              <div class="kv-row"><span class="k">Slug</span><span class="v" style="font-family:var(--font-mono); font-size:12.5px;">account</span></div>
+              <div class="kv-row"><span class="k">Deployment Type</span><span class="v">GitHub Actions</span></div>
+              <div class="kv-row"><span class="k">Lines Of Code</span><span class="v" style="font-family:var(--font-mono); font-size:12.5px;">9,353</span></div>
+              <div class="kv-row"><span class="k">SonarQube</span><span class="v" style="color:var(--success-fg);">Success</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="segmented">
+          <h2>Segmented &amp; filters</h2>
+          <p class="lede">
+            Segmented controls for mutually-exclusive views. Filter pills for
+            additive narrowing. Never mix them in the same row.
+          </p>
+          <h3>Segmented</h3>
+          <div class="specimen">
+            <div class="segmented">
+              <button class="is-active">Grid</button>
+              <button>List</button>
+              <button>Graph</button>
+            </div>
+          </div>
+          <h3>Filter pills</h3>
+          <div class="specimen" style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="filter-pill is-active">All <span class="count">142</span></button>
+            <button class="filter-pill"><span class="chip-dot" style="background:var(--info-dot);"></span>API <span class="count">58</span></button>
+            <button class="filter-pill"><span class="chip-dot" style="background:var(--accent-dot);"></span>Consumer <span class="count">24</span></button>
+            <button class="filter-pill"><span class="chip-dot" style="background:var(--success-dot);"></span>Frontend <span class="count">31</span></button>
+          </div>
+        </section>
+
+        <section id="colorpicker">
+          <h2>Color picker</h2>
+          <p class="lede">
+            Used anywhere a user labels an object with a color — Environments,
+            Teams, Blueprints, Project Types, anything tagged. Renders the
+            8-swatch label palette as the primary path, custom hex as an escape
+            hatch, and a live preview rendered at the three sizes the chip
+            appears across the product. Implementation:
+            <code>src/components/ui/color-picker.tsx</code>.
+          </p>
+
+          <div class="specimen">
+            <div class="cp-wrap">
+              <div class="cp-sw-row">
+                <div class="cp-sw" style="background:#C86B5E;"></div>
+                <div class="cp-sw" style="background:#D98847;"></div>
+                <div class="cp-sw sel" style="background:#C9A227;"></div>
+                <div class="cp-sw" style="background:#6B9A3F;"></div>
+                <div class="cp-sw" style="background:#5A89C9;"></div>
+                <div class="cp-sw" style="background:#8C82D4;"></div>
+                <div class="cp-sw" style="background:#C96B97;"></div>
+                <div class="cp-sw" style="background:#7A7873;"></div>
+              </div>
+              <div class="cp-names">
+                <span>Clay</span><span>Ember</span><span>Honey</span><span>Moss</span>
+                <span>Dusk</span><span>Lilac</span><span>Rose</span><span>Stone</span>
+              </div>
+              <div class="cp-or">or custom hex</div>
+              <div class="cp-hex">
+                <div class="cp-pip"></div>
+                <input type="text" value="#C9A227" readonly />
+                <span class="stat">Valid</span>
+              </div>
+            </div>
+          </div>
+
+          <h3>API</h3>
+          <pre class="code"><span class="k">&lt;ColorPicker</span>
+  value=<span class="v">{labelColor}</span>                  <span class="k">// controlled hex, "" when unset</span>
+  onChange=<span class="v">{setLabelColor}</span>            <span class="k">// fires on swatch / hex / native picker</span>
+  objectType=<span class="v">"environment"</span>           <span class="k">// "environment" | "project type" | ...</span>
+  labelValue=<span class="v">{name}</span>                   <span class="k">// name used in preview chips</span>
+<span class="k">/&gt;</span></pre>
+
+          <h3>Anatomy</h3>
+          <ul>
+            <li><b>Swatch grid</b> · <code>role="radiogroup"</code>, 8 radio buttons on one row. Primary path. Selected swatch shows dark border + white check.</li>
+            <li><b>Name row</b> · shared vocabulary — users and docs refer to labels by name ("Moss"), not hex.</li>
+            <li><b>Divider</b> · <em>or custom hex</em> marks the escape hatch as secondary.</li>
+            <li><b>Hex input</b> · native color-picker pip on the left (OS eyedropper), editable hex, contrast status on the right.</li>
+            <li><b>Preview</b> · rendered inside the picker using <code>labelValue</code> at three sizes (22px chip, 26px chip, dot+text).</li>
+          </ul>
+
+          <h3>Rules</h3>
+          <ul>
+            <li>Contrast status flips to "Low contrast" (warning) when chip bg/fg fails 3:1. Does not block save — the user is the tenant admin and may have reasons.</li>
+            <li>Keyboard: <code>ArrowLeft/Right/Up/Down</code> cycle focus, <code>Space</code>/<code>Enter</code> select, <code>Tab</code> jumps to the hex field.</li>
+            <li><code>tabindex</code> is roving (only the selected swatch is in the tab order).</li>
+            <li>The label/name text in the preview mirrors the adjacent <em>Name</em> field in the form; the picker does not fabricate it.</li>
+          </ul>
+        </section>
+
+        <section id="tokens">
+          <h2>Token reference</h2>
+          <p class="lede">
+            All surfaces, ink, and semantic colors are defined as CSS custom
+            properties in <code>src/index.css</code> and mirrored into Tailwind
+            utilities via <code>tailwind.config.js</code>.
+          </p>
+          <pre class="code"><span class="k">/* Surfaces */</span>
+--color-background-primary      <span class="v">→ bg-primary    · cards, panels</span>
+--color-background-secondary    <span class="v">→ bg-secondary  · secondary surface</span>
+--color-background-tertiary     <span class="v">→ bg-tertiary   · page canvas / sunken</span>
+
+<span class="k">/* Ink */</span>
+--color-text-primary            <span class="v">→ text-primary   · titles, body</span>
+--color-text-secondary          <span class="v">→ text-secondary · descriptions</span>
+--color-text-tertiary           <span class="v">→ text-tertiary  · meta</span>
+
+<span class="k">/* Borders */</span>
+--color-border-tertiary         <span class="v">→ border-tertiary · default divider</span>
+--color-border-secondary        <span class="v">→ border-secondary</span>
+--color-border-primary          <span class="v">→ border-primary · hover / active</span>
+
+<span class="k">/* Brand / action */</span>
+--color-action-bg               <span class="v">→ bg-action   · primary CTA (#b8860b / #fbce39)</span>
+--color-action-bg-hover         <span class="v">→ bg-action-hover</span>
+--color-action-fg               <span class="v">→ text-action-foreground</span>
+
+<span class="k">/* Semantic triples — bg / fg / border */</span>
+--color-background-{info,success,warning,danger}
+--color-text-{info,success,warning,danger}
+--color-border-{info,success,warning,danger}
+<span class="k">// Utilities: bg-info / text-info / border-info  (etc)</span>
+<span class="k">// Ring utilities: ring-info / ring-success / ...</span>
+
+<span class="k">/* Shadcn compatibility (HSL triplets) */</span>
+--background / --foreground
+--primary / --primary-foreground
+--secondary / --muted / --accent / --destructive / --card / --popover
+--border / --input / --ring</pre>
+
+          <p>
+            Chart and status palettes (task status, link type, avatar fallback)
+            are defined as hardcoded Tailwind color objects inside
+            <code>tailwind.config.js</code> rather than CSS variables because
+            they are not theme-reactive.
+          </p>
+        </section>
+
+        <section id="codemap">
+          <h2>Codebase map</h2>
+          <p class="lede">
+            When implementing a feature that touches the design system, these
+            are the files to read first.
+          </p>
+          <div class="specimen">
+            <table>
+              <thead><tr><th>Path</th><th>What lives there</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">src/index.css</td><td>All CSS custom properties; <code>:root</code> (light) + <code>.dark</code> overrides.</td></tr>
+                <tr><td class="mono">tailwind.config.js</td><td>Utility mappings (<code>bg-*</code>, <code>text-*</code>, <code>border-*</code>), typography scale, spacing tokens, status color objects.</td></tr>
+                <tr><td class="mono">index.html</td><td>Pre-React bootstrap that applies the saved theme class before first paint.</td></tr>
+                <tr><td class="mono">src/contexts/ThemeContext.tsx</td><td>Theme provider + <code>useTheme()</code> hook. Uses <code>useLayoutEffect</code> to keep the class in sync.</td></tr>
+                <tr><td class="mono">src/components/ui/</td><td>Shadcn-based primitives: <code>button</code>, <code>input</code>, <code>card</code>, <code>dialog</code>, <code>tooltip</code>, <code>admin-table</code>, <code>environment-badge</code>, <code>color-picker</code>, <code>key-value-editor</code>, <code>icon-picker</code>, …</td></tr>
+                <tr><td class="mono">src/components/ui/environment-badge.tsx</td><td>Renders the Testing/Staging/Production chip from a stored <code>label_color</code> hex (20% alpha bg, 40% alpha border, raw hex fg).</td></tr>
+                <tr><td class="mono">src/components/ui/color-picker.tsx</td><td>The 8-swatch picker; takes <code>value</code>, <code>onChange</code>, <code>objectType</code>, <code>labelValue</code>.</td></tr>
+                <tr><td class="mono">src/components/admin/environments/EnvironmentForm.tsx</td><td>Canonical consumer of <code>ColorPicker</code> (passes <code>objectType="environment"</code> and <code>labelValue={name}</code>).</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>When to reach for which token</h3>
+          <ul>
+            <li><b>Prefer semantic utilities.</b> <code>text-danger</code>, <code>bg-success</code>, <code>border-info</code> — never <code>text-red-500</code>.</li>
+            <li><b>Prefer named spacing.</b> <code>px-page-x</code>, <code>py-card-y</code> over raw Tailwind <code>px-5</code> when the context is a known surface.</li>
+            <li><b>Prefer <code>rounded-{sm,md,lg}</code></b> over raw pixel values — the mapping is defined once.</li>
+            <li><b>Prefer the theme context.</b> Read <code>isDarkMode</code> from <code>useTheme()</code> instead of inspecting <code>document.documentElement.classList</code>.</li>
+            <li><b>Never hardcode a hex inside a component.</b> Add it to <code>src/index.css</code> (or <code>tailwind.config.js</code> for status/chart palettes) and expose a utility.</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">☾</button>
+
+    <script>
+      // Label palette table — rendered from a single source of truth
+      const LABELS = [
+        { name: 'Clay', hex: '#C86B5E', use: 'Testing (default)' },
+        { name: 'Ember', hex: '#D98847', use: '—' },
+        { name: 'Honey', hex: '#C9A227', use: 'Staging (default)' },
+        { name: 'Moss', hex: '#6B9A3F', use: '—' },
+        { name: 'Dusk', hex: '#5A89C9', use: 'Production (default)' },
+        { name: 'Lilac', hex: '#8C82D4', use: '—' },
+        { name: 'Rose', hex: '#C96B97', use: '—' },
+        { name: 'Stone', hex: '#7A7873', use: '—' },
+      ];
+
+      function hexAlpha(hex, a) {
+        const n = parseInt(hex.slice(1), 16);
+        const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+      }
+      function darken(hex, amt) {
+        const n = parseInt(hex.slice(1), 16);
+        const r = Math.round(((n >> 16) & 255) * (1 - amt));
+        const g = Math.round(((n >> 8) & 255) * (1 - amt));
+        const b = Math.round((n & 255) * (1 - amt));
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+      }
+      function lighten(hex, amt) {
+        const n = parseInt(hex.slice(1), 16);
+        const r = Math.round(((n >> 16) & 255) + (255 - ((n >> 16) & 255)) * amt);
+        const g = Math.round(((n >> 8) & 255) + (255 - ((n >> 8) & 255)) * amt);
+        const b = Math.round((n & 255) + (255 - (n & 255)) * amt);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+      }
+
+      function renderLabelTable() {
+        const tbody = document.querySelector('#labelTable tbody');
+        const dark = document.documentElement.classList.contains('dark');
+        tbody.innerHTML = LABELS.map(s => {
+          const bg = hexAlpha(s.hex, 0.2);
+          const fg = dark ? lighten(s.hex, 0.3) : darken(s.hex, 0.35);
+          return '<tr>' +
+            '<td><span style="display:inline-block; width:16px; height:16px; border-radius:4px; background:' + s.hex + '; vertical-align:middle; margin-right:10px; border:1px solid var(--border-subtle);"></span>' +
+              '<span style="font-weight:500;">' + s.name + '</span></td>' +
+            '<td class="mono">' + s.hex.toUpperCase() + '</td>' +
+            '<td>' + s.use + '</td>' +
+            '<td><span style="display:inline-flex; align-items:center; height:22px; padding:0 8px; font-size:11.5px; font-weight:500; border-radius:5px; background:' + bg + '; color:' + fg + ';">Example</span></td>' +
+          '</tr>';
+        }).join('');
+      }
+
+      // Match the app contract: stored preference wins, otherwise follow the
+      // OS preference. Apply .dark to <html> (not <body>) before the first
+      // renderLabelTable() call so chip foregrounds are derived with the
+      // correct mode on initial paint.
+      const root = document.documentElement;
+      const stored = localStorage.getItem('imbi-theme');
+      const hasExplicit = stored === 'dark' || stored === 'light';
+      const media = window.matchMedia('(prefers-color-scheme: dark)');
+      const initialTheme = hasExplicit
+        ? stored
+        : media.matches
+          ? 'dark'
+          : 'light';
+      root.classList.toggle('dark', initialTheme === 'dark');
+      document.getElementById('themeToggle').textContent =
+        root.classList.contains('dark') ? '☀' : '☾';
+
+      renderLabelTable();
+
+      document.getElementById('themeToggle').addEventListener('click', () => {
+        root.classList.toggle('dark');
+        const isDark = root.classList.contains('dark');
+        localStorage.setItem('imbi-theme', isDark ? 'dark' : 'light');
+        document.getElementById('themeToggle').textContent = isDark ? '☀' : '☾';
+        renderLabelTable();
+      });
+
+      if (!hasExplicit) {
+        media.addEventListener('change', (e) => {
+          // Only follow OS when user hasn't made an explicit choice since load.
+          if (localStorage.getItem('imbi-theme')) return;
+          root.classList.toggle('dark', e.matches);
+          document.getElementById('themeToggle').textContent = e.matches ? '☀' : '☾';
+          renderLabelTable();
+        });
+      }
+    </script>
+  </body>
+</html>
