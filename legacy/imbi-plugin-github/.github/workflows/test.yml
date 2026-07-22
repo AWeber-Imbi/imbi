@@ -1,0 +1,54 @@
+name: Testing
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+    tags-ignore: [ "*" ]
+
+jobs:
+  lint:
+    name: "Static Analysis"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Install just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.47.1'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Run linters
+        run: just lint
+
+  test:
+    name: "Automated Tests"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ "3.14" ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Install just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: '1.47.1'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "${{ matrix.python }}"
+          enable-cache: true
+      - name: Test with python ${{ matrix.python }}
+        run: just test
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./build/coverage.xml
+          flags: unittests
