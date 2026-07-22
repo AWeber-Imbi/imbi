@@ -1,0 +1,2020 @@
+import hashlib
+import hmac
+import json
+import typing
+import unittest.mock
+
+import celpy
+import fastapi
+import httpx
+import nanoid
+import pydantic
+from cryptography import fernet
+from imbi_common import clickhouse, graph
+from imbi_common.auth.encryption import TokenEncryption
+from imbi_common.graph import (
+    _inject_graph,  # pyright: ignore[reportPrivateUsage]
+)
+from imbi_common.plugins import base as plugin_base
+from imbi_common.plugins import registry as plugin_registry
+
+import imbi_gateway.app
+from imbi_gateway import actions, notifications
+from tests import helpers
+
+if typing.TYPE_CHECKING:
+    from collections import abc
+
+_TOKEN = 'test-token'  # noqa: S105
+
+#: Captures ``run_action`` invocations across tests.
+ACTION_CALLS: list[dict[str, object]] = []
+
+
+async def stub_action(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: 'StubActionConfig',
+    event: object,
+) -> None:
+    ACTION_CALLS.append(
+        {
+            'ctx': ctx,
+            'credentials': credentials,
+            'external_identifier': external_identifier,
+            'action_config': action_config,
+            'event': event,
+        }
+    )
+
+
+async def raising_action(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: 'StubActionConfig',
+    event: object,
+) -> None:
+    del ctx, credentials, external_identifier, action_config, event
+    raise RuntimeError('test error')
+
+
+class StubActionConfig(pydantic.BaseModel):
+    label: str = 'default'
+
+
+def _descriptor(name: str, callable_path: str) -> plugin_base.ActionDescriptor:
+    return plugin_base.ActionDescriptor(
+        name=name,
+        label=name,
+        callable=typing.cast('typing.Any', callable_path),
+        config_model=typing.cast(
+            'typing.Any', 'tests.test_notifications:StubActionConfig'
+        ),
+    )
+
+
+class StubWebhookActions(plugin_base.WebhookActionsCapability):
+    """webhook-actions catalog for the no-credentials stub plugin."""
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return [
+            _descriptor('do_thing', 'tests.test_notifications:stub_action'),
+            _descriptor('boom', 'tests.test_notifications:raising_action'),
+        ]
+
+
+class StubCredsWebhookActions(plugin_base.WebhookActionsCapability):
+    """webhook-actions catalog for the credential-requiring stub plugin."""
+
+    @classmethod
+    def actions(cls) -> list[plugin_base.ActionDescriptor]:
+        return [
+            _descriptor('do_thing', 'tests.test_notifications:stub_action')
+        ]
+
+
+class StubNoCredsPlugin(plugin_base.Plugin):
+    """Stub registered for tests that need a no-credentials plugin."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-nocreds',
+        name='Stub (no credentials)',
+        auth_type='none',
+        credentials=[],
+        capabilities=[
+            plugin_base.Capability(
+                kind='webhook-actions',
+                label='Webhook actions',
+                project_scoped=False,
+                handler=StubWebhookActions,
+            )
+        ],
+    )
+
+
+class StubWithCredsPlugin(plugin_base.Plugin):
+    """Stub registered for tests that exercise credential resolution."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-creds',
+        name='Stub (with credentials)',
+        credentials=[
+            plugin_base.CredentialField(name='api_token', label='API Token')
+        ],
+        capabilities=[
+            plugin_base.Capability(
+                kind='webhook-actions',
+                label='Webhook actions',
+                project_scoped=False,
+                handler=StubCredsWebhookActions,
+            )
+        ],
+    )
+
+
+class _StubIdentity(plugin_base.IdentityCapability):
+    """Minimal identity handler; only exists so a plugin can declare a
+    non-webhook-actions capability."""
+
+    async def authorization_request(
+        self,
+        ctx: plugin_base.PluginContext,
+        credentials: dict[str, str],
+        redirect_uri: str,
+        scopes: list[str] | None = None,
+    ) -> plugin_base.AuthorizationRequest:
+        del ctx, credentials, redirect_uri, scopes
+        raise NotImplementedError
+
+    async def exchange_code(
+        self,
+        ctx: plugin_base.PluginContext,
+        credentials: dict[str, str],
+        code: str,
+        redirect_uri: str,
+        code_verifier: str | None = None,
+    ) -> tuple[plugin_base.IdentityProfile, plugin_base.IdentityCredentials]:
+        del ctx, credentials, code, redirect_uri, code_verifier
+        raise NotImplementedError
+
+    async def refresh(
+        self,
+        ctx: plugin_base.PluginContext,
+        credentials: dict[str, str],
+        refresh_token: str,
+    ) -> plugin_base.IdentityCredentials:
+        del ctx, credentials, refresh_token
+        raise NotImplementedError
+
+
+class StubIdentityOnlyPlugin(plugin_base.Plugin):
+    """Stub with only an identity capability (no webhook-actions)."""
+
+    manifest = plugin_base.PluginManifest(
+        slug='stub-identity-only',
+        name='Stub (identity only)',
+        auth_type='oauth2',
+        capabilities=[
+            plugin_base.Capability(
+                kind='identity',
+                label='Identity',
+                project_scoped=False,
+                default_enabled=False,
+                handler=_StubIdentity,
+            )
+        ],
+    )
+
+
+def _install_stub_plugins() -> None:
+    """Pre-populate the registry with stub plugins used across tests."""
+    _registry: dict[str, plugin_registry.RegistryEntry] = (
+        plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
+    )
+    for cls in (
+        StubNoCredsPlugin,
+        StubWithCredsPlugin,
+        StubIdentityOnlyPlugin,
+    ):
+        _registry[cls.manifest.slug] = plugin_registry.RegistryEntry(
+            plugin_cls=cls,
+            manifest=cls.manifest,
+            package_name='tests',
+            package_version='0.0.0',
+        )
+
+
+def _uninstall_stub_plugins() -> None:
+    _registry: dict[str, plugin_registry.RegistryEntry] = (
+        plugin_registry._registry  # pyright: ignore[reportPrivateUsage]
+    )
+    for slug in ('stub-nocreds', 'stub-creds', 'stub-identity-only'):
+        _registry.pop(slug, None)
+
+
+#: Default per-capability state for a webhook-enabled Integration.
+_WEBHOOK_ENABLED: dict[str, typing.Any] = {
+    'webhook-actions': {'enabled': True}
+}
+
+
+class ProcessNotificationTests(helpers.TestCase):
+    async def asyncSetUp(self) -> None:
+        ACTION_CALLS.clear()
+
+        self.org_id = nanoid.generate()
+        self.org_slug = f'org-{self.org_id[:8]}'
+        self.webhook_id = nanoid.generate()
+        self.integration_slug = f'intg-{nanoid.generate()[:8]}'
+        self.proj_id = nanoid.generate()
+        self.ext_id = f'ext-{nanoid.generate()[:8]}'
+        self.rule_ids: list[str] = []
+        self.extra_project_ids: list[str] = []
+
+        self.g = graph.Graph()
+        await self.g.open()
+
+        # create_app() calls plugin_registry.load_plugins() which wipes
+        # the registry, so the stub plugins must be installed *after*
+        # the app has been built.
+        self.app = imbi_gateway.app.create_app()
+        _install_stub_plugins()
+
+        async def _override_graph() -> abc.AsyncIterator[graph.Graph]:
+            yield self.g
+
+        self.app.dependency_overrides[_inject_graph] = _override_graph
+
+        ts = '2024-01-01T00:00:00+00:00'
+
+        await self.g.execute(
+            'CREATE (n:Organization {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': self.org_id,
+                'slug': self.org_slug,
+                'name': 'Test Org',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'CREATE (n:Webhook {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': self.webhook_id,
+                'slug': f'wh-{self.webhook_id[:8]}',
+                'name': 'Test Webhook',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}}), (o:Organization {{id: {oid}}})'
+            ' CREATE (w)-[:BELONGS_TO]->(o) RETURN w',
+            {'wid': self.webhook_id, 'oid': self.org_id},
+            ['w'],
+        )
+        await self.g.execute(
+            'CREATE (n:Integration {{slug: {slug}, name: {name},'
+            ' plugin: {plugin}, capabilities: {caps},'
+            ' created_at: {ts}}}) RETURN n',
+            {
+                'slug': self.integration_slug,
+                'name': 'Test Integration',
+                'plugin': 'stub-nocreds',
+                'caps': _WEBHOOK_ENABLED,
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (intg:Integration {{slug: {islug}}}),'
+            ' (o:Organization {{id: {oid}}})'
+            ' CREATE (intg)-[:BELONGS_TO]->(o) RETURN intg',
+            {'islug': self.integration_slug, 'oid': self.org_id},
+            ['intg'],
+        )
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}}),'
+            ' (intg:Integration {{slug: {islug}}})'
+            ' CREATE (w)-[:IMPLEMENTED_BY'
+            ' {{identifier_selector: {sel}}}]->(intg)'
+            ' RETURN w',
+            {
+                'wid': self.webhook_id,
+                'islug': self.integration_slug,
+                'sel': '/repo/id',
+            },
+            ['w'],
+        )
+        await self.g.execute(
+            'CREATE (n:Project {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': self.proj_id,
+                'slug': f'proj-{self.proj_id[:8]}',
+                'name': 'Test Project',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (p:Project {{id: {pid}}}),'
+            ' (intg:Integration {{slug: {islug}}})'
+            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(intg)'
+            ' RETURN p',
+            {
+                'pid': self.proj_id,
+                'islug': self.integration_slug,
+                'ext_id': self.ext_id,
+            },
+            ['p'],
+        )
+
+    async def asyncTearDown(self) -> None:
+        for rule_id in self.rule_ids:
+            await self.g.execute(
+                'MATCH (n:WebhookRule {{id: {id}}})'
+                ' DETACH DELETE n RETURN 1 AS r',
+                {'id': rule_id},
+                ['r'],
+            )
+        for project_id in self.extra_project_ids:
+            await self.g.execute(
+                'MATCH (n:Project {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
+                {'id': project_id},
+                ['r'],
+            )
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' DETACH DELETE n RETURN 1 AS r',
+            {'slug': self.integration_slug},
+            ['r'],
+        )
+        for label, node_id in [
+            ('Project', self.proj_id),
+            ('Webhook', self.webhook_id),
+            ('Organization', self.org_id),
+        ]:
+            await self.g.execute(
+                f'MATCH (n:{label} {{{{id: {{id}}}}}})'
+                ' DETACH DELETE n RETURN 1 AS r',
+                {'id': node_id},
+                ['r'],
+            )
+        await self.g.close()
+        _uninstall_stub_plugins()
+
+    async def _add_rule(
+        self,
+        *,
+        handler: str = 'stub-nocreds#do_thing',
+        filter_expression: str = 'true',
+        ordinal: int = 1,
+        handler_config: str = '{}',
+    ) -> str:
+        rule_id = nanoid.generate()
+        self.rule_ids.append(rule_id)
+        await self.g.execute(
+            'CREATE (r:WebhookRule {{id: {id}, ordinal: {ord},'
+            ' handler: {handler}, handler_config: {cfg},'
+            ' filter_expression: {expr}}}) RETURN r',
+            {
+                'id': rule_id,
+                'ord': ordinal,
+                'handler': handler,
+                'cfg': handler_config,
+                'expr': filter_expression,
+            },
+            ['r'],
+        )
+        await self.g.execute(
+            'MATCH (r:WebhookRule {{id: {rid}}}),'
+            ' (w:Webhook {{id: {wid}}})'
+            ' CREATE (r)-[:ACTIONS]->(w) RETURN r',
+            {'rid': rule_id, 'wid': self.webhook_id},
+            ['r'],
+        )
+        return rule_id
+
+    async def _set_integration_plugin(self, plugin: str) -> None:
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.plugin = {plugin} RETURN n',
+            {'slug': self.integration_slug, 'plugin': plugin},
+            ['n'],
+        )
+
+    async def _set_integration_capabilities(
+        self, capabilities: dict[str, typing.Any]
+    ) -> None:
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.capabilities = {caps} RETURN n',
+            {'slug': self.integration_slug, 'caps': capabilities},
+            ['n'],
+        )
+
+    async def _set_integration_options(
+        self, options: dict[str, typing.Any]
+    ) -> None:
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.options = {opts} RETURN n',
+            {'slug': self.integration_slug, 'opts': options},
+            ['n'],
+        )
+
+    async def _set_integration_credentials(
+        self, encrypted_credentials: dict[str, str]
+    ) -> None:
+        await self.g.execute(
+            'MATCH (n:Integration {{slug: {slug}}})'
+            ' SET n.encrypted_credentials = {creds} RETURN n',
+            {'slug': self.integration_slug, 'creds': encrypted_credentials},
+            ['n'],
+        )
+
+    async def _post(
+        self,
+        webhook_id: str,
+        body: object,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url='http://test'
+        ) as client:
+            return await client.post(
+                f'/notifications/{webhook_id}', json=body, headers=headers
+            )
+
+    async def _create_extra_project(self) -> str:
+        project_id = nanoid.generate()
+        self.extra_project_ids.append(project_id)
+        ts = '2024-01-01T00:00:00+00:00'
+        await self.g.execute(
+            'CREATE (n:Project {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': project_id,
+                'slug': f'proj-{project_id[:8]}',
+                'name': 'Second Project',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (p:Project {{id: {pid}}}),'
+            ' (intg:Integration {{slug: {islug}}})'
+            ' CREATE (p)-[:EXISTS_IN {{identifier: {ext_id}}}]->(intg)'
+            ' RETURN p',
+            {
+                'pid': project_id,
+                'islug': self.integration_slug,
+                'ext_id': self.ext_id,
+            },
+            ['p'],
+        )
+        return project_id
+
+    async def test_no_webhook_found(self) -> None:
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='WARNING'
+        ) as cm:
+            response = await self._post(nanoid.generate(), {})
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(any('No records found' in line for line in cm.output))
+
+    async def test_no_rules_empty_collect(self) -> None:
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+
+    async def test_no_integration_global_webhook_not_implemented(self) -> None:
+        no_intg_webhook_id = nanoid.generate()
+        ts = '2024-01-01T00:00:00+00:00'
+        await self.g.execute(
+            'CREATE (n:Webhook {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': no_intg_webhook_id,
+                'slug': f'wh-{no_intg_webhook_id[:8]}',
+                'name': 'No-Integration Webhook',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}}),'
+            ' (o:Organization {{id: {oid}}})'
+            ' CREATE (w)-[:BELONGS_TO]->(o) RETURN w',
+            {'wid': no_intg_webhook_id, 'oid': self.org_id},
+            ['w'],
+        )
+        try:
+            with self.assertLogs(
+                'imbi_gateway.notifications', level='WARNING'
+            ) as cm:
+                response = await self._post(no_intg_webhook_id, {})
+            self.assertEqual(204, response.status_code)
+            self.assertEqual([], ACTION_CALLS)
+            self.assertTrue(
+                any('Global webhooks' in line for line in cm.output)
+            )
+        finally:
+            await self.g.execute(
+                'MATCH (n:Webhook {{id: {id}}}) DETACH DELETE n RETURN 1 AS r',
+                {'id': no_intg_webhook_id},
+                ['r'],
+            )
+
+    async def test_all_conditions_false_no_handler_called(self) -> None:
+        await self._add_rule(filter_expression='false')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='DEBUG'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(any('no filter matches' in line for line in cm.output))
+
+    async def test_handler_called_when_condition_matches(self) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        call = ACTION_CALLS[0]
+        ctx = typing.cast('plugin_base.PluginContext', call['ctx'])
+        self.assertEqual(self.org_slug, ctx.org_slug)
+        self.assertEqual(self.proj_id, ctx.project_id)
+        self.assertEqual(f'proj-{self.proj_id[:8]}', ctx.project_slug)
+        self.assertEqual(self.integration_slug, ctx.integration_slug)
+        event = typing.cast('dict[str, typing.Any]', call['event'])
+        self.assertEqual(body, event['payload'])
+        self.assertEqual({}, call['credentials'])
+        self.assertEqual(self.ext_id, call['external_identifier'])
+        self.assertIsNone(ctx.actor_user_id)
+
+    async def test_webhook_actions_disabled_skips_dispatch(self) -> None:
+        await self._set_integration_capabilities(
+            {'webhook-actions': {'enabled': False}}
+        )
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ) as mock_insert,
+            self.assertLogs('imbi_gateway.notifications', level='DEBUG') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        # The delivery is still recorded (phase-1) even though no handler
+        # runs, so PagerDuty-style event capture keeps working.
+        mock_insert.assert_awaited_once()
+        self.assertTrue(
+            any(
+                'webhook-actions capability disabled' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_filter_matches_on_request_header(self) -> None:
+        await self._add_rule(
+            filter_expression='metadata.headers["x-github-event"] == "push"'
+        )
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(
+            self.webhook_id, body, headers={'X-GitHub-Event': 'push'}
+        )
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
+    async def test_filter_skips_on_non_matching_header(self) -> None:
+        await self._add_rule(
+            filter_expression='metadata.headers["x-github-event"] == "push"'
+        )
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(
+            self.webhook_id, body, headers={'X-GitHub-Event': 'deployment'}
+        )
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+
+    async def _set_edge_secret(self, secret: str) -> None:
+        """Encrypt ``secret`` onto the project's EXISTS_IN edge."""
+        enc = TokenEncryption.get_instance().encrypt(secret)
+        await self.g.execute(
+            'MATCH (:Project {{id: {pid}}})'
+            '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+            ' SET ei.webhook_secret_enc = {enc} RETURN 1 AS r',
+            {'pid': self.proj_id, 'ext_id': self.ext_id, 'enc': enc},
+            ['r'],
+        )
+
+    async def _set_project_edge_secret(
+        self, project_id: str, secret: str
+    ) -> None:
+        """Encrypt ``secret`` onto a specific project's EXISTS_IN edge."""
+        enc = TokenEncryption.get_instance().encrypt(secret)
+        await self.g.execute(
+            'MATCH (:Project {{id: {pid}}})'
+            '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+            ' SET ei.webhook_secret_enc = {enc} RETURN 1 AS r',
+            {'pid': project_id, 'ext_id': self.ext_id, 'enc': enc},
+            ['r'],
+        )
+
+    async def _post_raw(
+        self, raw: bytes, headers: dict[str, str]
+    ) -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url='http://test'
+        ) as client:
+            return await client.post(
+                f'/notifications/{self.webhook_id}',
+                content=raw,
+                headers={'content-type': 'application/json', **headers},
+            )
+
+    @staticmethod
+    def _sign(secret: str, raw: bytes) -> str:
+        digest = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        return f'v1={digest}'
+
+    async def test_valid_signature_accepted(self) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(202, resp.status_code)
+                self.assertEqual(1, len(ACTION_CALLS))
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_multi_token_signature_accepted(self) -> None:
+        # Comma-separated tokens (secret rotation) verify if any matches.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                header = f'v1=deadbeef,{self._sign("whsec", raw)}'
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': header}
+                )
+                self.assertEqual(202, resp.status_code)
+                self.assertEqual(1, len(ACTION_CALLS))
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_tampered_body_dropped(self) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                signed = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                sig = self._sign('whsec', signed)
+                # Same id (so the project still resolves) but extra bytes,
+                # so the signature no longer matches the delivered body.
+                tampered = json.dumps(
+                    {'repo': {'id': self.ext_id}, 'evil': True}
+                ).encode()
+                resp = await self._post_raw(
+                    tampered, {'X-PagerDuty-Signature': sig}
+                )
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_missing_signature_header_dropped(self) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self._set_edge_secret('whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(raw, {})
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_undecryptable_secret_dropped(self) -> None:
+        # A stored secret that isn't valid ciphertext fails closed
+        # rather than 5xx-ing or letting the delivery through.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                await self.g.execute(
+                    'MATCH (:Project {{id: {pid}}})'
+                    '      -[ei:EXISTS_IN {{identifier: {ext_id}}}]->()'
+                    ' SET ei.webhook_secret_enc = {enc} RETURN 1 AS r',
+                    {
+                        'pid': self.proj_id,
+                        'ext_id': self.ext_id,
+                        'enc': 'not-valid-ciphertext',
+                    },
+                    ['r'],
+                )
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': 'v1=whatever'}
+                )
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_multi_project_divergent_secret_fails_closed(self) -> None:
+        # When external_id fans out to two projects with different
+        # secrets, a signature valid for only one edge must not let the
+        # delivery through: every secret-bearing edge has to verify, so
+        # acceptance is not dependent on row order.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                second_id = await self._create_extra_project()
+                await self._set_edge_secret('whsec')
+                await self._set_project_edge_secret(second_id, 'other-secret')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                # Signed only for the first project's secret.
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(204, resp.status_code)
+                self.assertEqual([], ACTION_CALLS)
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_multi_project_all_secrets_verify_accepted(self) -> None:
+        # Same external_id, two projects, the request is signed with the
+        # shared secret carried by every edge: the delivery is accepted
+        # and fans out to both projects.
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                second_id = await self._create_extra_project()
+                await self._set_edge_secret('whsec')
+                await self._set_project_edge_secret(second_id, 'whsec')
+                await self._add_rule(filter_expression='true')
+                raw = json.dumps({'repo': {'id': self.ext_id}}).encode()
+                resp = await self._post_raw(
+                    raw, {'X-PagerDuty-Signature': self._sign('whsec', raw)}
+                )
+                self.assertEqual(202, resp.status_code)
+                self.assertEqual(2, len(ACTION_CALLS))
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_filter_matches_on_resolved_event_type(self) -> None:
+        await self._set_implemented_by(event_type_selector='x-github-event')
+        await self._add_rule(filter_expression='type == "push"')
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(
+            self.webhook_id, body, headers={'X-GitHub-Event': 'push'}
+        )
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
+    async def test_filter_matches_on_payload_field(self) -> None:
+        await self._add_rule(filter_expression='payload.action == "opened"')
+        body = {'repo': {'id': self.ext_id}, 'action': 'opened'}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+
+    async def test_integration_options_and_capability_options_reach_context(
+        self,
+    ) -> None:
+        await self._set_integration_options(
+            {'host': 'example.ghe.com', 'flavor': 'ghes'}
+        )
+        await self._set_integration_capabilities(
+            {'webhook-actions': {'enabled': True, 'options': {'foo': 'bar'}}}
+        )
+        await self._add_rule(handler='stub-nocreds#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual(
+            {'host': 'example.ghe.com', 'flavor': 'ghes'},
+            ctx.integration_options,
+        )
+        self.assertEqual({'foo': 'bar'}, ctx.capability_options)
+
+    async def test_handler_called_for_each_matching_project(self) -> None:
+        await self._add_rule(filter_expression='true')
+        second_proj_id = await self._create_extra_project()
+        body = {'repo': {'id': self.ext_id}}
+        response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(2, len(ACTION_CALLS))
+        project_ids = {
+            typing.cast('plugin_base.PluginContext', call['ctx']).project_id
+            for call in ACTION_CALLS
+        }
+        self.assertEqual({self.proj_id, second_proj_id}, project_ids)
+
+    async def test_project_not_found_for_external_id(self) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': 'no-such-external-id'}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='WARNING'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(any('no project found' in line for line in cm.output))
+
+    async def test_unknown_plugin_slug_logs_error_and_skips(self) -> None:
+        await self._add_rule(handler='no-such-plugin#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        # Dispatcher logs and skips the rule; events were recorded so 202.
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(any('Unknown plugin' in line for line in cm.output))
+
+    async def test_plugin_without_webhook_actions_logs_error_and_skips(
+        self,
+    ) -> None:
+        # A rule whose plugin exposes no webhook-actions capability is
+        # logged and skipped rather than dispatched.
+        await self._add_rule(handler='stub-identity-only#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any(
+                'exposes no webhook-actions capability' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_unknown_action_name_logs_error_and_skips(self) -> None:
+        await self._add_rule(handler='stub-nocreds#missing_action')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any('does not expose action' in line for line in cm.output)
+        )
+
+    async def test_invalid_handler_string_fails_rule_validation(self) -> None:
+        # A handler that doesn't match the `#` shape fails WebhookRule
+        # validation, causing the whole batch to be skipped with an error.
+        await self._add_rule(handler='does.not.exist.handler')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any('failed to deserialize rules' in line for line in cm.output)
+        )
+
+    async def test_invalid_handler_config_logs_and_skips(self) -> None:
+        await self._add_rule(handler_config='not valid json')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any('Invalid handler_config' in line for line in cm.output)
+        )
+
+    async def test_plugin_requiring_credentials_skipped_when_missing(
+        self,
+    ) -> None:
+        await self._set_integration_plugin('stub-creds')
+        await self._add_rule(handler='stub-creds#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='WARNING'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any(
+                'requires credentials' in line and 'stub-creds' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_plugin_actions_failure_logs_and_skips_rule(self) -> None:
+        # If a plugin's ``actions()`` raises (third-party code we cannot
+        # trust), the dispatcher logs and skips that rule instead of
+        # aborting delivery for every sibling rule.
+        def _boom(
+            cls: type[StubWebhookActions],
+        ) -> list[plugin_base.ActionDescriptor]:
+            del cls
+            raise RuntimeError('boom in actions()')
+
+        await self._add_rule(handler='stub-nocreds#do_thing')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                StubWebhookActions, 'actions', classmethod(_boom)
+            ),
+            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        self.assertTrue(
+            any(
+                'raised while enumerating actions' in line
+                and 'stub-nocreds' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_plugin_with_credentials_receives_decrypted_blob(
+        self,
+    ) -> None:
+        with self.override_environment(
+            IMBI_AUTH_ENCRYPTION_KEY=fernet.Fernet.generate_key().decode()
+        ):
+            TokenEncryption.reset_instance()
+            try:
+                encryptor = TokenEncryption.get_instance()
+                encrypted = encryptor.encrypt('s3cret')
+                assert encrypted is not None  # noqa: S101 - test narrowing
+                await self._set_integration_plugin('stub-creds')
+                await self._set_integration_credentials(
+                    {'api_token': encrypted}
+                )
+                await self._add_rule(handler='stub-creds#do_thing')
+                body = {'repo': {'id': self.ext_id}}
+                response = await self._post(self.webhook_id, body)
+                self.assertEqual(202, response.status_code)
+                self.assertEqual(1, len(ACTION_CALLS))
+                self.assertEqual(
+                    {'api_token': 's3cret'}, ACTION_CALLS[0]['credentials']
+                )
+            finally:
+                TokenEncryption.reset_instance()
+
+    async def test_identifier_pointer_not_in_body(self) -> None:
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, {})
+        self.assertEqual(204, response.status_code)
+        self.assertTrue(
+            any(
+                'failed to select project identifier' in line
+                for line in cm.output
+            )
+        )
+
+    async def test_webhook_in_multiple_orgs_fails(self) -> None:
+        extra_org_id = nanoid.generate()
+        ts = '2024-01-01T00:00:00+00:00'
+        await self.g.execute(
+            'CREATE (n:Organization {{id: {id}, slug: {slug},'
+            ' name: {name}, created_at: {ts}}}) RETURN n',
+            {
+                'id': extra_org_id,
+                'slug': f'extra-{extra_org_id[:8]}',
+                'name': 'Extra Org',
+                'ts': ts,
+            },
+            ['n'],
+        )
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}}),'
+            ' (o:Organization {{id: {oid}}})'
+            ' CREATE (w)-[:BELONGS_TO]->(o) RETURN w',
+            {'wid': self.webhook_id, 'oid': extra_org_id},
+            ['w'],
+        )
+        try:
+            body = {'repo': {'id': self.ext_id}}
+            response = await self._post(self.webhook_id, body)
+            self.assertEqual(500, response.status_code)
+        finally:
+            await self.g.execute(
+                'MATCH (n:Organization {{id: {id}}})'
+                ' DETACH DELETE n RETURN 1 AS r',
+                {'id': extra_org_id},
+                ['r'],
+            )
+
+    async def test_invalid_json_body_returns_unprocessable_content(
+        self,
+    ) -> None:
+        await self._add_rule(filter_expression='true')
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url='http://test'
+        ) as client:
+            response = await client.post(
+                f'/notifications/{self.webhook_id}',
+                content=b'not valid json',
+                headers={'content-type': 'application/json'},
+            )
+        self.assertEqual(422, response.status_code)
+
+    async def _set_implemented_by(
+        self,
+        *,
+        identifier_selector: str = '/repo/id',
+        user_subject_selector: str | None = None,
+        user_type_selector: str | None = None,
+        identity_plugin_slug: str | None = None,
+        event_type_selector: str | None = None,
+    ) -> None:
+        """Replace the IMPLEMENTED_BY edge with one carrying given props."""
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}})-[i:IMPLEMENTED_BY]->()'
+            ' DELETE i RETURN 1 AS r',
+            {'wid': self.webhook_id},
+            ['r'],
+        )
+        await self.g.execute(
+            'MATCH (w:Webhook {{id: {wid}}}),'
+            ' (intg:Integration {{slug: {islug}}})'
+            ' CREATE (w)-[:IMPLEMENTED_BY {{'
+            'identifier_selector: {sel},'
+            ' user_subject_selector: {uss},'
+            ' user_type_selector: {uts},'
+            ' identity_plugin_slug: {ips},'
+            ' event_type_selector: {ets}'
+            '}}]->(intg) RETURN w',
+            {
+                'wid': self.webhook_id,
+                'islug': self.integration_slug,
+                'sel': identifier_selector,
+                'uss': user_subject_selector,
+                'uts': user_type_selector,
+                'ips': identity_plugin_slug,
+                'ets': event_type_selector,
+            },
+            ['w'],
+        )
+
+    async def _enable_identity(self) -> None:
+        """Point the Integration at a plugin with an identity capability.
+
+        The real ``github`` plugin (loaded by the app) declares an
+        identity capability, so the delivery Integration becomes its own
+        identity source once the capability is enabled.
+        """
+        await self._set_integration_plugin('github')
+        await self._set_integration_capabilities(
+            {
+                'webhook-actions': {'enabled': True},
+                'identity': {'enabled': True},
+            }
+        )
+
+    async def test_user_subject_selector_resolves_user(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with(self.integration_slug, '12345')
+        self.assertEqual(1, len(ACTION_CALLS))
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual('alice@example.com', ctx.actor_user_id)
+
+    async def test_identity_edge_pin_overrides_integration(self) -> None:
+        # An explicit identity slug on the IMPLEMENTED_BY edge is trusted
+        # as-is, overriding the delivery Integration's own identity.
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            identity_plugin_slug='pinned-identity',
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with('pinned-identity', '12345')
+
+    async def test_user_subject_selector_misses_returns_none(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 99999}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value=None),
+            ),
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+
+    async def test_user_subject_selector_unresolvable_pointer(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/missing/path')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+            self.assertLogs('imbi_gateway.notifications', level='WARNING'),
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+
+    async def test_user_subject_selector_resolves_to_empty_string(
+        self,
+    ) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': ''}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+
+    async def test_bot_sender_skips_identity_lookup(self) -> None:
+        # A Bot actor (per user_type_selector) is never an Imbi user, so
+        # the /users/by-identity lookup is skipped entirely.
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            user_type_selector='/sender/type',
+        )
+        body = {
+            'repo': {'id': self.ext_id},
+            'sender': {'id': 12345, 'type': 'Bot'},
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+
+    async def test_non_bot_sender_resolves_with_type_selector(self) -> None:
+        # A non-bot type (e.g. "User") does not suppress the lookup; the
+        # subject still resolves to an Imbi user.
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            user_type_selector='/sender/type',
+        )
+        body = {
+            'repo': {'id': self.ext_id},
+            'sender': {'id': 12345, 'type': 'User'},
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with(self.integration_slug, '12345')
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertEqual('alice@example.com', ctx.actor_user_id)
+
+    async def test_unresolvable_type_selector_falls_through(self) -> None:
+        # A user_type_selector that does not resolve is treated as
+        # "not a bot", so attribution proceeds via the subject.
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            user_type_selector='/sender/type',
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_awaited_once_with(self.integration_slug, '12345')
+
+    async def test_no_identity_candidate_when_capability_disabled(
+        self,
+    ) -> None:
+        # The Integration's plugin has an identity capability but it is
+        # not enabled, so no ``/users/by-identity`` lookup is attempted.
+        await self._add_rule(filter_expression='true')
+        await self._set_integration_plugin('github')
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+        ctx = typing.cast('plugin_base.PluginContext', ACTION_CALLS[0]['ctx'])
+        self.assertIsNone(ctx.actor_user_id)
+
+    async def test_no_identity_candidate_when_plugin_lacks_capability(
+        self,
+    ) -> None:
+        # The Integration's plugin (stub-nocreds) declares no identity
+        # capability, so even a user_subject_selector yields no lookup.
+        await self._add_rule(filter_expression='true')
+        await self._set_integration_capabilities(
+            {
+                'webhook-actions': {'enabled': True},
+                'identity': {'enabled': True},
+            }
+        )
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+
+    async def test_no_identity_candidate_when_plugin_not_loaded(self) -> None:
+        # The Integration names a plugin that is not in the registry, so
+        # identity resolution is skipped (logged at debug).
+        await self._add_rule(filter_expression='true')
+        await self._set_integration_plugin('ghost-plugin')
+        await self._set_integration_capabilities(
+            {
+                'webhook-actions': {'enabled': True},
+                'identity': {'enabled': True},
+            }
+        )
+        await self._set_implemented_by(user_subject_selector='/sender/id')
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(),
+            ) as mock_lookup,
+            self.assertLogs('imbi_gateway.notifications', level='DEBUG'),
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        mock_lookup.assert_not_awaited()
+
+    async def test_handler_exception_is_caught(self) -> None:
+        await self._add_rule(handler='stub-nocreds#boom')
+        body = {'repo': {'id': self.ext_id}}
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='ERROR'
+        ) as cm:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertTrue(
+            any('Failure executing rule' in line for line in cm.output)
+        )
+
+    async def test_event_recorded_for_each_matching_project(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(event_type_selector='x-github-event')
+        second_proj_id = await self._create_extra_project()
+        body = {'repo': {'id': self.ext_id}, 'action': 'opened'}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(
+                self.webhook_id,
+                body,
+                headers={'X-GitHub-Event': 'deployment_status'},
+            )
+        self.assertEqual(202, response.status_code)
+        # phase 1 (version=0) plus phase 2 (version=1).
+        self.assertEqual(2, mock_insert.await_count)
+        phase1_call, phase2_call = mock_insert.await_args_list
+        phase1_table, phase1_events = phase1_call.args
+        phase2_table, phase2_events = phase2_call.args
+        self.assertEqual('events', phase1_table)
+        self.assertEqual('events', phase2_table)
+        self.assertEqual(2, len(phase1_events))
+        self.assertEqual(2, len(phase2_events))
+        self.assertEqual(
+            {self.proj_id, second_proj_id},
+            {ev.project_id for ev in phase1_events},
+        )
+        for ev in phase1_events:
+            self.assertEqual(0, ev.version)
+            self.assertEqual([], ev.metadata['handlers'])
+            # Top-level ``type`` is the event category — every gateway
+            # row is a webhook delivery. The resolved per-source
+            # event-type label lives in ``metadata.event_type``.
+            self.assertEqual('webhook', ev.type)
+            self.assertEqual(self.integration_slug, ev.integration)
+            self.assertEqual('deployment_status', ev.metadata['event_type'])
+            self.assertEqual(body, ev.payload)
+            self.assertEqual(self.webhook_id, ev.metadata['webhook_id'])
+            self.assertEqual(
+                'deployment_status',
+                ev.metadata['headers'].get('x-github-event'),
+            )
+        # phase 2 reuses the phase-1 ids per project and carries the
+        # handler outcomes.
+        phase1_by_pid = {ev.project_id: ev for ev in phase1_events}
+        for ev in phase2_events:
+            self.assertEqual(1, ev.version)
+            self.assertEqual(phase1_by_pid[ev.project_id].id, ev.id)
+            self.assertEqual(
+                phase1_by_pid[ev.project_id].recorded_at, ev.recorded_at
+            )
+            handlers = ev.metadata['handlers']
+            self.assertEqual(1, len(handlers))
+            self.assertEqual('stub-nocreds#do_thing', handlers[0]['handler'])
+            self.assertEqual('succeeded', handlers[0]['status'])
+            self.assertIn('duration_ms', handlers[0])
+
+    async def test_phase2_records_failed_handler_outcome(self) -> None:
+        await self._add_rule(handler='stub-nocreds#boom')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(2, mock_insert.await_count)
+        _, phase2_events = mock_insert.await_args_list[1].args
+        handlers = phase2_events[0].metadata['handlers']
+        self.assertEqual(1, len(handlers))
+        self.assertEqual('stub-nocreds#boom', handlers[0]['handler'])
+        self.assertEqual('failed', handlers[0]['status'])
+        self.assertIn('RuntimeError', handlers[0]['error'])
+        self.assertIn('test error', handlers[0]['error'])
+        self.assertIn('duration_ms', handlers[0])
+
+    async def test_phase2_records_skipped_when_handler_unresolvable(
+        self,
+    ) -> None:
+        await self._add_rule(handler='stub-nocreds#nonexistent_action')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(2, mock_insert.await_count)
+        _, phase2_events = mock_insert.await_args_list[1].args
+        handlers = phase2_events[0].metadata['handlers']
+        self.assertEqual(1, len(handlers))
+        self.assertEqual('skipped', handlers[0]['status'])
+        self.assertNotIn('duration_ms', handlers[0])
+
+    async def test_phase2_not_recorded_when_filter_does_not_match(
+        self,
+    ) -> None:
+        # filter='false' returns from process_notification before any
+        # handler runs, so phase-2 disposition recording must be
+        # skipped to avoid noisy empty inserts.
+        await self._add_rule(filter_expression='false')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        mock_insert.assert_awaited_once()
+        _, events_arg = mock_insert.await_args_list[0].args
+        self.assertEqual(0, events_arg[0].version)
+
+    async def test_phase2_insert_failure_logs_and_does_not_500(self) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        phase2_call = 2
+        call_count = 0
+
+        async def insert_side_effect(*_args: object, **_kw: object) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == phase2_call:
+                raise RuntimeError('phase-2 boom')
+
+        with (
+            unittest.mock.patch.object(
+                clickhouse,
+                'insert',
+                new=unittest.mock.AsyncMock(side_effect=insert_side_effect),
+            ),
+            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        self.assertEqual(2, call_count)
+        self.assertTrue(
+            any(
+                'Failed to record webhook event dispositions in ClickHouse'
+                in line
+                for line in cm.output
+            )
+        )
+
+    async def test_event_recorded_when_filter_does_not_match(self) -> None:
+        await self._add_rule(filter_expression='false')
+        body = {'repo': {'id': self.ext_id}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        self.assertEqual([], ACTION_CALLS)
+        mock_insert.assert_awaited_once()
+        assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
+        table_arg, events_arg = mock_insert.await_args.args
+        self.assertEqual('events', table_arg)
+        self.assertEqual(1, len(events_arg))
+        self.assertEqual(self.proj_id, events_arg[0].project_id)
+
+    async def test_no_event_when_no_project_matches(self) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': 'no-such-external-id'}}
+        with unittest.mock.patch.object(
+            clickhouse, 'insert', new=unittest.mock.AsyncMock()
+        ) as mock_insert:
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(204, response.status_code)
+        mock_insert.assert_not_awaited()
+
+    async def test_access_log_context_includes_user_id_and_event(self) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._enable_identity()
+        await self._set_implemented_by(
+            user_subject_selector='/sender/id',
+            event_type_selector='x-github-event',
+        )
+        body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ),
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ),
+            self.assertLogs('imbi_common.access', level='INFO') as cm,
+        ):
+            response = await self._post(
+                self.webhook_id,
+                body,
+                headers={'X-GitHub-Event': 'pull_request'},
+            )
+        self.assertEqual(202, response.status_code)
+        access_line = cm.records[0].getMessage()
+        self.assertIn('user_id:alice@example.com', access_line)
+        self.assertIn('event:pull_request', access_line)
+
+    async def test_access_log_context_omitted_when_no_user_or_event(
+        self,
+    ) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ),
+            self.assertLogs('imbi_common.access', level='INFO') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        access_line = cm.records[0].getMessage()
+        self.assertNotIn('user_id:', access_line)
+        self.assertNotIn('event:', access_line)
+        self.assertNotIn('(', access_line)
+
+    async def test_access_log_context_includes_only_event_when_no_user(
+        self,
+    ) -> None:
+        await self._add_rule(filter_expression='true')
+        await self._set_implemented_by(event_type_selector='x-github-event')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+            ),
+            self.assertLogs('imbi_common.access', level='INFO') as cm,
+        ):
+            response = await self._post(
+                self.webhook_id, body, headers={'X-GitHub-Event': 'ping'}
+            )
+        self.assertEqual(202, response.status_code)
+        access_line = cm.records[0].getMessage()
+        self.assertNotIn('user_id:', access_line)
+        self.assertIn('event:ping', access_line)
+
+    async def test_event_insert_failure_does_not_block_handlers(self) -> None:
+        await self._add_rule(filter_expression='true')
+        body = {'repo': {'id': self.ext_id}}
+        with (
+            unittest.mock.patch.object(
+                clickhouse,
+                'insert',
+                new=unittest.mock.AsyncMock(side_effect=RuntimeError('boom')),
+            ),
+            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+        ):
+            response = await self._post(self.webhook_id, body)
+        self.assertEqual(202, response.status_code)
+        self.assertEqual(1, len(ACTION_CALLS))
+        self.assertTrue(
+            any(
+                'Failed to record webhook events in ClickHouse' in line
+                for line in cm.output
+            )
+        )
+
+
+class WebhookRuleUnitTests(helpers.TestCase):
+    _VALID_RULE: typing.ClassVar[dict[str, object]] = {
+        'handler': 'stub-nocreds#do_thing',
+        'ordinal': 1,
+        'handler_config': '{}',
+        'filter_expression': 'true',
+    }
+
+    def test_valid_handler_exposes_slug_and_action(self) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        self.assertEqual('stub-nocreds', rule.plugin_slug)
+        self.assertEqual('do_thing', rule.action_name)
+
+    def test_handler_without_separator_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': 'no-separator'}
+            )
+
+    def test_handler_with_empty_slug_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': '#do_thing'}
+            )
+
+    def test_handler_with_empty_action_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {**self._VALID_RULE, 'handler': 'stub-nocreds#'}
+            )
+
+    def test_handler_dotted_path_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            notifications.WebhookRule.model_validate(
+                {
+                    **self._VALID_RULE,
+                    'handler': 'imbi_gateway.actions:update_project',
+                }
+            )
+
+    def test_evaluate_condition_cel_error_returns_none(self) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        with unittest.mock.patch.object(
+            celpy, 'json_to_cel', side_effect=celpy.CELEvalError('test')
+        ):
+            self.assertIsNone(rule.evaluate_condition({}))
+
+    def test_evaluate_condition_unexpected_exception_returns_none(
+        self,
+    ) -> None:
+        rule = notifications.WebhookRule.model_validate(self._VALID_RULE)
+        with unittest.mock.patch.object(
+            celpy, 'json_to_cel', side_effect=TypeError('unexpected')
+        ):
+            self.assertIsNone(rule.evaluate_condition({}))
+
+
+_set_access_log_context = (
+    notifications._set_access_log_context  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class SetAccessLogContextUnitTests(helpers.TestCase):
+    """Unit tests for the `_set_access_log_context` helper."""
+
+    def _make_request(
+        self, initial: dict[str, str] | None = None
+    ) -> fastapi.Request:
+        scope: dict[str, typing.Any] = {'type': 'http', 'state': {}}
+        if initial is not None:
+            scope['state']['imbi_common_access_log'] = initial
+        return fastapi.Request(scope)
+
+    def test_sets_both_values_when_state_is_empty(self) -> None:
+        request = self._make_request()
+        _set_access_log_context(request, user_id='alice', event='ping')
+        self.assertEqual(
+            {'user_id': 'alice', 'event': 'ping'},
+            request.state.imbi_common_access_log,
+        )
+
+    def test_merges_with_existing_context(self) -> None:
+        request = self._make_request({'request_id': 'r-1'})
+        _set_access_log_context(request, user_id='alice', event='ping')
+        self.assertEqual(
+            {'request_id': 'r-1', 'user_id': 'alice', 'event': 'ping'},
+            request.state.imbi_common_access_log,
+        )
+
+    def test_existing_key_is_overwritten(self) -> None:
+        request = self._make_request({'event': 'stale'})
+        _set_access_log_context(request, user_id=None, event='fresh')
+        self.assertEqual(
+            {'event': 'fresh'}, request.state.imbi_common_access_log
+        )
+
+    def test_no_updates_leaves_state_untouched(self) -> None:
+        request = self._make_request({'request_id': 'r-1'})
+        _set_access_log_context(request, user_id=None, event='')
+        self.assertEqual(
+            {'request_id': 'r-1'}, request.state.imbi_common_access_log
+        )
+
+    def test_skips_empty_user_and_event(self) -> None:
+        request = self._make_request()
+        _set_access_log_context(request, user_id=None, event='')
+        self.assertFalse(hasattr(request.state, 'imbi_common_access_log'))
+
+
+_resolve_event_type = (
+    notifications._resolve_event_type  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class ResolveEventTypeUnitTests(helpers.TestCase):
+    """Unit tests for the `_resolve_event_type` pure function."""
+
+    def test_none_selector_returns_empty(self) -> None:
+        self.assertEqual('', _resolve_event_type(None, {}, {}))
+
+    def test_empty_selector_returns_empty(self) -> None:
+        self.assertEqual('', _resolve_event_type('', {}, {}))
+
+    def test_json_pointer_resolves(self) -> None:
+        self.assertEqual(
+            'opened', _resolve_event_type('/action', {'action': 'opened'}, {})
+        )
+
+    def test_json_pointer_miss_logs_and_returns_empty(self) -> None:
+        with self.assertLogs(
+            'imbi_gateway.notifications', level='WARNING'
+        ) as cm:
+            result = _resolve_event_type('/missing', {'action': 'opened'}, {})
+        self.assertEqual('', result)
+        self.assertTrue(any('failed to resolve' in line for line in cm.output))
+
+    def test_json_pointer_resolves_to_none_returns_empty(self) -> None:
+        self.assertEqual(
+            '', _resolve_event_type('/action', {'action': None}, {})
+        )
+
+    def test_json_pointer_stringifies_non_string(self) -> None:
+        self.assertEqual('42', _resolve_event_type('/n', {'n': 42}, {}))
+
+    def test_header_present_uses_value(self) -> None:
+        self.assertEqual(
+            'deployment_status',
+            _resolve_event_type(
+                'x-github-event', {}, {'x-github-event': 'deployment_status'}
+            ),
+        )
+
+    def test_header_absent_returns_literal_selector(self) -> None:
+        self.assertEqual(
+            'SonarQube Notification',
+            _resolve_event_type('SonarQube Notification', {}, {}),
+        )
+
+    def test_header_empty_string_treated_as_absent(self) -> None:
+        self.assertEqual(
+            'x-github-event',
+            _resolve_event_type('x-github-event', {}, {'x-github-event': ''}),
+        )
+
+
+_safe_headers = (
+    notifications._safe_headers  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class SafeHeadersUnitTests(helpers.TestCase):
+    """Unit tests for the `_safe_headers` redaction helper."""
+
+    def test_non_sensitive_headers_pass_through(self) -> None:
+        self.assertEqual(
+            {
+                'content-type': 'application/json',
+                'x-github-event': 'pull_request',
+            },
+            _safe_headers(
+                {
+                    'content-type': 'application/json',
+                    'x-github-event': 'pull_request',
+                }
+            ),
+        )
+
+    def test_authorization_is_redacted(self) -> None:
+        self.assertEqual(
+            {'authorization': '[redacted]'},
+            _safe_headers({'authorization': 'Bearer s3cret'}),
+        )
+
+    def test_signature_headers_are_redacted(self) -> None:
+        result = _safe_headers(
+            {
+                'X-Hub-Signature-256': 'sha256=deadbeef',
+                'X-PagerDuty-Signature': 'v1=abcd',
+                'X-Sonar-Webhook-HMAC-SHA256': 'feedface',
+            }
+        )
+        self.assertEqual(
+            {
+                'X-Hub-Signature-256': '[redacted]',
+                'X-PagerDuty-Signature': '[redacted]',
+                'X-Sonar-Webhook-HMAC-SHA256': '[redacted]',
+            },
+            result,
+        )
+
+    def test_redaction_is_case_insensitive(self) -> None:
+        self.assertEqual(
+            {'AUTHORIZATION': '[redacted]', 'Cookie': '[redacted]'},
+            _safe_headers(
+                {'AUTHORIZATION': 'Bearer s3cret', 'Cookie': 'sid=xyz'}
+            ),
+        )
+
+
+_json_dict = notifications._json_dict  # pyright: ignore[reportPrivateUsage]
+
+
+class JsonDictUnitTests(helpers.TestCase):
+    """Unit tests for the `_json_dict` AGE map decoder."""
+
+    def test_dict_passes_through(self) -> None:
+        self.assertEqual({'a': 1}, _json_dict({'a': 1}))
+
+    def test_json_string_parsed(self) -> None:
+        self.assertEqual({'a': 1}, _json_dict('{"a": 1}'))
+
+    def test_malformed_json_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict('{not json'))
+
+    def test_non_object_json_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict('[1, 2]'))
+
+    def test_none_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict(None))
+
+    def test_empty_string_returns_empty(self) -> None:
+        self.assertEqual({}, _json_dict(''))
+
+
+_sanitize_utf8 = (
+    notifications._sanitize_utf8  # pyright: ignore[reportPrivateUsage]
+)
+_extract_json_body = (
+    notifications._extract_json_body  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class _FakeBodyRequest:
+    """Minimal stand-in exposing the ``body()`` coroutine."""
+
+    def __init__(self, raw: bytes) -> None:
+        self._raw = raw
+
+    async def body(self) -> bytes:
+        return self._raw
+
+
+class Utf8SanitizationTests(helpers.TestCase):
+    def test_replaces_lone_surrogate_in_string(self) -> None:
+        cleaned = typing.cast('str', _sanitize_utf8('hi \ud83d there'))
+        cleaned.encode('utf-8')  # must not raise
+        self.assertNotIn('\ud83d', cleaned)
+
+    def test_recurses_dicts_lists_and_keys(self) -> None:
+        payload = {
+            'msg': 'a\ud800b',
+            'nested': [{'k\ud801': 'v\ud802'}],
+            'count': 3,
+            'flag': True,
+            'none': None,
+        }
+        cleaned = typing.cast('dict[str, typing.Any]', _sanitize_utf8(payload))
+        json.dumps(cleaned).encode('utf-8')  # whole tree now encodable
+        self.assertEqual(3, cleaned['count'])
+        self.assertIs(True, cleaned['flag'])
+        self.assertIsNone(cleaned['none'])
+        inner_key = next(iter(cleaned['nested'][0]))
+        inner_key.encode('utf-8')
+        self.assertNotIn('\ud801', inner_key)
+
+    def test_scalars_pass_through(self) -> None:
+        self.assertEqual(42, _sanitize_utf8(42))
+        self.assertIsNone(_sanitize_utf8(None))
+
+    async def test_extract_body_accepts_non_utf8_bytes(self) -> None:
+        # cp1252 smart quote 0x92 is invalid UTF-8; lenient decode keeps
+        # the request from 422ing and the value is stored as clean UTF-8.
+        raw = (
+            json.dumps({'msg': 'X'})
+            .encode('utf-8')
+            .replace(b'X', b'hi\x92there')
+        )
+        request = typing.cast('fastapi.Request', _FakeBodyRequest(raw))
+        body = await _extract_json_body(request)
+        json.dumps(body).encode('utf-8')  # encodable
+        self.assertIsInstance(body, dict)
+
+    async def test_extract_body_invalid_json_still_422(self) -> None:
+        request = typing.cast('fastapi.Request', _FakeBodyRequest(b'not json'))
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await _extract_json_body(request)
+        self.assertEqual(422, ctx.exception.status_code)
+
+
+_make_user_resolver = (
+    notifications._make_user_resolver  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class MakeUserResolverUnitTests(helpers.TestCase):
+    """Coverage for the ``PluginContext.resolve_user_by_identity`` factory.
+
+    The factory builds the coroutine an action (e.g. commit-sync author
+    attribution) uses to map an identity subject to an Imbi user email,
+    reusing the same multi-match handling as the gateway's own
+    delivery-actor resolution.
+    """
+
+    def test_no_identity_slugs_returns_none(self) -> None:
+        self.assertIsNone(_make_user_resolver([]))
+
+    async def test_resolves_subject_to_email(self) -> None:
+        with (
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value='alice@example.com'),
+            ) as mock_lookup,
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+        ):
+            resolver = _make_user_resolver(['github-com'])
+            if resolver is None:
+                self.fail('expected a resolver, got None')
+            self.assertEqual('alice@example.com', await resolver('42'))
+        mock_lookup.assert_awaited_once_with('github-com', '42')
+
+    async def test_unmatched_subject_returns_none(self) -> None:
+        with (
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(return_value=None),
+            ),
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+        ):
+            resolver = _make_user_resolver(['github-com'])
+            if resolver is None:
+                self.fail('expected a resolver, got None')
+            self.assertIsNone(await resolver('99'))
+
+    async def test_multiple_distinct_matches_logs_and_returns_none(
+        self,
+    ) -> None:
+        with (
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'find_user_by_identity',
+                new=unittest.mock.AsyncMock(
+                    side_effect=['a@example.com', 'b@example.com']
+                ),
+            ),
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+        ):
+            resolver = _make_user_resolver(['github-com', 'ghec'])
+            if resolver is None:
+                self.fail('expected a resolver, got None')
+            with self.assertLogs(notifications.LOGGER, level='ERROR'):
+                self.assertIsNone(await resolver('1'))
