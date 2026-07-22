@@ -14,7 +14,7 @@ import logging
 
 import httpx
 
-from imbi_assistant import settings
+from imbi.assistant import settings
 
 LOGGER = logging.getLogger(__name__)
 

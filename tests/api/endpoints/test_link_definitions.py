@@ -6,10 +6,10 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
@@ -17,7 +17,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -88,7 +88,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -125,7 +125,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -144,7 +144,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -182,7 +182,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -208,7 +208,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -226,7 +226,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -243,7 +243,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'ld': True}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -257,7 +257,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -271,7 +271,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_link_definition_name(self) -> None:
         """Test patching only the link definition name."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing_ld = {
             'name': 'Repo',
@@ -306,11 +306,11 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             with mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.LinkDefinition,
             ):
                 response = self.client.patch(
@@ -337,7 +337,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
         resolution, the string would be coerced to ``HttpUrl`` and gain a
         trailing slash. This guards M11.
         """
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         bare_icon = 'https://example.com'
         existing_ld = {
@@ -365,10 +365,10 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.LinkDefinition,
             ),
         ):
@@ -385,12 +385,12 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_link_definition_not_found(self) -> None:
         """Test patching non-existent link definition returns 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             return_value=common_models.LinkDefinition,
         ):
             response = self.client.patch(
@@ -408,7 +408,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_link_definition_slug_conflict(self) -> None:
         """Renaming slug to a conflicting value returns 409."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         self.mock_db.execute.side_effect = [
             [
@@ -422,10 +422,10 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.LinkDefinition,
             ),
         ):
@@ -438,7 +438,7 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_link_definition_concurrent_delete(self) -> None:
         """Update returning no rows yields 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         self.mock_db.execute.side_effect = [
             [
@@ -452,10 +452,10 @@ class LinkDefinitionEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.LinkDefinition,
             ),
         ):

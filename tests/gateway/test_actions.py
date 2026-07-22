@@ -6,17 +6,17 @@ import celpy.celparser
 import httpx
 import jsonpointer
 import pydantic
-from imbi_common.plugins import base as plugin_base
 
-from imbi_gateway import actions
-from tests import helpers
+from imbi.common.plugins import base as plugin_base
+from imbi.gateway import actions
+from tests.gateway import helpers
 
-_TOKEN = 'test-token'  # noqa: S105
+_TOKEN = 'test-token'
 
 
 def _event(
     body: object,
-    **overrides: typing.Any,  # noqa: ANN401 — passthrough event overrides
+    **overrides: typing.Any,
 ) -> dict[str, typing.Any]:
     """Wrap a webhook body in the event context handlers now receive."""
     return {
@@ -171,7 +171,7 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(422, json={'detail': 'invalid'}),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             async with actions.ImbiClient() as client:
                 response = await client.patch_project('org', 'proj', [])
@@ -192,7 +192,7 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
                     500, content=b'Internal Server Error'
                 ),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             async with actions.ImbiClient() as client:
                 response = await client.patch_project('org', 'proj', [])
@@ -264,7 +264,7 @@ def _deployment_event_config(
 
 def _patch_list_releases(
     releases: list[dict[str, object]] | None = None,
-) -> typing.Any:  # noqa: ANN401 — unittest.mock._patch is private
+) -> typing.Any:
     """Patch ``ImbiClient.list_releases`` to return ``releases``.
 
     Defaults to a single release with ``id == _RELEASE_ID`` so most
@@ -595,7 +595,7 @@ class CreateReleaseTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(201),
             ) as mock_create,
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             await actions.create_release(
                 ctx=_ctx(),
@@ -659,7 +659,7 @@ class CreateReleaseTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(409, json={'detail': 'exists'}),
             ),
-            self.assertLogs('imbi_gateway.actions', level='DEBUG') as cm,
+            self.assertLogs('imbi.gateway.actions', level='DEBUG') as cm,
         ):
             await actions.create_release(
                 ctx=_ctx(),
@@ -828,7 +828,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 'record_deployment',
                 new_callable=unittest.mock.AsyncMock,
             ) as mock_record,
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             await actions.add_deployment_event(
                 ctx=_ctx(),
@@ -856,7 +856,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 'record_deployment',
                 new_callable=unittest.mock.AsyncMock,
             ) as mock_record,
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             await actions.add_deployment_event(
                 ctx=_ctx(),
@@ -955,7 +955,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 'record_deployment',
                 new_callable=unittest.mock.AsyncMock,
             ) as mock_record,
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             await actions.add_deployment_event(
                 ctx=_ctx(),
@@ -981,7 +981,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(404, json={'detail': 'missing'}),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             await actions.add_deployment_event(
                 ctx=_ctx(),
@@ -1042,7 +1042,7 @@ class ImbiClientFindUserByIdentityTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(500, content=b'boom'),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             async with actions.ImbiClient() as client:
                 result = await client.find_user_by_identity('github', 's-1')
@@ -1111,7 +1111,7 @@ class ImbiClientCreateReleaseTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(409, json={'detail': 'exists'}),
             ),
-            self.assertNoLogs('imbi_gateway.actions', level='WARNING'),
+            self.assertNoLogs('imbi.gateway.actions', level='WARNING'),
         ):
             async with actions.ImbiClient() as client:
                 response = await client.create_release('o', 'p', {})
@@ -1127,7 +1127,7 @@ class ImbiClientCreateReleaseTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(500, content=b'boom'),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             async with actions.ImbiClient() as client:
                 response = await client.create_release('o', 'p', {})
@@ -1169,7 +1169,7 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(404),
             ),
-            self.assertNoLogs('imbi_gateway.actions', level='WARNING'),
+            self.assertNoLogs('imbi.gateway.actions', level='WARNING'),
         ):
             async with actions.ImbiClient() as client:
                 response = await client.record_deployment(
@@ -1187,7 +1187,7 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(500, content=b'boom'),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             async with actions.ImbiClient() as client:
                 response = await client.record_deployment(
@@ -1248,7 +1248,7 @@ class ImbiClientListReleasesTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(500, content=b'boom'),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             async with actions.ImbiClient() as client:
                 releases = await client.list_releases('org', 'proj')
@@ -1976,7 +1976,7 @@ class ImbiClientPutSbomTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(415, text='Unsupported'),
             ),
-            self.assertLogs('imbi_gateway.actions', level='WARNING') as cm,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             async with actions.ImbiClient() as client:
                 response = await client.put_sbom(

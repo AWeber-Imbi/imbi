@@ -3,9 +3,9 @@
 import typing
 
 import fastapi
-from imbi_common.lifespan import InjectLifespan
 
-from imbi_api import lifespans
+from imbi.api import lifespans
+from imbi.common.lifespan import InjectLifespan
 
 from .client import EmailClient
 from .templates import TemplateManager

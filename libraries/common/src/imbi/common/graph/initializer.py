@@ -8,7 +8,7 @@ import typing
 import psycopg
 from psycopg import sql
 
-from imbi_common import settings
+from imbi.common import settings
 
 LOGGER = logging.getLogger(__name__)
 

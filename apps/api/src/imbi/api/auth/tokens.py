@@ -12,11 +12,11 @@ import typing
 
 import jwt
 import nanoid
-from imbi_common import graph
-from imbi_common.auth import core
 
-from imbi_api import settings
-from imbi_api.auth import membership
+from imbi.api import settings
+from imbi.api.auth import membership
+from imbi.common import graph
+from imbi.common.auth import core
 
 LOGGER = logging.getLogger(__name__)
 

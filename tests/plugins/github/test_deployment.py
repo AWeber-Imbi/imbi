@@ -8,17 +8,17 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     DeploymentCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import PluginAuthenticationFailed
-
-from imbi_plugin_github.deployment import (
+from imbi.common.plugins.errors import PluginAuthenticationFailed
+from imbi.plugins.github.deployment import (
     GitHubDeployment,
     _repo_root_from_redirect,
 )
-from imbi_plugin_github.plugin import GitHubPlugin
+from imbi.plugins.github.plugin import GitHubPlugin
 
 
 def _connection(
@@ -228,7 +228,7 @@ class ManifestTestCase(unittest.TestCase):
     def test_record_checks_disabled_evicts_expired(self) -> None:
         """``_record_checks_disabled`` must sweep stale entries before
         inserting; otherwise the cache grows unbounded."""
-        from imbi_plugin_github import deployment as dep
+        from imbi.plugins.github import deployment as dep
 
         # Re-bind into the module so the helper writes into a sandbox we
         # can inspect, then restore on teardown.
@@ -251,7 +251,7 @@ class ManifestTestCase(unittest.TestCase):
             dep._CHECKS_DISABLED_TOKENS = original
 
     def test_record_checks_disabled_skips_when_no_token(self) -> None:
-        from imbi_plugin_github import deployment as dep
+        from imbi.plugins.github import deployment as dep
 
         original = dict(dep._CHECKS_DISABLED_TOKENS)
         dep._record_checks_disabled({}, 'github.com', 'octo', 'demo')
@@ -860,8 +860,8 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         # A service configured with only GitHub App credentials (no acting
         # user, e.g. the headless deployment-resync sweep) must mint an
         # installation token and still backfill deployments.
-        from imbi_plugin_github import _app_auth
-        from tests.test_commits import _APP_KEY_PEM, _FAR_FUTURE
+        from imbi.plugins.github import _app_auth
+        from tests.plugins.github.test_commits import _APP_KEY_PEM, _FAR_FUTURE
 
         _app_auth.reset_cache()
         self.addCleanup(_app_auth.reset_cache)
@@ -1254,7 +1254,7 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         # A token that can't read releases 403s once; the process-wide
         # cache then short-circuits subsequent lookups (same repo+token)
         # so resync doesn't re-issue the failing request per deployment.
-        from imbi_plugin_github.deployment import _RELEASES_FORBIDDEN_TOKENS
+        from imbi.plugins.github.deployment import _RELEASES_FORBIDDEN_TOKENS
 
         _RELEASES_FORBIDDEN_TOKENS.clear()
         self.addCleanup(_RELEASES_FORBIDDEN_TOKENS.clear)

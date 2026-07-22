@@ -26,7 +26,7 @@ carries a `name`, a `description`, an `input_schema` (JSON Schema for the
 tool's arguments), and a `callable` (a `pydantic.ImportString`).
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     ToolDescriptor,
     ToolsCapability,
 )
@@ -40,7 +40,7 @@ class GitHubTools(ToolsCapability):
                 name='open_pull_request',
                 description='Open a pull request on the project repo.',
                 input_schema={'type': 'object', 'properties': {}},
-                callable='imbi_plugin_github.tools:open_pull_request',
+                callable='imbi.plugins.github.tools:open_pull_request',
             ),
         ]
 ```
@@ -54,6 +54,6 @@ enforces unique tool names within a plugin.
 
 ## API reference
 
-::: imbi_common.plugins.ToolsCapability
+::: imbi.common.plugins.ToolsCapability
 
-::: imbi_common.plugins.ToolDescriptor
+::: imbi.common.plugins.ToolDescriptor

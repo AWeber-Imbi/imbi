@@ -3,7 +3,7 @@
 import datetime
 import unittest
 
-from imbi_api.email import models
+from imbi.api.email import models
 
 
 class PasswordResetTokenTestCase(unittest.TestCase):

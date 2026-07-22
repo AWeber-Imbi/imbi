@@ -23,7 +23,7 @@ def get_log_config() -> _LoggingConfig:
             logging.dictConfig()
 
     """
-    log_config_file = resources.files('imbi_common') / 'log-config.toml'
+    log_config_file = resources.files('imbi.common') / 'log-config.toml'
     return typing.cast(
         _LoggingConfig,
         typing.cast(object, tomllib.loads(log_config_file.read_text())),

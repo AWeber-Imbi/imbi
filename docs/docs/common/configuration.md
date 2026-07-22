@@ -15,7 +15,7 @@ Configuration is loaded in priority order:
 ## Loading Configuration
 
 ```python
-from imbi_common import settings
+from imbi.common import settings
 
 # Load full configuration
 config = settings.load_config()
@@ -159,7 +159,7 @@ encryption_key = "your-fernet-key-here"
 Settings are validated on load. Invalid configurations raise `pydantic.ValidationError`:
 
 ```python
-from imbi_common import settings
+from imbi.common import settings
 import pydantic
 
 try:

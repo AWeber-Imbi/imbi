@@ -2,7 +2,7 @@
 
 ``MCPServer`` is global config — it has no organization edge. Secrets
 (``static_value`` and ``oauth_client_secret``) are accepted as plaintext
-request fields, encrypted via :mod:`imbi_common.auth.encryption`, and
+request fields, encrypted via :mod:`imbi.common.auth.encryption`, and
 persisted only as ciphertext in the ``*_encrypted`` model fields.
 Responses never expose plaintext or ciphertext secrets; instead they
 surface ``has_static_value`` / ``has_oauth_client_secret`` booleans.
@@ -14,13 +14,13 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph, models
-from imbi_common.auth.encryption import encrypt_config_value
 
-from imbi_api import mcp_test
-from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.graph_sql import props_template, set_clause
+from imbi.api import mcp_test
+from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.graph_sql import props_template, set_clause
+from imbi.common import graph, models
+from imbi.common.auth.encryption import encrypt_config_value
 
 LOGGER = logging.getLogger(__name__)
 

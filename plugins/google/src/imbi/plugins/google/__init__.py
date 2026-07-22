@@ -1,6 +1,6 @@
 """Imbi Google identity plugin."""
 
-from imbi_plugin_google.plugin import GoogleIdentity, GooglePlugin
+from imbi.plugins.google.plugin import GoogleIdentity, GooglePlugin
 
 PLUGIN = GooglePlugin
 

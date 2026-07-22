@@ -1,7 +1,7 @@
 """``MAPS_TO`` traversal helper for the AWS plugin.
 
 At call time, ``materialize`` (or any sibling plugin's handler) needs to
-pick a single :class:`imbi_plugin_aws.models.AwsAccount` from the
+pick a single :class:`imbi.plugins.aws.models.AwsAccount` from the
 actor's context.  Operators model the mapping declaratively as
 ``(:Environment | :Project | :ProjectType | :Organization)-[:MAPS_TO]->
 (:AwsAccount)`` edges; this module walks them in selector order and
@@ -13,10 +13,9 @@ from __future__ import annotations
 import logging
 import typing
 
-from imbi_common.plugins.base import PluginContext
-
-from imbi_plugin_aws.errors import AccountNotResolvedError
-from imbi_plugin_aws.models import AwsAccount
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.aws.errors import AccountNotResolvedError
+from imbi.plugins.aws.models import AwsAccount
 
 LOGGER = logging.getLogger(__name__)
 
@@ -115,10 +114,10 @@ async def _candidates_for_anchor(
         if raw is None:
             continue
         # ``parse_agtype`` is the host's helper.  Imported lazily to
-        # avoid coupling this module to imbi_common's import order
+        # avoid coupling this module to imbi.common's import order
         # in tests that stub the db.
         try:
-            from imbi_common.graph import parse_agtype
+            from imbi.common.graph import parse_agtype
         except ImportError:
             data = raw
         else:

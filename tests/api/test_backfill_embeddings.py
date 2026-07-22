@@ -6,19 +6,19 @@ from unittest import mock
 
 import psycopg
 
-from imbi_api import backfill_embeddings
+from imbi.api import backfill_embeddings
 
 
 def _patch_embeddable(return_value: list[str]) -> mock._patch:
     return mock.patch(
-        'imbi_api.backfill_embeddings._embeddable_fields',
+        'imbi.api.backfill_embeddings._embeddable_fields',
         return_value=return_value,
     )
 
 
 def _patch_already_embedded(return_value: set[str]) -> mock._patch:
     return mock.patch(
-        'imbi_api.backfill_embeddings._already_embedded_ids',
+        'imbi.api.backfill_embeddings._already_embedded_ids',
         new=mock.AsyncMock(return_value=return_value),
     )
 

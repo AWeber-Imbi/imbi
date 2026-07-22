@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import typing
 
-from imbi_common.scoring.models import (
+from imbi.common.scoring.models import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,

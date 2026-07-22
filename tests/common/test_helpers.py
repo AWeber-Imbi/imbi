@@ -1,6 +1,6 @@
 import unittest
 
-from imbi_common import helpers
+from imbi.common import helpers
 
 
 class UnwrapAsTestCase(unittest.TestCase):

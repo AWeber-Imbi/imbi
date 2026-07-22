@@ -18,7 +18,7 @@ from slack_bolt.adapter.socket_mode.async_handler import (
 from slack_bolt.async_app import AsyncApp
 from slack_sdk import errors
 
-from imbi_slackbot import (
+from imbi.slackbot import (
     agent,
     identity,
     inflight,

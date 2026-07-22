@@ -12,13 +12,13 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
 
-from imbi_api.auth import permissions
-from imbi_api.commit_sync import service
-from imbi_api.commit_sync.queue import enqueue_commit_sync
-from imbi_api.plugins.resolution import resolve_capability
-from imbi_api.scoring import OptionalValkeyClient
+from imbi.api.auth import permissions
+from imbi.api.commit_sync import service
+from imbi.api.commit_sync.queue import enqueue_commit_sync
+from imbi.api.plugins.resolution import resolve_capability
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.common import graph
 
 project_commit_sync_router = fastapi.APIRouter(tags=['Project: Commits'])
 

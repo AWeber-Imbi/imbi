@@ -1,6 +1,6 @@
 # Imbi API Client
 
-The `imbi_common.api` subpackage provides an async HTTP client for
+The `imbi.common.api` subpackage provides an async HTTP client for
 talking to the Imbi API and a `pydantic_settings.BaseSettings` class
 for configuring it from environment variables.
 
@@ -10,7 +10,7 @@ and look up users by external identity.
 
 ## Overview
 
-`imbi_common.api.client.Imbi` is a thin subclass of
+`imbi.common.api.client.Imbi` is a thin subclass of
 `httpx.AsyncClient` that:
 
 - Sets the `Authorization` and `User-Agent` headers on every request.
@@ -20,7 +20,7 @@ and look up users by external identity.
 - Logs non-2xx responses at warning level while still returning the
   raw response so callers can decide how to react.
 
-`imbi_common.api.settings.Settings` loads configuration from
+`imbi.common.api.settings.Settings` loads configuration from
 environment variables prefixed with `IMBI_CLIENT_`. The expected
 variables are:
 
@@ -33,7 +33,7 @@ variables are:
 ## Basic Usage
 
 ```python
-from imbi_common.api import Imbi, Settings
+from imbi.common.api import Imbi, Settings
 
 settings = Settings()
 
@@ -74,8 +74,8 @@ distinguish these states from a fully successful 2xx.
 
 ### Client
 
-::: imbi_common.api.client.Imbi
+::: imbi.common.api.client.Imbi
 
 ### Settings
 
-::: imbi_common.api.settings.Settings
+::: imbi.common.api.settings.Settings

@@ -2,7 +2,7 @@
 
 Each hook is an async context manager that initializes a service on
 startup and cleans it up on shutdown. Hooks are composed using
-:class:`imbi_common.lifespan.Lifespan` in the application factory.
+:class:`imbi.common.lifespan.Lifespan` in the application factory.
 """
 
 import asyncio
@@ -10,20 +10,19 @@ import contextlib
 import logging
 from collections import abc
 
-from imbi_common import clickhouse, graph, valkey
-from imbi_common.llm import AnthropicClient
-
-from imbi_api import openapi
-from imbi_api.commit_sync import queue as commit_sync_queue
-from imbi_api.deployment_sync import queue as deployment_sync_queue
-from imbi_api.email.client import EmailClient
-from imbi_api.email.templates import TemplateManager
-from imbi_api.identity import sweeper as identity_sweeper
-from imbi_api.maintenance import worker as maintenance_worker
-from imbi_api.plugins import lifecycle as plugin_lifecycle
-from imbi_api.pr_sync import queue as pr_sync_queue
-from imbi_api.scoring import queue as score_queue
-from imbi_api.storage.client import StorageClient
+from imbi.api import openapi
+from imbi.api.commit_sync import queue as commit_sync_queue
+from imbi.api.deployment_sync import queue as deployment_sync_queue
+from imbi.api.email.client import EmailClient
+from imbi.api.email.templates import TemplateManager
+from imbi.api.identity import sweeper as identity_sweeper
+from imbi.api.maintenance import worker as maintenance_worker
+from imbi.api.plugins import lifecycle as plugin_lifecycle
+from imbi.api.pr_sync import queue as pr_sync_queue
+from imbi.api.scoring import queue as score_queue
+from imbi.api.storage.client import StorageClient
+from imbi.common import clickhouse, graph, valkey
+from imbi.common.llm import AnthropicClient
 
 LOGGER = logging.getLogger(__name__)
 

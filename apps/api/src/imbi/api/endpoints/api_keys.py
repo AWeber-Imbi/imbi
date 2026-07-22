@@ -12,11 +12,11 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
 
-from imbi_api import models, settings
-from imbi_api.auth import permissions
-from imbi_api.endpoints._credentials import compute_expires_at, generate_secret
+from imbi.api import models, settings
+from imbi.api.auth import permissions
+from imbi.api.endpoints._credentials import compute_expires_at, generate_secret
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

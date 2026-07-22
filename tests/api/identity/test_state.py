@@ -6,8 +6,8 @@ from unittest import mock
 
 import jwt
 
-from imbi_api import settings
-from imbi_api.identity import state
+from imbi.api import settings
+from imbi.api.identity import state
 
 
 class EncodeIdentityStateTestCase(unittest.TestCase):

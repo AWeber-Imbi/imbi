@@ -9,9 +9,8 @@ import anthropic
 import fastapi
 import fastapi.security
 from fastapi import responses
-from imbi_common import graph
 
-from imbi_assistant import (
+from imbi.assistant import (
     age_ops,
     auth,
     client,
@@ -22,6 +21,7 @@ from imbi_assistant import (
     settings,
     system_prompt,
 )
+from imbi.common import graph
 
 if typing.TYPE_CHECKING:
     import collections.abc

@@ -5,7 +5,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_api.identity import endpoints, errors
+from imbi.api.identity import endpoints, errors
 
 
 class IsSafeReturnToTestCase(unittest.TestCase):
@@ -167,7 +167,7 @@ class StartConnectEndpointTestCase(unittest.IsolatedAsyncioTestCase):
     """Cover the start_connect endpoint."""
 
     async def test_returns_authorization_url(self) -> None:
-        from imbi_api.identity import models
+        from imbi.api.identity import models
 
         db = mock.AsyncMock()
         auth = mock.MagicMock()
@@ -198,9 +198,8 @@ class StartConnectEndpointTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.state, 'state-token')
 
     async def test_maps_plugin_not_found_to_404(self) -> None:
-        from imbi_common.plugins.errors import PluginNotFoundError
-
-        from imbi_api.identity import models
+        from imbi.api.identity import models
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         db = mock.AsyncMock()
         auth = mock.MagicMock()
@@ -234,7 +233,7 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
     """Cover the OAuth callback endpoint."""
 
     async def test_redirects_to_safe_return_to(self) -> None:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             IdentityCredentials,
             IdentityProfile,
         )
@@ -259,7 +258,7 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers['location'], '/projects/x')
 
     async def test_redirects_to_default_when_return_to_unsafe(self) -> None:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             IdentityCredentials,
             IdentityProfile,
         )
@@ -284,7 +283,7 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers['location'], '/settings/connections')
 
     async def test_absolutizes_return_to_against_ui_url(self) -> None:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             IdentityCredentials,
             IdentityProfile,
         )
@@ -318,7 +317,7 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_absolutizes_default_against_ui_url(self) -> None:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             IdentityCredentials,
             IdentityProfile,
         )
@@ -366,7 +365,7 @@ class CallbackEndpointTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
     async def test_maps_plugin_not_found_to_404(self) -> None:
-        from imbi_common.plugins.errors import PluginNotFoundError
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         db = mock.AsyncMock()
         with mock.patch.object(

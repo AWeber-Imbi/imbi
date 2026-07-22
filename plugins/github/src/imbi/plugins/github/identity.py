@@ -18,15 +18,15 @@ import typing
 import urllib.parse
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     AuthorizationRequest,
     IdentityCapability,
     IdentityCredentials,
     IdentityProfile,
     PluginContext,
 )
-
-from imbi_plugin_github._hosts import flavor_host, host_to_api_base
+from imbi.plugins.github._hosts import flavor_host, host_to_api_base
 
 LOGGER = logging.getLogger(__name__)
 

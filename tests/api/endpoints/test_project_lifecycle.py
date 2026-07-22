@@ -4,12 +4,12 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from imbi_api.plugins.lifecycle_dispatch import LifecycleInvocation
-from tests import support
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.api.plugins.lifecycle_dispatch import LifecycleInvocation
+from imbi.common import graph
+from tests.api import support
 
 
 class ProjectLifecycleSyncEndpointTestCase(support.SharedAppTestCase):
@@ -58,7 +58,7 @@ class ProjectLifecycleSyncEndpointTestCase(support.SharedAppTestCase):
             ),
         ]
         with mock.patch(
-            'imbi_api.endpoints.project_lifecycle.dispatch_lifecycle',
+            'imbi.api.endpoints.project_lifecycle.dispatch_lifecycle',
             new=mock.AsyncMock(return_value=invocations),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -77,7 +77,7 @@ class ProjectLifecycleSyncEndpointTestCase(support.SharedAppTestCase):
 
     def test_sync_no_plugins_returns_zero(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_lifecycle.dispatch_lifecycle',
+            'imbi.api.endpoints.project_lifecycle.dispatch_lifecycle',
             new=mock.AsyncMock(return_value=[]),
         ):
             with testclient.TestClient(self.test_app) as client:

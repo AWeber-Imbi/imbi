@@ -5,7 +5,7 @@ import unittest
 
 import PIL.Image
 
-from imbi_api.storage import thumbnails
+from imbi.api.storage import thumbnails
 
 
 class CanThumbnailTestCase(unittest.TestCase):

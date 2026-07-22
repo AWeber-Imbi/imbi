@@ -5,10 +5,10 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class BlueprintEndpointsTestCase(support.SharedAppTestCase):
@@ -21,7 +21,7 @@ class BlueprintEndpointsTestCase(support.SharedAppTestCase):
         a mock Graph instance, a TestClient, and a sample
         Blueprint model.
         """
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         # Create an admin user for authentication
         self.admin_user = models.User(
@@ -289,7 +289,7 @@ class BlueprintEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_blueprint_enabled(self) -> None:
         """Test patching a blueprint's enabled flag."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = common_models.Blueprint(
             name='Extra Field',
@@ -306,7 +306,7 @@ class BlueprintEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.merge.return_value = None
 
         with mock.patch(
-            'imbi_api.endpoints.blueprints.openapi.refresh_blueprint_models',
+            'imbi.api.endpoints.blueprints.openapi.refresh_blueprint_models',
         ) as mock_refresh:
             mock_refresh.return_value = None
             response = self.client.patch(
@@ -332,7 +332,7 @@ class BlueprintEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_blueprint_slug_mismatch_raises_400(self) -> None:
         """Test that patching slug to a different value raises 400."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = common_models.Blueprint(
             name='Extra Field',
@@ -356,7 +356,7 @@ class BlueprintEndpointsTestCase(support.SharedAppTestCase):
 
     def test_blueprint_requires_authentication(self) -> None:
         """Verify blueprint endpoints reject unauthenticated."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         # Remove auth override only; keep graph DI override
         del self.test_app.dependency_overrides[permissions.get_current_user]

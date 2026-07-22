@@ -5,13 +5,13 @@ import urllib.parse
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     IdentityCapability,
     PluginContext,
 )
-
-from imbi_plugin_github.identity import GitHubIdentity
-from imbi_plugin_github.plugin import GitHubPlugin
+from imbi.plugins.github.identity import GitHubIdentity
+from imbi.plugins.github.plugin import GitHubPlugin
 
 
 def _connection(flavor: str, host: str | None = None) -> dict[str, object]:

@@ -19,18 +19,18 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
-from imbi_common.plugins.base import Capability
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import get_plugin, list_plugins
 
-from imbi_api.auth import permissions
-from imbi_api.plugins.assignments import (
+from imbi.api.auth import permissions
+from imbi.api.plugins.assignments import (
     CapabilityBinding,
     capability_enabled,
     effective_bindings,
 )
-from imbi_api.plugins.lifecycle import is_plugin_enabled
+from imbi.api.plugins.lifecycle import is_plugin_enabled
+from imbi.common import graph
+from imbi.common.plugins.base import Capability
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import get_plugin, list_plugins
 
 project_plugins_router = fastapi.APIRouter(
     prefix='/organizations/{org_slug}/projects/{project_id}/plugins',

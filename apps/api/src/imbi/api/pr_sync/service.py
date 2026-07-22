@@ -3,7 +3,7 @@
 The on-demand sync acts with the resolved Integration's *service*
 credential (PAT or GitHub App), so there is no acting user: the worker
 resolves the ``pr-sync`` capability bound to the project via
-:mod:`imbi_api.plugins.resolution`, builds the :class:`PluginContext` it
+:mod:`imbi.api.plugins.resolution`, builds the :class:`PluginContext` it
 needs (project links + identity-capable integrations for attribution),
 decrypts the credential, and awaits the capability's
 ``sync_all_history`` method.
@@ -21,16 +21,16 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
-from imbi_common.plugins import decrypt_integration_credentials
-from imbi_common.plugins.base import PluginContext, PullRequestSyncCapability
 
-from imbi_api.identity import attribution
-from imbi_api.plugins.resolution import (
+from imbi.api.identity import attribution
+from imbi.api.plugins.resolution import (
     ResolvedCapability,
     build_plugin_context,
     resolve_capability,
 )
+from imbi.common import graph
+from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins.base import PluginContext, PullRequestSyncCapability
 
 LOGGER = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def _build_context(
     resolved: ResolvedCapability,
 ) -> PluginContext:
     """Assemble the :class:`PluginContext` the capability needs (no actor)."""
-    from imbi_api.endpoints import _helpers
+    from imbi.api.endpoints import _helpers
 
     project_slug, team_slug = await _helpers.lookup_project_slugs(
         db, project_id

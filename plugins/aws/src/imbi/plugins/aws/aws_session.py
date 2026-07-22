@@ -17,8 +17,9 @@ import typing
 import urllib.parse
 
 import httpx
-from imbi_common.plugins.base import PluginContext
-from imbi_common.plugins.errors import (
+
+from imbi.common.plugins.base import PluginContext
+from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginCredentialsMissing,
     PluginTimeoutError,

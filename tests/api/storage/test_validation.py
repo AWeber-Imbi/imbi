@@ -3,8 +3,8 @@
 import unittest
 from unittest import mock
 
-from imbi_api import settings
-from imbi_api.storage import validation
+from imbi.api import settings
+from imbi.api.storage import validation
 
 
 class ValidateUploadTestCase(unittest.TestCase):
@@ -26,7 +26,7 @@ class ValidateUploadTestCase(unittest.TestCase):
         # Minimal JPEG header (FFD8FF)
         data = b'\xff\xd8\xff\xe0' + b'\x00\x10JFIF\x00' + b'\x00' * 100
         with mock.patch(
-            'imbi_api.storage.validation.filetype.guess'
+            'imbi.api.storage.validation.filetype.guess'
         ) as mock_guess:
             mock_guess.return_value = mock.Mock(
                 mime='image/jpeg',
@@ -78,7 +78,7 @@ class ValidateUploadTestCase(unittest.TestCase):
         """Test that mismatched magic bytes raise."""
         data = b'\x89PNG' + b'\x00' * 100
         with mock.patch(
-            'imbi_api.storage.validation.filetype.guess'
+            'imbi.api.storage.validation.filetype.guess'
         ) as mock_guess:
             mock_guess.return_value = mock.Mock(
                 mime='image/png',
@@ -97,7 +97,7 @@ class ValidateUploadTestCase(unittest.TestCase):
         """Test that undetectable magic bytes raise."""
         data = b'\x00' * 100
         with mock.patch(
-            'imbi_api.storage.validation.filetype.guess',
+            'imbi.api.storage.validation.filetype.guess',
             return_value=None,
         ):
             with self.assertRaises(
@@ -126,7 +126,7 @@ class ValidateUploadTestCase(unittest.TestCase):
     def test_uses_default_settings(self) -> None:
         """Test that default settings are used when none provided."""
         with mock.patch(
-            'imbi_api.storage.validation.filetype.guess'
+            'imbi.api.storage.validation.filetype.guess'
         ) as mock_guess:
             mock_guess.return_value = mock.Mock(
                 mime='image/png',

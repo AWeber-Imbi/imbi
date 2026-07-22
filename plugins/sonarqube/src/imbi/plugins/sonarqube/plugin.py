@@ -10,9 +10,8 @@ SonarQube component binding.
 
 import logging
 
-from imbi_common import plugins
-
-from imbi_plugin_sonarqube.doctor import SonarQubeDoctor
+from imbi.common import plugins
+from imbi.plugins.sonarqube.doctor import SonarQubeDoctor
 
 LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ class SonarQubeWebhookActions(plugins.WebhookActionsCapability):
     -- via :meth:`actions`. The host (``imbi-gateway``) looks the plugin
     up by slug, picks the descriptor by action name, validates the rule's
     ``handler_config`` against
-    :attr:`imbi_plugin_sonarqube.actions.MetricMappings`, and invokes the
+    :attr:`imbi.plugins.sonarqube.actions.MetricMappings`, and invokes the
     callable. The capability itself carries no dispatch logic.
     """
 
@@ -41,10 +40,10 @@ class SonarQubeWebhookActions(plugins.WebhookActionsCapability):
                         "Imbi project's facts with the returned values."
                     ),
                     'callable': (
-                        'imbi_plugin_sonarqube.actions:update_project_from_webhook'
+                        'imbi.plugins.sonarqube.actions:update_project_from_webhook'
                     ),
                     'config_model': (
-                        'imbi_plugin_sonarqube.actions:MetricMappings'
+                        'imbi.plugins.sonarqube.actions:MetricMappings'
                     ),
                 }
             ),

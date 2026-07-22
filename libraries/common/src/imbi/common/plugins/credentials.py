@@ -4,7 +4,7 @@ Lives in ``imbi-common`` so every host that owns an Integration (the API
 process, the gateway, future workers) decrypts credentials through one
 implementation. There is exactly one credential store per Integration —
 ``Integration.encrypted_credentials``, a mapping of field name to a
-Fernet-encrypted value (see :mod:`imbi_common.auth.encryption`). There is
+Fernet-encrypted value (see :mod:`imbi.common.auth.encryption`). There is
 no sibling lookup, no fallback ordering, and no per-capability divergence:
 every capability of an Integration receives the same decrypted blob.
 """
@@ -12,7 +12,7 @@ every capability of an Integration receives the same decrypted blob.
 import logging
 import typing
 
-from imbi_common.auth.encryption import TokenEncryption
+from imbi.common.auth.encryption import TokenEncryption
 
 LOGGER = logging.getLogger(__name__)
 

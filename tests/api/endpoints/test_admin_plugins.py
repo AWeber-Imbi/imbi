@@ -4,12 +4,12 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from imbi_api.endpoints import plugin_edges as _plugin_edges
-from tests import support
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.api.endpoints import plugin_edges as _plugin_edges
+from imbi.common import graph
+from tests.api import support
 
 
 class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
@@ -46,11 +46,11 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
     def test_list_installed_plugins_empty(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.list_plugins',
+                'imbi.api.endpoints.admin_plugins.list_plugins',
                 return_value=[],
             ),
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.get_enabled_map',
+                'imbi.api.endpoints.admin_plugins.get_enabled_map',
                 new_callable=mock.AsyncMock,
                 return_value={},
             ),
@@ -61,10 +61,10 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.json(), [])
 
     def test_get_plugin_not_found(self) -> None:
-        from imbi_common.plugins.errors import PluginNotFoundError
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         with mock.patch(
-            'imbi_api.endpoints.admin_plugins.get_plugin',
+            'imbi.api.endpoints.admin_plugins.get_plugin',
             side_effect=PluginNotFoundError('no-such-plugin'),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -72,7 +72,7 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
 
     def _make_entry(self) -> object:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             Capability,
             ConfigurationCapability,
             PluginEdgeLabel,
@@ -117,11 +117,11 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
         entry = self._make_entry()
         with (
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.get_plugin',
+                'imbi.api.endpoints.admin_plugins.get_plugin',
                 return_value=entry,
             ),
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.get_enabled_map',
+                'imbi.api.endpoints.admin_plugins.get_enabled_map',
                 new_callable=mock.AsyncMock,
                 return_value={'ssm': True},
             ),
@@ -137,15 +137,15 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
         entry = self._make_entry()
         with (
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.get_plugin',
+                'imbi.api.endpoints.admin_plugins.get_plugin',
                 return_value=entry,
             ),
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.set_plugin_enabled',
+                'imbi.api.endpoints.admin_plugins.set_plugin_enabled',
                 new_callable=mock.AsyncMock,
             ),
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.get_enabled_map',
+                'imbi.api.endpoints.admin_plugins.get_enabled_map',
                 new_callable=mock.AsyncMock,
                 return_value={'ssm': True},
             ),
@@ -159,10 +159,10 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
         self.assertTrue(data['enabled'])
 
     def test_update_plugin_not_found(self) -> None:
-        from imbi_common.plugins.errors import PluginNotFoundError
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         with mock.patch(
-            'imbi_api.endpoints.admin_plugins.get_plugin',
+            'imbi.api.endpoints.admin_plugins.get_plugin',
             side_effect=PluginNotFoundError('no-such-plugin'),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -173,10 +173,10 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_list_plugin_edges_not_found(self) -> None:
-        from imbi_common.plugins.errors import PluginNotFoundError
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         with mock.patch(
-            'imbi_api.endpoints.admin_plugins.get_plugin',
+            'imbi.api.endpoints.admin_plugins.get_plugin',
             side_effect=PluginNotFoundError('no-such-plugin'),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -201,11 +201,11 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
         }
         with (
             mock.patch(
-                'imbi_api.endpoints.admin_plugins.get_plugin',
+                'imbi.api.endpoints.admin_plugins.get_plugin',
                 return_value=entry,
             ),
             mock.patch(
-                'imbi_api.endpoints.admin_plugins'
+                'imbi.api.endpoints.admin_plugins'
                 '._plugin_edges.list_org_environment_edges',
                 new_callable=mock.AsyncMock,
                 return_value=edges_by_anchor,
@@ -228,7 +228,7 @@ class AdminPluginsEndpointTestCase(support.SharedAppTestCase):
     def test_list_plugin_edges_rejects_foreign_rel_type(self) -> None:
         entry = self._make_entry()
         with mock.patch(
-            'imbi_api.endpoints.admin_plugins.get_plugin',
+            'imbi.api.endpoints.admin_plugins.get_plugin',
             return_value=entry,
         ):
             with testclient.TestClient(self.test_app) as client:

@@ -10,7 +10,7 @@ import json
 import unittest
 from unittest import mock
 
-from imbi_api.endpoints import projects
+from imbi.api.endpoints import projects
 
 
 class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -32,7 +32,7 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(return_value=rows)
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=ch,
         ):
             result = await projects._fetch_pr_counts(['p1'])
@@ -55,7 +55,7 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(return_value=rows)
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=ch,
         ):
             result = await projects._fetch_pr_counts(
@@ -70,7 +70,7 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(side_effect=RuntimeError('boom'))
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=ch,
         ):
             result = await projects._fetch_pr_counts(['p1'])
@@ -92,7 +92,7 @@ class ResolveDisplayNamesTestCase(unittest.IsolatedAsyncioTestCase):
             {'email': 'b@example.com', 'display_name': 'Bob'},
         ]
         with mock.patch(
-            'imbi_api.endpoints.projects.graph.parse_agtype',
+            'imbi.api.endpoints.projects.graph.parse_agtype',
             side_effect=lambda v: v,
         ):
             result = await projects._resolve_display_names(
@@ -111,7 +111,7 @@ class ResolveDisplayNamesTestCase(unittest.IsolatedAsyncioTestCase):
             {'email': 'c@example.com', 'display_name': 'Carol'},
         ]
         with mock.patch(
-            'imbi_api.endpoints.projects.graph.parse_agtype',
+            'imbi.api.endpoints.projects.graph.parse_agtype',
             side_effect=lambda v: v,
         ):
             result = await projects._resolve_display_names(
@@ -203,12 +203,12 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.ch_client.Clickhouse.'
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
                 'get_instance',
                 return_value=ch,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.graph.parse_agtype',
+                'imbi.api.endpoints.projects.graph.parse_agtype',
                 side_effect=lambda v: v,
             ),
         ):
@@ -250,12 +250,12 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.ch_client.Clickhouse.'
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
                 'get_instance',
                 return_value=ch,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.graph.parse_agtype',
+                'imbi.api.endpoints.projects.graph.parse_agtype',
                 side_effect=lambda v: v,
             ),
         ):
@@ -278,12 +278,12 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
         ch.query = mock.AsyncMock(return_value=[])
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.ch_client.Clickhouse.'
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
                 'get_instance',
                 return_value=ch,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.graph.parse_agtype',
+                'imbi.api.endpoints.projects.graph.parse_agtype',
                 side_effect=lambda v: v,
             ),
         ):
@@ -302,7 +302,7 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_empty_targets_short_circuits(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance'
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance'
         ) as gi:
             result = await projects.lookup_ops_log_performed_by([])
         self.assertEqual(result, {})
@@ -328,7 +328,7 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=ch,
         ):
             result = await projects.lookup_ops_log_performed_by(
@@ -342,7 +342,7 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
         ch = mock.MagicMock()
         ch.query = mock.AsyncMock(side_effect=RuntimeError('boom'))
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=ch,
         ):
             result = await projects.lookup_ops_log_performed_by(

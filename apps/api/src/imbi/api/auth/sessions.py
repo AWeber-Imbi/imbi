@@ -12,7 +12,7 @@ schemas.
 import datetime
 import logging
 
-from imbi_common import graph
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

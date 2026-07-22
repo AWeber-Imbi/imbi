@@ -1,9 +1,9 @@
 import unittest
 from unittest import mock
 
-from imbi_common import models
-from imbi_common.scoring import engine
-from imbi_common.scoring import models as scoring_models
+from imbi.common import models
+from imbi.common.scoring import engine
+from imbi.common.scoring import models as scoring_models
 
 
 def _project() -> models.Project:
@@ -33,7 +33,7 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
         graph = mock.AsyncMock()
         graph.match.return_value = [project]
         with mock.patch(
-            'imbi_common.scoring.engine.policies.applicable_policies',
+            'imbi.common.scoring.engine.policies.applicable_policies',
             new=mock.AsyncMock(return_value=([], models.Project)),
         ):
             score, breakdown = await engine.compute_score(graph, 'proj-id')
@@ -45,13 +45,13 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
         graph = mock.AsyncMock()
         graph.match.return_value = [project]
         with mock.patch(
-            'imbi_common.scoring.engine.policies.applicable_policies',
+            'imbi.common.scoring.engine.policies.applicable_policies',
             new=mock.AsyncMock(
                 return_value=([_stub_policy()], models.Project)
             ),
         ):
             with mock.patch(
-                'imbi_common.scoring.engine.attribute.compute_base_score',
+                'imbi.common.scoring.engine.attribute.compute_base_score',
                 return_value=(-25.0, []),
             ):
                 score, breakdown = await engine.compute_score(graph, 'proj-id')
@@ -82,13 +82,13 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
             ),
         ]
         with mock.patch(
-            'imbi_common.scoring.engine.policies.applicable_policies',
+            'imbi.common.scoring.engine.policies.applicable_policies',
             new=mock.AsyncMock(
                 return_value=([_stub_policy()], models.Project)
             ),
         ):
             with mock.patch(
-                'imbi_common.scoring.engine.attribute.compute_base_score',
+                'imbi.common.scoring.engine.attribute.compute_base_score',
                 return_value=(83.3, contribs),
             ):
                 score, breakdown = await engine.compute_score(graph, 'proj-id')
@@ -113,11 +113,11 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
             weight=50,
         )
         with mock.patch(
-            'imbi_common.scoring.engine.policies.applicable_policies',
+            'imbi.common.scoring.engine.policies.applicable_policies',
             new=mock.AsyncMock(return_value=([policy], models.Project)),
         ):
             with mock.patch(
-                'imbi_common.scoring.engine._load_deployment_statuses',
+                'imbi.common.scoring.engine._load_deployment_statuses',
                 new=mock.AsyncMock(return_value={'production': 'failed'}),
             ) as load_mock:
                 score, _ = await engine.compute_score(graph, 'proj-id')
@@ -144,11 +144,11 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         with mock.patch(
-            'imbi_common.scoring.engine.policies.applicable_policies',
+            'imbi.common.scoring.engine.policies.applicable_policies',
             new=mock.AsyncMock(return_value=([policy], models.Project)),
         ):
             with mock.patch(
-                'imbi_common.scoring.engine._load_dependency_neighbours',
+                'imbi.common.scoring.engine._load_dependency_neighbours',
                 new=mock.AsyncMock(return_value=[{'deprecated': True}]),
             ) as load_mock:
                 score, _ = await engine.compute_score(graph, 'proj-id')
@@ -168,7 +168,7 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
         graph = mock.AsyncMock()
         graph.match.side_effect = [[project], [extended]]
         with mock.patch(
-            'imbi_common.scoring.engine.policies.applicable_policies',
+            'imbi.common.scoring.engine.policies.applicable_policies',
             new=mock.AsyncMock(return_value=([_stub_policy()], _Extended)),
         ):
             captured: list[object] = []
@@ -181,7 +181,7 @@ class ComputeScoreTests(unittest.IsolatedAsyncioTestCase):
                 return orig(proj, pols, results, deployments, neighbours)
 
             with mock.patch(
-                'imbi_common.scoring.engine.attribute.compute_base_score',
+                'imbi.common.scoring.engine.attribute.compute_base_score',
                 side_effect=_capture,
             ):
                 await engine.compute_score(graph, 'proj-id')

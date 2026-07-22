@@ -19,19 +19,19 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph, models
-from imbi_common.plugins.base import CheckStatus
 
-from imbi_api import patch as json_patch
-from imbi_api import sbom
-from imbi_api.auth import permissions
-from imbi_api.domain.models import User
-from imbi_api.endpoints._helpers import fetch_or_404
-from imbi_api.endpoints.operations_log import complete_opslog_entry
-from imbi_api.endpoints.projects import lookup_ops_log_performed_by
-from imbi_api.plugins import call_with_timeout
-from imbi_api.scoring import OptionalValkeyClient
-from imbi_api.scoring import queue as score_queue
+from imbi.api import patch as json_patch
+from imbi.api import sbom
+from imbi.api.auth import permissions
+from imbi.api.domain.models import User
+from imbi.api.endpoints._helpers import fetch_or_404
+from imbi.api.endpoints.operations_log import complete_opslog_entry
+from imbi.api.endpoints.projects import lookup_ops_log_performed_by
+from imbi.api.plugins import call_with_timeout
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.api.scoring import queue as score_queue
+from imbi.common import graph, models
+from imbi.common.plugins.base import CheckStatus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -406,7 +406,7 @@ async def _hydrate_release_train(
 
     # Lazy import to avoid a circular dependency: project_deployments
     # already imports ``append_deployment_event`` from this module.
-    from imbi_api.endpoints.project_deployments import (
+    from imbi.api.endpoints.project_deployments import (
         _handler,  # pyright: ignore[reportPrivateUsage]
         _resolve_and_context,  # pyright: ignore[reportPrivateUsage]
     )
@@ -543,7 +543,7 @@ async def create_release(
     if data.tag and not description:
         # Local import avoids a circular import: project_deployments
         # imports append_deployment_event from this module.
-        from imbi_api.endpoints.project_deployments import (
+        from imbi.api.endpoints.project_deployments import (
             fetch_release_notes_for_tag,
         )
 

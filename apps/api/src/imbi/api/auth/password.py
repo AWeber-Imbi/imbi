@@ -1,6 +1,6 @@
 """Password hashing utilities using Argon2id.
 
-Moved from imbi_common.auth.core since password management
+Moved from imbi.common.auth.core since password management
 is specific to the API service.
 """
 

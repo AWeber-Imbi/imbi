@@ -14,22 +14,22 @@ import typing
 
 import fastapi
 import nanoid
-from imbi_common import graph
-from imbi_common.auth.encryption import TokenEncryption
-from imbi_common.plugins.registry import get_plugin
 
-from imbi_api.auth import login_providers as login_repo
-from imbi_api.auth import permissions
-from imbi_api.domain import models
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.endpoints.integrations import (
+from imbi.api.auth import login_providers as login_repo
+from imbi.api.auth import permissions
+from imbi.api.domain import models
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.endpoints.integrations import (
     build_response,
     merged_update_props,
     require_login_capable,
 )
-from imbi_api.graph_sql import props_template, set_clause
-from imbi_api.plugins.assignments import hydrate_integration
-from imbi_api.plugins.credentials import patch_integration_credentials
+from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.plugins.assignments import hydrate_integration
+from imbi.api.plugins.credentials import patch_integration_credentials
+from imbi.common import graph
+from imbi.common.auth.encryption import TokenEncryption
+from imbi.common.plugins.registry import get_plugin
 
 auth_providers_router = fastapi.APIRouter(
     prefix='/login-providers', tags=['Auth Providers']

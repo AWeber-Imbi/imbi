@@ -1,7 +1,7 @@
 """A plugin declaring an unsupported api_version (skipped at load)."""
 
-from imbi_common.plugins import base
-from tests.test_plugins.fixtures.good_plugin import FixtureConfiguration
+from imbi.common.plugins import base
+from tests.common.test_plugins.fixtures.good_plugin import FixtureConfiguration
 
 
 class BadVersionPlugin(base.Plugin):

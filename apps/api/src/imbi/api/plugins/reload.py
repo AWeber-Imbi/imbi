@@ -22,13 +22,13 @@ import time
 import typing
 from collections.abc import AsyncGenerator
 
-from imbi_common import graph, valkey
-from imbi_common.plugins.registry import (
-    reload_plugins,
-)
 from valkey import asyncio as _valkey_asyncio
 
-from imbi_api.plugins.lifecycle import audit_unavailable
+from imbi.api.plugins.lifecycle import audit_unavailable
+from imbi.common import graph, valkey
+from imbi.common.plugins.registry import (
+    reload_plugins,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def _get_reload_key() -> bytes | None:
     short-circuit to a hard failure.
     """
     try:
-        from imbi_api.settings import get_auth_settings
+        from imbi.api.settings import get_auth_settings
 
         jwt_secret = get_auth_settings().jwt_secret
     except Exception:

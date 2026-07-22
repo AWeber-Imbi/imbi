@@ -4,7 +4,8 @@ import datetime
 import typing
 
 import pydantic
-from imbi_common.plugins.base import PollingDescriptor
+
+from imbi.common.plugins.base import PollingDescriptor
 
 
 class IdentityConnectionResponse(pydantic.BaseModel):

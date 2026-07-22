@@ -6,8 +6,11 @@ from unittest import mock
 
 import psycopg
 from fastapi import testclient
-from imbi_common import graph
-from imbi_common.plugins.base import (
+
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from imbi.common.plugins.base import (
     Capability,
     ConfigurationCapability,
     IdentityCapability,
@@ -15,12 +18,9 @@ from imbi_common.plugins.base import (
     Plugin,
     PluginManifest,
 )
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import RegistryEntry
+from tests.api import support
 
 
 class _FakeLogs(LogsCapability):
@@ -162,7 +162,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         manifest.icon = 'si-logzio'
         self.mock_db.execute.return_value = [{'integration': _node()}]
         with mock.patch(
-            'imbi_api.endpoints.integrations.get_plugin',
+            'imbi.api.endpoints.integrations.get_plugin',
             return_value=_entry(manifest),
         ):
             response = self.client.get(
@@ -179,7 +179,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
             {'integration': _node(icon='si-custom')}
         ]
         with mock.patch(
-            'imbi_api.endpoints.integrations.get_plugin',
+            'imbi.api.endpoints.integrations.get_plugin',
             return_value=_entry(manifest),
         ):
             response = self.client.get(
@@ -192,7 +192,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         """No plugin registered and no own icon → icon stays null."""
         self.mock_db.execute.return_value = [{'integration': _node()}]
         with mock.patch(
-            'imbi_api.endpoints.integrations.get_plugin',
+            'imbi.api.endpoints.integrations.get_plugin',
             side_effect=PluginNotFoundError('logzio'),
         ):
             response = self.client.get(
@@ -209,7 +209,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         token = mock.Mock()
         token.get_instance.return_value = encryptor
         return mock.patch(
-            'imbi_api.endpoints.integrations.TokenEncryption', token
+            'imbi.api.endpoints.integrations.TokenEncryption', token
         )
 
     def test_create_integration_defaults_capabilities_from_manifest(
@@ -218,7 +218,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'integration': _node()}]
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -247,7 +247,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'integration': _node()}]
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -275,7 +275,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'integration': node}]
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -298,7 +298,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'integration': _node()}]
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -322,7 +322,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'integration': _node()}]
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -345,7 +345,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
 
     def test_create_integration_plugin_not_installed(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.integrations.get_plugin',
+            'imbi.api.endpoints.integrations.get_plugin',
             side_effect=PluginNotFoundError('nope'),
         ):
             response = self.client.post(
@@ -365,7 +365,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -384,7 +384,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -404,7 +404,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_create_manifest()),
             ),
             self._patch_encryptor(),
@@ -539,7 +539,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
 
     def test_update_credentials(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.integrations.patch_integration_credentials',
+            'imbi.api.endpoints.integrations.patch_integration_credentials',
             new=mock.AsyncMock(return_value=['token']),
         ) as patched:
             response = self.client.put(
@@ -561,11 +561,11 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         ]
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=_entry(_identity_manifest(login_capable=True)),
             ),
             mock.patch(
-                'imbi_api.endpoints.integrations.login_providers'
+                'imbi.api.endpoints.integrations.login_providers'
                 '.invalidate_cache'
             ) as invalidate,
         ):
@@ -585,10 +585,10 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         ]
         with (
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
             ) as get_plugin,
             mock.patch(
-                'imbi_api.endpoints.integrations.login_providers'
+                'imbi.api.endpoints.integrations.login_providers'
                 '.invalidate_cache'
             ) as invalidate,
         ):
@@ -608,7 +608,7 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
         node = _node(slug='ghlogin-prod', plugin='ghlogin')
         self.mock_db.execute.return_value = [{'integration': node}]
         with mock.patch(
-            'imbi_api.endpoints.integrations.get_plugin',
+            'imbi.api.endpoints.integrations.get_plugin',
             return_value=_entry(_identity_manifest(login_capable=False)),
         ):
             response = self.client.put(

@@ -162,7 +162,7 @@ every consumer via the shared string.
 
 ## References
 
-- `src/imbi_common/lifespan.py` — implementation
+- `src/imbi.common/lifespan.py` — implementation
 - `tests/test_lifespan.py` — test suite
 - [ADR 0001](0001-imbi-common-library-extraction.md) — decision to keep
   FastAPI-specific code out of the common library (lifespan is an

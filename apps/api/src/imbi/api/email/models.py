@@ -6,7 +6,8 @@ import secrets
 import typing
 
 import pydantic
-from imbi_common import models as common_models
+
+from imbi.common import models as common_models
 
 
 class EmailMessage(pydantic.BaseModel):

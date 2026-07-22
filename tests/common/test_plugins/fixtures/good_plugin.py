@@ -6,7 +6,7 @@ Exposes a module-level ``PLUGIN`` (convention discovery) and an
 
 import pydantic
 
-from imbi_common.plugins import base
+from imbi.common.plugins import base
 
 
 class SampleActionConfig(pydantic.BaseModel):
@@ -41,10 +41,10 @@ class FixtureWebhookActions(base.WebhookActionsCapability):
                 name='do_thing',
                 label='Do Thing',
                 callable=(  # type: ignore[arg-type]
-                    'tests.test_plugins.fixtures.good_plugin:sample_action'
+                    'tests.common.test_plugins.fixtures.good_plugin:sample_action'
                 ),
                 config_model=(  # type: ignore[arg-type]
-                    'tests.test_plugins.fixtures.good_plugin'
+                    'tests.common.test_plugins.fixtures.good_plugin'
                     ':SampleActionConfig'
                 ),
             )

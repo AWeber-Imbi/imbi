@@ -15,7 +15,7 @@ import typing
 
 from cryptography import fernet
 
-from imbi_common import settings
+from imbi.common import settings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ class ConfigEncryption:
 
     Mirrors :class:`TokenEncryption` but is keyed off the dedicated
     ``IMBI_CONFIG_ENCRYPTION_KEY`` (via
-    :func:`imbi_common.settings.get_config_settings`) so configuration
+    :func:`imbi.common.settings.get_config_settings`) so configuration
     secrets and auth tokens can be rotated independently.
     """
 

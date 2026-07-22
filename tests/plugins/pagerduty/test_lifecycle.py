@@ -8,10 +8,10 @@ import unittest.mock
 import httpx
 import respx
 from cryptography import fernet
-from imbi_common.auth.encryption import TokenEncryption
-from imbi_common.plugins.base import PluginContext
 
-from imbi_plugin_pagerduty.lifecycle import PagerDutyLifecycle
+from imbi.common.auth.encryption import TokenEncryption
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.pagerduty.lifecycle import PagerDutyLifecycle
 
 _CREDS = {'api_key': 'k'}
 _SERVICE = {

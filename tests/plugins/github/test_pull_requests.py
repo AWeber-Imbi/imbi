@@ -8,10 +8,10 @@ import httpx
 import respx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from imbi_common.plugins.base import PluginContext
 
-from imbi_plugin_github import _app_auth, pull_requests
-from imbi_plugin_github.plugin import GitHubPlugin, GitHubWebhookActions
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.github import _app_auth, pull_requests
+from imbi.plugins.github.plugin import GitHubPlugin, GitHubWebhookActions
 
 _CREDS = {'access_token': 'gho_test'}
 _REPO = 'https://api.github.com/repos/octo/demo'
@@ -30,9 +30,9 @@ def _gen_pem() -> str:
 _APP_KEY_PEM = _gen_pem()
 # ``sync_all_history`` inserts through ``_insert_best_effort`` (defined in
 # commits.py), so its ClickHouse call resolves in the commits namespace.
-_INSERT_BACKFILL = 'imbi_plugin_github.commits.clickhouse.insert'
+_INSERT_BACKFILL = 'imbi.plugins.github.commits.clickhouse.insert'
 # The webhook action inserts directly through the pull_requests namespace.
-_INSERT_WEBHOOK = 'imbi_plugin_github.pull_requests.clickhouse.insert'
+_INSERT_WEBHOOK = 'imbi.plugins.github.pull_requests.clickhouse.insert'
 
 
 def _connection(

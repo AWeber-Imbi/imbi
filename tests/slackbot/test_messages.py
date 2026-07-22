@@ -1,8 +1,8 @@
 import base64
 from unittest import mock
 
-from imbi_slackbot import messages
-from tests import helpers
+from imbi.slackbot import messages
+from tests.slackbot import helpers
 
 
 class FakeSlack:

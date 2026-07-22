@@ -5,7 +5,7 @@ import unittest
 
 import pydantic
 
-from imbi_assistant import models
+from imbi.assistant import models
 
 
 class ConversationModelTestCase(unittest.TestCase):

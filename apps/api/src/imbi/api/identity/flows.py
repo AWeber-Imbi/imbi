@@ -4,8 +4,16 @@ import logging
 import typing
 import urllib.parse
 
-from imbi_common import graph
-from imbi_common.plugins import (
+from valkey import asyncio as valkey
+
+from imbi.api.identity import errors, repository, state
+from imbi.api.identity.resolution import (
+    load_integration,
+    load_integration_org_slug,
+)
+from imbi.api.plugins.assignments import capability_state
+from imbi.common import graph
+from imbi.common.plugins import (
     IdentityCapability,
     IdentityCredentials,
     IdentityProfile,
@@ -15,14 +23,6 @@ from imbi_common.plugins import (
     decrypt_integration_credentials,
     get_plugin,
 )
-from valkey import asyncio as valkey
-
-from imbi_api.identity import errors, repository, state
-from imbi_api.identity.resolution import (
-    load_integration,
-    load_integration_org_slug,
-)
-from imbi_api.plugins.assignments import capability_state
 
 LOGGER = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ async def start_flow(
     # ``poll_flow``, which only sees credentials read from storage,
     # not the in-memory ones the plugin just created.
     if request.registered_credentials is not None:
-        from imbi_api.plugins import credentials as plugin_credentials
+        from imbi.api.plugins import credentials as plugin_credentials
 
         org_slug = await load_integration_org_slug(db, integration_id)
         integration_slug = typing.cast(str, integration['slug'])

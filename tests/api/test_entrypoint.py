@@ -4,7 +4,7 @@ from unittest import mock
 
 import typer.testing
 
-from imbi_api import entrypoint, models
+from imbi.api import entrypoint, models
 
 
 class SetupTestCase(unittest.TestCase):

@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`imbi_api.plugins.credentials`."""
+"""Unit tests for :mod:`imbi.api.plugins.credentials`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_api.plugins import credentials
+from imbi.api.plugins import credentials
 
 
 class _Encryptor:

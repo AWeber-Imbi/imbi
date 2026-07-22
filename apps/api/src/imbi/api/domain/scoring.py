@@ -5,7 +5,8 @@ from __future__ import annotations
 import typing
 
 import pydantic
-from imbi_common.scoring import (
+
+from imbi.common.scoring import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributeContribution,

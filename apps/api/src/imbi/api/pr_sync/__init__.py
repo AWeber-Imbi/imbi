@@ -7,11 +7,11 @@ credential, and records the last-sync status on the ``Project`` node for
 the UI to poll.
 """
 
-from imbi_api.pr_sync.queue import (
+from imbi.api.pr_sync.queue import (
     consume_pr_sync,
     enqueue_pr_sync,
 )
-from imbi_api.pr_sync.service import (
+from imbi.api.pr_sync.service import (
     PRSyncStatus,
     PRSyncUnavailable,
     read_status,

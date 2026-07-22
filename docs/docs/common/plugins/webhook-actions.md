@@ -33,8 +33,8 @@ validates `handler_config` against `config_model`, and invokes
 logic.
 
 ```python
-# imbi_plugin_sonarqube/capabilities.py
-from imbi_common.plugins import (
+# imbi.plugins.sonarqube/capabilities.py
+from imbi.common.plugins import (
     ActionDescriptor,
     WebhookActionsCapability,
 )
@@ -48,18 +48,18 @@ class SonarQubeWebhookActions(WebhookActionsCapability):
                 name='update_project_from_webhook',
                 label='Update project from webhook',
                 description='Pull the latest analysis onto the project.',
-                callable='imbi_plugin_sonarqube.actions'
+                callable='imbi.plugins.sonarqube.actions'
                 ':update_project_from_webhook',
-                config_model='imbi_plugin_sonarqube.actions:UpdateConfig',
+                config_model='imbi.plugins.sonarqube.actions:UpdateConfig',
             ),
         ]
 ```
 
 ```python
-# imbi_plugin_sonarqube/actions.py
+# imbi.plugins.sonarqube/actions.py
 import pydantic
 
-from imbi_common.plugins import PluginContext
+from imbi.common.plugins import PluginContext
 
 
 class UpdateConfig(pydantic.BaseModel):
@@ -126,8 +126,8 @@ The host invokes the action callable with keyword-only arguments:
 
 ## API reference
 
-::: imbi_common.plugins.WebhookActionsCapability
+::: imbi.common.plugins.WebhookActionsCapability
 
-::: imbi_common.plugins.ActionDescriptor
+::: imbi.common.plugins.ActionDescriptor
 
-::: imbi_common.plugins.WebhookActionCallable
+::: imbi.common.plugins.WebhookActionCallable

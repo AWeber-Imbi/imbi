@@ -1,6 +1,6 @@
 """Imbi OIDC identity plugin."""
 
-from imbi_plugin_oidc.plugin import OIDCIdentity, OIDCPlugin
+from imbi.plugins.oidc.plugin import OIDCIdentity, OIDCPlugin
 
 PLUGIN = OIDCPlugin
 

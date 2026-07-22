@@ -1,6 +1,6 @@
 import fastapi
 
-from imbi_api.identity.endpoints import me_identities_router
+from imbi.api.identity.endpoints import me_identities_router
 
 from . import (
     user_activity,  # pyright: ignore[reportUnusedImport]  # noqa: F401

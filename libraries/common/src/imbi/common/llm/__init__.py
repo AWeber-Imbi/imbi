@@ -26,7 +26,7 @@ import typing
 import pydantic
 import pydantic_settings
 
-from imbi_common import settings as common_settings
+from imbi.common import settings as common_settings
 
 if typing.TYPE_CHECKING:
     import anthropic

@@ -6,7 +6,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_api.endpoints import _pagination
+from imbi.api.endpoints import _pagination
 
 
 class CursorTests(unittest.TestCase):

@@ -31,7 +31,7 @@ We need a way for plugins to declare the vendor-known data once — without ever
 
 ```python
 class PluginIcon(pydantic.BaseModel):
-    package: str            # e.g. 'imbi_plugin_github'
+    package: str            # e.g. 'imbi.plugins.github'
     resource: str           # e.g. 'assets/icon.svg'
     media_type: Literal['image/svg+xml', 'image/png', 'image/webp'] = 'image/svg+xml'
 ```
@@ -44,7 +44,7 @@ On plugin install, the host:
 
 1. Reads the manifest's `third_party_service` template.
 2. Looks for an existing `ThirdPartyService` matching the template's `vendor` + service identity. If found, attach to it. If not, create one from the template.
-3. Copies the icon out of the package, sanitizes it, persists it via `imbi_api.storage`, and sets `ThirdPartyService.icon` to the served URL.
+3. Copies the icon out of the package, sanitizes it, persists it via `imbi.api.storage`, and sets `ThirdPartyService.icon` to the served URL.
 4. Creates the `(:ThirdPartyService)-[:HAS_PLUGIN]->(:Plugin)` edge.
 
 ### 4. Multiple entry points share one service record

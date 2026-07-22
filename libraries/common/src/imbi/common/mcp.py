@@ -17,7 +17,7 @@ consumer's own maps) as ``route_maps`` and :func:`exclude_non_ai_tools`
 as ``route_map_fn``::
 
     import fastmcp
-    from imbi_common import mcp
+    from imbi.common import mcp
 
     server = fastmcp.FastMCP.from_openapi(
         openapi_spec=spec,

@@ -1,7 +1,7 @@
 """Graph CRUD for ``IdentityConnection`` nodes.
 
 Encryption boundary: this module is the *only* place that touches the
-:class:`imbi_common.auth.encryption.TokenEncryption` singleton for
+:class:`imbi.common.auth.encryption.TokenEncryption` singleton for
 identity tokens.  Plaintext credentials enter via ``upsert_connection``
 and leave via :class:`IdentityCredentialsInternal` from
 ``load_connection``; the rest of the API code path never handles
@@ -20,11 +20,11 @@ import logging
 import typing
 
 import nanoid
-from imbi_common import graph
-from imbi_common.auth.encryption import TokenEncryption
-from imbi_common.plugins.base import IdentityCredentials, IdentityProfile
 
-from imbi_api.identity.models import IdentityCredentialsInternal
+from imbi.api.identity.models import IdentityCredentialsInternal
+from imbi.common import graph
+from imbi.common.auth.encryption import TokenEncryption
+from imbi.common.plugins.base import IdentityCredentials, IdentityProfile
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ LOGGER = logging.getLogger(__name__)
 def _parse_metadata(raw: typing.Any) -> dict[str, typing.Any]:
     """Decode the ``metadata`` agtype value into a dict.
 
-    ``imbi_common.graph.client`` JSON-encodes dict parameters and stores
+    ``imbi.common.graph.client`` JSON-encodes dict parameters and stores
     them as Cypher string literals, so round-tripping an empty dict
     yields the literal string ``'{}'``.  Accept dicts (in case the
     storage layer changes), and JSON-decode strings; fall back to an
@@ -406,7 +406,7 @@ async def find_user_by_subject(
     ``subject`` is the external provider's unique ID — for GitHub
     integrations this is the numeric user ID as a string (e.g.
     ``"12345"``), which is what
-    :func:`imbi_plugin_github.plugin._build_userinfo` stores.
+    :func:`imbi.plugins.github.plugin._build_userinfo` stores.
 
     Returns ``None`` when no active connection matches OR when more than
     one distinct Imbi user is reachable from the (``integration_id``,

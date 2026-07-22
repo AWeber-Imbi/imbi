@@ -15,7 +15,7 @@ route handlers.
 ## Basic Usage
 
 ```python
-from imbi_common import valkey
+from imbi.common import valkey
 
 async with valkey.valkey_lifespan() as client:
     await client.set('greeting', 'hello')
@@ -27,7 +27,7 @@ async with valkey.valkey_lifespan() as client:
 ```python
 import fastapi
 
-from imbi_common import lifespan, valkey
+from imbi.common import lifespan, valkey
 
 app = fastapi.FastAPI(
     lifespan=lifespan.Lifespan(valkey.valkey_lifespan),
@@ -48,6 +48,6 @@ schemes are `valkey://`, `valkeys://`, and `unix://`.
 
 ## API Reference
 
-::: imbi_common.valkey.valkey_lifespan
+::: imbi.common.valkey.valkey_lifespan
 
-::: imbi_common.valkey.Client
+::: imbi.common.valkey.Client

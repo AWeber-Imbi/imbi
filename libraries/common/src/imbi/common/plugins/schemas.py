@@ -10,7 +10,7 @@ Two responsibilities live here:
    a vlabel name already in core ``schemata.toml`` or repeated across
    manifests.
 2. :func:`apply_plugin_schemas` — create plugin-declared vlabels and
-   their indexes in AGE, mirroring :mod:`imbi_common.graph.initializer`
+   their indexes in AGE, mirroring :mod:`imbi.common.graph.initializer`
    primitives but sourced from the registry instead of a static file.
 
 Edge labels are created on first write per AGE convention; declarations
@@ -25,13 +25,13 @@ import typing
 import psycopg
 from psycopg import sql
 
-from imbi_common import settings
-from imbi_common.plugins.base import (
+from imbi.common import settings
+from imbi.common.plugins.base import (
     PluginEdgeLabel,
     PluginManifest,
     PluginVertexLabel,
 )
-from imbi_common.plugins.errors import PluginSchemaCollisionError
+from imbi.common.plugins.errors import PluginSchemaCollisionError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ async def apply_plugin_schemas(
 ) -> None:
     """Apply each plugin's declared vlabels + indexes to AGE.
 
-    Mirrors :func:`imbi_common.graph.initializer.initialize` primitives.
+    Mirrors :func:`imbi.common.graph.initializer.initialize` primitives.
     Idempotent — safe to invoke on every startup.
     """
     if not manifests:

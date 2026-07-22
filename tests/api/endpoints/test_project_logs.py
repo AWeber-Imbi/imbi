@@ -6,8 +6,12 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
-from imbi_common.plugins.base import (
+
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.common import graph
+from imbi.common.plugins.base import (
     Capability,
     LogEntry,
     LogResult,
@@ -15,15 +19,11 @@ from imbi_common.plugins.base import (
     Plugin,
     PluginManifest,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     CursorExpiredError,
 )
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedCapability
-from tests import support
+from imbi.common.plugins.registry import RegistryEntry
+from tests.api import support
 
 
 class _FakeLogsHandler(LogsCapability):
@@ -120,11 +120,11 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def test_search_logs_happy_path(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_capability',
+                'imbi.api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs'
+                'imbi.api.endpoints.project_logs'
                 '.decrypt_integration_credentials',
                 return_value={'token': 'x'},
             ),
@@ -140,7 +140,7 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
     def test_search_logs_invalid_datetime_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_logs.resolve_capability',
+            'imbi.api.endpoints.project_logs.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -153,7 +153,7 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
     def test_search_logs_invalid_filter_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_logs.resolve_capability',
+            'imbi.api.endpoints.project_logs.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -164,7 +164,7 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
     def test_search_logs_unknown_filter_op(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_logs.resolve_capability',
+            'imbi.api.endpoints.project_logs.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -177,11 +177,11 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def test_search_logs_credentials_missing_returns_503(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_capability',
+                'imbi.api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs'
+                'imbi.api.endpoints.project_logs'
                 '.decrypt_integration_credentials',
                 return_value={},
             ),
@@ -199,11 +199,11 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_capability',
+                'imbi.api.endpoints.project_logs.resolve_capability',
                 return_value=_resolved(_Expiring),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs'
+                'imbi.api.endpoints.project_logs'
                 '.decrypt_integration_credentials',
                 return_value={'token': 'x'},
             ),
@@ -218,11 +218,11 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def test_get_log_schema(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_capability',
+                'imbi.api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs'
+                'imbi.api.endpoints.project_logs'
                 '.decrypt_integration_credentials',
                 return_value={'token': 'x'},
             ),
@@ -239,11 +239,11 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def test_get_log_schema_credentials_missing(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_capability',
+                'imbi.api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs'
+                'imbi.api.endpoints.project_logs'
                 '.decrypt_integration_credentials',
                 return_value={},
             ),
@@ -257,11 +257,11 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
     def test_search_logs_with_valid_datetime_and_filter(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_logs.resolve_capability',
+                'imbi.api.endpoints.project_logs.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_logs'
+                'imbi.api.endpoints.project_logs'
                 '.decrypt_integration_credentials',
                 return_value={'token': 'x'},
             ),
@@ -278,7 +278,7 @@ class ProjectLogsEndpointTestCase(support.SharedAppTestCase):
 
 class ParseFiltersTestCase(unittest.TestCase):
     def test_filter_parses_with_value_containing_colon(self) -> None:
-        from imbi_api.endpoints.project_logs import _parse_filters
+        from imbi.api.endpoints.project_logs import _parse_filters
 
         # `split(':', 2)` should keep ``key:value`` intact in value.
         result = _parse_filters(['url:eq:https://example.com'])
@@ -288,7 +288,7 @@ class ParseFiltersTestCase(unittest.TestCase):
 
     def test_audit_log_payload_for_logs(self) -> None:
         # Sanity check: importing the module should succeed and expose router
-        from imbi_api.endpoints import project_logs
+        from imbi.api.endpoints import project_logs
 
         self.assertTrue(hasattr(project_logs, 'project_logs_router'))
         # Use json import so the module-level json import is exercised

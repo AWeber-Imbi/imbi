@@ -1,6 +1,6 @@
 """Commit/tag-sync queue (Valkey Streams).
 
-Mirrors :mod:`imbi_api.scoring.queue`: a single consumer group drains an
+Mirrors :mod:`imbi.api.scoring.queue`: a single consumer group drains an
 ``imbi:commit-sync`` stream, with a per-project debounce, stale-entry
 reclaim, and a dead-letter queue after repeated failures.  Each job runs
 a full commit/tag backfill via :func:`commit_sync.service.run_sync` and
@@ -17,15 +17,15 @@ import time
 import typing
 from collections import abc
 
-from imbi_common import graph
-from imbi_common.plugins.errors import PluginRateLimited
 from valkey import asyncio as valkey
 
-from imbi_api.commit_sync.service import (
+from imbi.api.commit_sync.service import (
     CommitSyncUnavailable,
     run_sync,
     set_status,
 )
+from imbi.common import graph
+from imbi.common.plugins.errors import PluginRateLimited
 
 STREAM = 'imbi:commit-sync'
 GROUP = 'commit-sync-workers'

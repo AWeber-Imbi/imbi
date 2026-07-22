@@ -5,14 +5,14 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     IdentityCapability,
     PluginContext,
     PluginManifest,
 )
-
-from imbi_plugin_oidc import PLUGIN
-from imbi_plugin_oidc.plugin import OIDCIdentity, OIDCPlugin
+from imbi.plugins.oidc import PLUGIN
+from imbi.plugins.oidc.plugin import OIDCIdentity, OIDCPlugin
 
 _DISCOVERY = {
     'authorization_endpoint': 'https://idp.example.com/authorize',

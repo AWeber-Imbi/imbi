@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 import fastapi
 import typer
-from imbi_common import graph, lifespan, sentry, server
 
-import imbi_slackbot
-from imbi_slackbot import (
+import imbi.slackbot
+from imbi.common import graph, lifespan, sentry, server
+from imbi.slackbot import (
     app_status,
     client,
     identity,
@@ -62,7 +62,7 @@ def create_app() -> fastapi.FastAPI:
 
     app = fastapi.FastAPI(
         title='Imbi Slack Bot',
-        version=imbi_slackbot.version,
+        version=imbi.slackbot.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
             sentry.sentry_lifespan,
@@ -80,7 +80,7 @@ def create_app() -> fastapi.FastAPI:
 cli = typer.Typer(no_args_is_help=True)
 cli.command('serve')(
     server.bind_entrypoint(
-        'imbi_slackbot.app:create_app',
+        'imbi.slackbot.app:create_app',
         default_port=8004,
     )
 )

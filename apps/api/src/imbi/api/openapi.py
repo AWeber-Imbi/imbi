@@ -21,12 +21,12 @@ import threading
 import typing
 
 import fastapi.openapi.utils
-import imbi_common.blueprints
 import pydantic
 import starlette.responses
-from imbi_common import graph
 
-from imbi_api import models as imbi_models
+import imbi.common.blueprints
+from imbi.api import models as imbi_models
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 
@@ -95,12 +95,12 @@ async def generate_blueprint_models(
 
     for model_name, model_class in imbi_models.MODEL_TYPES.items():
         try:
-            write_model = await imbi_common.blueprints.get_model(
+            write_model = await imbi.common.blueprints.get_model(
                 db, model_class
             )
             write_models[model_name] = write_model
             response_models[model_name] = (
-                imbi_common.blueprints.make_response_model(write_model)
+                imbi.common.blueprints.make_response_model(write_model)
             )
             LOGGER.debug(
                 'Generated blueprint models for %s',
@@ -113,7 +113,7 @@ async def generate_blueprint_models(
             )
             write_models[model_name] = model_class
             response_models[model_name] = (
-                imbi_common.blueprints.make_response_model(model_class)
+                imbi.common.blueprints.make_response_model(model_class)
             )
 
     edge_models = await _generate_edge_models(db)
@@ -130,7 +130,7 @@ async def _generate_edge_models(
     for each combination.
 
     """
-    from imbi_common import models as common_models
+    from imbi.common import models as common_models
 
     all_rel_bps = await db.match(
         common_models.Blueprint,
@@ -155,7 +155,7 @@ async def _generate_edge_models(
                 (common_models.RelationshipEdge,),
                 {},
             )
-            model = imbi_common.blueprints.apply_blueprints(edge_base, bps)
+            model = imbi.common.blueprints.apply_blueprints(edge_base, bps)
             edge_models[name] = model
             LOGGER.debug(
                 'Generated edge model %s (%d blueprints)',

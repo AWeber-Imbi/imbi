@@ -9,9 +9,9 @@ import unittest
 from unittest import mock
 
 import httpx
-from imbi_common import graph
 
-from imbi_api.email import client, templates
+from imbi.api.email import client, templates
+from imbi.common import graph
 
 
 class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
@@ -54,10 +54,10 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         if not self.mailpit_available:
             self.skipTest('Mailpit not available')
 
-        from imbi_api import email
+        from imbi.api import email
 
         with mock.patch(
-            'imbi_api.email.client.settings.Email'
+            'imbi.api.email.client.settings.Email'
         ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = True
@@ -77,7 +77,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             await email_client.initialize()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi_common.clickhouse.insert') as mock_insert:
+            with mock.patch('imbi.common.clickhouse.insert') as mock_insert:
                 mock_insert.return_value = None
 
                 audit = await email.send_welcome_email(
@@ -164,10 +164,10 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_email_disabled(self) -> None:
         """Test that emails are skipped when disabled."""
-        from imbi_api import email
+        from imbi.api import email
 
         with mock.patch(
-            'imbi_api.email.client.settings.Email'
+            'imbi.api.email.client.settings.Email'
         ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = False
@@ -175,7 +175,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi_common.clickhouse.insert'):
+            with mock.patch('imbi.common.clickhouse.insert'):
                 audit = await email.send_welcome_email(
                     email_client,
                     template_manager,
@@ -190,10 +190,10 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_email_dry_run(self) -> None:
         """Test that emails are logged but not sent in dry-run."""
-        from imbi_api import email
+        from imbi.api import email
 
         with mock.patch(
-            'imbi_api.email.client.settings.Email'
+            'imbi.api.email.client.settings.Email'
         ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = True
@@ -202,7 +202,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi_common.clickhouse.insert'):
+            with mock.patch('imbi.common.clickhouse.insert'):
                 audit = await email.send_welcome_email(
                     email_client,
                     template_manager,
@@ -217,10 +217,10 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_send_password_reset_email(self) -> None:
         """Test sending password reset email."""
-        from imbi_api import email
+        from imbi.api import email
 
         with mock.patch(
-            'imbi_api.email.client.settings.Email'
+            'imbi.api.email.client.settings.Email'
         ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = True
@@ -229,7 +229,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi_common.clickhouse.insert'):
+            with mock.patch('imbi.common.clickhouse.insert'):
                 token, audit = await email.send_password_reset(
                     email_client,
                     template_manager,
@@ -252,12 +252,11 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_clickhouse_audit_error_handling(self) -> None:
         """Test that ClickHouse errors don't fail email sends."""
-        from imbi_common import clickhouse
-
-        from imbi_api import email
+        from imbi.api import email
+        from imbi.common import clickhouse
 
         with mock.patch(
-            'imbi_api.email.client.settings.Email'
+            'imbi.api.email.client.settings.Email'
         ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = True
@@ -266,7 +265,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi_common.clickhouse.insert') as mock_insert:
+            with mock.patch('imbi.common.clickhouse.insert') as mock_insert:
                 mock_insert.side_effect = clickhouse.client.DatabaseError(
                     'Connection failed'
                 )
@@ -287,10 +286,10 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         """Test password reset URL handles existing query params."""
-        from imbi_api import email
+        from imbi.api import email
 
         with mock.patch(
-            'imbi_api.email.client.settings.Email'
+            'imbi.api.email.client.settings.Email'
         ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = True
@@ -299,7 +298,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi_common.clickhouse.insert'):
+            with mock.patch('imbi.common.clickhouse.insert'):
                 with mock.patch.object(
                     template_manager,
                     'render_email',

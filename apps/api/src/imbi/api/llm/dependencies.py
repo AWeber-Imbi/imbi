@@ -3,10 +3,10 @@
 import typing
 
 import fastapi
-from imbi_common.lifespan import InjectLifespan
-from imbi_common.llm import AnthropicClient
 
-from imbi_api import lifespans
+from imbi.api import lifespans
+from imbi.common.lifespan import InjectLifespan
+from imbi.common.llm import AnthropicClient
 
 
 def _get_anthropic_client(

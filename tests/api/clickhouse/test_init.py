@@ -4,7 +4,8 @@ import unittest
 from unittest import mock
 
 import pydantic
-from imbi_common import clickhouse
+
+from imbi.common import clickhouse
 
 
 class SampleModel(pydantic.BaseModel):
@@ -208,7 +209,7 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await clickhouse.insert(
                 'test_table',
-                typing.cast(list[pydantic.BaseModel], data),
+                typing.cast('list[pydantic.BaseModel]', data),
             )
 
         self.assertEqual(result, mock_summary)
@@ -252,7 +253,7 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError) as cm:
                 await clickhouse.insert(
                     'test_table',
-                    typing.cast(list[pydantic.BaseModel], data),
+                    typing.cast('list[pydantic.BaseModel]', data),
                 )
 
         self.assertIn('same type', str(cm.exception))
@@ -273,7 +274,7 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await clickhouse.insert(
                 'test_table',
-                typing.cast(list[pydantic.BaseModel], data),
+                typing.cast('list[pydantic.BaseModel]', data),
             )
 
         self.assertEqual(result, mock_summary)

@@ -11,13 +11,10 @@ import fastapi
 import jwt
 import psycopg
 import pydantic
-from imbi_common import graph
-from imbi_common.auth import core
-from imbi_common.plugins import errors as plugin_errors
 from valkey import asyncio as valkey_module
 
-from imbi_api import models, settings
-from imbi_api.auth import (
+from imbi.api import models, settings
+from imbi.api.auth import (
     authorization_codes,
     local_auth,
     login_providers,
@@ -25,14 +22,17 @@ from imbi_api.auth import (
     permissions,
     tokens,
 )
-from imbi_api.auth import models as auth_models
-from imbi_api.auth import password as password_auth
-from imbi_api.auth.totp import fetch_totp_secret, verify_totp_code
-from imbi_api.endpoints import _request_urls
-from imbi_api.identity import flows as identity_flows
-from imbi_api.identity import repository as identity_repository
-from imbi_api.middleware import rate_limit
-from imbi_api.scoring import OptionalValkeyClient
+from imbi.api.auth import models as auth_models
+from imbi.api.auth import password as password_auth
+from imbi.api.auth.totp import fetch_totp_secret, verify_totp_code
+from imbi.api.endpoints import _request_urls
+from imbi.api.identity import flows as identity_flows
+from imbi.api.identity import repository as identity_repository
+from imbi.api.middleware import rate_limit
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.common import graph
+from imbi.common.auth import core
+from imbi.common.plugins import errors as plugin_errors
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1307,7 +1307,7 @@ async def oauth_login(
     Every login provider is now a login-capable ``Integration`` whose
     plugin implements the ``identity`` capability; the authorization
     URL and token exchange are owned entirely by that plugin's
-    handler via :mod:`imbi_api.identity.flows`.
+    handler via :mod:`imbi.api.identity.flows`.
 
     Args:
         provider: Login-Integration slug
@@ -1460,7 +1460,7 @@ async def _login_callback(
     Every login provider is a login-capable ``Integration``; the
     authorization-code exchange is owned by the plugin's identity
     capability handler via :func:`identity_flows.complete_login_flow`.
-    Persists an :class:`imbi_common.models.IdentityConnection` once the
+    Persists an :class:`imbi.common.models.IdentityConnection` once the
     local user has been resolved / provisioned.
     """
     (

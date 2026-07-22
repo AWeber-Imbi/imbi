@@ -6,11 +6,11 @@ import datetime
 from unittest import mock
 
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api import scoring as scoring_di
-from tests import support
+from imbi.api import models
+from imbi.api import scoring as scoring_di
+from imbi.common import graph
+from tests.api import support
 
 
 class _PipelineProxy:
@@ -53,7 +53,7 @@ class _PipelineProxy:
 
 class ScoringEndpointsTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.user = models.User(
             email='admin@example.com',
@@ -99,7 +99,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
     def test_history_raw(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
         with mock.patch(
-            'imbi_api.endpoints.scoring.clickhouse.query',
+            'imbi.api.endpoints.scoring.clickhouse.query',
             mock.AsyncMock(
                 return_value=[
                     {
@@ -136,7 +136,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(
                     return_value=[
                         {
@@ -153,7 +153,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -195,7 +195,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
     def test_history_with_date_filters(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
         with mock.patch(
-            'imbi_api.endpoints.scoring.clickhouse.query',
+            'imbi.api.endpoints.scoring.clickhouse.query',
             mock.AsyncMock(return_value=[]),
         ):
             response = self.client.get(
@@ -210,7 +210,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
     def test_history_hourly_granularity(self) -> None:
         self.mock_db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
         with mock.patch(
-            'imbi_api.endpoints.scoring.clickhouse.query',
+            'imbi.api.endpoints.scoring.clickhouse.query',
             mock.AsyncMock(
                 return_value=[{'ts': '2026-04-01T00:00:00', 'score': 85.0}]
             ),
@@ -276,7 +276,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
             return_value=[{'sp': policy_props, 'targets': []}]
         )
         with mock.patch(
-            'imbi_api.endpoints.scoring.score_queue.affected_projects',
+            'imbi.api.endpoints.scoring.score_queue.affected_projects',
             mock.AsyncMock(return_value=['p1']),
         ):
             response = self.client.post(
@@ -345,11 +345,11 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(return_value=[{'score': 80.0}]),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -369,11 +369,11 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -405,7 +405,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         # asyncio.gather calls clickhouse.query twice: cur then prev
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(
                     side_effect=[
                         # current-month scores: p1, p2, p3 scored; p4 not
@@ -424,7 +424,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -496,7 +496,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(
                     return_value=[
                         {
@@ -518,7 +518,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -540,11 +540,11 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -586,7 +586,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(
                     return_value=[
                         {
@@ -600,7 +600,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -629,11 +629,11 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(
@@ -660,7 +660,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring.clickhouse.query',
+                'imbi.api.endpoints.scoring.clickhouse.query',
                 mock.AsyncMock(
                     return_value=[
                         {
@@ -674,7 +674,7 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.get(

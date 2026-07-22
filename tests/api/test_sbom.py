@@ -3,14 +3,14 @@ import pathlib
 import typing
 import unittest
 
-from imbi_api import sbom
+from imbi.api import sbom
 
 _FIXTURE_DIR = pathlib.Path(__file__).parent / 'fixtures' / 'sbom'
 
 
 def _load(name: str) -> dict[str, typing.Any]:
     return typing.cast(
-        dict[str, typing.Any],
+        'dict[str, typing.Any]',
         json.loads((_FIXTURE_DIR / name).read_text()),
     )
 

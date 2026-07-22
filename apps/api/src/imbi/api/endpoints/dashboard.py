@@ -15,10 +15,10 @@ import typing
 import fastapi
 import httpx
 import pydantic
-from imbi_common import clickhouse, graph, valkey
 
-from imbi_api import settings, version
-from imbi_api.auth import permissions
+from imbi.api import settings, version
+from imbi.api.auth import permissions
+from imbi.common import clickhouse, graph, valkey
 
 LOGGER = logging.getLogger(__name__)
 

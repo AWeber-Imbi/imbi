@@ -8,22 +8,22 @@ import unittest.mock
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     LogFilter,
     LogQuery,
     LogsCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     CursorExpiredError,
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
 )
-
-from imbi_plugin_aws import cloudwatch as cw_module
-from imbi_plugin_aws.cloudwatch import CloudWatchLogs
-from imbi_plugin_aws.query import encode_cursor, query_fingerprint
+from imbi.plugins.aws import cloudwatch as cw_module
+from imbi.plugins.aws.cloudwatch import CloudWatchLogs
+from imbi.plugins.aws.query import encode_cursor, query_fingerprint
 
 _LOGS_URL = 'https://logs.us-east-1.amazonaws.com/'
 _GLOB_PATTERN = '/aws/rds/${project_slug}-*/postgresql'
@@ -214,7 +214,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
         ctx = _ctx()
         log_groups = ['/imbi/prod/widget']
         # Reproduce the exact query string the plugin will assemble.
-        from imbi_plugin_aws.query import build_query
+        from imbi.plugins.aws.query import build_query
 
         q = _query(limit=2)
         query_string = build_query(
@@ -297,7 +297,7 @@ class SearchTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class _FakeValkey:
-    """In-memory stand-in for ``imbi_common.valkey.get_client()``."""
+    """In-memory stand-in for ``imbi.common.valkey.get_client()``."""
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
@@ -495,7 +495,7 @@ class ResolveModeTestCase(unittest.IsolatedAsyncioTestCase):
         fake = _FakeValkey()
         # Pre-seed the cache key. Pattern after expansion:
         # /aws/rds/widget-*/postgresql
-        from imbi_plugin_aws.aws_session import AwsCredentials
+        from imbi.plugins.aws.aws_session import AwsCredentials
 
         creds = AwsCredentials(
             access_key_id='AKID',
@@ -650,7 +650,7 @@ class CacheBustTestCase(unittest.IsolatedAsyncioTestCase):
         # Simulate: cached resolve names a deleted log group; first
         # StartQuery 400s with ResourceNotFoundException; resolver
         # re-runs DescribeLogGroups and retry succeeds.
-        from imbi_plugin_aws.aws_session import AwsCredentials
+        from imbi.plugins.aws.aws_session import AwsCredentials
 
         creds = AwsCredentials(
             access_key_id='AKID',
@@ -931,7 +931,7 @@ class HistogramTestCase(unittest.IsolatedAsyncioTestCase):
         # First StartQuery returns ResourceNotFoundException; the
         # cache entry is busted, _build_selection re-runs DescribeLogGroups,
         # and the retry succeeds.
-        from imbi_plugin_aws.aws_session import AwsCredentials
+        from imbi.plugins.aws.aws_session import AwsCredentials
 
         creds = AwsCredentials(
             access_key_id='AKID',

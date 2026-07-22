@@ -19,7 +19,7 @@ plugin.
 `AnalysisCapability` has a single abstract method, `analyze`:
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     AnalysisCapability,
     AnalysisResultItem,
     PluginContext,
@@ -59,7 +59,7 @@ asks the host to call the emitting capability's `remediate` with the
 offer's `id`. Implement `remediate` whenever you emit an offer:
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     AnalysisResultItem,
     RemediationOffer,
     RemediationResult,
@@ -138,12 +138,12 @@ Health & Compliance score; missing results contribute `None`.
 
 ## API reference
 
-::: imbi_common.plugins.AnalysisCapability
+::: imbi.common.plugins.AnalysisCapability
 
-::: imbi_common.plugins.AnalysisResultItem
+::: imbi.common.plugins.AnalysisResultItem
 
-::: imbi_common.plugins.AnalysisResultStatus
+::: imbi.common.plugins.AnalysisResultStatus
 
-::: imbi_common.plugins.RemediationOffer
+::: imbi.common.plugins.RemediationOffer
 
-::: imbi_common.plugins.RemediationResult
+::: imbi.common.plugins.RemediationResult

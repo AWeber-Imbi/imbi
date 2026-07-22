@@ -1,8 +1,8 @@
 """Re-export all models for convenient access.
 
-Combines shared models from imbi_common and API-specific models
-from imbi_api.domain for a single import path:
-    from imbi_api import models
+Combines shared models from imbi.common and API-specific models
+from imbi.api.domain for a single import path:
+    from imbi.api import models
     models.Organization(...)
     models.User(...)
 """
@@ -11,9 +11,8 @@ import json
 import typing
 import warnings
 
-from imbi_common import models as _common
-
-from imbi_api.domain import models as _domain
+from imbi.api.domain import models as _domain
+from imbi.common import models as _common
 
 __all__ = [  # pyright: ignore[reportUnsupportedDunderAll]
     *_common.__all__,
@@ -51,7 +50,7 @@ MODEL_TYPES: dict[str, type[_common.Node]] = {
     'Team': _common.Team,
 }
 
-# API-specific models from imbi_api.domain
+# API-specific models from imbi.api.domain
 CapabilityAssignment = _domain.CapabilityAssignment
 CapabilityAssignmentsUpdate = _domain.CapabilityAssignmentsUpdate
 CapabilityToggle = _domain.CapabilityToggle

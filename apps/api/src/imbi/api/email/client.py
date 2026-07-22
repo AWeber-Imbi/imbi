@@ -8,7 +8,7 @@ import ssl
 import typing
 from email.mime import multipart, text
 
-from imbi_api import settings
+from imbi.api import settings
 
 from . import models
 
@@ -22,7 +22,7 @@ class EmailClient:
     run in an executor to avoid blocking the event loop. The client supports
     TLS/SSL connections and can be configured via Email settings.
 
-    Lifecycle is managed by :func:`imbi_api.lifespans.email_hook`.
+    Lifecycle is managed by :func:`imbi.api.lifespans.email_hook`.
 
     """
 

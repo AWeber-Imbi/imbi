@@ -5,9 +5,9 @@ from __future__ import annotations
 import datetime
 import typing
 
-from imbi_common import graph, models
-from imbi_common.clickhouse import client as ch_client
-from imbi_common.scoring.models import ScoreBreakdown
+from imbi.common import graph, models
+from imbi.common.clickhouse import client as ch_client
+from imbi.common.scoring.models import ScoreBreakdown
 
 _HISTORY_COLUMNS = [
     'project_id',

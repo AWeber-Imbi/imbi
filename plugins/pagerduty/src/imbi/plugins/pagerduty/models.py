@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 import typing
 
-from imbi_common.plugins.base import IncidentView
+from imbi.common.plugins.base import IncidentView
 
 
 def _parse_dt(value: object) -> datetime.datetime | None:

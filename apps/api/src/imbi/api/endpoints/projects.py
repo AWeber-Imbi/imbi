@@ -15,37 +15,37 @@ import fastapi
 import nanoid
 import psycopg
 import pydantic
-from imbi_common import blueprints, clickhouse, graph, models
-from imbi_common.clickhouse import client as ch_client
-from imbi_common.plugins.base import (
-    LifecycleCapability,
-    PluginContext,
-    RelocationTarget,
-)
-from imbi_common.scoring import compute_score
 
-from imbi_api import blueprint_attributes
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
-from imbi_api.domain import scoring as scoring_models
-from imbi_api.domain.models import ExistsInResponse
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.endpoints._json_fields import (
+from imbi.api import blueprint_attributes
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.api.domain import scoring as scoring_models
+from imbi.api.domain.models import ExistsInResponse
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.endpoints._json_fields import (
     JSONFields,
     deserialize_json_fields,
     serialize_json_fields,
 )
-from imbi_api.graph_sql import escape_prop, props_template, set_clause
-from imbi_api.plugins.lifecycle_dispatch import (
+from imbi.api.graph_sql import escape_prop, props_template, set_clause
+from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleInvocation,
     build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
-from imbi_api.plugins.resolution import resolve_all_capabilities
-from imbi_api.relationships import RelationshipSpec, build_relationships
-from imbi_api.scoring import OptionalValkeyClient
-from imbi_api.scoring import queue as score_queue
-from imbi_api.settings import get_server_config
+from imbi.api.plugins.resolution import resolve_all_capabilities
+from imbi.api.relationships import RelationshipSpec, build_relationships
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.api.scoring import queue as score_queue
+from imbi.api.settings import get_server_config
+from imbi.common import blueprints, clickhouse, graph, models
+from imbi.common.clickhouse import client as ch_client
+from imbi.common.plugins.base import (
+    LifecycleCapability,
+    PluginContext,
+    RelocationTarget,
+)
+from imbi.common.scoring import compute_score
 
 LOGGER = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ class ProjectUpdate(pydantic.BaseModel):
     identifiers: dict[str, int | str] | None = None
 
 
-# ProjectRelationships now lives in imbi_common.models so the OpenAPI
+# ProjectRelationships now lives in imbi.common.models so the OpenAPI
 # schema emitted from ``make_response_model(Project)`` matches the
 # runtime shape that this endpoint actually returns. Re-export under
 # the historical name for callers in this module.

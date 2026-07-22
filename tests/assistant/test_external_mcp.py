@@ -6,9 +6,9 @@ import unittest
 from unittest import mock
 
 import httpx
-from imbi_common import models as common_models
 
-from imbi_assistant import external_mcp
+from imbi.assistant import external_mcp
+from imbi.common import models as common_models
 
 
 def _make_server(**overrides: object) -> common_models.MCPServer:
@@ -44,7 +44,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertIsNone(headers)
         self.assertIsNone(http_auth)
 
-    @mock.patch('imbi_assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
     def test_static_auth(self, mock_decrypt: mock.MagicMock) -> None:
         mock_decrypt.return_value = 'secret-token'
         server = _make_server(
@@ -57,7 +57,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertIsNone(http_auth)
         mock_decrypt.assert_called_once_with('ciphertext')
 
-    @mock.patch('imbi_assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
     def test_static_auth_missing_value(
         self, mock_decrypt: mock.MagicMock
     ) -> None:
@@ -71,7 +71,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertIsNone(headers)
         self.assertIsNone(http_auth)
 
-    @mock.patch('imbi_assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
     def test_oauth_auth(self, mock_decrypt: mock.MagicMock) -> None:
         mock_decrypt.return_value = 'client-secret'
         server = _make_server(
@@ -89,7 +89,7 @@ class BuildAuthTestCase(unittest.TestCase):
         self.assertEqual(http_auth._token_url, str(server.oauth_token_url))
         mock_decrypt.assert_called_once_with('ciphertext')
 
-    @mock.patch('imbi_assistant.external_mcp.decrypt_config_value')
+    @mock.patch('imbi.assistant.external_mcp.decrypt_config_value')
     def test_oauth_auth_missing_secret(
         self, mock_decrypt: mock.MagicMock
     ) -> None:
@@ -130,7 +130,7 @@ class OAuthClientCredentialsAuthTestCase(
         mock_client.__aenter__.return_value = mock_client
 
         with mock.patch(
-            'imbi_assistant.external_mcp.httpx.AsyncClient',
+            'imbi.assistant.external_mcp.httpx.AsyncClient',
             return_value=mock_client,
         ):
             request = httpx.Request('GET', 'https://mcp.example.com')
@@ -248,7 +248,7 @@ class ConnectAndRegisterTestCase(
         self._patch_session(manager, [_make_tool('thing')])
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+            'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
             return_value=[server],
         ):
             await manager.initialize(db)
@@ -338,11 +338,11 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         manager._exit_stack.enter_async_context = fake_enter  # type: ignore
         with (
             mock.patch(
-                'imbi_assistant.external_mcp.streamable_http.'
+                'imbi.assistant.external_mcp.streamable_http.'
                 'streamable_http_client'
             ) as mock_client_ctx,
             mock.patch(
-                'imbi_assistant.external_mcp.mcp.ClientSession',
+                'imbi.assistant.external_mcp.mcp.ClientSession',
             ),
         ):
             result = await manager._open_session(server)
@@ -355,13 +355,13 @@ class OpenSessionTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(passed_url, str(server.url))
 
     @mock.patch(
-        'imbi_assistant.external_mcp.create_mcp_http_client',
+        'imbi.assistant.external_mcp.create_mcp_http_client',
     )
     async def test_verify_ssl(self, mock_factory: mock.MagicMock) -> None:
         await self._run(_make_server(verify_ssl=True))
         mock_factory.assert_called_once()
 
-    @mock.patch('imbi_assistant.external_mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.external_mcp.httpx.AsyncClient')
     async def test_no_verify_ssl(self, mock_client: mock.MagicMock) -> None:
         await self._run(_make_server(verify_ssl=False))
         mock_client.assert_called_once()
@@ -407,7 +407,7 @@ class ModuleLevelTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_initialize_and_get_manager(self) -> None:
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+            'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
             return_value=[],
         ):
             await external_mcp.initialize(db)
@@ -432,7 +432,7 @@ class ModuleLevelTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_reinitialize(self) -> None:
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_assistant.external_mcp.age_ops.get_enabled_mcp_servers',
+            'imbi.assistant.external_mcp.age_ops.get_enabled_mcp_servers',
             return_value=[],
         ):
             await external_mcp.initialize(db)

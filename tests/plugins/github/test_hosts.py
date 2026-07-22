@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_plugin_github._hosts import (
+from imbi.plugins.github._hosts import (
     flavor_host,
     normalize_host,
     require_ghec_tenant_host,

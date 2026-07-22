@@ -7,10 +7,9 @@ import time
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.errors import PluginRateLimited
-
-from imbi_api.deployment_sync import queue
-from imbi_api.deployment_sync.service import DeploymentSyncUnavailable
+from imbi.api.deployment_sync import queue
+from imbi.api.deployment_sync.service import DeploymentSyncUnavailable
+from imbi.common.plugins.errors import PluginRateLimited
 
 
 def _summary(**kwargs: int) -> mock.Mock:

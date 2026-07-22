@@ -8,8 +8,8 @@ from unittest import mock
 import fastapi
 from fastapi import security
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
 
 
 class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
@@ -59,9 +59,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                         's': None,
                     }
                 ]
-            elif 'last_used' in query:
+            if 'last_used' in query:
                 return []
-            elif (
+            if (
                 'Permission' in query
                 or 'GRANTS' in query
                 or 'MEMBER_OF' in query
@@ -79,7 +79,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             auth_context = await permissions.authenticate_api_key(
@@ -140,7 +140,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as cm,
@@ -175,7 +175,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as cm,
@@ -212,7 +212,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as cm,
@@ -248,7 +248,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as cm,
@@ -289,7 +289,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as cm,
@@ -318,9 +318,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                         's': None,
                     }
                 ]
-            elif 'last_used' in query:
+            if 'last_used' in query:
                 return []
-            elif (
+            if (
                 'Permission' in query
                 or 'GRANTS' in query
                 or 'MEMBER_OF' in query
@@ -338,7 +338,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             auth_context = await permissions.authenticate_api_key(
@@ -363,9 +363,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                         's': None,
                     }
                 ]
-            elif 'last_used' in query:
+            if 'last_used' in query:
                 return []
-            elif (
+            if (
                 'Permission' in query
                 or 'GRANTS' in query
                 or 'MEMBER_OF' in query
@@ -375,7 +375,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             first = await permissions.authenticate_api_key(
@@ -403,9 +403,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                         's': None,
                     }
                 ]
-            elif 'last_used' in query:
+            if 'last_used' in query:
                 return []
-            elif (
+            if (
                 'Permission' in query
                 or 'GRANTS' in query
                 or 'MEMBER_OF' in query
@@ -415,7 +415,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             await permissions.authenticate_api_key(
@@ -471,9 +471,9 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
                         's': None,
                     }
                 ]
-            elif 'last_used' in query:
+            if 'last_used' in query:
                 return []
-            elif (
+            if (
                 'Permission' in query
                 or 'GRANTS' in query
                 or 'MEMBER_OF' in query
@@ -484,9 +484,9 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -526,7 +526,7 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
         )
         request = self._request({permissions.ACCESS_COOKIE_NAME: 'cookie'})
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
             mock.patch.object(
                 permissions, '_authenticate_token', new=mock.AsyncMock()
             ) as mock_auth,
@@ -545,7 +545,7 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
             {permissions.ACCESS_COOKIE_NAME: 'cookie-token'}
         )
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
             mock.patch.object(
                 permissions, '_authenticate_token', new=mock.AsyncMock()
             ) as mock_auth,

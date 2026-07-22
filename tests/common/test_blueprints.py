@@ -4,7 +4,7 @@ import unittest
 
 import pydantic
 
-from imbi_common import blueprints, graph, models
+from imbi.common import blueprints, graph, models
 
 # -- Helpers ---------------------------------------------------------------
 

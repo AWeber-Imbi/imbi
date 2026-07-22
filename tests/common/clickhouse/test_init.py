@@ -4,7 +4,7 @@ from unittest import mock
 
 import pydantic
 
-from imbi_common import clickhouse
+from imbi.common import clickhouse
 
 
 class SampleModel(pydantic.BaseModel):

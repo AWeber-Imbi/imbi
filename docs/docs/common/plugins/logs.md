@@ -15,7 +15,7 @@ plugin.
 ```python
 import typing
 
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     LogHistogramBucket,
     LogQuery,
     LogResult,
@@ -57,7 +57,7 @@ class LokiLogs(LogsCapability):
   available, populate `next_cursor` with an opaque token the upstream
   system can decode on the next call. If a cursor has expired or become
   invalid, raise
-  [`CursorExpiredError`][imbi_common.plugins.CursorExpiredError]
+  [`CursorExpiredError`][imbi.common.plugins.CursorExpiredError]
   rather than silently returning empty results.
 - **`schema`** — return a list of field descriptors. The shape is
   intentionally loose so capabilities can surface vendor-specific
@@ -86,14 +86,14 @@ can surface a clear error.
 
 ## API reference
 
-::: imbi_common.plugins.LogsCapability
+::: imbi.common.plugins.LogsCapability
 
-::: imbi_common.plugins.LogQuery
+::: imbi.common.plugins.LogQuery
 
-::: imbi_common.plugins.LogFilter
+::: imbi.common.plugins.LogFilter
 
-::: imbi_common.plugins.LogEntry
+::: imbi.common.plugins.LogEntry
 
-::: imbi_common.plugins.LogResult
+::: imbi.common.plugins.LogResult
 
-::: imbi_common.plugins.LogHistogramBucket
+::: imbi.common.plugins.LogHistogramBucket

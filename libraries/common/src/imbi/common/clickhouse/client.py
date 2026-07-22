@@ -27,7 +27,7 @@ import pydantic
 from clickhouse_connect.datatypes import format
 from clickhouse_connect.driver import asyncclient, exceptions, summary
 
-from imbi_common import helpers, settings
+from imbi.common import helpers, settings
 
 try:
     import sentry_sdk

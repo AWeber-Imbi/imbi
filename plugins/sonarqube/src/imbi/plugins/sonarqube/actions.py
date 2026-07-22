@@ -6,10 +6,10 @@ import typing
 import httpx
 import pydantic
 import pydantic_settings
-from imbi_common import json_pointer
-from imbi_common.plugins import base as plugin_base
 
-from imbi_plugin_sonarqube import client
+from imbi.common import json_pointer
+from imbi.common.plugins import base as plugin_base
+from imbi.plugins.sonarqube import client
 
 LOGGER = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ LOGGER = logging.getLogger(__name__)
 class _ImbiSettings(pydantic_settings.BaseSettings):
     """Imbi API connection settings.
 
-    Names mirror :class:`imbi_gateway.actions.ActionSettings` so the
+    Names mirror :class:`imbi.gateway.actions.ActionSettings` so the
     same operator-managed environment variables drive both the gateway
     handlers and this plugin's handler.
     """
@@ -183,7 +183,7 @@ async def _patch_imbi_project(
 
     Reads connection settings from the ``ACTIONS_IMBI_URL`` and
     ``ACTIONS_IMBI_TOKEN`` environment variables (matching the
-    gateway's own :class:`imbi_gateway.actions.ActionSettings`) so the
+    gateway's own :class:`imbi.gateway.actions.ActionSettings`) so the
     plugin requires no additional configuration.
     """
     settings = _ImbiSettings()  # type: ignore[call-arg]

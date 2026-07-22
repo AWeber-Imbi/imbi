@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest import mock
 
-from imbi_assistant import settings
+from imbi.assistant import settings
 
 
 class AssistantSettingsTestCase(unittest.TestCase):

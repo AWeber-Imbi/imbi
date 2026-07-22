@@ -13,8 +13,10 @@ import logging
 import typing
 from collections import abc
 
-from imbi_common import blueprints, clickhouse, graph, models
-from imbi_common.scoring import (
+from valkey import asyncio as valkey
+
+from imbi.common import blueprints, clickhouse, graph, models
+from imbi.common.scoring import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,
@@ -26,7 +28,6 @@ from imbi_common.scoring import (
     compute_score,
     record_score_change,
 )
-from valkey import asyncio as valkey
 
 Policy = (
     AttributePolicy

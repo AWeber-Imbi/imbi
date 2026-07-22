@@ -9,7 +9,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_assistant import (
+from imbi.assistant import (
     auth,
     client,
     client_tools,
@@ -410,7 +410,7 @@ class CreateConversationEndpointTestCase(
         settings._assistant_settings = None
 
     @mock.patch(
-        'imbi_assistant.age_ops.create_conversation',
+        'imbi.assistant.age_ops.create_conversation',
     )
     async def test_create_conversation(
         self,
@@ -428,7 +428,7 @@ class CreateConversationEndpointTestCase(
         self.assertEqual(result.id, 'conv-123')
 
     @mock.patch(
-        'imbi_assistant.age_ops.create_conversation',
+        'imbi.assistant.age_ops.create_conversation',
     )
     async def test_create_conversation_custom_model(
         self,
@@ -457,7 +457,7 @@ class ListConversationsEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.age_ops.list_conversations',
+        'imbi.assistant.age_ops.list_conversations',
     )
     async def test_list_conversations(
         self,
@@ -470,7 +470,7 @@ class ListConversationsEndpointTestCase(
         self.assertEqual(len(result), 1)
 
     @mock.patch(
-        'imbi_assistant.age_ops.list_conversations',
+        'imbi.assistant.age_ops.list_conversations',
     )
     async def test_list_conversations_limit_capped(
         self,
@@ -489,7 +489,7 @@ class ListConversationsEndpointTestCase(
         )
 
     @mock.patch(
-        'imbi_assistant.age_ops.list_conversations',
+        'imbi.assistant.age_ops.list_conversations',
     )
     async def test_list_conversations_negative_values(
         self,
@@ -517,10 +517,10 @@ class GetConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.age_ops.get_messages',
+        'imbi.assistant.age_ops.get_messages',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     async def test_get_conversation(
         self,
@@ -540,7 +540,7 @@ class GetConversationEndpointTestCase(
         self.assertEqual(result.messages, [])
 
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     async def test_get_conversation_not_found(
         self,
@@ -564,7 +564,7 @@ class DeleteConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.age_ops.delete_conversation',
+        'imbi.assistant.age_ops.delete_conversation',
     )
     async def test_delete_conversation(
         self,
@@ -583,7 +583,7 @@ class DeleteConversationEndpointTestCase(
         )
 
     @mock.patch(
-        'imbi_assistant.age_ops.delete_conversation',
+        'imbi.assistant.age_ops.delete_conversation',
     )
     async def test_delete_conversation_not_found(
         self,
@@ -607,10 +607,10 @@ class UpdateConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.update_conversation_title',
+        'imbi.assistant.age_ops.update_conversation_title',
     )
     async def test_update_title(
         self,
@@ -634,10 +634,10 @@ class UpdateConversationEndpointTestCase(
         mock_update.assert_called_once()
 
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.archive_conversation',
+        'imbi.assistant.age_ops.archive_conversation',
     )
     async def test_archive(
         self,
@@ -660,10 +660,10 @@ class UpdateConversationEndpointTestCase(
         mock_archive.assert_called_once()
 
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.update_conversation_title',
+        'imbi.assistant.age_ops.update_conversation_title',
     )
     async def test_update_not_found(
         self,
@@ -746,7 +746,7 @@ class SendMessageEndpointTestCase(
         self.assertEqual(ctx.exception.status_code, 503)
 
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     async def test_send_message_conversation_not_found(
         self,
@@ -770,10 +770,10 @@ class SendMessageEndpointTestCase(
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch(
-        'imbi_assistant.age_ops.count_messages',
+        'imbi.assistant.age_ops.count_messages',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     async def test_send_message_turn_limit_reached(
         self,
@@ -800,16 +800,16 @@ class SendMessageEndpointTestCase(
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch(
-        'imbi_assistant.age_ops.get_messages',
+        'imbi.assistant.age_ops.get_messages',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.add_message',
+        'imbi.assistant.age_ops.add_message',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.count_messages',
+        'imbi.assistant.age_ops.count_messages',
     )
     @mock.patch(
-        'imbi_assistant.age_ops.get_conversation',
+        'imbi.assistant.age_ops.get_conversation',
     )
     async def test_send_message_returns_streaming_response(
         self,
@@ -923,7 +923,7 @@ class StreamResponseTestCase(
         )
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_assistant.age_ops.add_message',
+            'imbi.assistant.age_ops.add_message',
             return_value=msg,
         ):
             chunks = []
@@ -977,15 +977,15 @@ class StreamResponseTestCase(
         db = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_assistant.age_ops.add_message',
+                'imbi.assistant.age_ops.add_message',
                 return_value=msg,
             ),
             mock.patch(
-                'imbi_assistant.endpoints._generate_title',
+                'imbi.assistant.endpoints._generate_title',
                 return_value='Generated Title',
             ) as mock_gen,
             mock.patch(
-                'imbi_assistant.age_ops.update_conversation_title',
+                'imbi.assistant.age_ops.update_conversation_title',
             ) as mock_update,
         ):
             chunks = []
@@ -1025,7 +1025,7 @@ class StreamResponseTestCase(
             calls.append(kwargs)
 
         with mock.patch(
-            'imbi_assistant.age_ops.add_message',
+            'imbi.assistant.age_ops.add_message',
             side_effect=fake_add_message,
         ):
             await endpoints._persist_tool_round(
@@ -1076,7 +1076,7 @@ class StreamResponseTestCase(
             completed.append(role)
 
         with mock.patch(
-            'imbi_assistant.age_ops.add_message',
+            'imbi.assistant.age_ops.add_message',
             side_effect=fake_add_message,
         ):
             inner = asyncio.create_task(
@@ -1251,7 +1251,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     @mock.patch(
-        'imbi_assistant.endpoints.external_mcp.reinitialize',
+        'imbi.assistant.endpoints.external_mcp.reinitialize',
         new_callable=mock.AsyncMock,
         return_value=(True, 2),
     )
@@ -1292,7 +1292,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     @mock.patch(
-        'imbi_assistant.endpoints.external_mcp.reinitialize',
+        'imbi.assistant.endpoints.external_mcp.reinitialize',
         new_callable=mock.AsyncMock,
         return_value=(False, 0),
     )
@@ -1323,7 +1323,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(tool_results[0]['is_error'])
 
     @mock.patch(
-        'imbi_assistant.endpoints.external_mcp.reinitialize',
+        'imbi.assistant.endpoints.external_mcp.reinitialize',
         new_callable=mock.AsyncMock,
         return_value=(True, 1),
     )
@@ -1364,7 +1364,7 @@ class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any('event: tool_result' in c for c in chunks))
 
     @mock.patch(
-        'imbi_assistant.endpoints.external_mcp.reinitialize',
+        'imbi.assistant.endpoints.external_mcp.reinitialize',
         new_callable=mock.AsyncMock,
         side_effect=RuntimeError('graph down'),
     )

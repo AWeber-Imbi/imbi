@@ -6,7 +6,7 @@ import pydantic_settings
 
 def settings_from_environment[S: pydantic_settings.BaseSettings](
     typ: type[S],
-    **defaults: t.Any,  # noqa: ANN401
+    **defaults: t.Any,
 ) -> S:
     """Load Pydantic settings from environment variables.
 

@@ -6,7 +6,7 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi_api.maintenance import state
+from imbi.api.maintenance import state
 
 
 def _client_with_pipeline(

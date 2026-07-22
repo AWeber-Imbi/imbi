@@ -10,11 +10,11 @@ import fastapi
 from botocore import (  # pyright: ignore[reportMissingTypeStubs]
     exceptions as botocore_exceptions,
 )
-from imbi_common import graph
 
-from imbi_api import models, settings, storage
-from imbi_api.auth import permissions
-from imbi_api.storage import thumbnails, validation
+from imbi.api import models, settings, storage
+from imbi.api.auth import permissions
+from imbi.api.storage import thumbnails, validation
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

@@ -4,11 +4,11 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from tests.api import support
 
 
 class APIKeysEndpointsTestCase(support.SharedAppTestCase):
@@ -62,7 +62,7 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -105,7 +105,7 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -132,7 +132,7 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -161,7 +161,7 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'name': 'project:read'}]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -182,7 +182,7 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
     ) -> None:
         """Test API key creation with excessive expiration."""
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -206,10 +206,10 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -265,10 +265,10 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -303,10 +303,10 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -324,10 +324,10 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -365,10 +365,10 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -409,10 +409,10 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -442,10 +442,10 @@ class APIKeysEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):

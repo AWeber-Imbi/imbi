@@ -7,8 +7,8 @@ import fastapi
 import fastapi.testclient
 import valkey.asyncio
 
-from imbi_common import lifespan
-from imbi_common import valkey as imbi_valkey
+from imbi.common import lifespan
+from imbi.common import valkey as imbi_valkey
 
 dotenv.load_dotenv()
 

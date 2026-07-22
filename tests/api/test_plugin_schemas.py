@@ -1,10 +1,10 @@
-"""Tests for the plugin-declared schema audit (imbi_api.plugins.schemas)."""
+"""Tests for the plugin-declared schema audit (imbi.api.plugins.schemas)."""
 
 import types
 import unittest
 from unittest import mock
 
-from imbi_api.plugins import schemas
+from imbi.api.plugins import schemas
 
 
 class AgLabelNamesTests(unittest.IsolatedAsyncioTestCase):

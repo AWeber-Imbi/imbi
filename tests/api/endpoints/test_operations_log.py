@@ -6,12 +6,12 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import clickhouse as imbi_clickhouse
 
-from imbi_api import models as api_models
-from imbi_api.auth import permissions as api_permissions
-from imbi_api.endpoints import operations_log
-from tests import support
+from imbi.api import models as api_models
+from imbi.api.auth import permissions as api_permissions
+from imbi.api.endpoints import operations_log
+from imbi.common import clickhouse as imbi_clickhouse
+from tests.api import support
 
 ALL_OPSLOG_PERMS: set[str] = {
     'operations_log:create',
@@ -96,7 +96,7 @@ class _OpsLogTestBase(support.SharedAppTestCase):
             new_callable=mock.AsyncMock,
         )
         self.query_patcher = mock.patch(
-            'imbi_common.clickhouse.query',
+            'imbi.common.clickhouse.query',
             new_callable=mock.AsyncMock,
         )
         self.mock_insert = self.insert_patcher.start()

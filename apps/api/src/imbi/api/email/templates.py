@@ -20,7 +20,7 @@ class TemplateManager:
     with context variables. Supports both HTML and plain text versions
     of emails, with automatic HTML-to-text conversion as a fallback.
 
-    Lifecycle is managed by :func:`imbi_api.lifespans.email_hook`.
+    Lifecycle is managed by :func:`imbi.api.lifespans.email_hook`.
 
     """
 

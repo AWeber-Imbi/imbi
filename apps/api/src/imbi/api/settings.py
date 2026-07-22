@@ -1,6 +1,6 @@
 """API-specific settings extending imbi-common shared settings.
 
-Import this module instead of imbi_common.settings in imbi-api code
+Import this module instead of imbi.common.settings in imbi-api code
 to get access to the full Auth settings (with password policy, OAuth,
 sessions, etc.) as well as Email and Storage settings.
 
@@ -13,7 +13,8 @@ import urllib.parse
 
 import pydantic
 import pydantic_settings
-from imbi_common import settings
+
+from imbi.common import settings
 
 
 def _parse_k8s_port(value: typing.Any) -> typing.Any:
@@ -364,7 +365,7 @@ class APIConfiguration(settings.Configuration):  # type: ignore[misc]
     storage: Storage = pydantic.Field(default_factory=Storage)
 
 
-# Alias so `from imbi_api import settings; settings.Configuration`
+# Alias so `from imbi.api import settings; settings.Configuration`
 # returns the API-extended type with email/storage sections.
 Configuration = APIConfiguration
 

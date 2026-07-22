@@ -4,12 +4,12 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models, scoring
-from imbi_api.auth import permissions
-from imbi_api.maintenance import OPERATIONS, state
-from tests import support
+from imbi.api import models, scoring
+from imbi.api.auth import permissions
+from imbi.api.maintenance import OPERATIONS, state
+from imbi.common import graph
+from tests.api import support
 
 
 class MaintenanceEndpointTestCase(support.SharedAppTestCase):

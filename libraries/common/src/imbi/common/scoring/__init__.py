@@ -1,8 +1,8 @@
 """Scoring engine for Imbi v2 attribute-policy scoring."""
 
-from imbi_common.scoring.engine import compute_score
-from imbi_common.scoring.history import clear_score, record_score_change
-from imbi_common.scoring.models import (
+from imbi.common.scoring.engine import compute_score
+from imbi.common.scoring.history import clear_score, record_score_change
+from imbi.common.scoring.models import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributeContribution,

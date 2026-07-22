@@ -3,11 +3,11 @@
 import pydantic
 import pydantic_settings
 
-from imbi_common import settings as common_settings
+from imbi.common import settings as common_settings
 
 
 class Settings(pydantic_settings.BaseSettings):
-    """Configuration for `imbi_common.api.client.Imbi`.
+    """Configuration for `imbi.common.api.client.Imbi`.
 
     Values are loaded from environment variables prefixed with
     ``IMBI_CLIENT_``:

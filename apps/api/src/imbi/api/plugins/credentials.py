@@ -4,7 +4,7 @@ Plugin Architecture v3: there is exactly one credential store per
 Integration -- ``Integration.encrypted_credentials``, a mapping of
 credential field name to its Fernet-encrypted value. Decryption is done
 in ``imbi-common`` via
-:func:`imbi_common.plugins.credentials.decrypt_integration_credentials`
+:func:`imbi.common.plugins.credentials.decrypt_integration_credentials`
 so every host shares one code path; this module only writes the blob and
 reports which fields are populated (never the plaintext values).
 """
@@ -14,8 +14,9 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
-from imbi_common.auth.encryption import TokenEncryption
+
+from imbi.common import graph
+from imbi.common.auth.encryption import TokenEncryption
 
 LOGGER = logging.getLogger(__name__)
 

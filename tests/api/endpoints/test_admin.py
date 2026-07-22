@@ -4,11 +4,11 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from tests.api import support
 
 
 class AdminSettingsEndpointTestCase(support.SharedAppTestCase):

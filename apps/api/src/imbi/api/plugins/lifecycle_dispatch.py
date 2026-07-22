@@ -23,10 +23,18 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph
-from imbi_common.clickhouse import client as ch_client
-from imbi_common.plugins import decrypt_integration_credentials
-from imbi_common.plugins.base import (
+
+from imbi.api.auth import permissions
+from imbi.api.identity.host_integration import call_with_identity_retry
+from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins.resolution import (
+    ResolvedCapability,
+    resolve_all_capabilities,
+)
+from imbi.common import graph
+from imbi.common.clickhouse import client as ch_client
+from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins.base import (
     LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
@@ -34,20 +42,12 @@ from imbi_common.plugins.base import (
     ServiceConnection,
     ServiceWriteback,
 )
-from imbi_common.plugins.errors import PluginCredentialsMissing
+from imbi.common.plugins.errors import PluginCredentialsMissing
 
-from imbi_api.auth import permissions
-from imbi_api.identity.host_integration import call_with_identity_retry
-from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.resolution import (
-    ResolvedCapability,
-    resolve_all_capabilities,
-)
-
-# ``_helpers`` lives in ``imbi_api.endpoints`` whose package ``__init__``
+# ``_helpers`` lives in ``imbi.api.endpoints`` whose package ``__init__``
 # imports every endpoint module (including ``projects``).  Since
 # ``projects`` re-imports this module to call :func:`dispatch_lifecycle`,
-# a top-level ``from imbi_api.endpoints._helpers import ...`` would
+# a top-level ``from imbi.api.endpoints._helpers import ...`` would
 # create a circular import.  Pull the helpers in lazily inside
 # :func:`dispatch_lifecycle` to keep both modules free of the cycle.
 
@@ -106,7 +106,7 @@ async def build_lifecycle_context_bundle(
     Use this before a ``DETACH DELETE`` so the bundle survives the
     write, and pass it as ``bundle=`` to :func:`dispatch_lifecycle`.
     """
-    from imbi_api.endpoints._helpers import (
+    from imbi.api.endpoints._helpers import (
         lookup_project_exists_in,
         lookup_project_links,
         lookup_project_slugs,
@@ -321,7 +321,7 @@ async def _invoke_one(
     if captured_writeback or captured_service_writeback:
         # Lazy import to avoid the endpoints/_helpers <-> this-module
         # cycle described above.
-        from imbi_api.endpoints._helpers import (
+        from imbi.api.endpoints._helpers import (
             persist_link_writeback,
             persist_service_writeback,
         )

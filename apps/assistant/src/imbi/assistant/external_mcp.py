@@ -1,11 +1,11 @@
 """Connect to external MCP servers over streamable HTTP.
 
-Reads :class:`~imbi_common.models.MCPServer` nodes from the graph,
+Reads :class:`~imbi.common.models.MCPServer` nodes from the graph,
 opens a streamable-HTTP MCP session per enabled server, discovers
 their tools, and exposes them in Anthropic tool format for the
 assistant's Claude integration.
 
-This is additive to :mod:`imbi_assistant.mcp` (which builds tools
+This is additive to :mod:`imbi.assistant.mcp` (which builds tools
 from the Imbi OpenAPI spec); the two managers run side by side.
 
 """
@@ -22,18 +22,18 @@ import typing
 
 import httpx
 import mcp
-from imbi_common.auth.encryption import decrypt_config_value
 from mcp import types as mcp_types
 from mcp.client import streamable_http
 from mcp.shared._httpx_utils import create_mcp_http_client
 
-from imbi_assistant import age_ops
+from imbi.assistant import age_ops
+from imbi.common.auth.encryption import decrypt_config_value
 
 if typing.TYPE_CHECKING:
     import collections.abc
 
-    from imbi_common import graph
-    from imbi_common import models as common_models
+    from imbi.common import graph
+    from imbi.common import models as common_models
 
 LOGGER = logging.getLogger(__name__)
 

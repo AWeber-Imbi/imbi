@@ -1,7 +1,7 @@
 """Identity-flow state JWT helpers.
 
 Reuses the existing ``OAuthStateData`` model + JWT signing primitives
-from :mod:`imbi_api.auth.oauth` so login and identity flows share one
+from :mod:`imbi.api.auth.oauth` so login and identity flows share one
 state-token format.  ``intent='identity'`` discriminates the identity
 flow path.
 """
@@ -13,8 +13,8 @@ import time
 import jwt
 from valkey import asyncio as valkey
 
-from imbi_api import settings
-from imbi_api.auth import models
+from imbi.api import settings
+from imbi.api.auth import models
 
 LOGGER = logging.getLogger(__name__)
 

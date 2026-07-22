@@ -12,11 +12,11 @@ from urllib import parse as urlparse
 
 import httpx
 import jwt
-from imbi_common import graph
 from valkey import asyncio as valkey_module
 
-from imbi_api import settings
-from imbi_api.auth import login_providers, models
+from imbi.api import settings
+from imbi.api.auth import login_providers, models
+from imbi.common import graph
 
 _OAUTH_STATE_NONCE_PREFIX = 'imbi:oauth:state-nonce:'
 
@@ -457,7 +457,7 @@ async def _get_provider_config(
     client_id = app.client_id or ''
     # LoginApp.client_secret is already plaintext -- Integration
     # credentials are decrypted once when the login app is materialized
-    # (imbi_api.auth.login_providers), unlike the old ServiceApplication
+    # (imbi.api.auth.login_providers), unlike the old ServiceApplication
     # row which stored an encrypted value this module used to decrypt.
     client_secret = app.client_secret or ''
     if app.oauth_app_type == 'google':

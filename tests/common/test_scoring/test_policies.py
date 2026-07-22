@@ -3,9 +3,9 @@ from unittest import mock
 
 import pydantic
 
-from imbi_common import models
-from imbi_common.scoring import models as models_module
-from imbi_common.scoring import policies
+from imbi.common import models
+from imbi.common.scoring import models as models_module
+from imbi.common.scoring import policies
 
 
 def _project() -> models.Project:
@@ -54,11 +54,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
         # First execute call fetches type slugs; second fetches policies.
         db = _with_execute([{'slug': 'api'}], [])
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 _, extended_cls = await policies.applicable_policies(
@@ -84,11 +84,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -108,11 +108,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -131,11 +131,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -145,11 +145,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
         # Project has no type edges in the graph → types query returns empty.
         db = _with_execute([], [])
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -159,11 +159,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
     async def test_skips_non_dict_rows(self) -> None:
         db = _with_execute([], [{'p': 'not-a-dict', 'targets': []}])
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -176,11 +176,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
         props['_id'] = 'age-id'
         db = _with_execute([], [{'p': props, 'targets': []}])
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -204,11 +204,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -243,11 +243,11 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
             last_commit_at: str | None = None
 
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedWithDate),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 result, _ = await policies.applicable_policies(db, _project())
@@ -270,15 +270,15 @@ class ApplicablePoliciesTests(unittest.IsolatedAsyncioTestCase):
         }
         db = _with_execute([], [{'p': invalid_props, 'targets': []}])
         with mock.patch(
-            'imbi_common.scoring.policies.blueprints.get_model',
+            'imbi.common.scoring.policies.blueprints.get_model',
             new=mock.AsyncMock(return_value=_ExtendedProject),
         ):
             with mock.patch(
-                'imbi_common.scoring.policies.graph.parse_agtype',
+                'imbi.common.scoring.policies.graph.parse_agtype',
                 side_effect=lambda v: v,
             ):
                 with self.assertLogs(
-                    'imbi_common.scoring.policies', level='WARNING'
+                    'imbi.common.scoring.policies', level='WARNING'
                 ) as captured:
                     result, _ = await policies.applicable_policies(
                         db, _project()

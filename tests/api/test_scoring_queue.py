@@ -7,10 +7,10 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi_api.scoring import queue as score_queue
+from imbi.api.scoring import queue as score_queue
 
 if typing.TYPE_CHECKING:
-    from imbi_common.scoring import models as sm
+    from imbi.common.scoring import models as sm
 
 
 class EnqueueTests(unittest.IsolatedAsyncioTestCase):
@@ -159,7 +159,7 @@ class EnsureGroupTests(unittest.IsolatedAsyncioTestCase):
         client.xgroup_create = mock.AsyncMock(
             side_effect=Exception('some other error')
         )
-        with self.assertLogs('imbi_api.scoring.queue', level='WARNING'):
+        with self.assertLogs('imbi.api.scoring.queue', level='WARNING'):
             await score_queue.ensure_group(client)
 
 
@@ -222,13 +222,13 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         db.match = mock.AsyncMock(return_value=[])
         ch = mock.AsyncMock()
-        with self.assertLogs('imbi_api.scoring.queue', level='INFO'):
+        with self.assertLogs('imbi.api.scoring.queue', level='INFO'):
             await score_queue._process_message(
                 db, ch, {'project_id': 'p1', 'reason': 'policy_change'}
             )
 
     async def test_computes_and_records_score(self) -> None:
-        from imbi_common import models
+        from imbi.common import models
 
         db = mock.AsyncMock()
         project = mock.MagicMock(spec=models.Project)
@@ -237,11 +237,11 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
         ch = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_api.scoring.queue.compute_score',
+                'imbi.api.scoring.queue.compute_score',
                 mock.AsyncMock(return_value=(0.8, None)),
             ),
             mock.patch(
-                'imbi_api.scoring.queue.record_score_change',
+                'imbi.api.scoring.queue.record_score_change',
                 mock.AsyncMock(),
             ) as mock_record,
         ):
@@ -251,7 +251,7 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
             mock_record.assert_awaited_once()
 
     async def test_uses_zero_when_project_score_is_none(self) -> None:
-        from imbi_common import models
+        from imbi.common import models
 
         db = mock.AsyncMock()
         project = mock.MagicMock(spec=models.Project)
@@ -260,11 +260,11 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
         ch = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_api.scoring.queue.compute_score',
+                'imbi.api.scoring.queue.compute_score',
                 mock.AsyncMock(return_value=(0.5, None)),
             ),
             mock.patch(
-                'imbi_api.scoring.queue.record_score_change',
+                'imbi.api.scoring.queue.record_score_change',
                 mock.AsyncMock(),
             ) as mock_record,
         ):
@@ -333,7 +333,7 @@ class ConsumeRecomputeTests(unittest.IsolatedAsyncioTestCase):
 
         client.xreadgroup = mock.AsyncMock(side_effect=xreadgroup_fail)
 
-        with self.assertLogs('imbi_api.scoring.queue', level='ERROR'):
+        with self.assertLogs('imbi.api.scoring.queue', level='ERROR'):
             await score_queue.consume_recompute(
                 client,
                 mock.AsyncMock(),
@@ -413,7 +413,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         attribute_name: str,
         targets: list[str] | None = None,
     ) -> sm.AttributePolicy:
-        from imbi_common.scoring import models as sm
+        from imbi.common.scoring import models as sm
 
         return sm.AttributePolicy(
             name='p',
@@ -425,14 +425,14 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_unknown_attribute_returns_empty(self) -> None:
-        from imbi_common import models
+        from imbi.common import models
 
         class _Extended(models.Project):
             lang: str | None = None
 
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(return_value=_Extended),
         ):
             result = await score_queue.affected_projects(
@@ -442,7 +442,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         db.execute.assert_not_called()
 
     async def test_no_targets_returns_all_projects(self) -> None:
-        from imbi_common import models
+        from imbi.common import models
 
         class _Extended(models.Project):
             lang: str | None = None
@@ -450,7 +450,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}, {'id': 'p2'}])
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(return_value=_Extended),
         ):
             result = await score_queue.affected_projects(
@@ -459,7 +459,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(['p1', 'p2'], result)
 
     async def test_targets_restricts_to_matching_types(self) -> None:
-        from imbi_common import models
+        from imbi.common import models
 
         class _Extended(models.Project):
             lang: str | None = None
@@ -467,7 +467,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         db.execute = mock.AsyncMock(return_value=[{'id': 'p3'}])
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(return_value=_Extended),
         ):
             result = await score_queue.affected_projects(
@@ -478,7 +478,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('{slug}', args[0])
 
     async def test_targets_deduplicates_across_types(self) -> None:
-        from imbi_common import models
+        from imbi.common import models
 
         class _Extended(models.Project):
             lang: str | None = None
@@ -486,7 +486,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(return_value=_Extended),
         ):
             result = await score_queue.affected_projects(
@@ -495,7 +495,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(['p1'], result)
 
     async def test_link_presence_skips_attribute_check(self) -> None:
-        from imbi_common.scoring import models as sm
+        from imbi.common.scoring import models as sm
 
         policy = sm.LinkPresencePolicy(
             name='has-source',
@@ -507,14 +507,14 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
         # blueprints.get_model is not consulted for link_presence policies.
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(side_effect=AssertionError('should not be called')),
         ):
             result = await score_queue.affected_projects(db, policy)
         self.assertEqual(['p1'], result)
 
     async def test_condition_skips_attribute_check(self) -> None:
-        from imbi_common.scoring import models as sm
+        from imbi.common.scoring import models as sm
 
         policy = sm.ConditionPolicy.model_validate(
             {
@@ -536,7 +536,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(side_effect=AssertionError('should not be called')),
         ):
             result = await score_queue.affected_projects(db, policy)

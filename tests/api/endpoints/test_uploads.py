@@ -4,19 +4,19 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.storage.client import StorageClient
-from imbi_api.storage.dependencies import _get_storage_client
-from tests import support
+from imbi.api import models
+from imbi.api.storage.client import StorageClient
+from imbi.api.storage.dependencies import _get_storage_client
+from imbi.common import graph
+from tests.api import support
 
 
 class UploadEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for upload CRUD endpoints."""
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -78,11 +78,11 @@ class UploadEndpointsTestCase(support.SharedAppTestCase):
         )
 
     @mock.patch(
-        'imbi_api.endpoints.uploads.thumbnails.can_thumbnail',
+        'imbi.api.endpoints.uploads.thumbnails.can_thumbnail',
         return_value=False,
     )
     @mock.patch(
-        'imbi_api.endpoints.uploads.validation.validate_upload',
+        'imbi.api.endpoints.uploads.validation.validate_upload',
     )
     def test_create_upload_success(
         self,
@@ -113,14 +113,14 @@ class UploadEndpointsTestCase(support.SharedAppTestCase):
         self.mock_storage.upload.assert_called_once()
 
     @mock.patch(
-        'imbi_api.endpoints.uploads.validation.validate_upload',
+        'imbi.api.endpoints.uploads.validation.validate_upload',
     )
     def test_create_upload_validation_error(
         self,
         mock_validate,
     ) -> None:
         """Test upload with invalid file returns 400."""
-        from imbi_api.storage import validation
+        from imbi.api.storage import validation
 
         mock_validate.side_effect = validation.UploadValidationError(
             'bad file'
@@ -141,16 +141,16 @@ class UploadEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('bad file', response.json()['detail'])
 
     @mock.patch(
-        'imbi_api.endpoints.uploads.thumbnails.can_thumbnail',
+        'imbi.api.endpoints.uploads.thumbnails.can_thumbnail',
         return_value=True,
     )
     @mock.patch(
-        'imbi_api.endpoints.uploads.thumbnails.generate_thumbnail',
+        'imbi.api.endpoints.uploads.thumbnails.generate_thumbnail',
         new_callable=mock.AsyncMock,
         return_value=b'thumb-data',
     )
     @mock.patch(
-        'imbi_api.endpoints.uploads.validation.validate_upload',
+        'imbi.api.endpoints.uploads.validation.validate_upload',
     )
     def test_create_upload_with_thumbnail(
         self,
@@ -378,7 +378,7 @@ class UploadEndpointsTestCase(support.SharedAppTestCase):
 
     def test_read_paths_require_upload_read_permission(self) -> None:
         """GET / GET-meta / GET-thumbnail all require upload:read."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         non_admin_user = models.User(
             email='basic@example.com',
@@ -428,7 +428,7 @@ class UploadEndpointsTestCase(support.SharedAppTestCase):
 
     def test_requires_authentication(self) -> None:
         """Test that upload endpoints reject unauthenticated."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         # Remove auth override only; keep graph + storage DI
         del self.test_app.dependency_overrides[permissions.get_current_user]

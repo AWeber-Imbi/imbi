@@ -6,11 +6,11 @@ IAM Identity Center credential blob **once**, plus three capabilities:
 
 * ``identity`` — AWS IAM Identity Center device-code federation, the
   credential mechanism for the Integration
-  (:class:`~imbi_plugin_aws.identity.AWSIdentity`).
+  (:class:`~imbi.plugins.aws.identity.AWSIdentity`).
 * ``logs`` — CloudWatch Logs Insights search
-  (:class:`~imbi_plugin_aws.cloudwatch.CloudWatchLogs`).
+  (:class:`~imbi.plugins.aws.cloudwatch.CloudWatchLogs`).
 * ``configuration`` — SSM Parameter Store
-  (:class:`~imbi_plugin_aws.ssm.SSMConfiguration`).
+  (:class:`~imbi.plugins.aws.ssm.SSMConfiguration`).
 
 The ``logs`` and ``configuration`` capabilities carry no static AWS
 credentials: they set ``requires_identity`` and consume the STS keys the
@@ -19,16 +19,15 @@ identity capability materializes onto ``PluginContext.identity``.
 
 from __future__ import annotations
 
-import imbi_common.plugins as plugins
-
-from imbi_plugin_aws import _helpers
-from imbi_plugin_aws.cloudwatch import CloudWatchLogs
-from imbi_plugin_aws.identity import (
+import imbi.common.plugins as plugins
+from imbi.plugins.aws import _helpers
+from imbi.plugins.aws.cloudwatch import CloudWatchLogs
+from imbi.plugins.aws.identity import (
     DEFAULT_SCOPES,
     REFRESH_SCOPE,
     AWSIdentity,
 )
-from imbi_plugin_aws.ssm import SSMConfiguration
+from imbi.plugins.aws.ssm import SSMConfiguration
 
 _IDENTITY_WIDGET_TEXT = (
     'Connect to enable project level functionality such as '
@@ -272,7 +271,7 @@ class AWSPlugin(plugins.Plugin):
         vertex_labels=[
             plugins.PluginVertexLabel(
                 name='AwsAccount',
-                model_ref='imbi_plugin_aws.models:AwsAccount',
+                model_ref='imbi.plugins.aws.models:AwsAccount',
                 indexes=[
                     plugins.PluginIndex(fields=['account_id'], unique=True),
                     plugins.PluginIndex(fields=['name']),

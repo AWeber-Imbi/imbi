@@ -1,6 +1,6 @@
 """Errors raised by the AWS identity plugin and helpers."""
 
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     IdentityAuthorizationExpired,
     IdentityAuthorizationPending,
 )

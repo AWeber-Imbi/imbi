@@ -6,18 +6,18 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     ConfigKeyWithValue,
     ConfigurationCapability,
     ConfigValue,
     PluginContext,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginUnavailableError,
 )
-
-from imbi_plugin_aws.ssm import SSMConfiguration
+from imbi.plugins.aws.ssm import SSMConfiguration
 
 _SSM_URL = 'https://ssm.us-east-1.amazonaws.com/'
 

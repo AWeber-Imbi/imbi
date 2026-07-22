@@ -7,7 +7,7 @@ the same service code the per-project Doctor endpoints call.  Outcomes:
   does not apply -- e.g. no integration provides the capability);
 - raise :class:`MaintenanceItemFailed` with a user-safe message for
   recordable failures (raw detail belongs in logs only);
-- let :class:`~imbi_common.plugins.errors.PluginRateLimited` propagate
+- let :class:`~imbi.common.plugins.errors.PluginRateLimited` propagate
   so the worker can requeue the project and pause the operation.
 
 Endpoint modules are imported inside function bodies (the
@@ -22,13 +22,13 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
-from imbi_common.plugins.errors import PluginRateLimited
 from valkey import asyncio as valkey
 
-from imbi_api import models
-from imbi_api.auth import permissions
-from imbi_api.scoring import queue as score_queue
+from imbi.api import models
+from imbi.api.auth import permissions
+from imbi.api.scoring import queue as score_queue
+from imbi.common import graph
+from imbi.common.plugins.errors import PluginRateLimited
 
 LOGGER = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ async def execute_analysis(
     Per-plugin errors already surface as synthetic ``fail`` findings
     inside the report, so an exception here is infrastructural.
     """
-    from imbi_api.endpoints import project_analysis
+    from imbi.api.endpoints import project_analysis
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
@@ -109,7 +109,7 @@ async def execute_remediate(
     succeeded.  The report is re-run and persisted so it reflects the
     fixes, mirroring the per-project ``remediate-all`` endpoint.
     """
-    from imbi_api.endpoints import project_analysis
+    from imbi.api.endpoints import project_analysis
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
@@ -133,7 +133,7 @@ async def execute_commit_sync(
 ) -> ExecuteOutcome:
     """Full commit/tag backfill, mirroring the queue consumer's status
     transitions so the per-project Doctor status stays truthful."""
-    from imbi_api.commit_sync import service
+    from imbi.api.commit_sync import service
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
@@ -184,7 +184,7 @@ async def execute_pr_sync(
     db: graph.Graph, client: valkey.Valkey, project_id: str
 ) -> ExecuteOutcome:
     """Full PR-history backfill; same shape as commit sync."""
-    from imbi_api.pr_sync import service
+    from imbi.api.pr_sync import service
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
@@ -234,7 +234,7 @@ async def execute_deployment_resync(
     db: graph.Graph, client: valkey.Valkey, project_id: str
 ) -> ExecuteOutcome:
     """Backfill recent remote deployments via the deployment plugin."""
-    from imbi_api.endpoints import project_deployments
+    from imbi.api.endpoints import project_deployments
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:

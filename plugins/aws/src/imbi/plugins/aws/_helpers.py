@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing
 
-from imbi_common.plugins.base import PluginContext
+from imbi.common.plugins.base import PluginContext
 
 #: Integration-level option name holding the project-type-slug ->
 #: path-segment overrides applied to ``${project_type_slug}``.

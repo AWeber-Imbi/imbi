@@ -12,8 +12,8 @@ When wiring per-environment AWS credentials (ADR 0010), we added AWS-specific co
 
 | File | What it does |
 |---|---|
-| `imbi-api/src/imbi_api/endpoints/aws_accounts.py` | Hand-coded CRUD for one plugin's entity type |
-| `imbi-api/src/imbi_api/endpoints/environments.py` (tail) | Three endpoints handling one specific edge type to one specific target type |
+| `imbi-api/src/imbi.api/endpoints/aws_accounts.py` | Hand-coded CRUD for one plugin's entity type |
+| `imbi-api/src/imbi.api/endpoints/environments.py` (tail) | Three endpoints handling one specific edge type to one specific target type |
 | `imbi-ui/src/components/admin/AwsAccountsManagement.tsx` | Plugin-specific admin page |
 | `imbi-ui/src/components/admin/environments/EnvironmentAwsAccountCard.tsx` | Plugin-specific anchor-detail card |
 | `imbi-ui/src/api/endpoints.ts` | Hand-coded API client functions for the AWS routes |

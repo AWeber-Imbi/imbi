@@ -8,14 +8,14 @@ import httpx
 import jsonpointer
 import pydantic
 import pydantic_settings
-from imbi_common import json_pointer
 
-from imbi_gateway import helpers, version
+from imbi.common import json_pointer
+from imbi.gateway import helpers, version
 
 if typing.TYPE_CHECKING:
     from collections import abc
 
-    from imbi_common.plugins import base as plugin_base
+    from imbi.common.plugins import base as plugin_base
 
 
 class ActionSettings(pydantic_settings.BaseSettings):

@@ -7,11 +7,11 @@ all-tags backfill via the plugin's service credential, and records the
 last-sync status on the ``Project`` node for the UI to poll.
 """
 
-from imbi_api.commit_sync.queue import (
+from imbi.api.commit_sync.queue import (
     consume_commit_sync,
     enqueue_commit_sync,
 )
-from imbi_api.commit_sync.service import (
+from imbi.api.commit_sync.service import (
     CommitSyncStatus,
     CommitSyncUnavailable,
     read_status,

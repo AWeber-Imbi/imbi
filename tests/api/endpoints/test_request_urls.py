@@ -6,7 +6,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_api.endpoints import _request_urls
+from imbi.api.endpoints import _request_urls
 
 
 def _request(scheme: str, host: str, *, query: bytes = b'') -> fastapi.Request:
@@ -36,7 +36,7 @@ def _cfg(public_base_url: str, cors: tuple[str, ...] = ()) -> mock.MagicMock:
 class RequestUrlsTestCase(unittest.TestCase):
     def _patch_cfg(self, cfg: mock.MagicMock) -> None:
         patcher = mock.patch(
-            'imbi_api.settings.get_server_config', return_value=cfg
+            'imbi.api.settings.get_server_config', return_value=cfg
         )
         patcher.start()
         self.addCleanup(patcher.stop)

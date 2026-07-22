@@ -5,14 +5,14 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     IdentityCapability,
     PluginContext,
     PluginManifest,
 )
-
-from imbi_plugin_google import PLUGIN
-from imbi_plugin_google.plugin import (
+from imbi.plugins.google import PLUGIN
+from imbi.plugins.google.plugin import (
     REVOCATION_ENDPOINT,
     TOKEN_ENDPOINT,
     USERINFO_ENDPOINT,

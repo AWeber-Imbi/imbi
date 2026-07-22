@@ -2,7 +2,7 @@ import datetime
 import types
 import unittest
 
-from imbi_common.scoring import attribute, models
+from imbi.common.scoring import attribute, models
 
 
 def _policy(

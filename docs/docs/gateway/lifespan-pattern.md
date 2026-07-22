@@ -214,7 +214,7 @@ Create a `Lifespan` instance that combines all your hooks:
 
 ```python
 import fastapi
-from imbi_gateway import lifespan
+from imbi.gateway import lifespan
 
 app = fastapi.FastAPI(
     lifespan=lifespan.Lifespan(postgres_lifespan, redis_lifespan)
@@ -364,7 +364,7 @@ Test hooks independently using `unittest.IsolatedAsyncioTestCase`:
 
 ```python
 import unittest
-from imbi_gateway import lifespan
+from imbi.gateway import lifespan
 
 
 class LifespanTests(unittest.IsolatedAsyncioTestCase):
@@ -924,6 +924,6 @@ print(calls)  # ['hook1 enter', 'hook2 enter', 'hook2 exit', 'hook1 exit']
 
 **See Also:**
 
-- `src/imbi_gateway/lifespan.py` - Implementation and module docstring
+- `src/imbi.gateway/lifespan.py` - Implementation and module docstring
 - `tests/test_lifespan.py` - Complete test suite with examples
 - `AGENTS.md` - Quick reference for AI assistants

@@ -17,15 +17,15 @@ import fastapi
 import fastapi.encoders
 import fastapi.responses
 import pydantic
-from imbi_common import clickhouse
 
-from imbi_api.auth import permissions
-from imbi_api.endpoints._pagination import (
+from imbi.api.auth import permissions
+from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
     encode_cursor,
     parse_iso,
 )
+from imbi.common import clickhouse
 
 events_router = fastapi.APIRouter(prefix='/events', tags=['Events'])
 events_project_router = fastapi.APIRouter(tags=['Events'])

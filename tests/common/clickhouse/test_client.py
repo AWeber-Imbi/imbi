@@ -5,7 +5,7 @@ from unittest import mock
 
 from clickhouse_connect.driver import exceptions
 
-from imbi_common.clickhouse import client
+from imbi.common.clickhouse import client
 
 
 class SchemataQueryTestCase(unittest.TestCase):
@@ -36,7 +36,7 @@ class PackagedSchemataTestCase(unittest.TestCase):
 
     def _schemata(self) -> dict[str, dict[str, object]]:
         resource = importlib.resources.files(
-            'imbi_common.clickhouse'
+            'imbi.common.clickhouse'
         ).joinpath('schemata.toml')
         with resource.open('rb') as handle:
             return tomllib.load(handle)
@@ -178,7 +178,7 @@ class TranslateErrorsTestCase(unittest.TestCase):
         """Helper reports to sentry_sdk when the module is installed."""
         mock_sentry = mock.MagicMock()
         with mock.patch(
-            'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+            'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
         ):
             with self.assertRaises(client.DatabaseError):
                 with client._translate_errors('insert into t'):
@@ -190,7 +190,7 @@ class TranslateErrorsTestCase(unittest.TestCase):
 
     def test_skips_sentry_when_unavailable(self) -> None:
         """Helper does not explode when sentry_sdk is None."""
-        with mock.patch('imbi_common.clickhouse.client.sentry_sdk', None):
+        with mock.patch('imbi.common.clickhouse.client.sentry_sdk', None):
             with self.assertRaises(client.DatabaseError):
                 with client._translate_errors('query'):
                     raise exceptions.DatabaseError('nope')
@@ -379,7 +379,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             await ch.initialize()
 
         with mock.patch(
-            'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+            'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
         ):
             with self.assertRaises(client.DatabaseError):
                 await ch.insert('test_table', [['value1']], ['column1'])
@@ -487,7 +487,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             await ch.initialize()
 
         with mock.patch(
-            'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+            'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
         ):
             with self.assertRaises(client.DatabaseError):
                 await ch.query('SELECT 1')
@@ -551,7 +551,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
         with mock.patch(
-            'imbi_common.clickhouse.client.asyncio.sleep',
+            'imbi.common.clickhouse.client.asyncio.sleep',
             new=mock.AsyncMock(),
         ) as mock_sleep:
             result = await ch._connect(delay=0.01)
@@ -696,7 +696,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_query.side_effect = client.DatabaseError('SQL error')
 
                 with mock.patch(
-                    'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+                    'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
                 ):
                     await ch._execute_schemata_queries()
 
@@ -757,7 +757,7 @@ class OperationsLogSchemaTestCase(unittest.TestCase):
     """Verify the operations_log entry exists in schemata.toml."""
 
     def _load_schemata(self) -> dict:
-        pkg = importlib.resources.files('imbi_common.clickhouse')
+        pkg = importlib.resources.files('imbi.common.clickhouse')
         toml_bytes = (pkg / 'schemata.toml').read_bytes()
         return tomllib.loads(toml_bytes.decode())
 
@@ -810,7 +810,7 @@ class EventsSchemaTestCase(unittest.TestCase):
     """Verify the events entry exists in schemata.toml."""
 
     def _load_schemata(self) -> dict:
-        pkg = importlib.resources.files('imbi_common.clickhouse')
+        pkg = importlib.resources.files('imbi.common.clickhouse')
         toml_bytes = (pkg / 'schemata.toml').read_bytes()
         return tomllib.loads(toml_bytes.decode())
 

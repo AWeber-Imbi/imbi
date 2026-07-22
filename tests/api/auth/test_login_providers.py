@@ -14,17 +14,16 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.base import (
+from imbi.api.auth import login_providers
+from imbi.common.plugins.base import (
     Capability,
     IdentityCapability,
     LogsCapability,
     Plugin,
     PluginManifest,
 )
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api.auth import login_providers
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import RegistryEntry
 
 
 class _FakeIdentity(IdentityCapability):

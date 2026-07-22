@@ -10,22 +10,22 @@ import httpx
 import nanoid
 import pydantic
 from cryptography import fernet
-from imbi_common import clickhouse, graph
-from imbi_common.auth.encryption import TokenEncryption
-from imbi_common.graph import (
+
+import imbi.gateway.app
+from imbi.common import clickhouse, graph
+from imbi.common.auth.encryption import TokenEncryption
+from imbi.common.graph import (
     _inject_graph,  # pyright: ignore[reportPrivateUsage]
 )
-from imbi_common.plugins import base as plugin_base
-from imbi_common.plugins import registry as plugin_registry
-
-import imbi_gateway.app
-from imbi_gateway import actions, notifications
-from tests import helpers
+from imbi.common.plugins import base as plugin_base
+from imbi.common.plugins import registry as plugin_registry
+from imbi.gateway import actions, notifications
+from tests.gateway import helpers
 
 if typing.TYPE_CHECKING:
     from collections import abc
 
-_TOKEN = 'test-token'  # noqa: S105
+_TOKEN = 'test-token'
 
 #: Captures ``run_action`` invocations across tests.
 ACTION_CALLS: list[dict[str, object]] = []
@@ -36,7 +36,7 @@ async def stub_action(
     ctx: plugin_base.PluginContext,
     credentials: dict[str, str],
     external_identifier: str,
-    action_config: 'StubActionConfig',
+    action_config: StubActionConfig,
     event: object,
 ) -> None:
     ACTION_CALLS.append(
@@ -55,7 +55,7 @@ async def raising_action(
     ctx: plugin_base.PluginContext,
     credentials: dict[str, str],
     external_identifier: str,
-    action_config: 'StubActionConfig',
+    action_config: StubActionConfig,
     event: object,
 ) -> None:
     del ctx, credentials, external_identifier, action_config, event
@@ -72,7 +72,7 @@ def _descriptor(name: str, callable_path: str) -> plugin_base.ActionDescriptor:
         label=name,
         callable=typing.cast('typing.Any', callable_path),
         config_model=typing.cast(
-            'typing.Any', 'tests.test_notifications:StubActionConfig'
+            'typing.Any', 'tests.gateway.test_notifications:StubActionConfig'
         ),
     )
 
@@ -83,8 +83,12 @@ class StubWebhookActions(plugin_base.WebhookActionsCapability):
     @classmethod
     def actions(cls) -> list[plugin_base.ActionDescriptor]:
         return [
-            _descriptor('do_thing', 'tests.test_notifications:stub_action'),
-            _descriptor('boom', 'tests.test_notifications:raising_action'),
+            _descriptor(
+                'do_thing', 'tests.gateway.test_notifications:stub_action'
+            ),
+            _descriptor(
+                'boom', 'tests.gateway.test_notifications:raising_action'
+            ),
         ]
 
 
@@ -94,7 +98,9 @@ class StubCredsWebhookActions(plugin_base.WebhookActionsCapability):
     @classmethod
     def actions(cls) -> list[plugin_base.ActionDescriptor]:
         return [
-            _descriptor('do_thing', 'tests.test_notifications:stub_action')
+            _descriptor(
+                'do_thing', 'tests.gateway.test_notifications:stub_action'
+            )
         ]
 
 
@@ -242,7 +248,7 @@ class ProcessNotificationTests(helpers.TestCase):
         # create_app() calls plugin_registry.load_plugins() which wipes
         # the registry, so the stub plugins must be installed *after*
         # the app has been built.
-        self.app = imbi_gateway.app.create_app()
+        self.app = imbi.gateway.app.create_app()
         _install_stub_plugins()
 
         async def _override_graph() -> abc.AsyncIterator[graph.Graph]:
@@ -486,7 +492,7 @@ class ProcessNotificationTests(helpers.TestCase):
 
     async def test_no_webhook_found(self) -> None:
         with self.assertLogs(
-            'imbi_gateway.notifications', level='WARNING'
+            'imbi.gateway.notifications', level='WARNING'
         ) as cm:
             response = await self._post(nanoid.generate(), {})
         self.assertEqual(204, response.status_code)
@@ -522,7 +528,7 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         try:
             with self.assertLogs(
-                'imbi_gateway.notifications', level='WARNING'
+                'imbi.gateway.notifications', level='WARNING'
             ) as cm:
                 response = await self._post(no_intg_webhook_id, {})
             self.assertEqual(204, response.status_code)
@@ -541,7 +547,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(filter_expression='false')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='DEBUG'
+            'imbi.gateway.notifications', level='DEBUG'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
@@ -576,7 +582,7 @@ class ProcessNotificationTests(helpers.TestCase):
             unittest.mock.patch.object(
                 clickhouse, 'insert', new=unittest.mock.AsyncMock()
             ) as mock_insert,
-            self.assertLogs('imbi_gateway.notifications', level='DEBUG') as cm,
+            self.assertLogs('imbi.gateway.notifications', level='DEBUG') as cm,
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
@@ -858,7 +864,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': 'no-such-external-id'}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='WARNING'
+            'imbi.gateway.notifications', level='WARNING'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
@@ -869,7 +875,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='no-such-plugin#do_thing')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         # Dispatcher logs and skips the rule; events were recorded so 202.
@@ -885,7 +891,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='stub-identity-only#do_thing')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -901,7 +907,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='stub-nocreds#missing_action')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -916,7 +922,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='does.not.exist.handler')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
@@ -929,7 +935,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler_config='not valid json')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -945,7 +951,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='stub-creds#do_thing')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='WARNING'
+            'imbi.gateway.notifications', level='WARNING'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -973,7 +979,7 @@ class ProcessNotificationTests(helpers.TestCase):
             unittest.mock.patch.object(
                 StubWebhookActions, 'actions', classmethod(_boom)
             ),
-            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+            self.assertLogs('imbi.gateway.notifications', level='ERROR') as cm,
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -996,7 +1002,7 @@ class ProcessNotificationTests(helpers.TestCase):
             try:
                 encryptor = TokenEncryption.get_instance()
                 encrypted = encryptor.encrypt('s3cret')
-                assert encrypted is not None  # noqa: S101 - test narrowing
+                assert encrypted is not None
                 await self._set_integration_plugin('stub-creds')
                 await self._set_integration_credentials(
                     {'api_token': encrypted}
@@ -1014,7 +1020,7 @@ class ProcessNotificationTests(helpers.TestCase):
 
     async def test_identifier_pointer_not_in_body(self) -> None:
         with self.assertLogs(
-            'imbi_gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, {})
         self.assertEqual(204, response.status_code)
@@ -1196,7 +1202,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 'find_user_by_identity',
                 new=unittest.mock.AsyncMock(),
             ) as mock_lookup,
-            self.assertLogs('imbi_gateway.notifications', level='WARNING'),
+            self.assertLogs('imbi.gateway.notifications', level='WARNING'),
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -1370,7 +1376,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 'find_user_by_identity',
                 new=unittest.mock.AsyncMock(),
             ) as mock_lookup,
-            self.assertLogs('imbi_gateway.notifications', level='DEBUG'),
+            self.assertLogs('imbi.gateway.notifications', level='DEBUG'),
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -1380,7 +1386,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='stub-nocreds#boom')
         body = {'repo': {'id': self.ext_id}}
         with self.assertLogs(
-            'imbi_gateway.notifications', level='ERROR'
+            'imbi.gateway.notifications', level='ERROR'
         ) as cm:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -1515,7 +1521,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 'insert',
                 new=unittest.mock.AsyncMock(side_effect=insert_side_effect),
             ),
-            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+            self.assertLogs('imbi.gateway.notifications', level='ERROR') as cm,
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -1539,7 +1545,7 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(204, response.status_code)
         self.assertEqual([], ACTION_CALLS)
         mock_insert.assert_awaited_once()
-        assert mock_insert.await_args is not None  # noqa: S101 - test narrowing
+        assert mock_insert.await_args is not None
         table_arg, events_arg = mock_insert.await_args.args
         self.assertEqual('events', table_arg)
         self.assertEqual(1, len(events_arg))
@@ -1573,7 +1579,7 @@ class ProcessNotificationTests(helpers.TestCase):
             unittest.mock.patch.object(
                 clickhouse, 'insert', new=unittest.mock.AsyncMock()
             ),
-            self.assertLogs('imbi_common.access', level='INFO') as cm,
+            self.assertLogs('imbi.common.access', level='INFO') as cm,
         ):
             response = await self._post(
                 self.webhook_id,
@@ -1594,7 +1600,7 @@ class ProcessNotificationTests(helpers.TestCase):
             unittest.mock.patch.object(
                 clickhouse, 'insert', new=unittest.mock.AsyncMock()
             ),
-            self.assertLogs('imbi_common.access', level='INFO') as cm,
+            self.assertLogs('imbi.common.access', level='INFO') as cm,
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -1613,7 +1619,7 @@ class ProcessNotificationTests(helpers.TestCase):
             unittest.mock.patch.object(
                 clickhouse, 'insert', new=unittest.mock.AsyncMock()
             ),
-            self.assertLogs('imbi_common.access', level='INFO') as cm,
+            self.assertLogs('imbi.common.access', level='INFO') as cm,
         ):
             response = await self._post(
                 self.webhook_id, body, headers={'X-GitHub-Event': 'ping'}
@@ -1632,7 +1638,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 'insert',
                 new=unittest.mock.AsyncMock(side_effect=RuntimeError('boom')),
             ),
-            self.assertLogs('imbi_gateway.notifications', level='ERROR') as cm,
+            self.assertLogs('imbi.gateway.notifications', level='ERROR') as cm,
         ):
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
@@ -1681,7 +1687,7 @@ class WebhookRuleUnitTests(helpers.TestCase):
             notifications.WebhookRule.model_validate(
                 {
                     **self._VALID_RULE,
-                    'handler': 'imbi_gateway.actions:update_project',
+                    'handler': 'imbi.gateway.actions:update_project',
                 }
             )
 
@@ -1775,7 +1781,7 @@ class ResolveEventTypeUnitTests(helpers.TestCase):
 
     def test_json_pointer_miss_logs_and_returns_empty(self) -> None:
         with self.assertLogs(
-            'imbi_gateway.notifications', level='WARNING'
+            'imbi.gateway.notifications', level='WARNING'
         ) as cm:
             result = _resolve_event_type('/missing', {'action': 'opened'}, {})
         self.assertEqual('', result)

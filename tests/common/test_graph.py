@@ -10,8 +10,8 @@ import dotenv
 import fastapi
 import fastapi.testclient
 
-from imbi_common import graph, lifespan, models
-from imbi_common.graph import client
+from imbi.common import graph, lifespan, models
+from imbi.common.graph import client
 
 dotenv.load_dotenv()
 
@@ -539,8 +539,8 @@ class DeleteEmbeddingsWhereTests(
 class AutoEmbedTests(unittest.IsolatedAsyncioTestCase):
     """Test _auto_embed with mocked embeddings module."""
 
-    @mock.patch('imbi_common.graph.embeddings.aembed')
-    @mock.patch('imbi_common.settings.Embeddings')
+    @mock.patch('imbi.common.graph.embeddings.aembed')
+    @mock.patch('imbi.common.settings.Embeddings')
     async def test_disabled_skips_embedding(
         self,
         mock_settings: mock.MagicMock,
@@ -570,7 +570,7 @@ class AutoEmbedTests(unittest.IsolatedAsyncioTestCase):
             description='A description',
         )
         with self.assertLogs(
-            'imbi_common.graph',
+            'imbi.common.graph',
             level='WARNING',
         ):
             await g._auto_embed(org)
@@ -730,11 +730,11 @@ class SearchNodeIdScopingTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.embeddings.aembed_one',
+                'imbi.common.graph.embeddings.aembed_one',
                 side_effect=fake_embed,
             ),
             mock.patch(
-                'imbi_common.graph.embeddings.get_dimensions',
+                'imbi.common.graph.embeddings.get_dimensions',
                 return_value=3,
             ),
         ):
@@ -785,7 +785,7 @@ class RowToModelTests(unittest.TestCase):
             'name': 'demo',
             'slug': 'demo',
         }
-        with self.assertNoLogs('imbi_common.graph.client', level='DEBUG'):
+        with self.assertNoLogs('imbi.common.graph.client', level='DEBUG'):
             project = client.Graph._row_to_model(models.Project, props)
         self.assertEqual(project.id, 'abc')
         self.assertEqual(project.name, 'demo')

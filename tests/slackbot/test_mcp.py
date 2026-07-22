@@ -3,8 +3,8 @@ from unittest import mock
 
 import httpx
 
-from imbi_slackbot import mcp, settings
-from tests import helpers
+from imbi.slackbot import mcp, settings
+from tests.slackbot import helpers
 
 _SPEC = {
     'openapi': '3.1.0',

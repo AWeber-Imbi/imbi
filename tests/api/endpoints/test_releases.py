@@ -6,10 +6,10 @@ import typing
 from unittest import mock
 
 import fastapi.testclient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 PROJECT_ID = 'proj123nanoid'
 RELEASE_ID = 'rel456nanoid'
@@ -44,7 +44,7 @@ class _ReleasesTestBase(support.SharedAppTestCase):
     }
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='alice@example.com',
@@ -79,7 +79,7 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         # tests exercise only the create query sequence; the enrichment
         # itself is covered by a dedicated test.
         self._notes_patch = mock.patch(
-            'imbi_api.endpoints.project_deployments'
+            'imbi.api.endpoints.project_deployments'
             '.fetch_release_notes_for_tag',
             new=mock.AsyncMock(return_value=None),
         )
@@ -105,11 +105,11 @@ class CreateReleaseTestCase(_ReleasesTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.nanoid.generate',
+                'imbi.api.endpoints.releases.nanoid.generate',
                 return_value=RELEASE_ID,
             ),
         ):
@@ -145,11 +145,11 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.nanoid.generate',
+                'imbi.api.endpoints.releases.nanoid.generate',
                 return_value=RELEASE_ID,
             ),
         ):
@@ -177,15 +177,15 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         notes = "## What's Changed\n- Fixed the breadcrumb"
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.nanoid.generate',
+                'imbi.api.endpoints.releases.nanoid.generate',
                 return_value=RELEASE_ID,
             ),
             mock.patch(
-                'imbi_api.endpoints.project_deployments'
+                'imbi.api.endpoints.project_deployments'
                 '.fetch_release_notes_for_tag',
                 new=mock.AsyncMock(return_value=notes),
             ) as enrich,
@@ -214,15 +214,15 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.nanoid.generate',
+                'imbi.api.endpoints.releases.nanoid.generate',
                 return_value=RELEASE_ID,
             ),
             mock.patch(
-                'imbi_api.endpoints.project_deployments'
+                'imbi.api.endpoints.project_deployments'
                 '.fetch_release_notes_for_tag',
                 new=mock.AsyncMock(return_value='ignored'),
             ) as enrich,
@@ -244,7 +244,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
     def test_create_project_not_found(self) -> None:
         self.mock_db.execute.side_effect = [[]]  # project_exists -> no rows
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -263,7 +263,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             [{'id': RELEASE_ID}],  # duplicate
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -285,11 +285,11 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.nanoid.generate',
+                'imbi.api.endpoints.releases.nanoid.generate',
                 return_value=RELEASE_ID,
             ),
         ):
@@ -333,11 +333,11 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.nanoid.generate',
+                'imbi.api.endpoints.releases.nanoid.generate',
                 side_effect=['rel-commitish', 'rel-semver'],
             ),
         ):
@@ -374,7 +374,7 @@ class ListGetReleaseTestCase(_ReleasesTestBase):
             {'release': _release_row(tag='1.1.0', id='b')},
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/'))
@@ -392,7 +392,7 @@ class ListGetReleaseTestCase(_ReleasesTestBase):
             {'release': _release_row(committish=DEFAULT_COMMITTISH)},
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -410,7 +410,7 @@ class ListGetReleaseTestCase(_ReleasesTestBase):
             {'release': _release_row(tag='1.2.3')},
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -432,7 +432,7 @@ class ListGetReleaseTestCase(_ReleasesTestBase):
             },
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -457,7 +457,7 @@ class ListGetReleaseTestCase(_ReleasesTestBase):
     def test_get_release_success(self) -> None:
         self.mock_db.execute.return_value = [{'release': _release_row()}]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url(f'/{RELEASE_ID}'))
@@ -467,7 +467,7 @@ class ListGetReleaseTestCase(_ReleasesTestBase):
     def test_get_release_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/missing-id'))
@@ -484,7 +484,7 @@ class PatchReleaseTestCase(_ReleasesTestBase):
             [{'release': _release_row(title='Updated')}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -518,7 +518,7 @@ class PatchReleaseTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -554,7 +554,7 @@ class PatchReleaseTestCase(_ReleasesTestBase):
             [{'release': _release_row(title='')}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -574,7 +574,7 @@ class PatchReleaseTestCase(_ReleasesTestBase):
     def test_patch_readonly_committish(self) -> None:
         self.mock_db.execute.side_effect = [[{'release': _release_row()}]]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -593,7 +593,7 @@ class PatchReleaseTestCase(_ReleasesTestBase):
     def test_patch_unknown_path(self) -> None:
         self.mock_db.execute.side_effect = [[{'release': _release_row()}]]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -607,7 +607,7 @@ class PatchReleaseTestCase(_ReleasesTestBase):
     def test_patch_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -628,7 +628,7 @@ class PatchReleaseTestCase(_ReleasesTestBase):
             [{'id': 'other-release-id'}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -655,7 +655,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [{'deployments': None}],  # create_query
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -689,7 +689,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -711,11 +711,11 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.score_queue.enqueue_recompute',
+                'imbi.api.endpoints.releases.score_queue.enqueue_recompute',
                 new=mock.AsyncMock(return_value=True),
             ) as enqueue,
         ):
@@ -736,7 +736,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [],  # env not found
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -748,7 +748,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
     def test_record_deployment_release_missing(self) -> None:
         self.mock_db.execute.side_effect = [[]]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -782,11 +782,11 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.complete_opslog_entry',
+                'imbi.api.endpoints.releases.complete_opslog_entry',
                 new_callable=mock.AsyncMock,
                 return_value=True,
             ) as mock_close,
@@ -812,11 +812,11 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.releases.complete_opslog_entry',
+                'imbi.api.endpoints.releases.complete_opslog_entry',
                 new_callable=mock.AsyncMock,
                 return_value=True,
             ) as mock_close,
@@ -852,7 +852,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -870,7 +870,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [{'env': self._env(), 'deployments': None}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -893,7 +893,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [{'env': self._env(), 'deployments': deployments}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -921,7 +921,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -951,7 +951,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [{'deployments': None}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -971,11 +971,11 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             [],  # current_release write matched nothing
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             with self.assertLogs(
-                'imbi_api.endpoints.releases', level='WARNING'
+                'imbi.api.endpoints.releases', level='WARNING'
             ) as logs:
                 response = self.client.post(
                     self._url(f'/{RELEASE_ID}/environments/production'),
@@ -1003,7 +1003,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
     ) -> typing.Any:
         import asyncio
 
-        from imbi_api.endpoints.releases import append_deployment_event
+        from imbi.api.endpoints.releases import append_deployment_event
 
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
@@ -1018,7 +1018,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             [{'current_release': RELEASE_ID}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             return asyncio.run(
@@ -1028,7 +1028,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
                     project_id=PROJECT_ID,
                     release_id=RELEASE_ID,
                     env_slug='production',
-                    status=typing.cast(typing.Any, status),
+                    status=typing.cast('typing.Any', status),
                     note=note,
                     external_run_id=external_run_id,
                     external_run_url='https://gh/runs/42',
@@ -1215,7 +1215,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1250,7 +1250,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1289,7 +1289,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1321,7 +1321,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1348,7 +1348,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1391,11 +1391,11 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.releases._users_by_email',
+                'imbi.api.endpoints.releases._users_by_email',
                 new=mock.AsyncMock(return_value={'kevin@example.com': kevin}),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1430,7 +1430,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1507,7 +1507,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             return resolved, mock.MagicMock(), {'access_token': 'x'}
 
         self._patcher = mock.patch(
-            'imbi_api.endpoints.project_deployments._resolve_and_context',
+            'imbi.api.endpoints.project_deployments._resolve_and_context',
             new=_resolve_and_context,
         )
         self._patcher.start()
@@ -1532,7 +1532,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             [],  # resolve_plugin → no plugin → HTTPException(404)
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1577,7 +1577,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             [{'current_release': 'r1'}],  # current_release write on success
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1606,7 +1606,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1638,7 +1638,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url('/current'))
@@ -1682,7 +1682,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
             [],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.put(
@@ -1751,7 +1751,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
                 [],
             ]
             with mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ):
                 response = self.client.put(
@@ -1815,10 +1815,10 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
-            self.assertLogs('imbi_api.sbom', level='WARNING') as cm,
+            self.assertLogs('imbi.api.sbom', level='WARNING') as cm,
         ):
             response = self.client.put(
                 self._url(f'/{RELEASE_ID}/sbom'),
@@ -1923,7 +1923,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = fake_execute
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.put(
@@ -1963,7 +1963,7 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
             [],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -2005,7 +2005,7 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -2077,7 +2077,7 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(

@@ -57,7 +57,7 @@ parameter:
 
 ```python
 import fastapi
-from imbi_common import lifespan
+from imbi.common import lifespan
 
 app = fastapi.FastAPI(
     lifespan=lifespan.Lifespan(http_client_hook)
@@ -67,8 +67,8 @@ app = fastapi.FastAPI(
 If you have multiple resources, list all their hooks:
 
 ```python
-from imbi_common.graph import graph_lifespan
-from imbi_common.valkey import valkey_lifespan
+from imbi.common.graph import graph_lifespan
+from imbi.common.valkey import valkey_lifespan
 
 app = fastapi.FastAPI(
     lifespan=lifespan.Lifespan(
@@ -91,7 +91,7 @@ instance injected by FastAPI) and returns the resource:
 
 ```python
 import typing
-from imbi_common import lifespan
+from imbi.common import lifespan
 
 
 def _inject_http_client(
@@ -175,9 +175,9 @@ rather than the lifespan pattern; no hook is needed.
 
 ```python
 import fastapi
-from imbi_common import lifespan, models
-from imbi_common.graph import Pool, graph_lifespan
-from imbi_common.valkey import Client as ValkeyClient, valkey_lifespan
+from imbi.common import lifespan, models
+from imbi.common.graph import Pool, graph_lifespan
+from imbi.common.valkey import Client as ValkeyClient, valkey_lifespan
 
 app = fastapi.FastAPI(
     lifespan=lifespan.Lifespan(

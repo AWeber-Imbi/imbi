@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from imbi_api.auth import seed
+from imbi.api.auth import seed
 
 
 class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -17,7 +17,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             count = await seed.seed_permissions(mock_db)
@@ -31,7 +31,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.return_value = [{'created': 0}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             count = await seed.seed_permissions(mock_db)
@@ -45,7 +45,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.return_value = [{'removed': 4}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             removed = await seed.cleanup_retired_permissions(mock_db)
@@ -60,7 +60,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.return_value = [{'removed': 0}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             removed = await seed.cleanup_retired_permissions(mock_db)
@@ -93,7 +93,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.return_value = [{'created': len(seed.DEFAULT_ROLES)}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             count = await seed.seed_default_roles(mock_db)
@@ -107,7 +107,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.return_value = [{'created': 0}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             count = await seed.seed_default_roles(mock_db)
@@ -186,7 +186,7 @@ class SeedDefaultOrganizationTestCase(
         mock_db.execute.return_value = [{'is_new': True}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             created = await seed.seed_default_organization(mock_db)
@@ -201,7 +201,7 @@ class SeedDefaultOrganizationTestCase(
         mock_db.execute.return_value = [{'is_new': False}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             created = await seed.seed_default_organization(mock_db)
@@ -218,19 +218,19 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_api.auth.seed.seed_default_organization',
+                'imbi.api.auth.seed.seed_default_organization',
                 return_value=True,
             ) as mock_org,
             mock.patch(
-                'imbi_api.auth.seed.cleanup_retired_permissions',
+                'imbi.api.auth.seed.cleanup_retired_permissions',
                 return_value=0,
             ),
             mock.patch(
-                'imbi_api.auth.seed.seed_permissions',
+                'imbi.api.auth.seed.seed_permissions',
                 return_value=len(seed.STANDARD_PERMISSIONS),
             ) as mock_perms,
             mock.patch(
-                'imbi_api.auth.seed.seed_default_roles',
+                'imbi.api.auth.seed.seed_default_roles',
                 return_value=len(seed.DEFAULT_ROLES),
             ) as mock_roles,
         ):
@@ -253,19 +253,19 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_api.auth.seed.seed_default_organization',
+                'imbi.api.auth.seed.seed_default_organization',
                 return_value=False,
             ),
             mock.patch(
-                'imbi_api.auth.seed.cleanup_retired_permissions',
+                'imbi.api.auth.seed.cleanup_retired_permissions',
                 return_value=0,
             ),
             mock.patch(
-                'imbi_api.auth.seed.seed_permissions',
+                'imbi.api.auth.seed.seed_permissions',
                 return_value=0,
             ),
             mock.patch(
-                'imbi_api.auth.seed.seed_default_roles',
+                'imbi.api.auth.seed.seed_default_roles',
                 return_value=0,
             ),
         ):
@@ -281,19 +281,19 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_api.auth.seed.seed_default_organization',
+                'imbi.api.auth.seed.seed_default_organization',
                 return_value=True,
             ),
             mock.patch(
-                'imbi_api.auth.seed.cleanup_retired_permissions',
+                'imbi.api.auth.seed.cleanup_retired_permissions',
                 return_value=0,
             ),
             mock.patch(
-                'imbi_api.auth.seed.seed_permissions',
+                'imbi.api.auth.seed.seed_permissions',
                 return_value=0,
             ),
             mock.patch(
-                'imbi_api.auth.seed.seed_default_roles',
+                'imbi.api.auth.seed.seed_default_roles',
                 return_value=0,
             ),
         ):
@@ -319,7 +319,7 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             is_seeded = await seed.check_if_seeded(mock_db)
@@ -340,7 +340,7 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             is_seeded = await seed.check_if_seeded(mock_db)
@@ -362,7 +362,7 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             is_seeded = await seed.check_if_seeded(mock_db)

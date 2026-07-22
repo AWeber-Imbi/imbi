@@ -3,7 +3,7 @@
 import logging
 import pathlib
 
-from imbi_slackbot import identity, links, settings
+from imbi.slackbot import identity, links, settings
 
 LOGGER = logging.getLogger(__name__)
 

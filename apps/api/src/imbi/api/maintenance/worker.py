@@ -1,7 +1,7 @@
 """Per-instance consumer for global maintenance runs.
 
 Every API instance runs one of these; work is distributed through the
-Valkey pending SET (:mod:`imbi_api.maintenance.state`), so N instances
+Valkey pending SET (:mod:`imbi.api.maintenance.state`), so N instances
 give N-way parallelism with one in-flight project per instance -- the
 gentlest shape for plugin APIs that share a rate-limited token.
 """
@@ -12,12 +12,12 @@ import asyncio
 import logging
 import time
 
-from imbi_common import graph
-from imbi_common.plugins.errors import PluginRateLimited
 from valkey import asyncio as valkey
 
-from imbi_api.maintenance import registry, state
-from imbi_api.maintenance.operations import MaintenanceItemFailed
+from imbi.api.maintenance import registry, state
+from imbi.api.maintenance.operations import MaintenanceItemFailed
+from imbi.common import graph
+from imbi.common.plugins.errors import PluginRateLimited
 
 LOGGER = logging.getLogger(__name__)
 

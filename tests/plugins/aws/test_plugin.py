@@ -2,25 +2,24 @@
 
 import unittest
 
-from imbi_common.plugins.base import (
+import imbi.plugins.aws
+from imbi.common.plugins.base import (
     ConfigurationCapability,
     IdentityCapability,
     LogsCapability,
     Plugin,
     PluginManifest,
 )
-
-import imbi_plugin_aws
-from imbi_plugin_aws.cloudwatch import CloudWatchLogs
-from imbi_plugin_aws.identity import AWSIdentity
-from imbi_plugin_aws.plugin import AWSPlugin
-from imbi_plugin_aws.ssm import SSMConfiguration
+from imbi.plugins.aws.cloudwatch import CloudWatchLogs
+from imbi.plugins.aws.identity import AWSIdentity
+from imbi.plugins.aws.plugin import AWSPlugin
+from imbi.plugins.aws.ssm import SSMConfiguration
 
 
 class PluginExportTestCase(unittest.TestCase):
     def test_module_level_plugin_attr(self) -> None:
         # The registry's convention scan reads the module-level PLUGIN.
-        self.assertIs(imbi_plugin_aws.PLUGIN, AWSPlugin)
+        self.assertIs(imbi.plugins.aws.PLUGIN, AWSPlugin)
         self.assertTrue(issubclass(AWSPlugin, Plugin))
 
     def test_manifest_is_valid_v2(self) -> None:
@@ -99,7 +98,7 @@ class ManifestTestCase(unittest.TestCase):
 
 class RegistryDiscoveryTestCase(unittest.TestCase):
     def test_convention_scan_loads_aws(self) -> None:
-        from imbi_common.plugins import (
+        from imbi.common.plugins import (
             get_capability,
             get_plugin,
             load_plugins,

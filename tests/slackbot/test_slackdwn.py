@@ -2,8 +2,8 @@ from unittest import mock
 
 from slack_sdk import errors
 
-from imbi_slackbot import slackdwn
-from tests import helpers
+from imbi.slackbot import slackdwn
+from tests.slackbot import helpers
 
 
 class Resp:

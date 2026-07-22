@@ -4,7 +4,7 @@ import logging
 
 import anthropic
 
-from imbi_slackbot import settings
+from imbi.slackbot import settings
 
 LOGGER = logging.getLogger(__name__)
 

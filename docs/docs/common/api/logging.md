@@ -12,7 +12,7 @@ logging configuration for consistency.
 ## Basic Usage
 
 ```python
-from imbi_common import logging
+from imbi.common import logging
 
 # Configure logging with bundled config
 logging.configure_logging()
@@ -58,14 +58,14 @@ local development.
 
 ## Access Log Middleware
 
-`imbi_common.access_log.AccessLogMiddleware` is an ASGI middleware that
+`imbi.common.access_log.AccessLogMiddleware` is an ASGI middleware that
 replaces uvicorn's built-in access log. It emits one record per HTTP
-request on the `imbi_common.access` logger, in NCSA-style format with
+request on the `imbi.common.access` logger, in NCSA-style format with
 the authenticated principal in the `authuser` slot.
 
 ```python
 from fastapi import FastAPI
-from imbi_common.access_log import AccessLogMiddleware
+from imbi.common.access_log import AccessLogMiddleware
 
 app = FastAPI()
 app.add_middleware(
@@ -86,7 +86,7 @@ To log the human owner instead, register it from the consumer's API-key
 authentication path with `remember_api_key_principal`:
 
 ```python
-from imbi_common import access_log
+from imbi.common import access_log
 
 # After validating ``ik_<id>_<secret>`` and loading the owning user:
 access_log.remember_api_key_principal(key_id, user.email)
@@ -167,8 +167,8 @@ See [OpenTelemetry](otel.md) for the underlying
 
 ## API Reference
 
-::: imbi_common.logging.get_log_config
+::: imbi.common.logging.get_log_config
 
-::: imbi_common.logging.configure_logging
+::: imbi.common.logging.configure_logging
 
-::: imbi_common.access_log.AccessLogMiddleware
+::: imbi.common.access_log.AccessLogMiddleware

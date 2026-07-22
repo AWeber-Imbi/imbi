@@ -11,7 +11,7 @@ import typing
 
 import pydantic
 
-from imbi_common import models
+from imbi.common import models
 
 __all__ = [
     'Statement',

@@ -6,22 +6,22 @@ import urllib.parse
 
 import fastapi
 import fastapi.responses
-from imbi_common import graph
-from imbi_common.plugins import (
-    IdentityAuthorizationExpired,
-    IdentityAuthorizationPending,
-    PluginNotFoundError,
-)
 
-from imbi_api import settings
-from imbi_api.auth import permissions
-from imbi_api.identity import (
+from imbi.api import settings
+from imbi.api.auth import permissions
+from imbi.api.identity import (
     errors,
     flows,
     models,
     repository,
 )
-from imbi_api.scoring import OptionalValkeyClient
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.common import graph
+from imbi.common.plugins import (
+    IdentityAuthorizationExpired,
+    IdentityAuthorizationPending,
+    PluginNotFoundError,
+)
 
 LOGGER = logging.getLogger(__name__)
 

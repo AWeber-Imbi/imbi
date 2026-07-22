@@ -5,7 +5,7 @@ from unittest import mock
 
 from slowapi import errors as slowapi_errors
 
-from imbi_api.middleware import rate_limit
+from imbi.api.middleware import rate_limit
 
 
 class GetRateLimitKeyTestCase(unittest.TestCase):
@@ -16,7 +16,7 @@ class GetRateLimitKeyTestCase(unittest.TestCase):
         mock_request = mock.MagicMock()
 
         with mock.patch(
-            'imbi_api.middleware.rate_limit.slowapi_util.get_remote_address',
+            'imbi.api.middleware.rate_limit.slowapi_util.get_remote_address',
             return_value='192.168.1.100',
         ):
             key = rate_limit.get_rate_limit_key(mock_request)
@@ -28,7 +28,7 @@ class GetRateLimitKeyTestCase(unittest.TestCase):
         mock_request = mock.MagicMock()
 
         with mock.patch(
-            'imbi_api.middleware.rate_limit.slowapi_util.get_remote_address',
+            'imbi.api.middleware.rate_limit.slowapi_util.get_remote_address',
             return_value='2001:db8::1',
         ):
             key = rate_limit.get_rate_limit_key(mock_request)
@@ -63,9 +63,9 @@ class LimiterInitializationTestCase(unittest.TestCase):
     def test_limiter_is_singleton(self) -> None:
         """Test that limiter is a module-level singleton."""
         # Import in different ways should give same instance
-        import imbi_api
-        from imbi_api.middleware.rate_limit import limiter as limiter1
+        import imbi.api
+        from imbi.api.middleware.rate_limit import limiter as limiter1
 
-        limiter2 = imbi_api.middleware.rate_limit.limiter
+        limiter2 = imbi.api.middleware.rate_limit.limiter
 
         self.assertIs(limiter1, limiter2)

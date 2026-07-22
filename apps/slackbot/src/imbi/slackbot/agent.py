@@ -13,7 +13,7 @@ import typing
 
 import anthropic
 
-from imbi_slackbot import client, mcp
+from imbi.slackbot import client, mcp
 
 if typing.TYPE_CHECKING:
     import collections.abc

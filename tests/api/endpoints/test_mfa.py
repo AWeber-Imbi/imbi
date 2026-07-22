@@ -6,12 +6,12 @@ from unittest import mock
 
 import pyotp
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
-from imbi_api.middleware import rate_limit
-from tests import support
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
+from imbi.api.middleware import rate_limit
+from imbi.common import graph
+from tests.api import support
 
 
 class MFAEndpointsTestCase(support.SharedAppTestCase):
@@ -64,7 +64,7 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
         self.client = testclient.TestClient(self.test_app)
 
         # Mock encryption for MFA tests (plaintext secrets)
-        from imbi_common.auth.encryption import TokenEncryption
+        from imbi.common.auth.encryption import TokenEncryption
 
         mock_encryptor = mock.Mock()
         mock_encryptor.decrypt = mock.Mock(
@@ -91,10 +91,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -127,10 +127,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -163,10 +163,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -201,10 +201,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
@@ -275,10 +275,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -308,10 +308,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -334,10 +334,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -362,10 +362,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -387,10 +387,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -439,10 +439,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -470,10 +470,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -511,14 +511,14 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_common.auth.encryption.TokenEncryption.get_instance',
+                'imbi.common.auth.encryption.TokenEncryption.get_instance',
                 return_value=mock_encryptor,
             ),
         ):
@@ -556,14 +556,14 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_common.auth.encryption.TokenEncryption.get_instance',
+                'imbi.common.auth.encryption.TokenEncryption.get_instance',
                 return_value=mock_encryptor,
             ),
         ):
@@ -603,10 +603,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -645,10 +645,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -665,10 +665,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
         """Test MFA disable requires password."""
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -732,10 +732,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -796,10 +796,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -856,10 +856,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -907,10 +907,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -975,14 +975,14 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_common.auth.encryption.TokenEncryption.get_instance',
+                'imbi.common.auth.encryption.TokenEncryption.get_instance',
                 return_value=mock_encryptor,
             ),
         ):
@@ -1045,10 +1045,10 @@ class MFAEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):

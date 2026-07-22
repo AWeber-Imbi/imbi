@@ -5,9 +5,9 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
 
-from imbi_api.auth import permissions
+from imbi.api.auth import permissions
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

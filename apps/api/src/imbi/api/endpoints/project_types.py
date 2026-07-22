@@ -6,14 +6,14 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import blueprints, graph, models
 
-from imbi_api import blueprint_attributes
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.graph_sql import props_template, set_clause
-from imbi_api.relationships import relationship_link
+from imbi.api import blueprint_attributes
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.relationships import relationship_link
+from imbi.common import blueprints, graph, models
 
 LOGGER = logging.getLogger(__name__)
 

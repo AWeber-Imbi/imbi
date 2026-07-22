@@ -11,9 +11,8 @@ import datetime
 import logging
 import time
 
-from imbi_common import graph
-
-from imbi_api.domain import models
+from imbi.api.domain import models
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

@@ -4,19 +4,19 @@ import collections
 import typing
 
 import fastapi
-from imbi_common import graph
 
-from imbi_api.auth import permissions
-from imbi_api.domain import models
-from imbi_api.plugins import parse_options
-from imbi_api.plugins.assignment_writer import (
+from imbi.api.auth import permissions
+from imbi.api.domain import models
+from imbi.api.plugins import parse_options
+from imbi.api.plugins.assignment_writer import (
     CapabilityAssignmentRow,
     replace_capability_assignments,
 )
-from imbi_api.plugins.assignments import (
+from imbi.api.plugins.assignments import (
     capability_enabled,
     hydrate_integration,
 )
+from imbi.common import graph
 
 project_integrations_router = fastapi.APIRouter(
     prefix='/organizations/{org_slug}/projects/{project_id}/integrations',
@@ -193,7 +193,7 @@ async def replace_project_integrations(
     organization and have the targeted capability enabled. Rows are
     grouped by capability kind and each kind's assignments are replaced
     atomically via
-    :func:`imbi_api.plugins.assignment_writer.replace_capability_assignments`.
+    :func:`imbi.api.plugins.assignment_writer.replace_capability_assignments`.
 
     Raises:
         404: Project not found, or an integration/identity-integration

@@ -2,8 +2,8 @@ import unittest
 
 import pydantic
 
-from imbi_api import models
-from imbi_api.domain import models as domain_models
+from imbi.api import models
+from imbi.api.domain import models as domain_models
 
 
 class BlueprintModelTestCase(unittest.TestCase):

@@ -14,7 +14,7 @@ context, credential decryption, and error conventions shared by every
 plugin.
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     ConfigKey,
     ConfigKeyWithValue,
     ConfigurationCapability,
@@ -85,10 +85,10 @@ read access and to redact values.
 
 ## API reference
 
-::: imbi_common.plugins.ConfigurationCapability
+::: imbi.common.plugins.ConfigurationCapability
 
-::: imbi_common.plugins.ConfigKey
+::: imbi.common.plugins.ConfigKey
 
-::: imbi_common.plugins.ConfigKeyWithValue
+::: imbi.common.plugins.ConfigKeyWithValue
 
-::: imbi_common.plugins.ConfigValue
+::: imbi.common.plugins.ConfigValue

@@ -11,7 +11,7 @@ from importlib import resources
 import click
 import typer
 
-from imbi_common import settings
+from imbi.common import settings
 
 # Flag is used to test uvicorn availability without mucking with imports
 try:
@@ -104,7 +104,7 @@ def serve(
 
     if log_config is None:
         config_data = tomllib.loads(
-            resources.files('imbi_common')
+            resources.files('imbi.common')
             .joinpath('log-config.toml')
             .read_text()
         )
@@ -120,7 +120,7 @@ def serve(
         package_name = entrypoint.split(':')[0].split('.')[0]
         loggers.setdefault(package_name, {})['level'] = 'DEBUG'
         if dev:
-            loggers.setdefault('imbi_common', {})['level'] = 'DEBUG'
+            loggers.setdefault('imbi', {})['level'] = 'DEBUG'
 
     args: _UvicornRunParams = {
         'access_log': False,
@@ -162,7 +162,7 @@ def bind_entrypoint(
 
     Example:
         >>> import typer
-        >>> from imbi_common import server
+        >>> from imbi.common import server
         >>> cli = typer.Typer()
         >>> cli.command('serve')(
         ...     server.bind_entrypoint('my_package.api:create_app',

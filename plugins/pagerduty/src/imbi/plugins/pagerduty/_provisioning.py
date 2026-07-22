@@ -14,10 +14,10 @@ from __future__ import annotations
 import typing
 
 import httpx
-from imbi_common.auth.encryption import TokenEncryption
-from imbi_common.plugins.base import PluginContext, ServiceWriteback
 
-from imbi_plugin_pagerduty import _client, _services
+from imbi.common.auth.encryption import TokenEncryption
+from imbi.common.plugins.base import PluginContext, ServiceWriteback
+from imbi.plugins.pagerduty import _client, _services
 
 #: Incident events the per-service webhook subscription delivers back to
 #: the imbi-gateway notifications endpoint.

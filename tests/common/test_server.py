@@ -8,20 +8,20 @@ from importlib import resources
 import tomli_w
 import typer.testing
 
-from imbi_common import helpers, server, settings
+from imbi.common import helpers, server, settings
 
 
 class ServerCliTests(unittest.TestCase):
     def setUp(self) -> None:
         super().setUp()
         self.uvicorn_run = self.enterContext(
-            unittest.mock.patch('imbi_common.server.uvicorn.run')
+            unittest.mock.patch('imbi.common.server.uvicorn.run')
         )
         self.enterContext(
             unittest.mock.patch.object(settings.SSL, 'configure')
         )
         self.log_config_data = tomllib.loads(
-            resources.files('imbi_common')
+            resources.files('imbi.common')
             .joinpath('log-config.toml')
             .read_text()
         )
@@ -75,7 +75,7 @@ class ServerCliTests(unittest.TestCase):
             server.uvicorn_available = saved_value
 
         self.assertNotEqual(0, result.exit_code)
-        self.assertIn('uvicorn is not installed', result.output.lower())
+        self.assertIn('uvicorn is not installed', str(result.exception).lower())
 
     def test_in_dev_mode(self) -> None:
         result = typer.testing.CliRunner().invoke(
@@ -87,7 +87,7 @@ class ServerCliTests(unittest.TestCase):
         loggers = helpers.unwrap_as(
             dict[str, dict[str, str]], self.log_config_data.get('loggers')
         )
-        loggers.setdefault('imbi_common', {})['level'] = 'DEBUG'
+        loggers.setdefault('imbi', {})['level'] = 'DEBUG'
         loggers.setdefault('package', {})['level'] = 'DEBUG'
 
         self.uvicorn_run.assert_called_once_with(

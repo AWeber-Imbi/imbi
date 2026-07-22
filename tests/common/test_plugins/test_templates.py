@@ -1,6 +1,6 @@
 import unittest
 
-from imbi_common.plugins.templates import expand_template, validate_template
+from imbi.common.plugins.templates import expand_template, validate_template
 
 
 class ValidateTemplateTestCase(unittest.TestCase):

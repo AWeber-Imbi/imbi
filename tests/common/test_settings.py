@@ -9,7 +9,7 @@ import unittest.mock
 
 import pydantic
 
-from imbi_common import settings
+from imbi.common import settings
 
 
 class PostgresSettingsTestCase(unittest.TestCase):

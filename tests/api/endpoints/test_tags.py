@@ -7,17 +7,17 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class TagEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for tag CRUD endpoints."""
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -76,7 +76,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             {'t': self._tag_data(), 'o': self._org_data()}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/tags/',
@@ -95,7 +95,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             }
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/tags/',
@@ -123,7 +123,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
     def test_create_slug_conflict(self) -> None:
         self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/tags/',
@@ -134,7 +134,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
     def test_create_org_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/ghost/tags/',
@@ -158,7 +158,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             },
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get('/organizations/engineering/tags/')
         self.assertEqual(response.status_code, 200)
@@ -177,7 +177,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             }
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/tags/runbook'
@@ -190,7 +190,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
     def test_get_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/tags/missing'
@@ -211,7 +211,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',
@@ -226,7 +226,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             psycopg.errors.UniqueViolation(),
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',
@@ -247,7 +247,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             {'t': self._tag_data(), 'o': self._org_data()}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',
@@ -277,7 +277,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             {'t': self._tag_data(), 'o': self._org_data()}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',
@@ -291,7 +291,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             {'t': self._tag_data(), 'o': self._org_data()}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',
@@ -305,7 +305,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             {'t': self._tag_data(), 'o': self._org_data()}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',
@@ -320,7 +320,7 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             [],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/tags/runbook',

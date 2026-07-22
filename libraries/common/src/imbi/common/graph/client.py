@@ -17,8 +17,8 @@ import pydantic
 from pgvector.psycopg import register_vector_async
 from psycopg import rows, sql
 
-from imbi_common import models, settings
-from imbi_common.graph import cypher
+from imbi.common import models, settings
+from imbi.common.graph import cypher
 
 LOGGER = logging.getLogger(__name__)
 
@@ -225,7 +225,7 @@ class Graph:
 
     async def close(self) -> None:
         """Close the connection pool and release models."""
-        from imbi_common.graph import embeddings
+        from imbi.common.graph import embeddings
 
         await self.pool.close()
         embeddings.close()
@@ -373,7 +373,7 @@ class Graph:
         """
         if not self.opened:
             raise RuntimeError('Graph pool is not open')
-        from imbi_common.graph import embeddings
+        from imbi.common.graph import embeddings
 
         vector = await embeddings.aembed_one(
             query,
@@ -514,7 +514,7 @@ class Graph:
         if not fields:
             return
         try:
-            from imbi_common.graph import chunk, embeddings
+            from imbi.common.graph import chunk, embeddings
 
             node_label = type(node).__name__
             async with self.pool.connection() as conn:

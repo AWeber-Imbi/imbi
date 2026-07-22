@@ -2,9 +2,9 @@ import logging
 import typing as t
 
 import typer
-from imbi_common.sentry import init as init_sentry
 
-from imbi_mcp import server
+from imbi.common.sentry import init as init_sentry
+from imbi.mcp import server
 
 _LOGGER = logging.getLogger(__name__)
 

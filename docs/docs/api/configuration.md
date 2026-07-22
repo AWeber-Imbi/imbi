@@ -49,7 +49,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ### Server (`IMBI_API_*`)
 
-Configured by [`ServerConfig`](https://github.com/AWeber-Imbi/imbi-api/blob/main/src/imbi_api/settings.py). The `[server]` section in `config.toml` maps to these.
+Configured by [`ServerConfig`](https://github.com/AWeber-Imbi/imbi-api/blob/main/src/imbi.api/settings.py). The `[server]` section in `config.toml` maps to these.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -134,7 +134,7 @@ SMTP-based transactional email (password reset, welcome, email verification, sec
 
 ## Authentication & Authorization (`IMBI_AUTH_*`)
 
-The `[auth]` section in `config.toml` maps to these. Shared JWT/encryption settings come from `imbi_common`; the API service adds password policy, sessions, API keys, MFA, rate limits, and OAuth behavior.
+The `[auth]` section in `config.toml` maps to these. Shared JWT/encryption settings come from `imbi.common`; the API service adds password policy, sessions, API keys, MFA, rate limits, and OAuth behavior.
 
 ### JWT and Encryption
 
@@ -257,7 +257,7 @@ The `[releases]` section in `config.toml` maps to these.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_RELEASES_VERSION_FORMAT` | `semver` | Version-string format enforced on `Release.version`. Other values supported by `imbi_common.versioning.VersionFormat`. |
+| `IMBI_RELEASES_VERSION_FORMAT` | `semver` | Version-string format enforced on `Release.version`. Other values supported by `imbi.common.versioning.VersionFormat`. |
 
 ### Embeddings (`EMBEDDINGS_*`)
 
@@ -424,7 +424,7 @@ OTEL_EXPORTER_OTLP_TRACES_INSECURE=true
 ### Loading Configuration Programmatically
 
 ```python
-from imbi_api import settings
+from imbi.api import settings
 
 config = settings.load_config()
 

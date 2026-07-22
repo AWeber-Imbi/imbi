@@ -43,7 +43,8 @@ import logging
 import typing
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     AuthorizationRequest,
     IdentityCapability,
     IdentityCredentials,
@@ -51,11 +52,10 @@ from imbi_common.plugins.base import (
     PluginContext,
     PollingDescriptor,
 )
-from imbi_common.plugins.errors import PluginCredentialsMissing
-from imbi_common.plugins.templates import expand_template
-
-from imbi_plugin_aws._helpers import template_vars
-from imbi_plugin_aws.errors import (
+from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.common.plugins.templates import expand_template
+from imbi.plugins.aws._helpers import template_vars
+from imbi.plugins.aws.errors import (
     IamIcAuthorizationPending,
     IamIcDeviceFlowExpired,
 )
@@ -83,7 +83,7 @@ def _portal_url(region: str, path: str) -> str:
 class AWSIdentity(IdentityCapability):
     """AWS IAM Identity Center identity handler (device-code flow).
 
-    The ``identity`` capability of :class:`~imbi_plugin_aws.plugin.AWSPlugin`.
+    The ``identity`` capability of :class:`~imbi.plugins.aws.plugin.AWSPlugin`.
     It is the credential mechanism for every AWS Integration: the other
     capabilities receive the STS keys it mints via
     :meth:`materialize` on ``PluginContext.identity``.
@@ -324,7 +324,7 @@ class AWSIdentity(IdentityCapability):
         # The role name may carry template placeholders (e.g.
         # ``${team_slug}``) so a single identity-plugin option can map
         # to per-project permission sets.  Expansion is whitelist-driven
-        # (see imbi_common.plugins.templates) — unknown vars raise
+        # (see imbi.common.plugins.templates) — unknown vars raise
         # ``ValueError`` and don't silently default to empty.
         if '${' in role_name:
             role_name = expand_template(role_name, template_vars(ctx))
@@ -410,7 +410,7 @@ class AWSIdentity(IdentityCapability):
         if not rows:
             return None, None, None
         try:
-            from imbi_common.graph import parse_agtype
+            from imbi.common.graph import parse_agtype
         except ImportError:
             return None, None, None
         row = rows[0]

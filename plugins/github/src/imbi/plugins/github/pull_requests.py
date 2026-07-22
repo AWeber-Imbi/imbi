@@ -14,7 +14,7 @@ GitHub's list-PRs API omits per-file diff stats
 store ``0`` for those fields; they are accurate on webhook-driven rows.
 
 PR rows are written to the shared ClickHouse ``pull_requests`` table via
-:func:`imbi_common.clickhouse.insert`. Writes are best-effort: a storage
+:func:`imbi.common.clickhouse.insert`. Writes are best-effort: a storage
 failure is logged and swallowed so an analytics hiccup never 5xxs the
 webhook, exactly as the gateway's own event recording behaves.
 """
@@ -28,19 +28,19 @@ import typing
 import httpx
 import jsonpointer
 import pydantic
-from imbi_common import clickhouse
-from imbi_common.json_pointer import JsonPointer
-from imbi_common.models import PullRequestRecord
-from imbi_common.plugins.base import (
+
+from imbi.common import clickhouse
+from imbi.common.json_pointer import JsonPointer
+from imbi.common.models import PullRequestRecord
+from imbi.common.plugins.base import (
     ActionDescriptor,
     PluginContext,
     PullRequestSyncCapability,
 )
-
-from imbi_plugin_github._app_auth import AppNotInstalledError
-from imbi_plugin_github._hosts import host_to_api_base
-from imbi_plugin_github._repos import resolve_owner_repo
-from imbi_plugin_github.commits import (
+from imbi.plugins.github._app_auth import AppNotInstalledError
+from imbi.plugins.github._hosts import host_to_api_base
+from imbi.plugins.github._repos import resolve_owner_repo
+from imbi.plugins.github.commits import (
     _BACKFILL_MAX_WAIT_SECONDS,  # pyright: ignore[reportPrivateUsage]
     _client,  # pyright: ignore[reportPrivateUsage]
     _insert_best_effort,  # pyright: ignore[reportPrivateUsage]
@@ -49,7 +49,7 @@ from imbi_plugin_github.commits import (
     _resolve_bearer,  # pyright: ignore[reportPrivateUsage]
     _resolve_host_for_context,  # pyright: ignore[reportPrivateUsage]
 )
-from imbi_plugin_github.deployment import (
+from imbi.plugins.github.deployment import (
     _next_page_url,  # pyright: ignore[reportPrivateUsage]
     _parse_iso,  # pyright: ignore[reportPrivateUsage]
     _query_param,  # pyright: ignore[reportPrivateUsage]
@@ -252,11 +252,11 @@ sync_pull_requests_descriptor = ActionDescriptor(
     ),
     callable=typing.cast(
         'typing.Any',
-        'imbi_plugin_github.pull_requests:sync_pull_requests',
+        'imbi.plugins.github.pull_requests:sync_pull_requests',
     ),
     config_model=typing.cast(
         'typing.Any',
-        'imbi_plugin_github.pull_requests:SyncPRsConfig',
+        'imbi.plugins.github.pull_requests:SyncPRsConfig',
     ),
 )
 
@@ -266,7 +266,7 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
 
     Uses the Integration's shared credential blob (PAT or GitHub App),
     resolved identically to
-    :class:`~imbi_plugin_github.commits.GitHubCommitSync`.  The
+    :class:`~imbi.plugins.github.commits.GitHubCommitSync`.  The
     gateway-side incremental sync flows through the
     ``sync_pull_requests`` webhook action catalogued by the plugin's
     ``webhook-actions`` capability.

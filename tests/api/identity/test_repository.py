@@ -4,9 +4,8 @@ import datetime
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.base import IdentityCredentials, IdentityProfile
-
-from imbi_api.identity import repository
+from imbi.api.identity import repository
+from imbi.common.plugins.base import IdentityCredentials, IdentityProfile
 
 
 class FakeEncryptor:
@@ -323,7 +322,7 @@ class FindUserBySubjectTestCase(unittest.IsolatedAsyncioTestCase):
                 return_value=['user-1', 'user-2'],
             ),
             self.assertLogs(
-                'imbi_api.identity.repository', level='ERROR'
+                'imbi.api.identity.repository', level='ERROR'
             ) as cm,
         ):
             result = await repository.find_user_by_subject(

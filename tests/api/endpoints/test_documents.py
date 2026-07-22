@@ -6,17 +6,17 @@ import unittest
 from unittest import mock
 
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class DocumentEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for documents CRUD + the org-wide index."""
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -113,7 +113,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             [self._project_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/proj-abc/documents/',
@@ -151,7 +151,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/proj-abc/documents/',
@@ -175,7 +175,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             {'tag_slug': 'ghost', 'found': False},
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/proj-abc/documents/',
@@ -191,7 +191,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_project_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/missing/documents/',
@@ -233,7 +233,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/users/gavinr@example.com'
@@ -252,7 +252,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_user_document_user_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/users/ghost@example.com'
@@ -271,7 +271,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/project-types/http-api/documents/',
@@ -297,7 +297,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ),
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/projects/proj-abc/documents/'
@@ -319,7 +319,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ),
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/documents/?tag=runbook'
@@ -353,7 +353,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ),
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get('/organizations/engineering/documents/')
         self.assertEqual(response.status_code, 200)
@@ -378,7 +378,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             )
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/users/gavinr@example.com'
@@ -394,7 +394,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             self._row(pt={'slug': 'http-api', 'name': 'HTTP API'})
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/project-types/http-api/documents/'
@@ -430,7 +430,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_get_single(self) -> None:
         self.mock_db.execute.return_value = [self._project_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/projects/proj-abc/documents/document-1'
@@ -456,7 +456,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             )
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/documents/document-1'
@@ -482,7 +482,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             [self._project_row(n=self._document_data(content='Updated text'))],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -514,7 +514,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/documents/document-1',
@@ -545,7 +545,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -568,7 +568,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             [self._project_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/proj-abc/documents/',
@@ -589,7 +589,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             [self._project_row(n=self._document_data(title='New title'))],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -614,7 +614,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             [self._project_row(n=self._document_data(is_pinned=True))],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -636,7 +636,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         """Explicit ``replace /title -> null`` must 400, not silently no-op."""
         self.mock_db.execute.return_value = [self._project_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -648,7 +648,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         """Explicit ``replace /is_pinned -> null`` must 400."""
         self.mock_db.execute.return_value = [self._project_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -660,7 +660,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         """Explicit ``replace /content -> null`` must 400."""
         self.mock_db.execute.return_value = [self._project_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -671,7 +671,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_readonly_path_rejected(self) -> None:
         self.mock_db.execute.return_value = [self._project_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -689,7 +689,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         """The attachment is immutable over the PATCH API."""
         self.mock_db.execute.return_value = [self._project_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/documents/document-1',
@@ -749,7 +749,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         ]
         self.mock_db.execute.return_value = rows
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/documents/?limit=2'
@@ -771,7 +771,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             self._project_row(n=self._document_data(id='n-next'))
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 f'/organizations/engineering/documents/?cursor={cursor}'
@@ -782,7 +782,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         """Patching /content to an empty string returns 400."""
         self.mock_db.execute.return_value = [self._project_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
@@ -797,7 +797,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             [],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',

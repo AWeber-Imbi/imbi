@@ -6,7 +6,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_api.endpoints import project_plugins as pp
+from imbi.api.endpoints import project_plugins as pp
 
 _GHEC = {
     'id': 'int-1',

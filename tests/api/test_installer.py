@@ -8,7 +8,7 @@ argv (``--no-deps``, pinned ``--index-url``).
 import unittest
 from unittest import mock
 
-from imbi_api.plugins import installer
+from imbi.api.plugins import installer
 
 
 class ValidateNameTestCase(unittest.TestCase):

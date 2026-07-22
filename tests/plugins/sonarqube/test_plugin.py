@@ -1,12 +1,12 @@
 import unittest
 
-import imbi_plugin_sonarqube
-from imbi_plugin_sonarqube import actions, plugin
+import imbi.plugins.sonarqube
+from imbi.plugins.sonarqube import actions, plugin
 
 
 class SonarQubePluginManifestTests(unittest.TestCase):
     def test_module_exposes_plugin_attribute(self) -> None:
-        self.assertIs(imbi_plugin_sonarqube.PLUGIN, plugin.SonarQubePlugin)
+        self.assertIs(imbi.plugins.sonarqube.PLUGIN, plugin.SonarQubePlugin)
 
     def test_manifest_slug_and_auth_type(self) -> None:
         manifest = plugin.SonarQubePlugin.manifest

@@ -6,8 +6,8 @@ import unittest.mock
 
 from cryptography import fernet
 
-from imbi_common import settings
-from imbi_common.auth import encryption
+from imbi.common import settings
+from imbi.common.auth import encryption
 
 
 class ConfigEncryptionTestCase(unittest.TestCase):
@@ -69,7 +69,7 @@ class ConfigEncryptionTestCase(unittest.TestCase):
             },
             clear=True,
         ):
-            from imbi_common.auth import encryption as enc
+            from imbi.common.auth import encryption as enc
 
             settings._auth_settings = None
             settings._config_settings = None

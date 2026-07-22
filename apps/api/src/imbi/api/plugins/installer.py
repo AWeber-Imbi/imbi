@@ -18,7 +18,7 @@ import logging
 import os
 import re
 
-from imbi_common.plugins.registry import (
+from imbi.common.plugins.registry import (
     LoadResult,
     reload_plugins,
 )

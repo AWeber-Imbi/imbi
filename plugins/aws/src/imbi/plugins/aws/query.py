@@ -16,8 +16,8 @@ import json
 import re
 import typing
 
-from imbi_common.plugins.base import LogFilter
-from imbi_common.plugins.errors import CursorExpiredError
+from imbi.common.plugins.base import LogFilter
+from imbi.common.plugins.errors import CursorExpiredError
 
 _BUILTIN_FIELDS = frozenset(
     {

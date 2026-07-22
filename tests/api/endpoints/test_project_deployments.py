@@ -9,10 +9,21 @@ from unittest import mock
 
 import fastapi
 from fastapi import testclient
-from imbi_common import graph
-from imbi_common.llm import AnthropicClient, CompletionResult
-from imbi_common.models import SEMVER_TAG_FORMAT, TagFormat
-from imbi_common.plugins.base import (
+
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.api.endpoints import _helpers, project_deployments
+from imbi.api.endpoints.project_deployments import (
+    DraftReleaseNotes,
+    _EnvFlags,
+    persist_link_writeback,
+)
+from imbi.api.llm.dependencies import _get_anthropic_client
+from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.common import graph
+from imbi.common.llm import AnthropicClient, CompletionResult
+from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
+from imbi.common.plugins.base import (
     Capability,
     Commit,
     CompareResult,
@@ -26,19 +37,8 @@ from imbi_common.plugins.base import (
     ReleaseInfo,
     RemoteDeployment,
 )
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from imbi_api.endpoints import _helpers, project_deployments
-from imbi_api.endpoints.project_deployments import (
-    DraftReleaseNotes,
-    _EnvFlags,
-    persist_link_writeback,
-)
-from imbi_api.llm.dependencies import _get_anthropic_client
-from imbi_api.plugins.resolution import ResolvedCapability
-from tests import support
+from imbi.common.plugins.registry import RegistryEntry
+from tests.api import support
 
 
 class _FakeDeploymentPlugin(DeploymentCapability):
@@ -214,8 +214,8 @@ def _make_resolved(
     )
 
 
-_MODULE = 'imbi_api.endpoints.project_deployments'
-_UPDATE_LINK = 'imbi_api.endpoints._helpers.update_project_link'
+_MODULE = 'imbi.api.endpoints.project_deployments'
+_UPDATE_LINK = 'imbi.api.endpoints._helpers.update_project_link'
 
 
 class ProjectDeploymentsTestCase(support.SharedAppTestCase):
@@ -1238,7 +1238,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             environment=environment,
             sha=sha,
             ref=ref,
-            status=typing.cast(typing.Any, status),
+            status=typing.cast('typing.Any', status),
             created_at=datetime.datetime(
                 2026, 5, 13, 14, 0, tzinfo=datetime.UTC
             ),
@@ -1524,7 +1524,7 @@ class ResyncEndpointTestCase(ProjectDeploymentsTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        from imbi_api import scoring
+        from imbi.api import scoring
 
         self.test_app.dependency_overrides[scoring._inject_optional_client] = (
             lambda: mock.AsyncMock()
@@ -1620,7 +1620,7 @@ class ResyncEndpointTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_get_sync_status(self) -> None:
-        from imbi_api.deployment_sync import service as sync_service
+        from imbi.api.deployment_sync import service as sync_service
 
         status = sync_service.DeploymentSyncStatus(
             status='success', observed=3, events_recorded=2
@@ -1644,25 +1644,25 @@ class FallbackNotesTestCase(unittest.TestCase):
     """Direct tests for ``_classify_bump`` and ``_fallback_notes``."""
 
     def test_classify_bump_breaking(self) -> None:
-        from imbi_api.endpoints.project_deployments import _classify_bump
+        from imbi.api.endpoints.project_deployments import _classify_bump
 
         commits = [Commit(sha='a', short_sha='a', message='feat!: drop')]
         self.assertEqual(_classify_bump(commits), 'major')
 
     def test_classify_bump_feature(self) -> None:
-        from imbi_api.endpoints.project_deployments import _classify_bump
+        from imbi.api.endpoints.project_deployments import _classify_bump
 
         commits = [Commit(sha='a', short_sha='a', message='feat: new thing')]
         self.assertEqual(_classify_bump(commits), 'minor')
 
     def test_classify_bump_patch_default(self) -> None:
-        from imbi_api.endpoints.project_deployments import _classify_bump
+        from imbi.api.endpoints.project_deployments import _classify_bump
 
         commits = [Commit(sha='a', short_sha='a', message='fix: thing')]
         self.assertEqual(_classify_bump(commits), 'patch')
 
     def test_fallback_notes_groups_by_prefix(self) -> None:
-        from imbi_api.endpoints.project_deployments import _fallback_notes
+        from imbi.api.endpoints.project_deployments import _fallback_notes
 
         commits = [
             Commit(sha='a', short_sha='aaa', message='feat: one'),
@@ -1676,12 +1676,12 @@ class FallbackNotesTestCase(unittest.TestCase):
         self.assertIn('fix: two (bbb)', body)
 
     def test_fallback_notes_empty(self) -> None:
-        from imbi_api.endpoints.project_deployments import _fallback_notes
+        from imbi.api.endpoints.project_deployments import _fallback_notes
 
         self.assertIn('No commits', _fallback_notes([]))
 
     def test_fallback_notes_falls_back_to_other_for_long_prefix(self) -> None:
-        from imbi_api.endpoints.project_deployments import _fallback_notes
+        from imbi.api.endpoints.project_deployments import _fallback_notes
 
         commits = [
             Commit(
@@ -1698,7 +1698,7 @@ class LatestDeploymentTimestampTestCase(unittest.TestCase):
     """Direct tests for ``_latest_deployment_timestamp``."""
 
     def test_returns_none_for_empty_or_missing(self) -> None:
-        from imbi_api.endpoints.project_deployments import (
+        from imbi.api.endpoints.project_deployments import (
             _latest_deployment_timestamp,
         )
 
@@ -1707,7 +1707,7 @@ class LatestDeploymentTimestampTestCase(unittest.TestCase):
         self.assertIsNone(_latest_deployment_timestamp('[]'))
 
     def test_returns_none_for_non_list_payloads(self) -> None:
-        from imbi_api.endpoints.project_deployments import (
+        from imbi.api.endpoints.project_deployments import (
             _latest_deployment_timestamp,
         )
 
@@ -1715,7 +1715,7 @@ class LatestDeploymentTimestampTestCase(unittest.TestCase):
         self.assertIsNone(_latest_deployment_timestamp('{"x": 1}'))
 
     def test_picks_max_timestamp(self) -> None:
-        from imbi_api.endpoints.project_deployments import (
+        from imbi.api.endpoints.project_deployments import (
             _latest_deployment_timestamp,
         )
 
@@ -1731,7 +1731,7 @@ class LatestDeploymentTimestampTestCase(unittest.TestCase):
         )
 
     def test_skips_invalid_entries(self) -> None:
-        from imbi_api.endpoints.project_deployments import (
+        from imbi.api.endpoints.project_deployments import (
             _latest_deployment_timestamp,
         )
 
@@ -1749,7 +1749,7 @@ class LatestDeploymentTimestampTestCase(unittest.TestCase):
         )
 
     def test_accepts_already_decoded_list(self) -> None:
-        from imbi_api.endpoints.project_deployments import (
+        from imbi.api.endpoints.project_deployments import (
             _latest_deployment_timestamp,
         )
 
@@ -1766,12 +1766,12 @@ class SafeAuditUrlTestCase(unittest.TestCase):
     """Direct tests for ``_safe_audit_url`` (L22)."""
 
     def test_returns_none_for_none(self) -> None:
-        from imbi_api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints.project_deployments import _safe_audit_url
 
         self.assertIsNone(_safe_audit_url(None))
 
     def test_allows_http_and_https(self) -> None:
-        from imbi_api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints.project_deployments import _safe_audit_url
 
         for url in (
             'http://example.com/run/42',
@@ -1780,18 +1780,18 @@ class SafeAuditUrlTestCase(unittest.TestCase):
             self.assertEqual(_safe_audit_url(url), url)
 
     def test_strips_javascript_scheme(self) -> None:
-        from imbi_api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints.project_deployments import _safe_audit_url
 
         self.assertIsNone(_safe_audit_url('javascript:alert(1)'))
         self.assertIsNone(_safe_audit_url('JavaScript:alert(1)'))
 
     def test_strips_data_scheme(self) -> None:
-        from imbi_api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints.project_deployments import _safe_audit_url
 
         self.assertIsNone(_safe_audit_url('data:text/html,<script>x</script>'))
 
     def test_strips_file_scheme(self) -> None:
-        from imbi_api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints.project_deployments import _safe_audit_url
 
         self.assertIsNone(_safe_audit_url('file:///etc/passwd'))
 

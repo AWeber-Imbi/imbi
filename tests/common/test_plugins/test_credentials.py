@@ -1,12 +1,12 @@
-"""Tests for imbi_common.plugins.credentials."""
+"""Tests for imbi.common.plugins.credentials."""
 
 import unittest
 from unittest import mock
 
 from cryptography import fernet
 
-from imbi_common.auth import encryption
-from imbi_common.plugins import credentials
+from imbi.common.auth import encryption
+from imbi.common.plugins import credentials
 
 
 class _EncryptionFixture(unittest.TestCase):
@@ -15,7 +15,7 @@ class _EncryptionFixture(unittest.TestCase):
     def setUp(self) -> None:
         encryption.TokenEncryption.reset_instance()
         self.test_key = fernet.Fernet.generate_key().decode('ascii')
-        self._patcher = mock.patch('imbi_common.settings.get_auth_settings')
+        self._patcher = mock.patch('imbi.common.settings.get_auth_settings')
         mock_settings = self._patcher.start()
         mock_settings.return_value.encryption_key = self.test_key
 
@@ -76,7 +76,7 @@ class DecryptIntegrationCredentialsTestCase(_EncryptionFixture):
             side_effect=RuntimeError('boom'),
         ):
             with self.assertLogs(
-                'imbi_common.plugins.credentials', level='WARNING'
+                'imbi.common.plugins.credentials', level='WARNING'
             ) as logs:
                 result = credentials.decrypt_integration_credentials(blob)
         self.assertEqual(result, {})

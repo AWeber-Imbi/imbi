@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_common.auth import encryption
+from imbi.common.auth import encryption
 
 
 class TestTokenEncryption(unittest.TestCase):
@@ -70,7 +70,7 @@ class TestTokenEncryption(unittest.TestCase):
 
     def test_get_fernet_raises_when_key_missing(self):
         """Test RuntimeError when encryption_key is unset."""
-        from imbi_common import settings
+        from imbi.common import settings
 
         auth_settings = settings.Auth()
         auth_settings.encryption_key = None

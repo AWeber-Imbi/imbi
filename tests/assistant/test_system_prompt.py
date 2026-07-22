@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest import mock
 
-from imbi_assistant import auth, settings, system_prompt
+from imbi.assistant import auth, settings, system_prompt
 
 
 def _make_auth_context(

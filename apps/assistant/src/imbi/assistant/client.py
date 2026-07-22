@@ -4,7 +4,7 @@ import logging
 
 import anthropic
 
-from imbi_assistant import settings
+from imbi.assistant import settings
 
 LOGGER = logging.getLogger(__name__)
 

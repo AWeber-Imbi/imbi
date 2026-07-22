@@ -1,6 +1,6 @@
 """PR-sync queue (Valkey Streams).
 
-Mirrors :mod:`imbi_api.commit_sync.queue`: a single consumer group
+Mirrors :mod:`imbi.api.commit_sync.queue`: a single consumer group
 drains an ``imbi:pr-sync`` stream, with a per-project debounce,
 stale-entry reclaim, and a dead-letter queue after repeated failures.
 Each job runs a full PR backfill via
@@ -18,15 +18,15 @@ import time
 import typing
 from collections import abc
 
-from imbi_common import graph
-from imbi_common.plugins.errors import PluginRateLimited
 from valkey import asyncio as valkey
 
-from imbi_api.pr_sync.service import (
+from imbi.api.pr_sync.service import (
     PRSyncUnavailable,
     run_sync,
     set_status,
 )
+from imbi.common import graph
+from imbi.common.plugins.errors import PluginRateLimited
 
 STREAM = 'imbi:pr-sync'
 GROUP = 'pr-sync-workers'

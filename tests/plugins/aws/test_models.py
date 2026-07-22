@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_plugin_aws.models import AwsAccount
+from imbi.plugins.aws.models import AwsAccount
 
 
 class AwsAccountTestCase(unittest.TestCase):

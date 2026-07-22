@@ -6,24 +6,24 @@ import json
 import httpx
 import pytest
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     LogFilter,
     LogHistogramBucket,
     LogQuery,
     PluginContext,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     CursorExpiredError,
     PluginCredentialsMissing,
 )
-
-from imbi_plugin_logzio.plugin import (
+from imbi.plugins.logzio.plugin import (
     LogzioLogs,
     _merge_histogram_totals,
     _overlay_histogram_levels,
     _parse_histogram,
 )
-from imbi_plugin_logzio.query import (
+from imbi.plugins.logzio.query import (
     build_query_body,
     compute_fp,
     encode_cursor,

@@ -5,7 +5,7 @@ import unittest
 
 import pydantic
 
-from imbi_common.scoring import models
+from imbi.common.scoring import models
 
 
 def _policy(**overrides: object) -> models.AttributePolicy:

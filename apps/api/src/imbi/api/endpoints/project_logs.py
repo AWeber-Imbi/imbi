@@ -6,9 +6,17 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
-from imbi_common.plugins import decrypt_integration_credentials
-from imbi_common.plugins.base import (
+
+from imbi.api.auth import permissions
+from imbi.api.domain import models
+from imbi.api.endpoints._helpers import lookup_project_slugs
+from imbi.api.identity import resolution as identity_resolution
+from imbi.api.identity.host_integration import attach_identity
+from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
+from imbi.common import graph
+from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins.base import (
     LogFilter,
     LogHistogramBucket,
     LogQuery,
@@ -16,15 +24,7 @@ from imbi_common.plugins.base import (
     LogsCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import CursorExpiredError
-
-from imbi_api.auth import permissions
-from imbi_api.domain import models
-from imbi_api.endpoints._helpers import lookup_project_slugs
-from imbi_api.identity import resolution as identity_resolution
-from imbi_api.identity.host_integration import attach_identity
-from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.resolution import ResolvedCapability, resolve_capability
+from imbi.common.plugins.errors import CursorExpiredError
 
 LOGGER = logging.getLogger(__name__)
 

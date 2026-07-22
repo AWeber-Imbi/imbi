@@ -6,7 +6,7 @@ from unittest import mock
 import fastapi
 import pyotp
 
-from imbi_api.auth import totp
+from imbi.api.auth import totp
 
 PERIOD = 30
 DIGITS = 6

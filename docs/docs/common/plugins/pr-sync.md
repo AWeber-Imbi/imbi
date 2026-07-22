@@ -17,7 +17,7 @@ context, credential decryption, and error conventions shared by every
 plugin.
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     PluginContext,
     PullRequestSyncCapability,
 )
@@ -59,4 +59,4 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
 
 ## API reference
 
-::: imbi_common.plugins.PullRequestSyncCapability
+::: imbi.common.plugins.PullRequestSyncCapability

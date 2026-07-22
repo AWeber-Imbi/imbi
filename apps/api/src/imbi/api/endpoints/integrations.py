@@ -5,18 +5,18 @@ import typing
 
 import fastapi
 import nanoid
-from imbi_common import graph
-from imbi_common.auth.encryption import TokenEncryption
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import get_plugin
 
-from imbi_api.auth import login_providers, permissions
-from imbi_api.domain import models
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.graph_sql import escape_prop, props_template, set_clause
-from imbi_api.plugins import parse_options
-from imbi_api.plugins.assignments import hydrate_integration
-from imbi_api.plugins.credentials import patch_integration_credentials
+from imbi.api.auth import login_providers, permissions
+from imbi.api.domain import models
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.graph_sql import escape_prop, props_template, set_clause
+from imbi.api.plugins import parse_options
+from imbi.api.plugins.assignments import hydrate_integration
+from imbi.api.plugins.credentials import patch_integration_credentials
+from imbi.common import graph
+from imbi.common.auth.encryption import TokenEncryption
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import get_plugin
 
 integrations_router = fastapi.APIRouter(tags=['Integrations'])
 
@@ -773,7 +773,7 @@ async def replace_capability_assignments_endpoint(
 
     Only ``USES`` edges of ``kind`` from *this* Integration are replaced;
     other integrations' assignments for the same capability are untouched
-    (unlike :func:`imbi_api.plugins.assignment_writer.replace_capability_
+    (unlike :func:`imbi.api.plugins.assignment_writer.replace_capability_
     assignments`, which is scoped per-parent and would wipe every
     integration bound to that project type).
 
@@ -855,7 +855,7 @@ async def _replace_type_assignments_for_integration(
     Scoped to a single Integration (``integration_slug``) so other
     integrations' assignments of the same capability on the same project
     types are untouched -- unlike
-    :func:`imbi_api.plugins.assignment_writer.replace_capability_assignments`,
+    :func:`imbi.api.plugins.assignment_writer.replace_capability_assignments`,
     which replaces every ``USES`` edge of ``kind`` on the *parent*
     (all integrations bound to that project type).
     """

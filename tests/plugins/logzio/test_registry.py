@@ -1,17 +1,16 @@
 """Manifest declaration and convention-based discovery (v3)."""
 
-from imbi_common.plugins import (
+import imbi.plugins.logzio
+from imbi.common.plugins import (
     LogsCapability,
     Plugin,
     load_plugins,
 )
-
-import imbi_plugin_logzio
-from imbi_plugin_logzio.plugin import LogzioLogs, LogzioPlugin
+from imbi.plugins.logzio.plugin import LogzioLogs, LogzioPlugin
 
 
 def test_module_exposes_plugin_attr() -> None:
-    assert imbi_plugin_logzio.PLUGIN is LogzioPlugin
+    assert imbi.plugins.logzio.PLUGIN is LogzioPlugin
 
 
 def test_plugin_is_plugin_subclass() -> None:

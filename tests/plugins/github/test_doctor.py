@@ -6,18 +6,18 @@ import httpx
 import respx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     AnalysisResultItem,
     PluginContext,
     ServiceConnection,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginRemediationNotSupported,
 )
-
-from imbi_plugin_github import _app_auth
-from imbi_plugin_github.doctor import (
+from imbi.plugins.github import _app_auth
+from imbi.plugins.github.doctor import (
     _REPAIR_EDGE,
     _REPAIR_GITHUB_LINK,
     GitHubDoctor,
@@ -91,7 +91,7 @@ class CapabilityWiringTestCase(unittest.TestCase):
     def test_analysis_capability_bound_to_doctor(self) -> None:
         # The doctor is exposed as the GitHub plugin's ``analysis``
         # capability; host + credentials come from the Integration.
-        from imbi_plugin_github.plugin import GitHubPlugin
+        from imbi.plugins.github.plugin import GitHubPlugin
 
         analysis = next(
             c

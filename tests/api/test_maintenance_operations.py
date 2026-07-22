@@ -8,11 +8,11 @@ import unittest
 from unittest import mock
 
 import fastapi
-from imbi_common.plugins.errors import PluginRateLimited
 
-from imbi_api.commit_sync.service import CommitSyncUnavailable
-from imbi_api.maintenance import operations
-from imbi_api.pr_sync.service import PRSyncUnavailable
+from imbi.api.commit_sync.service import CommitSyncUnavailable
+from imbi.api.maintenance import operations
+from imbi.api.pr_sync.service import PRSyncUnavailable
+from imbi.common.plugins.errors import PluginRateLimited
 
 
 def _org_slug(value: str | None) -> mock.AsyncMock:
@@ -39,7 +39,7 @@ class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
             mock.patch(
-                'imbi_api.endpoints.project_analysis.run_and_persist', run
+                'imbi.api.endpoints.project_analysis.run_and_persist', run
             ),
         ):
             outcome = await operations.execute_analysis(
@@ -68,7 +68,7 @@ class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
         )
         stack.enter_context(
             mock.patch(
-                'imbi_api.endpoints.project_analysis'
+                'imbi.api.endpoints.project_analysis'
                 '.remediate_all_for_project',
                 remediate,
             )
@@ -131,8 +131,8 @@ class ExecuteCommitSyncTests(unittest.IsolatedAsyncioTestCase):
         set_status = mock.AsyncMock()
         return set_status, [
             mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
-            mock.patch('imbi_api.commit_sync.service.run_sync', run_sync),
-            mock.patch('imbi_api.commit_sync.service.set_status', set_status),
+            mock.patch('imbi.api.commit_sync.service.run_sync', run_sync),
+            mock.patch('imbi.api.commit_sync.service.set_status', set_status),
         ]
 
     async def test_success(self) -> None:
@@ -194,10 +194,10 @@ class ExecutePRSyncTests(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
             mock.patch(
-                'imbi_api.pr_sync.service.run_sync',
+                'imbi.api.pr_sync.service.run_sync',
                 mock.AsyncMock(return_value=7),
             ),
-            mock.patch('imbi_api.pr_sync.service.set_status', set_status),
+            mock.patch('imbi.api.pr_sync.service.set_status', set_status),
         ):
             outcome = await operations.execute_pr_sync(
                 mock.AsyncMock(), mock.AsyncMock(), 'p1'
@@ -209,11 +209,11 @@ class ExecutePRSyncTests(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
             mock.patch(
-                'imbi_api.pr_sync.service.run_sync',
+                'imbi.api.pr_sync.service.run_sync',
                 mock.AsyncMock(side_effect=PRSyncUnavailable('unbound')),
             ),
             mock.patch(
-                'imbi_api.pr_sync.service.set_status', mock.AsyncMock()
+                'imbi.api.pr_sync.service.set_status', mock.AsyncMock()
             ),
         ):
             outcome = await operations.execute_pr_sync(
@@ -228,7 +228,7 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
             mock.patch(
-                'imbi_api.endpoints.project_deployments.resync_for_project',
+                'imbi.api.endpoints.project_deployments.resync_for_project',
                 resync,
             ),
         ):
@@ -247,7 +247,7 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
                     operations, '_org_slug_for', _org_slug('org')
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_deployments'
+                    'imbi.api.endpoints.project_deployments'
                     '.resync_for_project',
                     mock.AsyncMock(
                         side_effect=fastapi.HTTPException(
@@ -265,7 +265,7 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
         with (
             mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
             mock.patch(
-                'imbi_api.endpoints.project_deployments.resync_for_project',
+                'imbi.api.endpoints.project_deployments.resync_for_project',
                 mock.AsyncMock(
                     side_effect=fastapi.HTTPException(
                         status_code=503, detail='no credentials'

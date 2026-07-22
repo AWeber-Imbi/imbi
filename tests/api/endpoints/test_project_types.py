@@ -5,10 +5,10 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
@@ -16,7 +16,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -72,10 +72,10 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -117,10 +117,10 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -142,7 +142,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
     def test_create_project_type_rejects_invalid_tag_format(self) -> None:
         """An uncompilable tag-format pattern is rejected with 400."""
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
         ) as mock_get_model:
             mock_get_model.return_value = models.ProjectType
 
@@ -163,10 +163,10 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -186,7 +186,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
     def test_create_project_type_validation_error(self) -> None:
         """Test creating project type with invalid data."""
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
         ) as mock_get_model:
             mock_get_model.return_value = models.ProjectType
 
@@ -207,10 +207,10 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -258,7 +258,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -315,7 +315,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -350,7 +350,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -379,7 +379,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -401,7 +401,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -416,7 +416,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'pt': True}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -430,7 +430,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -442,7 +442,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_project_type_name(self) -> None:
         """Test patching only the project type name."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing_pt = {
             'name': 'Service',
@@ -475,11 +475,11 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             with mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.ProjectType,
             ):
                 response = self.client.patch(
@@ -497,12 +497,12 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_project_type_not_found(self) -> None:
         """Test patching non-existent project type returns 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             return_value=common_models.ProjectType,
         ):
             response = self.client.patch(
@@ -520,7 +520,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_project_type_slug_conflict(self) -> None:
         """Renaming slug to an existing value returns 409."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = {'name': 'API Service', 'slug': 'api-service'}
         self.mock_db.execute.side_effect = [
@@ -535,10 +535,10 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.ProjectType,
             ),
         ):
@@ -551,7 +551,7 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_project_type_concurrent_delete(self) -> None:
         """Update returning no rows yields 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = {'name': 'API Service', 'slug': 'api-service'}
         self.mock_db.execute.side_effect = [
@@ -566,10 +566,10 @@ class ProjectTypeEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.ProjectType,
             ),
         ):

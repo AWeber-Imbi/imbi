@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_api.email import templates
+from imbi.api.email import templates
 
 
 class TemplateManagerTestCase(unittest.TestCase):

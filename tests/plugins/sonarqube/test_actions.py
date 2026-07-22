@@ -4,9 +4,9 @@ import unittest.mock
 
 import httpx
 import respx
-from imbi_common.plugins import base as plugin_base
 
-from imbi_plugin_sonarqube import actions
+from imbi.common.plugins import base as plugin_base
+from imbi.plugins.sonarqube import actions
 
 _SAMPLE_RESPONSE: dict[str, object] = {
     'component': {
@@ -85,7 +85,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_missing_api_token_skips_with_warning(self) -> None:
-        with self.assertLogs('imbi_plugin_sonarqube.actions') as cm:
+        with self.assertLogs('imbi.plugins.sonarqube.actions') as cm:
             await actions.update_project_from_webhook(
                 ctx=_ctx(),
                 credentials={},
@@ -98,7 +98,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_missing_service_endpoint_skips(self) -> None:
-        with self.assertLogs('imbi_plugin_sonarqube.actions'):
+        with self.assertLogs('imbi.plugins.sonarqube.actions'):
             await actions.update_project_from_webhook(
                 ctx=_ctx(service_endpoint=None),
                 credentials=_DEFAULT_CREDS,
@@ -125,7 +125,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
             'http://imbi-api.example.com/organizations/org/projects/proj'
         ).mock(return_value=httpx.Response(204))
         with self.assertLogs(
-            'imbi_plugin_sonarqube.actions', level='WARNING'
+            'imbi.plugins.sonarqube.actions', level='WARNING'
         ) as cm:
             await actions.update_project_from_webhook(
                 ctx=_ctx(),
@@ -170,7 +170,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
         patch_route = respx.patch(
             'http://imbi-api.example.com/organizations/org/projects/proj'
         ).mock(return_value=httpx.Response(204))
-        with self.assertLogs('imbi_plugin_sonarqube.actions', level='ERROR'):
+        with self.assertLogs('imbi.plugins.sonarqube.actions', level='ERROR'):
             await actions.update_project_from_webhook(
                 ctx=_ctx(),
                 credentials=_DEFAULT_CREDS,
@@ -181,7 +181,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(patch_route.called)
 
     async def test_empty_mappings_short_circuits(self) -> None:
-        with self.assertLogs('imbi_plugin_sonarqube.actions', level='DEBUG'):
+        with self.assertLogs('imbi.plugins.sonarqube.actions', level='DEBUG'):
             await actions.update_project_from_webhook(
                 ctx=_ctx(),
                 credentials=_DEFAULT_CREDS,
@@ -200,7 +200,7 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
             'http://imbi-api.example.com/organizations/org/projects/proj'
         ).mock(return_value=httpx.Response(500, text='kaboom'))
         with self.assertLogs(
-            'imbi_plugin_sonarqube.actions', level='WARNING'
+            'imbi.plugins.sonarqube.actions', level='WARNING'
         ) as cm:
             await actions.update_project_from_webhook(
                 ctx=_ctx(),

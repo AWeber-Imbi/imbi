@@ -9,7 +9,7 @@ Diagnosis (``analyze``) is best-effort: auth / rate-limit / transport
 failures degrade to ``warn`` findings rather than raising, so opening the
 Project Doctor panel never hard-fails. The repair (``remediate``) reuses
 the exact create path the lifecycle capability uses
-(:mod:`imbi_plugin_pagerduty._provisioning`) so a doctor-created service is
+(:mod:`imbi.plugins.pagerduty._provisioning`) so a doctor-created service is
 identical to a lifecycle-created one.
 """
 
@@ -19,7 +19,8 @@ import logging
 import typing
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
     AnalysisResultStatus,
@@ -28,12 +29,11 @@ from imbi_common.plugins.base import (
     RemediationResult,
     ServiceConnection,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginRateLimited,
 )
-
-from imbi_plugin_pagerduty import _client, _provisioning, _services
+from imbi.plugins.pagerduty import _client, _provisioning, _services
 
 LOGGER = logging.getLogger(__name__)
 

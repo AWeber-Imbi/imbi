@@ -5,10 +5,10 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class UserEndpointsTestCase(support.SharedAppTestCase):
@@ -16,7 +16,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         # Create an admin user for authentication
         self.admin_user = models.User(
@@ -79,12 +79,12 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_api.auth.password.hash_password',
+            'imbi.api.auth.password.hash_password',
         ) as mock_hash:
             mock_hash.return_value = '$argon2id$hashed'
 
             with mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ):
                 response = self.client.post(
@@ -125,7 +125,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -296,7 +296,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -318,7 +318,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
 
     def test_get_current_user_profile_success(self) -> None:
         """GET /users/me returns the caller's profile and permissions."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         member_user = models.User(
             email='member@example.com',
@@ -360,7 +360,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get('/users/me')
@@ -388,7 +388,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
 
     def test_get_current_user_profile_rejects_service_account(self) -> None:
         """GET /users/me requires a human user, not a service account."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         service_account = models.ServiceAccount(
             slug='ci-bot',
@@ -442,7 +442,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/users/by-identity',
@@ -471,7 +471,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/users/by-identity',
@@ -540,11 +540,11 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.auth.password.verify_password',
+                'imbi.api.auth.password.verify_password',
                 return_value=True,
             ),
             mock.patch(
-                'imbi_api.auth.password.hash_password',
+                'imbi.api.auth.password.hash_password',
             ) as mock_hash,
         ):
             mock_hash.return_value = '$argon2id$newhash'
@@ -581,7 +581,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.merge.return_value = None
 
         with mock.patch(
-            'imbi_api.auth.password.hash_password',
+            'imbi.api.auth.password.hash_password',
         ) as mock_hash:
             mock_hash.return_value = '$argon2id$newhash'
 
@@ -612,7 +612,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = [mock_user]
 
         with mock.patch(
-            'imbi_api.auth.password.verify_password',
+            'imbi.api.auth.password.verify_password',
             return_value=False,
         ):
             response = self.client.post(
@@ -915,7 +915,7 @@ class UserEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/users/dev%40example.com',
@@ -994,7 +994,7 @@ class OrgMembershipEndpointsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -1179,7 +1179,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
     def test_not_a_list_raises(self) -> None:
         import fastapi
 
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
             _normalize_membership_input('not-a-list')
@@ -1189,7 +1189,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
     def test_entry_not_dict_raises(self) -> None:
         import fastapi
 
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
             _normalize_membership_input(['not-a-dict'])
@@ -1199,7 +1199,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
     def test_missing_org_slug_raises(self) -> None:
         import fastapi
 
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
             _normalize_membership_input([{'role': 'developer'}])
@@ -1209,7 +1209,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
     def test_empty_org_slug_raises(self) -> None:
         import fastapi
 
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
             _normalize_membership_input(
@@ -1220,7 +1220,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
     def test_missing_role_raises(self) -> None:
         import fastapi
 
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
             _normalize_membership_input([{'organization_slug': 'org1'}])
@@ -1230,7 +1230,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
     def test_empty_role_raises(self) -> None:
         import fastapi
 
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
             _normalize_membership_input(
@@ -1241,7 +1241,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
     def test_duplicate_slug_raises(self) -> None:
         import fastapi
 
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         with self.assertRaises(fastapi.HTTPException) as ctx:
             _normalize_membership_input(
@@ -1254,7 +1254,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
         self.assertIn('Duplicate', ctx.exception.detail)
 
     def test_valid_input_returns_normalized(self) -> None:
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         result = _normalize_membership_input(
             [{'organization_slug': 'org1', 'role': 'developer'}]
@@ -1264,7 +1264,7 @@ class NormalizeMembershipInputTestCase(unittest.TestCase):
         )
 
     def test_empty_list_returns_empty(self) -> None:
-        from imbi_api.endpoints.users import _normalize_membership_input
+        from imbi.api.endpoints.users import _normalize_membership_input
 
         result = _normalize_membership_input([])
         self.assertEqual(result, [])
@@ -1276,9 +1276,8 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_adds_new_membership(self) -> None:
         from unittest import mock
 
-        from imbi_common import graph
-
-        from imbi_api.endpoints.users import _reconcile_user_memberships
+        from imbi.api.endpoints.users import _reconcile_user_memberships
+        from imbi.common import graph
 
         db = mock.AsyncMock(spec=graph.Graph)
         # Org validation returns both found
@@ -1291,7 +1290,7 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             await _reconcile_user_memberships(
                 db,
@@ -1304,14 +1303,13 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_removes_old_membership(self) -> None:
         from unittest import mock
 
-        from imbi_common import graph
-
-        from imbi_api.endpoints.users import _reconcile_user_memberships
+        from imbi.api.endpoints.users import _reconcile_user_memberships
+        from imbi.common import graph
 
         db = mock.AsyncMock(spec=graph.Graph)
         db.execute = mock.AsyncMock(return_value=[])
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             await _reconcile_user_memberships(
                 db,
@@ -1325,9 +1323,8 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_updates_role_when_changed(self) -> None:
         from unittest import mock
 
-        from imbi_common import graph
-
-        from imbi_api.endpoints.users import _reconcile_user_memberships
+        from imbi.api.endpoints.users import _reconcile_user_memberships
+        from imbi.common import graph
 
         db = mock.AsyncMock(spec=graph.Graph)
         db.execute = mock.AsyncMock(
@@ -1338,7 +1335,7 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             await _reconcile_user_memberships(
                 db,
@@ -1352,9 +1349,8 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_no_change_when_role_same(self) -> None:
         from unittest import mock
 
-        from imbi_common import graph
-
-        from imbi_api.endpoints.users import _reconcile_user_memberships
+        from imbi.api.endpoints.users import _reconcile_user_memberships
+        from imbi.common import graph
 
         db = mock.AsyncMock(spec=graph.Graph)
         db.execute = mock.AsyncMock(
@@ -1364,7 +1360,7 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             await _reconcile_user_memberships(
                 db,
@@ -1379,14 +1375,14 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
         from unittest import mock
 
         import fastapi
-        from imbi_common import graph
 
-        from imbi_api.endpoints.users import _reconcile_user_memberships
+        from imbi.api.endpoints.users import _reconcile_user_memberships
+        from imbi.common import graph
 
         db = mock.AsyncMock(spec=graph.Graph)
         db.execute = mock.AsyncMock(return_value=[{'found': []}])
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             with self.assertRaises(fastapi.HTTPException) as ctx:
                 await _reconcile_user_memberships(
@@ -1402,9 +1398,9 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
         from unittest import mock
 
         import fastapi
-        from imbi_common import graph
 
-        from imbi_api.endpoints.users import _reconcile_user_memberships
+        from imbi.api.endpoints.users import _reconcile_user_memberships
+        from imbi.common import graph
 
         db = mock.AsyncMock(spec=graph.Graph)
         db.execute = mock.AsyncMock(
@@ -1414,7 +1410,7 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             with self.assertRaises(fastapi.HTTPException) as ctx:
                 await _reconcile_user_memberships(
@@ -1429,9 +1425,8 @@ class ReconcileMembershipsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_empty_desired_no_queries(self) -> None:
         from unittest import mock
 
-        from imbi_common import graph
-
-        from imbi_api.endpoints.users import _reconcile_user_memberships
+        from imbi.api.endpoints.users import _reconcile_user_memberships
+        from imbi.common import graph
 
         db = mock.AsyncMock(spec=graph.Graph)
         db.execute = mock.AsyncMock(return_value=[])
@@ -1444,7 +1439,7 @@ class ServiceAccountGuardRailsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',

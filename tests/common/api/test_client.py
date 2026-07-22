@@ -3,7 +3,7 @@ import unittest.mock
 
 import httpx
 
-from imbi_common.api import client
+from imbi.common.api import client
 
 _BASE_URL = 'http://imbi-api:8000'
 _TOKEN = 'test-token'

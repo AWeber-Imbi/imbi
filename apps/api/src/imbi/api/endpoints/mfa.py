@@ -17,13 +17,13 @@ import fastapi
 import pydantic
 import pyotp
 import qrcode
-from imbi_common import graph
-from imbi_common.auth import encryption
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
-from imbi_api.auth.totp import fetch_totp_secret, verify_totp_code
-from imbi_api.middleware import rate_limit
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
+from imbi.api.auth.totp import fetch_totp_secret, verify_totp_code
+from imbi.api.middleware import rate_limit
+from imbi.common import graph
+from imbi.common.auth import encryption
 
 LOGGER = logging.getLogger(__name__)
 

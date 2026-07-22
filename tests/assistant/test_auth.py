@@ -5,7 +5,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_assistant import auth
+from imbi.assistant import auth
 
 
 class UserModelTestCase(unittest.TestCase):
@@ -83,7 +83,7 @@ class LoadUserPermissionsTestCase(
             }
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             return_value=[
                 'project:read',
                 'team:read',
@@ -119,7 +119,7 @@ class GetCurrentUserTestCase(
         creds = mock.MagicMock()
         creds.credentials = 'expired-token'
         with mock.patch(
-            'imbi_common.auth.core.verify_token',
+            'imbi.common.auth.core.verify_token',
             side_effect=jwt.ExpiredSignatureError(),
         ):
             with self.assertRaises(
@@ -136,7 +136,7 @@ class GetCurrentUserTestCase(
         creds = mock.MagicMock()
         creds.credentials = 'bad-token'
         with mock.patch(
-            'imbi_common.auth.core.verify_token',
+            'imbi.common.auth.core.verify_token',
             side_effect=jwt.InvalidTokenError(),
         ):
             with self.assertRaises(
@@ -150,7 +150,7 @@ class GetCurrentUserTestCase(
         creds = mock.MagicMock()
         creds.credentials = 'some-token'
         with mock.patch(
-            'imbi_common.auth.core.verify_token',
+            'imbi.common.auth.core.verify_token',
             return_value={
                 'type': 'refresh',
                 'sub': 'x',
@@ -168,7 +168,7 @@ class GetCurrentUserTestCase(
         creds = mock.MagicMock()
         creds.credentials = 'some-token'
         with mock.patch(
-            'imbi_common.auth.core.verify_token',
+            'imbi.common.auth.core.verify_token',
             return_value={'type': 'access'},
         ):
             with self.assertRaises(
@@ -184,7 +184,7 @@ class GetCurrentUserTestCase(
         creds = mock.MagicMock()
         creds.credentials = 'some-token'
         with mock.patch(
-            'imbi_common.auth.core.verify_token',
+            'imbi.common.auth.core.verify_token',
             return_value={
                 'type': 'access',
                 'sub': 'nobody@example.com',
@@ -210,7 +210,7 @@ class GetCurrentUserTestCase(
         db.execute.return_value = [{'u': user_data}]
         with (
             mock.patch(
-                'imbi_common.auth.core.verify_token',
+                'imbi.common.auth.core.verify_token',
                 return_value={
                     'type': 'access',
                     'sub': 'inactive@example.com',
@@ -218,7 +218,7 @@ class GetCurrentUserTestCase(
                 },
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -249,7 +249,7 @@ class GetCurrentUserTestCase(
 
         with (
             mock.patch(
-                'imbi_common.auth.core.verify_token',
+                'imbi.common.auth.core.verify_token',
                 return_value={
                     'type': 'access',
                     'sub': 'test@example.com',
@@ -257,7 +257,7 @@ class GetCurrentUserTestCase(
                 },
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=[
                     user_data,
                     ['project:read'],

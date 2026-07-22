@@ -9,58 +9,57 @@ import unittest
 from unittest import mock
 
 if typing.TYPE_CHECKING:
-    from imbi_common.plugins.registry import RegistryEntry
+    from imbi.common.plugins.registry import RegistryEntry
 
 
 class ParseOptionsTestCase(unittest.TestCase):
     """The unified ``parse_options`` subsumes every input layer."""
 
     def test_none_yields_empty_dict(self) -> None:
-        from imbi_api.plugins import parse_options
+        from imbi.api.plugins import parse_options
 
         self.assertEqual(parse_options(None), {})
 
     def test_dict_passes_through(self) -> None:
-        from imbi_api.plugins import parse_options
+        from imbi.api.plugins import parse_options
 
         self.assertEqual(parse_options({'k': 'v'}), {'k': 'v'})
 
     def test_single_encoded_json_string(self) -> None:
-        from imbi_api.plugins import parse_options
+        from imbi.api.plugins import parse_options
 
         self.assertEqual(parse_options(json.dumps({'k': 'v'})), {'k': 'v'})
 
     def test_raw_agtype_double_encoded_string(self) -> None:
         # AGE returns a string property as a JSON-quoted string, so a
         # stored ``'{"k": "v"}'`` round-trips as ``'"{\\"k\\": \\"v\\"}"'``.
-        from imbi_api.plugins import parse_options
+        from imbi.api.plugins import parse_options
 
         raw = json.dumps(json.dumps({'k': 'v'}))
         self.assertEqual(parse_options(raw), {'k': 'v'})
 
     def test_malformed_json_yields_empty_dict(self) -> None:
-        from imbi_api.plugins import parse_options
+        from imbi.api.plugins import parse_options
 
         self.assertEqual(parse_options('{not json'), {})
 
     def test_non_object_json_yields_empty_dict(self) -> None:
-        from imbi_api.plugins import parse_options
+        from imbi.api.plugins import parse_options
 
         self.assertEqual(parse_options(json.dumps([1, 2, 3])), {})
 
 
 class LifecycleTestCase(unittest.TestCase):
     def test_startup_load_plugins_logs(self) -> None:
-        from imbi_common.plugins.registry import LoadResult
-
-        from imbi_api.plugins import lifecycle
+        from imbi.api.plugins import lifecycle
+        from imbi.common.plugins.registry import LoadResult
 
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = []
 
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle.load_plugins',
+                'imbi.api.plugins.lifecycle.load_plugins',
                 return_value=LoadResult(
                     loaded=['ssm'],
                     errors={},
@@ -68,14 +67,14 @@ class LifecycleTestCase(unittest.TestCase):
                 ),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.list_plugins',
+                'imbi.api.plugins.lifecycle.list_plugins',
                 return_value=[],
             ),
         ):
             asyncio.run(lifecycle.startup_load_plugins(mock_db))
 
     def test_is_plugin_enabled_true(self) -> None:
-        from imbi_api.plugins.lifecycle import is_plugin_enabled
+        from imbi.api.plugins.lifecycle import is_plugin_enabled
 
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = [{'enabled': True}]
@@ -83,7 +82,7 @@ class LifecycleTestCase(unittest.TestCase):
         self.assertTrue(result)
 
     def test_is_plugin_enabled_no_record(self) -> None:
-        from imbi_api.plugins.lifecycle import is_plugin_enabled
+        from imbi.api.plugins.lifecycle import is_plugin_enabled
 
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = []
@@ -91,7 +90,7 @@ class LifecycleTestCase(unittest.TestCase):
         self.assertFalse(result)
 
     def test_get_enabled_map(self) -> None:
-        from imbi_api.plugins.lifecycle import get_enabled_map
+        from imbi.api.plugins.lifecycle import get_enabled_map
 
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = [
@@ -102,13 +101,13 @@ class LifecycleTestCase(unittest.TestCase):
         self.assertEqual(result, {'ssm': True, 'logzio': False})
 
     def test_audit_unavailable_handles_error(self) -> None:
-        from imbi_api.plugins import lifecycle
+        from imbi.api.plugins import lifecycle
 
         mock_db = mock.AsyncMock()
         mock_db.execute.side_effect = RuntimeError('db error')
 
         with mock.patch(
-            'imbi_api.plugins.lifecycle.list_plugins',
+            'imbi.api.plugins.lifecycle.list_plugins',
             return_value=[],
         ):
             asyncio.run(lifecycle.audit_unavailable(mock_db))
@@ -116,28 +115,28 @@ class LifecycleTestCase(unittest.TestCase):
 
 class ReloadHookTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_reload_hook_no_valkey(self) -> None:
-        from imbi_api.plugins.reload import plugin_reload_hook
+        from imbi.api.plugins.reload import plugin_reload_hook
 
         with mock.patch(
-            'imbi_api.plugins.reload.valkey.get_client',
+            'imbi.api.plugins.reload.valkey.get_client',
             side_effect=RuntimeError('no valkey'),
         ):
             async with plugin_reload_hook(db=None):
                 pass
 
     async def test_plugin_reload_hook_no_db(self) -> None:
-        from imbi_api.plugins.reload import plugin_reload_hook
+        from imbi.api.plugins.reload import plugin_reload_hook
 
         mock_client = mock.MagicMock()
         with mock.patch(
-            'imbi_api.plugins.reload.valkey.get_client',
+            'imbi.api.plugins.reload.valkey.get_client',
             return_value=mock_client,
         ):
             async with plugin_reload_hook(db=None):
                 pass
 
     async def test_publish_reload(self) -> None:
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         mock_client = mock.AsyncMock()
         derived = b'k' * 32
@@ -153,7 +152,7 @@ class ReloadHookTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(reload_mod._verify(payload, derived))
 
     async def test_publish_reload_raises_without_key(self) -> None:
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         mock_client = mock.AsyncMock()
         with (
@@ -168,8 +167,8 @@ class ReloadHookTestCase(unittest.IsolatedAsyncioTestCase):
 
 class InstallerTestCase(unittest.TestCase):
     def test_install_disabled_raises(self) -> None:
-        from imbi_api.plugins import installer
-        from imbi_api.plugins.installer import InstallError
+        from imbi.api.plugins import installer
+        from imbi.api.plugins.installer import InstallError
 
         with mock.patch.object(installer, '_INSTALL_ENABLED', False):
             with self.assertRaises(InstallError) as ctx:
@@ -177,9 +176,8 @@ class InstallerTestCase(unittest.TestCase):
         self.assertIn('disabled', str(ctx.exception))
 
     def test_install_success(self) -> None:
-        from imbi_common.plugins.registry import LoadResult
-
-        from imbi_api.plugins import installer
+        from imbi.api.plugins import installer
+        from imbi.common.plugins.registry import LoadResult
 
         mock_proc = mock.MagicMock()
         mock_proc.communicate = mock.AsyncMock(return_value=(b'ok', b''))
@@ -204,8 +202,8 @@ class InstallerTestCase(unittest.TestCase):
         self.assertEqual(result.loaded, ['ssm'])
 
     def test_install_nonzero_exit_raises(self) -> None:
-        from imbi_api.plugins import installer
-        from imbi_api.plugins.installer import InstallError
+        from imbi.api.plugins import installer
+        from imbi.api.plugins.installer import InstallError
 
         mock_proc = mock.MagicMock()
         mock_proc.communicate = mock.AsyncMock(return_value=(b'', b'boom'))
@@ -222,8 +220,8 @@ class InstallerTestCase(unittest.TestCase):
         self.assertIn('failed', str(ctx.exception))
 
     def test_install_timeout_raises(self) -> None:
-        from imbi_api.plugins import installer
-        from imbi_api.plugins.installer import InstallError
+        from imbi.api.plugins import installer
+        from imbi.api.plugins.installer import InstallError
 
         mock_proc = mock.MagicMock()
         mock_proc.communicate = mock.AsyncMock(side_effect=TimeoutError())
@@ -245,9 +243,8 @@ class InstallerTestCase(unittest.TestCase):
         mock_proc.wait.assert_awaited_once()
 
     def test_uninstall_success(self) -> None:
-        from imbi_common.plugins.registry import LoadResult
-
-        from imbi_api.plugins import installer
+        from imbi.api.plugins import installer
+        from imbi.common.plugins.registry import LoadResult
 
         mock_proc = mock.MagicMock()
         mock_proc.communicate = mock.AsyncMock(return_value=(b'', b''))
@@ -272,16 +269,16 @@ class InstallerTestCase(unittest.TestCase):
         self.assertEqual(result.loaded, [])
 
     def test_uninstall_disabled_raises(self) -> None:
-        from imbi_api.plugins import installer
-        from imbi_api.plugins.installer import InstallError
+        from imbi.api.plugins import installer
+        from imbi.api.plugins.installer import InstallError
 
         with mock.patch.object(installer, '_INSTALL_ENABLED', False):
             with self.assertRaises(InstallError):
                 asyncio.run(installer.uninstall_package('imbi-plugin-ssm'))
 
     def test_uninstall_nonzero_exit_raises(self) -> None:
-        from imbi_api.plugins import installer
-        from imbi_api.plugins.installer import InstallError
+        from imbi.api.plugins import installer
+        from imbi.api.plugins.installer import InstallError
 
         mock_proc = mock.MagicMock()
         mock_proc.communicate = mock.AsyncMock(return_value=(b'', b'oops'))
@@ -297,8 +294,8 @@ class InstallerTestCase(unittest.TestCase):
                 asyncio.run(installer.uninstall_package('imbi-plugin-ssm'))
 
     def test_uninstall_timeout_raises(self) -> None:
-        from imbi_api.plugins import installer
-        from imbi_api.plugins.installer import InstallError
+        from imbi.api.plugins import installer
+        from imbi.api.plugins.installer import InstallError
 
         mock_proc = mock.MagicMock()
         mock_proc.communicate = mock.AsyncMock(side_effect=TimeoutError())
@@ -323,13 +320,13 @@ def _make_registry_entry(
     kind: str = 'configuration',
 ) -> RegistryEntry:
     """Build a v3 RegistryEntry with a fake capability handler."""
-    from imbi_common.plugins.base import (
+    from imbi.common.plugins.base import (
         CAPABILITY_CONTRACTS,
         Capability,
         Plugin,
         PluginManifest,
     )
-    from imbi_common.plugins.registry import RegistryEntry
+    from imbi.common.plugins.registry import RegistryEntry
 
     handler = type(f'_Fake{kind}', (CAPABILITY_CONTRACTS[kind],), {})
     manifest = PluginManifest(
@@ -364,7 +361,7 @@ def _binding(
     options: dict[str, typing.Any] | None = None,
 ) -> typing.Any:
     """Build a ``CapabilityBinding`` for the resolution helpers."""
-    from imbi_api.plugins.assignments import CapabilityBinding
+    from imbi.api.plugins.assignments import CapabilityBinding
 
     return CapabilityBinding(
         integration={
@@ -386,11 +383,11 @@ class ResolutionTestCase(unittest.TestCase):
     def test_project_not_found_returns_404(self) -> None:
         from fastapi import HTTPException
 
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.plugins.resolution.effective_bindings',
+            'imbi.api.plugins.resolution.effective_bindings',
             new=mock.AsyncMock(side_effect=LookupError('p1')),
         ):
             with self.assertRaises(HTTPException) as ctx:
@@ -403,11 +400,11 @@ class ResolutionTestCase(unittest.TestCase):
     def test_no_integrations_bound_returns_404(self) -> None:
         from fastapi import HTTPException
 
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.plugins.resolution.effective_bindings',
+            'imbi.api.plugins.resolution.effective_bindings',
             new=mock.AsyncMock(return_value=[]),
         ):
             with self.assertRaises(HTTPException) as ctx:
@@ -418,22 +415,22 @@ class ResolutionTestCase(unittest.TestCase):
         self.assertIn('No integration', ctx.exception.detail)
 
     def test_single_integration_resolves(self) -> None:
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         entry = _make_registry_entry('ssm')
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(
                     return_value=[_binding(options={'region': 'us-east-1'})]
                 ),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin', return_value=entry
+                'imbi.api.plugins.resolution.get_plugin', return_value=entry
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
         ):
@@ -452,20 +449,20 @@ class ResolutionTestCase(unittest.TestCase):
     def test_disabled_integration_filtered_returns_404(self) -> None:
         from fastapi import HTTPException
 
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=[_binding()]),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
+                'imbi.api.plugins.resolution.get_plugin',
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=False),
             ),
         ):
@@ -476,7 +473,7 @@ class ResolutionTestCase(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 404)
 
     def test_source_matches_integration_id_or_slug(self) -> None:
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         bindings = [
             _binding(integration_id='i1', slug='a', default=False),
@@ -485,15 +482,15 @@ class ResolutionTestCase(unittest.TestCase):
         for source, want in (('b', 'i2'), ('i2', 'i2'), ('i1', 'i1')):
             with (
                 mock.patch(
-                    'imbi_api.plugins.resolution.effective_bindings',
+                    'imbi.api.plugins.resolution.effective_bindings',
                     new=mock.AsyncMock(return_value=bindings),
                 ),
                 mock.patch(
-                    'imbi_api.plugins.resolution.get_plugin',
+                    'imbi.api.plugins.resolution.get_plugin',
                     return_value=_make_registry_entry('ssm'),
                 ),
                 mock.patch(
-                    'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                    'imbi.api.plugins.lifecycle.is_plugin_enabled',
                     new=mock.AsyncMock(return_value=True),
                 ),
             ):
@@ -507,7 +504,7 @@ class ResolutionTestCase(unittest.TestCase):
     def test_multi_no_default_returns_400(self) -> None:
         from fastapi import HTTPException
 
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         bindings = [
@@ -516,15 +513,15 @@ class ResolutionTestCase(unittest.TestCase):
         ]
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
+                'imbi.api.plugins.resolution.get_plugin',
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
         ):
@@ -536,7 +533,7 @@ class ResolutionTestCase(unittest.TestCase):
         self.assertIn('source', ctx.exception.detail)
 
     def test_multi_picks_project_default(self) -> None:
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         bindings = [
@@ -545,15 +542,15 @@ class ResolutionTestCase(unittest.TestCase):
         ]
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
+                'imbi.api.plugins.resolution.get_plugin',
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
         ):
@@ -563,7 +560,7 @@ class ResolutionTestCase(unittest.TestCase):
         self.assertEqual(resolved.integration_id, 'i2')
 
     def test_source_picks_specific_integration(self) -> None:
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         bindings = [
@@ -572,15 +569,15 @@ class ResolutionTestCase(unittest.TestCase):
         ]
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
+                'imbi.api.plugins.resolution.get_plugin',
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
         ):
@@ -592,20 +589,20 @@ class ResolutionTestCase(unittest.TestCase):
     def test_unknown_source_returns_404(self) -> None:
         from fastapi import HTTPException
 
-        from imbi_api.plugins.resolution import resolve_capability
+        from imbi.api.plugins.resolution import resolve_capability
 
         mock_db = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=[_binding(slug='a')]),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
+                'imbi.api.plugins.resolution.get_plugin',
                 return_value=_make_registry_entry('ssm'),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
         ):
@@ -622,11 +619,11 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
     """Branch coverage for ``resolve_all_capabilities`` (fan-out)."""
 
     def test_empty_when_no_bindings(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_capabilities
+        from imbi.api.plugins.resolution import resolve_all_capabilities
 
         mock_db = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.plugins.resolution.effective_bindings',
+            'imbi.api.plugins.resolution.effective_bindings',
             new=mock.AsyncMock(return_value=[]),
         ):
             result = asyncio.run(
@@ -635,7 +632,7 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_returns_all_enabled_integrations(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_capabilities
+        from imbi.api.plugins.resolution import resolve_all_capabilities
 
         mock_db = mock.AsyncMock()
         bindings = [
@@ -648,15 +645,15 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
         }
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
+                'imbi.api.plugins.resolution.get_plugin',
                 side_effect=lambda slug: entries[slug],
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
         ):
@@ -666,7 +663,7 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
         self.assertEqual({r.plugin_slug for r in result}, {'github', 'aws'})
 
     def test_skips_disabled_integrations(self) -> None:
-        from imbi_api.plugins.resolution import resolve_all_capabilities
+        from imbi.api.plugins.resolution import resolve_all_capabilities
 
         mock_db = mock.AsyncMock()
         bindings = [
@@ -675,17 +672,17 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
         ]
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin',
+                'imbi.api.plugins.resolution.get_plugin',
                 side_effect=lambda slug: _make_registry_entry(
                     slug, kind='lifecycle'
                 ),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(side_effect=lambda db, slug: slug == 'on'),
             ),
         ):
@@ -695,9 +692,8 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
         self.assertEqual({r.plugin_slug for r in result}, {'on'})
 
     def test_skips_unregistered_plugin(self) -> None:
-        from imbi_common.plugins.errors import PluginNotFoundError
-
-        from imbi_api.plugins.resolution import resolve_all_capabilities
+        from imbi.api.plugins.resolution import resolve_all_capabilities
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         mock_db = mock.AsyncMock()
         bindings = [
@@ -713,14 +709,14 @@ class ResolveAllCapabilitiesTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_api.plugins.resolution.effective_bindings',
+                'imbi.api.plugins.resolution.effective_bindings',
                 new=mock.AsyncMock(return_value=bindings),
             ),
             mock.patch(
-                'imbi_api.plugins.resolution.get_plugin', side_effect=_get
+                'imbi.api.plugins.resolution.get_plugin', side_effect=_get
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle.is_plugin_enabled',
+                'imbi.api.plugins.lifecycle.is_plugin_enabled',
                 new=mock.AsyncMock(return_value=True),
             ),
         ):
@@ -737,7 +733,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
     def _make_signed_payload(self, key: bytes, *, age: int = 0) -> bytes:
         import time
 
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         ts = int(time.time()) - age
         nonce = 'abc123'
@@ -745,7 +741,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
         return f'{ts}:{nonce}:{sig}'.encode()
 
     async def test_subscribe_processes_message_and_reloads(self) -> None:
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         pubsub = mock.MagicMock()
         pubsub.subscribe = mock.AsyncMock()
@@ -765,7 +761,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
             if len(calls) == 1:
                 return {'type': 'message', 'data': payload}
             stop.set()
-            raise TimeoutError()
+            raise TimeoutError
 
         with (
             mock.patch.object(
@@ -792,7 +788,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
         key: bytes | None = b'k' * 32,
     ) -> tuple[mock.MagicMock, mock.AsyncMock]:
         """Drive one iteration of the subscriber and return reload mocks."""
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         pubsub = mock.MagicMock()
         pubsub.subscribe = mock.AsyncMock()
@@ -808,7 +804,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
             if len(calls) == 1:
                 return {'type': 'message', 'data': payload}
             stop.set()
-            raise TimeoutError()
+            raise TimeoutError
 
         with (
             mock.patch.object(
@@ -856,7 +852,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
         audit.assert_not_awaited()
 
     def test_subscribe_handles_cancelled(self) -> None:
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         pubsub = mock.MagicMock()
         pubsub.subscribe = mock.AsyncMock()
@@ -880,7 +876,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
         asyncio.run(_run())
 
     def test_subscribe_skips_none_message(self) -> None:
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         pubsub = mock.MagicMock()
         pubsub.subscribe = mock.AsyncMock()
@@ -898,7 +894,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
                 if len(calls) == 1:
                     return None
                 stop.set()
-                raise TimeoutError()
+                raise TimeoutError
 
             with (
                 mock.patch.object(
@@ -912,7 +908,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
         asyncio.run(_run())
 
     def test_plugin_reload_hook_starts_and_stops_task(self) -> None:
-        from imbi_api.plugins import reload as reload_mod
+        from imbi.api.plugins import reload as reload_mod
 
         client = mock.MagicMock()
         pubsub = mock.MagicMock()
@@ -929,7 +925,7 @@ class ReloadSubscriberTestCase(unittest.IsolatedAsyncioTestCase):
         async def _run() -> None:
             with (
                 mock.patch(
-                    'imbi_api.plugins.reload.valkey.get_client',
+                    'imbi.api.plugins.reload.valkey.get_client',
                     return_value=client,
                 ),
                 mock.patch.object(

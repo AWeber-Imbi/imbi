@@ -7,7 +7,7 @@ from collections import abc
 import fastapi
 from valkey import asyncio as valkey
 
-from imbi_common import lifespan, settings
+from imbi.common import lifespan, settings
 
 _client: valkey.Valkey | None = None
 

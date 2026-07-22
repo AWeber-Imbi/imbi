@@ -12,12 +12,12 @@ from __future__ import annotations
 import typing
 from collections import abc
 
-from imbi_common import graph
 from valkey import asyncio as valkey
 
-from imbi_api.commit_sync import queue as commit_sync_queue
-from imbi_api.maintenance import operations
-from imbi_api.pr_sync import queue as pr_sync_queue
+from imbi.api.commit_sync import queue as commit_sync_queue
+from imbi.api.maintenance import operations
+from imbi.api.pr_sync import queue as pr_sync_queue
+from imbi.common import graph
 
 MaintenanceSlug = typing.Literal[
     'run-analysis',

@@ -21,16 +21,16 @@ import fastapi
 import fastapi.responses
 import nanoid
 import pydantic
-from imbi_common import graph
 
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import fetch_or_404
-from imbi_api.endpoints._pagination import (
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import fetch_or_404
+from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
     encode_cursor,
 )
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

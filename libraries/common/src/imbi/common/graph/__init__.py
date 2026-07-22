@@ -6,13 +6,13 @@ from collections import abc
 
 import fastapi
 
-from imbi_common import lifespan
-from imbi_common.graph.client import (
+from imbi.common import lifespan
+from imbi.common.graph.client import (
     Graph,
     SearchResult,
     parse_agtype,
 )
-from imbi_common.graph.initializer import initialize
+from imbi.common.graph.initializer import initialize
 
 OnStartup = abc.Callable[[Graph], abc.Awaitable[None]]
 

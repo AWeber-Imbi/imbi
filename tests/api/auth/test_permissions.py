@@ -4,8 +4,8 @@ import datetime
 import unittest
 from unittest import mock
 
-from imbi_api import models
-from imbi_api.auth import permissions
+from imbi.api import models
+from imbi.api.auth import permissions
 
 
 class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
@@ -25,7 +25,7 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             perms = await permissions.load_principal_permissions(
@@ -51,7 +51,7 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             perms = await permissions.load_principal_permissions(
@@ -80,7 +80,7 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             perms = await permissions.load_principal_permissions(
@@ -140,7 +140,7 @@ class ResourceLevelPermissionTestCase(
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             has_read = await permissions.check_resource_permission(
@@ -198,7 +198,7 @@ class PermissionDeduplicationTestCase(
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             perms = await permissions.load_principal_permissions(
@@ -304,7 +304,7 @@ class ServiceAccountPermissionTestCase(
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             perms = await permissions.load_principal_permissions(
@@ -320,9 +320,8 @@ class ServiceAccountPermissionTestCase(
         self,
     ) -> None:
         """JWT with auth_method=client_credentials loads SA."""
-        from imbi_common.auth import core
-
-        from imbi_api import settings
+        from imbi.api import settings
+        from imbi.common.auth import core
 
         auth_settings = settings.get_auth_settings()
 
@@ -345,7 +344,7 @@ class ServiceAccountPermissionTestCase(
         def execute_side_effect(query, params=None, columns=None):
             if 'TokenMetadata' in query:
                 return [{'revoked': False}]
-            elif 'MEMBER_OF' in query:
+            if 'MEMBER_OF' in query:
                 # Permissions query (contains both ServiceAccount
                 # and MEMBER_OF)
                 return [{'permissions': ['project:read']}]
@@ -356,7 +355,7 @@ class ServiceAccountPermissionTestCase(
         mock_db.match.return_value = [test_sa]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             ctx = await permissions.authenticate_jwt(

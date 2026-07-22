@@ -9,7 +9,7 @@ delivery is recorded but no handler runs.
 ## Evaluation context
 
 The expression is evaluated against the same data the gateway materializes
-into the activity-feed `events` row (`imbi_common.models.Event`). The
+into the activity-feed `events` row (`imbi.common.models.Event`). The
 project-independent fields of that row are exposed as top-level variables:
 
 | Variable | Type | Contents |

@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from imbi_api.storage import client
+from imbi.api.storage import client
 
 
 class StorageClientOperationsTestCase(

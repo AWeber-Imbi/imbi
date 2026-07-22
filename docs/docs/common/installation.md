@@ -35,7 +35,7 @@ pip install git+https://github.com/AWeber-Imbi/imbi-common.git@main
 
 ```python
 # Test basic imports
-from imbi_common import settings, models, graph, clickhouse, auth
+from imbi.common import settings, models, graph, clickhouse, auth
 
 print("All modules imported successfully")
 ```

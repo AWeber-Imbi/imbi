@@ -21,16 +21,16 @@ import fastapi
 import fastapi.encoders
 import fastapi.responses
 import pydantic
-from imbi_common import clickhouse, graph
 
-from imbi_api.auth import permissions
-from imbi_api.endpoints._pagination import (
+from imbi.api.auth import permissions
+from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
     encode_cursor,
     parse_iso,
 )
-from imbi_api.endpoints.users import users_router
+from imbi.api.endpoints.users import users_router
+from imbi.common import clickhouse, graph
 
 LOGGER = logging.getLogger(__name__)
 

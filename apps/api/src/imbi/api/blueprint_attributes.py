@@ -12,7 +12,8 @@ resolver, so the advertised and accepted attribute sets cannot drift.
 """
 
 import pydantic
-from imbi_common import graph, models
+
+from imbi.common import graph, models
 
 
 class FilterableAttribute(pydantic.BaseModel):

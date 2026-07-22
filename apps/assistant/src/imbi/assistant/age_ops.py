@@ -7,10 +7,10 @@ import typing
 import uuid
 
 import pydantic
-from imbi_common import graph
-from imbi_common import models as common_models
 
-from imbi_assistant import models
+from imbi.assistant import models
+from imbi.common import graph
+from imbi.common import models as common_models
 
 LOGGER = logging.getLogger(__name__)
 

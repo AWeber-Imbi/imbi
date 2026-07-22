@@ -21,18 +21,18 @@ import fastapi.encoders
 import fastapi.responses
 import nanoid
 import pydantic
-from imbi_common import clickhouse, models
-from imbi_common.plugins import OpsLogTemplate
-from imbi_common.plugins.registry import list_plugins
 
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
-from imbi_api.endpoints._pagination import (
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
     encode_cursor,
     parse_iso,
 )
+from imbi.common import clickhouse, models
+from imbi.common.plugins import OpsLogTemplate
+from imbi.common.plugins.registry import list_plugins
 
 LOGGER = logging.getLogger(__name__)
 

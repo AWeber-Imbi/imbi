@@ -3,9 +3,8 @@
 import typing
 import unittest
 
-from imbi_common.plugins.base import PluginContext
-
-from imbi_plugin_aws._helpers import template_vars
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.aws._helpers import template_vars
 
 
 def _ctx(

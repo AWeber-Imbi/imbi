@@ -4,8 +4,12 @@ import datetime
 import logging
 import typing
 
-from imbi_common import graph
-from imbi_common.plugins import (
+from imbi.api.identity import errors as identity_errors
+from imbi.api.identity import repository
+from imbi.api.identity.models import IdentityCredentialsInternal
+from imbi.api.plugins.assignments import capability_state, hydrate_integration
+from imbi.common import graph
+from imbi.common.plugins import (
     IdentityCapability,
     IdentityCredentials,
     PluginContext,
@@ -13,11 +17,6 @@ from imbi_common.plugins import (
     decrypt_integration_credentials,
     get_capability,
 )
-
-from imbi_api.identity import errors as identity_errors
-from imbi_api.identity import repository
-from imbi_api.identity.models import IdentityCredentialsInternal
-from imbi_api.plugins.assignments import capability_state, hydrate_integration
 
 LOGGER = logging.getLogger(__name__)
 
@@ -209,7 +208,7 @@ async def _refresh_and_reload(
     ``status='expired'``; we surface :class:`IdentityRequiredError`
     so the request gets the same 401 as a missing connection.
     """
-    from imbi_api.identity import flows
+    from imbi.api.identity import flows
 
     try:
         await flows.refresh_connection(

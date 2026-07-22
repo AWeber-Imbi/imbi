@@ -13,7 +13,7 @@ Source design lives in [`plans/sbom-ingest.md`](https://github.com/AWeber-Imbi/i
 Imbi attributes third-party software usage to a project's `Release`
 via the `Release -[:USES_COMPONENT_RELEASE]-> ComponentRelease` edge
 (see `ReleaseComponentEdge` in
-`imbi-common/src/imbi_common/models.py`). To populate that edge we
+`imbi-common/src/imbi.common/models.py`). To populate that edge we
 ingest Software Bills of Materials (SBoMs) produced by build CI and
 push the resulting `Component` / `ComponentRelease` /
 `ComponentIdentifier` nodes through a single
@@ -55,7 +55,7 @@ per-component metadata across the languages we care about.
 The ingest endpoint enforces `specVersion == "1.7"` and rejects
 anything else with `415 Unsupported Media Type`. Implementation:
 
-- `imbi-api/src/imbi_api/sbom.py` declares
+- `imbi-api/src/imbi.api/sbom.py` declares
   `SUPPORTED_SPEC_VERSION: typing.Final = '1.7'`.
 - A version mismatch raises `UnsupportedSpecVersionError` from
   `parse()`, which the endpoint maps to HTTP 415.
@@ -154,15 +154,15 @@ a mistake.
 - **bom-ref persistence**: not done. CycloneDX `bom-ref` is a
   per-SBoM internal cross-reference, not a stable component
   identity, and the parser excludes it from `_IDENTIFIER_KINDS` in
-  `imbi-api/src/imbi_api/sbom.py`. Anyone tempted to "just persist
+  `imbi-api/src/imbi.api/sbom.py`. Anyone tempted to "just persist
   the bom-ref" should re-read the comment there before doing so.
 
 ## References
 
 - [`plans/sbom-ingest.md`](https://github.com/AWeber-Imbi/imbi-development/blob/main/plans/sbom-ingest.md) — Full ingest plan, including the cdxgen evaluation and the curated property allow-list.
-- `imbi-api/src/imbi_api/sbom.py` — `SUPPORTED_SPEC_VERSION`,
+- `imbi-api/src/imbi.api/sbom.py` — `SUPPORTED_SPEC_VERSION`,
   `UnsupportedSpecVersionError`, and the parse / upsert pipeline.
-- `imbi-common/src/imbi_common/models.py` — `Component`,
+- `imbi-common/src/imbi.common/models.py` — `Component`,
   `ComponentRelease`, `ComponentIdentifier`, and
   `ReleaseComponentEdge` (the graph contract this ADR populates).
 - [CycloneDX 1.7 specification](https://cyclonedx.org/docs/1.7/json/)

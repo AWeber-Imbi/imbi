@@ -11,10 +11,10 @@ configuration.
 import typing
 
 import fastapi
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import get_plugin
 
-from imbi_api.auth import permissions
+from imbi.api.auth import permissions
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import get_plugin
 
 plugins_router = fastapi.APIRouter(tags=['Plugins'])
 

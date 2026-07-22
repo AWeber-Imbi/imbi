@@ -6,10 +6,9 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.base import IdentityCredentials, IdentityProfile
-from imbi_common.plugins.errors import PluginNotFoundError
-
-from imbi_api.identity import errors, flows
+from imbi.api.identity import errors, flows
+from imbi.common.plugins.base import IdentityCredentials, IdentityProfile
+from imbi.common.plugins.errors import PluginNotFoundError
 
 
 def _parse_agtype_stub(v: typing.Any) -> typing.Any:
@@ -262,7 +261,7 @@ class StartFlowTestCase(unittest.IsolatedAsyncioTestCase):
                 new=mock.AsyncMock(return_value='acme'),
             ),
             mock.patch(
-                'imbi_api.plugins.credentials.patch_integration_credentials',
+                'imbi.api.plugins.credentials.patch_integration_credentials',
                 new=mock.AsyncMock(),
             ) as patch_creds,
         ):

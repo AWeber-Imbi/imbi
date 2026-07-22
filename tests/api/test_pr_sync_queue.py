@@ -6,10 +6,9 @@ import time
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.errors import PluginRateLimited
-
-from imbi_api.pr_sync import queue
-from imbi_api.pr_sync.service import PRSyncUnavailable
+from imbi.api.pr_sync import queue
+from imbi.api.pr_sync.service import PRSyncUnavailable
+from imbi.common.plugins.errors import PluginRateLimited
 
 
 class EnqueueTests(unittest.IsolatedAsyncioTestCase):

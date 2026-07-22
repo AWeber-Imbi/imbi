@@ -17,7 +17,7 @@ plugin.
 ```python
 import datetime
 
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     IncidentResult,
     IncidentsCapability,
     PluginContext,
@@ -43,14 +43,14 @@ class PagerDutyIncidents(IncidentsCapability):
 
 - **`list_incidents`** — resolve the project's remote service from the
   Integration's entry in
-  [`ctx.service_connections`][imbi_common.plugins.ServiceConnection]
+  [`ctx.service_connections`][imbi.common.plugins.ServiceConnection]
   (the `EXISTS_IN` edge, matched on `ctx.integration_slug`) and
   return an `IncidentResult` whose `incidents` are ordered most-recent
   first. Honor the `start_time`/`end_time` window, the optional
   `statuses` filter, and `limit`. When more results are available,
   populate `next_cursor` with an opaque token the upstream system can
   decode on the next call; raise
-  [`CursorExpiredError`][imbi_common.plugins.CursorExpiredError] if a
+  [`CursorExpiredError`][imbi.common.plugins.CursorExpiredError] if a
   cursor is no longer valid. Set `total` only when the source reports a
   count cheaply — live-query sources that would need a full scan should
   leave it `None`. When the project has no resolvable remote service,
@@ -69,8 +69,8 @@ always required so the tab can render and deep-link every row.
 
 ## API reference
 
-::: imbi_common.plugins.IncidentsCapability
+::: imbi.common.plugins.IncidentsCapability
 
-::: imbi_common.plugins.IncidentView
+::: imbi.common.plugins.IncidentView
 
-::: imbi_common.plugins.IncidentResult
+::: imbi.common.plugins.IncidentResult

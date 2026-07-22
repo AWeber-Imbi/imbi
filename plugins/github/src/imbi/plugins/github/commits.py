@@ -20,7 +20,7 @@ it walks the full default-branch history and the complete tag list rather
 than a single push delta.
 
 Commit / tag rows are written to the shared ClickHouse ``commits`` /
-``tags`` tables via :func:`imbi_common.clickhouse.insert`. Writes are
+``tags`` tables via :func:`imbi.common.clickhouse.insert`. Writes are
 best-effort: a storage failure is logged and swallowed so an analytics
 hiccup never 5xxs the webhook, exactly as the gateway's own event
 recording behaves.
@@ -40,21 +40,21 @@ import urllib.parse
 import httpx
 import jsonpointer
 import pydantic
-from imbi_common import clickhouse
-from imbi_common.json_pointer import JsonPointer
-from imbi_common.models import CommitRecord, TagRecord
-from imbi_common.plugins.base import (
+
+from imbi.common import clickhouse
+from imbi.common.json_pointer import JsonPointer
+from imbi.common.models import CommitRecord, TagRecord
+from imbi.common.plugins.base import (
     ActionDescriptor,
     CheckStatus,
     CommitSyncCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import PluginRateLimited
-
-from imbi_plugin_github import _app_auth
-from imbi_plugin_github._hosts import host_to_api_base, resolve_host
-from imbi_plugin_github._repos import resolve_owner_repo
-from imbi_plugin_github.deployment import (
+from imbi.common.plugins.errors import PluginRateLimited
+from imbi.plugins.github import _app_auth
+from imbi.plugins.github._hosts import host_to_api_base, resolve_host
+from imbi.plugins.github._repos import resolve_owner_repo
+from imbi.plugins.github.deployment import (
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
     _check_runs_to_status,  # pyright: ignore[reportPrivateUsage]
     _checks_disabled,  # pyright: ignore[reportPrivateUsage]
@@ -254,7 +254,7 @@ async def _resolve_bearer(
 ) -> str:
     """Resolve the Bearer token used for the repo's GitHub API calls.
 
-    Thin wrapper over :func:`imbi_plugin_github._app_auth.resolve_bearer`
+    Thin wrapper over :func:`imbi.plugins.github._app_auth.resolve_bearer`
     (the single source of truth), kept as a module-local name for the
     commit-sync call sites and tests.
     """
@@ -721,7 +721,7 @@ async def _insert_best_effort(
 ) -> int:
     """Insert ``records`` into ``table``; return rows written (0 on fail).
 
-    ``imbi_common.clickhouse.insert`` rejects an empty list, so an empty
+    ``imbi.common.clickhouse.insert`` rejects an empty list, so an empty
     set short-circuits to 0.  A storage failure is logged and swallowed,
     mirroring the webhook actions -- an analytics hiccup must not fail the
     sync.
@@ -1178,10 +1178,10 @@ sync_commits_descriptor = ActionDescriptor(
         'API) and record them in the ClickHouse commits table.'
     ),
     callable=typing.cast(
-        'typing.Any', 'imbi_plugin_github.commits:sync_commits'
+        'typing.Any', 'imbi.plugins.github.commits:sync_commits'
     ),
     config_model=typing.cast(
-        'typing.Any', 'imbi_plugin_github.commits:SyncCommitsConfig'
+        'typing.Any', 'imbi.plugins.github.commits:SyncCommitsConfig'
     ),
 )
 
@@ -1192,9 +1192,11 @@ sync_tags_descriptor = ActionDescriptor(
         'Record the pushed tag (and, when reconcile_all is set, the full '
         'tag list) in the ClickHouse tags table.'
     ),
-    callable=typing.cast('typing.Any', 'imbi_plugin_github.commits:sync_tags'),
+    callable=typing.cast(
+        'typing.Any', 'imbi.plugins.github.commits:sync_tags'
+    ),
     config_model=typing.cast(
-        'typing.Any', 'imbi_plugin_github.commits:SyncTagsConfig'
+        'typing.Any', 'imbi.plugins.github.commits:SyncTagsConfig'
     ),
 )
 

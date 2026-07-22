@@ -9,7 +9,7 @@ per hour per ``(app, installation, host)`` rather than one per webhook
 delivery.
 
 All three GitHub flavors work unchanged: the caller resolves the API
-base via :func:`imbi_plugin_github._hosts.host_to_api_base` and passes
+base via :func:`imbi.plugins.github._hosts.host_to_api_base` and passes
 it in, so the JWT exchange hits ``api.github.com``,
 ``api.<tenant>.ghe.com``, or ``<ghes>/api/v3`` as appropriate.
 """
@@ -26,7 +26,7 @@ import typing
 import httpx
 import jwt
 
-from imbi_plugin_github.deployment import (
+from imbi.plugins.github.deployment import (
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
     _raise_on_401,  # pyright: ignore[reportPrivateUsage]
 )

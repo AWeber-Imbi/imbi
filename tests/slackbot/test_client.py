@@ -1,5 +1,5 @@
-from imbi_slackbot import client, settings
-from tests import helpers
+from imbi.slackbot import client, settings
+from tests.slackbot import helpers
 
 
 class ClientTests(helpers.TestCase):

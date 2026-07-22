@@ -5,7 +5,8 @@ import os
 
 import pydantic
 import pydantic_settings
-from imbi_common import settings as common_settings
+
+from imbi.common import settings as common_settings
 
 LOGGER = logging.getLogger(__name__)
 

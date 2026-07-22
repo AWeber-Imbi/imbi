@@ -60,7 +60,7 @@ the AGE graph, vertex labels, indexes, the embeddings table, and supporting
 functions on startup.
 
 ```python
-from imbi_common import graph
+from imbi.common import graph
 
 # Initialize schema and open the pool (use graph_lifespan in FastAPI)
 await graph.initialize()
@@ -102,7 +102,7 @@ url = "clickhouse+https://clickhouse-prod.example.com:8443"
 Initialize ClickHouse schemas from the bundled `schemata.toml`:
 
 ```python
-from imbi_common import clickhouse
+from imbi.common import clickhouse
 
 # Create schemas from schemata.toml (called explicitly during setup)
 await clickhouse.setup_schema()
@@ -181,7 +181,7 @@ Verify database connectivity:
 
 ```python
 import asyncio
-from imbi_common import graph, clickhouse, logging
+from imbi.common import graph, clickhouse, logging
 
 async def test_connections() -> None:
     logging.configure_logging(dev=True)

@@ -8,10 +8,9 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.errors import PluginRateLimited
-
-from imbi_api.maintenance import registry, worker
-from imbi_api.maintenance.operations import MaintenanceItemFailed
+from imbi.api.maintenance import registry, worker
+from imbi.api.maintenance.operations import MaintenanceItemFailed
+from imbi.common.plugins.errors import PluginRateLimited
 
 
 def _operation(

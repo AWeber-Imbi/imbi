@@ -7,9 +7,9 @@ import typing
 
 import pydantic
 
-from imbi_common import graph, models
-from imbi_common.scoring import attribute, policies
-from imbi_common.scoring.models import (
+from imbi.common import graph, models
+from imbi.common.scoring import attribute, policies
+from imbi.common.scoring.models import (
     AnalysisResultPolicy,
     ConditionPolicy,
     DeploymentStatusPolicy,

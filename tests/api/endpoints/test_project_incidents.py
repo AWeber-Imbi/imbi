@@ -5,8 +5,12 @@ from unittest import mock
 
 import fastapi
 from fastapi import testclient
-from imbi_common import graph
-from imbi_common.plugins.base import (
+
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.common import graph
+from imbi.common.plugins.base import (
     Capability,
     IncidentResult,
     IncidentsCapability,
@@ -14,13 +18,9 @@ from imbi_common.plugins.base import (
     Plugin,
     PluginManifest,
 )
-from imbi_common.plugins.errors import CursorExpiredError
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedCapability
-from tests import support
+from imbi.common.plugins.errors import CursorExpiredError
+from imbi.common.plugins.registry import RegistryEntry
+from tests.api import support
 
 
 class _FakeIncidentsHandler(IncidentsCapability):
@@ -135,20 +135,20 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
     def test_list_incidents_happy_path(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_incidents.resolve_capability',
+                'imbi.api.endpoints.project_incidents.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.lookup_project_slugs',
+                'imbi.api.endpoints.project_incidents.lookup_project_slugs',
                 return_value=('proj-slug', 'team-slug'),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents'
+                'imbi.api.endpoints.project_incidents'
                 '.decrypt_integration_credentials',
                 return_value={'token': 'x'},
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.lookup_project_links',
+                'imbi.api.endpoints.project_incidents.lookup_project_links',
                 return_value={'pagerduty-service': 'https://api/services/X'},
             ),
         ):
@@ -164,7 +164,7 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
 
     def test_list_incidents_no_plugin_returns_404(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_incidents.resolve_capability',
+            'imbi.api.endpoints.project_incidents.resolve_capability',
             side_effect=fastapi.HTTPException(
                 status_code=404, detail='No incidents plugin'
             ),
@@ -177,7 +177,7 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
 
     def test_list_incidents_invalid_datetime_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_incidents.resolve_capability',
+            'imbi.api.endpoints.project_incidents.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -189,7 +189,7 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
 
     def test_list_incidents_inverted_window_returns_400(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.project_incidents.resolve_capability',
+            'imbi.api.endpoints.project_incidents.resolve_capability',
             return_value=self._resolved(),
         ):
             with testclient.TestClient(self.test_app) as client:
@@ -203,20 +203,20 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
     def test_list_incidents_credentials_missing_returns_503(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.project_incidents.resolve_capability',
+                'imbi.api.endpoints.project_incidents.resolve_capability',
                 return_value=self._resolved(),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.lookup_project_slugs',
+                'imbi.api.endpoints.project_incidents.lookup_project_slugs',
                 return_value=('proj-slug', 'team-slug'),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents'
+                'imbi.api.endpoints.project_incidents'
                 '.decrypt_integration_credentials',
                 return_value={},
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.lookup_project_links',
+                'imbi.api.endpoints.project_incidents.lookup_project_links',
                 return_value={},
             ),
         ):
@@ -235,20 +235,20 @@ class ProjectIncidentsEndpointTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.endpoints.project_incidents.resolve_capability',
+                'imbi.api.endpoints.project_incidents.resolve_capability',
                 return_value=_resolved(_Expiring),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.lookup_project_slugs',
+                'imbi.api.endpoints.project_incidents.lookup_project_slugs',
                 return_value=('proj-slug', 'team-slug'),
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents'
+                'imbi.api.endpoints.project_incidents'
                 '.decrypt_integration_credentials',
                 return_value={'token': 'x'},
             ),
             mock.patch(
-                'imbi_api.endpoints.project_incidents.lookup_project_links',
+                'imbi.api.endpoints.project_incidents.lookup_project_links',
                 return_value={},
             ),
         ):

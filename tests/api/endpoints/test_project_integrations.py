@@ -5,11 +5,11 @@ import typing
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from tests.api import support
 
 
 def _inode(enabled: bool = True, **over: typing.Any) -> dict[str, object]:
@@ -111,7 +111,7 @@ class ProjectIntegrationsEndpointTestCase(support.SharedAppTestCase):
             [_LISTED],  # final re-list
         ]
         with mock.patch(
-            'imbi_api.endpoints.project_integrations'
+            'imbi.api.endpoints.project_integrations'
             '.replace_capability_assignments',
             new=mock.AsyncMock(),
         ) as patched:

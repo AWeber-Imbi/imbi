@@ -1,6 +1,6 @@
 """Plugin system — base classes, registry, and template expansion."""
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     CAPABILITY_CONTRACTS,
     CAPABILITY_SURFACES,
     HINT_ALLOWLIST,
@@ -66,10 +66,10 @@ from imbi_common.plugins.base import (
     WebhookActionsCapability,
     WorkflowFile,
 )
-from imbi_common.plugins.credentials import (
+from imbi.common.plugins.credentials import (
     decrypt_integration_credentials,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     CursorExpiredError,
     IdentityAuthorizationExpired,
     IdentityAuthorizationPending,
@@ -82,7 +82,7 @@ from imbi_common.plugins.errors import (
     PluginTimeoutError,
     PluginUnavailableError,
 )
-from imbi_common.plugins.registry import (
+from imbi.common.plugins.registry import (
     LoadResult,
     RegistryEntry,
     get_capability,
@@ -91,11 +91,11 @@ from imbi_common.plugins.registry import (
     load_plugins,
     reload_plugins,
 )
-from imbi_common.plugins.schemas import (
+from imbi.common.plugins.schemas import (
     apply_plugin_schemas,
     validate_no_collisions,
 )
-from imbi_common.plugins.templates import expand_template, validate_template
+from imbi.common.plugins.templates import expand_template, validate_template
 
 __all__ = [
     'CAPABILITY_CONTRACTS',

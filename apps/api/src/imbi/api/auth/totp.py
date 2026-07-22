@@ -21,10 +21,10 @@ import typing
 
 import fastapi
 import pyotp
-from imbi_common import graph
-from imbi_common.auth import encryption
 
-from imbi_api.auth import password
+from imbi.api.auth import password
+from imbi.common import graph
+from imbi.common.auth import encryption
 
 LOGGER = logging.getLogger(__name__)
 

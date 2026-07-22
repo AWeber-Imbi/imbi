@@ -19,7 +19,7 @@ import contextlib
 import typing
 import fastapi
 from collections import abc
-from imbi_common import lifespan
+from imbi.common import lifespan
 
 type PoolType = ...  # your connection pool type
 
@@ -57,12 +57,12 @@ for a full walkthrough of the pattern.
 
 ### Type Aliases
 
-::: imbi_common.lifespan.LifespanHook
+::: imbi.common.lifespan.LifespanHook
 
-::: imbi_common.lifespan.TypedLifespanHook
+::: imbi.common.lifespan.TypedLifespanHook
 
-::: imbi_common.lifespan.InjectLifespan
+::: imbi.common.lifespan.InjectLifespan
 
 ### Classes
 
-::: imbi_common.lifespan.Lifespan
+::: imbi.common.lifespan.Lifespan

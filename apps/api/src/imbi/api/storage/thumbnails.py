@@ -8,7 +8,7 @@ import warnings
 import PIL
 import PIL.Image
 
-from imbi_api import settings
+from imbi.api import settings
 
 LOGGER = logging.getLogger(__name__)
 

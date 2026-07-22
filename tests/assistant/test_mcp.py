@@ -5,9 +5,8 @@ import os
 import unittest
 from unittest import mock
 
-from imbi_common.mcp import exclude_non_ai_tools
-
-from imbi_assistant import mcp, settings
+from imbi.assistant import mcp, settings
+from imbi.common.mcp import exclude_non_ai_tools
 
 
 class MCPToolToAnthropicTestCase(unittest.TestCase):
@@ -80,9 +79,9 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
         await manager.aclose()
         self.assertFalse(manager.is_initialized)
 
-    @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
-    @mock.patch('imbi_assistant.mcp.fastmcp.Client')
-    @mock.patch('imbi_assistant.mcp.fastmcp.FastMCP.from_openapi')
+    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.fastmcp.Client')
+    @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_initialize_success(
         self,
         mock_from_openapi: mock.MagicMock,
@@ -146,9 +145,9 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             await manager.aclose()
             self.assertFalse(manager.is_initialized)
 
-    @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
-    @mock.patch('imbi_assistant.mcp.fastmcp.Client')
-    @mock.patch('imbi_assistant.mcp.fastmcp.FastMCP.from_openapi')
+    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.fastmcp.Client')
+    @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_initialize_passes_ai_exclusion_hook(
         self,
         mock_from_openapi: mock.MagicMock,
@@ -189,9 +188,9 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             await manager.aclose()
 
-    @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
-    @mock.patch('imbi_assistant.mcp.fastmcp.Client')
-    @mock.patch('imbi_assistant.mcp.fastmcp.FastMCP.from_openapi')
+    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.fastmcp.Client')
+    @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_execute_tool_success(
         self,
         mock_from_openapi: mock.MagicMock,
@@ -256,9 +255,9 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             await manager.aclose()
 
-    @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
-    @mock.patch('imbi_assistant.mcp.fastmcp.Client')
-    @mock.patch('imbi_assistant.mcp.fastmcp.FastMCP.from_openapi')
+    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.fastmcp.Client')
+    @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_execute_tool_error(
         self,
         mock_from_openapi: mock.MagicMock,
@@ -318,9 +317,9 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
             await manager.aclose()
 
-    @mock.patch('imbi_assistant.mcp.httpx.AsyncClient')
-    @mock.patch('imbi_assistant.mcp.fastmcp.Client')
-    @mock.patch('imbi_assistant.mcp.fastmcp.FastMCP.from_openapi')
+    @mock.patch('imbi.assistant.mcp.httpx.AsyncClient')
+    @mock.patch('imbi.assistant.mcp.fastmcp.Client')
+    @mock.patch('imbi.assistant.mcp.fastmcp.FastMCP.from_openapi')
     async def test_execute_tool_4xx_detail_propagates(
         self,
         mock_from_openapi: mock.MagicMock,

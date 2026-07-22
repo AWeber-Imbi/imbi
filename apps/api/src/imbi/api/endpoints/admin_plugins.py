@@ -4,20 +4,20 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import (
+
+from imbi.api.auth import permissions
+from imbi.api.domain import models
+from imbi.api.endpoints import plugin_edges as _plugin_edges
+from imbi.api.plugins.lifecycle import (
+    get_enabled_map,
+    set_plugin_enabled,
+)
+from imbi.common import graph
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import (
     RegistryEntry,
     get_plugin,
     list_plugins,
-)
-
-from imbi_api.auth import permissions
-from imbi_api.domain import models
-from imbi_api.endpoints import plugin_edges as _plugin_edges
-from imbi_api.plugins.lifecycle import (
-    get_enabled_map,
-    set_plugin_enabled,
 )
 
 LOGGER = logging.getLogger(__name__)

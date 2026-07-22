@@ -15,7 +15,7 @@ by any service in the Imbi ecosystem:
 ## JWT Tokens
 
 ```python
-from imbi_common.auth import core
+from imbi.common.auth import core
 
 # Create an access token
 access_token = core.create_access_token(
@@ -40,7 +40,7 @@ except Exception as e:
 ## Token Encryption
 
 ```python
-from imbi_common.auth import encryption
+from imbi.common.auth import encryption
 
 # Encrypt sensitive data (e.g., OAuth tokens)
 encrypted = encryption.encrypt_token("sensitive_oauth_token")
@@ -58,7 +58,7 @@ independently. `decrypt_config_value` returns `None` for `None` or
 invalid/corrupt ciphertext.
 
 ```python
-from imbi_common.auth import encryption
+from imbi.common.auth import encryption
 
 # Encrypt a configuration secret
 encrypted = encryption.encrypt_config_value("client-secret")
@@ -71,26 +71,26 @@ decrypted = encryption.decrypt_config_value(encrypted)
 
 ### Core Functions
 
-::: imbi_common.auth.core.create_access_token
+::: imbi.common.auth.core.create_access_token
 
-::: imbi_common.auth.core.create_refresh_token
+::: imbi.common.auth.core.create_refresh_token
 
-::: imbi_common.auth.core.verify_token
+::: imbi.common.auth.core.verify_token
 
 ### Encryption Functions
 
-::: imbi_common.auth.encryption.TokenEncryption
+::: imbi.common.auth.encryption.TokenEncryption
 
-::: imbi_common.auth.encryption.get_fernet
+::: imbi.common.auth.encryption.get_fernet
 
-::: imbi_common.auth.encryption.encrypt_token
+::: imbi.common.auth.encryption.encrypt_token
 
-::: imbi_common.auth.encryption.decrypt_token
+::: imbi.common.auth.encryption.decrypt_token
 
-::: imbi_common.auth.encryption.ConfigEncryption
+::: imbi.common.auth.encryption.ConfigEncryption
 
-::: imbi_common.auth.encryption.get_config_fernet
+::: imbi.common.auth.encryption.get_config_fernet
 
-::: imbi_common.auth.encryption.encrypt_config_value
+::: imbi.common.auth.encryption.encrypt_config_value
 
-::: imbi_common.auth.encryption.decrypt_config_value
+::: imbi.common.auth.encryption.decrypt_config_value

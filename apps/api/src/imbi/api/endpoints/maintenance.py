@@ -1,6 +1,6 @@
 """Global maintenance operation endpoints (admin Maintenance page).
 
-The operation list is registry-driven (:mod:`imbi_api.maintenance`):
+The operation list is registry-driven (:mod:`imbi.api.maintenance`):
 the UI renders whatever this returns, so adding an operation to the
 registry is all that is required for a new button to appear.
 """
@@ -11,16 +11,16 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
 
-from imbi_api.auth import permissions
-from imbi_api.maintenance import (
+from imbi.api.auth import permissions
+from imbi.api.maintenance import (
     OPERATIONS,
     MaintenanceSlug,
     OperationDefinition,
     state,
 )
-from imbi_api.scoring import OptionalValkeyClient
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

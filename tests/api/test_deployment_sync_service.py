@@ -7,7 +7,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_api.deployment_sync import service
+from imbi.api.deployment_sync import service
 
 
 class RunResyncTests(unittest.IsolatedAsyncioTestCase):
@@ -16,7 +16,7 @@ class RunResyncTests(unittest.IsolatedAsyncioTestCase):
         summary = mock.Mock()
         resync = mock.AsyncMock(return_value=summary)
         with mock.patch(
-            'imbi_api.endpoints.project_deployments.resync_for_project',
+            'imbi.api.endpoints.project_deployments.resync_for_project',
             resync,
         ):
             result = await service.run_resync(db, 'octo', 'p1', 25)
@@ -32,7 +32,7 @@ class RunResyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_unsupported_plugin_raises_unavailable(self) -> None:
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.endpoints.project_deployments.resync_for_project',
+            'imbi.api.endpoints.project_deployments.resync_for_project',
             mock.AsyncMock(
                 side_effect=fastapi.HTTPException(
                     status_code=400, detail='does not support'
@@ -45,7 +45,7 @@ class RunResyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_capability_raises_unavailable(self) -> None:
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.endpoints.project_deployments.resync_for_project',
+            'imbi.api.endpoints.project_deployments.resync_for_project',
             mock.AsyncMock(
                 side_effect=fastapi.HTTPException(
                     status_code=404, detail='no capability'
@@ -58,7 +58,7 @@ class RunResyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_other_http_error_propagates(self) -> None:
         db = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.endpoints.project_deployments.resync_for_project',
+            'imbi.api.endpoints.project_deployments.resync_for_project',
             mock.AsyncMock(
                 side_effect=fastapi.HTTPException(
                     status_code=503, detail='no credentials'

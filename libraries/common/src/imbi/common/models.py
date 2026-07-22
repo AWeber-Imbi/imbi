@@ -9,7 +9,7 @@ import pydantic
 import slugify
 from jsonschema_models import models as schema_models
 
-from imbi_common import versioning
+from imbi.common import versioning
 
 __all__ = [
     'Blueprint',
@@ -283,7 +283,7 @@ class TagFormat(pydantic.BaseModel):
     ``label`` is the human-facing name shown in the UI (e.g. ``Semver``
     or ``CalVer``); ``pattern`` is a regular expression a tag must match.
     A tag is accepted when it matches *any* configured ``TagFormat`` --
-    see ``imbi_common.versioning.matches_tag_formats``.
+    see ``imbi.common.versioning.matches_tag_formats``.
 
     Patterns are matched with :func:`re.fullmatch` and validated as
     compilable at assignment time so an invalid expression is rejected at
@@ -361,7 +361,7 @@ class ProjectType(Node):
     organization: BelongsToOrganization
 
     # Overrides the organization's ``tag_formats`` when non-empty (see
-    # ``imbi_common.versioning.matches_tag_formats``); empty falls back to
+    # ``imbi.common.versioning.matches_tag_formats``); empty falls back to
     # the organization policy.
     tag_formats: list[TagFormat] = []
 
@@ -386,9 +386,9 @@ class Integration(Node):
 
     ``encrypted_credentials`` is the ONLY credential store: a mapping of
     credential field name to its Fernet-encrypted value (see
-    :mod:`imbi_common.auth.encryption`). Plaintext must never be assigned;
+    :mod:`imbi.common.auth.encryption`). Plaintext must never be assigned;
     callers encrypt before persistence and decrypt on read via
-    :func:`imbi_common.plugins.credentials.decrypt_integration_credentials`.
+    :func:`imbi.common.plugins.credentials.decrypt_integration_credentials`.
     """
 
     #: Owning organization. Optional: login-provider Integrations are
@@ -426,7 +426,7 @@ class IdentityConnection(GraphModel):
     """Per-user, per-Integration identity connection.
 
     Encrypted-token fields store the *ciphertext* (Fernet via
-    :class:`imbi_common.auth.encryption.TokenEncryption`); decryption
+    :class:`imbi.common.auth.encryption.TokenEncryption`); decryption
     happens in the API repository layer, never on the model.  ``status``
     is one of ``'active' | 'revoked' | 'expired'``.
     """
@@ -448,7 +448,7 @@ class MCPServer(Node):
     """An external MCP server reachable over streamable HTTP.
 
     The ``*_encrypted`` fields store the *ciphertext* (Fernet via
-    :mod:`imbi_common.auth.encryption`, keyed off
+    :mod:`imbi.common.auth.encryption`, keyed off
     ``IMBI_CONFIG_ENCRYPTION_KEY``). Plaintext secrets must never be
     assigned to these fields; encryption and decryption happen in the
     repository/consumer layer, never on the model.
@@ -851,7 +851,7 @@ class Release(GraphModel):
     ``1.0.0`` or ``v2024.05.18``).  Per-project uniqueness is
     enforced at the application layer (two projects may legitimately
     share a tag like ``1.0.0``).  The active tag format is a runtime
-    setting — see ``imbi_common.versioning.validate_version``.
+    setting — see ``imbi.common.versioning.validate_version``.
 
     """
 
@@ -1036,7 +1036,7 @@ class CommitRecord(pydantic.BaseModel):
 
     Generic across version-control providers — a GitHub, GitLab, or
     Bitbucket plugin maps its API response onto these fields and inserts
-    via :func:`imbi_common.clickhouse.insert`. The table is a
+    via :func:`imbi.common.clickhouse.insert`. The table is a
     ``ReplacingMergeTree`` keyed by ``(project_id, sha)``, so re-syncing an
     overlapping commit range collapses duplicates on merge.
     """

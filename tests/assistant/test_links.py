@@ -4,8 +4,8 @@ from unittest import mock
 
 import httpx
 
-from imbi_assistant import links, settings
-from tests import helpers
+from imbi.assistant import links, settings
+from tests.assistant import helpers
 
 
 class FakeResponse:

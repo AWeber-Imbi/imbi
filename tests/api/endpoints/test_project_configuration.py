@@ -19,10 +19,15 @@ import uuid
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import clickhouse as imbi_clickhouse
-from imbi_common import graph
-from imbi_common import settings as imbi_settings
-from imbi_common.plugins.base import (
+from valkey import asyncio as valkey_asyncio
+
+from imbi.api import app, models
+from imbi.api.auth import password, permissions
+from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.common import clickhouse as imbi_clickhouse
+from imbi.common import graph
+from imbi.common import settings as imbi_settings
+from imbi.common.plugins.base import (
     Capability,
     ConfigKey,
     ConfigKeyWithValue,
@@ -31,12 +36,7 @@ from imbi_common.plugins.base import (
     PluginContext,
     PluginManifest,
 )
-from imbi_common.plugins.registry import RegistryEntry
-from valkey import asyncio as valkey_asyncio
-
-from imbi_api import app, models
-from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedCapability
+from imbi.common.plugins.registry import RegistryEntry
 
 
 class _FakeConfigurationHandler(ConfigurationCapability):
@@ -207,7 +207,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         self._track_cache_key(key)
         return key
 
-    # ``imbi_common.valkey.get_client()`` returns a singleton bound to
+    # ``imbi.common.valkey.get_client()`` returns a singleton bound to
     # the lifespan's event loop, which is unusable from our own
     # ``asyncio.run`` (the connection pool's futures live on a different
     # loop). Open a fresh short-lived client for each cache touch
@@ -264,11 +264,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={},
                 ),
@@ -284,11 +284,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
@@ -305,7 +305,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['key'], '/foo')
         self.assertIsNotNone(cached)
-        cached_payload = json.loads(typing.cast(str, cached))
+        cached_payload = json.loads(typing.cast('str', cached))
         self.assertEqual(cached_payload[0]['key'], '/foo')
 
     def test_get_configuration_cache_hit(self) -> None:
@@ -326,11 +326,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             )
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
@@ -366,11 +366,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             )
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
@@ -445,11 +445,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=resolved,
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
@@ -472,11 +472,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
@@ -494,11 +494,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={},
                 ),
@@ -533,16 +533,16 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             )
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.graph'
+                    'imbi.api.endpoints.project_configuration.graph'
                     '.parse_agtype',
                     return_value='fake-slug',
                 ),
@@ -584,11 +584,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={},
                 ),
@@ -614,16 +614,16 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         ) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.clickhouse'
+                    'imbi.api.endpoints.project_configuration.clickhouse'
                     '.client.Clickhouse.get_instance',
                     side_effect=RuntimeError('CH down'),
                 ),
@@ -649,16 +649,16 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
             asyncio.run(self._seed_cache(cache_key, [{'sentinel': True}]))
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.graph'
+                    'imbi.api.endpoints.project_configuration.graph'
                     '.parse_agtype',
                     return_value='',
                 ),
@@ -682,11 +682,11 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={},
                 ),
@@ -698,13 +698,13 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
 
     def test_invalidate_cache_swallows_errors(self) -> None:
-        from imbi_api.endpoints.project_configuration import (
+        from imbi.api.endpoints.project_configuration import (
             _invalidate_cache,
         )
 
         async def _run() -> None:
             with mock.patch(
-                'imbi_api.endpoints.project_configuration.valkey.get_client',
+                'imbi.api.endpoints.project_configuration.valkey.get_client',
                 side_effect=RuntimeError('no valkey'),
             ):
                 # Should not raise.
@@ -721,16 +721,16 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             with (
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration.resolve_capability',
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.decrypt_integration_credentials',
                     return_value={'token': 'x'},
                 ),
                 mock.patch(
-                    'imbi_api.endpoints.project_configuration'
+                    'imbi.api.endpoints.project_configuration'
                     '.valkey.get_client',
                     return_value=broken,
                 ),

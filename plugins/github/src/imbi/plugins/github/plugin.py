@@ -16,7 +16,7 @@ handler for each capability the platform hosts:
 
 from __future__ import annotations
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     ActionDescriptor,
     Capability,
     CredentialField,
@@ -26,17 +26,16 @@ from imbi_common.plugins.base import (
     PluginOption,
     WebhookActionsCapability,
 )
-
-from imbi_plugin_github.commits import (
+from imbi.plugins.github.commits import (
     GitHubCommitSync,
     sync_commits_descriptor,
     sync_tags_descriptor,
 )
-from imbi_plugin_github.deployment import GitHubDeployment
-from imbi_plugin_github.doctor import GitHubDoctor
-from imbi_plugin_github.identity import DEFAULT_SCOPES, GitHubIdentity
-from imbi_plugin_github.lifecycle import GitHubLifecycle
-from imbi_plugin_github.pull_requests import (
+from imbi.plugins.github.deployment import GitHubDeployment
+from imbi.plugins.github.doctor import GitHubDoctor
+from imbi.plugins.github.identity import DEFAULT_SCOPES, GitHubIdentity
+from imbi.plugins.github.lifecycle import GitHubLifecycle
+from imbi.plugins.github.pull_requests import (
     GitHubPullRequestSync,
     sync_pull_requests_descriptor,
 )

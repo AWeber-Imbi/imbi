@@ -2,7 +2,7 @@
 
 Run with::
 
-    uv run python -m imbi_api.backfill_embeddings
+    uv run python -m imbi.api.backfill_embeddings
 
 Iterates every embeddable node type and calls ``_auto_embed`` for each
 instance.  By default skips any node that already has an embedding row
@@ -19,8 +19,9 @@ import logging
 import typing
 
 import psycopg
-from imbi_common import graph, models
-from imbi_common.graph.client import (
+
+from imbi.common import graph, models
+from imbi.common.graph.client import (
     _embeddable_fields,  # type: ignore[attr-defined]
 )
 

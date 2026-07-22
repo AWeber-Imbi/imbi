@@ -3,9 +3,9 @@ import unittest
 from unittest import mock
 
 import pydantic
-from imbi_common import blueprints, graph
 
-from imbi_api import models
+from imbi.api import models
+from imbi.common import blueprints, graph
 
 
 class GetModelTestCase(unittest.IsolatedAsyncioTestCase):

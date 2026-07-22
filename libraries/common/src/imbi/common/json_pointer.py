@@ -10,7 +10,7 @@ string form and the generated JSON schema reports
 Example::
 
     import pydantic
-    from imbi_common.json_pointer import JsonPointer
+    from imbi.common.json_pointer import JsonPointer
 
 
     class Rule(pydantic.BaseModel):

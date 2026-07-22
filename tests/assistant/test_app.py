@@ -4,23 +4,23 @@ from unittest import mock
 
 import fastapi.testclient
 
-import imbi_assistant
-import imbi_assistant.app
-from imbi_assistant import external_mcp
-from tests import helpers
+import imbi.assistant
+import imbi.assistant.app
+from imbi.assistant import external_mcp
+from tests.assistant import helpers
 
 
 class AppTests(helpers.TestCase):
     def test_create_app(self) -> None:
-        app_instance = imbi_assistant.app.create_app()
+        app_instance = imbi.assistant.app.create_app()
         self.assertIsInstance(app_instance, fastapi.FastAPI)
 
-    @mock.patch('imbi_assistant.links.initialize')
-    @mock.patch('imbi_assistant.external_mcp.initialize')
-    @mock.patch('imbi_assistant.app.graph.Graph')
-    @mock.patch('imbi_assistant.client.aclose')
-    @mock.patch('imbi_assistant.client.initialize')
-    @mock.patch('imbi_common.graph.graph_lifespan')
+    @mock.patch('imbi.assistant.links.initialize')
+    @mock.patch('imbi.assistant.external_mcp.initialize')
+    @mock.patch('imbi.assistant.app.graph.Graph')
+    @mock.patch('imbi.assistant.client.aclose')
+    @mock.patch('imbi.assistant.client.initialize')
+    @mock.patch('imbi.common.graph.graph_lifespan')
     def test_status_endpoint(
         self,
         _graph_lifespan: mock.MagicMock,
@@ -33,7 +33,7 @@ class AppTests(helpers.TestCase):
         _graph_cls.return_value = mock.AsyncMock()
         start_time = datetime.datetime.now(datetime.UTC)
         with fastapi.testclient.TestClient(
-            imbi_assistant.app.create_app()
+            imbi.assistant.app.create_app()
         ) as client:
             response = client.get('/status')
             self.assertEqual(200, response.status_code)
@@ -46,14 +46,14 @@ class AppTests(helpers.TestCase):
             start_time,
         )
         self.assertEqual('ok', body['status'])
-        self.assertEqual(imbi_assistant.version, body['version'])
+        self.assertEqual(imbi.assistant.version, body['version'])
 
-    @mock.patch('imbi_assistant.links.initialize')
-    @mock.patch('imbi_assistant.external_mcp.initialize')
-    @mock.patch('imbi_assistant.app.graph.Graph')
-    @mock.patch('imbi_assistant.client.aclose')
-    @mock.patch('imbi_assistant.client.initialize')
-    @mock.patch('imbi_common.graph.graph_lifespan')
+    @mock.patch('imbi.assistant.links.initialize')
+    @mock.patch('imbi.assistant.external_mcp.initialize')
+    @mock.patch('imbi.assistant.app.graph.Graph')
+    @mock.patch('imbi.assistant.client.aclose')
+    @mock.patch('imbi.assistant.client.initialize')
+    @mock.patch('imbi.common.graph.graph_lifespan')
     def test_status_endpoint_in_specific_environment(
         self,
         _graph_lifespan: mock.MagicMock,
@@ -67,7 +67,7 @@ class AppTests(helpers.TestCase):
         with (
             self.override_environment(ENVIRONMENT='testing'),
             fastapi.testclient.TestClient(
-                imbi_assistant.app.create_app()
+                imbi.assistant.app.create_app()
             ) as client,
         ):
             response = client.get('/status')
@@ -85,9 +85,9 @@ class ExternalMCPLifespanTests(unittest.IsolatedAsyncioTestCase):
     def tearDown(self) -> None:
         external_mcp._manager = self._original
 
-    @mock.patch('imbi_assistant.external_mcp.aclose')
-    @mock.patch('imbi_assistant.external_mcp.initialize')
-    @mock.patch('imbi_assistant.app.graph.Graph')
+    @mock.patch('imbi.assistant.external_mcp.aclose')
+    @mock.patch('imbi.assistant.external_mcp.initialize')
+    @mock.patch('imbi.assistant.app.graph.Graph')
     async def test_lifespan_success(
         self,
         graph_cls: mock.MagicMock,
@@ -96,15 +96,15 @@ class ExternalMCPLifespanTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         db = mock.AsyncMock()
         graph_cls.return_value = db
-        async with imbi_assistant.app._external_mcp_lifespan():
+        async with imbi.assistant.app._external_mcp_lifespan():
             pass
         db.open.assert_awaited_once()
         db.close.assert_awaited_once()
         ext_init.assert_awaited_once_with(db)
         ext_close.assert_awaited_once()
 
-    @mock.patch('imbi_assistant.external_mcp.aclose')
-    @mock.patch('imbi_assistant.app.graph.Graph')
+    @mock.patch('imbi.assistant.external_mcp.aclose')
+    @mock.patch('imbi.assistant.app.graph.Graph')
     async def test_lifespan_db_failure_installs_manager(
         self,
         graph_cls: mock.MagicMock,
@@ -113,7 +113,7 @@ class ExternalMCPLifespanTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         db.open.side_effect = RuntimeError('no db')
         graph_cls.return_value = db
-        async with imbi_assistant.app._external_mcp_lifespan():
+        async with imbi.assistant.app._external_mcp_lifespan():
             # A manager is installed despite the DB failure.
             self.assertIsNotNone(external_mcp._manager)
         ext_close.assert_awaited_once()

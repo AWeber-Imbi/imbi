@@ -7,7 +7,7 @@ whose ``expires_at`` is within the next 5 minutes.  Failed refreshes
 flip ``status='expired'``.
 
 The actual lifespan integration lives in
-:func:`imbi_api.lifespans.identity_refresh_hook`; this module only
+:func:`imbi.api.lifespans.identity_refresh_hook`; this module only
 exposes the loop body so it can be unit-tested without bringing the
 full FastAPI app stack up.
 """
@@ -17,9 +17,9 @@ import datetime
 import logging
 
 import valkey.asyncio
-from imbi_common import graph
 
-from imbi_api.identity import errors, flows, repository
+from imbi.api.identity import errors, flows, repository
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

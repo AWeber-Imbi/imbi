@@ -3,8 +3,8 @@ import unittest
 
 from fastapi import testclient
 
-from imbi_api.endpoints import status
-from tests import support
+from imbi.api.endpoints import status
+from tests.api import support
 
 _StatusLiteral = typing.Literal['ok', 'initializing', 'error']
 

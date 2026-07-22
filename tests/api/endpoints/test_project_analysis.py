@@ -9,8 +9,12 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
-from imbi_common.plugins.base import (
+
+from imbi.api import app, models
+from imbi.api.auth import password, permissions
+from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.common import graph
+from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
     Capability,
@@ -20,13 +24,9 @@ from imbi_common.plugins.base import (
     RemediationResult,
     ServiceWriteback,
 )
-from imbi_common.plugins.registry import RegistryEntry
+from imbi.common.plugins.registry import RegistryEntry
 
-from imbi_api import app, models
-from imbi_api.auth import password, permissions
-from imbi_api.plugins.resolution import ResolvedCapability
-
-_MODULE = 'imbi_api.endpoints.project_analysis'
+_MODULE = 'imbi.api.endpoints.project_analysis'
 
 
 class _PassPlugin(AnalysisCapability):
@@ -428,7 +428,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual(403, resp.status_code, resp.text)
 
     def test_remediate_all_best_effort(self) -> None:
-        from imbi_api.endpoints.project_analysis import (
+        from imbi.api.endpoints.project_analysis import (
             AnalysisReport,
             AnalysisResult,
         )
@@ -482,7 +482,7 @@ class ProjectAnalysisTestCase(unittest.TestCase):
     def test_remediate_all_captures_non_http_error(self) -> None:
         # A non-HTTPException from one finding must be captured as a failed
         # outcome, not abort the whole request (best-effort contract).
-        from imbi_api.endpoints.project_analysis import (
+        from imbi.api.endpoints.project_analysis import (
             AnalysisReport,
             AnalysisResult,
         )
@@ -556,7 +556,7 @@ class FetchReportParsingTestCase(unittest.IsolatedAsyncioTestCase):
     )
 
     async def test_parses_findings_and_decodes_remediation(self) -> None:
-        from imbi_api.endpoints import project_analysis as pa
+        from imbi.api.endpoints import project_analysis as pa
 
         db = mock.AsyncMock(spec=graph.Graph)
         db.execute.return_value = [
@@ -577,7 +577,7 @@ class FetchReportParsingTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(by_slug['canonical-url-shape'].remediation)
 
     def test_query_returns_property_maps_not_raw_vertices(self) -> None:
-        from imbi_api.endpoints import project_analysis as pa
+        from imbi.api.endpoints import project_analysis as pa
 
         # A bare ``collect(res)`` serialises ::vertex agtype that
         # parse_agtype cannot decode into a list; property maps are

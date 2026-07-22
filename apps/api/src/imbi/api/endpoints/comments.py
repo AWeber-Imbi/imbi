@@ -9,9 +9,9 @@ replies follow in ``created_at`` order.
 ``0`` and surface ``anchor: null``. ``kind='inline'`` threads carry an
 anchor (quote/prefix/suffix/start) and round-trip it on read.
 
-Modeled on :mod:`imbi_api.endpoints.documents`: raw Cypher via
+Modeled on :mod:`imbi.api.endpoints.documents`: raw Cypher via
 ``db.execute(...)`` + ``graph.parse_agtype(...)`` with local Pydantic
-request/response models (no dependency on ``imbi_common.models`` comment
+request/response models (no dependency on ``imbi.common.models`` comment
 types).
 """
 
@@ -22,11 +22,11 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph
-from imbi_common.clickhouse import client as ch_client
 
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.common import graph
+from imbi.common.clickhouse import client as ch_client
 
 LOGGER = logging.getLogger(__name__)
 

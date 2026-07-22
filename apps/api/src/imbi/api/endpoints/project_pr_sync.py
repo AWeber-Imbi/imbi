@@ -11,13 +11,13 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
 
-from imbi_api.auth import permissions
-from imbi_api.plugins.resolution import resolve_capability
-from imbi_api.pr_sync import service
-from imbi_api.pr_sync.queue import enqueue_pr_sync
-from imbi_api.scoring import OptionalValkeyClient
+from imbi.api.auth import permissions
+from imbi.api.plugins.resolution import resolve_capability
+from imbi.api.pr_sync import service
+from imbi.api.pr_sync.queue import enqueue_pr_sync
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.common import graph
 
 project_pr_sync_router = fastapi.APIRouter(tags=['Project: Pull Requests'])
 

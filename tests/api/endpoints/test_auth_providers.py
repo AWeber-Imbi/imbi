@@ -5,18 +5,18 @@ import typing
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
-from imbi_common.plugins.base import (
+
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from imbi.common.plugins.base import (
     Capability,
     IdentityCapability,
     Plugin,
     PluginManifest,
 )
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.common.plugins.registry import RegistryEntry
+from tests.api import support
 
 
 class _FakeIdentity(IdentityCapability):
@@ -106,7 +106,7 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
         token = mock.Mock()
         token.get_instance.return_value = encryptor
         return mock.patch(
-            'imbi_api.endpoints.auth_providers.TokenEncryption', token
+            'imbi.api.endpoints.auth_providers.TokenEncryption', token
         )
 
     # -- list / get ------------------------------------------------------
@@ -204,7 +204,7 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
 
     def test_update_credentials(self) -> None:
         with mock.patch(
-            'imbi_api.endpoints.auth_providers.patch_integration_credentials',
+            'imbi.api.endpoints.auth_providers.patch_integration_credentials',
             return_value=['client_id'],
         ) as patch_creds:
             response = self.client.put(
@@ -224,7 +224,7 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
             [],  # demote org-less others
         ]
         with mock.patch(
-            'imbi_api.endpoints.auth_providers.login_repo.invalidate_cache'
+            'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
         ) as invalidate:
             response = self.client.put(
                 '/login-providers/google/used-as-login',
@@ -237,7 +237,7 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
     def test_set_used_as_login_not_found(self) -> None:
         self.mock_db.execute.side_effect = [[], []]
         with mock.patch(
-            'imbi_api.endpoints.auth_providers.login_repo.invalidate_cache'
+            'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
         ):
             response = self.client.put(
                 '/login-providers/missing/used-as-login',
@@ -250,7 +250,7 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
         # any active provider, so the existing SSO provider stays enabled.
         self.mock_db.execute.side_effect = [[]]
         with mock.patch(
-            'imbi_api.endpoints.auth_providers.login_repo.invalidate_cache'
+            'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
         ) as invalidate:
             response = self.client.put(
                 '/login-providers/missing/used-as-login',
@@ -266,7 +266,7 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
     def test_delete_login_provider(self) -> None:
         self.mock_db.execute.return_value = [{'deleted': 1}]
         with mock.patch(
-            'imbi_api.endpoints.auth_providers.login_repo.invalidate_cache'
+            'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
         ):
             response = self.client.delete('/login-providers/google')
         self.assertEqual(response.status_code, 204)
@@ -274,7 +274,7 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
     def test_delete_login_provider_not_found(self) -> None:
         self.mock_db.execute.return_value = [{'deleted': 0}]
         with mock.patch(
-            'imbi_api.endpoints.auth_providers.login_repo.invalidate_cache'
+            'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
         ):
             response = self.client.delete('/login-providers/missing')
         self.assertEqual(response.status_code, 404)
@@ -286,11 +286,11 @@ class _MultiPatch:
     def __init__(self, entry: RegistryEntry) -> None:
         self._patches = [
             mock.patch(
-                'imbi_api.endpoints.auth_providers.get_plugin',
+                'imbi.api.endpoints.auth_providers.get_plugin',
                 return_value=entry,
             ),
             mock.patch(
-                'imbi_api.endpoints.integrations.get_plugin',
+                'imbi.api.endpoints.integrations.get_plugin',
                 return_value=entry,
             ),
         ]

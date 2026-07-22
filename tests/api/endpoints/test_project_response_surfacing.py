@@ -7,7 +7,7 @@ the read-only ``services`` list, leaving ``identifiers`` untouched.
 
 import unittest
 
-from imbi_api.endpoints.projects import ProjectResponse
+from imbi.api.endpoints.projects import ProjectResponse
 
 
 class BuildServicesTestCase(unittest.TestCase):

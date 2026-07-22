@@ -20,7 +20,8 @@ import re
 import typing
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
     AnalysisResultStatus,
@@ -31,14 +32,13 @@ from imbi_common.plugins.base import (
     ServiceConnection,
     ServiceWriteback,
 )
-from imbi_common.plugins.errors import PluginAuthenticationFailed
-
-from imbi_plugin_github._hosts import (
+from imbi.common.plugins.errors import PluginAuthenticationFailed
+from imbi.plugins.github._hosts import (
     flavor_host,
     host_to_api_base,
 )
-from imbi_plugin_github._repos import derive_owner_repo_from_links
-from imbi_plugin_github.commits import (
+from imbi.plugins.github._repos import derive_owner_repo_from_links
+from imbi.plugins.github.commits import (
     _resolve_bearer,  # pyright: ignore[reportPrivateUsage]
 )
 

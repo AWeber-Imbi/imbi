@@ -4,7 +4,7 @@ import unittest.mock
 
 from fastapi import testclient
 
-from imbi_api import app, lifespans
+from imbi.api import app, lifespans
 
 
 class ApplicationLifespanTestCase(unittest.TestCase):
@@ -19,7 +19,7 @@ class ApplicationLifespanTestCase(unittest.TestCase):
     def test_clickhouse_initialization_failure(self) -> None:
         """Test initializing lifespan by fetching status."""
         with unittest.mock.patch(
-            'imbi_api.lifespans.clickhouse.initialize',
+            'imbi.api.lifespans.clickhouse.initialize',
             new=unittest.mock.AsyncMock(),
         ) as initialize:
             initialize.return_value = False
@@ -38,7 +38,7 @@ class ApplicationLifespanTestCase(unittest.TestCase):
         try:
             with (
                 unittest.mock.patch(
-                    'imbi_api.lifespans.valkey.get_client',
+                    'imbi.api.lifespans.valkey.get_client',
                     side_effect=RuntimeError('no valkey'),
                 ),
                 self.assertLogs(lifespans.LOGGER, level='WARNING') as cm,
@@ -63,7 +63,7 @@ class ApplicationLifespanTestCase(unittest.TestCase):
         try:
             with (
                 unittest.mock.patch(
-                    'imbi_api.lifespans.valkey.get_client',
+                    'imbi.api.lifespans.valkey.get_client',
                     return_value=mock_client,
                 ),
                 unittest.mock.patch.object(lifespans, '_graph', None),
@@ -113,7 +113,7 @@ class ApplicationLifespanTestCase(unittest.TestCase):
         failure = RuntimeError('blueprint refresh failed')
         with (
             unittest.mock.patch(
-                'imbi_api.lifespans.openapi.refresh_blueprint_models',
+                'imbi.api.lifespans.openapi.refresh_blueprint_models',
                 new=unittest.mock.AsyncMock(
                     side_effect=failure,
                 ),
@@ -133,7 +133,7 @@ class ApplicationLifespanTestCase(unittest.TestCase):
         self.assertTrue(
             any(
                 line.startswith(
-                    'ERROR:imbi_api.lifespans:'
+                    'ERROR:imbi.api.lifespans:'
                     'Failed to refresh blueprint models'
                 )
                 and 'RuntimeError' in line

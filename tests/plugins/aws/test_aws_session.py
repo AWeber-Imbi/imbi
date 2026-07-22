@@ -5,14 +5,14 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.errors import (
+
+from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
 )
-
-from imbi_plugin_aws import aws_session
+from imbi.plugins.aws import aws_session
 
 
 class ResolveCredentialsTestCase(unittest.TestCase):
@@ -74,7 +74,7 @@ class ResolveCredentialsTestCase(unittest.TestCase):
     def test_identity_extra_supplies_keys_when_credentials_empty(
         self,
     ) -> None:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             IdentityCredentials,
             PluginContext,
         )
@@ -102,7 +102,7 @@ class ResolveCredentialsTestCase(unittest.TestCase):
         self.assertEqual(creds.region, 'us-east-2')
 
     def test_identity_extra_overrides_static_keys(self) -> None:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             IdentityCredentials,
             PluginContext,
         )

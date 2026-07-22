@@ -4,24 +4,24 @@ from unittest import mock
 import fastapi
 import fastapi.testclient
 
-import imbi_slackbot
-import imbi_slackbot.app
-from tests import helpers
+import imbi.slackbot
+import imbi.slackbot.app
+from tests.slackbot import helpers
 
 
 class AppTests(helpers.TestCase):
     def test_create_app(self) -> None:
-        app_instance = imbi_slackbot.app.create_app()
+        app_instance = imbi.slackbot.app.create_app()
         self.assertIsInstance(app_instance, fastapi.FastAPI)
 
-    @mock.patch('imbi_slackbot.links.initialize')
-    @mock.patch('imbi_slackbot.slack_handler.aclose')
-    @mock.patch('imbi_slackbot.slack_handler.initialize')
-    @mock.patch('imbi_slackbot.mcp.aclose')
-    @mock.patch('imbi_slackbot.mcp.initialize')
-    @mock.patch('imbi_slackbot.client.aclose')
-    @mock.patch('imbi_slackbot.client.initialize')
-    @mock.patch('imbi_common.graph.graph_lifespan')
+    @mock.patch('imbi.slackbot.links.initialize')
+    @mock.patch('imbi.slackbot.slack_handler.aclose')
+    @mock.patch('imbi.slackbot.slack_handler.initialize')
+    @mock.patch('imbi.slackbot.mcp.aclose')
+    @mock.patch('imbi.slackbot.mcp.initialize')
+    @mock.patch('imbi.slackbot.client.aclose')
+    @mock.patch('imbi.slackbot.client.initialize')
+    @mock.patch('imbi.common.graph.graph_lifespan')
     def test_status_endpoint(
         self,
         _graph_lifespan: mock.MagicMock,
@@ -35,7 +35,7 @@ class AppTests(helpers.TestCase):
     ) -> None:
         start_time = datetime.datetime.now(datetime.UTC)
         with fastapi.testclient.TestClient(
-            imbi_slackbot.app.create_app()
+            imbi.slackbot.app.create_app()
         ) as client:
             response = client.get('/status')
             self.assertEqual(200, response.status_code)
@@ -48,4 +48,4 @@ class AppTests(helpers.TestCase):
             start_time,
         )
         self.assertEqual('ok', body['status'])
-        self.assertEqual(imbi_slackbot.version, body['version'])
+        self.assertEqual(imbi.slackbot.version, body['version'])

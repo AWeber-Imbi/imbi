@@ -8,10 +8,10 @@ import typing
 
 import fastapi
 import psycopg
-from imbi_common import graph
-from imbi_common.plugins.base import PluginContext, ServiceConnection
 
-from imbi_api import patch as json_patch
+from imbi.api import patch as json_patch
+from imbi.common import graph
+from imbi.common.plugins.base import PluginContext, ServiceConnection
 
 LOGGER = logging.getLogger(__name__)
 

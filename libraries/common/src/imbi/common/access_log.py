@@ -1,7 +1,7 @@
 """ASGI middleware that replaces uvicorn's built-in access log.
 
 The middleware emits one record per HTTP request on the
-``imbi_common.access`` logger. Unlike uvicorn's default access log, it
+``imbi.common.access`` logger. Unlike uvicorn's default access log, it
 can suppress records for specific paths *only* when the response was
 successful, so high-frequency endpoints (health checks, ``/status``)
 stay quiet without hiding failures.
@@ -37,10 +37,10 @@ from collections import abc
 
 import jwt
 
-from imbi_common import otel, settings
-from imbi_common.auth import core
+from imbi.common import otel, settings
+from imbi.common.auth import core
 
-LOGGER = logging.getLogger('imbi_common.access')
+LOGGER = logging.getLogger('imbi.common.access')
 
 # Bound the API-key owner cache so a long-lived process can't grow it
 # without limit; owners are stable, so a generous LRU is plenty.
@@ -102,7 +102,7 @@ class AccessLogMiddleware:
             logged (e.g. ``GET /status`` returning 404 because the
             endpoint isn't wired up).
         logger: Logger to emit records on. Defaults to
-            ``imbi_common.access``.
+            ``imbi.common.access``.
         include_principal: When ``True`` (the default), inspect the
             ``Authorization`` header on each request and render the
             authenticated principal in the log line. Set to ``False``
@@ -204,7 +204,7 @@ def _principal_from_scope(scope: Scope) -> str:
     Returns ``-`` when no usable ``Authorization: Bearer`` credential
     is present, the JWT signature fails to verify, or the credential
     is otherwise malformed. JWT verification reuses the shared
-    ``imbi_common.auth.core.verify_token`` path; auth settings are
+    ``imbi.common.auth.core.verify_token`` path; auth settings are
     fetched lazily so middleware import doesn't force-load them.
     """
     headers = scope.get('headers') or ()

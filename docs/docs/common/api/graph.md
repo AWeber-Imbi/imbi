@@ -13,7 +13,7 @@ templates from those models.
 ## Basic Usage
 
 ```python
-from imbi_common import graph, models
+from imbi.common import graph, models
 
 # Open a graph connection pool
 db = graph.Graph()
@@ -46,8 +46,8 @@ as a route parameter to receive the injected `Graph` instance:
 
 ```python
 import fastapi
-from imbi_common import lifespan, models
-from imbi_common.graph import Pool, graph_lifespan
+from imbi.common import lifespan, models
+from imbi.common.graph import Pool, graph_lifespan
 
 app = fastapi.FastAPI(
     lifespan=lifespan.Lifespan(graph_lifespan),
@@ -64,7 +64,7 @@ To run custom initialisation after the pool opens (e.g. schema setup),
 register a startup callback before creating the app:
 
 ```python
-from imbi_common import graph
+from imbi.common import graph
 
 async def on_graph_ready(db: graph.Graph) -> None:
     await graph.initialize()
@@ -76,20 +76,20 @@ graph.set_on_startup(on_graph_ready)
 
 ### Graph Client
 
-::: imbi_common.graph.Graph
+::: imbi.common.graph.Graph
 
-::: imbi_common.graph.graph_lifespan
+::: imbi.common.graph.graph_lifespan
 
-::: imbi_common.graph.Pool
+::: imbi.common.graph.Pool
 
 ### Cypher Query Generation
 
-::: imbi_common.graph.cypher.Statement
+::: imbi.common.graph.cypher.Statement
 
-::: imbi_common.graph.cypher.create
+::: imbi.common.graph.cypher.create
 
-::: imbi_common.graph.cypher.delete
+::: imbi.common.graph.cypher.delete
 
-::: imbi_common.graph.cypher.match
+::: imbi.common.graph.cypher.match
 
-::: imbi_common.graph.cypher.merge
+::: imbi.common.graph.cypher.merge

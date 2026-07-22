@@ -2,7 +2,7 @@
 
 Covers :func:`lookup_project_exists_in`, :func:`merge_project_links`,
 and :func:`persist_service_writeback` in
-:mod:`imbi_api.endpoints._helpers`.
+:mod:`imbi.api.endpoints._helpers`.
 """
 
 import asyncio
@@ -10,9 +10,8 @@ import json
 import unittest
 import unittest.mock as mock
 
-from imbi_common.plugins.base import PluginContext, ServiceWriteback
-
-from imbi_api.endpoints import _helpers
+from imbi.api.endpoints import _helpers
+from imbi.common.plugins.base import PluginContext, ServiceWriteback
 
 
 def _ctx(**kwargs: object) -> PluginContext:

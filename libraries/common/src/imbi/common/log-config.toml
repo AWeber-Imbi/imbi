@@ -14,8 +14,8 @@ formatter = "readable"
 [loggers]
 uvicorn = { level = "INFO" }
 "uvicorn.asgi" = { level = "INFO" }
-"imbi_common.access" = { level = "INFO" }
-imbi_plugin_logzio = { level = "INFO" }
+"imbi.common.access" = { level = "INFO" }
+"imbi.plugins.logzio" = { level = "INFO" }
 
 [root]
 level = "INFO"

@@ -24,14 +24,14 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
-from imbi_common.plugins import PluginAuthenticationFailed, PluginContext
 
-from imbi_api.auth import permissions
-from imbi_api.identity import errors as identity_errors
-from imbi_api.identity import resolution as identity_resolution
-from imbi_api.plugins.assignments import capability_enabled
-from imbi_api.plugins.resolution import ResolvedCapability
+from imbi.api.auth import permissions
+from imbi.api.identity import errors as identity_errors
+from imbi.api.identity import resolution as identity_resolution
+from imbi.api.plugins.assignments import capability_enabled
+from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.common import graph
+from imbi.common.plugins import PluginAuthenticationFailed, PluginContext
 
 LOGGER = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ async def call_with_identity_retry(
             auth.user.id,
             exc,
         )
-        from imbi_api.identity import flows
+        from imbi.api.identity import flows
 
         try:
             await flows.refresh_connection(

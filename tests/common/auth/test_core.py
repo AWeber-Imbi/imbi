@@ -5,7 +5,7 @@ import unittest
 
 import jwt
 
-from imbi_common.auth import core
+from imbi.common.auth import core
 
 
 class TestJWTTokens(unittest.TestCase):

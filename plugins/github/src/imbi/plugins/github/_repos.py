@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import urllib.parse
 
-from imbi_common.plugins.base import PluginContext
+from imbi.common.plugins.base import PluginContext
 
 # Reserved GitHub URL prefixes that share the host with repository URLs
 # but never point at a real ``<owner>/<repo>`` pair.  Any link whose

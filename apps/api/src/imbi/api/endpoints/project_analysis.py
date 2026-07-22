@@ -4,7 +4,7 @@ Project Doctor surfaces a per-project ``AnalysisReport`` made up of
 ``AnalysisResult`` items emitted by every applicable analysis plugin.
 The endpoints below let the UI fetch the latest persisted report and
 re-run analysis on demand.  Plugin discovery is delegated to
-:func:`imbi_api.plugins.resolution.resolve_all_capabilities` so it
+:func:`imbi.api.plugins.resolution.resolve_all_capabilities` so it
 uniformly covers project / project-type ``USES {capability}`` edges
 (plus the default-all rule) for the ``analysis`` capability kind.
 """
@@ -20,10 +20,34 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph
-from imbi_common.graph import cypher as graph_cypher
-from imbi_common.plugins import decrypt_integration_credentials
-from imbi_common.plugins.base import (
+
+from imbi.api.auth import permissions
+from imbi.api.blueprint_compliance import (
+    BLUEPRINT_PLUGIN_ID,
+    BLUEPRINT_PLUGIN_SLUG,
+    check_blueprint_compliance,
+    remediate_blueprint,
+)
+from imbi.api.endpoints._helpers import (
+    lookup_project_exists_in,
+    lookup_project_links,
+    lookup_project_slugs,
+    lookup_project_type_slugs,
+    persist_link_writeback,
+    persist_service_writeback,
+)
+from imbi.api.identity import errors as identity_errors
+from imbi.api.identity import resolution as identity_resolution
+from imbi.api.identity.host_integration import call_with_identity_retry
+from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins.resolution import (
+    ResolvedCapability,
+    resolve_all_capabilities,
+)
+from imbi.common import graph
+from imbi.common.graph import cypher as graph_cypher
+from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
     LinkWriteback,
@@ -32,31 +56,7 @@ from imbi_common.plugins.base import (
     RemediationResult,
     ServiceWriteback,
 )
-from imbi_common.plugins.errors import PluginRemediationNotSupported
-
-from imbi_api.auth import permissions
-from imbi_api.blueprint_compliance import (
-    BLUEPRINT_PLUGIN_ID,
-    BLUEPRINT_PLUGIN_SLUG,
-    check_blueprint_compliance,
-    remediate_blueprint,
-)
-from imbi_api.endpoints._helpers import (
-    lookup_project_exists_in,
-    lookup_project_links,
-    lookup_project_slugs,
-    lookup_project_type_slugs,
-    persist_link_writeback,
-    persist_service_writeback,
-)
-from imbi_api.identity import errors as identity_errors
-from imbi_api.identity import resolution as identity_resolution
-from imbi_api.identity.host_integration import call_with_identity_retry
-from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.resolution import (
-    ResolvedCapability,
-    resolve_all_capabilities,
-)
+from imbi.common.plugins.errors import PluginRemediationNotSupported
 
 LOGGER = logging.getLogger(__name__)
 

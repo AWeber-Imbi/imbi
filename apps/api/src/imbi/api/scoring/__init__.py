@@ -4,15 +4,15 @@ import typing
 from collections import abc
 
 import fastapi
-from imbi_common import helpers, lifespan
-from imbi_common import valkey as common_valkey
 from valkey import asyncio as valkey
 
-from imbi_api.scoring.queue import (
+from imbi.api.scoring.queue import (
     affected_projects,
     consume_recompute,
     enqueue_recompute,
 )
+from imbi.common import helpers, lifespan
+from imbi.common import valkey as common_valkey
 
 __all__ = [
     'OptionalValkeyClient',

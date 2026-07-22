@@ -20,11 +20,11 @@ has accumulated scheduling-like behavior in an ad-hoc way:
 
 1. **No general scheduler exists.** There is no APScheduler, cron daemon, job
    registry, or recurring-job domain model anywhere in the stack. The graph
-   vlabel set (`imbi_common/graph/schemata.toml`) has no `Schedule`/`Job`/
+   vlabel set (`imbi.common/graph/schemata.toml`) has no `Schedule`/`Job`/
    `Task`/`Trigger` label. `pg_cron` is preloaded and `CREATE EXTENSION`'d but
    unused.
 
-2. **The only existing "scheduled" job is hand-rolled.** `imbi_api/scoring/
+2. **The only existing "scheduled" job is hand-rolled.** `imbi.api/scoring/
    queue.py:451-510` (`run_daily_tick`) is a polling loop on `asyncio.sleep`
    that fires once per UTC day at `DAILY_TICK_HOUR_UTC=6`, using a Valkey
    `SETNX` 25h-TTL lock keyed `imbi:score-recompute:daily:<date>` for
@@ -83,7 +83,7 @@ scope             = <scope covered by a Consent>
 new `auth:delegate` permission, (b) a non-expired, non-revoked `Consent`
 exists for `(user, 'imbi-scheduler', scope ⊇ requested)`, and (c) the target
 user is active. It then mints a short-lived access JWT via
-`imbi_common.auth.core.create_access_token` carrying:
+`imbi.common.auth.core.create_access_token` carrying:
 
 ```
 sub          = <target user email>
@@ -252,10 +252,10 @@ separate service run as a user safely.
   this extends — JWTs, service accounts, API keys, permission model).
 - [RFC 8693: OAuth 2.0 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693)
   — `act`/`azp` claims and the token-exchange grant type.
-- `imbi_api/auth/permissions.py:43-86,306-417,907-913` — `AuthContext`,
+- `imbi.api/auth/permissions.py:43-86,306-417,907-913` — `AuthContext`,
   `authenticate_jwt`, and the user-only `CAN_ACCESS` fallback that motivates
   delegation.
-- `imbi_api/scoring/queue.py:451-510` and `imbi_api/lifespans.py:202-237` —
+- `imbi.api/scoring/queue.py:451-510` and `imbi.api/lifespans.py:202-237` —
   the `run_daily_tick` loop being externalized.
 - `imbi-automations/src/imbi_automations/clients/imbi.py:87-180` — the
   `_AuthManager` reference pattern for SA client-credential refresh.

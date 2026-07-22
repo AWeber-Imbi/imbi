@@ -5,7 +5,7 @@ import unittest
 from collections import abc
 from unittest import mock
 
-from imbi_common import otel
+from imbi.common import otel
 
 
 class _RecordingApp:

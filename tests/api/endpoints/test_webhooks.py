@@ -8,10 +8,10 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class _WebhookDetails(typing.TypedDict):
@@ -45,7 +45,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for Webhook CRUD endpoints."""
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -111,7 +111,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
     def _patch_encryption(self):
         return mock.patch(
-            'imbi_common.auth.encryption.TokenEncryption.get_instance',
+            'imbi.common.auth.encryption.TokenEncryption.get_instance',
             return_value=self.mock_encryptor,
         )
 
@@ -122,7 +122,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -148,15 +148,15 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.webhooks._generate_id',
+                'imbi.api.endpoints.webhooks._generate_id',
                 return_value='abc123def4',
             ),
             mock.patch(
-                'imbi_api.endpoints.webhooks._compute_webhook_slug',
+                'imbi.api.endpoints.webhooks._compute_webhook_slug',
                 return_value='github-push-events',
             ),
         ):
@@ -180,7 +180,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -213,7 +213,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -240,7 +240,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_api.endpoints.webhooks._check_identifier_collision',
+                'imbi.api.endpoints.webhooks._check_identifier_collision',
                 new=mock.AsyncMock(),
             ),
         ):
@@ -257,7 +257,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -274,7 +274,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -320,7 +320,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             payload = {
@@ -375,7 +375,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             payload = {
@@ -415,7 +415,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             payload = {
@@ -464,7 +464,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
     def test_list_webhooks(self) -> None:
         self.mock_db.execute.return_value = [self.webhook_record]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -481,7 +481,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
     def test_list_webhooks_empty(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -496,7 +496,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
     def test_get_webhook_by_slug(self) -> None:
         self.mock_db.execute.return_value = [self.webhook_record]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -512,7 +512,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
     def test_get_webhook_by_id(self) -> None:
         self.mock_db.execute.return_value = [self.webhook_record]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -526,7 +526,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
     def test_get_webhook_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -574,7 +574,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -662,7 +662,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -722,7 +722,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -794,7 +794,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -841,7 +841,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -898,7 +898,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.patch(
@@ -945,7 +945,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.patch(
@@ -993,7 +993,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.patch(
@@ -1033,7 +1033,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.patch(
@@ -1074,7 +1074,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1117,7 +1117,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1168,7 +1168,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1225,7 +1225,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1279,7 +1279,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
         self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1297,7 +1297,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
         self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1319,7 +1319,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
 
         self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1340,7 +1340,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1374,7 +1374,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         with (
             self._patch_encryption(),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1395,7 +1395,7 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
     # -- Slug / id generation helpers --
 
     def test_slugify_basic(self) -> None:
-        from imbi_api.endpoints.webhooks import _slugify
+        from imbi.api.endpoints.webhooks import _slugify
 
         self.assertEqual(_slugify('GitHub Push Events'), 'github-push-events')
         self.assertEqual(_slugify('hello world'), 'hello-world')
@@ -1404,19 +1404,19 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(_slugify('x'), 'x0')
 
     def test_compute_webhook_slug_with_service(self) -> None:
-        from imbi_api.endpoints.webhooks import _compute_webhook_slug
+        from imbi.api.endpoints.webhooks import _compute_webhook_slug
 
         result = _compute_webhook_slug('github', 'Push Events')
         self.assertEqual(result, 'github-push-events')
 
     def test_compute_webhook_slug_without_service(self) -> None:
-        from imbi_api.endpoints.webhooks import _compute_webhook_slug
+        from imbi.api.endpoints.webhooks import _compute_webhook_slug
 
         result = _compute_webhook_slug(None, 'Deploy Hook')
         self.assertEqual(result, 'deploy-hook')
 
     def test_generate_id_is_nanoid(self) -> None:
-        from imbi_api.endpoints.webhooks import _generate_id
+        from imbi.api.endpoints.webhooks import _generate_id
 
         generated = _generate_id()
         self.assertEqual(len(generated), 21)
@@ -1430,7 +1430,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for Project EXISTS_IN service endpoints."""
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -1480,7 +1480,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             self.service_record,
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1500,7 +1500,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
     def test_list_project_services_empty(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1516,7 +1516,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
 
         self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1534,7 +1534,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
             self.service_record,
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -1557,7 +1557,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
     def test_create_project_service_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -1617,11 +1617,11 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         merge = mock.AsyncMock(return_value=True)
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.webhooks.merge_project_links',
+                'imbi.api.endpoints.webhooks.merge_project_links',
                 new=merge,
             ),
         ):
@@ -1650,11 +1650,11 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         merge = mock.AsyncMock(return_value=True)
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.webhooks.merge_project_links',
+                'imbi.api.endpoints.webhooks.merge_project_links',
                 new=merge,
             ),
         ):
@@ -1675,7 +1675,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
     def test_update_project_service_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.put(
@@ -1696,11 +1696,11 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [self.service_record]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.webhooks.lookup_project_links',
+                'imbi.api.endpoints.webhooks.lookup_project_links',
                 new=mock.AsyncMock(
                     return_value={'github': 'https://aweber.ghe.com/o/r'}
                 ),
@@ -1719,11 +1719,11 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [self.service_record]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.webhooks.merge_project_links',
+                'imbi.api.endpoints.webhooks.merge_project_links',
                 new=mock.AsyncMock(return_value=True),
             ) as merge_links,
         ):
@@ -1750,7 +1750,7 @@ class ProjectServicesEndpointsTestCase(support.SharedAppTestCase):
     def test_delete_clears_dashboard_link(self) -> None:
         self.mock_db.execute.return_value = [{'deleted': 1}]
         with mock.patch(
-            'imbi_api.endpoints.webhooks.merge_project_links',
+            'imbi.api.endpoints.webhooks.merge_project_links',
             new=mock.AsyncMock(return_value=True),
         ) as merge_links:
             response = self.client.delete(

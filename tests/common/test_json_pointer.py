@@ -3,7 +3,7 @@ import unittest
 import jsonpointer
 import pydantic
 
-from imbi_common import json_pointer
+from imbi.common import json_pointer
 
 JsonPointerAdapter = pydantic.TypeAdapter[json_pointer.JsonPointer](
     json_pointer.JsonPointer

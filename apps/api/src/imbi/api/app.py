@@ -3,12 +3,12 @@ import logging
 import fastapi
 from fastapi import responses
 from fastapi.middleware import cors
-from imbi_common import access_log, graph, lifespan, sentry, valkey
-from imbi_common.plugins.errors import PluginCredentialsMissing
 from uvicorn.middleware import proxy_headers
 
-from imbi_api import endpoints, lifespans, openapi, settings, version
-from imbi_api.middleware import rate_limit
+from imbi.api import endpoints, lifespans, openapi, settings, version
+from imbi.api.middleware import rate_limit
+from imbi.common import access_log, graph, lifespan, sentry, valkey
+from imbi.common.plugins.errors import PluginCredentialsMissing
 
 LOGGER = logging.getLogger(__name__)
 

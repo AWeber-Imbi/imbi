@@ -6,8 +6,8 @@ import logging
 
 import pydantic
 
-from imbi_common import blueprints, graph, models
-from imbi_common.scoring.models import (
+from imbi.common import blueprints, graph, models
+from imbi.common.scoring.models import (
     AgePolicy,
     AnalysisResultPolicy,
     AttributePolicy,

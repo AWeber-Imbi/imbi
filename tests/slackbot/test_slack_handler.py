@@ -1,7 +1,7 @@
 from unittest import mock
 
-from imbi_slackbot import identity, inflight, settings, slack_handler
-from tests import helpers
+from imbi.slackbot import identity, inflight, settings, slack_handler
+from tests.slackbot import helpers
 
 
 class Resp(dict):

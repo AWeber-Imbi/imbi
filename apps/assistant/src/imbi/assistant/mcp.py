@@ -14,9 +14,9 @@ import typing
 
 import fastmcp
 import httpx
-from imbi_common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
 
-from imbi_assistant import settings
+from imbi.assistant import settings
+from imbi.common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
 
 LOGGER = logging.getLogger(__name__)
 

@@ -7,10 +7,10 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 PROJECT_ID = 'abc123nanoid'
 
@@ -20,7 +20,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -62,7 +62,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         # Tests that want to assert dispatch behaviour override this
         # patch locally (see the archive / unarchive cases).
         self._dispatch_patcher = mock.patch(
-            'imbi_api.endpoints.projects.dispatch_lifecycle',
+            'imbi.api.endpoints.projects.dispatch_lifecycle',
             new=mock.AsyncMock(return_value=[]),
         )
         self._dispatch_patcher.start()
@@ -73,7 +73,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         # provide three extra ``db.execute`` side-effects for the
         # lookups.
         self._bundle_patcher = mock.patch(
-            'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+            'imbi.api.endpoints.projects.build_lifecycle_context_bundle',
             new=mock.AsyncMock(
                 return_value=mock.MagicMock(
                     project_slug='my-api',
@@ -91,7 +91,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         # so CRUD tests don't need to seed the binding-resolution
         # ``db.execute`` side-effects. Dispatch tests override locally.
         self._resolve_patcher = mock.patch(
-            'imbi_api.endpoints.projects.resolve_all_capabilities',
+            'imbi.api.endpoints.projects.resolve_all_capabilities',
             new=mock.AsyncMock(return_value=[]),
         )
         self._resolve_patcher.start()
@@ -156,14 +156,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.nanoid.generate',
+                'imbi.api.endpoints.projects.nanoid.generate',
                 return_value=PROJECT_ID,
             ),
         ):
@@ -223,14 +223,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.nanoid.generate',
+                'imbi.api.endpoints.projects.nanoid.generate',
                 return_value=PROJECT_ID,
             ),
         ):
@@ -254,7 +254,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
     def test_create_validation_error(self) -> None:
         """Test creating project with missing required fields."""
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
         ) as mock_get_model:
             mock_get_model.return_value = models.Project
 
@@ -276,14 +276,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.nanoid.generate',
+                'imbi.api.endpoints.projects.nanoid.generate',
                 return_value=PROJECT_ID,
             ),
         ):
@@ -311,14 +311,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.nanoid.generate',
+                'imbi.api.endpoints.projects.nanoid.generate',
                 return_value=PROJECT_ID,
             ),
         ):
@@ -350,14 +350,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.nanoid.generate',
+                'imbi.api.endpoints.projects.nanoid.generate',
                 return_value=PROJECT_ID,
             ),
         ):
@@ -401,7 +401,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -457,7 +457,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -523,7 +523,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -551,7 +551,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -569,7 +569,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -612,10 +612,10 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -647,14 +647,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue.enqueue_dependents',
+                'imbi.api.endpoints.projects.score_queue.enqueue_dependents',
                 mock.AsyncMock(return_value=0),
             ) as enqueue_dependents,
         ):
@@ -675,7 +675,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.patch(
@@ -712,9 +712,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -756,9 +756,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -806,9 +806,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -839,9 +839,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -884,9 +884,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -918,9 +918,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -953,9 +953,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -992,10 +992,10 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_api.endpoints.projects.asyncio.sleep'),
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.api.endpoints.projects.asyncio.sleep'),
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -1022,11 +1022,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.asyncio.sleep'
+                'imbi.api.endpoints.projects.asyncio.sleep'
             ) as mock_sleep,
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             self.assertRaises(psycopg.errors.InternalError),
         ):
@@ -1050,9 +1050,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             self.assertRaises(psycopg.errors.InternalError),
         ):
@@ -1074,9 +1074,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             mock_get_model.return_value = models.Project
@@ -1098,7 +1098,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'deleted': 1}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -1131,15 +1131,15 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                'imbi.api.endpoints.projects.build_lifecycle_context_bundle',
                 new=mock.AsyncMock(side_effect=RuntimeError('boom')),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1169,11 +1169,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1218,11 +1218,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(side_effect=RuntimeError('boom')),
             ) as mock_dispatch,
         ):
@@ -1250,11 +1250,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1299,11 +1299,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(side_effect=RuntimeError('boom')),
             ) as mock_dispatch,
         ):
@@ -1320,7 +1320,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             self.client.get('/organizations/engineering/projects/')
@@ -1333,7 +1333,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             self.client.get(
@@ -1357,7 +1357,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1387,7 +1387,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1405,7 +1405,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
     def test_list_identifier_without_service_rejected(self) -> None:
         """``identifier`` is meaningless without a service slug."""
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1422,7 +1422,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -1458,7 +1458,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = [self._framework_blueprint()]
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             return self.client.get(
@@ -1548,18 +1548,18 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         # the duration of this test without double-stopping the cleanup.
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.nanoid.generate',
+                'imbi.api.endpoints.projects.nanoid.generate',
                 return_value=PROJECT_ID,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1609,14 +1609,14 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         # and addCleanup handles teardown of the outer patcher.
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1670,12 +1670,12 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
         self._dispatch_patcher.stop()
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1731,12 +1731,12 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
         self._dispatch_patcher.stop()
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1782,12 +1782,12 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         ]
         self._dispatch_patcher.stop()
         with (
-            mock.patch('imbi_common.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1819,15 +1819,15 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         # teardown of the outer patchers without a double-stop.
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
             mock.patch(
-                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                'imbi.api.endpoints.projects.build_lifecycle_context_bundle',
                 new=mock.AsyncMock(),
             ) as mock_bundle,
         ):
@@ -1850,7 +1850,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         resolve them first and hand the snapshot to ``dispatch_lifecycle``
         so no post-delete lookup happens.
         """
-        from imbi_api.plugins.resolution import ResolvedCapability
+        from imbi.api.plugins.resolution import ResolvedCapability
 
         resolved = ResolvedCapability(
             integration_id='p-a',
@@ -1881,15 +1881,15 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.resolve_all_capabilities',
+                'imbi.api.endpoints.projects.resolve_all_capabilities',
                 new=mock.AsyncMock(side_effect=_resolve),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.dispatch_lifecycle',
+                'imbi.api.endpoints.projects.dispatch_lifecycle',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_dispatch,
         ):
@@ -1915,9 +1915,8 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         for the current vs hypothetical type set, and asserts the
         preview rows carry the expected ``would_relocate`` flags.
         """
-        from imbi_common.plugins.base import RelocationTarget
-
-        from imbi_api.plugins.resolution import ResolvedCapability
+        from imbi.api.plugins.resolution import ResolvedCapability
+        from imbi.common.plugins.base import RelocationTarget
 
         self._bundle_patcher.stop()
         bundle_value = mock.MagicMock(
@@ -1970,11 +1969,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}]]
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                'imbi.api.endpoints.projects.build_lifecycle_context_bundle',
                 new=mock.AsyncMock(return_value=bundle_value),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.resolve_all_capabilities',
+                'imbi.api.endpoints.projects.resolve_all_capabilities',
                 new=mock.AsyncMock(return_value=[plugin_a, plugin_b]),
             ),
         ):
@@ -2003,7 +2002,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}]]
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                'imbi.api.endpoints.projects.build_lifecycle_context_bundle',
                 new=mock.AsyncMock(
                     return_value=mock.MagicMock(
                         project_slug='my-api',
@@ -2014,7 +2013,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.resolve_all_capabilities',
+                'imbi.api.endpoints.projects.resolve_all_capabilities',
                 new=mock.AsyncMock(return_value=[]),
             ),
         ):
@@ -2032,11 +2031,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [[]]
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.build_lifecycle_context_bundle',
+                'imbi.api.endpoints.projects.build_lifecycle_context_bundle',
                 new=mock.AsyncMock(),
             ) as mock_bundle,
             mock.patch(
-                'imbi_api.endpoints.projects.resolve_all_capabilities',
+                'imbi.api.endpoints.projects.resolve_all_capabilities',
                 new=mock.AsyncMock(return_value=[]),
             ) as mock_resolve,
         ):
@@ -2056,7 +2055,7 @@ class _RelationshipsTestBase(support.SharedAppTestCase):
     _permissions: typing.ClassVar[set[str]] = set()
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.test_user = models.User(
             email='user@example.com',
@@ -2116,7 +2115,7 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -2148,7 +2147,7 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -2180,7 +2179,7 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -2201,7 +2200,7 @@ class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -2244,11 +2243,11 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue'
+                'imbi.api.endpoints.projects.score_queue'
                 '.condition_policies_exist',
                 mock.AsyncMock(return_value=False),
             ),
@@ -2267,11 +2266,11 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue'
+                'imbi.api.endpoints.projects.score_queue'
                 '.condition_policies_exist',
                 mock.AsyncMock(return_value=False),
             ),
@@ -2292,7 +2291,7 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -2307,7 +2306,7 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(self._target_url('missing-target'))
@@ -2318,7 +2317,7 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
     def test_self_reference_rejected(self) -> None:
         """Returns 400 when source and target are the same project."""
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(self._target_url(PROJECT_ID))
@@ -2333,16 +2332,16 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue'
+                'imbi.api.endpoints.projects.score_queue'
                 '.condition_policies_exist',
                 mock.AsyncMock(return_value=True),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue.enqueue_recompute',
+                'imbi.api.endpoints.projects.score_queue.enqueue_recompute',
                 mock.AsyncMock(return_value=True),
             ) as enqueue,
         ):
@@ -2359,16 +2358,16 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue'
+                'imbi.api.endpoints.projects.score_queue'
                 '.condition_policies_exist',
                 mock.AsyncMock(return_value=False),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue.enqueue_recompute',
+                'imbi.api.endpoints.projects.score_queue.enqueue_recompute',
                 mock.AsyncMock(return_value=True),
             ) as enqueue,
         ):
@@ -2395,11 +2394,11 @@ class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue'
+                'imbi.api.endpoints.projects.score_queue'
                 '.condition_policies_exist',
                 mock.AsyncMock(return_value=False),
             ),
@@ -2417,16 +2416,16 @@ class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue'
+                'imbi.api.endpoints.projects.score_queue'
                 '.condition_policies_exist',
                 mock.AsyncMock(return_value=True),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue.enqueue_recompute',
+                'imbi.api.endpoints.projects.score_queue.enqueue_recompute',
                 mock.AsyncMock(return_value=True),
             ) as enqueue,
         ):
@@ -2443,16 +2442,16 @@ class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue'
+                'imbi.api.endpoints.projects.score_queue'
                 '.condition_policies_exist',
                 mock.AsyncMock(return_value=False),
             ),
             mock.patch(
-                'imbi_api.endpoints.projects.score_queue.enqueue_recompute',
+                'imbi.api.endpoints.projects.score_queue.enqueue_recompute',
                 mock.AsyncMock(return_value=True),
             ) as enqueue,
         ):
@@ -2466,7 +2465,7 @@ class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(self._target_url('target1'))
@@ -2479,10 +2478,10 @@ class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
     """Tests for the project-change events emitter."""
 
     async def test_no_changes_skips_clickhouse_insert(self) -> None:
-        from imbi_api.endpoints import projects
+        from imbi.api.endpoints import projects
 
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance'
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance'
         ) as mock_get:
             await projects._emit_change_events(
                 'p1', 'alice', {'name': 'A'}, {'name': 'A'}
@@ -2490,12 +2489,12 @@ class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_get.assert_not_called()
 
     async def test_emits_one_row_per_changed_field(self) -> None:
-        from imbi_api.endpoints import projects
+        from imbi.api.endpoints import projects
 
         mock_instance = mock.AsyncMock()
         mock_instance.insert = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=mock_instance,
         ):
             await projects._emit_change_events(
@@ -2514,12 +2513,12 @@ class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields, {'name', 'description'})
 
     async def test_skip_list_excludes_score_and_relationships(self) -> None:
-        from imbi_api.endpoints import projects
+        from imbi.api.endpoints import projects
 
         mock_instance = mock.AsyncMock()
         mock_instance.insert = mock.AsyncMock()
         with mock.patch(
-            'imbi_api.endpoints.projects.ch_client.Clickhouse.get_instance',
+            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
             return_value=mock_instance,
         ):
             await projects._emit_change_events(
@@ -2532,17 +2531,17 @@ class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_instance.insert.assert_not_awaited()
 
     async def test_clickhouse_failure_is_logged_not_raised(self) -> None:
-        from imbi_api.endpoints import projects
+        from imbi.api.endpoints import projects
 
         mock_instance = mock.AsyncMock()
         mock_instance.insert = mock.AsyncMock(side_effect=RuntimeError('boom'))
         with (
             mock.patch(
-                'imbi_api.endpoints.projects.ch_client.Clickhouse.'
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
                 'get_instance',
                 return_value=mock_instance,
             ),
-            self.assertLogs('imbi_api.endpoints.projects', level='ERROR'),
+            self.assertLogs('imbi.api.endpoints.projects', level='ERROR'),
         ):
             # Must not raise even when ClickHouse insert fails
             await projects._emit_change_events(

@@ -7,7 +7,8 @@ import typing
 from collections.abc import Awaitable
 
 import fastapi
-from imbi_common import graph
+
+from imbi.common import graph
 
 PLUGIN_TIMEOUT_SECONDS = float(
     os.environ.get('IMBI_PLUGIN_TIMEOUT_SECONDS', '10')

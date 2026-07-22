@@ -1,7 +1,7 @@
 import asyncio
 
-from imbi_slackbot import inflight
-from tests import helpers
+from imbi.slackbot import inflight
+from tests.slackbot import helpers
 
 
 class InflightTests(helpers.TestCase):

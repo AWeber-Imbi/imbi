@@ -12,7 +12,8 @@ import typing
 import urllib.parse
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     AuthorizationRequest,
     Capability,
     CredentialField,

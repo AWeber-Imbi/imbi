@@ -2,8 +2,8 @@ from unittest import mock
 
 import httpx
 
-from imbi_slackbot import links, settings
-from tests import helpers
+from imbi.slackbot import links, settings
+from tests.slackbot import helpers
 
 
 class FakeResponse:

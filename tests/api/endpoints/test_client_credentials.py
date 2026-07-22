@@ -4,11 +4,11 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from tests.api import support
 
 
 class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
@@ -75,10 +75,10 @@ class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -146,10 +146,10 @@ class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -192,10 +192,10 @@ class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -213,10 +213,10 @@ class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -251,10 +251,10 @@ class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -296,10 +296,10 @@ class ClientCredentialsEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):

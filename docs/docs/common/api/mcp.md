@@ -35,7 +35,7 @@ any consumer-specific maps) and the hook as `route_map_fn`:
 import fastmcp
 import httpx
 
-from imbi_common import mcp
+from imbi.common import mcp
 
 client = httpx.AsyncClient(base_url="http://localhost:8000")
 server = fastmcp.FastMCP.from_openapi(
@@ -65,8 +65,8 @@ before or after imbi-api ships the flag.
 
 ## API Reference
 
-::: imbi_common.mcp.AI_TOOL_EXTENSION
+::: imbi.common.mcp.AI_TOOL_EXTENSION
 
-::: imbi_common.mcp.EXCLUDED_ROUTE_MAPS
+::: imbi.common.mcp.EXCLUDED_ROUTE_MAPS
 
-::: imbi_common.mcp.exclude_non_ai_tools
+::: imbi.common.mcp.exclude_non_ai_tools

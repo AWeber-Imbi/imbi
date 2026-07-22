@@ -4,14 +4,14 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     AnalysisResultItem,
     PluginContext,
     ServiceConnection,
 )
-from imbi_common.plugins.errors import PluginRemediationNotSupported
-
-from imbi_plugin_pagerduty.doctor import (
+from imbi.common.plugins.errors import PluginRemediationNotSupported
+from imbi.plugins.pagerduty.doctor import (
     _RECONCILE_EDGE,
     _REPAIR_EDGE,
     PagerDutyDoctor,

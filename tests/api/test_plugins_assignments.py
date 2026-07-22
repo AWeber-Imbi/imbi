@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`imbi_api.plugins.assignments`."""
+"""Unit tests for :mod:`imbi.api.plugins.assignments`."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import unittest
 from unittest import mock
 
-from imbi_api.plugins import assignments
+from imbi.api.plugins import assignments
 
 
 def _run(coro):  # type: ignore[no-untyped-def]

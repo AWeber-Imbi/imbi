@@ -26,12 +26,12 @@ from fastmcp.server.auth.auth import (
 )
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.providers.openapi import MCPType, RouteMap
-from imbi_common.auth import core
-from imbi_common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
 from pydantic import AnyHttpUrl
 from starlette.responses import JSONResponse
 
-import imbi_mcp
+import imbi.mcp
+from imbi.common.auth import core
+from imbi.common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
 
 if typing.TYPE_CHECKING:
     from starlette.requests import Request
@@ -67,7 +67,7 @@ class ImbiTokenVerifier(TokenVerifier):
     """Validate Imbi bearer credentials at the MCP edge.
 
     JWT access tokens are verified locally with the shared Imbi HS256
-    secret (via ``imbi_common``). Opaque ``ik_`` API keys cannot be
+    secret (via ``imbi.common``). Opaque ``ik_`` API keys cannot be
     verified here -- only the API can -- so they are accepted and
     forwarded for the API to authorize (accept-and-forward). Anything
     else returns ``None``, which makes FastMCP answer ``401`` with a
@@ -149,7 +149,7 @@ def create_server(
         openapi_spec=spec,
         client=client,
         name='Imbi',
-        version=imbi_mcp.version,
+        version=imbi.mcp.version,
         auth=_build_auth(public_url, auth_server_url),
         route_maps=[
             *EXCLUDED_ROUTE_MAPS,
@@ -165,7 +165,7 @@ def create_server(
             {
                 'service': 'imbi-mcp',
                 'status': 'ok',
-                'version': imbi_mcp.version,
+                'version': imbi.mcp.version,
             }
         )
 

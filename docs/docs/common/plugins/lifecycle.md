@@ -36,7 +36,7 @@ the matching affordances (e.g. "Also delete the repository").
 | `on_project_relocated` | `relocated` | Move the remote to a new target; set `ctx.link_writeback`. For team-driven targets, `ctx.previous_team_slug` is the team before the move and `ctx.team_slug` the team after. |
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
@@ -92,7 +92,7 @@ capability has no relocate concept.
 ## Link write-back
 
 Hooks that create, rename, or relocate the remote set
-[`ctx.link_writeback`][imbi_common.plugins.LinkWriteback] so the host
+[`ctx.link_writeback`][imbi.common.plugins.LinkWriteback] so the host
 persists or self-heals the project's stored link. See
 [Plugin Context](index.md#plugin-context).
 
@@ -100,7 +100,7 @@ persists or self-heals the project's stored link. See
 
 Hooks that create, move, or tear down the project's relationship with the
 Integration the capability is bound to set
-[`ctx.service_writeback`][imbi_common.plugins.ServiceWriteback]. The host
+[`ctx.service_writeback`][imbi.common.plugins.ServiceWriteback]. The host
 persists it as the `(:Project)-[:EXISTS_IN]->(:Integration)` edge —
 storing the `identifier` and the canonical **API** URL — and merges any
 `dashboard_links` into `Project.links`. Set `remove=True` to delete the
@@ -114,10 +114,10 @@ leaves any existing edge secret untouched.
 
 The host owns the capability↔Integration binding: the writeback targets
 the Integration surfaced as
-[`ctx.integration_slug`][imbi_common.plugins.PluginContext], so it
+[`ctx.integration_slug`][imbi.common.plugins.PluginContext], so it
 carries no slug and a capability cannot write an edge to an arbitrary
 Integration. Read the current relationship from
-[`ctx.service_connections`][imbi_common.plugins.ServiceConnection].
+[`ctx.service_connections`][imbi.common.plugins.ServiceConnection].
 
 ## Hints
 
@@ -128,8 +128,8 @@ Integration. Read the current relationship from
 
 ## API reference
 
-::: imbi_common.plugins.LifecycleCapability
+::: imbi.common.plugins.LifecycleCapability
 
-::: imbi_common.plugins.LifecycleResult
+::: imbi.common.plugins.LifecycleResult
 
-::: imbi_common.plugins.RelocationTarget
+::: imbi.common.plugins.RelocationTarget

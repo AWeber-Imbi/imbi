@@ -5,9 +5,9 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import PluginContext
 
-from imbi_plugin_pagerduty.incidents import PagerDutyIncidents
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.pagerduty.incidents import PagerDutyIncidents
 
 _CREDS = {'api_key': 'k'}
 _LINKED = {

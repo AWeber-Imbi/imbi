@@ -20,7 +20,8 @@ from __future__ import annotations
 import time
 
 import httpx
-from imbi_common.plugins.errors import (
+
+from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginRateLimited,
 )

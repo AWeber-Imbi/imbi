@@ -3,7 +3,7 @@
 import json
 import unittest
 
-from imbi_common.clickhouse import privacy
+from imbi.common.clickhouse import privacy
 
 
 class HashIPAddressTestCase(unittest.TestCase):

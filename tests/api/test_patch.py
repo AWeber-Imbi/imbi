@@ -4,7 +4,7 @@ import unittest
 
 import fastapi
 
-from imbi_api import patch
+from imbi.api import patch
 
 
 class ApplyPatchTests(unittest.TestCase):

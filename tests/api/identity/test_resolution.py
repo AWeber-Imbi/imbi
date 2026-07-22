@@ -4,10 +4,9 @@ import datetime
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.errors import PluginNotFoundError
-
-from imbi_api.identity import errors as identity_errors
-from imbi_api.identity import resolution
+from imbi.api.identity import errors as identity_errors
+from imbi.api.identity import resolution
+from imbi.common.plugins.errors import PluginNotFoundError
 
 
 class IsActiveTestCase(unittest.TestCase):
@@ -177,8 +176,8 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         handler.materialize = mock.AsyncMock(return_value=materialized)
         handler_cls = mock.MagicMock(return_value=handler)
 
-        # Patch the lazy import target inside imbi_api.identity.flows.
-        from imbi_api.identity import flows
+        # Patch the lazy import target inside imbi.api.identity.flows.
+        from imbi.api.identity import flows
 
         with (
             mock.patch.object(resolution.repository, 'load_connection', load),
@@ -221,7 +220,7 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
         handler.materialize = mock.AsyncMock(return_value=materialized)
         handler_cls = mock.MagicMock(return_value=handler)
 
-        from imbi_api.identity import flows
+        from imbi.api.identity import flows
 
         with (
             mock.patch.object(
@@ -259,7 +258,7 @@ class HydrateIdentityTestCase(unittest.IsolatedAsyncioTestCase):
             datetime.UTC
         ) - datetime.timedelta(seconds=5)
 
-        from imbi_api.identity import flows
+        from imbi.api.identity import flows
 
         with (
             mock.patch.object(

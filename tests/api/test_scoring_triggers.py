@@ -8,9 +8,8 @@ from unittest import mock
 
 class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
     async def test_affected_projects_returns_ids(self) -> None:
-        from imbi_common.scoring import AttributePolicy
-
-        from imbi_api.scoring import queue
+        from imbi.api.scoring import queue
+        from imbi.common.scoring import AttributePolicy
 
         policy = AttributePolicy(
             name='Lang',
@@ -25,7 +24,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         fake_model = mock.MagicMock()
         fake_model.model_fields = {'programming_language': object()}
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(return_value=fake_model),
         ):
             db.execute = mock.AsyncMock(
@@ -35,9 +34,8 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ids, ['p1', 'p2'])
 
     async def test_affected_projects_empty_when_attr_missing(self) -> None:
-        from imbi_common.scoring import AttributePolicy
-
-        from imbi_api.scoring import queue
+        from imbi.api.scoring import queue
+        from imbi.common.scoring import AttributePolicy
 
         policy = AttributePolicy(
             name='Lang',
@@ -50,7 +48,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         fake_model = mock.MagicMock()
         fake_model.model_fields = {'name': object()}
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(return_value=fake_model),
         ):
             ids = await queue.affected_projects(db, policy)
@@ -60,9 +58,8 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         # deployment_status policies key off the deployment edge, not a
         # Project attribute, so affected_projects must not gate on a
         # blueprint attribute (and must not call get_model at all).
-        from imbi_common.scoring import DeploymentStatusPolicy
-
-        from imbi_api.scoring import queue
+        from imbi.api.scoring import queue
+        from imbi.common.scoring import DeploymentStatusPolicy
 
         policy = DeploymentStatusPolicy(
             name='Prod deploy health',
@@ -73,7 +70,7 @@ class AffectedProjectsTests(unittest.IsolatedAsyncioTestCase):
         db = mock.AsyncMock()
         db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}, {'id': 'p2'}])
         with mock.patch(
-            'imbi_api.scoring.queue.blueprints.get_model',
+            'imbi.api.scoring.queue.blueprints.get_model',
             mock.AsyncMock(side_effect=AssertionError('should not be called')),
         ):
             ids = await queue.affected_projects(db, policy)

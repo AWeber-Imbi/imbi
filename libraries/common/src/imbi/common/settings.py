@@ -8,7 +8,7 @@ import typing
 import pydantic
 import pydantic_settings
 
-from imbi_common.versioning import VersionFormat
+from imbi.common.versioning import VersionFormat
 
 LOGGER = logging.getLogger(__name__)
 
@@ -201,14 +201,25 @@ class Plugins(pydantic_settings.BaseSettings):
     import paths (``package.module:Attr``) for plugin packages that cannot
     follow the ``imbi_plugin_*`` naming convention. The env var accepts a
     comma-separated string; config files supply a list. The registry
-    unions it with the convention scan.
+    unions it with the first-party and convention scans.
+
+    ``imbi_plugins_disabled`` (env ``IMBI_PLUGINS_DISABLED``) is a list of
+    plugin slugs to skip at load time. First-party plugins ship with the
+    ``imbi`` distribution and auto-load whenever their optional
+    dependencies are installed; this setting turns individual plugins off
+    without uninstalling anything.
     """
 
     model_config = base_settings_config(env_prefix='')
 
     imbi_plugins: typing.Annotated[list[str], pydantic_settings.NoDecode] = []
+    imbi_plugins_disabled: typing.Annotated[
+        list[str], pydantic_settings.NoDecode
+    ] = []
 
-    @pydantic.field_validator('imbi_plugins', mode='before')
+    @pydantic.field_validator(
+        'imbi_plugins', 'imbi_plugins_disabled', mode='before'
+    )
     @classmethod
     def _split_paths(cls, value: object) -> object:
         if isinstance(value, str):

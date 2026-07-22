@@ -11,9 +11,9 @@ import logging
 from urllib import parse as urlparse
 
 import nanoid
-from imbi_common import graph
 
-from imbi_api import models
+from imbi.api import models
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

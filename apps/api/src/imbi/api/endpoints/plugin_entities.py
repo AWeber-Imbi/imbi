@@ -15,13 +15,13 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph
-from imbi_common.plugins.errors import PluginNotFoundError
-from imbi_common.plugins.registry import get_plugin
 
-from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.graph_sql import props_template, set_clause
+from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.graph_sql import props_template, set_clause
+from imbi.common import graph
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.registry import get_plugin
 
 LOGGER = logging.getLogger(__name__)
 

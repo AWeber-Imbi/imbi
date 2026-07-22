@@ -2,13 +2,13 @@
 
 import unittest
 
-from imbi_api import email
-from imbi_api.email.client import EmailClient
-from imbi_api.email.dependencies import (
+from imbi.api import email
+from imbi.api.email.client import EmailClient
+from imbi.api.email.dependencies import (
     InjectEmailClient,
     InjectTemplateManager,
 )
-from imbi_api.email.templates import TemplateManager
+from imbi.api.email.templates import TemplateManager
 
 
 class EmailModuleTestCase(unittest.TestCase):

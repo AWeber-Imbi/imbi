@@ -3,7 +3,7 @@
 import datetime
 import unittest
 
-from imbi_plugin_pagerduty.models import to_incident_view
+from imbi.plugins.pagerduty.models import to_incident_view
 
 
 class ToIncidentViewTestCase(unittest.TestCase):

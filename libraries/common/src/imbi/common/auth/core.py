@@ -6,7 +6,7 @@ import typing
 
 import jwt
 
-from imbi_common import settings
+from imbi.common import settings
 
 
 def _create_token(
@@ -68,7 +68,7 @@ def create_access_token(
         auth_settings = settings.get_auth_settings()
     return _create_token(
         subject,
-        token_type='access',  # noqa: S106 - claim label, not a secret
+        token_type='access',
         ttl_seconds=auth_settings.access_token_expire_seconds,
         extra_claims=extra_claims,
         auth_settings=auth_settings,
@@ -96,7 +96,7 @@ def create_refresh_token(
         auth_settings = settings.get_auth_settings()
     return _create_token(
         subject,
-        token_type='refresh',  # noqa: S106 - claim label, not a secret
+        token_type='refresh',
         ttl_seconds=auth_settings.refresh_token_expire_seconds,
         extra_claims=extra_claims,
         auth_settings=auth_settings,

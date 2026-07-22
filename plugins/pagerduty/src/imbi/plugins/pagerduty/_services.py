@@ -19,7 +19,8 @@ import typing
 import urllib.parse
 
 import httpx
-from imbi_common.plugins.base import PluginContext
+
+from imbi.common.plugins.base import PluginContext
 
 SERVICE_LINK_KEY = 'pagerduty-service'
 

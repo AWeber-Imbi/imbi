@@ -18,17 +18,17 @@ import time
 import typing
 
 import pydantic
-from imbi_common import graph
-from imbi_common.plugins import (
+
+from imbi.api import settings
+from imbi.api.plugins.assignments import (
+    capability_enabled,
+    hydrate_integration,
+)
+from imbi.common import graph
+from imbi.common.plugins import (
     PluginNotFoundError,
     decrypt_integration_credentials,
     get_plugin,
-)
-
-from imbi_api import settings
-from imbi_api.plugins.assignments import (
-    capability_enabled,
-    hydrate_integration,
 )
 
 LOGGER = logging.getLogger(__name__)

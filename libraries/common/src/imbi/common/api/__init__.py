@@ -5,7 +5,7 @@ methods used by services that integrate with the Imbi API (e.g.
 ``imbi-gateway``).
 """
 
-from imbi_common.api.client import Imbi
-from imbi_common.api.settings import Settings
+from imbi.common.api.client import Imbi
+from imbi.common.api.settings import Settings
 
 __all__ = ['Imbi', 'Settings']

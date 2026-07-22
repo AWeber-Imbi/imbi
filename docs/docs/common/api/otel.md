@@ -11,7 +11,7 @@ runs.
 
 ## Trace ID Response Middleware
 
-`imbi_common.otel.TraceIdResponseMiddleware` is an ASGI middleware
+`imbi.common.otel.TraceIdResponseMiddleware` is an ASGI middleware
 that adds the active trace ID to every HTTP response. Operators and
 frontend code can paste the value into the configured tracing backend
 (Tempo, Jaeger, Honeycomb, etc.) to jump straight to the request's
@@ -19,7 +19,7 @@ trace.
 
 ```python
 from fastapi import FastAPI
-from imbi_common.otel import TraceIdResponseMiddleware
+from imbi.common.otel import TraceIdResponseMiddleware
 
 app = FastAPI()
 app.add_middleware(TraceIdResponseMiddleware)
@@ -77,7 +77,7 @@ simple `trace-id` header.
 
 ## Trace ID Helper
 
-`imbi_common.otel.current_trace_id()` returns the active span's trace
+`imbi.common.otel.current_trace_id()` returns the active span's trace
 ID as a 32-character lowercase hexadecimal string, or `None` when no
 valid OpenTelemetry span is recording (or `opentelemetry-api` is not
 installed). Use it to correlate application logs, audit records, or
@@ -85,7 +85,7 @@ calls to external systems with a trace without depending directly on
 the OpenTelemetry API:
 
 ```python
-from imbi_common.otel import current_trace_id
+from imbi.common.otel import current_trace_id
 
 trace_id = current_trace_id()
 if trace_id is not None:
@@ -97,6 +97,6 @@ This is the same helper that `AccessLogMiddleware` and
 
 ## API Reference
 
-::: imbi_common.otel.TraceIdResponseMiddleware
+::: imbi.common.otel.TraceIdResponseMiddleware
 
-::: imbi_common.otel.current_trace_id
+::: imbi.common.otel.current_trace_id

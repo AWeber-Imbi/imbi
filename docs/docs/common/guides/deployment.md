@@ -1,6 +1,6 @@
 # Deployment Guide
 
-The `imbi_common.server` module provides a reusable function for starting a uvicorn server instance. This allows
+The `imbi.common.server` module provides a reusable function for starting a uvicorn server instance. This allows
 you to create a consistent server startup command across multiple Imbi ecosystem services without duplicating
 uvicorn configuration code.
 
@@ -35,11 +35,11 @@ Options:
 
 ### Basic Integration
 
-Add `imbi_common.server.serve` as a command to your own [Typer](https://typer.tiangolo.com/)-based CLI:
+Add `imbi.common.server.serve` as a command to your own [Typer](https://typer.tiangolo.com/)-based CLI:
 
 ```python
 import typer
-from imbi_common import server
+from imbi.common import server
 
 cli = typer.Typer()
 cli.command('serve')(server.serve)
@@ -60,7 +60,7 @@ If you want to hardcode the entrypoint so users don't need to specify it, use `s
 
 ```python
 import typer
-from imbi_common import server
+from imbi.common import server
 
 cli = typer.Typer()
 cli.command('serve')(

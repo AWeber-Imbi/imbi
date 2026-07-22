@@ -6,8 +6,8 @@ from unittest import mock
 import httpx
 import jwt
 
-from imbi_api import settings
-from imbi_api.auth import login_providers, models, oauth
+from imbi.api import settings
+from imbi.api.auth import login_providers, models, oauth
 
 
 def _stub_provider(
@@ -50,7 +50,7 @@ class _FakeEncryptor:
 
 def _patch_encryptor() -> typing.Any:
     return mock.patch(
-        'imbi_common.auth.encryption.TokenEncryption.get_instance',
+        'imbi.common.auth.encryption.TokenEncryption.get_instance',
         return_value=_FakeEncryptor(),
     )
 
@@ -359,13 +359,13 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
         """
         oauth._oidc_discovery_cache.clear()
         self._validate_patcher = mock.patch(
-            'imbi_api.auth.oauth._validate_external_url',
+            'imbi.api.auth.oauth._validate_external_url',
             new=mock.AsyncMock(return_value=None),
         )
         self._validate_mock = self._validate_patcher.start()
         self.addCleanup(self._validate_patcher.stop)
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_success(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -408,7 +408,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
         # this test rather than silently disabling the hook.
         self._validate_mock.assert_awaited()
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_cached(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -434,7 +434,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify no HTTP call was made
         mock_client_class.assert_not_called()
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_cache_expired(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -480,7 +480,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
             'https://expired.example.com/.well-known/openid-configuration'
         )
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_network_error(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -502,7 +502,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
             'discovery request failed', str(context.exception).lower()
         )
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_http_error(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -525,7 +525,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('discovery failed', str(context.exception).lower())
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_missing_token_endpoint(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -551,7 +551,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('token_endpoint', str(context.exception).lower())
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_missing_userinfo_endpoint(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -577,7 +577,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('userinfo_endpoint', str(context.exception).lower())
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_cache_is_bounded(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -644,7 +644,7 @@ class _DBProviderTestBase(unittest.IsolatedAsyncioTestCase):
         )
         self._patch.start()
         self._validate_patcher = mock.patch(
-            'imbi_api.auth.oauth._validate_external_url',
+            'imbi.api.auth.oauth._validate_external_url',
             new=mock.AsyncMock(return_value=None),
         )
         self._validate_mock = self._validate_patcher.start()
@@ -694,7 +694,7 @@ class OAuthProviderConfigTestCase(_DBProviderTestBase):
         self.assertEqual(client_id, 'github-client-id')
         self.assertEqual(client_secret, 'github-client-secret')
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_get_provider_config_oidc(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -770,7 +770,7 @@ class OAuthUserinfoUrlTestCase(_DBProviderTestBase):
         url = await oauth._get_userinfo_url('github', self.db)
         self.assertEqual(url, 'https://api.github.com/user')
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_get_userinfo_url_oidc(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -814,7 +814,7 @@ class OAuthTokenExchangeTestCase(_DBProviderTestBase):
             client_secret='test-client-secret',
         )
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_exchange_oauth_code_success(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -852,7 +852,7 @@ class OAuthProfileFetchTestCase(_DBProviderTestBase):
         super().setUp()
         self.seed('google')
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_fetch_oauth_profile_success(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -878,7 +878,7 @@ class OAuthProfileFetchTestCase(_DBProviderTestBase):
         self.assertEqual(profile['email'], 'user@example.com')
         self.assertEqual(profile['name'], 'Test User')
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_exchange_oauth_code_failure(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -911,7 +911,7 @@ class OAuthProfileFetchTestCase(_DBProviderTestBase):
                 'token exchange failed', str(context.exception).lower()
             )
 
-    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi.api.auth.oauth.httpx.AsyncClient')
     async def test_fetch_oauth_profile_failure(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -974,7 +974,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_rejects_loopback(self) -> None:
         with mock.patch(
-            'imbi_api.auth.oauth.socket.getaddrinfo',
+            'imbi.api.auth.oauth.socket.getaddrinfo',
             return_value=[
                 (0, 0, 0, '', ('127.0.0.1', 0)),
             ],
@@ -987,7 +987,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_rejects_link_local(self) -> None:
         with mock.patch(
-            'imbi_api.auth.oauth.socket.getaddrinfo',
+            'imbi.api.auth.oauth.socket.getaddrinfo',
             return_value=[
                 (0, 0, 0, '', ('169.254.169.254', 0)),
             ],
@@ -1001,7 +1001,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_rfc1918(self) -> None:
         for private_ip in ('10.0.0.1', '172.16.0.1', '192.168.1.1'):
             with mock.patch(
-                'imbi_api.auth.oauth.socket.getaddrinfo',
+                'imbi.api.auth.oauth.socket.getaddrinfo',
                 return_value=[
                     (0, 0, 0, '', (private_ip, 0)),
                 ],
@@ -1016,7 +1016,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_rejects_ipv6_loopback(self) -> None:
         with mock.patch(
-            'imbi_api.auth.oauth.socket.getaddrinfo',
+            'imbi.api.auth.oauth.socket.getaddrinfo',
             return_value=[
                 (0, 0, 0, '', ('::1', 0, 0, 0)),
             ],
@@ -1031,7 +1031,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
         import socket as _socket
 
         with mock.patch(
-            'imbi_api.auth.oauth.socket.getaddrinfo',
+            'imbi.api.auth.oauth.socket.getaddrinfo',
             side_effect=_socket.gaierror('no such host'),
         ):
             with self.assertRaises(ValueError) as ctx:
@@ -1042,7 +1042,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_allows_public_address(self) -> None:
         with mock.patch(
-            'imbi_api.auth.oauth.socket.getaddrinfo',
+            'imbi.api.auth.oauth.socket.getaddrinfo',
             return_value=[
                 (0, 0, 0, '', ('8.8.8.8', 0)),
             ],
@@ -1064,7 +1064,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_one_bad_ip_in_multi_result(self) -> None:
         """If any resolved IP is private, fail closed."""
         with mock.patch(
-            'imbi_api.auth.oauth.socket.getaddrinfo',
+            'imbi.api.auth.oauth.socket.getaddrinfo',
             return_value=[
                 (0, 0, 0, '', ('8.8.8.8', 0)),
                 (0, 0, 0, '', ('127.0.0.1', 0)),
@@ -1081,7 +1081,7 @@ class URLValidationTestCase(unittest.IsolatedAsyncioTestCase):
         for blocked_ip in ('224.0.0.1', '240.0.0.1', '0.0.0.0'):
             with self.subTest(blocked_ip=blocked_ip):
                 with mock.patch(
-                    'imbi_api.auth.oauth.socket.getaddrinfo',
+                    'imbi.api.auth.oauth.socket.getaddrinfo',
                     return_value=[(0, 0, 0, '', (blocked_ip, 0))],
                 ):
                     with self.assertRaises(ValueError) as ctx:

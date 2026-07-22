@@ -9,7 +9,7 @@ import httpx
 
 LOGGER = logging.getLogger(__name__)
 
-_VERSION = importlib.metadata.version('imbi-plugin-sonarqube')
+_VERSION = importlib.metadata.version('imbi')
 
 
 class SonarqubeClientError(Exception):

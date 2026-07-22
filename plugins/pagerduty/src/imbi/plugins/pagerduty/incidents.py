@@ -11,14 +11,13 @@ from __future__ import annotations
 import datetime
 import typing
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     IncidentResult,
     IncidentsCapability,
     PluginContext,
 )
-
-from imbi_plugin_pagerduty import _client, _services
-from imbi_plugin_pagerduty.models import to_incident_view
+from imbi.plugins.pagerduty import _client, _services
+from imbi.plugins.pagerduty.models import to_incident_view
 
 
 class PagerDutyIncidents(IncidentsCapability):

@@ -3,7 +3,7 @@ import typing
 
 import pydantic
 
-from imbi_common import graph, models
+from imbi.common import graph, models
 
 
 def _coerce_enum_case(
@@ -259,7 +259,7 @@ async def get_edge_model(
     Queries blueprints where ``kind='relationship'`` and
     ``source``/``target``/``edge`` match, filters by context,
     then dynamically builds a Pydantic model extending
-    :class:`~imbi_common.models.RelationshipEdge`.
+    :class:`~imbi.common.models.RelationshipEdge`.
 
     Parameters:
         source: Source node label (e.g. ``'Project'``).

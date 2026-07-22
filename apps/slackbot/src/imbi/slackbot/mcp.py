@@ -3,7 +3,7 @@
 Uses FastMCP to create an in-process MCP server from the API's
 OpenAPI specification, then exposes tools in Anthropic format for the
 bot's Claude integration. The set of exposed operations is governed by
-the shared :mod:`imbi_common.mcp` policy.
+the shared :mod:`imbi.common.mcp` policy.
 
 """
 
@@ -16,9 +16,9 @@ import typing
 
 import fastmcp
 import httpx
-from imbi_common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
 
-from imbi_slackbot import settings
+from imbi.common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
+from imbi.slackbot import settings
 
 LOGGER = logging.getLogger(__name__)
 

@@ -5,10 +5,10 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
@@ -16,7 +16,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -72,10 +72,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -107,10 +107,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -133,10 +133,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -156,7 +156,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_environment_validation_error(self) -> None:
         """Test creating environment with invalid data."""
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
         ) as mock_get_model:
             mock_get_model.return_value = models.Environment
 
@@ -177,10 +177,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -228,7 +228,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -264,7 +264,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -286,7 +286,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -298,7 +298,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_environment_name(self) -> None:
         """Test patching only the environment name."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing_env = {
             'name': 'Production',
@@ -327,10 +327,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             with mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Environment,
             ):
                 response = self.client.patch(
@@ -348,12 +348,12 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_environment_not_found(self) -> None:
         """Test patching non-existent environment returns 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             return_value=common_models.Environment,
         ):
             response = self.client.patch(
@@ -365,7 +365,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_can_promote_on_pre_migration_env(self) -> None:
         """Replace can_promote when node lacks the field (pre-migration)."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing_env = {
             'name': 'Production',
@@ -397,10 +397,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Environment,
             ),
         ):
@@ -416,7 +416,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_environment_slug_conflict(self) -> None:
         """Patch that renames slug to an existing one returns 409."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = {
             'name': 'Production',
@@ -435,10 +435,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Environment,
             ),
         ):
@@ -451,7 +451,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_environment_concurrent_delete(self) -> None:
         """Update returning no rows yields 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = {
             'name': 'Production',
@@ -470,10 +470,10 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Environment,
             ),
         ):
@@ -489,7 +489,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'e': True}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -503,7 +503,7 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(

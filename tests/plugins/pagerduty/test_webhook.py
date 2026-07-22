@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_plugin_pagerduty.webhook import PagerDutyWebhookActions
+from imbi.plugins.pagerduty.webhook import PagerDutyWebhookActions
 
 
 class WebhookActionsTestCase(unittest.TestCase):

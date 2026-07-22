@@ -2,9 +2,8 @@
 
 import unittest
 
-from imbi_common import models
-
-from imbi_api import blueprint_attributes
+from imbi.api import blueprint_attributes
+from imbi.common import models
 
 
 def _blueprint(

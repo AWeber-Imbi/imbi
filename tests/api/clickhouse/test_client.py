@@ -2,7 +2,8 @@ import unittest
 from unittest import mock
 
 from clickhouse_connect.driver import exceptions
-from imbi_common.clickhouse import client
+
+from imbi.common.clickhouse import client
 
 
 class SchemataQueryTestCase(unittest.TestCase):
@@ -200,7 +201,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             await ch.initialize()
 
         with mock.patch(
-            'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+            'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
         ):
             with self.assertRaises(client.DatabaseError):
                 await ch.insert('test_table', [['value1']], ['column1'])
@@ -308,7 +309,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             await ch.initialize()
 
         with mock.patch(
-            'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+            'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
         ):
             with self.assertRaises(client.DatabaseError):
                 await ch.query('SELECT 1')
@@ -483,7 +484,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_query.side_effect = client.DatabaseError('SQL error')
 
                 with mock.patch(
-                    'imbi_common.clickhouse.client.sentry_sdk', mock_sentry
+                    'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
                 ):
                     await ch._execute_schemata_queries()
 

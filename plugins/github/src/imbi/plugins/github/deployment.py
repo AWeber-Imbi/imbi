@@ -31,7 +31,8 @@ import typing
 import urllib.parse
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     CheckStatus,
     Commit,
     CompareResult,
@@ -46,10 +47,9 @@ from imbi_common.plugins.base import (
     RemoteDeployment,
     WorkflowFile,
 )
-from imbi_common.plugins.errors import PluginAuthenticationFailed
-
-from imbi_plugin_github._hosts import flavor_host, host_to_api_base
-from imbi_plugin_github._repos import (
+from imbi.common.plugins.errors import PluginAuthenticationFailed
+from imbi.plugins.github._hosts import flavor_host, host_to_api_base
+from imbi.plugins.github._repos import (
     derive_owner_repo_from_links,
     parse_owner_repo,
     resolve_owner_repo,
@@ -345,7 +345,7 @@ class GitHubDeployment(DeploymentCapability):
         )
 
     # Backwards-compatible aliases for the previously private helpers.
-    # The actual logic lives in :mod:`imbi_plugin_github._repos`; these
+    # The actual logic lives in :mod:`imbi.plugins.github._repos`; these
     # remain so existing tests that reach into the class continue to
     # work and so subclasses overriding the resolution path still have
     # a stable surface to hook into.
@@ -378,7 +378,7 @@ class GitHubDeployment(DeploymentCapability):
         """
         # Local import: ``_app_auth`` imports this module for its shared
         # HTTP helpers, so a top-level import here would be circular.
-        from imbi_plugin_github import _app_auth
+        from imbi.plugins.github import _app_auth
 
         owner, repo = self._owner_repo(ctx)
         return await _app_auth.resolve_bearer(
@@ -397,7 +397,7 @@ class GitHubDeployment(DeploymentCapability):
         ``raise_for_status``.  A response hook records that redirect; once
         the caller's request succeeds we resolve the repo's new
         ``full_name``/``html_url`` and stash a
-        :class:`~imbi_common.plugins.base.LinkWriteback` on ``ctx`` so the
+        :class:`~imbi.common.plugins.base.LinkWriteback` on ``ctx`` so the
         host can persist the project's updated stored link.  This is the
         single chokepoint for every deployment call.
         """

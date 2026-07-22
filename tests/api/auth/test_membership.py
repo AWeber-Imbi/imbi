@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from imbi_api.auth import membership
+from imbi.api.auth import membership
 
 
 def _agtype_passthrough(value):
@@ -24,7 +24,7 @@ class EnsureUserMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=_agtype_passthrough,
         ):
             result = await membership.ensure_user_membership(
@@ -54,7 +54,7 @@ class EnsureUserMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=_agtype_passthrough,
         ):
             result = await membership.ensure_user_membership(
@@ -71,7 +71,7 @@ class EnsureUserMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.side_effect = [[{'edges': 1}]]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=_agtype_passthrough,
         ):
             result = await membership.ensure_user_membership(
@@ -90,7 +90,7 @@ class EnsureUserMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=_agtype_passthrough,
         ):
             result = await membership.ensure_user_membership(
@@ -109,7 +109,7 @@ class EnsureUserMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=_agtype_passthrough,
         ):
             result = await membership.ensure_user_membership(
@@ -130,7 +130,7 @@ class EnsureUserMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=_agtype_passthrough,
         ):
             result = await membership.ensure_user_membership(
@@ -145,7 +145,7 @@ class EnsureUserMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.side_effect = [[]]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=_agtype_passthrough,
         ):
             result = await membership.ensure_user_membership(

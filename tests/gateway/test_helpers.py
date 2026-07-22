@@ -1,8 +1,8 @@
 import pydantic
 import pydantic_settings
 
-import imbi_gateway.helpers
-from tests import helpers
+import imbi.gateway.helpers
+from tests.gateway import helpers
 
 
 class SimpleSettings(pydantic_settings.BaseSettings):
@@ -39,7 +39,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             pass
 
         with self.assertRaises(TypeError) as ctx:
-            imbi_gateway.helpers.settings_from_environment(NotASettings)  # type: ignore[type-var]
+            imbi.gateway.helpers.settings_from_environment(NotASettings)  # type: ignore[type-var]
 
         self.assertIn('NotASettings', str(ctx.exception))
         self.assertIn('not a subclass of', str(ctx.exception))
@@ -50,7 +50,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
         with self.override_environment(
             DATABASE_URL='postgresql://localhost/test', PORT='8000'
         ):
-            settings = imbi_gateway.helpers.settings_from_environment(
+            settings = imbi.gateway.helpers.settings_from_environment(
                 SimpleSettings
             )
 
@@ -62,7 +62,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
         with self.override_environment(
             DATABASE_URL='postgresql://localhost/test', PORT=None
         ):
-            settings = imbi_gateway.helpers.settings_from_environment(
+            settings = imbi.gateway.helpers.settings_from_environment(
                 SimpleSettings
             )
 
@@ -74,7 +74,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
         with self.override_environment(
             DATABASE_URL='postgresql://localhost/test', PORT='8000'
         ):
-            settings = imbi_gateway.helpers.settings_from_environment(
+            settings = imbi.gateway.helpers.settings_from_environment(
                 SimpleSettings,
                 database_url='postgresql://override/db',
                 port=9000,
@@ -89,7 +89,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             self.override_environment(DATABASE_URL=None),
             self.assertRaises(pydantic_settings.SettingsError) as ctx,
         ):
-            imbi_gateway.helpers.settings_from_environment(SimpleSettings)
+            imbi.gateway.helpers.settings_from_environment(SimpleSettings)
 
         self.assertIn('Missing environment variable(s)', str(ctx.exception))
         self.assertIn('DATABASE_URL', str(ctx.exception))
@@ -102,7 +102,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             self.override_environment(DATABASE_URL=None, API_KEY=None),
             self.assertRaises(pydantic_settings.SettingsError) as ctx,
         ):
-            imbi_gateway.helpers.settings_from_environment(PrefixedSettings)
+            imbi.gateway.helpers.settings_from_environment(PrefixedSettings)
 
         error_message = str(ctx.exception)
         self.assertIn('Missing environment variable(s)', error_message)
@@ -115,7 +115,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             self.override_environment(APP_DATABASE_URL=None, APP_API_KEY=None),
             self.assertRaises(pydantic_settings.SettingsError) as ctx,
         ):
-            imbi_gateway.helpers.settings_from_environment(PrefixedSettings)
+            imbi.gateway.helpers.settings_from_environment(PrefixedSettings)
 
         error_message = str(ctx.exception)
         self.assertIn('APP_DATABASE_URL', error_message)
@@ -128,7 +128,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             self.override_environment(SVC_DATABASE=None),
             self.assertRaises(pydantic_settings.SettingsError) as ctx,
         ):
-            imbi_gateway.helpers.settings_from_environment(NestedSettings)
+            imbi.gateway.helpers.settings_from_environment(NestedSettings)
 
         error_message = str(ctx.exception)
         self.assertIn('Missing environment variable(s)', error_message)
@@ -141,7 +141,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             self.override_environment(PORT='invalid', TIMEOUT='2.5'),
             self.assertRaises(pydantic.ValidationError) as ctx,
         ):
-            imbi_gateway.helpers.settings_from_environment(ConstrainedSettings)
+            imbi.gateway.helpers.settings_from_environment(ConstrainedSettings)
 
         # Should be the original ValidationError, not SettingsError
         self.assertIsInstance(ctx.exception, pydantic.ValidationError)
@@ -160,7 +160,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             self.override_environment(PORT='99999', TIMEOUT='-1.0'),
             self.assertRaises(pydantic.ValidationError) as ctx,
         ):
-            imbi_gateway.helpers.settings_from_environment(ConstrainedSettings)
+            imbi.gateway.helpers.settings_from_environment(ConstrainedSettings)
 
         # Should contain constraint validation errors
         errors = ctx.exception.errors()
@@ -177,7 +177,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             APP_DATABASE_URL='postgresql://localhost/app',
             APP_API_KEY='secret-key-123',
         ):
-            settings = imbi_gateway.helpers.settings_from_environment(
+            settings = imbi.gateway.helpers.settings_from_environment(
                 PrefixedSettings
             )
 
@@ -190,7 +190,7 @@ class SettingsFromEnvironmentTests(helpers.TestCase):
             self.override_environment(DATABASE_URL=None),
             self.assertRaises(pydantic_settings.SettingsError) as ctx,
         ):
-            imbi_gateway.helpers.settings_from_environment(SimpleSettings)
+            imbi.gateway.helpers.settings_from_environment(SimpleSettings)
 
         # Verify that __cause__ is None (raised with 'from None')
         self.assertIsNone(ctx.exception.__cause__)

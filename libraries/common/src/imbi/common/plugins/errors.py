@@ -53,7 +53,7 @@ class PluginRateLimited(Exception):
 
 class PluginRemediationNotSupported(Exception):
     """Raised when a plugin is asked to remediate but does not implement
-    :meth:`~imbi_common.plugins.base.AnalysisPlugin.remediate`.
+    :meth:`~imbi.common.plugins.base.AnalysisPlugin.remediate`.
 
     The host should treat this as a client error (the finding offered no
     fix, or the plugin advertised one without implementing it).

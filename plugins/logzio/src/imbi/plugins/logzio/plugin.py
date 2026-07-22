@@ -8,7 +8,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from typing import Any, cast
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     Capability,
     CredentialField,
     LogEntry,
@@ -21,24 +21,23 @@ from imbi_common.plugins.base import (
     PluginManifest,
     PluginOption,
 )
-from imbi_common.plugins.errors import PluginCredentialsMissing
-
-from imbi_plugin_logzio.client import get_log_types, post_search
-from imbi_plugin_logzio.query import (
+from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.plugins.logzio.client import get_log_types, post_search
+from imbi.plugins.logzio.query import (
     build_histogram_body,
     build_query_body,
     compute_fp,
     decode_cursor,
     encode_cursor,
 )
-from imbi_plugin_logzio.schema import build_schema
+from imbi.plugins.logzio.schema import build_schema
 
 LOGGER = logging.getLogger(__name__)
 
 
 def _get_version() -> str:
     try:
-        return _pkg_version('imbi-plugin-logzio')
+        return _pkg_version('imbi')
     except PackageNotFoundError:
         return 'dev'
 

@@ -56,7 +56,7 @@ Shared library for the Imbi ecosystem providing core data access, authentication
 The library follows a clean architecture with clear separation of concerns:
 
 ```
-imbi_common/
+imbi.common/
 ├── settings.py      # Configuration management
 ├── models.py        # Domain models
 ├── graph/           # Apache AGE graph database client

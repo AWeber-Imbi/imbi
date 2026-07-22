@@ -17,7 +17,7 @@ import typing
 
 import pydantic
 
-from imbi_common.plugins.errors import PluginRemediationNotSupported
+from imbi.common.plugins.errors import PluginRemediationNotSupported
 
 
 class PluginOption(pydantic.BaseModel):
@@ -909,7 +909,7 @@ class RelocationTarget(pydantic.BaseModel):
 #: ``event`` (the event context).
 #:
 #: ``event`` mirrors the project-independent fields of the
-#: :class:`~imbi_common.models.Event` row the host records for the
+#: :class:`~imbi.common.models.Event` row the host records for the
 #: delivery, so an action reads the same data a ``WebhookRule`` filter
 #: matches on:
 #:

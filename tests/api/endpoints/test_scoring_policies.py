@@ -8,16 +8,16 @@ import typing
 from unittest import mock
 
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api import scoring as scoring_di
-from tests import support
+from imbi.api import models
+from imbi.api import scoring as scoring_di
+from imbi.common import graph
+from tests.api import support
 
 
 class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -81,7 +81,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
         )
         # affected_projects -> blueprints.get_model + execute
         with mock.patch(
-            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'imbi.api.endpoints.scoring_policies.score_queue.'
             'affected_projects',
             mock.AsyncMock(return_value=['p1', 'p2']),
         ):
@@ -124,7 +124,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
             ]
         )
         with mock.patch(
-            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'imbi.api.endpoints.scoring_policies.score_queue.'
             'affected_projects',
             mock.AsyncMock(return_value=['p1']),
         ):
@@ -184,7 +184,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
             ]
         )
         with mock.patch(
-            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'imbi.api.endpoints.scoring_policies.score_queue.'
             'affected_projects',
             mock.AsyncMock(return_value=['p1']),
         ):
@@ -279,7 +279,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
             ]
         )
         with mock.patch(
-            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'imbi.api.endpoints.scoring_policies.score_queue.'
             'affected_projects',
             mock.AsyncMock(return_value=['p1']),
         ):
@@ -298,7 +298,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
             ]
         )
         with mock.patch(
-            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'imbi.api.endpoints.scoring_policies.score_queue.'
             'affected_projects',
             mock.AsyncMock(return_value=['p1']),
         ):
@@ -329,12 +329,12 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring_policies.score_queue.'
+                'imbi.api.endpoints.scoring_policies.score_queue.'
                 'affected_projects',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.post(
@@ -358,7 +358,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
             ]
         )
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/scoring/policies/',
@@ -407,12 +407,12 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.scoring_policies.score_queue.'
+                'imbi.api.endpoints.scoring_policies.score_queue.'
                 'affected_projects',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
         ):
             response = self.client.patch(
@@ -435,7 +435,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
             ]
         )
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/scoring/policies/python-version',
@@ -461,7 +461,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
             ]
         )
         with mock.patch(
-            'imbi_api.endpoints.scoring_policies.score_queue.'
+            'imbi.api.endpoints.scoring_policies.score_queue.'
             'affected_projects',
             mock.AsyncMock(return_value=[]),
         ):
@@ -486,7 +486,7 @@ class ScoringPolicyEndpointsTestCase(support.SharedAppTestCase):
 
     def test_parse_node_handles_invalid_json(self) -> None:
         """Coverage for _parse_node exception path."""
-        from imbi_api.endpoints.scoring_policies import _parse_node
+        from imbi.api.endpoints.scoring_policies import _parse_node
 
         raw = {
             'id': 'x',

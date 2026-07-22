@@ -10,11 +10,11 @@ import httpx
 from fastmcp.server.providers.openapi import MCPType
 from fastmcp.utilities.openapi import HTTPRoute
 
-from imbi_common import mcp
+from imbi.common import mcp
 
 
 class ExcludeNonAiToolsTestCase(unittest.TestCase):
-    """Unit tests for :func:`imbi_common.mcp.exclude_non_ai_tools`."""
+    """Unit tests for :func:`imbi.common.mcp.exclude_non_ai_tools`."""
 
     def test_excludes_flagged_route(self) -> None:
         """A route flagged ``x-imbi-ai-tool: false`` is excluded."""
@@ -44,7 +44,7 @@ class ExcludeNonAiToolsTestCase(unittest.TestCase):
 
 
 class ExcludedRouteMapsTestCase(unittest.TestCase):
-    """Unit tests for :data:`imbi_common.mcp.EXCLUDED_ROUTE_MAPS`."""
+    """Unit tests for :data:`imbi.common.mcp.EXCLUDED_ROUTE_MAPS`."""
 
     def test_all_maps_exclude(self) -> None:
         """Every static map removes the matched route."""

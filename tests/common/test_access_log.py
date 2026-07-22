@@ -6,8 +6,8 @@ import unittest
 from collections import abc
 from unittest import mock
 
-from imbi_common import access_log, otel
-from imbi_common.auth import core
+from imbi.common import access_log, otel
+from imbi.common.auth import core
 
 
 class _RecordingApp:
@@ -69,7 +69,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     async def test_logs_normal_request(self) -> None:
         app = _RecordingApp(status=200)
         middleware = access_log.AccessLogMiddleware(app)
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(_http_scope(), _noop_receive, _noop_send)
         self.assertEqual(len(cm.records), 1)
         self.assertIn('"GET /foo HTTP/1.1" 200', cm.records[0].getMessage())
@@ -80,7 +80,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(
             app, quiet_paths={'/status'}
         )
-        logger = logging.getLogger('imbi_common.access')
+        logger = logging.getLogger('imbi.common.access')
         with self.assertNoLogs(logger=logger, level=logging.INFO):
             await middleware(
                 _http_scope(path='/status'), _noop_receive, _noop_send
@@ -91,7 +91,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(
             app, quiet_paths={'/status'}
         )
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(
                 _http_scope(path='/status'), _noop_receive, _noop_send
             )
@@ -103,7 +103,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(
             app, quiet_paths={'/status'}
         )
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(
                 _http_scope(path='/status'), _noop_receive, _noop_send
             )
@@ -113,7 +113,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     async def test_query_string_included(self) -> None:
         app = _RecordingApp(status=200)
         middleware = access_log.AccessLogMiddleware(app)
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(
                 _http_scope(path='/foo', query=b'a=1&b=2'),
                 _noop_receive,
@@ -126,7 +126,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         app = _RecordingApp()
         middleware = access_log.AccessLogMiddleware(app)
-        logger = logging.getLogger('imbi_common.access')
+        logger = logging.getLogger('imbi.common.access')
         scope = {'type': 'lifespan'}
         with self.assertNoLogs(logger=logger, level=logging.INFO):
             await middleware(scope, _noop_receive, _noop_send)
@@ -146,7 +146,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError('boom')
 
         middleware = access_log.AccessLogMiddleware(BoomApp())
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             with self.assertRaises(RuntimeError):
                 await middleware(_http_scope(), _noop_receive, _noop_send)
         self.assertIn('500', cm.records[0].getMessage())
@@ -158,7 +158,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
             quiet_paths={'/redirect'},
             quiet_status_codes=range(200, 400),
         )
-        logger = logging.getLogger('imbi_common.access')
+        logger = logging.getLogger('imbi.common.access')
         with self.assertNoLogs(logger=logger, level=logging.INFO):
             await middleware(
                 _http_scope(path='/redirect'),
@@ -193,7 +193,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(ContextApp())
         scope = _http_scope()
         scope['state'] = {}
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(scope, _noop_receive, _noop_send)
         self.assertIn(
             ' 200 (event_type:whatever selected:False)',
@@ -224,7 +224,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(ContextApp())
         scope = _http_scope()
         scope['state'] = {}
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(scope, _noop_receive, _noop_send)
         message = cm.records[0].getMessage()
         self.assertTrue(message.endswith('200'), message)
@@ -233,7 +233,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         """Pure-ASGI scopes without ``state`` should still log cleanly."""
         app = _RecordingApp(status=200)
         middleware = access_log.AccessLogMiddleware(app)
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(_http_scope(), _noop_receive, _noop_send)
         message = cm.records[0].getMessage()
         self.assertTrue(message.endswith('200'), message)
@@ -244,7 +244,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(app)
         scope = _http_scope()
         scope['state'] = 'unexpected'
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(scope, _noop_receive, _noop_send)
         message = cm.records[0].getMessage()
         self.assertTrue(message.endswith('200'), message)
@@ -255,7 +255,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(app)
         scope = _http_scope()
         scope['state'] = {'imbi_common_access_log': ['not', 'a', 'mapping']}
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(scope, _noop_receive, _noop_send)
         message = cm.records[0].getMessage()
         self.assertTrue(message.endswith('200'), message)
@@ -273,7 +273,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
                 'cr\rkey': 'value\r',
             }
         }
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(scope, _noop_receive, _noop_send)
         message = cm.records[0].getMessage()
         self.assertNotIn('\n', message)
@@ -287,7 +287,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(otel, 'current_trace_id') as get_id:
             get_id.return_value = 'cafebabedeadbeefcafebabedeadbeef'
             with self.assertLogs(
-                'imbi_common.access', level=logging.INFO
+                'imbi.common.access', level=logging.INFO
             ) as cm:
                 await middleware(_http_scope(), _noop_receive, _noop_send)
         self.assertIn(
@@ -324,7 +324,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(otel, 'current_trace_id') as get_id:
             get_id.return_value = 'cafebabedeadbeefcafebabedeadbeef'
             with self.assertLogs(
-                'imbi_common.access', level=logging.INFO
+                'imbi.common.access', level=logging.INFO
             ) as cm:
                 await middleware(scope, _noop_receive, _noop_send)
         self.assertIn(
@@ -339,7 +339,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(otel, 'current_trace_id') as get_id:
             get_id.return_value = None
             with self.assertLogs(
-                'imbi_common.access', level=logging.INFO
+                'imbi.common.access', level=logging.INFO
             ) as cm:
                 await middleware(_http_scope(), _noop_receive, _noop_send)
         message = cm.records[0].getMessage()
@@ -356,7 +356,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(otel, 'current_trace_id') as get_id:
             get_id.return_value = 'cafebabedeadbeefcafebabedeadbeef'
             with self.assertLogs(
-                'imbi_common.access', level=logging.INFO
+                'imbi.common.access', level=logging.INFO
             ) as cm:
                 await middleware(_http_scope(), _noop_receive, _noop_send)
         message = cm.records[0].getMessage()
@@ -365,7 +365,7 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_custom_logger(self) -> None:
         app = _RecordingApp(status=200)
-        custom = logging.getLogger('imbi_common.access.custom_test')
+        custom = logging.getLogger('imbi.common.access.custom_test')
         middleware = access_log.AccessLogMiddleware(app, logger=custom)
         with self.assertLogs(custom, level=logging.INFO) as cm:
             await middleware(_http_scope(), _noop_receive, _noop_send)
@@ -389,7 +389,7 @@ class PrincipalLoggingTests(unittest.IsolatedAsyncioTestCase):
         middleware = access_log.AccessLogMiddleware(
             app, include_principal=include_principal
         )
-        with self.assertLogs('imbi_common.access', level=logging.INFO) as cm:
+        with self.assertLogs('imbi.common.access', level=logging.INFO) as cm:
             await middleware(
                 _http_scope(headers=headers), _noop_receive, _noop_send
             )

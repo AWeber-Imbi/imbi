@@ -4,7 +4,8 @@ import logging
 from typing import cast
 
 import httpx
-from imbi_common.plugins.errors import (
+
+from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,

@@ -4,11 +4,11 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
 
-from imbi_api.auth import permissions
-from imbi_api.domain import models
-from imbi_api.plugins.lifecycle_dispatch import dispatch_lifecycle
+from imbi.api.auth import permissions
+from imbi.api.domain import models
+from imbi.api.plugins.lifecycle_dispatch import dispatch_lifecycle
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

@@ -23,7 +23,7 @@ class TestCase(unittest.IsolatedAsyncioTestCase):
     @contextlib.contextmanager
     def override_environment(
         self, **overrides: str | int | None
-    ) -> abc.Generator[None, None, None]:
+    ) -> abc.Generator[None]:
         saved: dict[str, str | None] = {
             key: os.environ.get(key) for key in overrides
         }

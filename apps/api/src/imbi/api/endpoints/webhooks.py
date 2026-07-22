@@ -8,18 +8,18 @@ import typing
 import fastapi
 import nanoid
 import pydantic
-from imbi_common import graph
-from imbi_common.auth import encryption
 
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
-from imbi_api.domain import models
-from imbi_api.endpoints._helpers import (
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.api.domain import models
+from imbi.api.endpoints._helpers import (
     conflict_on_unique_violation,
     lookup_project_links,
     merge_project_links,
 )
-from imbi_api.graph_sql import props_template, set_clause
+from imbi.api.graph_sql import props_template, set_clause
+from imbi.common import graph
+from imbi.common.auth import encryption
 
 LOGGER = logging.getLogger(__name__)
 

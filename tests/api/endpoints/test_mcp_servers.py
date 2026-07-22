@@ -6,12 +6,12 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import permissions
-from imbi_api.mcp_test import ConnectionTestResult
-from tests import support
+from imbi.api import models
+from imbi.api.auth import permissions
+from imbi.api.mcp_test import ConnectionTestResult
+from imbi.common import graph
+from tests.api import support
 
 
 class MCPServerEndpointsTestCase(support.SharedAppTestCase):
@@ -88,11 +88,11 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'n': self._server_props()}]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+                'imbi.api.endpoints.mcp_servers.encrypt_config_value',
                 side_effect=lambda v: None if v is None else f'enc:{v}',
             ) as enc,
         ):
@@ -135,11 +135,11 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+                'imbi.api.endpoints.mcp_servers.encrypt_config_value',
                 side_effect=lambda v: v,
             ),
         ):
@@ -157,7 +157,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
     def test_create_static_missing_fields_returns_400(self) -> None:
         """auth_type 'static' without header/value is rejected."""
         with mock.patch(
-            'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+            'imbi.api.endpoints.mcp_servers.encrypt_config_value',
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.post(
@@ -176,7 +176,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
     def test_create_oauth_missing_fields_returns_400(self) -> None:
         """auth_type 'oauth_client_credentials' missing fields is rejected."""
         with mock.patch(
-            'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+            'imbi.api.endpoints.mcp_servers.encrypt_config_value',
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.post(
@@ -246,7 +246,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             {'n': self._server_props(name='Renamed')}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/mcp-servers/srv-1', json={'name': 'Renamed'}
@@ -264,10 +264,10 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+                'imbi.api.endpoints.mcp_servers.encrypt_config_value',
                 side_effect=lambda v: f'enc:{v}',
             ) as enc,
         ):
@@ -291,10 +291,10 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+                'imbi.api.endpoints.mcp_servers.encrypt_config_value',
                 side_effect=lambda v: None if v is None else f'enc:{v}',
             ) as enc,
         ):
@@ -317,10 +317,10 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+                'imbi.api.endpoints.mcp_servers.encrypt_config_value',
                 side_effect=lambda v: None if v is None else f'enc:{v}',
             ) as enc,
         ):
@@ -340,7 +340,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         """Switching auth_type without its required fields is rejected."""
         self.mock_db.match.return_value = [self._model()]
         with mock.patch(
-            'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+            'imbi.api.endpoints.mcp_servers.encrypt_config_value',
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.patch(
@@ -364,7 +364,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = [self._model()]
         self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/mcp-servers/srv-1', json={'slug': 'taken'}
@@ -403,10 +403,10 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.mcp_test.test_connection',
+                'imbi.api.endpoints.mcp_servers.mcp_test.test_connection',
                 new_callable=mock.AsyncMock,
                 return_value=result,
             ) as tested,
@@ -441,10 +441,10 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.mcp_test.test_connection',
+                'imbi.api.endpoints.mcp_servers.mcp_test.test_connection',
                 new_callable=mock.AsyncMock,
                 return_value=result,
             ),
@@ -475,11 +475,11 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
         )
         with (
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+                'imbi.api.endpoints.mcp_servers.encrypt_config_value',
                 side_effect=lambda v: None if v is None else f'enc:{v}',
             ),
             mock.patch(
-                'imbi_api.endpoints.mcp_servers.mcp_test.test_connection',
+                'imbi.api.endpoints.mcp_servers.mcp_test.test_connection',
                 new_callable=mock.AsyncMock,
                 return_value=result,
             ),
@@ -497,7 +497,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
     def test_test_config_invalid_returns_400(self) -> None:
         """An incomplete config (static, no secret) is rejected."""
         with mock.patch(
-            'imbi_api.endpoints.mcp_servers.encrypt_config_value',
+            'imbi.api.endpoints.mcp_servers.encrypt_config_value',
             side_effect=lambda v: None if v is None else f'enc:{v}',
         ):
             response = self.client.post(
@@ -518,7 +518,7 @@ class MCPServerEndpointsTestCase(support.SharedAppTestCase):
             {'n': self._server_props(status='degraded')}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/mcp-servers/srv-1/status',

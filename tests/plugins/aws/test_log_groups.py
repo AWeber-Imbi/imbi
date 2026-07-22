@@ -2,9 +2,8 @@
 
 import unittest
 
-from imbi_common.plugins.base import PluginContext
-
-from imbi_plugin_aws.log_groups import (
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.aws.log_groups import (
     Entry,
     compile_matcher,
     literal_prefix,

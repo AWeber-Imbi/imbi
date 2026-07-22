@@ -4,18 +4,18 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     IdentityCapability,
     IdentityCredentials,
     PluginContext,
 )
-from imbi_common.plugins.errors import PluginCredentialsMissing
-
-from imbi_plugin_aws.errors import (
+from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.plugins.aws.errors import (
     IamIcAuthorizationPending,
     IamIcDeviceFlowExpired,
 )
-from imbi_plugin_aws.identity import AWSIdentity
+from imbi.plugins.aws.identity import AWSIdentity
 
 
 def _ctx(

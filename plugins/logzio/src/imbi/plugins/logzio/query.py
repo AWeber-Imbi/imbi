@@ -6,9 +6,9 @@ import json
 from collections.abc import Mapping
 from typing import cast
 
-from imbi_common.plugins.base import LogFilter, LogQuery
-from imbi_common.plugins.errors import CursorExpiredError
-from imbi_common.plugins.templates import expand_template
+from imbi.common.plugins.base import LogFilter, LogQuery
+from imbi.common.plugins.errors import CursorExpiredError
+from imbi.common.plugins.templates import expand_template
 
 
 def _build_bool_clause(

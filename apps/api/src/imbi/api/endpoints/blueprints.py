@@ -6,14 +6,14 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph, models
 
-from imbi_api import openapi
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.scoring import OptionalValkeyClient
-from imbi_api.scoring import queue as score_queue
+from imbi.api import openapi
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.api.scoring import queue as score_queue
+from imbi.common import graph, models
 
 LOGGER = logging.getLogger(__name__)
 

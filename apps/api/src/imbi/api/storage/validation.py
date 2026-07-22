@@ -4,7 +4,7 @@ import logging
 
 import filetype  # pyright: ignore[reportMissingTypeStubs]
 
-from imbi_api import settings
+from imbi.api import settings
 
 LOGGER = logging.getLogger(__name__)
 

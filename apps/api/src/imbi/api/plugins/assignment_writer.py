@@ -11,9 +11,8 @@ from __future__ import annotations
 import json
 import typing
 
-from imbi_common import graph
-
-from imbi_api.graph_sql import escape_prop
+from imbi.api.graph_sql import escape_prop
+from imbi.common import graph
 
 _ROW_KEYS: tuple[str, ...] = (
     'integration_id',

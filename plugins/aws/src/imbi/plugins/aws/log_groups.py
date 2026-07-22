@@ -15,10 +15,9 @@ import fnmatch
 import re
 import typing
 
-from imbi_common.plugins.base import PluginContext
-from imbi_common.plugins.templates import expand_template
-
-from imbi_plugin_aws._helpers import template_vars
+from imbi.common.plugins.base import PluginContext
+from imbi.common.plugins.templates import expand_template
+from imbi.plugins.aws._helpers import template_vars
 
 # CloudWatch Logs Insights caps ``logGroupNames`` at 50 per query.
 LOG_GROUP_NAME_LIMIT = 50

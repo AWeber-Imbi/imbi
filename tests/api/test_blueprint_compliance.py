@@ -5,11 +5,10 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from imbi_common import graph
+from imbi.api import blueprint_compliance
+from imbi.common import graph
 
-from imbi_api import blueprint_compliance
-
-_MODULE = 'imbi_api.blueprint_compliance'
+_MODULE = 'imbi.api.blueprint_compliance'
 
 
 class RemediateBlueprintTestCase(unittest.IsolatedAsyncioTestCase):

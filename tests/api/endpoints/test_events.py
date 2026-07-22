@@ -8,12 +8,12 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models as api_models
-from imbi_api.auth import permissions as api_permissions
-from imbi_api.endpoints import events
-from tests import support
+from imbi.api import models as api_models
+from imbi.api.auth import permissions as api_permissions
+from imbi.api.endpoints import events
+from imbi.common import graph
+from tests.api import support
 
 
 def _row(
@@ -69,7 +69,7 @@ class _EventsTestBase(support.SharedAppTestCase):
         )
 
         self.query_patcher = mock.patch(
-            'imbi_common.clickhouse.query',
+            'imbi.common.clickhouse.query',
             new_callable=mock.AsyncMock,
         )
         self.mock_query = self.query_patcher.start()

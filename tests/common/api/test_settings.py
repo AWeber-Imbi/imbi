@@ -4,7 +4,7 @@ import unittest.mock
 
 import pydantic
 
-from imbi_common.api import settings
+from imbi.common.api import settings
 
 
 class SettingsTests(unittest.TestCase):

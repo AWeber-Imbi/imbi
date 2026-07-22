@@ -11,7 +11,7 @@ project fact or kicking a workflow) without a later manifest change.
 
 from __future__ import annotations
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     ActionDescriptor,
     WebhookActionsCapability,
 )

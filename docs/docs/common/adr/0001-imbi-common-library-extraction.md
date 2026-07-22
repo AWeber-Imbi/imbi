@@ -29,13 +29,13 @@ We need a shared library to provide core functionality for all Imbi services.
 
 ### 1. Create imbi-common Library
 
-Create a new Python package `imbi-common` with import path `imbi_common.*`
+Create a new Python package `imbi-common` with import path `imbi.common.*`
 as a simple package.
 
 **Rationale**:
 
 - Simple package structure is easier to maintain than namespace packages
-- Clear, unambiguous import path: `imbi_common`
+- Clear, unambiguous import path: `imbi.common`
 - PyPI package name `imbi-common` with underscore for imports follows Python
   conventions
 - No conflicts with existing `imbi` package (imbi-api)
@@ -44,18 +44,18 @@ as a simple package.
 
 #### Extract to imbi-common:
 
-- **Settings Module** (`imbi_common.settings`): All Pydantic settings
+- **Settings Module** (`imbi.common.settings`): All Pydantic settings
   classes and TOML loading
-- **Graph Client** (`imbi_common.graph`): Apache AGE/PostgreSQL client,
+- **Graph Client** (`imbi.common.graph`): Apache AGE/PostgreSQL client,
   CRUD abstractions, Cypher query generation
-- **ClickHouse Client** (`imbi_common.clickhouse`): Singleton client,
+- **ClickHouse Client** (`imbi.common.clickhouse`): Singleton client,
   privacy utilities, base schemas
-- **Core Models** (`imbi_common.models`): Domain models, auth models, all
+- **Core Models** (`imbi.common.models`): Domain models, auth models, all
   shared data structures
-- **Blueprint System** (`imbi_common.blueprints`): Dynamic schema extension
+- **Blueprint System** (`imbi.common.blueprints`): Dynamic schema extension
   system
-- **Auth Core** (`imbi_common.auth`): JWT primitives, token encryption
-- **Logging Module** (`imbi_common.logging`): Log configuration loading and
+- **Auth Core** (`imbi.common.auth`): JWT primitives, token encryption
+- **Logging Module** (`imbi.common.logging`): Log configuration loading and
   dictConfig application
 
 **Rationale**:
@@ -138,13 +138,13 @@ await clickhouse.setup_schema([service_schema_path])
 
 ### 6. Logging: dictConfig with Shared Configuration
 
-**Decision**: Create `imbi_common.logging` module with
+**Decision**: Create `imbi.common.logging` module with
 `configure_logging()` function.
 
 **Implementation**:
 
 ```python
-from imbi_common import logging
+from imbi.common import logging
 
 # Load bundled log-config.toml and apply with logging.config.dictConfig()
 logging.configure_logging(dev=True)

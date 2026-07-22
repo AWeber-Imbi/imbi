@@ -5,10 +5,10 @@ from unittest import mock
 
 import psycopg.errors
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class TeamEndpointsTestCase(support.SharedAppTestCase):
@@ -16,7 +16,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -85,10 +85,10 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -124,10 +124,10 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -150,10 +150,10 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -173,7 +173,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
     def test_create_team_validation_error(self) -> None:
         """Test creating team with invalid data."""
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
         ) as mock_get_model:
             mock_get_model.return_value = models.Team
 
@@ -196,10 +196,10 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -238,7 +238,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -279,7 +279,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -301,7 +301,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -316,7 +316,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'t': True}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -330,7 +330,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -342,7 +342,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_team_name(self) -> None:
         """Test patching only the team name."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         test_team_dict = {
             'name': 'Platform',
@@ -379,11 +379,11 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             with mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Team,
             ):
                 response = self.client.patch(
@@ -401,12 +401,12 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_team_not_found(self) -> None:
         """Test patching a non-existent team returns 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             return_value=common_models.Team,
         ):
             response = self.client.patch(
@@ -424,7 +424,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_team_readonly_field(self) -> None:
         """Test patching created_at returns 400."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         test_team_dict = {
             'name': 'Platform',
@@ -442,11 +442,11 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             with mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Team,
             ):
                 response = self.client.patch(
@@ -464,7 +464,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_team_slug_conflict(self) -> None:
         """Renaming team slug to a conflicting value returns 409."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = {
             'name': 'Backend',
@@ -483,10 +483,10 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Team,
             ),
         ):
@@ -499,7 +499,7 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
     def test_patch_team_concurrent_delete(self) -> None:
         """Update returning no rows yields 404."""
-        from imbi_common import models as common_models
+        from imbi.common import models as common_models
 
         existing = {
             'name': 'Backend',
@@ -517,10 +517,10 @@ class TeamEndpointsTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_common.blueprints.get_model',
+                'imbi.common.blueprints.get_model',
                 return_value=common_models.Team,
             ),
         ):
@@ -537,7 +537,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication."""
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -585,7 +585,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -612,7 +612,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -629,7 +629,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(
@@ -648,7 +648,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -676,7 +676,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -691,7 +691,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'m': True}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(
@@ -706,7 +706,7 @@ class TeamMembershipTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.delete(

@@ -4,7 +4,7 @@ import contextlib
 import logging
 import typing
 
-from imbi_common import clickhouse
+from imbi.common import clickhouse
 
 if typing.TYPE_CHECKING:
     from collections import abc

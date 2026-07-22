@@ -47,7 +47,8 @@ import logging
 import typing
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
@@ -55,11 +56,10 @@ from imbi_common.plugins.base import (
     RelocationTarget,
     ServiceWriteback,
 )
-from imbi_common.plugins.errors import PluginAuthenticationFailed
-from imbi_common.plugins.templates import expand_template
-
-from imbi_plugin_github._hosts import flavor_host, host_to_api_base
-from imbi_plugin_github._repos import (
+from imbi.common.plugins.errors import PluginAuthenticationFailed
+from imbi.common.plugins.templates import expand_template
+from imbi.plugins.github._hosts import flavor_host, host_to_api_base
+from imbi.plugins.github._repos import (
     derive_owner_repo_from_links,
     resolve_owner_repo,
 )

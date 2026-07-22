@@ -21,7 +21,7 @@ class TestCase(unittest.IsolatedAsyncioTestCase):
     @contextlib.contextmanager
     def override_environment(
         self, **overrides: str | int | None
-    ) -> 'abc.Iterator[None]':
+    ) -> abc.Iterator[None]:
         saved: dict[str, str | None] = {
             key: os.environ.get(key) for key in overrides
         }

@@ -1,10 +1,9 @@
 import datetime
 from unittest import mock
 
-from imbi_common.auth import core
-
-from imbi_slackbot import identity, settings
-from tests import helpers
+from imbi.common.auth import core
+from imbi.slackbot import identity, settings
+from tests.slackbot import helpers
 
 
 class FakeSlack:

@@ -11,7 +11,8 @@ import json
 import typing
 
 import pydantic
-from imbi_common import graph, models
+
+from imbi.common import graph, models
 
 __all__ = [
     'SECRET_FIELDS',

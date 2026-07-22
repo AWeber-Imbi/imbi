@@ -18,7 +18,7 @@ context, credential decryption, and error conventions shared by every
 plugin.
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     CommitSyncCapability,
     PluginContext,
 )
@@ -66,4 +66,4 @@ full-history sync would otherwise repeat the lookup for every commit.
 
 ## API reference
 
-::: imbi_common.plugins.CommitSyncCapability
+::: imbi.common.plugins.CommitSyncCapability

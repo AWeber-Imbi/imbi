@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_api.identity import errors
+from imbi.api.identity import errors
 
 
 class IdentityRequiredErrorTestCase(unittest.TestCase):

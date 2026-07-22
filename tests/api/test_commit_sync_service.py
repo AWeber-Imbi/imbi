@@ -6,9 +6,9 @@ import unittest
 from unittest import mock
 
 import fastapi
-from imbi_common.plugins.base import CommitSyncCapability
 
-from imbi_api.commit_sync import service
+from imbi.api.commit_sync import service
+from imbi.common.plugins.base import CommitSyncCapability
 
 
 class _FakeCommitSync(CommitSyncCapability):

@@ -12,14 +12,14 @@ import unittest.mock
 
 import httpx
 import respx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     LifecycleCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import PluginAuthenticationFailed
-
-from imbi_plugin_github.lifecycle import GitHubLifecycle
-from imbi_plugin_github.plugin import GitHubPlugin
+from imbi.common.plugins.errors import PluginAuthenticationFailed
+from imbi.plugins.github.lifecycle import GitHubLifecycle
+from imbi.plugins.github.plugin import GitHubPlugin
 
 
 def _connection(
@@ -250,7 +250,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
         plugin = GitHubLifecycle()
         with unittest.mock.patch(
-            'imbi_plugin_github.lifecycle.asyncio.sleep'
+            'imbi.plugins.github.lifecycle.asyncio.sleep'
         ) as sleep:
             result = await plugin.on_project_archived(
                 _ctx(options={'archive_target_org': 'octo-archive'}),
@@ -290,7 +290,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
         plugin = GitHubLifecycle()
         with unittest.mock.patch(
-            'imbi_plugin_github.lifecycle.asyncio.sleep'
+            'imbi.plugins.github.lifecycle.asyncio.sleep'
         ) as sleep:
             with self.assertRaises(httpx.HTTPStatusError):
                 await plugin.on_project_archived(
@@ -327,7 +327,7 @@ class ArchiveTestCase(unittest.IsolatedAsyncioTestCase):
 
         plugin = GitHubLifecycle()
         with unittest.mock.patch(
-            'imbi_plugin_github.lifecycle.asyncio.sleep'
+            'imbi.plugins.github.lifecycle.asyncio.sleep'
         ) as sleep:
             with self.assertRaises(httpx.HTTPStatusError):
                 await plugin.on_project_archived(

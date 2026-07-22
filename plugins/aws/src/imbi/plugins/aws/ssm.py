@@ -6,26 +6,25 @@ import asyncio
 import datetime
 import typing
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     ConfigKey,
     ConfigKeyWithValue,
     ConfigurationCapability,
     ConfigValue,
     PluginContext,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
 )
-from imbi_common.plugins.templates import expand_template
-
-from imbi_plugin_aws._helpers import (
+from imbi.common.plugins.templates import expand_template
+from imbi.plugins.aws._helpers import (
     capability_timeout,
     integration_region,
     template_vars,
 )
-from imbi_plugin_aws.aws_session import (
+from imbi.plugins.aws.aws_session import (
     AwsCredentials,
     call_aws_json,
     resolve_credentials,
@@ -82,7 +81,7 @@ def _strip_prefix(name: str, prefix: str) -> str:
 
 class SSMConfiguration(ConfigurationCapability):
     """The ``configuration`` capability of
-    :class:`~imbi_plugin_aws.plugin.AWSPlugin`, backed by SSM Parameter
+    :class:`~imbi.plugins.aws.plugin.AWSPlugin`, backed by SSM Parameter
     Store."""
 
     async def list_keys(

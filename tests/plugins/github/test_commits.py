@@ -11,20 +11,20 @@ import httpx
 import respx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from imbi_common.models import CommitRecord, TagRecord
-from imbi_common.plugins.base import PluginContext
-from imbi_common.plugins.errors import (
+
+from imbi.common.models import CommitRecord, TagRecord
+from imbi.common.plugins.base import PluginContext
+from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginRateLimited,
 )
-
-from imbi_plugin_github import _app_auth, commits, deployment
-from imbi_plugin_github.plugin import GitHubPlugin, GitHubWebhookActions
+from imbi.plugins.github import _app_auth, commits, deployment
+from imbi.plugins.github.plugin import GitHubPlugin, GitHubWebhookActions
 
 _ZERO = '0' * 40
 _CREDS = {'access_token': 'gho_test'}
-_INSERT = 'imbi_plugin_github.commits.clickhouse.insert'
-_QUERY = 'imbi_plugin_github.commits.clickhouse.query'
+_INSERT = 'imbi.plugins.github.commits.clickhouse.insert'
+_QUERY = 'imbi.plugins.github.commits.clickhouse.query'
 
 
 def _gen_pem() -> str:

@@ -8,17 +8,17 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import app, models
-from imbi_api.auth import local_auth, login_providers
-from imbi_api.domain import models as domain_models
+from imbi.api import app, models
+from imbi.api.auth import local_auth, login_providers
+from imbi.api.domain import models as domain_models
+from imbi.common import graph
 
 
 def _build_app(
     permissions_set: set[str],
 ) -> tuple[typing.Any, mock.AsyncMock]:
-    from imbi_api.auth import permissions
+    from imbi.api.auth import permissions
 
     test_app = app.create_app()
 

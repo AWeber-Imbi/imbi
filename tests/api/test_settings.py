@@ -3,7 +3,7 @@ import unittest
 
 import pydantic
 
-from imbi_api import settings
+from imbi.api import settings
 
 
 class PostgresSettingsTestCase(unittest.TestCase):
@@ -303,7 +303,7 @@ class BaseSettingsConfigTestCase(unittest.TestCase):
     def test_base_settings_config_defaults(self) -> None:
         """Test base_settings_config returns correct defaults."""
         config = typing.cast(
-            dict[str, typing.Any],
+            'dict[str, typing.Any]',
             settings.base_settings_config(),
         )
 
@@ -315,7 +315,7 @@ class BaseSettingsConfigTestCase(unittest.TestCase):
     def test_base_settings_config_with_prefix(self) -> None:
         """Test base_settings_config with additional kwargs."""
         config = typing.cast(
-            dict[str, typing.Any],
+            'dict[str, typing.Any]',
             settings.base_settings_config(env_prefix='TEST_'),
         )
 

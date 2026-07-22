@@ -20,11 +20,10 @@ import logging
 import typing
 from collections import abc
 
-from imbi_common import graph
-from imbi_common.plugins import PluginNotFoundError, get_plugin
-
-from imbi_api import models
-from imbi_api.identity import repository as identity_repository
+from imbi.api import models
+from imbi.api.identity import repository as identity_repository
+from imbi.common import graph
+from imbi.common.plugins import PluginNotFoundError, get_plugin
 
 LOGGER = logging.getLogger(__name__)
 

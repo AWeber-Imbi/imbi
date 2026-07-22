@@ -7,8 +7,9 @@ import fastapi
 import jwt
 import pydantic
 from fastapi import security
-from imbi_common import graph, settings
-from imbi_common.auth import core
+
+from imbi.common import graph, settings
+from imbi.common.auth import core
 
 LOGGER = logging.getLogger(__name__)
 

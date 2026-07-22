@@ -20,7 +20,7 @@ from urllib import parse as urlparse
 
 import fastapi
 
-from imbi_api import settings
+from imbi.api import settings
 
 
 def trusted_origins() -> set[str]:

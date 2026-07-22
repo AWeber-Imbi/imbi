@@ -3,8 +3,8 @@ from unittest import mock
 
 import typer.testing
 
-from imbi_mcp import app
-from tests import helpers
+from imbi.mcp import app
+from tests.mcp import helpers
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -38,7 +38,7 @@ class CLITests(helpers.TestCase):
         self.assertIn('--host', output)
         self.assertIn('--port', output)
 
-    @mock.patch('imbi_mcp.app.server.create_server')
+    @mock.patch('imbi.mcp.app.server.create_server')
     def test_serve_api_connection_error(self, mock_create: mock.Mock) -> None:
         mock_create.side_effect = ConnectionError('Connection refused')
         runner = typer.testing.CliRunner()

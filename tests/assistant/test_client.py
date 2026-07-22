@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest import mock
 
-from imbi_assistant import client, settings
+from imbi.assistant import client, settings
 
 
 class ClientInitializeTestCase(

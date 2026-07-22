@@ -13,11 +13,11 @@ import fastapi
 import jwt
 import pydantic
 from fastapi import security
-from imbi_common import access_log, graph
-from imbi_common.auth import core
 
-from imbi_api import models, settings
-from imbi_api.auth import password
+from imbi.api import models, settings
+from imbi.api.auth import password
+from imbi.common import access_log, graph
+from imbi.common.auth import core
 
 LOGGER = logging.getLogger(__name__)
 

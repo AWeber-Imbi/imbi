@@ -5,10 +5,9 @@ from typing import TYPE_CHECKING
 
 import fastapi
 import typer
-from imbi_common import graph, lifespan, sentry, server
 
-import imbi_assistant
-from imbi_assistant import (
+import imbi.assistant
+from imbi.assistant import (
     app_status,
     client,
     endpoints,
@@ -17,6 +16,7 @@ from imbi_assistant import (
     mcp,
     settings,
 )
+from imbi.common import graph, lifespan, sentry, server
 
 if TYPE_CHECKING:
     from collections import abc
@@ -74,7 +74,7 @@ async def _external_mcp_lifespan() -> abc.AsyncIterator[None]:
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         title='Imbi Assistant',
-        version=imbi_assistant.version,
+        version=imbi.assistant.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
             sentry.sentry_lifespan,
@@ -94,7 +94,7 @@ def create_app() -> fastapi.FastAPI:
 cli = typer.Typer(no_args_is_help=True)
 cli.command('serve')(
     server.bind_entrypoint(
-        'imbi_assistant.app:create_app',
+        'imbi.assistant.app:create_app',
         default_port=8002,
     )
 )

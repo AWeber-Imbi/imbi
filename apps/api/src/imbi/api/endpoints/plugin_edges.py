@@ -11,9 +11,10 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
-from imbi_common.plugins.base import PluginEdgeLabel
-from imbi_common.plugins.registry import list_plugins
+
+from imbi.common import graph
+from imbi.common.plugins.base import PluginEdgeLabel
+from imbi.common.plugins.registry import list_plugins
 
 LOGGER = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ rendered using Jinja2 templates with both HTML and plain text versions.
 import logging
 from urllib import parse
 
-from imbi_common import clickhouse, graph
+from imbi.common import clickhouse, graph
 
 from .client import EmailClient
 from .dependencies import InjectEmailClient, InjectTemplateManager

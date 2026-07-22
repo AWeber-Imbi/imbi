@@ -2,7 +2,7 @@
 
 Compares a project's current AGE node properties against every
 applicable Project blueprint's JSON Schema and emits an
-:class:`~imbi_common.plugins.base.AnalysisResultItem` for each
+:class:`~imbi.common.plugins.base.AnalysisResultItem` for each
 non-conformant property.
 
 This is a *built-in* check — no external plugin or credentials are
@@ -17,14 +17,13 @@ import logging
 import re
 import typing
 
-from imbi_common import graph, models
-from imbi_common.plugins.base import (
+from imbi.api.blueprint_attributes import project_blueprints
+from imbi.common import graph, models
+from imbi.common.plugins.base import (
     AnalysisResultItem,
     RemediationOffer,
     RemediationResult,
 )
-
-from imbi_api.blueprint_attributes import project_blueprints
 
 LOGGER = logging.getLogger(__name__)
 

@@ -11,14 +11,14 @@ import celpy
 import fastapi
 import jsonpointer
 import pydantic
-from imbi_common import clickhouse, graph, models
-from imbi_common.auth.encryption import TokenEncryption
-from imbi_common.plugins import base as plugin_base
-from imbi_common.plugins import registry as plugin_registry
-from imbi_common.plugins.credentials import decrypt_integration_credentials
-from imbi_common.plugins.errors import PluginNotFoundError
 
-from imbi_gateway import actions
+from imbi.common import clickhouse, graph, models
+from imbi.common.auth.encryption import TokenEncryption
+from imbi.common.plugins import base as plugin_base
+from imbi.common.plugins import registry as plugin_registry
+from imbi.common.plugins.credentials import decrypt_integration_credentials
+from imbi.common.plugins.errors import PluginNotFoundError
+from imbi.gateway import actions
 
 if typing.TYPE_CHECKING:
     from collections import abc
@@ -28,7 +28,7 @@ LOGGER = logging.getLogger(__name__)
 router = fastapi.APIRouter(prefix='/notifications')
 
 #: Capability kind that gates and supplies gateway-dispatched webhook
-#: actions on an :class:`imbi_common.models.Integration`.
+#: actions on an :class:`imbi.common.models.Integration`.
 _WEBHOOK_ACTIONS = 'webhook-actions'
 
 #: Headers that may carry credentials or webhook signatures. These are
@@ -148,7 +148,7 @@ class WebhookRule(pydantic.BaseModel):
 
         ``context`` is the activation built by
         :func:`_record_and_build_filter_context` -- the same shape the
-        activity-feed :class:`imbi_common.models.Event` row is
+        activity-feed :class:`imbi.common.models.Event` row is
         materialized into, so a rule filters on ``type``,
         ``integration``, ``attributed_to``, ``metadata.headers``, and
         ``payload`` (the webhook body).
@@ -1212,7 +1212,7 @@ async def _record_and_build_filter_context(  # noqa: PLR0913 - required event fi
     ClickHouse ``events`` rows recorded through ``recorder`` and the
     rule filter context never diverge. The returned activation mirrors
     the project-independent fields of the
-    :class:`imbi_common.models.Event` row, so a ``filter_expression``
+    :class:`imbi.common.models.Event` row, so a ``filter_expression``
     matches on exactly what the activity feed records:
 
     - ``type`` — resolved event type (e.g. the ``X-GitHub-Event`` value)

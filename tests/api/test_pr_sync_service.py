@@ -6,9 +6,9 @@ import unittest
 from unittest import mock
 
 import fastapi
-from imbi_common.plugins.base import PullRequestSyncCapability
 
-from imbi_api.pr_sync import service
+from imbi.api.pr_sync import service
+from imbi.common.plugins.base import PullRequestSyncCapability
 
 
 class _FakePRSync(PullRequestSyncCapability):

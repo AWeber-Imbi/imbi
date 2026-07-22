@@ -4,11 +4,11 @@ import datetime
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from tests.api import support
 
 
 class PluginManifestEndpointTestCase(support.SharedAppTestCase):
@@ -45,7 +45,7 @@ class PluginManifestEndpointTestCase(support.SharedAppTestCase):
         )
 
     def _entry(self) -> object:
-        from imbi_common.plugins.base import (
+        from imbi.common.plugins.base import (
             Capability,
             CredentialField,
             LogsCapability,
@@ -95,7 +95,7 @@ class PluginManifestEndpointTestCase(support.SharedAppTestCase):
     def test_returns_manifest(self) -> None:
         with (
             mock.patch(
-                'imbi_api.endpoints.plugins.get_plugin',
+                'imbi.api.endpoints.plugins.get_plugin',
                 return_value=self._entry(),
             ),
             testclient.TestClient(self.test_app) as client,
@@ -115,11 +115,11 @@ class PluginManifestEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(data['credentials'][0]['name'], 'api_token')
 
     def test_returns_404_for_unknown_slug(self) -> None:
-        from imbi_common.plugins.errors import PluginNotFoundError
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         with (
             mock.patch(
-                'imbi_api.endpoints.plugins.get_plugin',
+                'imbi.api.endpoints.plugins.get_plugin',
                 side_effect=PluginNotFoundError('no-such-plugin'),
             ),
             testclient.TestClient(self.test_app) as client,

@@ -9,12 +9,12 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models as api_models
-from imbi_api.auth import permissions as api_permissions
-from imbi_api.endpoints import user_activity
-from tests import support
+from imbi.api import models as api_models
+from imbi.api.auth import permissions as api_permissions
+from imbi.api.endpoints import user_activity
+from imbi.common import graph
+from tests.api import support
 
 
 def _make_auth(
@@ -55,14 +55,14 @@ class _Base(support.SharedAppTestCase):
         )
 
         self.query_patcher = mock.patch(
-            'imbi_common.clickhouse.query',
+            'imbi.common.clickhouse.query',
             new_callable=mock.AsyncMock,
         )
         self.mock_query = self.query_patcher.start()
         self.addCleanup(self.query_patcher.stop)
 
         self.parse_patcher = mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda v: v,
         )
         self.parse_patcher.start()
@@ -70,7 +70,7 @@ class _Base(support.SharedAppTestCase):
 
         # Also patch the alias imported by the module under test.
         self.parse_patcher_local = mock.patch(
-            'imbi_api.endpoints.user_activity.graph.parse_agtype',
+            'imbi.api.endpoints.user_activity.graph.parse_agtype',
             side_effect=lambda v: v,
         )
         self.parse_patcher_local.start()

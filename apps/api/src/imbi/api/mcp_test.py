@@ -1,4 +1,4 @@
-"""One-shot connection testing for :class:`~imbi_common.models.MCPServer`.
+"""One-shot connection testing for :class:`~imbi.common.models.MCPServer`.
 
 The admin UI needs to verify that a configured MCP server is reachable,
 authenticates correctly, and lists its tools. This module opens a single
@@ -6,7 +6,7 @@ streamable-HTTP MCP session, measures round-trip latency, and discovers
 the server's tools, then tears the session down.
 
 It deliberately mirrors the connect/auth logic in
-``imbi_assistant.external_mcp`` (which maintains long-lived connections for
+``imbi.assistant.external_mcp`` (which maintains long-lived connections for
 the running assistant) rather than importing it: the assistant is a
 separate service and is not a dependency of the API.
 """
@@ -21,10 +21,11 @@ import typing
 
 import httpx
 import mcp
-from imbi_common import models
-from imbi_common.auth.encryption import decrypt_config_value
 from mcp.client import streamable_http
 from mcp.shared._httpx_utils import create_mcp_http_client
+
+from imbi.common import models
+from imbi.common.auth.encryption import decrypt_config_value
 
 LOGGER = logging.getLogger(__name__)
 

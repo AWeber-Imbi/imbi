@@ -18,9 +18,8 @@ resolution. A capability is bound to a project through:
 import json
 import typing
 
-from imbi_common import graph
-
-from imbi_api.plugins import parse_options
+from imbi.api.plugins import parse_options
+from imbi.common import graph
 
 #: Enumerated capability kinds that participate in ``USES`` assignment.
 CapabilityKind = str
@@ -134,7 +133,7 @@ async def effective_bindings(
 
     Applies the default-all rule and filters to Integrations whose
     ``capabilities[kind].enabled`` is true. Registry / registration
-    filtering is left to :mod:`imbi_api.plugins.resolution`.
+    filtering is left to :mod:`imbi.api.plugins.resolution`.
 
     Raises:
         LookupError: the project does not exist.

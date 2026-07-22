@@ -1,8 +1,8 @@
 import unittest
 from unittest import mock
 
-from imbi_common import models
-from imbi_common.scoring import history
+from imbi.common import models
+from imbi.common.scoring import history
 
 
 def _project(score: float | None = None) -> models.Project:

@@ -1,4 +1,4 @@
-"""Tests for :mod:`imbi_api.plugins.lifecycle_dispatch`.
+"""Tests for :mod:`imbi.api.plugins.lifecycle_dispatch`.
 
 Covers fan-out happy path, NotImplementedError handling on unarchive,
 plugin exceptions surfacing as ``status='failed'``, and ClickHouse
@@ -11,7 +11,16 @@ import unittest
 import unittest.mock as mock
 
 import fastapi
-from imbi_common.plugins.base import (
+
+from imbi.api.plugins.lifecycle_dispatch import (
+    LifecycleContextBundle,
+    LifecycleEvent,
+    LifecycleInvocation,
+    build_lifecycle_context_bundle,
+    dispatch_lifecycle,
+)
+from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.common.plugins.base import (
     Capability,
     ConfigurationCapability,
     LifecycleCapability,
@@ -21,16 +30,7 @@ from imbi_common.plugins.base import (
     PluginManifest,
     ServiceWriteback,
 )
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api.plugins.lifecycle_dispatch import (
-    LifecycleContextBundle,
-    LifecycleEvent,
-    LifecycleInvocation,
-    build_lifecycle_context_bundle,
-    dispatch_lifecycle,
-)
-from imbi_api.plugins.resolution import ResolvedCapability
+from imbi.common.plugins.registry import RegistryEntry
 
 
 def _entry(slug: str, handler_cls: type[LifecycleCapability]) -> RegistryEntry:
@@ -139,35 +139,35 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         auth = _make_auth()
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=resolved_list),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
                 mock.AsyncMock(return_value=('p-slug', 't-slug')),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_links',
+                'imbi.api.endpoints._helpers.lookup_project_links',
                 mock.AsyncMock(return_value={}),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_type_slugs',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                'imbi.api.endpoints._helpers.lookup_project_exists_in',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
+                'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 'tok'}),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
+                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
                 'get_instance'
             ) as ch_get,
         ):
@@ -206,7 +206,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
 
         entry = _entry('gh', _Reloc)
         with mock.patch(
-            'imbi_api.endpoints._helpers.update_project_link',
+            'imbi.api.endpoints._helpers.update_project_link',
             new=mock.AsyncMock(return_value=True),
         ) as update_link:
             results, _ = self._run([_resolved(entry)])
@@ -237,11 +237,11 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         resolved = _resolved(entry, integration_slug='github-enterprise-cloud')
         with (
             mock.patch(
-                'imbi_api.endpoints._helpers._merge_exists_in',
+                'imbi.api.endpoints._helpers._merge_exists_in',
                 new=mock.AsyncMock(),
             ) as merge_edge,
             mock.patch(
-                'imbi_api.endpoints._helpers.merge_project_links',
+                'imbi.api.endpoints._helpers.merge_project_links',
                 new=mock.AsyncMock(return_value=True),
             ) as merge_links,
         ):
@@ -278,11 +278,11 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         resolved = _resolved(entry, integration_slug='github-enterprise-cloud')
         with (
             mock.patch(
-                'imbi_api.endpoints._helpers._delete_exists_in',
+                'imbi.api.endpoints._helpers._delete_exists_in',
                 new=mock.AsyncMock(),
             ) as delete_edge,
             mock.patch(
-                'imbi_api.endpoints._helpers.merge_project_links',
+                'imbi.api.endpoints._helpers.merge_project_links',
                 new=mock.AsyncMock(return_value=True),
             ) as merge_links,
         ):
@@ -356,35 +356,35 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         auth = _make_auth()
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=[_resolved(entry)]),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
                 mock.AsyncMock(return_value=('p', 't')),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_links',
+                'imbi.api.endpoints._helpers.lookup_project_links',
                 mock.AsyncMock(return_value={}),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_type_slugs',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                'imbi.api.endpoints._helpers.lookup_project_exists_in',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
+                'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
+                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
                 'get_instance'
             ) as ch_get,
         ):
@@ -454,35 +454,35 @@ class WidenedEventNotImplementedTestCase(unittest.TestCase):
         auth = _make_auth()
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=[resolved]),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
                 mock.AsyncMock(return_value=('p', 't')),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_links',
+                'imbi.api.endpoints._helpers.lookup_project_links',
                 mock.AsyncMock(return_value={}),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_type_slugs',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                'imbi.api.endpoints._helpers.lookup_project_exists_in',
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
+                'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
+                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
                 'get_instance'
             ) as ch_get,
         ):
@@ -551,35 +551,35 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
         exists_in_lookup = mock.AsyncMock(return_value=[])
         with (
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.resolve_all_capabilities',
+                'imbi.api.plugins.lifecycle_dispatch.resolve_all_capabilities',
                 mock.AsyncMock(return_value=[resolved]),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
                 slugs_lookup,
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_links',
+                'imbi.api.endpoints._helpers.lookup_project_links',
                 links_lookup,
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_type_slugs',
                 types_lookup,
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                'imbi.api.endpoints._helpers.lookup_project_exists_in',
                 exists_in_lookup,
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.call_with_identity_retry',
+                'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch._resolve_credentials',
+                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
             mock.patch(
-                'imbi_api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
+                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
                 'get_instance'
             ) as ch_get,
         ):
@@ -655,21 +655,21 @@ class BuildLifecycleContextBundleTestCase(unittest.TestCase):
         mock_db = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
                 mock.AsyncMock(return_value=('my-api', 'platform')),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_links',
+                'imbi.api.endpoints._helpers.lookup_project_links',
                 mock.AsyncMock(
                     return_value={'github-repository': 'https://gh/o/r'},
                 ),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_type_slugs',
+                'imbi.api.endpoints._helpers.lookup_project_type_slugs',
                 mock.AsyncMock(return_value=['api-service', 'consumer']),
             ),
             mock.patch(
-                'imbi_api.endpoints._helpers.lookup_project_exists_in',
+                'imbi.api.endpoints._helpers.lookup_project_exists_in',
                 mock.AsyncMock(return_value=[]),
             ),
         ):

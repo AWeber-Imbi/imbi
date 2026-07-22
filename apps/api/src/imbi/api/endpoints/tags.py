@@ -14,12 +14,12 @@ import fastapi
 import nanoid
 import pydantic
 import slugify
-from imbi_common import graph, models
 
-from imbi_api import patch as json_patch
-from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import conflict_on_unique_violation
-from imbi_api.relationships import RelationshipSpec, build_relationships
+from imbi.api import patch as json_patch
+from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import conflict_on_unique_violation
+from imbi.api.relationships import RelationshipSpec, build_relationships
+from imbi.common import graph, models
 
 LOGGER = logging.getLogger(__name__)
 

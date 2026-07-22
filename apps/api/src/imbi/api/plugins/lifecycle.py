@@ -3,14 +3,13 @@
 import logging
 import typing
 
-from imbi_common import graph
-from imbi_common.plugins.registry import (
+from imbi.api.plugins.schemas import audit_plugin_schemas
+from imbi.common import graph
+from imbi.common.plugins.registry import (
     list_plugins,
     load_plugins,
 )
-from imbi_common.plugins.schemas import apply_plugin_schemas
-
-from imbi_api.plugins.schemas import audit_plugin_schemas
+from imbi.common.plugins.schemas import apply_plugin_schemas
 
 LOGGER = logging.getLogger(__name__)
 

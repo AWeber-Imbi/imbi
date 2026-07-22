@@ -2,7 +2,7 @@
 
 Provides small, dependency-free validators for the version
 formats supported by Imbi releases.  The active format is a
-runtime setting (see ``imbi_common.settings.Releases``) so the
+runtime setting (see ``imbi.common.settings.Releases``) so the
 model carries a plain ``str`` and validation happens at the
 endpoint boundary where the setting is available.
 
@@ -129,7 +129,7 @@ def matches_tag_formats(
     """Return ``True`` when *tag* satisfies the configured tag formats.
 
     *patterns* is the resolved list of regular-expression patterns for
-    the project (see ``imbi_common.models.TagFormat``).  Each pattern is
+    the project (see ``imbi.common.models.TagFormat``).  Each pattern is
     matched against the whole *tag* with :func:`re.fullmatch`, so a
     pattern need not anchor itself with ``^``/``$``.
 

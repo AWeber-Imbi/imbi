@@ -11,7 +11,7 @@ from urllib import parse as urlparse
 
 import fastapi
 
-from imbi_api.endpoints import _request_urls
+from imbi.api.endpoints import _request_urls
 
 oauth_metadata_router = fastapi.APIRouter(tags=['Authentication'])
 
@@ -27,7 +27,7 @@ async def authorization_server_metadata(
 
     The issuer and endpoints name the (trusted) host the client reached,
     so discovery validates whether the deployment is fronted by one host
-    or several. See :mod:`imbi_api.endpoints._request_urls`.
+    or several. See :mod:`imbi.api.endpoints._request_urls`.
     """
     base = _request_urls.public_base_url_for_request(request)
     parsed = urlparse.urlparse(base)

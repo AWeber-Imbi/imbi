@@ -4,13 +4,13 @@ import unittest
 import unittest.mock
 
 import fastapi
-import imbi_common.blueprints
-import imbi_common.models
 import pydantic
-from imbi_common import graph
 
-from imbi_api import models as imbi_models
-from imbi_api import openapi
+import imbi.common.blueprints
+import imbi.common.models
+from imbi.api import models as imbi_models
+from imbi.api import openapi
+from imbi.common import graph
 
 
 def _reset_openapi_module_state() -> None:
@@ -41,7 +41,7 @@ class GenerateBlueprintModelsTestCase(
     ) -> None:
         """Test base models returned when no blueprints exist."""
         with unittest.mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
             mock_get_model.side_effect = lambda _db, m: m
@@ -74,17 +74,17 @@ class GenerateBlueprintModelsTestCase(
     ) -> None:
         """Test enhanced models include blueprint fields."""
         with unittest.mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
             enhanced_team = pydantic.create_model(
                 'Team',
-                __base__=imbi_common.models.Team,
+                __base__=imbi.common.models.Team,
                 custom_field=(str, 'default_value'),
             )
 
             def mock_side_effect(_db: graph.Graph, model_class: type) -> type:
-                if model_class is imbi_common.models.Team:
+                if model_class is imbi.common.models.Team:
                     return enhanced_team
                 return model_class
 
@@ -120,12 +120,12 @@ class GenerateBlueprintModelsTestCase(
     ) -> None:
         """Test errors are handled, falling back to base."""
         with unittest.mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
 
             def mock_side_effect(_db: graph.Graph, model_class: type) -> type:
-                if model_class is imbi_common.models.Team:
+                if model_class is imbi.common.models.Team:
                     raise ValueError('Test error')
                 return model_class
 
@@ -166,7 +166,7 @@ class RefreshBlueprintModelsTestCase(
     async def test_refresh_updates_cache(self) -> None:
         """Test that refresh updates the cached models."""
         with unittest.mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
             mock_get_model.side_effect = lambda _db, m: m
@@ -197,7 +197,7 @@ class RefreshBlueprintModelsTestCase(
         openapi._schema_cache = {'fake': 'schema'}
 
         with unittest.mock.patch(
-            'imbi_common.blueprints.get_model',
+            'imbi.common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
             mock_get_model.side_effect = lambda _db, m: m
@@ -223,20 +223,20 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
 
         enhanced_team = pydantic.create_model(
             'Team',
-            __base__=imbi_common.models.Team,
+            __base__=imbi.common.models.Team,
             custom_field=(str, 'default_value'),
         )
         openapi._blueprint_models = {
             'Team': enhanced_team,
-            'Project': imbi_common.models.Project,
+            'Project': imbi.common.models.Project,
         }
         openapi._response_models = {
-            'Team': imbi_common.blueprints.make_response_model(
+            'Team': imbi.common.blueprints.make_response_model(
                 enhanced_team,
             ),
             'Project': (
-                imbi_common.blueprints.make_response_model(
-                    imbi_common.models.Project,
+                imbi.common.blueprints.make_response_model(
+                    imbi.common.models.Project,
                 )
             ),
         }
@@ -348,11 +348,11 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         import fastapi
 
         openapi._blueprint_models = {
-            'Team': imbi_common.models.Team,
+            'Team': imbi.common.models.Team,
         }
         openapi._response_models = {
-            'Team': imbi_common.blueprints.make_response_model(
-                imbi_common.models.Team,
+            'Team': imbi.common.blueprints.make_response_model(
+                imbi.common.models.Team,
             ),
         }
 
@@ -498,8 +498,8 @@ class HoistDefsToComponentsTestCase(unittest.TestCase):
         self,
     ) -> None:
         """Test generated response schemas have $defs hoisted."""
-        resp_model = imbi_common.blueprints.make_response_model(
-            imbi_common.models.ProjectType,
+        resp_model = imbi.common.blueprints.make_response_model(
+            imbi.common.models.ProjectType,
         )
         schema = resp_model.model_json_schema(
             ref_template='#/components/schemas/{model}',

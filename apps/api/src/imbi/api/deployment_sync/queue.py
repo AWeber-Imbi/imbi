@@ -1,6 +1,6 @@
 """Deployment-resync queue (Valkey Streams).
 
-Mirrors :mod:`imbi_api.commit_sync.queue`: a single consumer group
+Mirrors :mod:`imbi.api.commit_sync.queue`: a single consumer group
 drains an ``imbi:deployment-sync`` stream, with a per-project debounce,
 stale-entry reclaim, and a dead-letter queue after repeated failures.
 Each job backfills recent remote deployments via
@@ -19,15 +19,15 @@ import time
 import typing
 from collections import abc
 
-from imbi_common import graph
-from imbi_common.plugins.errors import PluginRateLimited
 from valkey import asyncio as valkey
 
-from imbi_api.deployment_sync.service import (
+from imbi.api.deployment_sync.service import (
     DeploymentSyncUnavailable,
     run_resync,
     set_status,
 )
+from imbi.common import graph
+from imbi.common.plugins.errors import PluginRateLimited
 
 STREAM = 'imbi:deployment-sync'
 GROUP = 'deployment-sync-workers'

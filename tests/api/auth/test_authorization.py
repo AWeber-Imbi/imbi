@@ -5,12 +5,12 @@ import unittest
 from unittest import mock
 
 import fastapi
-from imbi_common import graph
-from imbi_common.auth import core
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from imbi.common.auth import core
+from tests.api import support
 
 
 class PermissionLoadingTestCase(unittest.IsolatedAsyncioTestCase):
@@ -24,7 +24,7 @@ class PermissionLoadingTestCase(unittest.IsolatedAsyncioTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             perms = await permissions.load_principal_permissions(
@@ -84,7 +84,7 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
         def execute_side_effect(query, params=None, columns=None):
             if 'TokenMetadata' in query:
                 return [{'revoked': False}]
-            elif 'MEMBER_OF' in query or 'GRANTS' in query:
+            if 'MEMBER_OF' in query or 'GRANTS' in query:
                 return [{'permissions': ['blueprint:read']}]
             return []
 
@@ -93,7 +93,7 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.match.return_value = [self.test_user]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             auth_context = await permissions.authenticate_jwt(
@@ -147,7 +147,7 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as ctx,
@@ -188,7 +188,7 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as ctx,
@@ -268,7 +268,7 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             self.assertRaises(fastapi.HTTPException) as ctx,
@@ -332,7 +332,7 @@ class ProtectedEndpointTestCase(support.SharedAppTestCase):
         def execute_side_effect(query, params=None, columns=None):
             if 'TokenMetadata' in query:
                 return [{'revoked': False}]
-            elif 'MEMBER_OF' in query or 'GRANTS' in query:
+            if 'MEMBER_OF' in query or 'GRANTS' in query:
                 return [{'permissions': ['blueprint:read']}]
             return []
 
@@ -344,9 +344,9 @@ class ProtectedEndpointTestCase(support.SharedAppTestCase):
         ]
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -382,7 +382,7 @@ class ProtectedEndpointTestCase(support.SharedAppTestCase):
         def execute_side_effect(query, params=None, columns=None):
             if 'TokenMetadata' in query:
                 return [{'revoked': False}]
-            elif 'MEMBER_OF' in query or 'GRANTS' in query:
+            if 'MEMBER_OF' in query or 'GRANTS' in query:
                 # No permissions
                 return [{'permissions': []}]
             return []
@@ -392,9 +392,9 @@ class ProtectedEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = [test_user]
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -418,7 +418,7 @@ class ResourcePermissionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.return_value = [{'allowed': True}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             has_access = await permissions.check_resource_permission(
@@ -437,7 +437,7 @@ class ResourcePermissionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_db.execute.return_value = [{'allowed': False}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             has_access = await permissions.check_resource_permission(
@@ -544,7 +544,7 @@ class ResourceAccessDependencyTestCase(
         check_fn = permissions.require_resource_access('blueprint', 'read')
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             result = await check_fn('test-slug', user_context, mock_db)

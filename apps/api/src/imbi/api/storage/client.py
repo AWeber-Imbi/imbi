@@ -10,7 +10,7 @@ from botocore import (  # pyright: ignore[reportMissingTypeStubs]
     exceptions as botocore_exceptions,
 )
 
-from imbi_api import settings
+from imbi.api import settings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class StorageClient:
     Uses aioboto3 for native async S3 operations. Supports both
     real AWS S3 and S3-compatible services like LocalStack.
 
-    Lifecycle is managed by :func:`imbi_api.lifespans.storage_hook`.
+    Lifecycle is managed by :func:`imbi.api.lifespans.storage_hook`.
 
     """
 

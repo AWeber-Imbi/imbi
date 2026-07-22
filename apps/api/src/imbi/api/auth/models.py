@@ -52,7 +52,7 @@ class OAuthStateData(pydantic.BaseModel):
 
     * ``intent`` discriminates ``'login'`` from ``'identity'``.  Login
       flows still create the local user; identity flows persist an
-      :class:`imbi_common.models.IdentityConnection` for the actor.
+      :class:`imbi.common.models.IdentityConnection` for the actor.
     * ``integration_id`` names the target Integration (or ``None`` for
       the legacy hardcoded login providers).
     * ``code_verifier`` carries the PKCE verifier through the redirect

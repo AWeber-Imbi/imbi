@@ -3,10 +3,9 @@
 import datetime
 import unittest
 
-from imbi_common.plugins.base import LogFilter
-from imbi_common.plugins.errors import CursorExpiredError
-
-from imbi_plugin_aws import query
+from imbi.common.plugins.base import LogFilter
+from imbi.common.plugins.errors import CursorExpiredError
+from imbi.plugins.aws import query
 
 
 class FilterClauseTestCase(unittest.TestCase):

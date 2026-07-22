@@ -3,16 +3,16 @@ import os
 
 import fastapi
 import typer
-from imbi_common import access_log, graph, lifespan, server, settings
-from imbi_common.plugins import registry as plugin_registry
 
-import imbi_gateway
-from imbi_gateway import app_status, lifespans, notifications
+import imbi.gateway
+from imbi.common import access_log, graph, lifespan, server, settings
+from imbi.common.plugins import registry as plugin_registry
+from imbi.gateway import app_status, lifespans, notifications
 
 #: The built-in gateway-actions plugin does not follow the
 #: ``imbi_plugin_*`` naming convention, so it is registered explicitly
 #: through the ``IMBI_PLUGINS`` setting rather than the convention scan.
-_BUILTIN_PLUGIN = 'imbi_gateway.plugin:GatewayActionsPlugin'
+_BUILTIN_PLUGIN = 'imbi.gateway.plugin:GatewayActionsPlugin'
 
 
 def _register_builtin_plugin() -> None:
@@ -32,7 +32,7 @@ def create_app() -> fastapi.FastAPI:
     _register_builtin_plugin()
     plugin_registry.load_plugins()
     app = fastapi.FastAPI(
-        version=imbi_gateway.version,
+        version=imbi.gateway.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
             graph.graph_lifespan, lifespans.clickhouse_hook
@@ -48,7 +48,7 @@ def create_app() -> fastapi.FastAPI:
 
 
 cli = typer.Typer(no_args_is_help=True)
-cli.command('serve')(server.bind_entrypoint('imbi_gateway.app:create_app'))
+cli.command('serve')(server.bind_entrypoint('imbi.gateway.app:create_app'))
 
 
 @cli.callback()

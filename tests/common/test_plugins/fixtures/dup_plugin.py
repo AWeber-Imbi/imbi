@@ -1,7 +1,7 @@
 """A second valid plugin that reuses the ``good`` slug (duplicate test)."""
 
-from imbi_common.plugins import base
-from tests.test_plugins.fixtures.good_plugin import FixtureConfiguration
+from imbi.common.plugins import base
+from tests.common.test_plugins.fixtures.good_plugin import FixtureConfiguration
 
 
 class DuplicatePlugin(base.Plugin):

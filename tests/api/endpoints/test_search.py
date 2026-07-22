@@ -6,13 +6,13 @@ import unittest
 from unittest import mock
 
 from fastapi.testclient import TestClient
-from imbi_common import graph
-from imbi_common.graph.client import SearchResult
 
-from imbi_api import models
-from imbi_api.auth import permissions
-from imbi_api.endpoints import search as search_endpoint
-from tests import support
+from imbi.api import models
+from imbi.api.auth import permissions
+from imbi.api.endpoints import search as search_endpoint
+from imbi.common import graph
+from imbi.common.graph.client import SearchResult
+from tests.api import support
 
 _ORG_SLUG = 'test-org'
 _BASE_URL = f'/organizations/{_ORG_SLUG}/search'
@@ -53,7 +53,7 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         # for just the org-enumeration queries. Enrichment has dedicated
         # coverage in EnrichResultsTestCase.
         enrich_patcher = mock.patch(
-            'imbi_api.endpoints.search._enrich_results',
+            'imbi.api.endpoints.search._enrich_results',
         )
         self.mock_enrich = enrich_patcher.start()
         self.addCleanup(enrich_patcher.stop)
@@ -485,7 +485,7 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         same node id (so the batch is full and a second fetch is triggered);
         batch 2 returns ``a`` again (deduped) plus ``b`` to reach the limit.
         """
-        from imbi_api.endpoints.search import _INITIAL_BATCH
+        from imbi.api.endpoints.search import _INITIAL_BATCH
 
         self._setup_org(node_ids=['a', 'b'])
         batch_one = [
@@ -526,7 +526,7 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         batch was not exhausted (len(raw) >= batch_size), the code re-enters
         the while condition check, which is now false, and exits cleanly.
         """
-        from imbi_api.endpoints.search import _INITIAL_BATCH
+        from imbi.api.endpoints.search import _INITIAL_BATCH
 
         self._setup_org(node_ids=['target'])
         # Return exactly _INITIAL_BATCH (50) rows; the first emits ``target``

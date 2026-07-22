@@ -1,5 +1,5 @@
-from imbi_slackbot import identity, settings, system_prompt
-from tests import helpers
+from imbi.slackbot import identity, settings, system_prompt
+from tests.slackbot import helpers
 
 
 class SystemPromptTests(helpers.TestCase):

@@ -22,7 +22,7 @@ context, credential decryption, and error conventions shared by every
 plugin.
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     AuthorizationRequest,
     IdentityCapability,
     IdentityCredentials,
@@ -74,9 +74,9 @@ class GitHubIdentity(IdentityCapability):
   device authorization) for a normalized `IdentityProfile` and the
   `IdentityCredentials` to store. While an out-of-band step is still
   pending, raise
-  [`IdentityAuthorizationPending`][imbi_common.plugins.IdentityAuthorizationPending];
+  [`IdentityAuthorizationPending`][imbi.common.plugins.IdentityAuthorizationPending];
   once the device code has expired, raise
-  [`IdentityAuthorizationExpired`][imbi_common.plugins.IdentityAuthorizationExpired].
+  [`IdentityAuthorizationExpired`][imbi.common.plugins.IdentityAuthorizationExpired].
 - **`refresh`** — exchange a stored refresh token for fresh
   `IdentityCredentials`.
 - **`revoke`** — optional best-effort revocation; the default is a no-op
@@ -103,12 +103,12 @@ The plugin manifest's `vertex_labels` typically declare an
 
 ## API reference
 
-::: imbi_common.plugins.IdentityCapability
+::: imbi.common.plugins.IdentityCapability
 
-::: imbi_common.plugins.IdentityProfile
+::: imbi.common.plugins.IdentityProfile
 
-::: imbi_common.plugins.IdentityCredentials
+::: imbi.common.plugins.IdentityCredentials
 
-::: imbi_common.plugins.AuthorizationRequest
+::: imbi.common.plugins.AuthorizationRequest
 
-::: imbi_common.plugins.PollingDescriptor
+::: imbi.common.plugins.PollingDescriptor

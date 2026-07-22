@@ -6,10 +6,9 @@ import time
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.errors import PluginRateLimited
-
-from imbi_api.commit_sync import queue
-from imbi_api.commit_sync.service import CommitSyncUnavailable
+from imbi.api.commit_sync import queue
+from imbi.api.commit_sync.service import CommitSyncUnavailable
+from imbi.common.plugins.errors import PluginRateLimited
 
 
 class EnqueueTests(unittest.IsolatedAsyncioTestCase):

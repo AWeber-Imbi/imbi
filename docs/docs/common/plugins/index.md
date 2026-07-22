@@ -35,30 +35,38 @@ A minimum plugin distribution contains:
    can discover it.
 
 ```python
-# imbi_plugin_github/__init__.py
-from imbi_plugin_github.plugin import GitHubPlugin
+# src/imbi/plugins/github/__init__.py
+from imbi.plugins.github.plugin import GitHubPlugin
 
 PLUGIN = GitHubPlugin
 ```
 
 ## Discovery
 
-`load_plugins()` finds plugins two ways, unions them, and dedupes by
+`load_plugins()` finds plugins three ways, unions them, and dedupes by
 slug:
 
-1. **Convention scan** — every installed top-level module named
+1. **First-party scan** — every subpackage of `imbi.plugins` (the
+   plugins shipped with the `imbi` distribution) is imported and its
+   module-level `PLUGIN` attribute (a `Plugin` subclass) is read.
+   Plugin code always ships; a plugin whose optional dependencies are
+   not installed (see the `imbi[plugin-*]` extras) is recorded as
+   *skipped*, not as an error. Individual plugins can be turned off by
+   slug with the `IMBI_PLUGINS_DISABLED` setting (comma-separated env
+   var or list).
+2. **Convention scan** — every installed top-level module named
    `imbi_plugin_*` is imported and its module-level `PLUGIN` attribute
-   (a `Plugin` subclass) is read.
-2. **Explicit registration** — the `IMBI_PLUGINS` setting (env var
+   (a `Plugin` subclass) is read. This is the packaging convention for
+   third-party plugins.
+3. **Explicit registration** — the `IMBI_PLUGINS` setting (env var
    `IMBI_PLUGINS`, a comma-separated list — or JSON list — of dotted
    import paths such as `mycorp.imbi.jira:JiraPlugin`) covers packages
    that cannot follow the naming convention. It is read via
-   `imbi_common.settings.Plugins().imbi_plugins`.
+   `imbi.common.settings.Plugins().imbi_plugins`.
 
-There is no `imbi.plugins` entry-point group any more: the only source of
-truth is the class hierarchy, and discovery is a mechanical scan.
-Editable installs and monorepo dev work without re-running metadata
-hooks.
+There is no entry-point group: the only source of truth is the class
+hierarchy, and discovery is a mechanical scan. Editable installs and
+monorepo dev work without re-running metadata hooks.
 
 ## The Manifest
 
@@ -68,7 +76,7 @@ enabled/configured per Integration. The host treats the manifest as
 immutable once registered.
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     Capability,
     CredentialField,
     Plugin,
@@ -76,7 +84,7 @@ from imbi_common.plugins import (
     PluginOption,
 )
 
-from imbi_plugin_github.capabilities import (
+from imbi.plugins.github.capabilities import (
     GitHubDeployment,
     GitHubIdentity,
     GitHubLifecycle,
@@ -207,23 +215,23 @@ class GitHubPlugin(Plugin):
   render operations-log entries tagged with the plugin's slug, keyed by
   the `action` value the host wrote into the entry.
 
-::: imbi_common.plugins.Plugin
+::: imbi.common.plugins.Plugin
 
-::: imbi_common.plugins.PluginManifest
+::: imbi.common.plugins.PluginManifest
 
-::: imbi_common.plugins.PluginOption
+::: imbi.common.plugins.PluginOption
 
-::: imbi_common.plugins.CredentialField
+::: imbi.common.plugins.CredentialField
 
-::: imbi_common.plugins.DataType
+::: imbi.common.plugins.DataType
 
-::: imbi_common.plugins.OpsLogTemplate
+::: imbi.common.plugins.OpsLogTemplate
 
-::: imbi_common.plugins.PluginVertexLabel
+::: imbi.common.plugins.PluginVertexLabel
 
-::: imbi_common.plugins.PluginEdgeLabel
+::: imbi.common.plugins.PluginEdgeLabel
 
-::: imbi_common.plugins.PluginIndex
+::: imbi.common.plugins.PluginIndex
 
 ## Capabilities
 
@@ -291,9 +299,9 @@ cache a capability's reads). The remaining keys are per-kind:
 An unknown hint key fails at manifest construction, so typos surface at
 load.
 
-::: imbi_common.plugins.Capability
+::: imbi.common.plugins.Capability
 
-::: imbi_common.plugins.CapabilityHandler
+::: imbi.common.plugins.CapabilityHandler
 
 ## Plugin Context
 
@@ -332,13 +340,13 @@ lookup, the imbi-api worker a direct graph query. It is a live callable
 rather than data, so it is excluded from serialization and is `None` on
 any deserialized context. Callers should cache results.
 
-::: imbi_common.plugins.PluginContext
+::: imbi.common.plugins.PluginContext
 
-::: imbi_common.plugins.LinkWriteback
+::: imbi.common.plugins.LinkWriteback
 
-::: imbi_common.plugins.ServiceWriteback
+::: imbi.common.plugins.ServiceWriteback
 
-::: imbi_common.plugins.ServiceConnection
+::: imbi.common.plugins.ServiceConnection
 
 ## Credentials
 
@@ -352,12 +360,12 @@ fallback ordering: every capability of an Integration receives the same
 decrypted blob (the `credentials` argument on every contract method).
 
 ```python
-from imbi_common.plugins import decrypt_integration_credentials
+from imbi.common.plugins import decrypt_integration_credentials
 
 credentials = decrypt_integration_credentials(integration)
 ```
 
-::: imbi_common.plugins.decrypt_integration_credentials
+::: imbi.common.plugins.decrypt_integration_credentials
 
 ## Search Templates
 
@@ -368,7 +376,7 @@ variables — `project_slug`, `org_slug`, `team_slug`, `environment`,
 anything else:
 
 ```python
-from imbi_common.plugins import expand_template
+from imbi.common.plugins import expand_template
 
 label_query = expand_template(
     template,  # e.g. '{app="${project_slug}", env="${environment}"}'
@@ -386,9 +394,9 @@ label_query = expand_template(
 Validate templates at assignment time with `validate_template` so
 configuration errors surface early instead of during a search.
 
-::: imbi_common.plugins.validate_template
+::: imbi.common.plugins.validate_template
 
-::: imbi_common.plugins.expand_template
+::: imbi.common.plugins.expand_template
 
 ## Registry and Loading
 
@@ -409,19 +417,19 @@ capability. `list_plugins()` returns every registered entry.
 `load_plugins()` / `reload_plugins()` return a `LoadResult`
 (`loaded`, `errors`, `skipped`).
 
-::: imbi_common.plugins.load_plugins
+::: imbi.common.plugins.load_plugins
 
-::: imbi_common.plugins.reload_plugins
+::: imbi.common.plugins.reload_plugins
 
-::: imbi_common.plugins.get_plugin
+::: imbi.common.plugins.get_plugin
 
-::: imbi_common.plugins.get_capability
+::: imbi.common.plugins.get_capability
 
-::: imbi_common.plugins.list_plugins
+::: imbi.common.plugins.list_plugins
 
-::: imbi_common.plugins.RegistryEntry
+::: imbi.common.plugins.RegistryEntry
 
-::: imbi_common.plugins.LoadResult
+::: imbi.common.plugins.LoadResult
 
 ## Plugin-declared Graph Schema
 
@@ -432,13 +440,13 @@ differently-shaped label (`validate_no_collisions`) and creates the
 declared vlabels and indexes idempotently on startup
 (`apply_plugin_schemas`).
 
-::: imbi_common.plugins.validate_no_collisions
+::: imbi.common.plugins.validate_no_collisions
 
-::: imbi_common.plugins.apply_plugin_schemas
+::: imbi.common.plugins.apply_plugin_schemas
 
 ## Errors
 
-Capabilities should raise exceptions from `imbi_common.plugins.errors`
+Capabilities should raise exceptions from `imbi.common.plugins.errors`
 when the failure mode maps onto one of them; otherwise let the host wrap
 the exception. The author-relevant ones:
 
@@ -458,27 +466,27 @@ the exception. The author-relevant ones:
 `PluginNotFoundError` is host-side (registry lookups) — capability code
 should not raise it.
 
-::: imbi_common.plugins.PluginCredentialsMissing
+::: imbi.common.plugins.PluginCredentialsMissing
 
-::: imbi_common.plugins.PluginAuthenticationFailed
+::: imbi.common.plugins.PluginAuthenticationFailed
 
-::: imbi_common.plugins.PluginRateLimited
+::: imbi.common.plugins.PluginRateLimited
 
-::: imbi_common.plugins.PluginTimeoutError
+::: imbi.common.plugins.PluginTimeoutError
 
-::: imbi_common.plugins.PluginUnavailableError
+::: imbi.common.plugins.PluginUnavailableError
 
-::: imbi_common.plugins.CursorExpiredError
+::: imbi.common.plugins.CursorExpiredError
 
-::: imbi_common.plugins.IdentityAuthorizationPending
+::: imbi.common.plugins.IdentityAuthorizationPending
 
-::: imbi_common.plugins.IdentityAuthorizationExpired
+::: imbi.common.plugins.IdentityAuthorizationExpired
 
-::: imbi_common.plugins.PluginRemediationNotSupported
+::: imbi.common.plugins.PluginRemediationNotSupported
 
-::: imbi_common.plugins.PluginSchemaCollisionError
+::: imbi.common.plugins.PluginSchemaCollisionError
 
-::: imbi_common.plugins.PluginNotFoundError
+::: imbi.common.plugins.PluginNotFoundError
 
 ## Lifecycle and State
 

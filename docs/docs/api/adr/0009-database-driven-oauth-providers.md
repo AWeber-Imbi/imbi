@@ -12,7 +12,7 @@ OAuth provider credentials (Google, GitHub, generic OIDC client IDs and secrets)
 
 1. **Operators can't manage providers from the admin UI.** Adding or rotating a credential requires a deploy, an env-var update, and a process restart. Imbi's admin surface already manages users, blueprints, webhooks, and service applications; OAuth providers should not be an exception.
 2. **One OIDC slot only.** A single `IMBI_AUTH_OAUTH_OIDC_*` block can't represent two tenant-specific OIDC IdPs (Okta plus Auth0, for example) because the env-var slot is singular.
-3. **Tokens for the same providers are already encrypted in the graph.** `OAuthIdentity` rows store per-user provider tokens via `imbi_common.auth.encryption.TokenEncryption` (Fernet, key in `IMBI_AUTH_ENCRYPTION_KEY`). The provider configuration sits awkwardly in env vars while the runtime state already lives in the graph with established encryption tooling.
+3. **Tokens for the same providers are already encrypted in the graph.** `OAuthIdentity` rows store per-user provider tokens via `imbi.common.auth.encryption.TokenEncryption` (Fernet, key in `IMBI_AUTH_ENCRYPTION_KEY`). The provider configuration sits awkwardly in env vars while the runtime state already lives in the graph with established encryption tooling.
 
 Imbi v2 is in alpha. There are no production deployments to migrate, so we do not need an env-var fallback path.
 
@@ -45,7 +45,7 @@ The existing `TokenEncryption` singleton (keyed by `IMBI_AUTH_ENCRYPTION_KEY`) e
 
 ### 3. Repository layer with a short in-memory cache
 
-A new `imbi_api.auth.providers` module exposes `list_providers`, `get_provider`, `upsert_provider`, `delete_provider`. A 30-second TTL cache keyed by slug keeps the graph off the OAuth hot path; writes invalidate the cache. If multi-replica deployments later need immediate propagation, the cache backend swaps to Valkey pub/sub.
+A new `imbi.api.auth.providers` module exposes `list_providers`, `get_provider`, `upsert_provider`, `delete_provider`. A 30-second TTL cache keyed by slug keeps the graph off the OAuth hot path; writes invalidate the cache. If multi-replica deployments later need immediate propagation, the cache backend swaps to Valkey pub/sub.
 
 ### 4. Admin endpoints gated by new permissions
 

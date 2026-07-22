@@ -3,7 +3,7 @@
 import logging as stdlib_logging
 import unittest
 
-from imbi_common import logging
+from imbi.common import logging
 
 
 class TestGetLogConfig(unittest.TestCase):

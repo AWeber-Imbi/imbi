@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 class VersionTests(unittest.TestCase):
     def _reimport(self) -> types.ModuleType:
-        sys.modules.pop('imbi_assistant', None)
-        return importlib.import_module('imbi_assistant')
+        sys.modules.pop('imbi.assistant', None)
+        return importlib.import_module('imbi.assistant')
 
     def test_version_is_string(self) -> None:
         mod = self._reimport()

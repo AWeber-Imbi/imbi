@@ -25,10 +25,34 @@ import fastapi
 import httpx
 import nanoid
 import pydantic
-from imbi_common import clickhouse, graph, versioning
-from imbi_common import models as common_models
-from imbi_common.plugins import decrypt_integration_credentials
-from imbi_common.plugins.base import (
+
+from imbi.api.auth import permissions
+from imbi.api.deployment_sync import queue as deployment_sync_queue
+from imbi.api.deployment_sync import service as deployment_sync_service
+from imbi.api.endpoints._helpers import (
+    lookup_project_links,
+    lookup_project_slugs,
+    lookup_project_type_slugs,
+    persist_link_writeback,
+)
+from imbi.api.endpoints.releases import (
+    AppendOutcome,
+    ReleaseEnvironmentEdgeResponse,
+    append_deployment_event,
+)
+from imbi.api.identity import attribution
+from imbi.api.identity.host_integration import (
+    attach_identity,
+    call_with_identity_retry,
+)
+from imbi.api.llm.dependencies import InjectAnthropicClient
+from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.common import clickhouse, graph, versioning
+from imbi.common import models as common_models
+from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins.base import (
     Commit,
     CompareResult,
     DeploymentCapability,
@@ -37,30 +61,6 @@ from imbi_common.plugins.base import (
     Ref,
     RemoteDeployment,
 )
-
-from imbi_api.auth import permissions
-from imbi_api.deployment_sync import queue as deployment_sync_queue
-from imbi_api.deployment_sync import service as deployment_sync_service
-from imbi_api.endpoints._helpers import (
-    lookup_project_links,
-    lookup_project_slugs,
-    lookup_project_type_slugs,
-    persist_link_writeback,
-)
-from imbi_api.endpoints.releases import (
-    AppendOutcome,
-    ReleaseEnvironmentEdgeResponse,
-    append_deployment_event,
-)
-from imbi_api.identity import attribution
-from imbi_api.identity.host_integration import (
-    attach_identity,
-    call_with_identity_retry,
-)
-from imbi_api.llm.dependencies import InjectAnthropicClient
-from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.resolution import ResolvedCapability, resolve_capability
-from imbi_api.scoring import OptionalValkeyClient
 
 LOGGER = logging.getLogger(__name__)
 
@@ -744,7 +744,7 @@ def _resync_release_identity(
     """Pick ``(tag, committish)`` to record for an observed deployment.
 
     Mirrors the CEL expression the gateway uses on
-    ``imbi_gateway.actions.create_release``: semver-shaped ``ref``
+    ``imbi.gateway.actions.create_release``: semver-shaped ``ref``
     becomes the tag; the committish is always the first 7 chars of
     the commit SHA. Keeping the rules aligned means a project whose
     webhooks recover later produces the same ``(tag, committish)``
@@ -2109,7 +2109,7 @@ _SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
 @functools.cache
 def _release_notes_system() -> str:
     return (
-        importlib.resources.files('imbi_api.prompts')
+        importlib.resources.files('imbi.api.prompts')
         .joinpath('release_notes_system.md')
         .read_text(encoding='utf-8')
     )

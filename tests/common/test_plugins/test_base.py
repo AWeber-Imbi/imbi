@@ -1,12 +1,12 @@
-"""Tests for imbi_common.plugins.base (Plugin Architecture v3)."""
+"""Tests for imbi.common.plugins.base (Plugin Architecture v3)."""
 
 import datetime
 import unittest
 
 import pydantic
 
-import imbi_common.plugins.base as plugin_base
-from imbi_common.plugins.base import (
+import imbi.common.plugins.base as plugin_base
+from imbi.common.plugins.base import (
     CAPABILITY_CONTRACTS,
     CAPABILITY_SURFACES,
     HINT_ALLOWLIST,
@@ -57,7 +57,7 @@ from imbi_common.plugins.base import (
     WebhookActionsCapability,
     WorkflowFile,
 )
-from imbi_common.plugins.errors import PluginRemediationNotSupported
+from imbi.common.plugins.errors import PluginRemediationNotSupported
 
 # ---------------------------------------------------------------------------
 # Minimal concrete handlers for building manifests

@@ -1,6 +1,6 @@
 """Global maintenance operations (admin Maintenance page)."""
 
-from imbi_api.maintenance.registry import (
+from imbi.api.maintenance.registry import (
     OPERATIONS,
     MaintenanceSlug,
     OperationDefinition,

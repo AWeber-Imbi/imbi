@@ -5,22 +5,22 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
-from imbi_common.plugins import decrypt_integration_credentials
-from imbi_common.plugins.base import (
+
+from imbi.api.auth import permissions
+from imbi.api.endpoints._helpers import (
+    lookup_project_links,
+    lookup_project_slugs,
+)
+from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins.resolution import resolve_capability
+from imbi.common import graph
+from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins.base import (
     IncidentResult,
     IncidentsCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import CursorExpiredError
-
-from imbi_api.auth import permissions
-from imbi_api.endpoints._helpers import (
-    lookup_project_links,
-    lookup_project_slugs,
-)
-from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.resolution import resolve_capability
+from imbi.common.plugins.errors import CursorExpiredError
 
 LOGGER = logging.getLogger(__name__)
 

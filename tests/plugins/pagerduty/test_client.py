@@ -4,12 +4,12 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.errors import (
+
+from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginRateLimited,
 )
-
-from imbi_plugin_pagerduty import _client
+from imbi.plugins.pagerduty import _client
 
 _CREDS = {'api_key': 'pd-key'}
 

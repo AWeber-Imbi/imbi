@@ -2,7 +2,7 @@ import pathlib
 import tempfile
 import unittest
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     Capability,
     ConfigurationCapability,
     PluginEdgeLabel,
@@ -10,8 +10,8 @@ from imbi_common.plugins.base import (
     PluginManifest,
     PluginVertexLabel,
 )
-from imbi_common.plugins.errors import PluginSchemaCollisionError
-from imbi_common.plugins.schemas import validate_no_collisions
+from imbi.common.plugins.errors import PluginSchemaCollisionError
+from imbi.common.plugins.schemas import validate_no_collisions
 
 
 class _StubConfiguration(ConfigurationCapability):

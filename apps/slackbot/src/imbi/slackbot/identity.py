@@ -19,10 +19,9 @@ import datetime
 import logging
 import typing
 
-from imbi_common import graph
-from imbi_common.auth import core
-
-from imbi_slackbot import settings
+from imbi.common import graph
+from imbi.common.auth import core
+from imbi.slackbot import settings
 
 # slack_sdk's AsyncWebClient is only loosely typed (its responses are
 # AsyncSlackResponse with Unknown generics), so treat it as Any rather

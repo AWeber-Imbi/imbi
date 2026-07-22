@@ -5,7 +5,7 @@ This guide will help you get started with imbi-common in just a few minutes.
 ## Basic Setup
 
 ```python
-from imbi_common import logging, settings, graph, clickhouse
+from imbi.common import logging, settings, graph, clickhouse
 
 # 1. Configure logging (do this first)
 logging.configure_logging(dev=True)
@@ -22,7 +22,7 @@ but you can also use `Graph` directly:
 
 ```python
 import asyncio
-from imbi_common import graph, models
+from imbi.common import graph, models
 
 async def example() -> None:
     db = graph.Graph()
@@ -57,7 +57,7 @@ asyncio.run(example())
 ### JWT Tokens
 
 ```python
-from imbi_common.auth import core
+from imbi.common.auth import core
 
 # Create an access token
 token = core.create_access_token(
@@ -76,7 +76,7 @@ except Exception as e:
 ### Token Encryption
 
 ```python
-from imbi_common.auth import encryption
+from imbi.common.auth import encryption
 
 # Encrypt sensitive data
 encrypted = encryption.encrypt_token("sensitive_token_value")
@@ -90,7 +90,7 @@ decrypted = encryption.decrypt_token(encrypted)
 ### Load from TOML File
 
 ```python
-from imbi_common import settings
+from imbi.common import settings
 
 # Searches for config.toml in:
 # 1. ./config.toml (current directory)
@@ -105,7 +105,7 @@ print(f"ClickHouse URL: {config.clickhouse.url}")
 ### Access Individual Settings
 
 ```python
-from imbi_common import settings
+from imbi.common import settings
 
 # Get PostgreSQL settings
 postgres_config = settings.Postgres()
@@ -119,7 +119,7 @@ print(f"JWT Algorithm: {auth_config.jwt_algorithm}")
 ## Analytics with ClickHouse
 
 ```python
-from imbi_common import clickhouse
+from imbi.common import clickhouse
 
 # Query data
 results = await clickhouse.query(
@@ -138,7 +138,7 @@ for row in results:
 The blueprint system allows dynamic schema extension:
 
 ```python
-from imbi_common import blueprints, models, graph
+from imbi.common import blueprints, models, graph
 
 async def example(db: graph.Graph) -> None:
     # Get a dynamically extended model class

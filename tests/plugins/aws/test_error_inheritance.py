@@ -1,7 +1,7 @@
 """Pin the IamIc error inheritance contract.
 
 The host's poll loop catches ``IdentityAuthorizationPending`` and
-``IdentityAuthorizationExpired`` from ``imbi_common.plugins.errors`` to
+``IdentityAuthorizationExpired`` from ``imbi.common.plugins.errors`` to
 decide whether to keep polling or surface an expiry. The AWS IAM IC
 plugin must raise its concrete errors as subclasses of those bases so
 the host can route them without importing plugin-specific types. These
@@ -10,12 +10,11 @@ tests guard that contract.
 
 import unittest
 
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     IdentityAuthorizationExpired,
     IdentityAuthorizationPending,
 )
-
-from imbi_plugin_aws.errors import (
+from imbi.plugins.aws.errors import (
     IamIcAuthorizationPending,
     IamIcDeviceFlowExpired,
 )

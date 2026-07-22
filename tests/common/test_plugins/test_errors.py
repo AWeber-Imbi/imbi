@@ -1,6 +1,6 @@
 import unittest
 
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     CursorExpiredError,
     PluginAuthenticationFailed,
     PluginCredentialsMissing,

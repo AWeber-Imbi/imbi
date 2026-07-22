@@ -5,13 +5,13 @@ from unittest import mock
 
 import fastapi
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from imbi_api.commit_sync import service
-from imbi_api.endpoints import project_commit_sync
-from tests import support
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.api.commit_sync import service
+from imbi.api.endpoints import project_commit_sync
+from imbi.common import graph
+from tests.api import support
 
 _BASE = '/organizations/octo/projects/p1/commits'
 
@@ -46,7 +46,7 @@ class CommitSyncEndpointTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
-        from imbi_api import scoring
+        from imbi.api import scoring
 
         self.test_app.dependency_overrides[scoring._inject_optional_client] = (
             lambda: mock.AsyncMock()

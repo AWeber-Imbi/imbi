@@ -5,7 +5,7 @@ import smtplib
 import unittest
 from unittest import mock
 
-from imbi_api.email import client, models
+from imbi.api.email import client, models
 
 
 class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
@@ -15,7 +15,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         """Set up test fixtures."""
         # Mock settings
         self.mock_settings_patcher = mock.patch(
-            'imbi_api.email.client.settings.Email'
+            'imbi.api.email.client.settings.Email'
         )
         self.mock_settings_class = self.mock_settings_patcher.start()
         self.mock_settings = mock.MagicMock()

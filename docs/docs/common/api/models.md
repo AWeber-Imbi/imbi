@@ -66,7 +66,7 @@ any version-control plugin (GitHub, GitLab, …) can reuse them.
 ## Basic Usage
 
 ```python
-from imbi_common import graph, models
+from imbi.common import graph, models
 
 # Create an organization
 org = models.Organization(
@@ -100,7 +100,7 @@ Resolution is hierarchical, project-type overriding organization:
    accepted). Seed `models.SEMVER_TAG_FORMAT` to require semver.
 
 ```python
-from imbi_common import models, versioning
+from imbi.common import models, versioning
 
 org = models.Organization(
     name="My Company",
@@ -113,56 +113,56 @@ versioning.matches_tag_formats("v1.2.3", patterns)  # True
 versioning.matches_tag_formats("nightly", patterns)  # False
 ```
 
-::: imbi_common.versioning.matches_tag_formats
+::: imbi.common.versioning.matches_tag_formats
 
 ## API Reference
 
 ### Base Classes
 
-::: imbi_common.models.GraphModel
+::: imbi.common.models.GraphModel
 
-::: imbi_common.models.Node
+::: imbi.common.models.Node
 
 ### Domain Models
 
-::: imbi_common.models.Organization
+::: imbi.common.models.Organization
 
-::: imbi_common.models.Team
+::: imbi.common.models.Team
 
-::: imbi_common.models.Environment
+::: imbi.common.models.Environment
 
-::: imbi_common.models.ProjectType
+::: imbi.common.models.ProjectType
 
-::: imbi_common.models.Project
+::: imbi.common.models.Project
 
-::: imbi_common.models.TagFormat
+::: imbi.common.models.TagFormat
 
-::: imbi_common.models.MCPServer
+::: imbi.common.models.MCPServer
 
 ### Software-Composition Models
 
-::: imbi_common.models.Component
+::: imbi.common.models.Component
 
-::: imbi_common.models.ComponentRelease
+::: imbi.common.models.ComponentRelease
 
-::: imbi_common.models.ComponentIdentifier
+::: imbi.common.models.ComponentIdentifier
 
 ### Collaboration Models
 
-::: imbi_common.models.CommentThread
+::: imbi.common.models.CommentThread
 
-::: imbi_common.models.Comment
+::: imbi.common.models.Comment
 
 ### Blueprint Models
 
-::: imbi_common.models.Blueprint
+::: imbi.common.models.Blueprint
 
-::: imbi_common.models.BlueprintAssignment
+::: imbi.common.models.BlueprintAssignment
 
-::: imbi_common.models.BlueprintEdge
+::: imbi.common.models.BlueprintEdge
 
 ### Analytics Models
 
-::: imbi_common.models.CommitRecord
+::: imbi.common.models.CommitRecord
 
-::: imbi_common.models.TagRecord
+::: imbi.common.models.TagRecord

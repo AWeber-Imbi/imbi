@@ -1,6 +1,6 @@
 """Tests for identity attribution (v3).
 
-Covers the two functions exported by :mod:`imbi_api.identity.attribution`:
+Covers the two functions exported by :mod:`imbi.api.identity.attribution`:
 
 * :func:`identity_integration_ids_for_project` -- walks a project's
   ``EXISTS_IN`` edges to Integration nodes and keeps only those whose
@@ -15,7 +15,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from imbi_api.identity import attribution
+from imbi.api.identity import attribution
 
 
 def _entry(has_identity: bool) -> mock.Mock:

@@ -1,11 +1,19 @@
 """Plugin registry — convention + contract discovery, no entry points.
 
-Plugins are discovered two ways, unioned and deduped:
+Plugins are discovered three ways, unioned and deduped:
 
-1. **Convention scan** — every installed top-level module named
+1. **First-party scan** — every subpackage of ``imbi.plugins`` is
+   imported and its module-level ``PLUGIN`` attribute (a
+   :class:`~imbi.common.plugins.base.Plugin` subclass) is read. Plugin
+   code always ships with the ``imbi`` distribution; a plugin whose
+   optional dependencies are not installed (see the ``imbi[plugin-*]``
+   extras) is recorded as *skipped*, not as an error. Individual
+   first-party plugins can be turned off with the
+   ``IMBI_PLUGINS_DISABLED`` setting (a list of plugin slugs).
+2. **Convention scan** — every installed top-level module named
    ``imbi_plugin_*`` is imported and its module-level ``PLUGIN`` attribute
-   (a :class:`~imbi_common.plugins.base.Plugin` subclass) is read.
-2. **Explicit registration** — the ``IMBI_PLUGINS`` setting (a list of
+   is read. This is the third-party packaging convention.
+3. **Explicit registration** — the ``IMBI_PLUGINS`` setting (a list of
    dotted import paths, e.g. ``mycorp.imbi.jira:JiraPlugin``) covers
    packages that can't follow the naming convention.
 
@@ -26,7 +34,7 @@ import pkgutil
 import threading
 import typing
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     CAPABILITY_CONTRACTS,
     ActionDescriptor,
     CapabilityHandler,
@@ -35,10 +43,11 @@ from imbi_common.plugins.base import (
     ToolDescriptor,
     WebhookActionsCapability,
 )
-from imbi_common.plugins.errors import PluginNotFoundError
+from imbi.common.plugins.errors import PluginNotFoundError
 
 LOGGER = logging.getLogger(__name__)
 
+_FIRST_PARTY_PACKAGE = 'imbi.plugins'
 _MODULE_PREFIX = 'imbi_plugin_'
 _PLUGIN_ATTR = 'PLUGIN'
 _SUPPORTED_API_VERSIONS: frozenset[int] = frozenset({2})
@@ -77,6 +86,20 @@ def _package_metadata(module_name: str) -> tuple[str, str]:
         except importlib.metadata.PackageNotFoundError:
             return name, 'unknown'
     return top_level, 'unknown'
+
+
+def _discover_first_party() -> dict[str, str]:
+    """Return ``{module_name: source_label}`` for ``imbi.plugins.*``."""
+    try:
+        package = importlib.import_module(_FIRST_PARTY_PACKAGE)
+    except ModuleNotFoundError:  # imbi.plugins not importable at all
+        return {}
+    return {
+        f'{_FIRST_PARTY_PACKAGE}.{module.name}': (
+            f'{_FIRST_PARTY_PACKAGE}.{module.name}'
+        )
+        for module in pkgutil.iter_modules(package.__path__)
+    }
 
 
 def _discover_convention() -> dict[str, str]:
@@ -231,7 +254,10 @@ def _validate_tool_names(source: str, handler: type) -> str | None:
 
 def load_plugins() -> LoadResult:
     """Discover, validate, and load all installed imbi plugins."""
-    from imbi_common import settings
+    from imbi.common import settings
+
+    plugin_settings = settings.Plugins()
+    disabled = set(plugin_settings.imbi_plugins_disabled)
 
     loaded: list[str] = []
     errors: dict[str, str] = {}
@@ -252,6 +278,13 @@ def load_plugins() -> LoadResult:
             return
         if entry is None:  # unreachable: entry set when no error / skip
             return
+        if entry.manifest.slug in disabled:
+            LOGGER.info(
+                'Plugin %r disabled via IMBI_PLUGINS_DISABLED; skipping',
+                entry.manifest.slug,
+            )
+            skipped.append(source)
+            return
         seen_ids.add(id(cls))
         if entry.manifest.slug in new_registry:
             msg = f'{source}: duplicate plugin slug {entry.manifest.slug!r}'
@@ -268,6 +301,27 @@ def load_plugins() -> LoadResult:
             [c.kind for c in entry.manifest.capabilities],
         )
 
+    for module_name, source in _discover_first_party().items():
+        try:
+            cls = _load_convention_plugin(module_name)
+        except ImportError as exc:
+            # First-party plugin code always ships; a missing optional
+            # dependency means the matching imbi[plugin-*] extra is not
+            # installed, which is a normal deployment state.
+            LOGGER.debug(
+                'Skipping first-party plugin %r: %s (install the matching '
+                'imbi[plugin-*] extra to enable it)',
+                module_name,
+                exc,
+            )
+            skipped.append(source)
+            continue
+        except Exception as exc:
+            LOGGER.exception('Failed to import plugin %r', module_name)
+            errors[source] = str(exc)
+            continue
+        _register(source, cls, _package_metadata(module_name)[1])
+
     for module_name, source in _discover_convention().items():
         try:
             cls = _load_convention_plugin(module_name)
@@ -277,7 +331,7 @@ def load_plugins() -> LoadResult:
             continue
         _register(source, cls, _package_metadata(module_name)[1])
 
-    for dotted_path in settings.Plugins().imbi_plugins:
+    for dotted_path in plugin_settings.imbi_plugins:
         try:
             module_name, cls = _load_explicit_plugin(dotted_path)
         except Exception as exc:
@@ -288,7 +342,7 @@ def load_plugins() -> LoadResult:
 
     # Refuse vlabel/edge collisions across loaded plugins or with core
     # schemata.  Imported lazily to avoid a circular import.
-    from imbi_common.plugins.schemas import validate_no_collisions
+    from imbi.common.plugins.schemas import validate_no_collisions
 
     validate_no_collisions([entry.manifest for entry in new_registry.values()])
 

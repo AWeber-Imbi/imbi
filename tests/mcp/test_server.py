@@ -10,8 +10,8 @@ from fastmcp.server.auth.auth import AccessToken, RemoteAuthProvider
 from fastmcp.server.providers.openapi import MCPType
 from starlette import testclient as starlette_testclient
 
-import imbi_mcp
-from imbi_mcp import server
+import imbi.mcp
+from imbi.mcp import server
 
 
 def _minimal_openapi_spec() -> dict[str, object]:
@@ -70,25 +70,25 @@ class CreateServerTests(unittest.TestCase):
             request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
         )
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_returns_fastmcp_instance(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertIsInstance(mcp, fastmcp.FastMCP)
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_server_name(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertEqual('Imbi', mcp.name)
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_server_version(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
-        self.assertEqual(imbi_mcp.version, mcp.version)
+        self.assertEqual(imbi.mcp.version, mcp.version)
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_status_custom_route(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
@@ -99,12 +99,12 @@ class CreateServerTests(unittest.TestCase):
             {
                 'service': 'imbi-mcp',
                 'status': 'ok',
-                'version': imbi_mcp.version,
+                'version': imbi.mcp.version,
             },
             response.json(),
         )
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_status_custom_route_with_auth_enabled(
         self, mock_get: mock.Mock
     ) -> None:
@@ -121,12 +121,12 @@ class CreateServerTests(unittest.TestCase):
             {
                 'service': 'imbi-mcp',
                 'status': 'ok',
-                'version': imbi_mcp.version,
+                'version': imbi.mcp.version,
             },
             response.json(),
         )
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_fetches_spec_from_api_url(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         server.create_server('http://example:9000')
@@ -134,7 +134,7 @@ class CreateServerTests(unittest.TestCase):
             'http://example:9000/openapi.json', timeout=30
         )
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_strips_trailing_slash(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         server.create_server('http://example:9000/')
@@ -142,7 +142,7 @@ class CreateServerTests(unittest.TestCase):
             'http://example:9000/openapi.json', timeout=30
         )
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     @mock.patch('fastmcp.FastMCP.from_openapi')
     def test_route_maps_exclude_auth_and_status(
         self, mock_from_openapi: mock.Mock, mock_get: mock.Mock
@@ -159,7 +159,7 @@ class CreateServerTests(unittest.TestCase):
         self.assertIn(r'^/status/?$', patterns)
         self.assertIn(r'.*/thumbnail/?$', patterns)
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     @mock.patch('fastmcp.FastMCP.from_openapi')
     def test_route_maps_classify_get_as_resources(
         self, mock_from_openapi: mock.Mock, mock_get: mock.Mock
@@ -181,7 +181,7 @@ class CreateServerTests(unittest.TestCase):
 
 
 class CreateServerExcludesConfigTests(unittest.IsolatedAsyncioTestCase):
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     async def test_flagged_endpoint_not_exposed(
         self, mock_get: mock.Mock
     ) -> None:
@@ -207,7 +207,7 @@ class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_injects_authorization_header(self) -> None:
         request = httpx.Request('GET', 'http://localhost/')
         with mock.patch(
-            'imbi_mcp.server.get_http_headers',
+            'imbi.mcp.server.get_http_headers',
             return_value={'authorization': 'Bearer test-jwt'},
         ):
             await server._inject_auth(request)
@@ -219,7 +219,7 @@ class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_header_when_absent(self) -> None:
         request = httpx.Request('GET', 'http://localhost/')
         with mock.patch(
-            'imbi_mcp.server.get_http_headers',
+            'imbi.mcp.server.get_http_headers',
             return_value={},
         ):
             await server._inject_auth(request)
@@ -230,7 +230,7 @@ class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         request = httpx.Request('GET', 'http://localhost/')
         with mock.patch(
-            'imbi_mcp.server.get_http_headers',
+            'imbi.mcp.server.get_http_headers',
             return_value={},
         ) as mock_fn:
             await server._inject_auth(request)
@@ -254,7 +254,7 @@ class ImbiTokenVerifierTests(unittest.IsolatedAsyncioTestCase):
             'exp': 1234567890,
         }
         with mock.patch(
-            'imbi_mcp.server.core.verify_token', return_value=claims
+            'imbi.mcp.server.core.verify_token', return_value=claims
         ):
             token = await server.ImbiTokenVerifier().verify_token('jwt')
         self.assertIsNotNone(token)
@@ -265,7 +265,7 @@ class ImbiTokenVerifierTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_jwt_returns_none(self) -> None:
         with mock.patch(
-            'imbi_mcp.server.core.verify_token',
+            'imbi.mcp.server.core.verify_token',
             side_effect=jwt.InvalidTokenError('bad'),
         ):
             token = await server.ImbiTokenVerifier().verify_token('jwt')
@@ -273,7 +273,7 @@ class ImbiTokenVerifierTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_non_access_token_rejected(self) -> None:
         with mock.patch(
-            'imbi_mcp.server.core.verify_token',
+            'imbi.mcp.server.core.verify_token',
             return_value={'type': 'refresh', 'sub': 'user@example.com'},
         ):
             token = await server.ImbiTokenVerifier().verify_token('jwt')
@@ -301,13 +301,13 @@ class CreateServerAuthTests(unittest.TestCase):
             request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
         )
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_auth_disabled_by_default(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertIsNone(mcp.auth)
 
-    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('imbi.mcp.server.httpx.get')
     def test_auth_enabled_when_configured(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server(

@@ -6,10 +6,10 @@ import unittest
 from unittest import mock
 
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 _BASE = '/organizations/engineering/projects/proj-abc/documents/doc-1/comments'
 
@@ -18,7 +18,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for comment threads and comments CRUD."""
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.user = models.User(
             email='alice@example.com',
@@ -56,7 +56,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         self.client = TestClient(self.test_app)
 
     def _set_permissions(self, perms: set[str]) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.auth_context = permissions.AuthContext(
             user=self.user,
@@ -145,7 +145,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(_BASE)
         self.assertEqual(response.status_code, 200)
@@ -158,7 +158,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     def test_list_document_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(_BASE)
         self.assertEqual(response.status_code, 404)
@@ -173,7 +173,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [self._thread_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(_BASE, json={'body': 'First!'})
         self.assertEqual(response.status_code, 201)
@@ -200,10 +200,10 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         ch = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.comments.ch_client.Clickhouse'
+                'imbi.api.endpoints.comments.ch_client.Clickhouse'
                 '.get_instance',
                 return_value=ch,
             ),
@@ -231,10 +231,10 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         ch.insert.side_effect = Exception('boom')
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.comments.ch_client.Clickhouse'
+                'imbi.api.endpoints.comments.ch_client.Clickhouse'
                 '.get_instance',
                 return_value=ch,
             ),
@@ -252,10 +252,10 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         ch = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.comments.ch_client.Clickhouse'
+                'imbi.api.endpoints.comments.ch_client.Clickhouse'
                 '.get_instance',
                 return_value=ch,
             ),
@@ -284,10 +284,10 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         ch.insert.side_effect = Exception('boom')
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             mock.patch(
-                'imbi_api.endpoints.comments.ch_client.Clickhouse'
+                'imbi.api.endpoints.comments.ch_client.Clickhouse'
                 '.get_instance',
                 return_value=ch,
             ),
@@ -309,7 +309,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 _BASE,
@@ -335,7 +335,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [self._thread_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(_BASE, json={'body': 'First!'})
         self.assertEqual(response.status_code, 201)
@@ -346,7 +346,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_thread_document_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(_BASE, json={'body': 'x'})
         self.assertEqual(response.status_code, 404)
@@ -372,7 +372,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [self._thread_row(thread=inline_thread)],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 _BASE,
@@ -412,7 +412,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [self._thread_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(_BASE, json={'body': 'First!'})
         self.assertEqual(response.status_code, 201)
@@ -450,7 +450,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [self._thread_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 _BASE,
@@ -483,7 +483,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             }
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 f'{_BASE}/thread-1/comments', json={'body': 'reply'}
@@ -503,7 +503,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             }
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 f'{_BASE}/thread-1/comments',
@@ -519,7 +519,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             {'c': self._comment(id='c2', body='reply')}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 f'{_BASE}/thread-1/comments', json={'body': 'reply'}
@@ -532,7 +532,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     def test_create_reply_thread_not_found(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 f'{_BASE}/ghost/comments', json={'body': 'reply'}
@@ -557,7 +557,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1',
@@ -583,7 +583,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [self._thread_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1',
@@ -599,7 +599,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_thread_readonly_path_rejected(self) -> None:
         self.mock_db.execute.return_value = [self._thread_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1',
@@ -624,7 +624,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_thread_non_bool_rejected(self) -> None:
         self.mock_db.execute.return_value = [self._thread_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1',
@@ -641,7 +641,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'c': self._comment(body='edited', edited=True)}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1/comments/comment-1',
@@ -661,7 +661,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'c': self._comment(mentions=['new@x.com'], edited=True)}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1/comments/comment-1',
@@ -685,7 +685,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             {'c': self._comment(author='bob@example.com')}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1/comments/comment-1',
@@ -714,7 +714,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1/comments/comment-1',
@@ -729,7 +729,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             {'c': self._comment(author='bob@example.com')}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1/comments/comment-1',
@@ -748,7 +748,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     def test_edit_comment_empty_body_rejected(self) -> None:
         self.mock_db.execute.return_value = [{'c': self._comment()}]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1/comments/comment-1',
@@ -759,7 +759,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
     def test_edit_comment_readonly_path_rejected(self) -> None:
         self.mock_db.execute.return_value = [{'c': self._comment()}]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 f'{_BASE}/thread-1/comments/comment-1',
@@ -778,7 +778,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'c': self._comment(acknowledged_by=['alice@example.com'])}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 f'{_BASE}/thread-1/comments/comment-1/acknowledge'
@@ -796,7 +796,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'c': self._comment(acknowledged_by=[])}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 f'{_BASE}/thread-1/comments/comment-1/acknowledge'
@@ -832,7 +832,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'deleted': 1}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.delete(
                 f'{_BASE}/thread-1/comments/comment-2'
@@ -849,7 +849,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'deleted': 1}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.delete(
                 f'{_BASE}/thread-1/comments/comment-1'
@@ -875,7 +875,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'deleted': 1}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.delete(
                 f'{_BASE}/thread-1/comments/comment-1'
@@ -889,7 +889,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             {'c': self._comment(author='bob@example.com')}
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.delete(
                 f'{_BASE}/thread-1/comments/comment-1'
@@ -955,7 +955,7 @@ class ThreadRowParsingTestCase(unittest.TestCase):
     """
 
     def test_comments_round_trip_from_agtype(self) -> None:
-        from imbi_api.endpoints import comments
+        from imbi.api.endpoints import comments
 
         thread_vertex = (
             '{"id": 0, "label": "CommentThread", "properties": '

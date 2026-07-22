@@ -4,7 +4,7 @@ import asyncio
 import unittest
 from unittest import mock
 
-from imbi_api.identity import errors, sweeper
+from imbi.api.identity import errors, sweeper
 
 
 class LockKeyTestCase(unittest.TestCase):

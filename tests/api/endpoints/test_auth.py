@@ -5,15 +5,15 @@ from unittest import mock
 
 import jwt
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import settings
-from imbi_api.auth import local_auth, login_providers
-from imbi_api.auth import models as auth_models
-from imbi_api.domain import models as domain_models
-from imbi_api.endpoints import auth as auth_endpoints
-from imbi_api.middleware import rate_limit
-from tests import support
+from imbi.api import settings
+from imbi.api.auth import local_auth, login_providers
+from imbi.api.auth import models as auth_models
+from imbi.api.domain import models as domain_models
+from imbi.api.endpoints import auth as auth_endpoints
+from imbi.api.middleware import rate_limit
+from imbi.common import graph
+from tests.api import support
 
 
 def _stub_provider(
@@ -55,7 +55,7 @@ def _stub_identity_plugin_provider(
     Plugin Architecture v3: every login provider is an Integration whose
     plugin implements a login-capable ``identity`` capability; the
     authorization URL and token exchange are owned by that plugin's
-    handler via :mod:`imbi_api.identity.flows`.
+    handler via :mod:`imbi.api.identity.flows`.
     """
     return login_providers.LoginApp(
         slug=slug,
@@ -169,29 +169,29 @@ class RedactEmailTestCase(unittest.TestCase):
     """Test cases for the _redact_email log helper."""
 
     def test_keeps_first_char_and_domain(self) -> None:
-        from imbi_api.endpoints.auth import _redact_email
+        from imbi.api.endpoints.auth import _redact_email
 
         self.assertEqual(
             _redact_email('admin@example.com'), 'a***@example.com'
         )
 
     def test_handles_single_char_local(self) -> None:
-        from imbi_api.endpoints.auth import _redact_email
+        from imbi.api.endpoints.auth import _redact_email
 
         self.assertEqual(_redact_email('x@example.com'), 'x***@example.com')
 
     def test_handles_empty_local(self) -> None:
-        from imbi_api.endpoints.auth import _redact_email
+        from imbi.api.endpoints.auth import _redact_email
 
         self.assertEqual(_redact_email('@example.com'), '***@example.com')
 
     def test_handles_no_at_sign(self) -> None:
-        from imbi_api.endpoints.auth import _redact_email
+        from imbi.api.endpoints.auth import _redact_email
 
         self.assertEqual(_redact_email('not-an-email'), '<redacted>')
 
     def test_handles_empty_string(self) -> None:
-        from imbi_api.endpoints.auth import _redact_email
+        from imbi.api.endpoints.auth import _redact_email
 
         self.assertEqual(_redact_email(''), '<redacted>')
 
@@ -345,7 +345,7 @@ class OAuthFlowTestCase(support.SharedAppTestCase):
         login-Integration's plugin handler via ``identity_flows``, so the
         provider-specific URL is owned by the plugin, not this endpoint.
         """
-        from imbi_api.identity import flows as identity_flows
+        from imbi.api.identity import flows as identity_flows
 
         return mock.patch.object(
             identity_flows,
@@ -525,7 +525,7 @@ class LoginPasswordRehashTestCase(support.SharedAppTestCase):
 
     def test_login_with_password_rehash(self) -> None:
         """Test login rehashes password if needed."""
-        from imbi_api import models
+        from imbi.api import models
 
         test_user = models.User(
             email='test@example.com',
@@ -549,19 +549,19 @@ class LoginPasswordRehashTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.auth.password.verify_password',
+                'imbi.api.auth.password.verify_password',
                 return_value=True,
             ),
             mock.patch(
-                'imbi_api.auth.password.needs_rehash',
+                'imbi.api.auth.password.needs_rehash',
                 return_value=True,
             ) as mock_needs_rehash,
             mock.patch(
-                'imbi_api.auth.password.hash_password',
+                'imbi.api.auth.password.hash_password',
                 return_value='new-hashed-password',
             ) as mock_hash,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -598,7 +598,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
         rate_limit.limiter.reset()
 
         # Mock encryption for MFA tests
-        from imbi_common.auth.encryption import TokenEncryption
+        from imbi.common.auth.encryption import TokenEncryption
 
         mock_encryptor = mock.Mock()
         mock_encryptor.decrypt = mock.Mock(
@@ -622,8 +622,8 @@ class LoginMFATestCase(support.SharedAppTestCase):
 
     def test_login_mfa_required_no_code(self) -> None:
         """Test login with MFA enabled but no code."""
-        from imbi_api import models
-        from imbi_api.auth import password
+        from imbi.api import models
+        from imbi.api.auth import password
 
         test_user = models.User(
             email='test@example.com',
@@ -646,7 +646,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -671,8 +671,8 @@ class LoginMFATestCase(support.SharedAppTestCase):
         """Test login with valid TOTP code."""
         import pyotp
 
-        from imbi_api import models
-        from imbi_api.auth import password
+        from imbi.api import models
+        from imbi.api.auth import password
 
         test_user = models.User(
             email='test@example.com',
@@ -704,7 +704,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
         self.mock_db.merge.return_value = None
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -723,8 +723,8 @@ class LoginMFATestCase(support.SharedAppTestCase):
 
     def test_login_mfa_valid_backup_code(self) -> None:
         """Test login with valid backup code."""
-        from imbi_api import models
-        from imbi_api.auth import password
+        from imbi.api import models
+        from imbi.api.auth import password
 
         test_user = models.User(
             email='test@example.com',
@@ -756,7 +756,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
         self.mock_db.merge.return_value = None
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -783,8 +783,8 @@ class LoginMFATestCase(support.SharedAppTestCase):
         fail with the same 401 the user would have seen if they'd
         raced themselves.
         """
-        from imbi_api import models
-        from imbi_api.auth import password
+        from imbi.api import models
+        from imbi.api.auth import password
 
         test_user = models.User(
             email='test@example.com',
@@ -808,7 +808,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
             [],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -824,8 +824,8 @@ class LoginMFATestCase(support.SharedAppTestCase):
 
     def test_login_mfa_invalid_code(self) -> None:
         """Test login with invalid MFA code."""
-        from imbi_api import models
-        from imbi_api.auth import password
+        from imbi.api import models
+        from imbi.api.auth import password
 
         test_user = models.User(
             email='test@example.com',
@@ -847,7 +847,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -891,7 +891,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = []
 
         with mock.patch(
-            'imbi_api.auth.password.verify_password',
+            'imbi.api.auth.password.verify_password',
             return_value=False,
         ) as mock_verify:
             response = self.client.post(
@@ -917,7 +917,7 @@ class LoginMFATestCase(support.SharedAppTestCase):
         but has no password configured (H4 — login timing/user-existence
         oracle defense).
         """
-        from imbi_api import models
+        from imbi.api import models
 
         oauth_user = models.User(
             email='oauth@example.com',
@@ -945,8 +945,8 @@ class LoginMFATestCase(support.SharedAppTestCase):
 
     def test_login_invalid_password(self) -> None:
         """Test login with invalid password."""
-        from imbi_api import models
-        from imbi_api.auth import password
+        from imbi.api import models
+        from imbi.api.auth import password
 
         test_user = models.User(
             email='test@example.com',
@@ -993,9 +993,8 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
 
     def test_refresh_token_success(self) -> None:
         """Test successful token refresh."""
-        from imbi_common.auth import core
-
-        from imbi_api import models
+        from imbi.api import models
+        from imbi.common.auth import core
 
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
@@ -1028,7 +1027,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1052,9 +1051,8 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
 
     def test_refresh_token_via_cookie(self) -> None:
         """Refresh succeeds from the HttpOnly cookie with no request body."""
-        from imbi_common.auth import core
-
-        from imbi_api import models
+        from imbi.api import models
+        from imbi.common.auth import core
 
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
@@ -1075,7 +1073,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
             [{'principal_count': 1}],
         ]
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1099,7 +1097,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
             jwt_secret='test-secret-key-min-32-chars-long',
         )
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post('/auth/token/refresh')
@@ -1128,7 +1126,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         )
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1149,7 +1147,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         )
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1165,9 +1163,8 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
 
     def test_refresh_token_wrong_type(self) -> None:
         """Test refresh with access token instead."""
-        from imbi_common.auth import core
-
-        from imbi_api import models
+        from imbi.api import models
+        from imbi.common.auth import core
 
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
@@ -1187,7 +1184,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         )
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1203,7 +1200,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
 
     def test_refresh_token_revoked(self) -> None:
         """Test token refresh with revoked token."""
-        from imbi_common.auth import core
+        from imbi.common.auth import core
 
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
@@ -1226,7 +1223,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1242,9 +1239,8 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
 
     def test_refresh_token_user_inactive(self) -> None:
         """Test token refresh with inactive user."""
-        from imbi_common.auth import core
-
-        from imbi_api import models
+        from imbi.api import models
+        from imbi.common.auth import core
 
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
@@ -1269,7 +1265,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = [{'family_id': 'fam-test'}]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1293,7 +1289,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         family-wide cascade SET that turns every un-revoked
         ``TokenMetadata`` for the chain into revoked rows.
         """
-        from imbi_common.auth import core
+        from imbi.common.auth import core
 
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
@@ -1313,7 +1309,7 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1340,7 +1336,8 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
         second succeeds.
         """
         import psycopg
-        from imbi_common.auth import core
+
+        from imbi.common.auth import core
 
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
@@ -1363,11 +1360,11 @@ class TokenRefreshTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
             mock.patch(
-                'imbi_api.endpoints.auth.asyncio.sleep',
+                'imbi.api.endpoints.auth.asyncio.sleep',
                 new_callable=mock.AsyncMock,
             ) as mock_sleep,
         ):
@@ -1413,10 +1410,9 @@ class LogoutTestCase(support.SharedAppTestCase):
 
     def test_logout_single_session(self) -> None:
         """Test logout with revoke_all_sessions=False."""
-        from imbi_common.auth import core
-
-        from imbi_api import models
-        from imbi_api.auth import permissions
+        from imbi.api import models
+        from imbi.api.auth import permissions
+        from imbi.common.auth import core
 
         test_user = models.User(
             email='test@example.com',
@@ -1468,11 +1464,11 @@ class LogoutTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_api.settings.get_auth_settings',
+                'imbi.api.settings.get_auth_settings',
                 return_value=self.auth_settings,
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -1491,10 +1487,9 @@ class LogoutTestCase(support.SharedAppTestCase):
 
     def test_logout_all_sessions(self) -> None:
         """Test logout with revoke_all_sessions=True."""
-        from imbi_common.auth import core
-
-        from imbi_api import models
-        from imbi_api.auth import permissions
+        from imbi.api import models
+        from imbi.api.auth import permissions
+        from imbi.common.auth import core
 
         test_user = models.User(
             email='test@example.com',
@@ -1534,7 +1529,7 @@ class LogoutTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=self.auth_settings,
         ):
             response = self.client.post(
@@ -1557,7 +1552,7 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
 
     def setUp(self) -> None:
         """Set up test client and reset singletons."""
-        from imbi_api import models
+        from imbi.api import models
 
         settings._auth_settings = None
 
@@ -1643,11 +1638,11 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.auth.password.verify_password',
+                'imbi.api.auth.password.verify_password',
                 return_value=True,
             ),
         ):
@@ -1701,7 +1696,7 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -1742,7 +1737,7 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -1783,7 +1778,7 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.post(
@@ -1825,11 +1820,11 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.auth.password.verify_password',
+                'imbi.api.auth.password.verify_password',
                 return_value=True,
             ),
         ):
@@ -1883,11 +1878,11 @@ class ServiceAccountAuthTestCase(support.SharedAppTestCase):
 
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.auth.password.verify_password',
+                'imbi.api.auth.password.verify_password',
                 return_value=True,
             ),
         ):
@@ -1919,10 +1914,9 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
     """
 
     def setUp(self) -> None:
-        from imbi_common.plugins import base as plugin_base
-
-        from imbi_api.identity import flows as identity_flows
-        from imbi_api.identity import repository as identity_repository
+        from imbi.api.identity import flows as identity_flows
+        from imbi.api.identity import repository as identity_repository
+        from imbi.common.plugins import base as plugin_base
 
         self._plugin_base = plugin_base
         self._identity_flows = identity_flows
@@ -1971,7 +1965,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
 
     def test_oauth_login_plugin_not_loaded_returns_503(self) -> None:
         """PluginNotFoundError from start_flow surfaces as 503."""
-        from imbi_common.plugins.errors import PluginNotFoundError
+        from imbi.common.plugins.errors import PluginNotFoundError
 
         provider = _stub_identity_plugin_provider('okta', integration_id='p-1')
         with (
@@ -2002,9 +1996,8 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         self,
     ) -> None:
         """Identity-plugin callback provisions a new user + JWT pair."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models as api_models
+        from imbi.api import models as api_models
+        from imbi.common.auth import encryption
 
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
@@ -2047,7 +2040,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
                 new=mock.AsyncMock(return_value=None),
             ) as upsert_mock,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -2084,9 +2077,8 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         self,
     ) -> None:
         """Identity-plugin callback links to an existing user by email."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models as api_models
+        from imbi.api import models as api_models
+        from imbi.common.auth import encryption
 
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
@@ -2133,7 +2125,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
                 new=mock.AsyncMock(return_value=None),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -2163,9 +2155,8 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
         self,
     ) -> None:
         """Existing user + auto-link disabled => authentication_failed."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models as api_models
+        from imbi.api import models as api_models
+        from imbi.common.auth import encryption
 
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
@@ -2197,7 +2188,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -2220,9 +2211,8 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
     )
     def test_oauth_callback_refuses_unverified_email(self) -> None:
         """Auto-link refuses when provider does not assert email_verified."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models as api_models
+        from imbi.api import models as api_models
+        from imbi.common.auth import encryption
 
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
@@ -2254,7 +2244,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -2278,7 +2268,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
     )
     def test_oauth_callback_refuses_create_when_disabled(self) -> None:
         """Auto-create disabled + no user => authentication_failed."""
-        from imbi_common.auth import encryption
+        from imbi.common.auth import encryption
 
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
@@ -2303,7 +2293,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -2326,9 +2316,8 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
     )
     def test_oauth_callback_rejects_service_account(self) -> None:
         """Service-account users cannot complete identity-plugin login."""
-        from imbi_common.auth import encryption
-
-        from imbi_api import models as api_models
+        from imbi.api import models as api_models
+        from imbi.common.auth import encryption
 
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None
@@ -2361,7 +2350,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
                 ),
             ),
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):
@@ -2384,7 +2373,7 @@ class IdentityPluginLoginFlowTestCase(support.SharedAppTestCase):
     )
     def test_oauth_callback_rejects_profile_without_email(self) -> None:
         """Identity plugin must return an email or callback fails."""
-        from imbi_common.auth import encryption
+        from imbi.common.auth import encryption
 
         encryption.TokenEncryption.reset_instance()
         settings._auth_settings = None

@@ -11,12 +11,12 @@ import json
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import graph
-from imbi_common.auth import core
 
-from imbi_api import models, scoring, settings
-from imbi_api.auth import authorization_codes
-from tests import support
+from imbi.api import models, scoring, settings
+from imbi.api.auth import authorization_codes
+from imbi.common import graph
+from imbi.common.auth import core
+from tests.api import support
 
 _VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'
 
@@ -44,7 +44,7 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         self.client = testclient.TestClient(self.test_app)
 
         self._settings_patch = mock.patch(
-            'imbi_api.settings.get_auth_settings',
+            'imbi.api.settings.get_auth_settings',
             return_value=self.auth_settings,
         )
         self._settings_patch.start()
@@ -90,7 +90,7 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         cfg.cors_allowed_origins = ['https://imbi-public.test']
         cfg.api_prefix = '/api'
         with mock.patch(
-            'imbi_api.settings.get_server_config', return_value=cfg
+            'imbi.api.settings.get_server_config', return_value=cfg
         ):
             client = testclient.TestClient(
                 self.test_app, base_url='https://imbi-public.test'
@@ -110,7 +110,7 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         cfg.cors_allowed_origins = []
         cfg.api_prefix = '/api'
         with mock.patch(
-            'imbi_api.settings.get_server_config', return_value=cfg
+            'imbi.api.settings.get_server_config', return_value=cfg
         ):
             client = testclient.TestClient(
                 self.test_app, base_url='https://evil.example'
@@ -286,7 +286,7 @@ class OAuthServerTestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = [self._client_node()]
         self.mock_valkey.getdel.return_value = self._payload()
         with mock.patch(
-            'imbi_api.auth.tokens.issue_token_pair',
+            'imbi.api.auth.tokens.issue_token_pair',
             new=mock.AsyncMock(return_value=('access-tok', 'refresh-tok', {})),
         ):
             resp = self.client.post(

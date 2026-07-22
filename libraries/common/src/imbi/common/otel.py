@@ -16,7 +16,7 @@ instrumentation enabled.
 Example:
     ```python
     from fastapi import FastAPI
-    from imbi_common.otel import TraceIdResponseMiddleware
+    from imbi.common.otel import TraceIdResponseMiddleware
 
     app = FastAPI()
     app.add_middleware(TraceIdResponseMiddleware)

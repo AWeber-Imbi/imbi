@@ -21,7 +21,7 @@ import logging
 import typing
 import urllib.parse
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     AnalysisCapability,
     AnalysisResultItem,
     AnalysisResultStatus,
@@ -31,8 +31,7 @@ from imbi_common.plugins.base import (
     ServiceConnection,
     ServiceWriteback,
 )
-
-from imbi_plugin_sonarqube import client
+from imbi.plugins.sonarqube import client
 
 LOGGER = logging.getLogger(__name__)
 

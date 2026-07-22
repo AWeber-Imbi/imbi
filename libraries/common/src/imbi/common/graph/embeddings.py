@@ -12,7 +12,7 @@ import typing
 
 import fastembed
 
-from imbi_common import settings
+from imbi.common import settings
 
 LOGGER = logging.getLogger(__name__)
 

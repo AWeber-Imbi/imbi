@@ -3,7 +3,7 @@
 import logging
 import typing
 
-from imbi_common import graph
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 
@@ -509,7 +509,7 @@ RETIRED_PERMISSIONS: list[str] = [
 #
 # The 6th tuple element marks the role auto-assigned to newly-logging-in
 # users that have no organization membership yet (see
-# ``imbi_api.auth.membership.ensure_user_membership``). Exactly one
+# ``imbi.api.auth.membership.ensure_user_membership``). Exactly one
 # entry should set this to True; ``bootstrap_auth_system`` enforces it.
 DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
     (

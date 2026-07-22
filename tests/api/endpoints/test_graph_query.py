@@ -6,11 +6,11 @@ from unittest import mock
 
 import psycopg
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import password, permissions
-from tests import support
+from imbi.api import models
+from imbi.api.auth import password, permissions
+from imbi.common import graph
+from tests.api import support
 
 
 def _build_user(*, is_admin: bool) -> models.User:
@@ -331,7 +331,7 @@ class GraphSchemaEndpointTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: json.loads(x) if isinstance(x, str) else x,
         ):
             response = self.client.get('/admin/graph/schema')

@@ -3,8 +3,8 @@ from unittest import mock
 import anthropic
 import httpx
 
-from imbi_slackbot import agent
-from tests import helpers
+from imbi.slackbot import agent
+from tests.slackbot import helpers
 
 
 class Block:

@@ -5,7 +5,7 @@ to any organization yet, they would otherwise receive an empty
 permission set and be 403'd everywhere.
 
 ``ensure_user_membership`` resolves the role flagged with
-``is_default: true`` (seeded by :mod:`imbi_api.auth.seed`) and creates
+``is_default: true`` (seeded by :mod:`imbi.api.auth.seed`) and creates
 a ``MEMBER_OF {role: <slug>}`` edge to the target organization. The
 target is the sole ``Organization`` if there is exactly one; otherwise
 it falls back to the seeded ``slug='default'`` organization. If the
@@ -16,7 +16,7 @@ and returns ``None`` so login still succeeds.
 import logging
 import typing
 
-from imbi_common import graph
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

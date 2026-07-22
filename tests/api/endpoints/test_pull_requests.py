@@ -6,11 +6,11 @@ import unittest
 from unittest import mock
 
 import fastapi.testclient
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.endpoints import pull_requests
-from tests import support
+from imbi.api import models
+from imbi.api.endpoints import pull_requests
+from imbi.common import graph
+from tests.api import support
 
 ORG = 'engineering'
 PROJECT_ID = 'proj123nanoid'
@@ -47,7 +47,7 @@ class _PullRequestsTestBase(support.SharedAppTestCase):
     permissions_granted: typing.ClassVar[set[str]] = {'project:read'}
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='alice@example.com',
@@ -93,11 +93,11 @@ class ListProjectPullRequestsTestCase(_PullRequestsTestBase):
         self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.pull_requests.clickhouse.query',
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
                 new=mock.AsyncMock(
                     side_effect=[
                         [{'total': 1, 'project_count': 1}],
@@ -156,11 +156,11 @@ class ListOrgPullRequestsTestCase(_PullRequestsTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.pull_requests.clickhouse.query',
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
                 new=mock.AsyncMock(
                     side_effect=[
                         [{'total': 2, 'project_count': 2}],
@@ -203,11 +203,11 @@ class PullRequestActivityTestCase(_PullRequestsTestBase):
         ]
         with (
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
-                'imbi_api.endpoints.pull_requests.clickhouse.query',
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
                 new=mock.AsyncMock(
                     return_value=[
                         {
@@ -249,7 +249,7 @@ class PullRequestActivityTestCase(_PullRequestsTestBase):
     def test_activity_empty_when_no_projects(self) -> None:
         self.mock_db.execute.side_effect = [[], []]
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             response = self.client.get(self._url())

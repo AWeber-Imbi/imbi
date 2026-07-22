@@ -1,5 +1,5 @@
-from imbi_slackbot import settings
-from tests import helpers
+from imbi.slackbot import settings
+from tests.slackbot import helpers
 
 
 class SettingsTests(helpers.TestCase):

@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from imbi_plugin_sonarqube import client
+from imbi.plugins.sonarqube import client
 
 
 class FetchComponentMeasuresTests(unittest.IsolatedAsyncioTestCase):

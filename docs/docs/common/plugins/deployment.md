@@ -15,7 +15,7 @@ context, credential decryption, and error conventions shared by every
 plugin.
 
 ```python
-from imbi_common.plugins import (
+from imbi.common.plugins import (
     CompareResult,
     Commit,
     DeploymentCapability,
@@ -142,26 +142,26 @@ These default to returning `'unknown'` or `None`, or raising
 
 When a deployment call creates, renames, or discovers the project's
 canonical repository URL, set
-[`ctx.link_writeback`][imbi_common.plugins.LinkWriteback] so the host
+[`ctx.link_writeback`][imbi.common.plugins.LinkWriteback] so the host
 self-heals the stored project link. See
 [Plugin Context](index.md#plugin-context).
 
 ## API reference
 
-::: imbi_common.plugins.DeploymentCapability
+::: imbi.common.plugins.DeploymentCapability
 
-::: imbi_common.plugins.Ref
+::: imbi.common.plugins.Ref
 
-::: imbi_common.plugins.Commit
+::: imbi.common.plugins.Commit
 
-::: imbi_common.plugins.CompareResult
+::: imbi.common.plugins.CompareResult
 
-::: imbi_common.plugins.RefInfo
+::: imbi.common.plugins.RefInfo
 
-::: imbi_common.plugins.ReleaseInfo
+::: imbi.common.plugins.ReleaseInfo
 
-::: imbi_common.plugins.WorkflowFile
+::: imbi.common.plugins.WorkflowFile
 
-::: imbi_common.plugins.DeploymentRun
+::: imbi.common.plugins.DeploymentRun
 
-::: imbi_common.plugins.RemoteDeployment
+::: imbi.common.plugins.RemoteDeployment

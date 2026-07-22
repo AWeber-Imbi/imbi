@@ -4,10 +4,9 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi_common.plugins.base import PluginContext
-
-from imbi_plugin_aws import account_resolution
-from imbi_plugin_aws.errors import AccountNotResolvedError
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.aws import account_resolution
+from imbi.plugins.aws.errors import AccountNotResolvedError
 
 
 class _FakeDB:

@@ -3,13 +3,13 @@
 import httpx
 import pytest
 import respx
-from imbi_common.plugins.errors import (
+
+from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
 )
-
-from imbi_plugin_logzio.client import (
+from imbi.plugins.logzio.client import (
     REGION_HOSTS,
     base_url,
     get_log_types,

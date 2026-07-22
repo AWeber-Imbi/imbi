@@ -18,7 +18,7 @@ imbi-common uses Python's standard `unittest` framework (not pytest).
 
 ```python
 import unittest
-from imbi_common import settings
+from imbi.common import settings
 
 class TestSettings(unittest.TestCase):
     def test_default_postgres_url(self):
@@ -38,7 +38,7 @@ For async functions, use `IsolatedAsyncioTestCase`:
 
 ```python
 import unittest
-from imbi_common import graph, models
+from imbi.common import graph, models
 
 class TestGraphOperations(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -69,7 +69,7 @@ Unit tests should not require external dependencies.
 
 ```python
 import unittest
-from imbi_common import settings
+from imbi.common import settings
 
 class TestSettings(unittest.TestCase):
     def test_postgres_defaults(self):
@@ -87,7 +87,7 @@ class TestSettings(unittest.TestCase):
 
 ```python
 import unittest
-from imbi_common import models
+from imbi.common import models
 
 class TestModels(unittest.TestCase):
     def test_blueprint_slug_generation(self):
@@ -103,7 +103,7 @@ class TestModels(unittest.TestCase):
 
 ```python
 import unittest
-from imbi_common.auth import core
+from imbi.common.auth import core
 
 class TestAuth(unittest.TestCase):
     def test_jwt_creation_and_verification(self):
@@ -130,7 +130,7 @@ class TestAuth(unittest.TestCase):
 
 ```python
 import unittest
-from imbi_common import logging
+from imbi.common import logging
 
 class TestLogging(unittest.TestCase):
     def test_get_log_config(self):
@@ -153,7 +153,7 @@ Skip integration tests when databases are unavailable:
 ```python
 import os
 import unittest
-from imbi_common import graph, models
+from imbi.common import graph, models
 
 @unittest.skipIf(
     os.environ.get('SKIP_INTEGRATION_TESTS'),
@@ -221,7 +221,7 @@ Mock database clients for isolated testing.
 ```python
 import unittest
 from unittest.mock import AsyncMock, MagicMock
-from imbi_common import graph, models
+from imbi.common import graph, models
 
 class TestServiceLogic(unittest.IsolatedAsyncioTestCase):
     async def test_get_organization(self):
@@ -249,14 +249,14 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 class TestAnalytics(unittest.IsolatedAsyncioTestCase):
-    @patch('imbi_common.clickhouse.query')
+    @patch('imbi.common.clickhouse.query')
     async def test_query_analytics(self, mock_query):
         mock_query.return_value = [
             {"user_id": "user1", "count": 10},
             {"user_id": "user2", "count": 5}
         ]
 
-        from imbi_common import clickhouse
+        from imbi.common import clickhouse
 
         results = await clickhouse.query(
             "SELECT user_id, COUNT(*) as count "
@@ -356,7 +356,7 @@ Add to `.coveragerc`:
 
 ```ini
 [run]
-source = src/imbi_common
+source = src/imbi.common
 omit =
     */tests/*
     */test_*.py

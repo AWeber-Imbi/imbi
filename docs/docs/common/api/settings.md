@@ -14,7 +14,7 @@ Configuration is loaded from multiple sources in priority order:
 ## Loading Configuration
 
 ```python
-from imbi_common import settings
+from imbi.common import settings
 
 # Load full configuration
 config = settings.load_config()
@@ -27,20 +27,20 @@ auth_config = settings.Auth()
 
 ## API Reference
 
-::: imbi_common.settings.load_config
+::: imbi.common.settings.load_config
 
-::: imbi_common.settings.get_auth_settings
+::: imbi.common.settings.get_auth_settings
 
-::: imbi_common.settings.get_config_settings
+::: imbi.common.settings.get_config_settings
 
-::: imbi_common.settings.Configuration
+::: imbi.common.settings.Configuration
 
-::: imbi_common.settings.Postgres
+::: imbi.common.settings.Postgres
 
-::: imbi_common.settings.Clickhouse
+::: imbi.common.settings.Clickhouse
 
-::: imbi_common.settings.Auth
+::: imbi.common.settings.Auth
 
-::: imbi_common.settings.ConfigSecrets
+::: imbi.common.settings.ConfigSecrets
 
-::: imbi_common.settings.SSL
+::: imbi.common.settings.SSL

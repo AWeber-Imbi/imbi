@@ -1,4 +1,4 @@
-"""Tests for ``imbi_api.plugins.assignment_writer``.
+"""Tests for ``imbi.api.plugins.assignment_writer``.
 
 Focuses on the Cypher-template construction: the fused delete+UNWIND
 write is a pure transformation of inputs to query+params, so direct
@@ -11,7 +11,7 @@ import json
 import unittest
 import unittest.mock as mock
 
-from imbi_api.plugins.assignment_writer import (
+from imbi.api.plugins.assignment_writer import (
     CapabilityAssignmentRow,
     _rows_template,
     replace_capability_assignments,

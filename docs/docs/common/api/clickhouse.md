@@ -12,7 +12,7 @@ utilities for GDPR-compliant data handling.
 ## Basic Usage
 
 ```python
-from imbi_common import clickhouse
+from imbi.common import clickhouse
 
 # Initialize the client
 await clickhouse.initialize()
@@ -74,7 +74,7 @@ or `argMax(..., recorded_at)`. Insert typed rows with the matching
 model:
 
 ```python
-from imbi_common import clickhouse, models
+from imbi.common import clickhouse, models
 
 await clickhouse.insert(
     "commits",
@@ -121,7 +121,7 @@ injected.
 ## Privacy Utilities
 
 ```python
-from imbi_common.clickhouse import privacy
+from imbi.common.clickhouse import privacy
 
 # Truncate IP addresses for GDPR compliance
 ipv4 = privacy.truncate_ip_to_subnet("192.168.1.100")  # "192.168.1.0"
@@ -135,26 +135,26 @@ hashed = privacy.hash_ip_address("192.168.1.100")
 
 ### Initialization
 
-::: imbi_common.clickhouse.initialize
+::: imbi.common.clickhouse.initialize
 
-::: imbi_common.clickhouse.setup_schema
+::: imbi.common.clickhouse.setup_schema
 
 ### Query Operations
 
-::: imbi_common.clickhouse.query
+::: imbi.common.clickhouse.query
 
-::: imbi_common.clickhouse.insert
+::: imbi.common.clickhouse.insert
 
 ### Client
 
-::: imbi_common.clickhouse.client.Clickhouse
+::: imbi.common.clickhouse.client.Clickhouse
 
 ### Privacy Utilities
 
-::: imbi_common.clickhouse.privacy.hash_ip_address
+::: imbi.common.clickhouse.privacy.hash_ip_address
 
-::: imbi_common.clickhouse.privacy.truncate_ip_to_subnet
+::: imbi.common.clickhouse.privacy.truncate_ip_to_subnet
 
-::: imbi_common.clickhouse.privacy.parse_user_agent
+::: imbi.common.clickhouse.privacy.parse_user_agent
 
-::: imbi_common.clickhouse.privacy.sanitize_metadata
+::: imbi.common.clickhouse.privacy.sanitize_metadata

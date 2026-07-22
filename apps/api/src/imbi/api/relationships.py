@@ -2,7 +2,7 @@
 
 import dataclasses
 
-from imbi_common.models import RelationshipLink
+from imbi.common.models import RelationshipLink
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

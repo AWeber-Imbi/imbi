@@ -1,6 +1,6 @@
 """Plugin-declared schema audit (imbi-api side).
 
-Complements :func:`imbi_common.plugins.apply_plugin_schemas` (which
+Complements :func:`imbi.common.plugins.apply_plugin_schemas` (which
 creates plugin-declared vlabels in AGE on startup) by surfacing
 *orphaned* plugin-declared data — vlabels still present in AGE whose
 declaring plugin is no longer in the registry.
@@ -14,10 +14,11 @@ import pathlib
 import tomllib
 import typing
 
-import imbi_common.graph
 import psycopg
-from imbi_common import settings
-from imbi_common.plugins.registry import list_plugins
+
+import imbi.common.graph
+from imbi.common import settings
+from imbi.common.plugins.registry import list_plugins
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ async def _ag_label_names() -> set[str]:
 
 def _core_vlabel_names() -> set[str]:
     """Return the set of vlabels declared in core ``schemata.toml``."""
-    pkg_dir = pathlib.Path(imbi_common.graph.__file__).resolve().parent
+    pkg_dir = pathlib.Path(imbi.common.graph.__file__).resolve().parent
     schemata = tomllib.loads((pkg_dir / 'schemata.toml').read_text())
     return set(schemata.get('vlabels', {}).get('name', []))
 
@@ -94,9 +95,8 @@ def _model_vlabel_names() -> set[str]:
     write (e.g. ``Document``, ``Tag``, ``LocalAuthConfig``) and must not
     be reported as orphaned.
     """
-    from imbi_common import models as common_models
-
-    from imbi_api.domain import models as domain_models
+    from imbi.api.domain import models as domain_models
+    from imbi.common import models as common_models
 
     base = common_models.GraphModel
     names: set[str] = set()

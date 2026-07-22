@@ -30,15 +30,15 @@ import logging
 import typing
 
 import httpx
-from imbi_common.plugins.base import (
+
+from imbi.common.plugins.base import (
     LifecycleCapability,
     LifecycleResult,
     PluginContext,
     RelocationTarget,
     ServiceWriteback,
 )
-
-from imbi_plugin_pagerduty import _client, _provisioning, _services
+from imbi.plugins.pagerduty import _client, _provisioning, _services
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class PagerDutyLifecycle(LifecycleCapability):
     """Create / update / delete / relocate a project's PagerDuty service.
 
     Service creation, webhook subscription, and edge writeback live in
-    :mod:`imbi_plugin_pagerduty._provisioning` so the doctor capability
+    :mod:`imbi.plugins.pagerduty._provisioning` so the doctor capability
     shares exactly this create path.
     """
 

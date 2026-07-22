@@ -1,4 +1,4 @@
-"""Tests for owner/repo resolution in :mod:`imbi_plugin_github._repos`.
+"""Tests for owner/repo resolution in :mod:`imbi.plugins.github._repos`.
 
 Focuses on the ``preferred_key`` (third-party-service-slug) precedence
 added so the dashboard link keyed by the service slug is read first,
@@ -7,7 +7,7 @@ with a transition fallback to the legacy ``github-repository`` key.
 
 import unittest
 
-from imbi_plugin_github._repos import derive_owner_repo_from_links
+from imbi.plugins.github._repos import derive_owner_repo_from_links
 
 
 class DeriveOwnerRepoTestCase(unittest.TestCase):

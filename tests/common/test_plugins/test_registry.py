@@ -1,37 +1,45 @@
-"""Tests for imbi_common.plugins.registry (v3 convention + contract)."""
+"""Tests for imbi.common.plugins.registry (v3 convention + contract)."""
 
 import contextlib
 import unittest
 import unittest.mock
 
-from imbi_common.plugins import base, registry
-from imbi_common.plugins.errors import (
+from imbi.common.plugins import base, registry
+from imbi.common.plugins.errors import (
     PluginNotFoundError,
     PluginSchemaCollisionError,
 )
-from tests.test_plugins.fixtures.good_plugin import (
+from tests.common.test_plugins.fixtures.good_plugin import (
     FixtureConfiguration,
     GoodPlugin,
 )
 
-_FIX = 'tests.test_plugins.fixtures'
+_FIX = 'tests.common.test_plugins.fixtures'
 
 
 @contextlib.contextmanager
 def _discovery(
     convention: dict[str, str] | None = None,
     imbi_plugins: list[str] | None = None,
+    first_party: dict[str, str] | None = None,
+    disabled: list[str] | None = None,
 ):
-    """Patch convention discovery + the IMBI_PLUGINS setting."""
+    """Patch the discovery scans + the IMBI_PLUGINS* settings."""
     plugins_settings = unittest.mock.MagicMock()
     plugins_settings.return_value.imbi_plugins = imbi_plugins or []
+    plugins_settings.return_value.imbi_plugins_disabled = disabled or []
     with (
+        unittest.mock.patch.object(
+            registry,
+            '_discover_first_party',
+            return_value=first_party or {},
+        ),
         unittest.mock.patch.object(
             registry,
             '_discover_convention',
             return_value=convention or {},
         ),
-        unittest.mock.patch('imbi_common.settings.Plugins', plugins_settings),
+        unittest.mock.patch('imbi.common.settings.Plugins', plugins_settings),
     ):
         yield
 
@@ -122,6 +130,62 @@ class ConventionDiscoveryTestCase(RegistryTestBase):
             result = registry.load_plugins()
         self.assertEqual(result.loaded, [])
         self.assertIn('imbi_plugin_missing', result.errors)
+
+
+class FirstPartyDiscoveryTestCase(RegistryTestBase):
+    def test_first_party_scan_loads_plugin(self) -> None:
+        with _discovery(
+            first_party={f'{_FIX}.good_plugin': 'imbi.plugins.good'}
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, ['good'])
+        self.assertEqual(result.errors, {})
+        entry = registry.get_plugin('good')
+        self.assertIs(entry.plugin_cls, GoodPlugin)
+
+    def test_missing_optional_dependency_is_skipped(self) -> None:
+        with _discovery(
+            first_party={f'{_FIX}.does_not_exist': 'imbi.plugins.missing'}
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertEqual(result.errors, {})
+        self.assertIn('imbi.plugins.missing', result.skipped)
+
+    def test_missing_plugin_attr_is_error(self) -> None:
+        with _discovery(
+            first_party={f'{_FIX}.no_plugin_attr': 'imbi.plugins.bad'}
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn('imbi.plugins.bad', result.errors)
+        self.assertIn('PLUGIN', result.errors['imbi.plugins.bad'])
+
+    def test_disabled_slug_is_skipped(self) -> None:
+        with _discovery(
+            first_party={f'{_FIX}.good_plugin': 'imbi.plugins.good'},
+            disabled=['good'],
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertEqual(result.errors, {})
+        self.assertIn('imbi.plugins.good', result.skipped)
+        with self.assertRaises(PluginNotFoundError):
+            registry.get_plugin('good')
+
+    def test_disabled_applies_to_convention_scan(self) -> None:
+        with _discovery(
+            convention={f'{_FIX}.good_plugin': 'imbi_plugin_good'},
+            disabled=['good'],
+        ):
+            result = registry.load_plugins()
+        self.assertEqual(result.loaded, [])
+        self.assertIn('imbi_plugin_good', result.skipped)
+
+    def test_real_first_party_discovery_finds_shipped_plugins(self) -> None:
+        discovered = registry._discover_first_party()
+        for name in ('aws', 'github', 'sonarqube'):
+            self.assertIn(f'imbi.plugins.{name}', discovered)
 
 
 class ExplicitDiscoveryTestCase(RegistryTestBase):
@@ -244,7 +308,7 @@ class WebhookCatalogTestCase(RegistryTestBase):
                     return registry.load_plugins()
 
     def test_duplicate_action_names_rejected(self) -> None:
-        from tests.test_plugins.fixtures.good_plugin import (
+        from tests.common.test_plugins.fixtures.good_plugin import (
             SampleActionConfig,
             sample_action,
         )
@@ -273,7 +337,7 @@ class WebhookCatalogTestCase(RegistryTestBase):
             def actions(cls):
                 return []
 
-        with self.assertLogs('imbi_common.plugins.registry', 'WARNING'):
+        with self.assertLogs('imbi.common.plugins.registry', 'WARNING'):
             result = self._load_webhook(EmptyActions)
         self.assertEqual(result.loaded, ['hook'])
 
@@ -290,7 +354,9 @@ class WebhookCatalogTestCase(RegistryTestBase):
 
 class ToolsCatalogTestCase(RegistryTestBase):
     def test_duplicate_tool_names_rejected(self) -> None:
-        from tests.test_plugins.fixtures.good_plugin import sample_action
+        from tests.common.test_plugins.fixtures.good_plugin import (
+            sample_action,
+        )
 
         def _tool(name: str) -> base.ToolDescriptor:
             return base.ToolDescriptor(

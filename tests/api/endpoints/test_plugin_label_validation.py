@@ -1,7 +1,7 @@
 """Verify plugin label/edge names are validated before Cypher interpolation.
 
-The endpoints in :mod:`imbi_api.endpoints.plugin_entities` and
-:mod:`imbi_api.endpoints.plugin_edges` interpolate label and
+The endpoints in :mod:`imbi.api.endpoints.plugin_entities` and
+:mod:`imbi.api.endpoints.plugin_edges` interpolate label and
 relationship-type strings directly into Cypher queries. A malformed
 plugin manifest must not be able to break out of the label position.
 """
@@ -10,17 +10,17 @@ import unittest
 from unittest import mock
 
 import fastapi
-from imbi_common.plugins.base import (
+
+from imbi.api.endpoints import plugin_edges, plugin_entities
+from imbi.common.plugins.base import (
     Capability,
     ConfigurationCapability,
     PluginEdgeLabel,
     PluginManifest,
     PluginVertexLabel,
 )
-from imbi_common.plugins.registry import RegistryEntry
-
-from imbi_api.endpoints import plugin_edges, plugin_entities
-from tests import support
+from imbi.common.plugins.registry import RegistryEntry
+from tests.api import support
 
 
 class _FakeConfiguration(ConfigurationCapability):
@@ -65,7 +65,7 @@ class ResolveLabelValidationTests(unittest.IsolatedAsyncioTestCase):
             vertex_labels=[
                 PluginVertexLabel(
                     name='AwsAccount',
-                    model_ref='imbi_common.models:Organization',
+                    model_ref='imbi.common.models:Organization',
                 )
             ]
         )
@@ -82,7 +82,7 @@ class ResolveLabelValidationTests(unittest.IsolatedAsyncioTestCase):
             vertex_labels=[
                 PluginVertexLabel(
                     name='Node) DETACH DELETE n MATCH (x',
-                    model_ref='imbi_common.models:Organization',
+                    model_ref='imbi.common.models:Organization',
                 )
             ]
         )
@@ -100,7 +100,7 @@ class ResolveLabelValidationTests(unittest.IsolatedAsyncioTestCase):
             vertex_labels=[
                 PluginVertexLabel(
                     name='1Bad',
-                    model_ref='imbi_common.models:Organization',
+                    model_ref='imbi.common.models:Organization',
                 )
             ]
         )

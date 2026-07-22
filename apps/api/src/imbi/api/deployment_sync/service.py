@@ -20,13 +20,13 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import graph
 
-from imbi_api import models
-from imbi_api.auth import permissions
+from imbi.api import models
+from imbi.api.auth import permissions
+from imbi.common import graph
 
 if typing.TYPE_CHECKING:
-    from imbi_api.endpoints.project_deployments import ResyncSummary
+    from imbi.api.endpoints.project_deployments import ResyncSummary
 
 LOGGER = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def run_resync(
     """
     # Imported here (not at module load) so the worker/service module
     # never pulls the endpoints package at import time.
-    from imbi_api.endpoints import project_deployments
+    from imbi.api.endpoints import project_deployments
 
     try:
         return await project_deployments.resync_for_project(

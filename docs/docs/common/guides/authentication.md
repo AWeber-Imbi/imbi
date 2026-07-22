@@ -17,7 +17,7 @@ The auth module provides two core capabilities:
 Generate access and refresh tokens after successful login:
 
 ```python
-from imbi_common.auth import core
+from imbi.common.auth import core
 
 # Create access token (short-lived, e.g., 1 hour)
 access_token = core.create_access_token(
@@ -46,7 +46,7 @@ return {
 Verify and decode tokens on protected endpoints:
 
 ```python
-from imbi_common.auth import core
+from imbi.common.auth import core
 
 try:
     # Verify the token
@@ -70,7 +70,7 @@ except Exception as e:
 Implement token refresh to avoid frequent re-authentication:
 
 ```python
-from imbi_common.auth import core
+from imbi.common.auth import core
 
 try:
     # Verify refresh token
@@ -97,7 +97,7 @@ except Exception as e:
 Use Fernet encryption for storing OAuth tokens or other sensitive data:
 
 ```python
-from imbi_common.auth import encryption
+from imbi.common.auth import encryption
 
 # Encrypt a sensitive value before storing
 encrypted_token = encryption.encrypt_token("oauth_access_token_abc123")
@@ -110,7 +110,7 @@ encrypted_token = encryption.encrypt_token("oauth_access_token_abc123")
 Decrypt tokens when needed:
 
 ```python
-from imbi_common.auth import encryption
+from imbi.common.auth import encryption
 
 # Decrypt when you need to use the value
 decrypted_token = encryption.decrypt_token(encrypted_value)
@@ -121,7 +121,7 @@ decrypted_token = encryption.decrypt_token(encrypted_value)
 For more control, use the singleton `TokenEncryption` class directly:
 
 ```python
-from imbi_common.auth.encryption import TokenEncryption
+from imbi.common.auth.encryption import TokenEncryption
 
 # Get the singleton instance
 encryptor = TokenEncryption.get_instance()

@@ -4,9 +4,9 @@ import unittest
 
 import httpx
 import respx
-from imbi_common.plugins.base import PluginContext
 
-from imbi_plugin_pagerduty import _client, _services
+from imbi.common.plugins.base import PluginContext
+from imbi.plugins.pagerduty import _client, _services
 
 _CREDS = {'api_key': 'k'}
 

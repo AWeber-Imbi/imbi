@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_common import versioning
+from imbi.common import versioning
 
 
 class ValidateSemverTestCase(unittest.TestCase):

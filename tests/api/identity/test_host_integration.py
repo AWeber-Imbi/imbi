@@ -5,14 +5,14 @@ import unittest
 from unittest import mock
 
 import fastapi
-from imbi_common.plugins.base import (
+
+from imbi.api.identity import errors as identity_errors
+from imbi.api.identity import host_integration
+from imbi.common.plugins.base import (
     IdentityCredentials,
     PluginContext,
 )
-from imbi_common.plugins.errors import PluginAuthenticationFailed
-
-from imbi_api.identity import errors as identity_errors
-from imbi_api.identity import host_integration
+from imbi.common.plugins.errors import PluginAuthenticationFailed
 
 
 def _ctx() -> PluginContext:
@@ -243,7 +243,7 @@ class CallWithIdentityRetryTestCase(unittest.IsolatedAsyncioTestCase):
                 'identity': IdentityCredentials(access_token='new'),
             }
         )
-        from imbi_api.identity import flows
+        from imbi.api.identity import flows
 
         attach = mock.AsyncMock(side_effect=[first_ctx, second_ctx])
         fn_call_count = {'n': 0}
@@ -278,7 +278,7 @@ class CallWithIdentityRetryTestCase(unittest.IsolatedAsyncioTestCase):
                 'identity': IdentityCredentials(access_token='old'),
             }
         )
-        from imbi_api.identity import flows
+        from imbi.api.identity import flows
 
         with (
             mock.patch.object(
@@ -312,7 +312,7 @@ class CallWithIdentityRetryTestCase(unittest.IsolatedAsyncioTestCase):
                 'identity': IdentityCredentials(access_token='at'),
             }
         )
-        from imbi_api.identity import flows
+        from imbi.api.identity import flows
 
         with (
             mock.patch.object(

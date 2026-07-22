@@ -3,7 +3,7 @@
 ``resolve_capability`` replaces v2's ``resolve_plugin``: it resolves a
 single Integration for a project + capability kind, honoring the
 effective-bindings + default-all rules (see
-:mod:`imbi_api.plugins.assignments`) and the same ambiguity semantics as
+:mod:`imbi.api.plugins.assignments`) and the same ambiguity semantics as
 before -- 404 when nothing is bound, 400 (``?source=<integration_slug>``)
 when several are bound and none is the default.
 """
@@ -12,18 +12,18 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import graph
-from imbi_common.plugins.base import CapabilityHandler, PluginContext
-from imbi_common.plugins.errors import (
-    PluginNotFoundError,
-    PluginUnavailableError,
-)
-from imbi_common.plugins.registry import RegistryEntry, get_plugin
 
-from imbi_api.plugins.assignments import (
+from imbi.api.plugins.assignments import (
     CapabilityBinding,
     effective_bindings,
 )
+from imbi.common import graph
+from imbi.common.plugins.base import CapabilityHandler, PluginContext
+from imbi.common.plugins.errors import (
+    PluginNotFoundError,
+    PluginUnavailableError,
+)
+from imbi.common.plugins.registry import RegistryEntry, get_plugin
 
 LOGGER = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ async def _loaded_and_enabled(
 ) -> bool:
     """True when the binding's plugin is loaded, declares ``kind``, and its
     ``PluginRegistration`` is enabled."""
-    from imbi_api.plugins.lifecycle import is_plugin_enabled
+    from imbi.api.plugins.lifecycle import is_plugin_enabled
 
     plugin_slug = binding.integration.get('plugin')
     if not plugin_slug:

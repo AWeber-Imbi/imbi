@@ -6,7 +6,7 @@ from unittest import mock
 
 from cryptography import fernet
 
-from imbi_common.auth import encryption
+from imbi.common.auth import encryption
 
 
 class TokenEncryptionTestCase(unittest.TestCase):
@@ -35,7 +35,7 @@ class TokenEncryptionTestCase(unittest.TestCase):
     def test_get_instance_creates_singleton(self) -> None:
         """Test get_instance creates singleton."""
         with mock.patch(
-            'imbi_common.settings.get_auth_settings'
+            'imbi.common.settings.get_auth_settings'
         ) as mock_settings:
             mock_settings.return_value.encryption_key = self.test_key
 
@@ -47,7 +47,7 @@ class TokenEncryptionTestCase(unittest.TestCase):
     def test_get_instance_missing_key(self) -> None:
         """Test get_instance raises error when key not configured."""
         with mock.patch(
-            'imbi_common.settings.get_auth_settings'
+            'imbi.common.settings.get_auth_settings'
         ) as mock_settings:
             mock_settings.return_value.encryption_key = None
 
@@ -58,7 +58,7 @@ class TokenEncryptionTestCase(unittest.TestCase):
     def test_reset_instance(self) -> None:
         """Test reset_instance clears singleton."""
         with mock.patch(
-            'imbi_common.settings.get_auth_settings'
+            'imbi.common.settings.get_auth_settings'
         ) as mock_settings:
             mock_settings.return_value.encryption_key = self.test_key
 

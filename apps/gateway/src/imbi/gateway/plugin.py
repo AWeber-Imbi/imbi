@@ -2,20 +2,20 @@
 
 Wraps the bundled actions (``update_project``, ``create_release``,
 ``add_deployment_event``, ``ingest_sbom``) as a
-:class:`~imbi_common.plugins.base.WebhookActionsCapability` on a single
-:class:`~imbi_common.plugins.base.Plugin` (slug ``gateway-actions``) so
+:class:`~imbi.common.plugins.base.WebhookActionsCapability` on a single
+:class:`~imbi.common.plugins.base.Plugin` (slug ``gateway-actions``) so
 they participate in the same discovery, validation, and dispatch flow as
 externally-installed plugins. The plugin does not follow the
 ``imbi_plugin_*`` naming convention, so the gateway registers it
 explicitly through the ``IMBI_PLUGINS`` setting (see
-:func:`imbi_gateway.app.create_app`). It declares no integration-level
+:func:`imbi.gateway.app.create_app`). It declares no integration-level
 credentials -- the host always passes an empty ``credentials`` dict to
 these callables.
 """
 
 import typing
 
-from imbi_common.plugins import base as plugin_base
+from imbi.common.plugins import base as plugin_base
 
 
 def _descriptor(
@@ -54,8 +54,8 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                     'Patches Imbi project facts using values read out of '
                     'the webhook payload via JSON Pointer mappings.'
                 ),
-                callable_path='imbi_gateway.actions:update_project',
-                model_path='imbi_gateway.actions:UpdateProjectConfig',
+                callable_path='imbi.gateway.actions:update_project',
+                model_path='imbi.gateway.actions:UpdateProjectConfig',
             ),
             _descriptor(
                 name='create_release',
@@ -65,8 +65,8 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                     "matched Imbi project using the payload's version "
                     'expression and title selector.'
                 ),
-                callable_path='imbi_gateway.actions:create_release',
-                model_path='imbi_gateway.actions:CreateReleaseConfig',
+                callable_path='imbi.gateway.actions:create_release',
+                model_path='imbi.gateway.actions:CreateReleaseConfig',
             ),
             _descriptor(
                 name='add_deployment_event',
@@ -75,8 +75,8 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                     "Appends a deployment event to the release's "
                     'DEPLOYED_TO edge for the matching environment.'
                 ),
-                callable_path='imbi_gateway.actions:add_deployment_event',
-                model_path='imbi_gateway.actions:AddDeploymentEventConfig',
+                callable_path='imbi.gateway.actions:add_deployment_event',
+                model_path='imbi.gateway.actions:AddDeploymentEventConfig',
             ),
             _descriptor(
                 name='ingest_sbom',
@@ -85,8 +85,8 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                     'Forwards a CycloneDX 1.7 SBoM document to the '
                     'Imbi API for the matched project release.'
                 ),
-                callable_path='imbi_gateway.actions:ingest_sbom',
-                model_path='imbi_gateway.actions:IngestSbomConfig',
+                callable_path='imbi.gateway.actions:ingest_sbom',
+                model_path='imbi.gateway.actions:IngestSbomConfig',
             ),
         ]
 
@@ -119,5 +119,5 @@ class GatewayActionsPlugin(plugin_base.Plugin):
 
 
 #: Registered with the plugin registry through the ``IMBI_PLUGINS``
-#: setting; see :func:`imbi_gateway.app.create_app`.
+#: setting; see :func:`imbi.gateway.app.create_app`.
 PLUGIN = GatewayActionsPlugin

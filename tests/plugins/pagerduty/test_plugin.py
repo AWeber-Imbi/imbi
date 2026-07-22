@@ -2,19 +2,18 @@
 
 import unittest
 
-from imbi_common.plugins.base import Plugin
-
-import imbi_plugin_pagerduty
-from imbi_plugin_pagerduty import PagerDutyPlugin
-from imbi_plugin_pagerduty.doctor import PagerDutyDoctor
-from imbi_plugin_pagerduty.incidents import PagerDutyIncidents
-from imbi_plugin_pagerduty.lifecycle import PagerDutyLifecycle
-from imbi_plugin_pagerduty.webhook import PagerDutyWebhookActions
+import imbi.plugins.pagerduty
+from imbi.common.plugins.base import Plugin
+from imbi.plugins.pagerduty import PagerDutyPlugin
+from imbi.plugins.pagerduty.doctor import PagerDutyDoctor
+from imbi.plugins.pagerduty.incidents import PagerDutyIncidents
+from imbi.plugins.pagerduty.lifecycle import PagerDutyLifecycle
+from imbi.plugins.pagerduty.webhook import PagerDutyWebhookActions
 
 
 class PluginTestCase(unittest.TestCase):
     def test_module_level_plugin_attr(self) -> None:
-        self.assertIs(imbi_plugin_pagerduty.PLUGIN, PagerDutyPlugin)
+        self.assertIs(imbi.plugins.pagerduty.PLUGIN, PagerDutyPlugin)
         self.assertTrue(issubclass(PagerDutyPlugin, Plugin))
 
     def test_manifest_identity(self) -> None:

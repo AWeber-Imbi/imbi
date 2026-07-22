@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_common.graph import chunk
+from imbi.common.graph import chunk
 
 
 class TextChunkTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 """Imbi PagerDuty plugin.
 
-A single :class:`~imbi_common.plugins.base.Plugin` declaring one
+A single :class:`~imbi.common.plugins.base.Plugin` declaring one
 PagerDuty Integration with four capabilities: ``lifecycle`` (provision
 and maintain a service), ``incidents`` (live-query the Incidents tab),
 ``webhook-actions`` (an empty v1 catalog), and ``analysis`` (the project
@@ -9,18 +9,17 @@ options are declared once at the Integration level and shared by every
 capability.
 """
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     Capability,
     CredentialField,
     Plugin,
     PluginManifest,
     PluginOption,
 )
-
-from imbi_plugin_pagerduty.doctor import PagerDutyDoctor
-from imbi_plugin_pagerduty.incidents import PagerDutyIncidents
-from imbi_plugin_pagerduty.lifecycle import PagerDutyLifecycle
-from imbi_plugin_pagerduty.webhook import PagerDutyWebhookActions
+from imbi.plugins.pagerduty.doctor import PagerDutyDoctor
+from imbi.plugins.pagerduty.incidents import PagerDutyIncidents
+from imbi.plugins.pagerduty.lifecycle import PagerDutyLifecycle
+from imbi.plugins.pagerduty.webhook import PagerDutyWebhookActions
 
 _OPTIONS: list[PluginOption] = [
     PluginOption(

@@ -4,6 +4,7 @@ site_url: https://aweber-imbi.github.io/imbi/
 
 repo_name: AWeber-Imbi/imbi
 repo_url: https://github.com/AWeber-Imbi/imbi
+edit_uri: edit/main/docs/docs/
 
 theme:
   name: material
@@ -22,9 +23,12 @@ theme:
         name: Switch to light mode
   features:
     - content.code.copy
+    - navigation.tabs
     - navigation.sections
     - navigation.expand
     - navigation.indexes
+    - navigation.top
+    - search.suggest
     - search.highlight
 
 nav:
@@ -44,15 +48,101 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Services: architecture/services.md
+  - API Service:
+      - Overview: api/index.md
+      - Configuration: api/configuration.md
+      - Restore Backup: api/restore-backup.md
+      - Architecture Decision Records:
+          - Overview: api/adr.md
+          - 0001 Record Architecture Decisions: api/adr/0001-record-architecture-decisions.md
+          - 0002 Authentication and Authorization: api/adr/0002-authentication-and-authorization-architecture.md
+          - 0003 Email Sending: api/adr/0003-email-sending-architecture.md
+          - 0004 Phase 5 Authentication Enhancements: api/adr/0004-phase-5-authentication-enhancements.md
+          - 0005 File Upload Storage: api/adr/0005-file-upload-storage-architecture.md
+          - 0006 Project Identity and Multi-Type: api/adr/0006-project-identity-and-multi-type.md
+          - 0007 Relationship Blueprints: api/adr/0007-relationship-blueprints.md
+          - 0008 Plugin System Architecture: api/adr/0008-plugin-system-architecture.md
+          - 0009 Database-Driven OAuth Providers: api/adr/0009-database-driven-oauth-providers.md
+          - 0010 Identity Plugin Architecture: api/adr/0010-identity-plugin-architecture.md
+          - 0011 Graph-Based Project Scoring: api/adr/0011-graph-based-project-scoring.md
+          - 0012 Plugin Manifest Service Template: api/adr/0012-plugin-manifest-service-template.md
+          - 0013 Deployment Plugin Type: api/adr/0013-deployment-plugin-type.md
+          - 0014 Generic Plugin-Entity CRUD: api/adr/0014-generic-plugin-entity-abstraction.md
+  - Library Reference:
+      - Overview: common/index.md
+      - Installation: common/installation.md
+      - Quick Start: common/quickstart.md
+      - Configuration: common/configuration.md
+      - API Reference:
+          - Settings: common/api/settings.md
+          - Imbi API Client: common/api/api-client.md
+          - Graph (Apache AGE): common/api/graph.md
+          - ClickHouse Client: common/api/clickhouse.md
+          - Valkey Client: common/api/valkey.md
+          - Models: common/api/models.md
+          - Blueprints: common/api/blueprints.md
+          - JSON Pointer: common/api/json-pointer.md
+          - Authentication: common/api/auth.md
+          - MCP Toolset Policy: common/api/mcp.md
+          - Logging: common/api/logging.md
+          - OpenTelemetry: common/api/otel.md
+          - Lifespan: common/api/lifespan.md
+      - Guides:
+          - Database Setup: common/guides/database-setup.md
+          - Deployment: common/guides/deployment.md
+          - Authentication: common/guides/authentication.md
+          - Lifespan and Dependency Injection: common/guides/lifespan-di.md
+          - Testing: common/guides/testing.md
+      - Architecture Decision Records:
+          - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
+          - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md
+  - Plugins:
+      - Authoring Plugins: common/plugins/index.md
+      - Configuration: common/plugins/configuration.md
+      - Logs: common/plugins/logs.md
+      - Identity: common/plugins/identity.md
+      - Deployment: common/plugins/deployment.md
+      - Lifecycle: common/plugins/lifecycle.md
+      - Webhook Actions: common/plugins/webhook-actions.md
+      - Analysis: common/plugins/analysis.md
+      - Incidents: common/plugins/incidents.md
+      - Commit Sync: common/plugins/commit-sync.md
+      - Pull Request Sync: common/plugins/pr-sync.md
+      - Tools: common/plugins/tools.md
+  - Services:
+      - Gateway:
+          - Lifespan Pattern: gateway/lifespan-pattern.md
+          - Webhook Filter Expressions: gateway/webhook-filter-expressions.md
+      - Slackbot:
+          - Slack App Manifest: slackbot/slack-app-manifest.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["../src"]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            docstring_style: google
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
 
 markdown_extensions:
   - admonition
   - pymdownx.details
   - pymdownx.superfences
-  - pymdownx.tabbed:
-      alternate_style: true
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
   - toc:
       permalink: true
+  - attr_list
+  - md_in_html

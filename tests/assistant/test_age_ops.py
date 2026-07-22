@@ -6,7 +6,7 @@ import re
 import unittest
 from unittest import mock
 
-from imbi_assistant import age_ops, models
+from imbi.assistant import age_ops, models
 
 
 def mock_db(
@@ -43,7 +43,7 @@ class GetConversationTestCase(
         now = datetime.datetime.now(datetime.UTC)
         db = mock_db([{'c': {'raw': 'data'}}])
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
         ) as mc:
             mc.return_value = {
                 'id': 'conv-123',
@@ -78,7 +78,7 @@ class GetEnabledMCPServersTestCase(
 
     async def test_parses_servers(self) -> None:
         db = mock_db([{'s': {'raw': 'data'}}])
-        with mock.patch('imbi_common.graph.parse_agtype') as mc:
+        with mock.patch('imbi.common.graph.parse_agtype') as mc:
             mc.return_value = {
                 'name': 'Example',
                 'slug': 'example',
@@ -98,7 +98,7 @@ class GetEnabledMCPServersTestCase(
             'url': 'https://mcp.example.com/mcp',
             'enabled': True,
         }
-        with mock.patch('imbi_common.graph.parse_agtype') as mc:
+        with mock.patch('imbi.common.graph.parse_agtype') as mc:
             # First row is missing required fields and fails validation;
             # the loader must skip it and still return the valid one.
             mc.side_effect = [{'enabled': True}, valid]
@@ -124,7 +124,7 @@ class ListConversationsTestCase(
             ]
         )
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
         ) as mc:
             mc.side_effect = [
                 {
@@ -173,7 +173,7 @@ class AddMessageTestCase(
     async def test_add_user_message(self) -> None:
         db = mock_db([{'sequence': 0}])
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             return_value=0,
         ):
             msg = await age_ops.add_message(
@@ -198,7 +198,7 @@ class AddMessageTestCase(
         }
         db = mock_db([{'sequence': 1}])
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             return_value=1,
         ):
             msg = await age_ops.add_message(
@@ -255,7 +255,7 @@ class GetMessagesTestCase(
         now = datetime.datetime.now(datetime.UTC)
         db = mock_db([{'m': {'raw': 'data'}}])
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
         ) as mc:
             mc.return_value = {
                 'id': 'msg-1',
@@ -286,7 +286,7 @@ class CountMessagesTestCase(
     async def test_count_messages(self) -> None:
         db = mock_db([{'cnt': 5}])
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             return_value=5,
         ):
             count = await age_ops.count_messages(db, 'conv-123')

@@ -5,12 +5,12 @@ from unittest import mock
 
 import httpx
 from fastapi import testclient
-from imbi_common import graph
 
-from imbi_api import models, settings
-from imbi_api.auth import password, permissions
-from imbi_api.endpoints import dashboard
-from tests import support
+from imbi.api import models, settings
+from imbi.api.auth import password, permissions
+from imbi.api.endpoints import dashboard
+from imbi.common import graph
+from tests.api import support
 
 
 def _ok_status_handler(request: httpx.Request) -> httpx.Response:

@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_api.endpoints import _json_fields
+from imbi.api.endpoints import _json_fields
 
 FIELDS: _json_fields.JSONFields = {'links': {}, 'tags': []}
 

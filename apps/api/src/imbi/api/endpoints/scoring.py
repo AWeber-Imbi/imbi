@@ -8,13 +8,13 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import clickhouse, graph, models
 
-from imbi_api.auth import permissions
-from imbi_api.domain import scoring as scoring_models
-from imbi_api.endpoints.scoring_policies import load_policy
-from imbi_api.scoring import OptionalValkeyClient
-from imbi_api.scoring import queue as score_queue
+from imbi.api.auth import permissions
+from imbi.api.domain import scoring as scoring_models
+from imbi.api.endpoints.scoring_policies import load_policy
+from imbi.api.scoring import OptionalValkeyClient
+from imbi.api.scoring import queue as score_queue
+from imbi.common import clickhouse, graph, models
 
 LOGGER = logging.getLogger(__name__)
 

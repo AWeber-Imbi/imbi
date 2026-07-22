@@ -2,9 +2,9 @@
 
 import unittest
 
-from imbi_api import storage
-from imbi_api.storage.client import StorageClient
-from imbi_api.storage.dependencies import InjectStorageClient
+from imbi.api import storage
+from imbi.api.storage.client import StorageClient
+from imbi.api.storage.dependencies import InjectStorageClient
 
 
 class StorageModuleTestCase(unittest.TestCase):

@@ -6,13 +6,13 @@ from unittest import mock
 
 import fastapi.testclient
 import jwt
-from imbi_common import graph
-from imbi_common.auth import core
 
-from imbi_api import models, settings
-from imbi_api.auth import password
-from imbi_api.middleware import rate_limit
-from tests import support
+from imbi.api import models, settings
+from imbi.api.auth import password
+from imbi.api.middleware import rate_limit
+from imbi.common import graph
+from imbi.common.auth import core
+from tests.api import support
 
 
 class PasswordHashingTestCase(unittest.TestCase):
@@ -337,7 +337,7 @@ class TokenRefreshEndpointTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings'
+            'imbi.api.settings.get_auth_settings'
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -365,7 +365,7 @@ class TokenRefreshEndpointTestCase(support.SharedAppTestCase):
         )
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings'
+            'imbi.api.settings.get_auth_settings'
         ) as mock_settings:
             mock_settings.return_value = expired_settings
 
@@ -394,7 +394,7 @@ class TokenRefreshEndpointTestCase(support.SharedAppTestCase):
         )
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings'
+            'imbi.api.settings.get_auth_settings'
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -424,7 +424,7 @@ class TokenRefreshEndpointTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_api.settings.get_auth_settings'
+            'imbi.api.settings.get_auth_settings'
         ) as mock_settings:
             mock_settings.return_value = self.auth_settings
 
@@ -480,7 +480,7 @@ class LogoutEndpointTestCase(support.SharedAppTestCase):
                 return [{'revoked': False}]
             # Load permissions (must check before User since
             # the permissions query also contains 'User')
-            elif 'MEMBER_OF' in query:
+            if 'MEMBER_OF' in query:
                 return [{'permissions': []}]
             # Logout operations (revoke token, delete sessions)
             return []
@@ -490,9 +490,9 @@ class LogoutEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.match.return_value = [self.test_user]
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_common.graph.parse_agtype',
+                'imbi.common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
         ):

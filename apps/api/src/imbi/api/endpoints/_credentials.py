@@ -13,9 +13,9 @@ import secrets
 import typing
 
 import fastapi
-from imbi_common import graph
 
-from imbi_api.auth import password
+from imbi.api.auth import password
+from imbi.common import graph
 
 
 async def generate_secret() -> tuple[str, str]:

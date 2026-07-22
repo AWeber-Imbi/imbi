@@ -4,9 +4,9 @@ import unittest
 import unittest.mock
 
 import fastapi
-from imbi_common import access_log
 
-from imbi_api import app, settings, version
+from imbi.api import app, settings, version
+from imbi.common import access_log
 
 
 class CreateAppTestCase(unittest.TestCase):

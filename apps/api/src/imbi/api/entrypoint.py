@@ -5,15 +5,15 @@ import typing
 
 import nanoid
 import typer
-from imbi_common import clickhouse, graph, server
 
-from imbi_api import models
-from imbi_api.auth import password as password_auth
-from imbi_api.auth import seed
-from imbi_api.graph_sql import set_clause
+from imbi.api import models
+from imbi.api.auth import password as password_auth
+from imbi.api.auth import seed
+from imbi.api.graph_sql import set_clause
+from imbi.common import clickhouse, graph, server
 
 main = typer.Typer(no_args_is_help=True)
-main.command('serve')(server.bind_entrypoint('imbi_api.app:create_app'))
+main.command('serve')(server.bind_entrypoint('imbi.api.app:create_app'))
 
 
 @main.command('backfill-node-ids')

@@ -46,8 +46,9 @@ import pydantic
 from cyclonedx.model import bom as cdx_bom
 from cyclonedx.model import component as cdx_component
 from cyclonedx.model import license as cdx_license
-from imbi_common import graph
 from packageurl import PackageURL
+
+from imbi.common import graph
 
 LOGGER = logging.getLogger(__name__)
 

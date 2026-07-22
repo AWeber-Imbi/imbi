@@ -2,7 +2,7 @@
 
 import unittest
 
-from imbi_api.graph_sql import escape_prop, props_template, set_clause
+from imbi.api.graph_sql import escape_prop, props_template, set_clause
 
 
 class EscapePropTestCase(unittest.TestCase):

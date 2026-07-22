@@ -5,17 +5,17 @@ import typing
 from unittest import mock
 
 from fastapi.testclient import TestClient
-from imbi_common import graph
 
-from imbi_api import models
-from tests import support
+from imbi.api import models
+from imbi.common import graph
+from tests.api import support
 
 
 class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for document template CRUD."""
 
     def setUp(self) -> None:
-        from imbi_api.auth import permissions
+        from imbi.api.auth import permissions
 
         self.admin_user = models.User(
             email='admin@example.com',
@@ -88,7 +88,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             [self._template_row()],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/document-templates/',
@@ -122,7 +122,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             [self._template_row(type='user')],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/document-templates/',
@@ -178,7 +178,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             },
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/document-templates/?context=user'
@@ -214,7 +214,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
         ]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/document-templates/',
@@ -235,7 +235,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             {'tag_slug': 'ghost', 'found': False},
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/document-templates/',
@@ -252,7 +252,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
         # No tags -> first execute is the create; returning [] -> 404
         self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/missing/document-templates/',
@@ -264,7 +264,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
         # No tags -> first execute is the per-org duplicate check.
         self.mock_db.execute.return_value = [{'slug': 'adr'}]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(
                 '/organizations/engineering/document-templates/',
@@ -292,7 +292,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             },
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/document-templates/'
@@ -326,7 +326,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             },
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/document-templates/'
@@ -341,7 +341,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
     def test_get_success(self) -> None:
         self.mock_db.execute.return_value = [self._template_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.get(
                 '/organizations/engineering/document-templates/adr'
@@ -374,7 +374,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.put(
                 '/organizations/engineering/document-templates/adr',
@@ -400,7 +400,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.put(
                 '/organizations/engineering/document-templates/adr',
@@ -425,7 +425,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             [{'slug': 'taken'}],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.put(
                 '/organizations/engineering/document-templates/adr',
@@ -448,7 +448,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
             ],
         ]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/document-templates/adr',
@@ -460,7 +460,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
         # apply_patch is type-blind — re-validation must catch this
         self.mock_db.execute.return_value = [self._template_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/document-templates/adr',
@@ -477,7 +477,7 @@ class DocumentTemplateEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_empty_name_rejected(self) -> None:
         self.mock_db.execute.return_value = [self._template_row()]
         with mock.patch(
-            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.patch(
                 '/organizations/engineering/document-templates/adr',

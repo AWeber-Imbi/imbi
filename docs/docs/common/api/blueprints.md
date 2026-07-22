@@ -19,7 +19,7 @@ user-defined schemas without code changes.
 ## Basic Usage
 
 ```python
-from imbi_common import blueprints, models, graph
+from imbi.common import blueprints, models, graph
 
 async def example(db: graph.Graph) -> None:
     # Store a blueprint in the graph
@@ -67,4 +67,4 @@ ProjectModel = await blueprints.get_model(
 
 ## API Reference
 
-::: imbi_common.blueprints.get_model
+::: imbi.common.blueprints.get_model

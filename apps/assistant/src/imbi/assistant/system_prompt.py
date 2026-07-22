@@ -2,7 +2,7 @@
 
 import pathlib
 
-from imbi_assistant import auth, links, settings
+from imbi.assistant import auth, links, settings
 
 _PROMPT_PATH = pathlib.Path(__file__).parent / 'system_prompt.md'
 _prompt_template: str | None = None

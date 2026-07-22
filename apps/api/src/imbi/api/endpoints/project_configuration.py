@@ -8,24 +8,24 @@ import typing
 
 import fastapi
 import nanoid
-from imbi_common import clickhouse, graph, valkey
-from imbi_common import models as common_models
-from imbi_common.plugins import decrypt_integration_credentials
-from imbi_common.plugins.base import (
+
+from imbi.api.auth import permissions
+from imbi.api.domain import models
+from imbi.api.endpoints._helpers import (
+    lookup_project_slugs,
+    lookup_project_type_slugs,
+)
+from imbi.api.identity.host_integration import call_with_identity_retry
+from imbi.api.plugins import call_with_timeout
+from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
+from imbi.common import clickhouse, graph, valkey
+from imbi.common import models as common_models
+from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins.base import (
     ConfigurationCapability,
     ConfigValue,
     PluginContext,
 )
-
-from imbi_api.auth import permissions
-from imbi_api.domain import models
-from imbi_api.endpoints._helpers import (
-    lookup_project_slugs,
-    lookup_project_type_slugs,
-)
-from imbi_api.identity.host_integration import call_with_identity_retry
-from imbi_api.plugins import call_with_timeout
-from imbi_api.plugins.resolution import ResolvedCapability, resolve_capability
 
 LOGGER = logging.getLogger(__name__)
 
@@ -346,7 +346,7 @@ async def _write_audit(
 
     Uses the canonical ``OperationLog`` model so the row matches the
     schema used by ``operations_log.py``. ``entry_type`` is fixed to
-    ``'Configured'`` per the Literal in ``imbi_common.models``; the
+    ``'Configured'`` per the Literal in ``imbi.common.models``; the
     plugin/key/data_type/secret payload is encoded in ``description`` as
     JSON so consumers can decode the exact change without us having to
     extend the schema.

@@ -6,8 +6,8 @@ from unittest import mock
 
 import fastapi
 
-from imbi_api.auth import password
-from imbi_api.endpoints import _credentials
+from imbi.api.auth import password
+from imbi.api.endpoints import _credentials
 
 
 class ComputeExpiresAtTests(unittest.TestCase):

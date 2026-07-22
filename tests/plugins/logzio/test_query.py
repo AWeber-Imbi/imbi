@@ -3,10 +3,10 @@
 import datetime
 
 import pytest
-from imbi_common.plugins.base import LogFilter, LogQuery
-from imbi_common.plugins.errors import CursorExpiredError
 
-from imbi_plugin_logzio.query import (
+from imbi.common.plugins.base import LogFilter, LogQuery
+from imbi.common.plugins.errors import CursorExpiredError
+from imbi.plugins.logzio.query import (
     _seconds_to_fixed_interval,
     build_histogram_body,
     build_query_body,

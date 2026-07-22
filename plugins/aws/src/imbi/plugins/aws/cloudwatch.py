@@ -10,7 +10,7 @@ import json
 import logging
 import typing
 
-from imbi_common.plugins.base import (
+from imbi.common.plugins.base import (
     LogEntry,
     LogHistogramBucket,
     LogQuery,
@@ -18,24 +18,23 @@ from imbi_common.plugins.base import (
     LogsCapability,
     PluginContext,
 )
-from imbi_common.plugins.errors import (
+from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginTimeoutError,
     PluginUnavailableError,
 )
-from imbi_common.plugins.templates import expand_template
-
-from imbi_plugin_aws._helpers import (
+from imbi.common.plugins.templates import expand_template
+from imbi.plugins.aws._helpers import (
     capability_timeout,
     integration_region,
     template_vars,
 )
-from imbi_plugin_aws.aws_session import (
+from imbi.plugins.aws.aws_session import (
     AwsCredentials,
     call_aws_json,
     resolve_credentials,
 )
-from imbi_plugin_aws.log_groups import (
+from imbi.plugins.aws.log_groups import (
     LOG_GROUP_NAME_LIMIT,
     SOURCE_PREFIX_LIMIT,
     Entry,
@@ -43,7 +42,7 @@ from imbi_plugin_aws.log_groups import (
     literal_prefix,
     parse_entries,
 )
-from imbi_plugin_aws.query import (
+from imbi.plugins.aws.query import (
     INSIGHTS_LIMIT_CEILING,
     build_histogram_query,
     build_query,
@@ -248,7 +247,7 @@ def _try_get_valkey() -> typing.Any | None:
     instead of failing the whole search.
     """
     try:
-        from imbi_common import valkey as common_valkey
+        from imbi.common import valkey as common_valkey
     except ImportError:
         return None
     try:
@@ -361,7 +360,7 @@ async def _resolve_pattern(
 
 
 class CloudWatchLogs(LogsCapability):
-    """The ``logs`` capability of :class:`~imbi_plugin_aws.plugin.AWSPlugin`,
+    """The ``logs`` capability of :class:`~imbi.plugins.aws.plugin.AWSPlugin`,
     backed by CloudWatch Logs Insights."""
 
     async def search(

@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from imbi_api.auth import sessions
+from imbi.api.auth import sessions
 
 
 class DeleteExpiredSessionsTestCase(
@@ -17,7 +17,7 @@ class DeleteExpiredSessionsTestCase(
         mock_db.execute.return_value = [{'deleted_count': 0}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             count = await sessions.delete_expired_sessions(mock_db)
@@ -31,7 +31,7 @@ class DeleteExpiredSessionsTestCase(
         mock_db.execute.return_value = [{'deleted_count': 5}]
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             count = await sessions.delete_expired_sessions(mock_db)
@@ -45,7 +45,7 @@ class DeleteExpiredSessionsTestCase(
         mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.graph.parse_agtype',
+            'imbi.common.graph.parse_agtype',
             side_effect=lambda x: x,
         ):
             count = await sessions.delete_expired_sessions(mock_db)

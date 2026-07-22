@@ -5,7 +5,7 @@ import unittest.mock
 
 import pydantic
 
-from imbi_common.llm import (
+from imbi.common.llm import (
     AnthropicClient,
     AnthropicSettings,
     CompletionResult,
