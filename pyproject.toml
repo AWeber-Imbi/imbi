@@ -57,12 +57,10 @@ dev = [
 ]
 dist = ["build", "twine", "wheel"]
 docs = [
-  "click~=8.2.1",  # 8.3+ breaks mkdocs serve (https://github.com/mkdocs/mkdocs/issues/4032)
   "griffe-pydantic",
-  "mkdocs>=1.5,<2",
-  "mkdocs-material>9.5,<10",
   "mkdocstrings-python-xref>=1.6,<2",
   "mkdocstrings[python]",
+  "zensical>=0.0.50,<0.1",
 ]
 
 [build-system]

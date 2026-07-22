@@ -5,7 +5,7 @@ language: 'python'
 
 project:
   name: 'imbi-docs'
-  description: 'Merged mkdocs documentation site'
+  description: 'Merged Zensical documentation site'
 
 # Tasks run from this project's directory (docs/); uv resolves the workspace
 # root upward, so `--group docs` and the shared .venv still apply.
@@ -17,7 +17,7 @@ tasks:
       - '--frozen'
       - '--group'
       - 'docs'
-      - 'mkdocs'
+      - 'zensical'
       - 'build'
       - '--strict'
       - '-f'
@@ -37,7 +37,7 @@ tasks:
       - '--frozen'
       - '--group'
       - 'docs'
-      - 'mkdocs'
+      - 'zensical'
       - 'serve'
       - '-f'
       - 'mkdocs.yml'
