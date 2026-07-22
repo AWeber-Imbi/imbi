@@ -1,0 +1,68 @@
+name: imbi
+
+deploy:
+  remote: true
+  compose:
+    file: compose.dev.yaml
+  endpoints:
+    - path: /
+      service: imbi-ui
+      port: 5173
+    - path: /api
+      service: imbi-api
+      port: 8000
+    - path: /assistant
+      service: imbi-assistant
+      port: 8002
+    - path: /docs
+      service: imbi-api
+      port: 8000
+    - path: /gateway
+      service: imbi-gateway
+      port: 8003
+    - path: /mailpit
+      service: mailpit
+      port: 8025
+    - path: /mcp
+      service: imbi-mcp
+      port: 8001
+    - path: /openapi.json
+      service: imbi-api
+      port: 8000
+
+dev:
+  imbi-api:
+    command: bash -c "uv sync --all-groups --all-extras && exec uv run imbi-api serve --dev --host 0.0.0.0"
+    workdir: /workspace
+    sync:
+      - .:/workspace
+
+  imbi-assistant:
+    command: bash -c "uv sync --all-groups --all-extras && exec uv run imbi-assistant serve --dev --host 0.0.0.0"
+    workdir: /workspace
+    sync:
+      - .:/workspace
+
+  imbi-gateway:
+    command: bash -c "uv sync --all-groups --all-extras && exec uv run imbi-gateway serve --dev --host 0.0.0.0"
+    workdir: /workspace
+    sync:
+      - .:/workspace
+
+  imbi-mcp:
+    command: bash -c "uv sync --all-groups --all-extras && exec uv run imbi-mcp serve --host 0.0.0.0"
+    workdir: /workspace
+    sync:
+      - .:/workspace
+
+  imbi-slackbot:
+    command: bash -c "uv sync --all-groups --all-extras && exec uv run imbi-slackbot serve --dev --host 0.0.0.0"
+    workdir: /workspace
+    sync:
+      - .:/workspace
+
+  imbi-ui:
+    command: bash -c "npm install && exec npm run dev"
+    workdir: /workspace/apps/ui
+    sync:
+      - ./apps/ui:/workspace/apps/ui

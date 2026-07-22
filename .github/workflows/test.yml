@@ -1,0 +1,93 @@
+name: Testing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install just
+        uses: extractions/setup-just@v4
+        with:
+          just-version: '1.47.1'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: '3.14'
+          enable-cache: true
+      - name: Lint
+        run: just lint
+
+  python-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install just
+        uses: extractions/setup-just@v4
+        with:
+          just-version: '1.47.1'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: '3.14'
+          enable-cache: true
+      - name: Run tests
+        run: just test
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: build/coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  ui-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/ui
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/ui/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Check formatting
+        run: npm run format:check
+      - name: Complexity audit
+        run: npx fallow audit --base origin/main
+
+  ui-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/ui
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/ui/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        run: npm run test
+      - name: Build
+        run: npm run build

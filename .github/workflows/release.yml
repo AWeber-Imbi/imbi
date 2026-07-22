@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: Release
 
 on:
   push:
@@ -33,8 +33,6 @@ jobs:
 
       - name: Check out the repo
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -144,3 +142,54 @@ jobs:
           fi
           docker buildx imagetools create $tags \
             $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
+
+  build-dist:
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'AWeber-Imbi/imbi'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: '3.14'
+          enable-cache: true
+
+      - name: Verify tag matches the package version
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version=$(uv version --short)
+          if [ "${tag#v}" != "$version" ]; then
+            echo "Tag $tag does not match pyproject.toml version $version" >&2
+            exit 1
+          fi
+
+      - name: Build
+        run: uv build --all-packages
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-pypi:
+    needs: build-dist
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish package
+        # Intentionally pinned to the release/v1 branch rather than a SHA.
+        # PyPA ship trusted-publishing fixes by rolling this branch forward,
+        # and recommend tracking it instead of pinning a commit.
+        # https://github.com/pypa/gh-action-pypi-publish#:~:text=release/v1
+        uses: pypa/gh-action-pypi-publish@release/v1

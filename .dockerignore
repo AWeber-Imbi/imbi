@@ -2,12 +2,20 @@
 .github
 docs
 helm
+tests
+typings
+legacy
 *.md
+!README.md
 justfile
-LICENSE
 .gitignore
 .gitmodules
 .dockerignore
+.venv
+.env
+.env.*
+backups
+
 # Node artifacts
 **/node_modules
 

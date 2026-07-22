@@ -1,0 +1,8 @@
+<clickhouse>
+  <trace_log remove="remove" />
+  <query_log remove="remove" />
+  <query_thread_log remove="remove" />
+  <metric_log remove="remove" />
+  <asynchronous_metric_log remove="remove" />
+  <part_log remove="remove" />
+</clickhouse>
