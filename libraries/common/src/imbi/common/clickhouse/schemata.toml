@@ -154,6 +154,24 @@ ORDER BY (project_id, sha);
 """
 enabled = true
 
+[document_versions]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.document_versions {on_cluster}(
+  document_id   String,
+  version       UInt32,
+  title         String,
+  content       String,
+  tags          Array(String),
+  change_kind   LowCardinality(String),
+  updated_by    String,
+  updated_at    DateTime64(3, 'UTC'),
+  recorded_at   DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+PARTITION BY toYear(updated_at)
+ORDER BY (document_id, version);
+"""
+enabled = true
+
 [tags]
 query = """
 CREATE TABLE IF NOT EXISTS imbi.tags {on_cluster}(

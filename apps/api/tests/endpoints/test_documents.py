@@ -51,6 +51,18 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             lambda: self.mock_db
         )
 
+        # Version snapshots are written to ClickHouse best-effort on
+        # create/patch; keep these tests hermetic by mocking the client.
+        self.ch_insert = mock.AsyncMock()
+        self.ch_query = mock.AsyncMock(return_value=[{'v': 1, 'c': 1}])
+        for target, replacement in (
+            ('imbi.common.clickhouse.insert', self.ch_insert),
+            ('imbi.common.clickhouse.query', self.ch_query),
+        ):
+            patcher = mock.patch(target, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
         self.client = TestClient(self.test_app)
 
     def _document_data(self, **overrides: typing.Any) -> dict:
@@ -710,6 +722,154 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             json=[{'op': 'replace', 'path': '/content', 'value': 'x'}],
         )
         self.assertEqual(response.status_code, 404)
+
+    # -- Version history capture ----------------------------------------
+
+    def test_create_records_version_snapshot(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'id': 'document-1'}],
+            [self._project_row()],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/projects/proj-abc/documents/',
+                json={
+                    'title': 'DB lock runbook',
+                    'content': 'Watch out for DB locks',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['version'], 1)
+        self.ch_insert.assert_awaited_once()
+        table, rows = self.ch_insert.await_args.args
+        self.assertEqual(table, 'document_versions')
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].version, 1)
+        self.assertEqual(rows[0].change_kind, 'create')
+        self.assertEqual(rows[0].content, 'Watch out for DB locks')
+
+    def test_patch_content_bumps_version_and_snapshots(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1'}],
+            [
+                self._project_row(
+                    n=self._document_data(content='Updated text', version=2)
+                )
+            ],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/content',
+                        'value': 'Updated text',
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['version'], 2)
+        # The SET query (second call) writes the bumped version.
+        write_call = self.mock_db.execute.await_args_list[1]
+        self.assertEqual(write_call.args[1]['version'], 2)
+        self.ch_insert.assert_awaited_once()
+        _, rows = self.ch_insert.await_args.args
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].version, 2)
+        self.assertEqual(rows[0].change_kind, 'update')
+
+    def test_patch_is_pinned_does_not_bump_version(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1'}],
+            [self._project_row(n=self._document_data(is_pinned=True))],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[
+                    {'op': 'replace', 'path': '/is_pinned', 'value': True}
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        write_call = self.mock_db.execute.await_args_list[1]
+        self.assertEqual(write_call.args[1]['version'], 1)
+        self.ch_insert.assert_not_awaited()
+
+    def test_patch_writes_baseline_for_document_without_history(self) -> None:
+        """First edit of a pre-versioning document retains its old state."""
+        self.ch_query.return_value = [{'v': 0, 'c': 0}]
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1'}],
+            [
+                self._project_row(
+                    n=self._document_data(content='Updated text', version=2)
+                )
+            ],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/content',
+                        'value': 'Updated text',
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.ch_insert.assert_awaited_once()
+        _, rows = self.ch_insert.await_args.args
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].version, 1)
+        self.assertEqual(rows[0].change_kind, 'baseline')
+        self.assertEqual(rows[0].content, 'Watch out for DB locks')
+        self.assertEqual(rows[1].version, 2)
+        self.assertEqual(rows[1].change_kind, 'update')
+
+    def test_patch_succeeds_when_clickhouse_insert_fails(self) -> None:
+        """Snapshot capture is best-effort; the graph write must land."""
+        self.ch_insert.side_effect = RuntimeError('clickhouse down')
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1'}],
+            [
+                self._project_row(
+                    n=self._document_data(content='Updated text', version=2)
+                )
+            ],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            self.assertLogs(
+                'imbi.api.endpoints.document_versions', level='ERROR'
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/content',
+                        'value': 'Updated text',
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
 
     # -- Delete --------------------------------------------------------
 
