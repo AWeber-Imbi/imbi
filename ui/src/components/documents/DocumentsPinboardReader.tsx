@@ -86,8 +86,6 @@ interface Props {
   onRestoreVersion?: (version: number) => void
   onTogglePin: () => void
   orgSlug: string
-  /** Emails of other people currently editing this document. */
-  otherEditors?: string[]
   projectId: null | string
   restorePending?: boolean
   /** Show the attachment eyebrow — only in the org-wide reader, where the
@@ -117,7 +115,6 @@ export function DocumentsPinboardReader({
   onRestoreVersion,
   onTogglePin,
   orgSlug,
-  otherEditors = [],
   projectId,
   restorePending = false,
   showAttachment = false,
@@ -407,13 +404,6 @@ export function DocumentsPinboardReader({
                 <span className="text-tertiary">·</span>
                 <span>Updated {formatUpdated(document)}</span>
               </div>
-              {otherEditors.length > 0 && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11.5px] text-amber-700 dark:text-amber-400">
-                  <Pencil className="size-3" />
-                  {editorNames(otherEditors, displayNames)}{' '}
-                  {otherEditors.length === 1 ? 'is' : 'are'} currently editing
-                </span>
-              )}
               <div className="bg-tertiary h-3.5 w-px" />
               <div className="flex flex-wrap gap-1">
                 {document.tags.map((t) => (
@@ -604,17 +594,6 @@ export function DocumentsPinboardReader({
       />
     </div>
   )
-}
-
-/** "Alice", "Alice and Bob", or "Alice, Bob, and Carol". */
-function editorNames(
-  emails: string[],
-  displayNames?: Map<string, string>,
-): string {
-  const names = emails.map((e) => displayNames?.get(e) ?? e)
-  if (names.length === 1) return names[0]
-  if (names.length === 2) return `${names[0]} and ${names[1]}`
-  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
 }
 
 function extractHeadings(content: string): Heading[] {

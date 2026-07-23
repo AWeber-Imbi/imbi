@@ -56,13 +56,12 @@ export function DocumentsTab({
     initialAction,
   )
 
-  // Advisory presence: heartbeat while editing an existing document,
-  // poll the editor list while reading.
-  const presenceDocumentId =
-    ctl.editingDocument?.id ?? ctl.selectedDocument?.id ?? null
+  // Advisory presence: heartbeat only while editing an existing
+  // document (the response carries the other editors). Readers
+  // generate no presence traffic.
   const { otherEditors } = useDocumentPresence(
     orgSlug,
-    presenceDocumentId,
+    ctl.editingDocument?.id ?? null,
     !!ctl.editingDocument,
     ctl.currentUserEmail,
   )
@@ -131,7 +130,6 @@ export function DocumentsTab({
         }
         onTogglePin={() => ctl.togglePin(document)}
         orgSlug={orgSlug}
-        otherEditors={otherEditors}
         projectId={scope.commentsProjectId}
         restorePending={ctl.restorePending}
         showAttachment={scope.templateContext === 'org'}
