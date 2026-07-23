@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
 import { diffLines } from 'diff'
@@ -75,6 +75,14 @@ export function DocumentVersionHistory({
   const [selected, setSelected] = useState<null | number>(null)
   const [viewMode, setViewMode] = useState<'content' | 'diff'>('content')
   const [confirmRestore, setConfirmRestore] = useState(false)
+
+  // The dialog stays mounted while `document` can change underneath it
+  // (e.g. navigating via related documents), so the per-document
+  // selection must not carry over.
+  useEffect(() => {
+    setSelected(null)
+    setConfirmRestore(false)
+  }, [document.id])
 
   const versionsQuery = useQuery({
     enabled: open,
