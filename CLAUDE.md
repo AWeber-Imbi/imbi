@@ -67,9 +67,14 @@ Run the prod image locally with `docker compose up --build` (compose.yaml).
 
 Task granularity: per-member `test` tasks are for targeted local runs and are
 `runInCI: false` (the suite shares one database with no per-process isolation);
-CI runs the single-session `root:coverage` instead. Cross-member edges are
-explicit `dependsOn: [common]` in each member's `moon.yml`. Test env vars are
-written to `.env.test` by `root:services`.
+CI runs the single-session `root:coverage` instead. Coverage is scoped
+per-member: each member's `[tool.coverage]` (in its own `pyproject.toml`) sets
+its source + `fail_under`, and the shared test task reads it via
+`--cov-config=$projectSource/pyproject.toml` — so `moon run <member>:test`
+reports/gates on that member alone, while `root:coverage` uses the root
+config's repo-wide `source_pkgs = ["imbi"]`. Cross-member edges are explicit
+`dependsOn: [common]` in each member's `moon.yml`. Test env vars are written to
+`.env.test` by `root:services`.
 
 ## Conventions
 

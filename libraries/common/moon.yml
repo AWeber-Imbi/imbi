@@ -9,10 +9,11 @@ project:
   name: 'imbi-common'
   description: 'Shared library: data access, auth primitives, and domain models'
 
-# Inherits lint / format / typecheck / test from .moon/tasks/python.yml. Only
-# the coverage module for this member is member-specific.
+# Inherits lint / format / typecheck / test from .moon/tasks/python.yml. The
+# shared test task points --cov-config at this member's pyproject, where
+# [tool.coverage] scopes source + threshold to the member.
 tasks:
   test:
     args:
-      - '--cov=imbi.common'
+      - '--cov'
       - '--cov-report=term-missing'

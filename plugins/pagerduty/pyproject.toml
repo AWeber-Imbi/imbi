@@ -26,6 +26,18 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Coverage for the per-member `moon run pagerduty:test` run. Scoped to this
+# member so the report/threshold reflect only imbi.plugins.pagerduty; the aggregate
+# `root:coverage` run uses the root pyproject config instead.
+[tool.coverage.run]
+branch = true
+source_pkgs = ["imbi.plugins.pagerduty"]
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 85
+show_missing = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/imbi"]
 include = [
