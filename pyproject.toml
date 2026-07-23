@@ -517,6 +517,12 @@ reportUnusedFunction = "warning"
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
 consider_namespace_packages = true
+# Put the workspace root on sys.path so the rootdir-anchored test-helper
+# imports (e.g. `from apps.gateway.tests import helpers`) resolve under every
+# launcher. `coverage run -m pytest` (root:coverage) adds cwd implicitly via
+# `-m`; the bare `pytest` console script that per-member `moon run <m>:test`
+# uses does not — this makes both behave identically.
+pythonpath = ["."]
 testpaths = ["apps/*/tests", "libraries/*/tests", "plugins/*/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
