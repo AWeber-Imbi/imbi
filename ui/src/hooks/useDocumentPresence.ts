@@ -3,48 +3,54 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { clearDocumentEditing, heartbeatDocumentEditing } from '@/api/endpoints'
+import { queryKeys } from '@/lib/queryKeys'
 
-// The server expires markers after 30s; heartbeat well inside that.
-const HEARTBEAT_MS = 10_000
+// Bootstrap interval until the first heartbeat reports the server TTL;
+// thereafter the interval is derived as TTL/3 so the marker can miss
+// two beats before expiring.
+const DEFAULT_HEARTBEAT_MS = 10_000
 
 /**
  * Advisory "currently editing" presence for one document.
  *
- * Active only while `isEditing`: sends a PUT heartbeat on an interval
- * (the response carries the active editor list, so no separate poll
- * is needed) and clears the caller's marker on unmount / leaving edit
- * mode. Idle readers generate no presence traffic. Presence is
- * best-effort: markers expire server-side, so a missed DELETE only
- * lingers for the TTL.
+ * Active while `documentId` is set (null means "not editing"): sends a
+ * PUT heartbeat on an interval — including while the tab is
+ * backgrounded, so the marker survives the editor losing focus — and
+ * clears the caller's marker on unmount. The heartbeat response
+ * carries the active editor list, so no separate poll is needed, and
+ * idle readers generate no presence traffic. Presence is best-effort:
+ * markers expire server-side, so a missed DELETE only lingers for the
+ * TTL.
  */
 export function useDocumentPresence(
   orgSlug: string,
   documentId: null | string,
-  isEditing: boolean,
   currentUserEmail: string,
 ) {
-  const enabled = !!orgSlug && !!documentId && isEditing
-
   const { data } = useQuery({
-    enabled,
+    enabled: !!orgSlug && !!documentId,
     gcTime: 0,
     queryFn: () => heartbeatDocumentEditing(orgSlug, documentId ?? ''),
-    queryKey: ['documentEditors', orgSlug, documentId],
-    refetchInterval: HEARTBEAT_MS,
+    queryKey: queryKeys.documentEditors(orgSlug, documentId ?? ''),
+    refetchInterval: (query) => {
+      const ttl = query.state.data?.ttl_seconds
+      return ttl ? (ttl / 3) * 1000 : DEFAULT_HEARTBEAT_MS
+    },
+    refetchIntervalInBackground: true,
     retry: false,
     staleTime: 0,
   })
 
   // Best-effort release when the editor closes; the TTL covers the rest.
   useEffect(() => {
-    if (!enabled || !documentId) return
+    if (!orgSlug || !documentId) return
     return () => {
       clearDocumentEditing(orgSlug, documentId).catch(() => {})
     }
-  }, [enabled, orgSlug, documentId])
+  }, [orgSlug, documentId])
 
-  const editors = enabled ? (data?.editors ?? []) : []
   return {
-    otherEditors: editors.filter((email) => email !== currentUserEmail),
+    otherEditors:
+      data?.editors.filter((email) => email !== currentUserEmail) ?? [],
   }
 }

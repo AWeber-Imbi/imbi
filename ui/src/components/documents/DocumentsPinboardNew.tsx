@@ -1,16 +1,10 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
-import {
-  ArrowLeft,
-  Check,
-  Columns2,
-  Eye,
-  PencilLine,
-  TriangleAlert,
-} from 'lucide-react'
+import { ArrowLeft, Check, Columns2, Eye, PencilLine } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentTemplate, TagRef } from '@/types'
@@ -185,14 +179,11 @@ export function DocumentsPinboardNew({
         </div>
 
         {otherEditors.length > 0 && (
-          <div className="mb-3.5 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12.5px] text-amber-700 dark:text-amber-400">
-            <TriangleAlert className="size-3.5 shrink-0" />
-            <span>
-              {editorList(otherEditors, displayNames)}{' '}
-              {otherEditors.length === 1 ? 'is' : 'are'} also editing this
-              document — the last save wins.
-            </span>
-          </div>
+          <Alert className="mb-3.5" variant="warning">
+            {editorList(otherEditors, displayNames)}{' '}
+            {otherEditors.length === 1 ? 'is' : 'are'} also editing this
+            document — the last save wins.
+          </Alert>
         )}
 
         <article className="border-tertiary bg-primary overflow-hidden rounded-lg border">

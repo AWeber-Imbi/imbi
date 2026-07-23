@@ -10,6 +10,8 @@ from apps.api.tests import support
 from imbi.api import models
 from imbi.common import valkey
 
+KEY = 'imbi:document:editing:engineering:document-1'
+
 
 class DocumentPresenceEndpointsTestCase(support.SharedAppTestCase):
     """Advisory editing markers backed by a Valkey sorted set."""
@@ -43,7 +45,12 @@ class DocumentPresenceEndpointsTestCase(support.SharedAppTestCase):
             mock_get_current_user
         )
 
+        # Presence batches its Valkey commands through a pipeline; the
+        # command methods queue synchronously, only execute() awaits.
         self.mock_valkey = mock.AsyncMock()
+        self.mock_pipe = mock.Mock()
+        self.mock_pipe.execute = mock.AsyncMock(return_value=[0, []])
+        self.mock_valkey.pipeline = mock.Mock(return_value=self.mock_pipe)
         self.test_app.dependency_overrides[valkey._inject_client] = (
             lambda: self.mock_valkey
         )
@@ -53,9 +60,9 @@ class DocumentPresenceEndpointsTestCase(support.SharedAppTestCase):
     # -- GET ---------------------------------------------------------------
 
     def test_get_editors(self) -> None:
-        self.mock_valkey.zrange.return_value = [
-            b'zed@example.com',
-            b'alice@example.com',
+        self.mock_pipe.execute.return_value = [
+            2,
+            [b'zed@example.com', b'alice@example.com'],
         ]
         response = self.client.get(
             '/organizations/engineering/documents/document-1/editing'
@@ -66,10 +73,12 @@ class DocumentPresenceEndpointsTestCase(support.SharedAppTestCase):
             ['alice@example.com', 'zed@example.com'],
         )
         # Stale entries are pruned before reading.
-        self.mock_valkey.zremrangebyscore.assert_awaited_once()
+        self.mock_pipe.zremrangebyscore.assert_called_once()
+        self.assertEqual(
+            self.mock_pipe.zremrangebyscore.call_args.args[0], KEY
+        )
 
     def test_get_editors_empty(self) -> None:
-        self.mock_valkey.zrange.return_value = []
         response = self.client.get(
             '/organizations/engineering/documents/document-1/editing'
         )
@@ -78,7 +87,7 @@ class DocumentPresenceEndpointsTestCase(support.SharedAppTestCase):
 
     def test_get_editors_valkey_down(self) -> None:
         """Presence degrades to empty rather than failing the request."""
-        self.mock_valkey.zremrangebyscore.side_effect = ConnectionError()
+        self.mock_pipe.execute.side_effect = ConnectionError()
         with self.assertLogs(
             'imbi.api.endpoints.document_presence', level='ERROR'
         ):
@@ -91,20 +100,24 @@ class DocumentPresenceEndpointsTestCase(support.SharedAppTestCase):
     # -- PUT (heartbeat) -----------------------------------------------------
 
     def test_heartbeat_registers_editor(self) -> None:
-        self.mock_valkey.zrange.return_value = [b'admin@example.com']
+        self.mock_pipe.execute.return_value = [
+            1,
+            True,
+            0,
+            [b'admin@example.com'],
+        ]
         response = self.client.put(
             '/organizations/engineering/documents/document-1/editing'
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['editors'], ['admin@example.com'])
-        zadd_call = self.mock_valkey.zadd.await_args
-        key, mapping = zadd_call.args
-        self.assertEqual(key, 'imbi:document:editing:document-1')
+        key, mapping = self.mock_pipe.zadd.call_args.args
+        self.assertEqual(key, KEY)
         self.assertEqual(list(mapping), ['admin@example.com'])
-        self.mock_valkey.expire.assert_awaited_once()
+        self.mock_pipe.expire.assert_called_once()
 
     def test_heartbeat_valkey_down(self) -> None:
-        self.mock_valkey.zadd.side_effect = ConnectionError()
+        self.mock_pipe.execute.side_effect = ConnectionError()
         with self.assertLogs(
             'imbi.api.endpoints.document_presence', level='ERROR'
         ):
@@ -122,7 +135,7 @@ class DocumentPresenceEndpointsTestCase(support.SharedAppTestCase):
         )
         self.assertEqual(response.status_code, 204)
         self.mock_valkey.zrem.assert_awaited_once_with(
-            'imbi:document:editing:document-1', 'admin@example.com'
+            KEY, 'admin@example.com'
         )
 
     def test_clear_editing_valkey_down(self) -> None:

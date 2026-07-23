@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useDocumentComments } from '@/hooks/useDocumentComments'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { queryKeys } from '@/lib/queryKeys'
 import type { Document, DocumentTemplate, PatchOperation } from '@/types'
 
 export interface DocumentDraft {
@@ -229,7 +230,7 @@ export function useDocumentsController(
       )
       qc.invalidateQueries({ queryKey: documentsKey })
       qc.invalidateQueries({
-        queryKey: ['documentVersions', orgSlug, document.id],
+        queryKey: queryKeys.documentVersions(orgSlug, document.id),
       })
       toast.success('Document restored')
     },

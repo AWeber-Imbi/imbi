@@ -24,6 +24,7 @@ import pydantic
 
 from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
+from imbi.api.endpoints import _document_history
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.endpoints._pagination import (
     build_link_header,
@@ -275,11 +276,12 @@ async def _detach_all_tags(
     await db.execute(query, {'document_id': document_id}, columns=['removed'])
 
 
-async def _validate_tag_slugs(
+async def _find_missing_tag_slugs(
     db: graph.Pool, org_slug: str, tag_slugs: list[str]
-) -> None:
+) -> list[str]:
+    """Return the subset of ``tag_slugs`` that do not exist in the org."""
     if not tag_slugs:
-        return
+        return []
     query: typing.LiteralString = """
     MATCH (o:Organization {{slug: {org_slug}}})
     UNWIND {slugs} AS tag_slug
@@ -291,16 +293,35 @@ async def _validate_tag_slugs(
         {'org_slug': org_slug, 'slugs': tag_slugs},
         columns=['tag_slug', 'found'],
     )
-    missing = [
-        graph.parse_agtype(r['tag_slug'])
+    return [
+        str(graph.parse_agtype(r['tag_slug']))
         for r in records
         if not graph.parse_agtype(r['found'])
     ]
+
+
+async def _validate_tag_slugs(
+    db: graph.Pool, org_slug: str, tag_slugs: list[str]
+) -> None:
+    missing = await _find_missing_tag_slugs(db, org_slug, tag_slugs)
     if missing:
         raise fastapi.HTTPException(
             status_code=422,
             detail=f'Tag slug(s) not found: {sorted(missing)!r}',
         )
+
+
+async def filter_existing_tag_slugs(
+    db: graph.Pool, org_slug: str, tag_slugs: list[str]
+) -> list[str]:
+    """Drop tag slugs that no longer exist in the org.
+
+    Used by version restore, where a snapshot may reference tags
+    deleted since it was taken — the restore should proceed without
+    them rather than fail.
+    """
+    missing = set(await _find_missing_tag_slugs(db, org_slug, tag_slugs))
+    return [t for t in tag_slugs if t not in missing]
 
 
 _DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
@@ -321,6 +342,7 @@ _DOCUMENT_CREATE_FRAGMENT: typing.LiteralString = """
 async def _create_document_impl(
     db: graph.Pool,
     auth: permissions.AuthContext,
+    background_tasks: fastapi.BackgroundTasks,
     org_slug: str,
     data: DocumentCreate,
     anchor_match: typing.LiteralString,
@@ -353,11 +375,11 @@ async def _create_document_impl(
     if tag_slugs:
         await _attach_tags(db, org_slug, document_id, tag_slugs)
 
-    # Deferred import: document_versions imports this module for its
-    # helpers and response model, so this edge must stay lazy.
-    from imbi.api.endpoints import document_versions
-
-    await document_versions.record_created(
+    # Snapshot capture is best-effort and independent of the response,
+    # so run it after the response instead of adding ClickHouse latency
+    # (or outage stalls) to the save path.
+    background_tasks.add_task(
+        _document_history.record_created,
         document_id=document_id,
         title=data.title,
         content=data.content,
@@ -387,6 +409,7 @@ async def create_document(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:create')),
     ],
+    background_tasks: fastapi.BackgroundTasks,
 ) -> dict[str, typing.Any]:
     """Create a document attached to a project, optionally with tags."""
     anchor: typing.LiteralString = """
@@ -397,6 +420,7 @@ async def create_document(
     return await _create_document_impl(
         db,
         auth,
+        background_tasks,
         org_slug,
         data,
         anchor,
@@ -417,6 +441,7 @@ async def create_project_type_document(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:create')),
     ],
+    background_tasks: fastapi.BackgroundTasks,
 ) -> dict[str, typing.Any]:
     """Create a document attached to a project type."""
     anchor: typing.LiteralString = """
@@ -426,6 +451,7 @@ async def create_project_type_document(
     return await _create_document_impl(
         db,
         auth,
+        background_tasks,
         org_slug,
         data,
         anchor,
@@ -446,6 +472,7 @@ async def create_user_document(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:create')),
     ],
+    background_tasks: fastapi.BackgroundTasks,
 ) -> dict[str, typing.Any]:
     """Create a document attached to a user (org member)."""
     anchor: typing.LiteralString = """
@@ -455,6 +482,7 @@ async def create_user_document(
     return await _create_document_impl(
         db,
         auth,
+        background_tasks,
         org_slug,
         data,
         anchor,
@@ -802,17 +830,20 @@ def _resolve_patched_field(
 async def patch_document_impl(
     db: graph.Pool,
     auth: permissions.AuthContext,
+    background_tasks: fastapi.BackgroundTasks,
     org_slug: str,
     document_id: str,
     operations: list[json_patch.PatchOperation],
     project_id: str | None = None,
-    change_kind: typing.Literal['update', 'restore'] = 'update',
 ) -> dict[str, typing.Any]:
-    existing = await fetch_document(db, org_slug, document_id, project_id)
-    if existing is None:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'Document {document_id!r} not found'
-        )
+    existing = await fetch_or_404(
+        fetch_document,
+        db,
+        org_slug,
+        document_id,
+        project_id,
+        detail=f'Document {document_id!r} not found',
+    )
 
     current = {
         'title': str(existing.get('title') or ''),
@@ -869,16 +900,50 @@ async def patch_document_impl(
         bool(existing.get('is_pinned', False)),
     )
 
-    # Only title/content/tag changes produce a new version; pin
-    # toggles and no-op patches leave the history untouched.
-    old_version = int(existing.get('version') or 1)
-    content_changed = (
-        new_title != str(existing.get('title') or '')
-        or new_content != existing['content']
-        or sorted(new_tags)
-        != sorted(t['slug'] for t in existing.get('tags', []))
+    return await apply_document_update(
+        db,
+        auth,
+        background_tasks,
+        org_slug,
+        document_id,
+        existing,
+        title=new_title,
+        content=new_content,
+        tags=new_tags,
+        replace_tags=replace_tags,
+        is_pinned=new_is_pinned,
+        project_id=project_id,
     )
-    new_version = old_version + 1 if content_changed else old_version
+
+
+async def apply_document_update(
+    db: graph.Pool,
+    auth: permissions.AuthContext,
+    background_tasks: fastapi.BackgroundTasks,
+    org_slug: str,
+    document_id: str,
+    existing: dict[str, typing.Any],
+    *,
+    title: str,
+    content: str,
+    tags: list[str],
+    replace_tags: bool,
+    is_pinned: bool,
+    project_id: str | None = None,
+    change_kind: _document_history.ChangeKind = 'update',
+) -> dict[str, typing.Any]:
+    """Write resolved field values to a document and record the version.
+
+    The update core shared by the JSON Patch endpoints and version
+    restore. Callers are responsible for tag-slug validation or
+    filtering; unknown slugs are silently skipped by edge creation.
+    The version counter is bumped atomically in the graph when
+    title/content/tags changed, so concurrent saves get distinct
+    version numbers and every save survives in the history.
+    """
+    content_changed = _document_history.has_changed(
+        existing, title, content, tags
+    )
 
     scope, scope_params = _scope_filter(project_id)
     now = datetime.datetime.now(datetime.UTC)
@@ -894,8 +959,8 @@ async def patch_document_impl(
         n.updated_by = {updated_by},
         n.updated_at = {updated_at},
         n.is_pinned = {is_pinned},
-        n.version = {version}
-    RETURN n.id AS id
+        n.version = coalesce(n.version, 1) + {version_bump}
+    RETURN n.id AS id, n.version AS version
     """
     )
     records = await db.execute(
@@ -903,37 +968,38 @@ async def patch_document_impl(
         {
             'org_slug': org_slug,
             'document_id': document_id,
-            'title': new_title,
-            'content': new_content,
+            'title': title,
+            'content': content,
             'updated_by': auth.principal_name,
             'updated_at': now.isoformat(),
-            'is_pinned': new_is_pinned,
-            'version': new_version,
+            'is_pinned': is_pinned,
+            'version_bump': 1 if content_changed else 0,
             **scope_params,
         },
-        columns=['id'],
+        columns=['id', 'version'],
     )
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Document {document_id!r} not found'
         )
+    new_version = int(graph.parse_agtype(records[0]['version']) or 1)
 
     if replace_tags:
         await _detach_all_tags(db, document_id)
-        await _attach_tags(db, org_slug, document_id, new_tags)
+        await _attach_tags(db, org_slug, document_id, tags)
 
     if content_changed:
-        # Deferred import: document_versions imports this module for
-        # its helpers and response model, so this edge must stay lazy.
-        from imbi.api.endpoints import document_versions
-
-        await document_versions.record_updated(
+        # Snapshot capture is best-effort and independent of the
+        # response, so run it after the response instead of adding
+        # ClickHouse latency (or outage stalls) to the save path.
+        background_tasks.add_task(
+            _document_history.record_updated,
             document_id=document_id,
             previous=existing,
             new_version=new_version,
-            title=new_title,
-            content=new_content,
-            tags=new_tags,
+            title=title,
+            content=content,
+            tags=tags,
             change_kind=change_kind,
             updated_by=auth.principal_name,
             updated_at=now,
@@ -957,10 +1023,11 @@ async def patch_org_document(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:write')),
     ],
+    background_tasks: fastapi.BackgroundTasks,
 ) -> dict[str, typing.Any]:
     """Update a document via JSON Patch regardless of attachment kind."""
     return await patch_document_impl(
-        db, auth, org_slug, document_id, operations
+        db, auth, background_tasks, org_slug, document_id, operations
     )
 
 
@@ -977,10 +1044,17 @@ async def patch_document(
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:write')),
     ],
+    background_tasks: fastapi.BackgroundTasks,
 ) -> dict[str, typing.Any]:
     """Update document content and/or tag attachments via JSON Patch."""
     return await patch_document_impl(
-        db, auth, org_slug, document_id, operations, project_id
+        db,
+        auth,
+        background_tasks,
+        org_slug,
+        document_id,
+        operations,
+        project_id,
     )
 
 

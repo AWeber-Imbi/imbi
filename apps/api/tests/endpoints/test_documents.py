@@ -121,7 +121,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_success_no_tags(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [self._project_row()],
         ]
         with mock.patch(
@@ -151,7 +151,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
                 {'tag_slug': 'runbook', 'found': True},
                 {'tag_slug': 'alert', 'found': True},
             ],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [{'attached': 2}],
             [
                 self._project_row(
@@ -234,7 +234,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_user_document(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [
                 self._row(
                     u={
@@ -275,7 +275,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_project_type_document(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [
                 self._row(
                     pt={'slug': 'http-api', 'name': 'HTTP API'},
@@ -490,7 +490,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         # 3: _fetch_document (final)
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [self._project_row(n=self._document_data(content='Updated text'))],
         ]
         with mock.patch(
@@ -517,7 +517,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         }
         self.mock_db.execute.side_effect = [
             [self._row(u=user)],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [
                 self._row(
                     n=self._document_data(content='Updated text'),
@@ -546,7 +546,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [self._project_row()],
             [{'tag_slug': 'runbook', 'found': True}],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [{'removed': 0}],
             [{'attached': 1}],
             [
@@ -576,7 +576,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_defaults_is_pinned_false(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [self._project_row()],
         ]
         with mock.patch(
@@ -597,7 +597,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_title(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [self._project_row(n=self._document_data(title='New title'))],
         ]
         with mock.patch(
@@ -622,7 +622,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_is_pinned(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [self._project_row(n=self._document_data(is_pinned=True))],
         ]
         with mock.patch(
@@ -727,7 +727,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
 
     def test_create_records_version_snapshot(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [self._project_row()],
         ]
         with mock.patch(
@@ -753,7 +753,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_content_bumps_version_and_snapshots(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [
                 self._project_row(
                     n=self._document_data(content='Updated text', version=2)
@@ -775,9 +775,9 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['version'], 2)
-        # The SET query (second call) writes the bumped version.
+        # The SET query (second call) bumps the version atomically.
         write_call = self.mock_db.execute.await_args_list[1]
-        self.assertEqual(write_call.args[1]['version'], 2)
+        self.assertEqual(write_call.args[1]['version_bump'], 1)
         self.ch_insert.assert_awaited_once()
         _, rows = self.ch_insert.await_args.args
         self.assertEqual(len(rows), 1)
@@ -787,7 +787,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_is_pinned_does_not_bump_version(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [self._project_row(n=self._document_data(is_pinned=True))],
         ]
         with mock.patch(
@@ -795,13 +795,11 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         ):
             response = self.client.patch(
                 '/organizations/engineering/projects/proj-abc/documents/document-1',
-                json=[
-                    {'op': 'replace', 'path': '/is_pinned', 'value': True}
-                ],
+                json=[{'op': 'replace', 'path': '/is_pinned', 'value': True}],
             )
         self.assertEqual(response.status_code, 200)
         write_call = self.mock_db.execute.await_args_list[1]
-        self.assertEqual(write_call.args[1]['version'], 1)
+        self.assertEqual(write_call.args[1]['version_bump'], 0)
         self.ch_insert.assert_not_awaited()
 
     def test_patch_writes_baseline_for_document_without_history(self) -> None:
@@ -809,7 +807,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         self.ch_query.return_value = [{'v': 0, 'c': 0}]
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [
                 self._project_row(
                     n=self._document_data(content='Updated text', version=2)
@@ -844,7 +842,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         self.ch_insert.side_effect = RuntimeError('clickhouse down')
         self.mock_db.execute.side_effect = [
             [self._project_row()],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 2}],
             [
                 self._project_row(
                     n=self._document_data(content='Updated text', version=2)
@@ -856,7 +854,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
                 'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
             self.assertLogs(
-                'imbi.api.endpoints.document_versions', level='ERROR'
+                'imbi.api.endpoints._document_history', level='ERROR'
             ),
         ):
             response = self.client.patch(

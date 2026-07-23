@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/segmented-control'
 import { Sk, SkText } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentVersionInfo } from '@/types'
 
@@ -78,7 +79,7 @@ export function DocumentVersionHistory({
   const versionsQuery = useQuery({
     enabled: open,
     queryFn: ({ signal }) => listDocumentVersions(orgSlug, document.id, signal),
-    queryKey: ['documentVersions', orgSlug, document.id],
+    queryKey: queryKeys.documentVersions(orgSlug, document.id),
   })
   const versions = versionsQuery.data ?? []
   const selectedVersion = selected ?? versions[0]?.version ?? null
@@ -89,13 +90,23 @@ export function DocumentVersionHistory({
     enabled: open && selectedVersion !== null,
     queryFn: ({ signal }) =>
       getDocumentVersion(orgSlug, document.id, selectedVersion ?? 0, signal),
-    queryKey: ['documentVersion', orgSlug, document.id, selectedVersion],
+    queryKey: queryKeys.documentVersion(
+      orgSlug,
+      document.id,
+      selectedVersion ?? 0,
+    ),
   })
   const snapshot = snapshotQuery.data
 
+  const currentVersion = document.version ?? 1
+  const isCurrent = selectedVersion === currentVersion
+
+  // diffLines is O(n·m) over the two contents — only pay for it when
+  // the Changes view is actually showing.
+  const showDiff = viewMode === 'diff' && !isCurrent && !!snapshot
   const diffParts = useMemo(
-    () => (snapshot ? diffLines(snapshot.content, document.content) : []),
-    [snapshot, document.content],
+    () => (showDiff ? diffLines(snapshot.content, document.content) : []),
+    [showDiff, snapshot, document.content],
   )
   const diffStats = useMemo(() => {
     let added = 0
@@ -107,10 +118,6 @@ export function DocumentVersionHistory({
     }
     return { added, removed }
   }, [diffParts])
-
-  const currentVersion = document.version ?? 1
-  const isCurrent =
-    selectedVersion !== null && selectedVersion === currentVersion
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -174,7 +181,7 @@ export function DocumentVersionHistory({
                 </div>
               )}
               <div className="ml-auto flex items-center gap-2">
-                {viewMode === 'diff' && snapshot && !isCurrent && (
+                {showDiff && (
                   <span className="font-mono text-[12.5px] tabular-nums">
                     <span className="text-success">+{diffStats.added}</span>{' '}
                     <span className="text-danger">−{diffStats.removed}</span>

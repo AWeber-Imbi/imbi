@@ -62,7 +62,6 @@ export function DocumentsTab({
   const { otherEditors } = useDocumentPresence(
     orgSlug,
     ctl.editingDocument?.id ?? null,
-    !!ctl.editingDocument,
     ctl.currentUserEmail,
   )
 

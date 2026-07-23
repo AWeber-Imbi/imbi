@@ -163,15 +163,13 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
 
     def test_restore_version(self) -> None:
         """Restore applies the snapshot as a new ``restore`` version."""
-        # ClickHouse calls: _require_document is graph-side; then
-        # 1: _fetch_version, 2: _max_recorded_version inside capture.
+        # ClickHouse calls: 1: _fetch_version; the capture skips the
+        # history probe because the restored document is past v2.
         self.ch_query.side_effect = [
             [self._version_row(content='Original text', tags=['runbook'])],
-            [{'v': 2, 'c': 2}],
         ]
-        # Graph calls: 1: _require_document, 2: patch fetch-existing,
-        # 3: validate tags, 4: SET, 5: detach tags, 6: attach tags,
-        # 7: final fetch.
+        # Graph calls: 1: fetch document, 2: filter snapshot tags,
+        # 3: SET, 4: detach tags, 5: attach tags, 6: final fetch.
         current = self._document_data(
             content='Newer text', version=2, updated_by='admin@example.com'
         )
@@ -182,9 +180,8 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
         )
         self.mock_db.execute.side_effect = [
             [self._project_row(n=current)],
-            [self._project_row(n=current)],
             [{'tag_slug': 'runbook', 'found': True}],
-            [{'id': 'document-1'}],
+            [{'id': 'document-1', 'version': 3}],
             [{'removed': 0}],
             [{'attached': 1}],
             [
@@ -204,9 +201,9 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
         body = response.json()
         self.assertEqual(body['content'], 'Original text')
         self.assertEqual(body['version'], 3)
-        # The SET query carries the bumped version.
-        set_call = self.mock_db.execute.await_args_list[3]
-        self.assertEqual(set_call.args[1]['version'], 3)
+        # The SET query bumps the version atomically.
+        set_call = self.mock_db.execute.await_args_list[2]
+        self.assertEqual(set_call.args[1]['version_bump'], 1)
         self.assertEqual(set_call.args[1]['content'], 'Original text')
         # The new snapshot is recorded as a restore.
         self.ch_insert.assert_awaited_once()
@@ -214,6 +211,45 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].version, 3)
         self.assertEqual(rows[0].change_kind, 'restore')
+
+    def test_restore_drops_deleted_tags(self) -> None:
+        """Snapshot tags gone from the org are dropped, not fatal."""
+        self.ch_query.side_effect = [
+            [
+                self._version_row(
+                    content='Original text', tags=['runbook', 'gone']
+                )
+            ],
+        ]
+        current = self._document_data(
+            content='Newer text', version=2, updated_by='admin@example.com'
+        )
+        self.mock_db.execute.side_effect = [
+            [self._project_row(n=current)],
+            [
+                {'tag_slug': 'runbook', 'found': True},
+                {'tag_slug': 'gone', 'found': False},
+            ],
+            [{'id': 'document-1', 'version': 3}],
+            [{'removed': 0}],
+            [{'attached': 1}],
+            [
+                self._project_row(
+                    n=self._document_data(content='Original text', version=3),
+                    tags=[{'name': 'Runbook', 'slug': 'runbook'}],
+                )
+            ],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/documents/document-1'
+                '/versions/1/restore'
+            )
+        self.assertEqual(response.status_code, 200)
+        _, rows = self.ch_insert.await_args.args
+        self.assertEqual(rows[0].tags, ['runbook'])
 
     def test_restore_version_not_found(self) -> None:
         self.mock_db.execute.return_value = [self._project_row()]

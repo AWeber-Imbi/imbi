@@ -32,28 +32,13 @@ describe('useDocumentPresence', () => {
         ttl_seconds: 30,
       })
     const { result } = renderHook(
-      () => useDocumentPresence('acme', 'doc-1', true, 'me@example.com'),
+      () => useDocumentPresence('acme', 'doc-1', 'me@example.com'),
       { wrapper: wrapper(qc) },
     )
     await waitFor(() =>
       expect(result.current.otherEditors).toEqual(['bob@example.com']),
     )
     expect(heartbeat).toHaveBeenCalledWith('acme', 'doc-1')
-  })
-
-  it('is inert while not editing — no requests at all', () => {
-    const heartbeat = vi.spyOn(endpoints, 'heartbeatDocumentEditing')
-    const get = vi.spyOn(endpoints, 'getDocumentEditors')
-    const clear = vi.spyOn(endpoints, 'clearDocumentEditing')
-    const { result, unmount } = renderHook(
-      () => useDocumentPresence('acme', 'doc-1', false, 'me@example.com'),
-      { wrapper: wrapper(qc) },
-    )
-    expect(result.current.otherEditors).toEqual([])
-    unmount()
-    expect(heartbeat).not.toHaveBeenCalled()
-    expect(get).not.toHaveBeenCalled()
-    expect(clear).not.toHaveBeenCalled()
   })
 
   it('clears the editing marker on unmount', async () => {
@@ -65,7 +50,7 @@ describe('useDocumentPresence', () => {
       .spyOn(endpoints, 'clearDocumentEditing')
       .mockResolvedValue(undefined)
     const { result, unmount } = renderHook(
-      () => useDocumentPresence('acme', 'doc-1', true, 'me@example.com'),
+      () => useDocumentPresence('acme', 'doc-1', 'me@example.com'),
       { wrapper: wrapper(qc) },
     )
     await waitFor(() => expect(result.current.otherEditors).toEqual([]))
@@ -73,11 +58,11 @@ describe('useDocumentPresence', () => {
     expect(clear).toHaveBeenCalledWith('acme', 'doc-1')
   })
 
-  it('does nothing without a document id', () => {
+  it('is inert without a document id — no requests at all', () => {
     const heartbeat = vi.spyOn(endpoints, 'heartbeatDocumentEditing')
     const clear = vi.spyOn(endpoints, 'clearDocumentEditing')
     const { result, unmount } = renderHook(
-      () => useDocumentPresence('acme', null, true, 'me@example.com'),
+      () => useDocumentPresence('acme', null, 'me@example.com'),
       { wrapper: wrapper(qc) },
     )
     expect(result.current.otherEditors).toEqual([])
