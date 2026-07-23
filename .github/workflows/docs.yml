@@ -6,10 +6,10 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'mkdocs.yml'
       - 'libraries/**'
       - 'apps/**'
       - 'plugins/**'
-      - 'justfile'
       - 'pyproject.toml'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
@@ -41,11 +41,11 @@ jobs:
       - name: Install moon toolchain
         uses: moonrepo/setup-toolchain@v0
       - name: Build documentation
-        run: moon run docs:build
+        run: moon run root:docs-build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ./docs/site
+          path: ./site
 
   deploy:
     environment:

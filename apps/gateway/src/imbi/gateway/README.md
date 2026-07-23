@@ -4,13 +4,13 @@ Inbound webhook gateway service that receives external events, records them, and
 
 ## Developer Quickstart
 
-This project uses [uv](https://docs.astral.sh/uv/) for project management and [just](https://just.systems/man/en/) as a task runner. You need to install both before you can contribute changes.
+This project uses [uv](https://docs.astral.sh/uv/) for project management and [moon](https://moonrepo.dev) as its task runner. Install moon before you can contribute changes.
 
 ```shell
-just setup
+moon run root:setup
 ```
 
-Run `just -l` for the available commands.
+Run `moon query tasks` for the available commands.
 
 ## Code Formatting
 
@@ -23,9 +23,9 @@ This project uses automated formatting tools that are the sole authority on code
 **Do not manually format code.** Instead, use:
 
 ```bash
-just format              # Format all files
-just format src/app.py   # Format a specific file
-just lint                # Check for linting errors
+uv run pre-commit run --all-files          # Format all files
+uv run pre-commit run --files src/app.py   # Format a specific file
+moon run gateway:lint gateway:typecheck gateway:format   # Check for lint errors
 ```
 
 The formatters use complex, nuanced rules (line length, quote style, etc.) that are configured in `pyproject.toml` and `.pre-commit-config.yaml`. See `AGENTS.md` for complete details.

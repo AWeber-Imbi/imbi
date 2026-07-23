@@ -2,8 +2,9 @@
 #
 # Inherited by every project carrying the `python` tag (all uv workspace
 # members). Tasks run through `uv run` so they use the shared .venv and the
-# frozen lockfile, mirroring the repo's established idiom. Coverage modules are
-# appended per-member in each project's moon.yml.
+# frozen lockfile, mirroring the repo's established idiom. The `test` task
+# below reads each member's own [tool.coverage] via --cov-config; each member's
+# moon.yml enables it with a bare `--cov`.
 
 inheritedBy:
   tags:
@@ -78,6 +79,12 @@ tasks:
       - '.env.test'
       - 'pytest'
       - '$projectSource/tests'
+      # Read coverage config from the member's own pyproject (not the root's,
+      # which coverage would otherwise pick up from the workspace-root cwd and
+      # whose source_pkgs=["imbi"] + fail_under would measure the whole
+      # monorepo). Each member's [tool.coverage] scopes source + threshold to
+      # itself; the member moon.yml appends its `--cov=imbi.<member>`.
+      - '--cov-config=$projectSource/pyproject.toml'
     deps:
       - 'root:setup-env'
       - 'root:services'

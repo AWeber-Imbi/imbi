@@ -22,7 +22,7 @@ git clone https://github.com/AWeber-Imbi/imbi-common.git
 cd imbi-common
 
 # Install dependencies and pre-commit hooks
-just setup
+moon run root:setup
 ```
 
 ### For Production
@@ -148,12 +148,12 @@ Visit `http://localhost:8000` to view the documentation.
 
 imbi-common uses PostgreSQL with the Apache AGE graph extension. The
 recommended approach for local development is the bundled Docker Compose
-setup (via `just docker`), which starts a pre-configured PostgreSQL image
+setup (via `moon run root:services`), which starts a pre-configured PostgreSQL image
 with AGE, pgvector, pg_cron, and pgtap already installed.
 
 ```bash
 # Using the project's compose setup
-just docker
+moon run root:services
 ```
 
 Or run the custom image manually:

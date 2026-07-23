@@ -52,6 +52,7 @@ or scale out individual components.
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
+- [moon](https://moonrepo.dev) (task runner)
 
 ### Running with Docker Compose
 
@@ -126,8 +127,7 @@ The repository is a [uv workspace](https://docs.astral.sh/uv/concepts/projects/w
 every library, app, and plugin is a workspace member sharing one
 lockfile and one virtualenv. [moon](https://moonrepo.dev) is the task
 runner — it owns the lint/format/typecheck/test/build/docs tasks and
-downloads its toolchains (node, npm) on first use. The `just` recipes
-are thin convenience wrappers around moon tasks.
+downloads its toolchains (node, npm) on first use.
 
 Development prerequisites:
 
@@ -138,34 +138,19 @@ Development prerequisites:
   shared `.venv`
 - [Docker](https://docs.docker.com/get-docker/) — backing services for
   the test suite
-- [just](https://github.com/casey/just) (optional) — convenience
-  wrappers around the common moon tasks
 
 ```bash
-just setup              # toolchains, dependencies, pre-commit hooks
-just services           # start the backing services, write .env.test
-just test               # full test suite in one session, aggregate coverage
-just test-suite api     # one member's suite (-> moon run api:test)
-just lint               # lint + typecheck + format-check every project
-just format             # reformat (optionally pass files)
+moon run root:setup             # uv sync + pre-commit hooks
+moon run root:coverage          # full suite (single session, aggregate coverage)
+moon run api:test               # one member's suite in isolation
+uv run --env-file .env.test pytest apps/api/tests/endpoints/test_projects.py  # a single suite or file
+moon run :lint :typecheck :format   # ruff + basedpyright across every project
+uv run pre-commit run --all-files   # reformat (ruff + tombi, write mode)
 ```
 
-Or call moon directly — projects are addressed by folder name (`api`,
-`common`, `github`, ...) plus `root`, `ui`, and `docs`:
-
-```bash
-moon query tasks        # list every available task
-moon run api:test       # run one project's task
-moon run :lint          # run a task across every project
-moon ci                 # the full CI pipeline locally
-```
-
-Run a single test file or test with pytest directly — the backing
-services must be up first (`just services` writes `.env.test`):
-
-```bash
-uv run --frozen --env-file .env.test pytest apps/api/tests/test_app.py
-```
+`moon run <member>:test` boots the backing services and writes `.env.test`
+first; run `moon run root:services` yourself before invoking `pytest`
+directly. `moon query tasks` lists every available task.
 
 ### Running the Docker Image
 
@@ -215,8 +200,8 @@ See [Helm chart documentation](helm/imbi/README.md) for full configuration.
 ### Build Commands
 
 ```bash
-# Build the production Docker image (-> moon run root:image)
-just build
+# Build the production Docker image
+moon run root:image
 ```
 
 ## Environment Variables
@@ -272,8 +257,7 @@ imbi/
 ├── compose.yaml       # Local run of the production image
 ├── compose.ci.yaml    # Backing services for the test suites
 ├── helm/imbi/         # Helm chart for Kubernetes deployment
-├── .moon/ + moon.yml  # moon task runner configuration
-└── justfile           # Convenience wrappers around moon tasks
+└── .moon/ + moon.yml  # moon task runner configuration (lint/test/build/…)
 ```
 
 ## Documentation

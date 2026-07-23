@@ -27,6 +27,18 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Coverage for the per-member `moon run github:test` run. Scoped to this
+# member so the report/threshold reflect only imbi.plugins.github; the aggregate
+# `root:coverage` run uses the root pyproject config instead.
+[tool.coverage.run]
+branch = true
+source_pkgs = ["imbi.plugins.github"]
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 85
+show_missing = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/imbi"]
 include = [

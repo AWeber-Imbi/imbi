@@ -1,7 +1,7 @@
 """Tests for project configuration plugin endpoints.
 
 These tests run against the real Valkey and ClickHouse instances
-provisioned by ``docker compose up`` (started via ``just test``). The
+provisioned by ``docker compose up`` (started via ``moon run api:test``). The
 plugin handler and the AGE graph are still mocked — neither has a
 test-friendly fixture today (plugin packages are not installed in the
 test env, and Cypher mutations require seeded graph data) — but cache
