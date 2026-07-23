@@ -4,7 +4,13 @@ site_url: https://aweber-imbi.github.io/imbi/
 
 repo_name: AWeber-Imbi/imbi
 repo_url: https://github.com/AWeber-Imbi/imbi
-edit_uri: edit/main/docs/docs/
+edit_uri: edit/main/docs/
+
+# This config lives at the repo root; the Markdown content is the default
+# `docs/` dir beside it, and the build output goes to `site/` (both siblings,
+# so neither the config nor the output land inside the published content).
+docs_dir: docs
+site_dir: site
 
 theme:
   name: material
@@ -125,19 +131,19 @@ plugins:
       handlers:
         python:
           paths:
-            - ../libraries/common/src
-            - ../apps/api/src
-            - ../apps/assistant/src
-            - ../apps/gateway/src
-            - ../apps/mcp/src
-            - ../apps/slackbot/src
-            - ../plugins/aws/src
-            - ../plugins/github/src
-            - ../plugins/google/src
-            - ../plugins/logzio/src
-            - ../plugins/oidc/src
-            - ../plugins/pagerduty/src
-            - ../plugins/sonarqube/src
+            - libraries/common/src
+            - apps/api/src
+            - apps/assistant/src
+            - apps/gateway/src
+            - apps/mcp/src
+            - apps/slackbot/src
+            - plugins/aws/src
+            - plugins/github/src
+            - plugins/google/src
+            - plugins/logzio/src
+            - plugins/oidc/src
+            - plugins/pagerduty/src
+            - plugins/sonarqube/src
           options:
             show_source: true
             show_root_heading: true

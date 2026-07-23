@@ -30,8 +30,11 @@ PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 (`libraries/common/tests/`, `apps/api/tests/`, `plugins/github/tests/`);
 pytest runs them all in one session using `--import-mode=importlib` +
 namespace packages, and test helpers import rootdir-anchored
-(`apps.api.tests.support`). Docs are one Zensical site rooted at
-`docs/mkdocs.yml` (Zensical natively reads the mkdocs.yml config).
+(`apps.api.tests.support`). Docs are one Zensical site configured by the
+repo-root `mkdocs.yml` (Zensical natively reads the mkdocs.yml config); the
+Markdown content is the sibling `docs/` dir and the build output is `site/`.
+Docs are a root-project concern (`moon run root:docs-build`), not a separate
+moon project.
 
 All members share one `uv.lock`, one `.venv`, and the root tool config
 (ruff, basedpyright, mypy, coverage, pytest). Versions are lockstep:
@@ -59,7 +62,7 @@ moon run root:coverage     # full suite, single session, aggregate coverage
 moon run api:test          # one member's suite in isolation
 moon run :lint :typecheck :format   # lint + type-check + format-check everything
 uv run pre-commit run --all-files   # ruff + tombi (write mode) — reformat
-moon run docs:build        # build docs; docs:serve to preview locally
+moon run root:docs-build   # build docs; root:docs-serve to preview locally
 moon run root:image        # production image, no push
 ```
 

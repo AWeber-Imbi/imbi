@@ -7,10 +7,11 @@ projects:
     - 'apps/*'
     - 'libraries/*'
     - 'plugins/*'
-  # Named projects for the pieces that live outside the member globs.
+  # Named projects for the pieces that live outside the member globs. Docs are
+  # not a separate project: mkdocs.yml + the docs/ content dir live at the repo
+  # root and are built by the root project's `docs-build`/`docs-serve` tasks.
   sources:
     root: '.'
-    docs: 'docs'
     ui: 'ui'
 
 vcs:

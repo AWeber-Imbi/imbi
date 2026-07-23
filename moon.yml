@@ -25,7 +25,7 @@ tasks:
   # Without moon's python toolchain there is no built-in barrier that syncs
   # the venv up front, so every `uv run --frozen` could otherwise try to
   # create/populate .venv concurrently. This gate does the single write; the
-  # downstream tasks (lint/format/typecheck/coverage/docs:build) `deps` on it
+  # downstream tasks (lint/format/typecheck/coverage/docs-build) `deps` on it
   # and their `uv run --frozen` calls then find a fully-synced venv (read-only,
   # concurrency-safe). Syncs all groups + extras so on-demand `--group docs`
   # runs never mutate the venv either.
@@ -158,3 +158,46 @@ tasks:
     options:
       cache: false
       runInCI: false
+
+  # Build the merged Zensical documentation site. Docs are a first-class,
+  # repo-root concern (mkdocs.yml + the content dir docs/ both live at the
+  # root), so this is a root task rather than a separate project. mkdocstrings
+  # resolves its handler `paths` relative to mkdocs.yml, i.e. the workspace
+  # root, so they are plain member paths (libraries/common/src, …).
+  docs-build:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - '--group'
+      - 'docs'
+      - 'zensical'
+      - 'build'
+      - '--strict'
+      - '-f'
+      - 'mkdocs.yml'
+    deps:
+      - '~:setup-env'
+    inputs:
+      - 'docs/**/*'
+      - 'mkdocs.yml'
+    outputs:
+      - 'site'
+
+  # Serve the docs locally with live reload.
+  docs-serve:
+    command: 'uv'
+    args:
+      - 'run'
+      - '--frozen'
+      - '--group'
+      - 'docs'
+      - 'zensical'
+      - 'serve'
+      - '-f'
+      - 'mkdocs.yml'
+      - '-a'
+      - 'localhost:8088'
+    options:
+      persistent: true
+      cache: false
