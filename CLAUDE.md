@@ -45,9 +45,10 @@ together in one commit and released with one `v<version>` tag.
 
 [moon](https://moonrepo.dev) (`.moon/`) is the task runner and owns
 lint/format/typecheck/test/build/docs plus the docker service + image
-tasks. Toolchains (python 3.14, uv, node, npm) are pinned in `.prototools`
-and downloaded/managed by moon on first use. Run `moon query tasks` to see
-everything.
+tasks. moon, node, and npm versions are pinned in `.prototools` (moon
+downloads node/npm on first use); uv is provisioned outside moon and
+itself downloads Python 3.14 per `.python-version`. Run `moon query tasks`
+to see everything.
 
 ```bash
 moon ci                    # full pipeline (lint/format/typecheck, ui, docs,
@@ -65,6 +66,20 @@ uv run pre-commit run --all-files   # ruff + tombi (write mode) — reformat
 moon run root:docs-build   # build docs; root:docs-serve to preview locally
 moon run root:image        # production image, no push
 ```
+
+Run a single test file or test directly with pytest — the suite needs the
+backing services up (`just services`) and the env file they write:
+
+```bash
+uv run --frozen --env-file .env.test pytest apps/api/tests/test_foo.py
+uv run --frozen --env-file .env.test pytest apps/api/tests/test_foo.py::TestClass::test_case
+```
+
+UI tooling is npm scripts in `ui/` (oxlint, oxfmt, vitest): `npm run lint`,
+`npm run test`, `npm run dev`. API client types are generated — after
+changing API endpoints/schemas, regenerate with `npm run codegen:fetch`
+(needs the API running on :8000) or `npm run codegen` from an existing
+`ui/openapi.json`.
 
 Run the prod image locally with `docker compose up --build` (compose.yaml).
 
