@@ -93,7 +93,9 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
             'title': 'DB lock runbook',
             'change_kind': 'create',
             'updated_by': 'admin@example.com',
-            'updated_at': datetime.datetime(2026, 3, 17, 12, 0, 0),
+            # Naive on purpose: ClickHouse returns naive DateTime64
+            # values and the endpoint attaches UTC.
+            'updated_at': datetime.datetime(2026, 3, 17, 12, 0, 0),  # noqa: DTZ001
         }
         row.update(overrides)
         return row
