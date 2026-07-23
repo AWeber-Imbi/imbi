@@ -76,6 +76,19 @@ config's repo-wide `source_pkgs = ["imbi"]`. Cross-member edges are explicit
 `dependsOn: [common]` in each member's `moon.yml`. Test env vars are written to
 `.env.test` by `root:services`.
 
+Running specific tests: `moon run <member>:test` always runs that member's
+whole suite — the task hardcodes its `tests/` dir, so passing a file path
+(`moon run <member>:test -- apps/foo/tests/test_x.py`) does **not** narrow it
+(pytest just re-collects the dir). To filter within a member, forward pytest
+flags after `--`: `moon run <member>:test -- -k <expr>` (or `-m <marker>`,
+`-x`, …). To run a single file or node in isolation, bypass moon and call
+pytest directly after booting services once:
+
+```bash
+moon run root:services   # boots DBs, writes .env.test (once per session)
+uv run --env-file .env.test pytest apps/slackbot/tests/test_agent.py::TestAgent::test_x
+```
+
 ## Conventions
 
 - Line length 79, single quotes, Python 3.14+, strict typing
