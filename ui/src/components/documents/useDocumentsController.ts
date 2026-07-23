@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import { restoreDocumentVersion } from '@/api/endpoints'
 import { useAuth } from '@/hooks/useAuth'
 import { useDocumentComments } from '@/hooks/useDocumentComments'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
@@ -207,6 +208,33 @@ export function useDocumentsController(
     },
   })
 
+  // Restore is attachment-agnostic (org route) and lands as a normal
+  // update server-side, so the cache handling mirrors updateMutation.
+  const restoreMutation = useMutation({
+    mutationFn: ({
+      documentId,
+      version,
+    }: {
+      documentId: string
+      version: number
+    }) => restoreDocumentVersion(orgSlug, documentId, version),
+    onError: (err) => {
+      toast.error(`Restore failed: ${extractApiErrorDetail(err)}`)
+    },
+    onSuccess: (document) => {
+      qc.setQueryData<Document[]>(documentsKey, (prev) =>
+        prev
+          ? prev.map((n) => (n.id === document.id ? document : n))
+          : [document],
+      )
+      qc.invalidateQueries({ queryKey: documentsKey })
+      qc.invalidateQueries({
+        queryKey: ['documentVersions', orgSlug, document.id],
+      })
+      toast.success('Document restored')
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (documentId: string) => scope.remove(documentId),
     onError: (err) => {
@@ -310,6 +338,8 @@ export function useDocumentsController(
     handleSave,
     isLoading,
     navigateToView,
+    restorePending: restoreMutation.isPending,
+    restoreVersion: restoreMutation.mutate,
     selectedDocument,
     togglePin,
     updatePending: updateMutation.isPending,

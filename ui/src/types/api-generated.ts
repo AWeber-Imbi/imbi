@@ -558,7 +558,7 @@ export interface paths {
          *     Every login provider is now a login-capable ``Integration`` whose
          *     plugin implements the ``identity`` capability; the authorization
          *     URL and token exchange are owned entirely by that plugin's
-         *     handler via :mod:`imbi_api.identity.flows`.
+         *     handler via :mod:`imbi.api.identity.flows`.
          *
          *     Args:
          *         provider: Login-Integration slug
@@ -2548,7 +2548,7 @@ export interface paths {
          *
          *     Only ``USES`` edges of ``kind`` from *this* Integration are replaced;
          *     other integrations' assignments for the same capability are untouched
-         *     (unlike :func:`imbi_api.plugins.assignment_writer.replace_capability_
+         *     (unlike :func:`imbi.api.plugins.assignment_writer.replace_capability_
          *     assignments`, which is scoped per-parent and would wipe every
          *     integration bound to that project type).
          *
@@ -3001,6 +3001,105 @@ export interface paths {
          * @description Update a document via JSON Patch regardless of attachment kind.
          */
         patch: operations["patch_org_document_organizations__org_slug__documents__document_id__patch"];
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Versions
+         * @description List a document's version history, newest first.
+         */
+        get: operations["list_document_versions_organizations__org_slug__documents__document_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Version
+         * @description Retrieve the full snapshot of a single document version.
+         */
+        get: operations["get_document_version_organizations__org_slug__documents__document_id__versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/versions/{version}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Document Version
+         * @description Restore a document to a previous version.
+         *
+         *     Applies the old snapshot as a normal update, producing a new
+         *     version with ``change_kind='restore'`` — history is never
+         *     rewritten.
+         */
+        post: operations["restore_document_version_organizations__org_slug__documents__document_id__versions__version__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_slug}/documents/{document_id}/editing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Editors
+         * @description List who is currently editing the document.
+         */
+        get: operations["get_document_editors_organizations__org_slug__documents__document_id__editing_get"];
+        /**
+         * Heartbeat Document Editing
+         * @description Start or refresh the caller's editing marker.
+         *
+         *     Idempotent; clients call this every few seconds while the editor
+         *     is open. The response includes every active editor (including the
+         *     caller) so the editing client needs no separate GET poll.
+         */
+        put: operations["heartbeat_document_editing_organizations__org_slug__documents__document_id__editing_put"];
+        post?: never;
+        /**
+         * Clear Document Editing
+         * @description Remove the caller's editing marker (done editing).
+         *
+         *     Best-effort — the marker expires on its own within
+         *     ``PRESENCE_TTL_SECONDS`` regardless.
+         */
+        delete: operations["clear_document_editing_organizations__org_slug__documents__document_id__editing_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/organizations/{org_slug}/projects/{project_id}/documents/": {
@@ -4432,7 +4531,7 @@ export interface paths {
          *     organization and have the targeted capability enabled. Rows are
          *     grouped by capability kind and each kind's assignments are replaced
          *     atomically via
-         *     :func:`imbi_api.plugins.assignment_writer.replace_capability_assignments`.
+         *     :func:`imbi.api.plugins.assignment_writer.replace_capability_assignments`.
          *
          *     Raises:
          *         404: Project not found, or an integration/identity-integration
@@ -7099,6 +7198,19 @@ export interface components {
              */
             tags?: string[];
         };
+        /**
+         * DocumentEditorsResponse
+         * @description Who currently holds an editing marker on the document.
+         */
+        DocumentEditorsResponse: {
+            /** Editors */
+            editors: string[];
+            /**
+             * Ttl Seconds
+             * @default 30
+             */
+            ttl_seconds: number;
+        };
         /** DocumentListResponse */
         DocumentListResponse: {
             /** Data */
@@ -7146,6 +7258,11 @@ export interface components {
              * @default []
              */
             tags: components["schemas"]["TagRef"][];
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** DocumentTemplateCreate */
         DocumentTemplateCreate: {
@@ -7259,6 +7376,59 @@ export interface components {
             project_type_slugs?: string[] | null;
             /** Sort Order */
             sort_order?: number | null;
+        };
+        /**
+         * DocumentVersionInfo
+         * @description Version metadata without the (potentially large) content.
+         */
+        DocumentVersionInfo: {
+            /** Version */
+            version: number;
+            /** Title */
+            title: string;
+            /**
+             * Change Kind
+             * @enum {string}
+             */
+            change_kind: "create" | "update" | "restore" | "baseline";
+            /** Updated By */
+            updated_by: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** DocumentVersionListResponse */
+        DocumentVersionListResponse: {
+            /** Data */
+            data: components["schemas"]["DocumentVersionInfo"][];
+        };
+        /** DocumentVersionResponse */
+        DocumentVersionResponse: {
+            /** Version */
+            version: number;
+            /** Title */
+            title: string;
+            /**
+             * Change Kind
+             * @enum {string}
+             */
+            change_kind: "create" | "update" | "restore" | "baseline";
+            /** Updated By */
+            updated_by: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Content */
+            content: string;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
         };
         /**
          * DraftReleaseNotesRequest
@@ -11075,7 +11245,7 @@ export interface components {
          *     ``label`` is the human-facing name shown in the UI (e.g. ``Semver``
          *     or ``CalVer``); ``pattern`` is a regular expression a tag must match.
          *     A tag is accepted when it matches *any* configured ``TagFormat`` --
-         *     see ``imbi_common.versioning.matches_tag_formats``.
+         *     see ``imbi.common.versioning.matches_tag_formats``.
          *
          *     Patterns are matched with :func:`re.fullmatch` and validated as
          *     compilable at assignment time so an invalid expression is rejected at
@@ -16858,6 +17028,198 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_versions_organizations__org_slug__documents__document_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_version_organizations__org_slug__documents__document_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_document_version_organizations__org_slug__documents__document_id__versions__version__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_editors_organizations__org_slug__documents__document_id__editing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEditorsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_document_editing_organizations__org_slug__documents__document_id__editing_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentEditorsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_document_editing_organizations__org_slug__documents__document_id__editing_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

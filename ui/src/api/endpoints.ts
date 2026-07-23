@@ -33,9 +33,12 @@ import type {
   DeploymentTriggerResponse,
   Document,
   DocumentCreate,
+  DocumentEditorsResponse,
   DocumentListResponse,
   DocumentTemplate,
   DocumentTemplateCreate,
+  DocumentVersion,
+  DocumentVersionListResponse,
   DraftReleaseNotesRequest,
   DraftReleaseNotesResponse,
   Environment,
@@ -1776,6 +1779,72 @@ export const deleteOrgDocument = (orgSlug: string, documentId: string) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}`,
   )
+
+// Document version history (attachment-agnostic). Full snapshots are
+// recorded server-side on every content-affecting change; restore
+// applies an old snapshot as a normal update (a new version).
+const documentVersionsPath = (orgSlug: string, documentId: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}/versions`
+
+export const listDocumentVersions = async (
+  orgSlug: string,
+  documentId: string,
+  signal?: AbortSignal,
+) => {
+  const response = await apiClient.get<DocumentVersionListResponse>(
+    documentVersionsPath(orgSlug, documentId),
+    undefined,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const getDocumentVersion = (
+  orgSlug: string,
+  documentId: string,
+  version: number,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<DocumentVersion>(
+    `${documentVersionsPath(orgSlug, documentId)}/${version}`,
+    undefined,
+    signal,
+  )
+
+export const restoreDocumentVersion = (
+  orgSlug: string,
+  documentId: string,
+  version: number,
+) =>
+  apiClient.post<Document>(
+    `${documentVersionsPath(orgSlug, documentId)}/${version}/restore`,
+    undefined,
+  )
+
+// Advisory "currently editing" presence markers. The PUT heartbeat
+// registers/refreshes the caller and returns every active editor;
+// markers expire server-side after `ttl_seconds` without a heartbeat.
+const documentEditingPath = (orgSlug: string, documentId: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}/editing`
+
+export const getDocumentEditors = (
+  orgSlug: string,
+  documentId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<DocumentEditorsResponse>(
+    documentEditingPath(orgSlug, documentId),
+    undefined,
+    signal,
+  )
+
+export const heartbeatDocumentEditing = (orgSlug: string, documentId: string) =>
+  apiClient.put<DocumentEditorsResponse>(
+    documentEditingPath(orgSlug, documentId),
+  )
+
+export const clearDocumentEditing = (orgSlug: string, documentId: string) =>
+  apiClient.delete<void>(documentEditingPath(orgSlug, documentId))
 
 // Documents attached to a user (org member).
 export const listUserDocuments = async (
