@@ -15,11 +15,12 @@ A `.env` file in the working directory is also read for environment variables (p
 
 ### Development Setup
 
-`just serve` runs `just docker` first, which boots all services and writes a fresh `.env` with the dynamically-allocated host ports (Postgres, ClickHouse, Valkey, LocalStack, Mailpit, Jaeger) and freshly-generated JWT and Fernet secrets if none are present.
+`moon run root:services` boots all services and writes a fresh `.env.test` with the dynamically-allocated host ports (Postgres, ClickHouse, Valkey, LocalStack, Mailpit, Jaeger) and freshly-generated JWT and Fernet secrets if none are present. Load it into the server with `uv run --env-file .env.test`.
 
 ```bash
-just setup       # uv sync + pre-commit hooks
-just serve --dev # docker + auto-reload server
+moon run root:setup                          # uv sync + pre-commit hooks
+moon run root:services                       # boot the backing services
+uv run --env-file .env.test imbi-api serve --dev  # auto-reload server
 ```
 
 ### Production Setup
@@ -130,7 +131,7 @@ SMTP-based transactional email (password reset, welcome, email verification, sec
 | `IMBI_EMAIL_RETRY_BACKOFF_FACTOR` | `2.0` | Exponential backoff multiplier |
 
 !!! note "Mailpit auto-config"
-    When `ENVIRONMENT=development` (or unset) and `IMBI_EMAIL_SMTP_HOST=localhost` with the default port `587`, the settings model checks for `MAILPIT_SMTP_PORT` (written by `just docker`) and substitutes it, disabling TLS unless `IMBI_EMAIL_SMTP_USE_TLS` is set explicitly. This makes development "just work" against Mailpit without manual SMTP wiring.
+    When `ENVIRONMENT=development` (or unset) and `IMBI_EMAIL_SMTP_HOST=localhost` with the default port `587`, the settings model checks for `MAILPIT_SMTP_PORT` (written by `moon run root:services`) and substitutes it, disabling TLS unless `IMBI_EMAIL_SMTP_USE_TLS` is set explicitly. This makes development "just work" against Mailpit without manual SMTP wiring.
 
 ## Authentication & Authorization (`IMBI_AUTH_*`)
 
@@ -277,9 +278,9 @@ Controls embedding generation for vector search. The `[embeddings]` section in `
 
 ### Standard OpenTelemetry and uvicorn
 
-The Compose stack and `just docker` populate the standard `OTEL_*` and `UVICORN_*` environment variables. They are read by the OpenTelemetry SDK and uvicorn directly — Imbi does not redefine them. The `.env` written by `just docker` sets sensible development defaults pointing at the bundled Jaeger container:
+The Compose stack and `moon run root:services` populate the standard `OTEL_*` and `UVICORN_*` environment variables. They are read by the OpenTelemetry SDK and uvicorn directly — Imbi does not redefine them. The `.env.test` written by `moon run root:services` sets sensible development defaults pointing at the bundled Jaeger container:
 
-| Variable | Set by `just docker` to |
+| Variable | Set by `moon run root:services` to |
 |----------|------------------------|
 | `OTEL_SERVICE_NAME` | `imbi-api` |
 | `OTEL_TRACES_EXPORTER` | `otlp` |
@@ -293,7 +294,7 @@ In production, point `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector.
 
 ## Docker Compose Services
 
-The development stack defined in `compose.yaml` runs the following with ports mapped to *ephemeral host ports* (resolved by `just docker` and written into `.env`):
+The development stack defined in `compose.yaml` runs the following with ports mapped to *ephemeral host ports* (resolved by `moon run root:services` and written into `.env.test`):
 
 | Service | Container Port | Purpose |
 |---------|----------------|---------|
@@ -442,8 +443,8 @@ server_config = settings.ServerConfig()
 ### Environment-Specific Configuration
 
 ```bash
-# Development — .env written by `just docker`
-just serve --dev
+# Development — .env.test written by `moon run root:services`
+uv run --env-file .env.test imbi-api serve --dev
 
 # Staging — point at a staging config file
 cp /path/to/staging/config.toml ./config.toml
@@ -490,7 +491,7 @@ docker compose logs clickhouse
 env | grep -E '^(IMBI_AUTH_JWT_SECRET|IMBI_AUTH_ENCRYPTION_KEY)=' | wc -l
 # Should print 2 in production.
 
-just serve --dev   # watch for JWT-related warnings on startup
+uv run --env-file .env.test imbi-api serve --dev   # watch for JWT-related warnings on startup
 ```
 
 ## See Also

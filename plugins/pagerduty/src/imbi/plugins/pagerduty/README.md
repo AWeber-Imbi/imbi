@@ -20,9 +20,9 @@ entry points. All plugin base classes come from `imbi.common.plugins`.
 ## Development
 
 ```bash
-just setup   # uv sync + pre-commit hooks
-just test    # coverage (fails under 85%)
-just lint    # ruff, ruff-format, basedpyright
+moon run root:setup     # uv sync + pre-commit hooks
+moon run pagerduty:test # coverage (fails under 85%)
+moon run pagerduty:lint pagerduty:typecheck pagerduty:format   # ruff + basedpyright + format check
 ```
 
 Authentication is a PagerDuty REST API key (`auth_type='api_token'`),

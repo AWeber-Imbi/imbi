@@ -30,7 +30,7 @@ class PackagedSchemataTestCase(unittest.TestCase):
     """The packaged schemata.toml must define every shipped table.
 
     Loads the real file (no mocks) so a malformed DDL string or a
-    dropped table entry fails the suite. ``just test`` runs this
+    dropped table entry fails the suite. ``moon run common:test`` runs this
     against the same TOML ``setup_schema`` executes against ClickHouse.
     """
 

@@ -44,7 +44,7 @@ together in one commit and released with one `v<version>` tag.
 lint/format/typecheck/test/build/docs plus the docker service + image
 tasks. Toolchains (python 3.14, uv, node, npm) are pinned in `.prototools`
 and downloaded/managed by moon on first use. Run `moon query tasks` to see
-everything. The `just` recipes are thin wrappers around moon.
+everything.
 
 ```bash
 moon ci                    # full pipeline (lint/format/typecheck, ui, docs,
@@ -52,14 +52,15 @@ moon ci                    # full pipeline (lint/format/typecheck, ui, docs,
 moon run <proj>:<task>     # one task, e.g. `moon run api:test`, `moon run ui:build`
 moon run :lint             # a task across every project
 
-just setup                 # -> moon run root:setup (toolchains, deps, pre-commit)
-just services              # -> moon run root:services (compose.ci.yaml + .env.test)
-just test                  # -> moon run root:coverage (full suite, aggregate cov)
-just test-suite api        # -> moon run api:test (one member, its own coverage)
-just lint                  # -> moon run :lint :typecheck :format
-just format [FILES]        # ruff + tombi via pre-commit (write mode)
-just docs / docs-serve     # -> moon run docs:build / docs:serve
-just build                 # -> moon run root:image (production image, no push)
+moon run root:setup        # toolchains, deps, pre-commit
+moon run root:services     # boot backing services (compose.ci.yaml + .env.test)
+moon run root:teardown     # tear down backing services and volumes
+moon run root:coverage     # full suite, single session, aggregate coverage
+moon run api:test          # one member's suite in isolation
+moon run :lint :typecheck :format   # lint + type-check + format-check everything
+uv run pre-commit run --all-files   # ruff + tombi (write mode) — reformat
+moon run docs:build        # build docs; docs:serve to preview locally
+moon run root:image        # production image, no push
 ```
 
 Run the prod image locally with `docker compose up --build` (compose.yaml).
@@ -75,8 +76,9 @@ written to `.env.test` by `root:services`.
 - Line length 79, single quotes, Python 3.14+, strict typing
   (basedpyright + mypy). Rule set is unioned in the root pyproject with
   per-subtree ignores being burned down over time.
-- Run `just format` on modified files before returning control, running
-  tests, or committing. Never `--no-verify`.
+- Run `uv run pre-commit run --files <paths>` (ruff + tombi, write mode) on
+  modified files before returning control, running tests, or committing.
+  Never `--no-verify`.
 - Cross-member deps are exact lockstep pins (`imbi-common==<version>`)
   resolved from the workspace during development (`[tool.uv.sources]`).
 - Console-script names (`imbi-api`, `imbi-gateway`, …) are load-bearing:
@@ -101,4 +103,4 @@ tag must match the pyproject version or the publish fails fast.
 
 `test.yml` (python lint+test, ui lint+test), `docs.yml` (Pages deploy of
 the merged site), `release.yml` (tag-driven image + PyPI publish).
-Reproduce CI failures locally with `just ci` before pushing.
+Reproduce CI failures locally with `moon ci` before pushing.

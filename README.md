@@ -52,7 +52,7 @@ or scale out individual components.
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
-- [just](https://github.com/casey/just) (command runner)
+- [moon](https://moonrepo.dev) (task runner)
 
 ### Running with Docker Compose
 
@@ -136,13 +136,17 @@ every library, app, and plugin is a workspace member sharing one
 lockfile and one virtualenv.
 
 ```bash
-just setup              # uv sync + pre-commit hooks
-just test               # full test suite against dockerized backing services
-just test apps/api/tests   # a single suite or test file
-just test-suite libraries/common 90  # one member with its own coverage floor
-just lint               # pre-commit (ruff, mypy) + basedpyright
-just format             # reformat
+moon run root:setup             # uv sync + pre-commit hooks
+moon run root:coverage          # full suite (single session, aggregate coverage)
+moon run api:test               # one member's suite in isolation
+uv run --env-file .env.test pytest apps/api/tests/endpoints/test_projects.py  # a single suite or file
+moon run :lint :typecheck :format   # ruff + basedpyright across every project
+uv run pre-commit run --all-files   # reformat (ruff + tombi, write mode)
 ```
+
+`moon run <member>:test` boots the backing services and writes `.env.test`
+first; run `moon run root:services` yourself before invoking `pytest`
+directly. `moon query tasks` lists every available task.
 
 ### Running the Docker Image
 
@@ -182,17 +186,14 @@ See [Helm chart documentation](helm/imbi/README.md) for full configuration.
 
 ### Prerequisites
 
-- [just](https://github.com/casey/just)
+- [moon](https://moonrepo.dev)
 - [Docker](https://docs.docker.com/get-docker/)
 
 ### Build Commands
 
 ```bash
-# Build the Docker image
-just build
-
-# Build with a specific tag
-just build v1.0.0
+# Build the production Docker image
+moon run root:image
 ```
 
 ## Environment Variables
@@ -247,7 +248,7 @@ imbi/
 ├── helm/imbi/         # Helm chart for Kubernetes deployment
 ├── Dockerfile         # Multi-stage production image build
 ├── entrypoint.sh      # Container entrypoint with service dispatch
-└── justfile           # Build and development commands
+└── .moon/             # moon task runner configuration (lint/test/build/…)
 ```
 
 ## Documentation

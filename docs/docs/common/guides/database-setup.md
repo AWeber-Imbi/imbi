@@ -17,7 +17,7 @@ for local development:
 
 ```bash
 # Via project compose setup (recommended)
-just docker
+moon run root:services
 
 # Or run the image directly
 docker run -d \

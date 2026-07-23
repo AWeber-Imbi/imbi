@@ -174,7 +174,7 @@ class TestGraphIntegration(unittest.IsolatedAsyncioTestCase):
 
 ### Docker Compose for Tests
 
-Use the project's `compose.yaml` (run via `just docker`), or create a
+Use the project's `compose.ci.yaml` (run via `moon run root:services`), or create a
 minimal test compose file:
 
 ```yaml
@@ -206,7 +206,7 @@ Run tests:
 
 ```bash
 # Run all tests
-just test
+moon run common:test
 
 # Skip integration tests
 SKIP_INTEGRATION_TESTS=1 python -m unittest discover tests
@@ -272,19 +272,19 @@ class TestAnalytics(unittest.IsolatedAsyncioTestCase):
 ### Run All Tests
 
 ```bash
-just test
+moon run common:test
 ```
 
 ### Run Specific Test File
 
 ```bash
-just test tests/test_settings.py
+uv run --env-file .env.test pytest libraries/common/tests/test_settings.py
 ```
 
 ### Run Specific Test Method
 
 ```bash
-just test tests/test_settings.py::TestSettings::test_postgres_defaults
+uv run --env-file .env.test pytest libraries/common/tests/test_settings.py::TestSettings::test_postgres_defaults
 ```
 
 ### Run with Verbose Output
@@ -342,14 +342,14 @@ jobs:
 
 ## Test Coverage
 
-Track test coverage with `coverage` (via `just test`):
+Track test coverage with `coverage` (via `moon run root:coverage`):
 
 ```bash
-# Run tests with coverage (requires Docker for integration tests)
-just test
+# Run the full suite with aggregate coverage (requires Docker)
+moon run root:coverage
 
-# Run specific file without coverage
-just test tests/test_settings.py
+# Run a specific file
+uv run --env-file .env.test pytest libraries/common/tests/test_settings.py
 ```
 
 Add to `.coveragerc`:

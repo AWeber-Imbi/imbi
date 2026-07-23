@@ -27,7 +27,7 @@ Full documentation is available at: [https://aweber-imbi.github.io/imbi-common/]
 
 ### Prerequisites
 
-- [just](https://just.systems/man/en/packages.html) — task runner
+- [moon](https://moonrepo.dev) — task runner
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) — Python package manager
 
 ### Setup
@@ -38,21 +38,21 @@ git clone https://github.com/AWeber-Imbi/imbi-common.git
 cd imbi-common
 
 # Install dependencies and pre-commit hooks
-just setup
+moon run root:setup
 ```
 
 ### Running Tests
 
 ```bash
-just test           # Full test suite with coverage (requires Docker)
-just test <file>    # Run specific test file(s)
+moon run common:test   # The common library's test suite (requires Docker)
+uv run --env-file .env.test pytest libraries/common/tests/<file>   # Run a specific test file
 ```
 
 ### Code Quality
 
 ```bash
-just lint    # Run all linters
-just format  # Reformat code
+moon run common:lint common:typecheck common:format   # Run all linters + type check
+uv run pre-commit run --all-files                     # Reformat code
 ```
 
 ## License

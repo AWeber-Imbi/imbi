@@ -52,10 +52,10 @@ See `src/imbi_slackbot/settings.py` for the full set.
 ## Development
 
 ```bash
-just setup    # install deps + pre-commit hooks
-just test     # run the test suite with coverage
-just lint     # ruff + mypy + basedpyright
-just serve    # run the bot against .env
+moon run root:setup      # install deps + pre-commit hooks
+moon run slackbot:test   # run the test suite with coverage
+moon run slackbot:lint slackbot:typecheck slackbot:format   # ruff + basedpyright + format check
+uv run --env-file .env.test imbi-slackbot serve   # run the bot
 ```
 
 ## Releasing

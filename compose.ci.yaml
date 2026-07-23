@@ -1,5 +1,5 @@
-# Backing services for the test suites (local `just test` and CI).
-# Ports are dynamically assigned; the `just docker` recipe writes
+# Backing services for the test suites (local `moon run *:test` and CI).
+# Ports are dynamically assigned; the `moon run root:services` task writes
 # .env.test with the resolved URLs.
 name: imbi-tests
 

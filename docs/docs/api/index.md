@@ -50,21 +50,24 @@ Imbi helps organizations answer critical questions about their service landscape
 
 ## Quick Start
 
-This project uses [just](https://github.com/casey/just) as a command runner and [uv](https://docs.astral.sh/uv/) for Python package management.
+This project uses [moon](https://moonrepo.dev) as its task runner and [uv](https://docs.astral.sh/uv/) for Python package management.
 
 ### Development Environment
 
 ```bash
 # Install dependencies and pre-commit hooks
-just setup
+moon run root:setup
 
 # Start Docker services (Postgres+AGE, ClickHouse, Valkey, LocalStack,
-# Mailpit, Jaeger), generate .env with assigned ports, and run the
-# server with auto-reload
-just serve --dev
+# Mailpit, Jaeger) and write .env.test with the assigned ports and
+# freshly-generated secrets
+moon run root:services
+
+# Run the API with auto-reload against those services
+uv run --env-file .env.test imbi-api serve --dev
 
 # First-time only: seed roles/permissions and create the admin user
-uv run imbi-api setup
+uv run --env-file .env.test imbi-api setup
 
 # Health check
 curl http://localhost:8000/status
@@ -75,11 +78,14 @@ The server starts on `http://localhost:8000` by default (configurable via `IMBI_
 ### Testing
 
 ```bash
-just test                                              # All tests with coverage
-just test tests/auth/test_permissions.py               # Single module
-just test tests/auth/test_permissions.py::PermissionTests::test_get_permissions
-just lint                                              # ruff + basedpyright + mypy + pre-commit
+moon run api:test                                      # The API member's suite
+uv run --env-file .env.test pytest apps/api/tests/auth/test_permissions.py               # Single module
+uv run --env-file .env.test pytest apps/api/tests/auth/test_permissions.py::PermissionTests::test_get_permissions
+moon run api:lint api:typecheck api:format             # ruff + basedpyright + format check
 ```
+
+Run `moon run root:coverage` for the full single-session suite with aggregate
+coverage, and `moon run root:services` first if you invoke `pytest` directly.
 
 ## Core Concepts
 

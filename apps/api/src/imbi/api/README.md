@@ -52,13 +52,14 @@ For developers, see [CLAUDE.md](CLAUDE.md) for development guide and architectur
 
 ```bash
 # Set up development environment (install deps, pre-commit hooks)
-just setup
+moon run root:setup
 
-# Start Docker services and run the development server with auto-reload
-just serve --dev
+# Start Docker services (writes .env.test), then run the dev server with auto-reload
+moon run root:services
+uv run --env-file .env.test imbi-api serve --dev
 
 # Initialize Imbi (first time only — seeds roles/permissions, creates admin user)
-uv run imbi-api setup
+uv run --env-file .env.test imbi-api setup
 
 # Access the API
 curl http://localhost:8000/status
@@ -67,11 +68,11 @@ curl http://localhost:8000/status
 ### Testing
 
 ```bash
-# Run all tests with coverage
-just test
+# Run the API member's test suite
+moon run api:test
 
-# Run pre-commit checks + type checking
-just lint
+# Lint, type-check, and format-check
+moon run api:lint api:typecheck api:format
 ```
 
 ## Core Concepts

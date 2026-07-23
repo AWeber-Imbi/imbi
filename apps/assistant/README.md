@@ -74,17 +74,18 @@ All routes are served under the path component of `IMBI_ASSISTANT_URL`
 ## Quick Start
 
 This project uses [uv](https://docs.astral.sh/uv/) for project management and
-[just](https://just.systems/) as a task runner. Install both before
+[moon](https://moonrepo.dev) as its task runner. Install moon before
 contributing.
 
 ```bash
-just setup    # Sync dependencies and install pre-commit hooks
-just serve    # Run the service in the foreground (reads .env)
-just test     # Run the test suite
-just lint     # Run ruff, basedpyright, and mypy
+moon run root:setup      # Sync dependencies and install pre-commit hooks
+moon run root:services   # Boot backing services (writes .env.test)
+uv run --env-file .env.test imbi-assistant serve   # Run the service in the foreground
+moon run assistant:test  # Run the test suite
+moon run assistant:lint assistant:typecheck assistant:format   # ruff + basedpyright + format check
 ```
 
-Run `just -l` for all available commands.
+Run `moon query tasks` for all available commands.
 
 ## Configuration
 
@@ -123,4 +124,4 @@ The image runs `imbi-assistant serve --host 0.0.0.0 --port 8002`.
 
 Formatting is handled by automated tooling and is the sole authority on style:
 **Ruff** for Python, **Tombi** for TOML, run via pre-commit hooks. Don't format
-manually — use `just format` (optionally with a file path) and `just lint`.
+manually — use `uv run pre-commit run --all-files` (or `--files <paths>`) and `moon run assistant:lint`.

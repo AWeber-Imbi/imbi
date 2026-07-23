@@ -50,13 +50,13 @@ the public host(s) in `FASTMCP_HTTP_ALLOWED_HOSTS='["your-host"]'`.
 
 ```bash
 # Install dependencies
-just setup
+moon run root:setup
 
 # Run the server (imbi-api must be reachable)
-just serve
+uv run imbi-mcp serve
 
 # Or with explicit options
-imbi-mcp serve --api-url http://localhost:8000 --transport streamable-http
+uv run imbi-mcp serve --api-url http://localhost:8000 --transport streamable-http
 ```
 
 ## CLI Options
@@ -86,10 +86,10 @@ docker run -p 8001:8001 -e IMBI_INTERNAL_API_URL=http://imbi-api:8000 imbi-mcp
 ## Development
 
 ```bash
-just setup       # Install deps and pre-commit hooks
-just test        # Run tests (90% coverage minimum)
-just lint        # Run ruff, basedpyright, mypy
-just format      # Auto-format code
+moon run root:setup                         # Install deps and pre-commit hooks
+moon run mcp:test                           # Run tests (90% coverage minimum)
+moon run mcp:lint mcp:typecheck mcp:format  # Run ruff + basedpyright + format check
+uv run pre-commit run --all-files           # Auto-format code
 ```
 
 ## License
