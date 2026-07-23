@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Columns2, Eye, PencilLine } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentTemplate, TagRef } from '@/types'
@@ -20,10 +21,14 @@ type EditorMode = 'preview' | 'split' | 'write'
 
 interface Props {
   allDocuments?: Document[]
+  /** Resolve editor emails to display names for the presence banner. */
+  displayNames?: Map<string, string>
   initialDocument?: Document | null
   onDiscard: () => void
   onSave: (draft: { content: string; tags: string[]; title: string }) => void
   orgSlug: string
+  /** Emails of other people currently editing this document. */
+  otherEditors?: string[]
   saving?: boolean
   /**
    * When creating a new document, pre-seed the form (title, content, tags) from
@@ -36,10 +41,12 @@ const NOOP = () => {}
 
 export function DocumentsPinboardNew({
   allDocuments = [],
+  displayNames,
   initialDocument,
   onDiscard,
   onSave,
   orgSlug,
+  otherEditors = [],
   saving = false,
   template,
 }: Props) {
@@ -171,6 +178,14 @@ export function DocumentsPinboardNew({
           </Button>
         </div>
 
+        {otherEditors.length > 0 && (
+          <Alert className="mb-3.5" variant="warning">
+            {editorList(otherEditors, displayNames)}{' '}
+            {otherEditors.length === 1 ? 'is' : 'are'} also editing this
+            document — the last save wins.
+          </Alert>
+        )}
+
         <article className="border-tertiary bg-primary overflow-hidden rounded-lg border">
           {/* Title + tag picker */}
           <div className="px-7 pt-6">
@@ -233,6 +248,17 @@ export function DocumentsPinboardNew({
       </div>
     </div>
   )
+}
+
+/** "Alice", "Alice and Bob", or "Alice, Bob, and Carol". */
+function editorList(
+  emails: string[],
+  displayNames?: Map<string, string>,
+): string {
+  const names = emails.map((e) => displayNames?.get(e) ?? e)
+  if (names.length === 1) return names[0]
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
 }
 
 function ModeButton({

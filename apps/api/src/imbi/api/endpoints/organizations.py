@@ -14,7 +14,9 @@ from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.common import graph, models
 
 from .comments import comments_router
+from .document_presence import document_presence_router
 from .document_templates import document_templates_router
+from .document_versions import document_versions_router
 from .documents import (
     documents_project_router,
     documents_project_type_router,
@@ -100,6 +102,14 @@ organizations_router.include_router(
 organizations_router.include_router(
     documents_router,
     prefix='/{org_slug}/documents',
+)
+organizations_router.include_router(
+    document_versions_router,
+    prefix='/{org_slug}/documents/{document_id}/versions',
+)
+organizations_router.include_router(
+    document_presence_router,
+    prefix='/{org_slug}/documents/{document_id}/editing',
 )
 organizations_router.include_router(
     documents_project_router,

@@ -729,6 +729,7 @@ export interface Document {
   title: string
   updated_at?: null | string
   updated_by?: null | string
+  version?: number
 }
 
 // The vertex a document is attached to. `id` is the project id, the
@@ -746,6 +747,12 @@ export interface DocumentCreate {
   content: string
   tags?: string[]
   title: string
+}
+
+// Who currently holds an advisory editing marker on a document.
+export interface DocumentEditorsResponse {
+  editors: string[]
+  ttl_seconds: number
 }
 
 export type DocumentListResponse = CollectionResponse<Document>
@@ -791,6 +798,24 @@ export type DocumentTemplateType =
   | 'project'
   | 'project_type'
   | 'user'
+
+// Full snapshot of a single document version.
+export interface DocumentVersion extends DocumentVersionInfo {
+  content: string
+  tags: string[]
+}
+
+// One entry in a document's version history (metadata only).
+export interface DocumentVersionInfo {
+  change_kind: 'baseline' | 'create' | 'restore' | 'update'
+  title: string
+  updated_at: string
+  updated_by: string
+  version: number
+}
+
+export type DocumentVersionListResponse =
+  CollectionResponse<DocumentVersionInfo>
 
 export interface DraftReleaseNotesRequest {
   base_sha: string

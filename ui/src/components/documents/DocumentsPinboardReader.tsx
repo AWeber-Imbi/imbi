@@ -9,6 +9,7 @@ import {
   Clock,
   Eye,
   EyeOff,
+  History,
   List,
   Pencil,
   Pin,
@@ -47,6 +48,7 @@ import {
   uniqueTagsFromDocuments,
 } from './documentsHelpers'
 import { DocumentTagChip } from './DocumentTagChip'
+import { DocumentVersionHistory } from './DocumentVersionHistory'
 
 interface Heading {
   level: 2 | 3
@@ -81,9 +83,11 @@ interface Props {
   onOpen: (documentId: string) => void
   onReplyComment: (threadId: string, body: string, mentions: string[]) => void
   onResolveThread: (threadId: string, resolved: boolean) => void
+  onRestoreVersion?: (version: number) => void
   onTogglePin: () => void
   orgSlug: string
   projectId: null | string
+  restorePending?: boolean
   /** Show the attachment eyebrow — only in the org-wide reader, where the
    * container no longer implies what the document is bound to. */
   showAttachment?: boolean
@@ -108,12 +112,15 @@ export function DocumentsPinboardReader({
   onOpen,
   onReplyComment,
   onResolveThread,
+  onRestoreVersion,
   onTogglePin,
   orgSlug,
   projectId,
+  restorePending = false,
   showAttachment = false,
 }: Props) {
   const [search, setSearch] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
   const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
   const [showComments, setShowComments] = useState(false)
   const articleRef = useRef<HTMLDivElement>(null)
@@ -319,6 +326,15 @@ export function DocumentsPinboardReader({
                 </Button>
                 <span className="bg-tertiary mx-1 h-5 w-px" />
               </div>
+              <Button
+                className="gap-1.5"
+                onClick={() => setShowHistory(true)}
+                size="sm"
+                variant="ghost"
+              >
+                <History className="size-3" />
+                History
+              </Button>
               <Button
                 className="gap-1.5"
                 onClick={onTogglePin}
@@ -552,6 +568,18 @@ export function DocumentsPinboardReader({
       <SelectionToolbar
         onComment={inline.onStartDraft}
         rect={inline.selectionRect}
+      />
+      <DocumentVersionHistory
+        displayNames={displayNames}
+        document={document}
+        onOpenChange={setShowHistory}
+        onRestore={(version) => {
+          setShowHistory(false)
+          onRestoreVersion?.(version)
+        }}
+        open={showHistory}
+        orgSlug={orgSlug}
+        restorePending={restorePending}
       />
       <ConfirmDialog
         confirmLabel={deleting ? 'Deleting…' : 'Delete'}

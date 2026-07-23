@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { useDocumentPresence } from '@/hooks/useDocumentPresence'
 import type { Document, DocumentTemplate } from '@/types'
 
 import { DocumentsPinboard } from './DocumentsPinboard'
@@ -55,6 +56,15 @@ export function DocumentsTab({
     initialAction,
   )
 
+  // Advisory presence: heartbeat only while editing an existing
+  // document (the response carries the other editors). Readers
+  // generate no presence traffic.
+  const { otherEditors } = useDocumentPresence(
+    orgSlug,
+    ctl.editingDocument?.id ?? null,
+    ctl.currentUserEmail,
+  )
+
   if (ctl.isLoading) return <DocumentsTabSkeleton feed={!!renderList} />
   if (ctl.error)
     return <ErrorBanner error={ctl.error} title="Failed to load documents" />
@@ -79,11 +89,13 @@ export function DocumentsTab({
     return (
       <DocumentsPinboardNew
         allDocuments={ctl.documents}
+        displayNames={ctl.displayNames}
         initialDocument={ctl.editingDocument}
         key={ctl.editingDocument.id}
         onDiscard={ctl.handleDiscard}
         onSave={ctl.handleSave}
         orgSlug={orgSlug}
+        otherEditors={otherEditors}
         saving={ctl.updatePending}
       />
     )
@@ -112,9 +124,13 @@ export function DocumentsTab({
         onOpen={(id) => ctl.navigateToView({ documentId: id, kind: 'reading' })}
         onReplyComment={ctl.comments.onReply}
         onResolveThread={ctl.comments.onResolve}
+        onRestoreVersion={(version) =>
+          ctl.restoreVersion({ documentId: document.id, version })
+        }
         onTogglePin={() => ctl.togglePin(document)}
         orgSlug={orgSlug}
         projectId={scope.commentsProjectId}
+        restorePending={ctl.restorePending}
         showAttachment={scope.templateContext === 'org'}
       />
     )
