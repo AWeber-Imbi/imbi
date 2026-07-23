@@ -36,6 +36,10 @@ vite.config.js
 figma/
 .worktrees/
 
+# Intermediate spec dumped by `npm run codegen:fetch`; the generated
+# src/types/api-generated.ts is what gets committed.
+openapi.json
+
 # Large local design-spec export (exceeds the repo file-size gate);
 # the UserIdentity component is implemented against it but it is not tracked.
 docs/useridentity.html
