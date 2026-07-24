@@ -16,6 +16,7 @@ from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleContextBundle,
     LifecycleEvent,
     LifecycleInvocation,
+    _resolve_credentials,
     build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
@@ -23,6 +24,7 @@ from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.common.plugins.base import (
     Capability,
     ConfigurationCapability,
+    CredentialField,
     LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
@@ -30,6 +32,7 @@ from imbi.common.plugins.base import (
     PluginManifest,
     ServiceWriteback,
 )
+from imbi.common.plugins.errors import PluginCredentialsMissing
 from imbi.common.plugins.registry import RegistryEntry
 
 
@@ -71,7 +74,9 @@ def _make_lifecycle_entry(
     """
 
     class _FakeLifecycle(LifecycleCapability):
-        async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+        async def on_project_archived(
+            self, ctx: PluginContext, credentials: dict[str, str]
+        ) -> LifecycleResult:
             if archive_raises is not None:
                 raise archive_raises('archive boom')
             return LifecycleResult(
@@ -83,7 +88,9 @@ def _make_lifecycle_entry(
     if unarchive_raises is not None:
         _exc = unarchive_raises
 
-        async def _on_unarchived(self, ctx, credentials):  # type: ignore[no-untyped-def]
+        async def _on_unarchived(
+            self, ctx: PluginContext, credentials: dict[str, str]
+        ) -> LifecycleResult:
             raise _exc('unarchive boom')
 
         _FakeLifecycle.on_project_unarchived = _on_unarchived  # type: ignore[method-assign]
@@ -195,7 +202,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         # A lifecycle plugin that reports a link writeback on ctx
         # triggers a persist of the stored link via update_project_link.
         class _Reloc(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 ctx.link_writeback = LinkWriteback(
                     link_key='github-repository',
                     new_url='https://github.com/octo/renamed',
@@ -223,7 +232,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         # triggers an EXISTS_IN upsert + dashboard-link merge against the
         # integration it is bound to (ctx.integration_slug).
         class _Svc(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 ctx.service_writeback = ServiceWriteback(
                     identifier='134741',
                     canonical_url='https://api.x.ghe.com/repositories/134741',
@@ -263,7 +274,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
 
     def test_service_writeback_remove_deletes_edge(self) -> None:
         class _Svc(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 ctx.service_writeback = ServiceWriteback(
                     identifier='1',
                     canonical_url='https://api.x/1',
@@ -334,9 +347,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
 
     def test_http_exception_surfaces_failed(self) -> None:
         class _Raises(LifecycleCapability):
-            async def on_project_archived(  # type: ignore[override]
-                self, ctx, credentials
-            ):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 raise fastapi.HTTPException(
                     status_code=401,
                     detail={
@@ -408,6 +421,70 @@ async def _passthrough_identity_retry(
     return await fn(ctx)
 
 
+class ResolveCredentialsTestCase(unittest.TestCase):
+    """Credential gating honors the manifest's declared field names."""
+
+    @staticmethod
+    def _resolved_with(
+        credential_fields: list[CredentialField],
+    ) -> ResolvedCapability:
+        class _Handler(LifecycleCapability):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                del ctx, credentials
+                return LifecycleResult(status='ok')
+
+        entry = _entry('pd', _Handler)
+        entry.manifest.credentials = credential_fields
+        return _resolved(entry)
+
+    @staticmethod
+    def _call(
+        resolved: ResolvedCapability, blob: dict[str, str]
+    ) -> dict[str, str]:
+        ctx = PluginContext(
+            project_id='proj-1', project_slug='p', org_slug='o'
+        )
+        with mock.patch(
+            'imbi.api.plugins.lifecycle_dispatch'
+            '.decrypt_integration_credentials',
+            return_value=blob,
+        ):
+            return _resolve_credentials(ctx, resolved)
+
+    def test_api_key_credential_is_accepted(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='api_key', label='API key')]
+        )
+        self.assertEqual(
+            self._call(resolved, {'api_key': 'secret'}), {'api_key': 'secret'}
+        )
+
+    def test_missing_required_field_names_the_field(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='api_key', label='API key')]
+        )
+        with self.assertRaises(PluginCredentialsMissing) as ctx:
+            self._call(resolved, {'other': 'x'})
+        self.assertIn('missing api_key', str(ctx.exception))
+
+    def test_empty_blob_is_rejected_without_required_fields(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='access_token', label='PAT', required=False)]
+        )
+        with self.assertRaises(PluginCredentialsMissing):
+            self._call(resolved, {})
+
+    def test_optional_fields_only_accepts_any_populated_blob(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='app_id', label='App ID', required=False)]
+        )
+        self.assertEqual(
+            self._call(resolved, {'app_id': '1'}), {'app_id': '1'}
+        )
+
+
 class LifecycleInvocationSerializationTestCase(unittest.TestCase):
     def test_round_trip(self) -> None:
         inv = LifecycleInvocation(
@@ -445,7 +522,9 @@ class WidenedEventNotImplementedTestCase(unittest.TestCase):
         self, event: LifecycleEvent
     ) -> LifecycleInvocation:
         class _Bare(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 return LifecycleResult(status='ok')
 
         entry = _entry('bare', _Bare)
@@ -526,19 +605,27 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
         captured: dict[str, PluginContext] = {}
 
         class _Capture(LifecycleCapability):
-            async def on_project_created(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_created(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 captured['ctx'] = ctx
                 return LifecycleResult(status='ok')
 
-            async def on_project_updated(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_updated(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 captured['ctx'] = ctx
                 return LifecycleResult(status='ok')
 
-            async def on_project_deleted(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_deleted(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 captured['ctx'] = ctx
                 return LifecycleResult(status='ok')
 
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 return LifecycleResult(status='ok')
 
         entry = _entry('cap', _Capture)

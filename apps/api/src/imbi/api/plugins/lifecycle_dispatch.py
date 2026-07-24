@@ -353,17 +353,33 @@ def _resolve_credentials(
     account PAT).  Raises :class:`PluginCredentialsMissing` when
     neither is available so the dispatcher surfaces a clear ``failed``
     invocation.
+
+    The blob is validated against the plugin manifest's *required*
+    :class:`CredentialField` names rather than a fixed
+    ``access_token``/``token`` pair -- api-token plugins name their
+    field differently (PagerDuty ``api_key``, Logz.io ``api_token``)
+    and were being rejected despite being fully configured.
     """
     if ctx.identity is not None and ctx.identity.access_token:
         return {'access_token': ctx.identity.access_token}
     credentials = decrypt_integration_credentials(
         resolved.encrypted_credentials
     )
-    if not credentials.get('access_token') and not credentials.get('token'):
+    required = [
+        field.name
+        for field in resolved.entry.manifest.credentials
+        if field.required
+    ]
+    missing = [name for name in required if not credentials.get(name)]
+    if not credentials or missing:
+        detail = (
+            f'missing {", ".join(missing)}'
+            if missing
+            else 'bind an identity or configure a service-account token'
+        )
         raise PluginCredentialsMissing(
             f'No credentials available for plugin '
-            f'{resolved.plugin_slug!r}: bind an identity or configure '
-            f'a service-account token.'
+            f'{resolved.plugin_slug!r}: {detail}.'
         )
     return credentials
 
