@@ -114,6 +114,44 @@ def _component_key(
     return None
 
 
+def _token_type_hint(exc: Exception, api_token: str) -> str:
+    """Explain a 403 from the token's own prefix.
+
+    SonarQube prefixes tokens by type, so the credential says which of
+    two unrelated causes is in play and the finding should not make the
+    operator guess.  An analysis token (``sqa_`` global, ``sqp_``
+    project) only reaches the endpoints a scanner uses and is refused
+    regardless of the issuing account's rights -- replacing it is the
+    only fix.  A user token (``squ_``) that is refused is a permissions
+    problem, where telling someone to swap a token that is already the
+    right type sends them in circles.  Tokens issued before SonarQube
+    added the prefixes carry neither, so those get both possibilities.
+    Returns ``''`` for non-403 failures, which need no token guidance.
+    """
+    if '403' not in str(exc):
+        return ''
+    if api_token.startswith(('sqa_', 'sqp_')):
+        return (
+            ' The api_token credential is an analysis token, which only '
+            'reaches scanner endpoints; replace it with a user token '
+            '(`squ_`, from My Account > Security).'
+        )
+    if api_token.startswith('squ_'):
+        return (
+            ' The api_token credential is a user token, so this is the '
+            "token account's permissions rather than the token type -- "
+            'verify it has Browse on this project (SonarQube also '
+            'restricts some project APIs to administrators).'
+        )
+    return (
+        ' Check whether the api_token credential is an analysis token '
+        '(`sqa_` / `sqp_`), which only reaches scanner endpoints and '
+        'needs replacing with a user token (`squ_`); if it is already a '
+        "user token, verify the token account's Browse permission on "
+        'this project.'
+    )
+
+
 def _canonical_url(base_url: str, key: str) -> str:
     quoted = urllib.parse.quote(key, safe='')
     return f'{base_url.rstrip("/")}/api/components/show?component={quoted}'
@@ -161,7 +199,9 @@ class SonarQubeDoctor(AnalysisCapability):
                     'SonarQube API token',
                     'warn',
                     'No api_token credential configured; cannot inspect the '
-                    'SonarQube project.',
+                    'SonarQube project. Set the Integration credential to a '
+                    'SonarQube user token (prefix `squ_`) -- analysis tokens '
+                    '(`sqa_` / `sqp_`) cannot read this API.',
                 )
             ]
 
@@ -189,7 +229,7 @@ class SonarQubeDoctor(AnalysisCapability):
                     'SonarQube project',
                     'warn',
                     f'Could not reach SonarQube to verify component {key!r}: '
-                    f'{exc}',
+                    f'{exc}{_token_type_hint(exc, api_token)}',
                 )
             ]
 

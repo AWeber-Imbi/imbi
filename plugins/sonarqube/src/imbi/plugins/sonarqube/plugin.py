@@ -79,12 +79,17 @@ class SonarQubePlugin(plugins.Plugin):
             'credentials': [
                 {
                     'name': 'api_token',
-                    'label': 'SonarQube API Token',
+                    'label': 'SonarQube user token',
                     'description': (
-                        'User or analysis token with read access to '
-                        '/api/measures/component, plus the Create Projects '
-                        'permission if the Project Doctor should search for '
-                        'and create SonarQube projects.'
+                        'A SonarQube **user** token (My Account > Security '
+                        'in SonarQube), which is prefixed `squ_`. Analysis '
+                        'tokens -- `sqa_` (global) and `sqp_` (project) -- '
+                        'are scoped to scanner endpoints and return 403 on '
+                        'every call this plugin makes, no matter what '
+                        'permissions the issuing account holds. The token '
+                        'needs Browse on the projects being read, plus '
+                        'Create Projects if the Project Doctor should create '
+                        'missing SonarQube projects.'
                     ),
                 }
             ],
