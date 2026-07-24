@@ -52,7 +52,7 @@ to see everything.
 
 ```bash
 moon ci                    # full pipeline (lint/format/typecheck, ui, docs,
-                           #   single-session coverage, docker image test build)
+                           #   single-session coverage)
 moon run <proj>:<task>     # one task, e.g. `moon run api:test`, `moon run ui:build`
 moon run :lint             # a task across every project
 
