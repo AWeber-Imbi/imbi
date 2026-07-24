@@ -99,7 +99,7 @@ export function CommitDeployCard({
             ) : null}
             {stage.current?.performed_by ? (
               <>
-                <span aria-hidden="true">by</span>
+                <span>by</span>
                 <UserIdentity
                   actor={stage.current.performed_by}
                   email={stage.current.performed_by_email}
