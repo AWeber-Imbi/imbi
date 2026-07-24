@@ -100,7 +100,7 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             slug='opslog-backfill',
             label='Backfill Deployments to Operations Log',
             description=(
-                'Ensure operations_log has Deployed entries for every '
+                'Ensure the operations log has Deployed entries for every '
                 'attributed deployment event on each release, so deployer '
                 'attribution resolves for deployments recorded outside '
                 'Imbi.'
