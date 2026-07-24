@@ -419,7 +419,10 @@ class ResolveCredentialsTestCase(unittest.TestCase):
         credential_fields: list[CredentialField],
     ) -> ResolvedCapability:
         class _Handler(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                del ctx, credentials
                 return LifecycleResult(status='ok')
 
         entry = _entry('pd', _Handler)
