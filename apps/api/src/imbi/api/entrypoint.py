@@ -92,10 +92,16 @@ def setup_clickhouse() -> None:
 async def _setup_clickhouse_async() -> None:
     """Async body of ``setup-clickhouse``."""
     try:
-        await clickhouse.initialize()
+        connected = await clickhouse.initialize()
     except Exception as e:
         typer.echo(f'✗ Failed to connect to ClickHouse: {e}', err=True)
         raise typer.Exit(code=1) from e
+    if not connected:
+        typer.echo(
+            '✗ Failed to connect to ClickHouse: connection attempts exhausted',
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     try:
         await _apply_clickhouse_schema()
@@ -144,10 +150,15 @@ async def _setup_permissions_async() -> None:
 
     if result['retired']:
         typer.echo(f'  ✓ Removed {result["retired"]} retired permission(s)')
-    typer.echo(
-        f'  ✓ Created {result["permissions"]} permission(s) '
-        f'and {result["roles"]} role(s)'
-    )
+    if result['permissions'] or result['roles']:
+        typer.echo(
+            f'  ✓ Created {result["permissions"]} permission(s) '
+            f'and {result["roles"]} role(s)'
+        )
+    else:
+        typer.echo(
+            '  ✓ Permissions and roles already exist (no new entities created)'
+        )
     typer.echo('\n✓ Permissions and roles are up to date')
 
 
@@ -179,11 +190,18 @@ async def _setup_async() -> None:
 
     # Initialize ClickHouse connection
     try:
-        await clickhouse.initialize()
+        connected = await clickhouse.initialize()
     except Exception as e:
         typer.echo(f'✗ Failed to connect to ClickHouse: {e}', err=True)
         await db.close()
         raise typer.Exit(code=1) from e
+    if not connected:
+        typer.echo(
+            '✗ Failed to connect to ClickHouse: connection attempts exhausted',
+            err=True,
+        )
+        await db.close()
+        raise typer.Exit(code=1)
 
     try:
         # Check if system is already set up
