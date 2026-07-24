@@ -671,6 +671,24 @@ def _latest_deployment_event(
     return latest_ts, latest_by
 
 
+def ops_log_version_candidates(
+    tag: str | None, committish: str | None
+) -> list[str]:
+    """Ordered, distinct version keys to probe in ``operations_log``.
+
+    The audit writer records ``version = matched_tag or committish_short``
+    (see ``project_deployments``), so a deploy from a branch/SHA stores the
+    short committish while the release still carries a tag. Probe the tag
+    first, then the committish, so the backfill join resolves the deployer
+    regardless of which the audit row captured.
+    """
+    candidates: list[str] = []
+    for value in (tag, committish):
+        if value and value not in candidates:
+            candidates.append(value)
+    return candidates
+
+
 async def lookup_ops_log_performed_by(
     targets: list[tuple[str, str, str]],
 ) -> dict[tuple[str, str, str], str]:
@@ -796,24 +814,26 @@ async def _fetch_current_releases(
     # Backfill performed_by from operations_log for events whose
     # AGE edge left it null (in-product deploy/promote path).
     enrich_targets = [
-        (pid, env_slug, str(tag or committish or ''))
+        (pid, env_slug, version)
         for (pid, env_slug), (
             tag,
             committish,
             _ts,
             performed_by,
         ) in latest.items()
-        if performed_by is None and (tag or committish)
+        if performed_by is None
+        for version in ops_log_version_candidates(tag, committish)
     ]
     performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
     if performed_by_by_key:
         for key, (tag, committish, ts, performed_by) in list(latest.items()):
             if performed_by is not None:
                 continue
-            version = str(tag or committish or '')
-            looked_up = performed_by_by_key.get((key[0], key[1], version))
-            if looked_up:
-                latest[key] = (tag, committish, ts, looked_up)
+            for version in ops_log_version_candidates(tag, committish):
+                looked_up = performed_by_by_key.get((key[0], key[1], version))
+                if looked_up:
+                    latest[key] = (tag, committish, ts, looked_up)
+                    break
 
     result: dict[str, dict[str, ReleaseInfo]] = {}
     for (pid, env_slug), (tag, committish, ts, performed_by) in latest.items():

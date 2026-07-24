@@ -26,7 +26,10 @@ from imbi.api.auth import permissions
 from imbi.api.domain.models import User
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.endpoints.operations_log import complete_opslog_entry
-from imbi.api.endpoints.projects import lookup_ops_log_performed_by
+from imbi.api.endpoints.projects import (
+    lookup_ops_log_performed_by,
+    ops_log_version_candidates,
+)
 from imbi.api.plugins import call_with_timeout
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
@@ -130,6 +133,7 @@ class DeploymentEventInput(pydantic.BaseModel):
     status: _DEPLOYMENT_STATUS
     note: str | None = None
     external_run_id: str | None = None
+    external_run_url: str | None = None
 
 
 class ReleaseEnvironmentRef(pydantic.BaseModel):
@@ -672,6 +676,54 @@ async def _users_by_email(
     return out
 
 
+async def _backfill_performed_by(
+    project_id: str,
+    by_env: dict[
+        str,
+        tuple[
+            dict[str, typing.Any],
+            dict[str, typing.Any] | None,
+            models.DeploymentEvent | None,
+        ],
+    ],
+) -> dict[str, str]:
+    """Resolve the deployer per env slug from ``operations_log``.
+
+    Only covers events whose AGE edge left ``performed_by`` null (the
+    in-product deploy/promote path). Each env offers both its release tag
+    and committish as candidate version keys — the audit writer records
+    whichever matched — and the tag is probed before the committish.
+    """
+    enrich_targets: list[tuple[str, str, str]] = []
+    for env, release_raw, event in by_env.values():
+        if event is None or event.performed_by is not None:
+            continue
+        if release_raw is None:
+            continue
+        for version in ops_log_version_candidates(
+            release_raw.get('tag'), release_raw.get('committish')
+        ):
+            enrich_targets.append((project_id, env['slug'], version))
+    performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
+
+    out: dict[str, str] = {}
+    for env, release_raw, event in by_env.values():
+        if event is None or event.performed_by is not None:
+            continue
+        if release_raw is None:
+            continue
+        for version in ops_log_version_candidates(
+            release_raw.get('tag'), release_raw.get('committish')
+        ):
+            looked_up = performed_by_by_key.get(
+                (project_id, env['slug'], version)
+            )
+            if looked_up:
+                out[env['slug']] = looked_up
+                break
+    return out
+
+
 @releases_router.get(
     '/current',
     response_model=list[CurrentReleaseEnvironment],
@@ -764,18 +816,7 @@ async def list_current_releases(
     # Backfill performed_by from operations_log for events whose AGE edge
     # left it null (in-product deploy/promote path), mirroring the
     # project-detail current-releases view so both agree.
-    enrich_targets: list[tuple[str, str, str]] = []
-    for env, release_raw, event in by_env.values():
-        if event is None or event.performed_by is not None:
-            continue
-        if release_raw is None:
-            continue
-        version = str(
-            release_raw.get('tag') or release_raw.get('committish') or ''
-        )
-        if version:
-            enrich_targets.append((project_id, env['slug'], version))
-    performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
+    performed_by_by_slug = await _backfill_performed_by(project_id, by_env)
 
     # Resolve deployer emails to Imbi users so the UI can show a display
     # name + profile link + Gravatar. ``performed_by`` may be an email
@@ -787,17 +828,8 @@ async def list_current_releases(
     ] = []
     for env, release_raw, event in by_env.values():
         performed_by = event.performed_by if event else None
-        if (
-            performed_by is None
-            and event is not None
-            and release_raw is not None
-        ):
-            version = str(
-                release_raw.get('tag') or release_raw.get('committish') or ''
-            )
-            performed_by = performed_by_by_key.get(
-                (project_id, env['slug'], version)
-            )
+        if performed_by is None:
+            performed_by = performed_by_by_slug.get(env['slug'])
         computed.append((env, release_raw, event, performed_by))
 
     users_by_email = await _users_by_email(
@@ -1361,7 +1393,16 @@ async def record_deployment(
         ),
     ],
 ) -> ReleaseEnvironmentEdgeResponse:
-    """Record a deployment event for a release in an environment."""
+    """Record a deployment event for a release in an environment.
+
+    Delegates persistence to :func:`append_deployment_event` so a webhook
+    status update for a run the in-product deploy flow already recorded
+    deduplicates on ``external_run_id`` (refreshing the existing event in
+    place) instead of appending a second, anonymous event that would blank
+    "Deployed by". The explicit pre-checks preserve the endpoint's
+    distinct 404 (missing release) / 422 (missing environment) semantics,
+    which the delegate collapses into a single ``None``.
+    """
     release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
         raise fastapi.HTTPException(
@@ -1371,7 +1412,7 @@ async def record_deployment(
             ),
         )
 
-    env, existing = await _fetch_deployment_edge(
+    env, _existing = await _fetch_deployment_edge(
         db, org_slug, project_id, release_id, env_slug
     )
     if env is None:
@@ -1383,66 +1424,28 @@ async def record_deployment(
             ),
         )
 
-    event = models.DeploymentEvent(
-        timestamp=datetime.datetime.now(datetime.UTC),
+    # The gateway supplies no actor, so leave performed_by None — the
+    # in-product deploy flow already attributes the operator via
+    # operations_log, which the current-release enrichment backfills from.
+    result = await append_deployment_event(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        release_id=release_id,
+        env_slug=env_slug,
         status=data.status,
         note=data.note,
+        external_run_id=data.external_run_id,
+        external_run_url=data.external_run_url,
     )
-    deployments = [*existing, event]
-    serialized = json.dumps(
-        [e.model_dump(mode='json') for e in deployments],
-    )
-
-    if existing:
-        set_query: typing.LiteralString = """
-        MATCH (:Project {{id: {project_id}}})
-              -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
-        MATCH (r)-[d:DEPLOYED_TO]->(:Environment {{slug: {env_slug}}})
-        SET d.deployments = {deployments}
-        RETURN d.deployments AS deployments
-        """
-        await db.execute(
-            set_query,
-            {
-                'project_id': project_id,
-                'release_id': release_id,
-                'env_slug': env_slug,
-                'deployments': serialized,
-            },
-            ['deployments'],
+    if result is None:  # unreachable: pre-checks validated release + env
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Release {release_id!r} for project {project_id!r} not found'
+            ),
         )
-    else:
-        create_query: typing.LiteralString = """
-        MATCH (:Project {{id: {project_id}}})
-              -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
-        MATCH (e:Environment {{slug: {env_slug}}})
-              -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-        CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
-        RETURN d.deployments AS deployments
-        """
-        await db.execute(
-            create_query,
-            {
-                'project_id': project_id,
-                'release_id': release_id,
-                'env_slug': env_slug,
-                'org_slug': org_slug,
-                'deployments': serialized,
-            },
-            ['deployments'],
-        )
-
-    if data.status == 'success':
-        # A successful deployment makes this release the current one for
-        # the environment; record it on the DEPLOYED_IN edge.
-        await _set_current_release(
-            db,
-            org_slug=org_slug,
-            project_id=project_id,
-            env_slug=env_slug,
-            release_id=release_id,
-            timestamp=event.timestamp,
-        )
+    edge, _outcome = result
 
     if data.external_run_id and data.status in {
         'success',
@@ -1460,7 +1463,7 @@ async def record_deployment(
         valkey_client, project_id, 'deployment_status_change'
     )
 
-    return _edge_to_response(env, deployments)
+    return edge
 
 
 @releases_router.get(

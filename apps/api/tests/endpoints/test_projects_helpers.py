@@ -263,6 +263,52 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result['p1']['prod'].performed_by, 'bob@example.com')
 
+    async def test_enriches_performed_by_from_committish_when_tag_set(
+        self,
+    ) -> None:
+        # A branch/SHA deploy records version = committish in the ops log
+        # even though the release carries a tag; the backfill must probe
+        # the committish key too, not just the tag.
+        deployed = datetime.datetime(2026, 4, 1, 12, 0, 0, tzinfo=datetime.UTC)
+        db = mock.AsyncMock()
+        db.execute.return_value = [
+            _row(
+                project_id='p1',
+                env_slug='prod',
+                tag='1.0.0',
+                committish='abcdef0',
+                events=[_event(deployed)],
+            ),
+        ]
+        ch = mock.MagicMock()
+        ch.query = mock.AsyncMock(
+            return_value=[
+                {
+                    'project_id': 'p1',
+                    'environment_slug': 'prod',
+                    'version': 'abcdef0',
+                    'performed_by': 'carol@example.com',
+                },
+            ]
+        )
+
+        with (
+            mock.patch(
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
+                'get_instance',
+                return_value=ch,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.projects.graph.parse_agtype',
+                side_effect=lambda v: v,
+            ),
+        ):
+            result = await projects._fetch_current_releases(db, ['p1'])
+
+        self.assertEqual(
+            result['p1']['prod'].performed_by, 'carol@example.com'
+        )
+
     async def test_skips_environments_with_no_events(self) -> None:
         db = mock.AsyncMock()
         db.execute.return_value = [
