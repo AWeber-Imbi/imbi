@@ -1328,7 +1328,10 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 json=[
                     {
                         'state': 'success',
-                        'log_url': 'https://github.com/octo/demo/actions/runs/9001/job/55',
+                        'log_url': (
+                            'https://github.com/octo/demo'
+                            '/actions/runs/9001/job/55'
+                        ),
                         'created_at': '2026-05-13T14:01:00Z',
                     }
                 ],
@@ -1388,7 +1391,10 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 json=[
                     {
                         'state': 'success',
-                        'log_url': 'https://github.com/octo/demo/actions/runs/9001/job/55',
+                        'log_url': (
+                            'https://github.com/octo/demo'
+                            '/actions/runs/9001/job/55'
+                        ),
                         'created_at': '2026-05-13T14:01:00Z',
                     }
                 ],
@@ -1445,7 +1451,9 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 json=[
                     {
                         'state': 'success',
-                        'target_url': 'https://github.com/octo/demo/actions/runs/9001',
+                        'target_url': (
+                            'https://github.com/octo/demo/actions/runs/9001'
+                        ),
                         'created_at': '2026-05-13T14:01:00Z',
                     }
                 ],
@@ -1492,7 +1500,9 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
                 json=[
                     {
                         'state': 'success',
-                        'log_url': 'https://github.com/octo/demo/actions/runs/9001',
+                        'log_url': (
+                            'https://github.com/octo/demo/actions/runs/9001'
+                        ),
                         'created_at': '2026-05-13T14:01:00Z',
                     }
                 ],
