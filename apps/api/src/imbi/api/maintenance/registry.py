@@ -24,6 +24,7 @@ MaintenanceSlug = typing.Literal[
     'remediate',
     'rescore',
     'deployment-resync',
+    'opslog-backfill',
     'commit-sync',
     'pr-sync',
 ]
@@ -94,6 +95,19 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_deployment_resync,
+        ),
+        OperationDefinition(
+            slug='opslog-backfill',
+            label='Backfill Deployment Log',
+            description=(
+                'Ensure operations_log has Deployed entries for every '
+                'attributed deployment event on each release, so deployer '
+                'attribution resolves for deployments recorded outside '
+                'Imbi.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_opslog_backfill,
         ),
         OperationDefinition(
             slug='commit-sync',

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
+import json
 import time
 import unittest
 from unittest import mock
@@ -278,6 +280,186 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
                     mock.AsyncMock(), mock.AsyncMock(), 'p1'
                 )
         self.assertIn('no credentials', str(ctx.exception))
+
+
+def _edge_row(
+    *,
+    env_slug: str = 'production',
+    tag: str | None = 'v1.2.3',
+    committish: str | None = 'abc1234',
+    deployments: list[dict[str, object]],
+) -> dict[str, object]:
+    """A graph row as ``execute_opslog_backfill`` reads it.
+
+    ``parse_agtype`` passes plain strings through and JSON-decodes the
+    ``deployments`` payload, so encoding it as JSON mirrors the AGE
+    edge-property shape.
+    """
+    return {
+        'env_slug': env_slug,
+        'tag': tag,
+        'committish': committish,
+        'deployments': json.dumps(deployments),
+    }
+
+
+def _event(
+    *,
+    status: str = 'success',
+    performed_by: str | None = 'alice@example.com',
+    external_run_id: str | None = 'run-1',
+    timestamp: str = '2026-01-01T00:00:00+00:00',
+    external_run_url: str | None = 'https://ci.example.com/run-1',
+) -> dict[str, object]:
+    return {
+        'status': status,
+        'performed_by': performed_by,
+        'external_run_id': external_run_id,
+        'external_run_url': external_run_url,
+        'timestamp': timestamp,
+    }
+
+
+class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
+    async def _run(
+        self,
+        *,
+        edge_rows: list[dict[str, object]],
+        existing_ch_rows: list[dict[str, object]] | None = None,
+    ) -> tuple[operations.ExecuteOutcome, mock.Mock]:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=edge_rows)
+        instance = mock.Mock()
+        instance.query = mock.AsyncMock(return_value=existing_ch_rows or [])
+        instance.insert = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                operations.clickhouse.client.Clickhouse,
+                'get_instance',
+                return_value=instance,
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
+                mock.AsyncMock(return_value=('proj', 'team')),
+            ),
+        ):
+            outcome = await operations.execute_opslog_backfill(
+                db, mock.AsyncMock(), 'p1'
+            )
+        return outcome, instance
+
+    @staticmethod
+    def _inserted_row(instance: mock.Mock) -> dict[str, object]:
+        _table, values, columns = instance.insert.await_args.args
+        assert len(values) == 1
+        return dict(zip(columns, values[0], strict=True))
+
+    async def test_skipped_without_edges(self) -> None:
+        outcome, instance = await self._run(edge_rows=[])
+        self.assertEqual('skipped', outcome)
+        instance.insert.assert_not_awaited()
+
+    async def test_inserts_row_for_attributed_success(self) -> None:
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event()])]
+        )
+        self.assertEqual('succeeded', outcome)
+        instance.insert.assert_awaited_once()
+        table = instance.insert.await_args.args[0]
+        self.assertEqual('operations_log', table)
+        row = self._inserted_row(instance)
+        self.assertEqual('Deployed', row['entry_type'])
+        self.assertEqual('alice@example.com', row['performed_by'])
+        self.assertEqual('maintenance-opslog-backfill', row['recorded_by'])
+        self.assertEqual('production', row['environment_slug'])
+        self.assertEqual('v1.2.3', row['version'])
+        self.assertEqual('run-1', row['external_run_id'])
+
+    async def test_occurred_at_matches_event_timestamp(self) -> None:
+        _outcome, instance = await self._run(
+            edge_rows=[
+                _edge_row(
+                    deployments=[_event(timestamp='2025-06-15T12:34:56+00:00')]
+                )
+            ]
+        )
+        row = self._inserted_row(instance)
+        self.assertEqual(
+            datetime.datetime(2025, 6, 15, 12, 34, 56, tzinfo=datetime.UTC),
+            row['occurred_at'],
+        )
+
+    async def test_skips_events_without_performed_by(self) -> None:
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event(performed_by=None)])]
+        )
+        self.assertEqual('skipped', outcome)
+        instance.insert.assert_not_awaited()
+
+    async def test_skips_non_success_events(self) -> None:
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event(status='in_progress')])]
+        )
+        self.assertEqual('skipped', outcome)
+        instance.insert.assert_not_awaited()
+
+    async def test_dedupes_by_external_run_id(self) -> None:
+        # The env/version differ from the event's, so only the run-id
+        # match can suppress the insert.
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event()])],
+            existing_ch_rows=[
+                {
+                    'environment_slug': 'staging',
+                    'version': 'v9.9.9',
+                    'external_run_id': 'run-1',
+                }
+            ],
+        )
+        self.assertEqual('skipped', outcome)
+        instance.insert.assert_not_awaited()
+
+    async def test_dedupes_by_env_and_version(self) -> None:
+        # No run id on the event, but the committish candidate matches an
+        # existing (env, version) row -> nothing to insert.
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event(external_run_id=None)])],
+            existing_ch_rows=[
+                {
+                    'environment_slug': 'production',
+                    'version': 'abc1234',
+                    'external_run_id': None,
+                }
+            ],
+        )
+        self.assertEqual('skipped', outcome)
+        instance.insert.assert_not_awaited()
+
+    async def test_newest_attributed_event_wins_dedupe(self) -> None:
+        # Two success events on one edge, same (env, version), no run ids.
+        # Only the newer one is inserted so argMax reflects the latest
+        # deployer.
+        outcome, instance = await self._run(
+            edge_rows=[
+                _edge_row(
+                    deployments=[
+                        _event(
+                            performed_by='old@example.com',
+                            external_run_id=None,
+                            timestamp='2025-01-01T00:00:00+00:00',
+                        ),
+                        _event(
+                            performed_by='new@example.com',
+                            external_run_id=None,
+                            timestamp='2026-01-01T00:00:00+00:00',
+                        ),
+                    ]
+                )
+            ]
+        )
+        self.assertEqual('succeeded', outcome)
+        row = self._inserted_row(instance)
+        self.assertEqual('new@example.com', row['performed_by'])
 
 
 class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
