@@ -758,6 +758,50 @@ class DeploymentEvent(pydantic.BaseModel):
     performed_by: str | None = None
 
 
+def parse_deployment_events(
+    raw: object,
+    *,
+    on_error: typing.Literal['raise', 'skip'] = 'raise',
+) -> list[DeploymentEvent]:
+    """Parse the JSON-encoded ``deployments`` edge property.
+
+    A release's ``DEPLOYED_TO`` edge stores its event history as a
+    JSON-encoded string (or, once decoded by the graph layer, a list).
+    Falsy input and anything that isn't a list yield ``[]``; every list
+    entry is validated into a :class:`DeploymentEvent`.
+
+    ``on_error`` controls how malformed data is handled. ``'raise'``
+    (the default) lets a JSON decode error or an invalid entry
+    propagate, so a bad edge fails loudly. ``'skip'`` is tolerant:
+    undecodable JSON yields ``[]`` and each entry that fails validation
+    is dropped, keeping the good ones — for callers (e.g. score
+    computation) that must not fail the whole operation over one bad
+    row.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            data: object = json.loads(raw)
+        except json.JSONDecodeError:
+            if on_error == 'raise':
+                raise
+            return []
+    else:
+        data = raw
+    if not isinstance(data, list):
+        return []
+    events: list[DeploymentEvent] = []
+    for entry in typing.cast('list[object]', data):
+        try:
+            events.append(DeploymentEvent.model_validate(entry))
+        except pydantic.ValidationError:
+            if on_error == 'raise':
+                raise
+            continue
+    return events
+
+
 class ReleaseLink(pydantic.BaseModel):
     """A typed external link attached to a ``Release``.
 

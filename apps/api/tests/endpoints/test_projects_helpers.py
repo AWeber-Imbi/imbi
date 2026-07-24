@@ -378,11 +378,9 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=ch,
         ):
             result = await projects.lookup_ops_log_performed_by(
-                [('p1', 'prod', '1.0.0')]
+                [('p1', 'prod', '1.0.0', None)]
             )
-        self.assertEqual(
-            result, {('p1', 'prod', '1.0.0'): 'alice@example.com'}
-        )
+        self.assertEqual(result, {('p1', 'prod'): 'alice@example.com'})
 
     async def test_swallows_clickhouse_errors(self) -> None:
         ch = mock.MagicMock()
@@ -392,6 +390,6 @@ class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=ch,
         ):
             result = await projects.lookup_ops_log_performed_by(
-                [('p1', 'prod', '1.0.0')]
+                [('p1', 'prod', '1.0.0', None)]
             )
         self.assertEqual(result, {})

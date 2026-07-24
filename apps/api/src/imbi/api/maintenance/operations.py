@@ -18,7 +18,6 @@ endpoints package at import time.
 from __future__ import annotations
 
 import functools
-import json
 import logging
 import typing
 
@@ -287,23 +286,6 @@ RETURN e.slug AS env_slug,
 """
 
 
-def _parse_deployments(raw: object) -> list[common_models.DeploymentEvent]:
-    """Parse the JSON-encoded ``deployments`` edge property.
-
-    Mirrors ``endpoints.releases._parse_deployments`` -- inlined here so
-    this module doesn't reach into an endpoint's private helper.
-    """
-    if not raw:
-        return []
-    data = json.loads(raw) if isinstance(raw, str) else raw
-    if not isinstance(data, list):
-        return []
-    return [
-        common_models.DeploymentEvent.model_validate(entry)
-        for entry in typing.cast('list[object]', data)
-    ]
-
-
 async def _existing_opslog_rows(
     project_id: str,
 ) -> tuple[set[str], set[tuple[str, str]]]:
@@ -318,6 +300,7 @@ async def _existing_opslog_rows(
         'SELECT environment_slug, version, external_run_id'
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed'"
+        ' AND is_deleted = 0'
         ' AND project_id = {project_id:String}'
     )
     rows = await clickhouse.client.Clickhouse.get_instance().query(
@@ -334,49 +317,6 @@ async def _existing_opslog_rows(
         if env and version:
             env_versions.add((env, version))
     return run_ids, env_versions
-
-
-def _backfill_row(
-    *,
-    project_id: str,
-    project_slug: str,
-    env_slug: str,
-    version: str,
-    event: common_models.DeploymentEvent,
-) -> common_models.OperationLog:
-    """Build the ops-log row for one attributed deployment event.
-
-    Mirrors ``project_deployments._record_deployment_audit``'s shape so
-    the history pane renders backfilled deploys identically, but stamps
-    ``recorded_by`` with the backfill marker and pins ``occurred_at`` to
-    the deployment event's own timestamp -- ``lookup_ops_log_performed_by``
-    ranks with ``argMax(performed_by, occurred_at)``, so the row must sort
-    by when the deploy actually happened, not when the backfill ran.
-    """
-    description = json.dumps(
-        {
-            'action': 'opslog-backfill',
-            'plugin_slug': '',
-            'run_url': event.external_run_url,
-            'release_url': None,
-            'from_environment': None,
-        },
-        sort_keys=True,
-    )
-    return common_models.OperationLog(
-        occurred_at=event.timestamp,
-        recorded_by=OPSLOG_BACKFILL_RECORDED_BY,
-        performed_by=event.performed_by,
-        project_id=project_id,
-        project_slug=project_slug,
-        environment_slug=env_slug,
-        entry_type='Deployed',
-        description=description,
-        link=event.external_run_url,
-        version=version,
-        plugin_slug='',
-        external_run_id=event.external_run_id,
-    )
 
 
 async def execute_opslog_backfill(
@@ -402,7 +342,10 @@ async def execute_opslog_backfill(
     Skipped when the project has no deployment edges or every attributed
     event already has a matching ops-log row.
     """
-    from imbi.api.endpoints._helpers import lookup_project_slugs
+    from imbi.api.endpoints._helpers import (
+        deployed_operation_log,
+        lookup_project_slugs,
+    )
     from imbi.api.endpoints.projects import ops_log_version_candidates
 
     rows = await db.execute(
@@ -431,7 +374,9 @@ async def execute_opslog_backfill(
         if not version:
             continue
         candidates = ops_log_version_candidates(tag, committish)
-        events = _parse_deployments(graph.parse_agtype(row.get('deployments')))
+        events = common_models.parse_deployment_events(
+            graph.parse_agtype(row.get('deployments'))
+        )
         for event in sorted(events, key=lambda e: e.timestamp, reverse=True):
             if event.status != 'success' or not event.performed_by:
                 continue
@@ -441,12 +386,17 @@ async def execute_opslog_backfill(
             if any((env_slug, v) in existing_env_versions for v in candidates):
                 continue
             pending.append(
-                _backfill_row(
+                deployed_operation_log(
                     project_id=project_id,
                     project_slug=project_slug,
-                    env_slug=env_slug,
+                    environment_slug=env_slug,
+                    recorded_by=OPSLOG_BACKFILL_RECORDED_BY,
+                    performed_by=event.performed_by,
+                    action='opslog-backfill',
                     version=version,
-                    event=event,
+                    run_url=event.external_run_url,
+                    external_run_id=event.external_run_id,
+                    occurred_at=event.timestamp,
                 )
             )
             if run_id:

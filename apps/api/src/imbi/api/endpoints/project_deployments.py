@@ -19,7 +19,6 @@ import json
 import logging
 import re
 import typing
-import urllib.parse
 
 import fastapi
 import httpx
@@ -30,6 +29,7 @@ from imbi.api.auth import permissions
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.deployment_sync import service as deployment_sync_service
 from imbi.api.endpoints._helpers import (
+    deployed_operation_log,
     lookup_project_links,
     lookup_project_slugs,
     lookup_project_type_slugs,
@@ -638,31 +638,6 @@ def _resolve_credentials(
     return fallback
 
 
-_SAFE_AUDIT_URL_SCHEMES: frozenset[str] = frozenset({'http', 'https'})
-
-
-def _safe_audit_url(value: str | None) -> str | None:
-    """Drop plugin-supplied URLs that aren't plain http(s).
-
-    Both ``run_url`` and ``release_url`` are surfaced by deployment
-    plugins and rendered as ``<a href>`` in the operations-log UI.
-    A malicious or buggy plugin could return a ``javascript:`` or
-    ``data:`` URL that, if echoed verbatim into the DOM, would land
-    as XSS. The UI already escapes attribute values, but defense in
-    depth: drop anything that isn't ``http(s)://`` server-side so
-    every consumer of the audit row sees a known-safe scheme.
-    """
-    if value is None:
-        return None
-    parsed = urllib.parse.urlsplit(value)
-    if parsed.scheme.lower() not in _SAFE_AUDIT_URL_SCHEMES:
-        LOGGER.warning(
-            'Dropping audit URL with unsupported scheme %r', parsed.scheme
-        )
-        return None
-    return value
-
-
 async def _record_deployment_audit(
     *,
     project_id: str,
@@ -689,36 +664,19 @@ async def _record_deployment_audit(
     ``OperationLog.version`` is populated with ``tag if tag else
     committish`` — a single human-friendly display string that the
     operations-log UI can render directly.
-
-    Plugin-supplied URLs (``run_url`` / ``release_url``) are filtered
-    through ``_safe_audit_url`` so non-http(s) schemes never reach the
-    audit JSON — see L22.
     """
-    safe_run_url = _safe_audit_url(run_url)
-    safe_release_url = _safe_audit_url(release_url)
-    description = json.dumps(
-        {
-            'action': action,
-            'plugin_slug': plugin_slug,
-            'run_url': safe_run_url,
-            'release_url': safe_release_url,
-            'from_environment': from_environment,
-        },
-        sort_keys=True,
-    )
-    entry = common_models.OperationLog(
-        id=nanoid.generate(),
-        recorded_at=datetime.datetime.now(datetime.UTC),
-        recorded_by=recorded_by,
-        performed_by=recorded_by,
+    entry = deployed_operation_log(
         project_id=project_id,
         project_slug=project_slug,
         environment_slug=environment_slug,
-        entry_type='Deployed',
-        description=description,
-        link=safe_run_url,
+        recorded_by=recorded_by,
+        performed_by=recorded_by,
+        action=action,
         version=tag or committish,
         plugin_slug=plugin_slug,
+        run_url=run_url,
+        release_url=release_url,
+        from_environment=from_environment,
         external_run_id=external_run_id,
     )
     row = entry.model_dump(by_alias=True, mode='python')
@@ -1171,7 +1129,7 @@ async def _apply_remote_deployment(
         timestamp=observed.created_at,
         performed_by=performed_by,
     )
-    if result is None:
+    if isinstance(result, str):
         # Either the Release upsert didn't take or the env slug isn't
         # wired up in this org -- record as an error so the operator
         # has a thread to pull rather than a silently swallowed row.
@@ -1600,7 +1558,7 @@ async def _handle_deploy(
         )
         if release_id is None:
             continue
-        result = await append_deployment_event(
+        appended = await append_deployment_event(
             db,
             org_slug=org_slug,
             project_id=project_id,
@@ -1611,7 +1569,8 @@ async def _handle_deploy(
             external_run_id=str(run.run_id) if run.run_id else None,
             external_run_url=run.run_url,
         )
-        if result is not None:
+        if not isinstance(appended, str):
+            result = appended
             matched_tag = try_tag
             break
     if result is None:
@@ -1990,7 +1949,7 @@ async def _handle_promote(
         run=run,
         plugin_id=resolved.integration_id,
         plugin_slug=resolved.plugin_slug,
-        recorded=promote_result is not None,
+        recorded=not isinstance(promote_result, str),
         release_url=release_url,
         tag=body.tag,
         warning='; '.join(warnings) if warnings else None,

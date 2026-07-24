@@ -649,11 +649,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
 
     def test_record_deployment_creates_edge(self) -> None:
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],  # pre-check _fetch_release
-            # pre-check _fetch_deployment_edge: env exists, no edge
-            [{'env': self._env(), 'deployments': None}],
-            [{'release': _release_row()}],  # append _fetch_release
-            # append _fetch_deployment_edge
+            [{'release': _release_row()}],  # _fetch_release
+            # _fetch_deployment_edge: env exists, no edge
             [{'env': self._env(), 'deployments': None}],
             [{'deployments': None}],  # create_query
         ]
@@ -687,10 +684,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             }
         ]
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],  # pre-check _fetch_release
-            edge_row,  # pre-check _fetch_deployment_edge
-            [{'release': _release_row()}],  # append _fetch_release
-            edge_row,  # append _fetch_deployment_edge
+            [{'release': _release_row()}],  # _fetch_release
+            edge_row,  # _fetch_deployment_edge
             [{'deployments': None}],
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
@@ -711,8 +706,6 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         # Recording an event must trigger a score recompute, since a
         # DeploymentStatusPolicy can score the project on its status.
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
             [{'release': _release_row()}],
             [{'env': self._env(), 'deployments': None}],
             [{'deployments': None}],
@@ -857,10 +850,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         ]
         edge_row = [{'env': self._env(), 'deployments': json.dumps(existing)}]
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],  # pre-check _fetch_release
-            edge_row,  # pre-check _fetch_deployment_edge
-            [{'release': _release_row()}],  # append _fetch_release
-            edge_row,  # append _fetch_deployment_edge
+            [{'release': _release_row()}],  # _fetch_release
+            edge_row,  # _fetch_deployment_edge
             [{'deployments': None}],  # _set_deployments (in-place refresh)
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
@@ -907,8 +898,6 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         ]
         edge_row = [{'env': self._env(), 'deployments': json.dumps(existing)}]
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],
-            edge_row,
             [{'release': _release_row()}],
             edge_row,
             [{'deployments': None}],  # _set_deployments (append)
@@ -1067,10 +1056,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self,
     ) -> None:
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
+            [{'release': _release_row()}],  # _fetch_release
+            [{'env': self._env(), 'deployments': None}],  # _fetch_edge
             [{'deployments': None}],  # create edge
             [],  # current_release write matched nothing
         ]
@@ -1480,7 +1467,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
             ],
         ]
         lookup = mock.AsyncMock(
-            return_value={(PROJECT_ID, 'production', 'abc1234'): 'deployer'}
+            return_value={(PROJECT_ID, 'production'): 'deployer'}
         )
         with (
             mock.patch(
@@ -1496,10 +1483,10 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         row = response.json()[0]
         self.assertEqual(row['performed_by'], 'deployer')
-        # Both the tag and the committish were offered as candidate keys.
+        # The target carries both the tag and the committish; the lookup
+        # probes them in order (tag first, committish second).
         targets = lookup.await_args.args[0]
-        self.assertIn((PROJECT_ID, 'production', '1.2.3'), targets)
-        self.assertIn((PROJECT_ID, 'production', 'abc1234'), targets)
+        self.assertIn((PROJECT_ID, 'production', '1.2.3', 'abc1234'), targets)
 
     def test_performed_by_email_resolves_to_display_name(self) -> None:
         """An email ``performed_by`` that matches an Imbi user surfaces

@@ -461,6 +461,33 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
         row = self._inserted_row(instance)
         self.assertEqual('new@example.com', row['performed_by'])
 
+    async def test_unsafe_run_url_is_dropped(self) -> None:
+        # A plugin-supplied external_run_url with a non-http(s) scheme
+        # must not reach the audit link or description JSON (XSS defense
+        # in depth), even on the backfill path.
+        _outcome, instance = await self._run(
+            edge_rows=[
+                _edge_row(
+                    deployments=[
+                        _event(external_run_url='javascript:alert(1)')
+                    ]
+                )
+            ]
+        )
+        row = self._inserted_row(instance)
+        self.assertIsNone(row['link'])
+        description = json.loads(str(row['description']))
+        self.assertIsNone(description['run_url'])
+
+    async def test_existing_rows_query_filters_soft_deleted(self) -> None:
+        # A tombstoned (is_deleted=1) ops-log row must not dedupe-suppress
+        # a backfill insert, so the existing-rows read filters them out.
+        _outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event()])]
+        )
+        sql = instance.query.await_args.args[0]
+        self.assertIn('is_deleted = 0', sql)
+
 
 class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_enqueued_is_succeeded(self) -> None:

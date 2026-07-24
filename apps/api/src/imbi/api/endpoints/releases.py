@@ -26,10 +26,7 @@ from imbi.api.auth import permissions
 from imbi.api.domain.models import User
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.endpoints.operations_log import complete_opslog_entry
-from imbi.api.endpoints.projects import (
-    lookup_ops_log_performed_by,
-    ops_log_version_candidates,
-)
+from imbi.api.endpoints.projects import lookup_ops_log_performed_by
 from imbi.api.plugins import call_with_timeout
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
@@ -208,19 +205,6 @@ def _serialize_links(
         else:
             out.append(models.ReleaseLink(**link).model_dump(mode='json'))
     return json.dumps(out)
-
-
-def _parse_deployments(
-    raw: typing.Any,
-) -> list[models.DeploymentEvent]:
-    """Parse the JSON-encoded ``deployments`` edge property."""
-    if not raw:
-        return []
-    data = json.loads(raw) if isinstance(raw, str) else raw
-    if not isinstance(data, list):
-        return []
-    items: list[typing.Any] = data  # type: ignore[assignment]
-    return [models.DeploymentEvent.model_validate(e) for e in items]
 
 
 def _release_to_response(
@@ -692,36 +676,28 @@ async def _backfill_performed_by(
     Only covers events whose AGE edge left ``performed_by`` null (the
     in-product deploy/promote path). Each env offers both its release tag
     and committish as candidate version keys — the audit writer records
-    whichever matched — and the tag is probed before the committish.
+    whichever matched, and ``lookup_ops_log_performed_by`` probes the tag
+    before the committish.
     """
-    enrich_targets: list[tuple[str, str, str]] = []
+    targets: list[tuple[str, str, str | None, str | None]] = []
     for env, release_raw, event in by_env.values():
         if event is None or event.performed_by is not None:
             continue
         if release_raw is None:
             continue
-        for version in ops_log_version_candidates(
-            release_raw.get('tag'), release_raw.get('committish')
-        ):
-            enrich_targets.append((project_id, env['slug'], version))
-    performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
-
-    out: dict[str, str] = {}
-    for env, release_raw, event in by_env.values():
-        if event is None or event.performed_by is not None:
-            continue
-        if release_raw is None:
-            continue
-        for version in ops_log_version_candidates(
-            release_raw.get('tag'), release_raw.get('committish')
-        ):
-            looked_up = performed_by_by_key.get(
-                (project_id, env['slug'], version)
+        targets.append(
+            (
+                project_id,
+                env['slug'],
+                release_raw.get('tag'),
+                release_raw.get('committish'),
             )
-            if looked_up:
-                out[env['slug']] = looked_up
-                break
-    return out
+        )
+    performed_by_by_key = await lookup_ops_log_performed_by(targets)
+    return {
+        env_slug: name
+        for (_pid, env_slug), name in performed_by_by_key.items()
+    }
 
 
 @releases_router.get(
@@ -794,7 +770,9 @@ async def list_current_releases(
             continue
         slug = env['slug']
         release_raw = graph.parse_agtype(row['release'])
-        events = _parse_deployments(graph.parse_agtype(row['deployments']))
+        events = models.parse_deployment_events(
+            graph.parse_agtype(row['deployments'])
+        )
 
         if release_raw is None or not events:
             by_env.setdefault(slug, (env, None, None))
@@ -1054,7 +1032,7 @@ async def _fetch_deployment_edge(
     if not rows:
         return None, []
     env = graph.parse_agtype(rows[0]['env'])
-    deployments = _parse_deployments(
+    deployments = models.parse_deployment_events(
         graph.parse_agtype(rows[0]['deployments'])
     )
     return env, deployments
@@ -1095,13 +1073,18 @@ async def append_deployment_event(
     external_run_url: str | None = None,
     timestamp: datetime.datetime | None = None,
     performed_by: str | None = None,
-) -> tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome] | None:
+) -> (
+    tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome]
+    | typing.Literal['no_release', 'no_env']
+):
     """Append a ``DeploymentEvent`` to ``Release -[:DEPLOYED_TO]-> Env``.
 
-    Returns a ``(edge, outcome)`` tuple, or ``None`` when the named
-    ``Release`` or ``Environment`` cannot be found — callers that
-    auto-record from a deploy of a SHA (which has no ``Release`` node)
-    treat ``None`` as "skip persistence, deploy still succeeded".
+    Returns a ``(edge, outcome)`` tuple, or a string discriminant when
+    the target can't be found: ``'no_release'`` when the named
+    ``Release`` doesn't exist, ``'no_env'`` when the ``Environment``
+    lookup fails. Callers that auto-record from a deploy of a SHA
+    (which has no ``Release`` node) treat a string result as "skip
+    persistence, deploy still succeeded".
 
     ``outcome`` is one of ``'appended'`` (new row), ``'updated'``
     (dedupe path refreshed an existing row in place), or ``'noop'``
@@ -1128,12 +1111,12 @@ async def append_deployment_event(
     """
     release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
-        return None
+        return 'no_release'
     env, existing = await _fetch_deployment_edge(
         db, org_slug, project_id, release_id, env_slug
     )
     if env is None:
-        return None
+        return 'no_env'
     if external_run_id and existing:
         # Walk newest-first so the "most recent event for this run"
         # wins when older entries with the same id exist (rare; only
@@ -1399,31 +1382,9 @@ async def record_deployment(
     status update for a run the in-product deploy flow already recorded
     deduplicates on ``external_run_id`` (refreshing the existing event in
     place) instead of appending a second, anonymous event that would blank
-    "Deployed by". The explicit pre-checks preserve the endpoint's
-    distinct 404 (missing release) / 422 (missing environment) semantics,
-    which the delegate collapses into a single ``None``.
+    "Deployed by". The delegate's ``'no_release'`` / ``'no_env'``
+    discriminants map to the endpoint's distinct 404 / 422 responses.
     """
-    release = await _fetch_release(db, org_slug, project_id, release_id)
-    if release is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(
-                f'Release {release_id!r} for project {project_id!r} not found'
-            ),
-        )
-
-    env, _existing = await _fetch_deployment_edge(
-        db, org_slug, project_id, release_id, env_slug
-    )
-    if env is None:
-        raise fastapi.HTTPException(
-            status_code=422,
-            detail=(
-                f'Environment {env_slug!r} not found in'
-                f' organization {org_slug!r}'
-            ),
-        )
-
     # The gateway supplies no actor, so leave performed_by None — the
     # in-product deploy flow already attributes the operator via
     # operations_log, which the current-release enrichment backfills from.
@@ -1438,11 +1399,19 @@ async def record_deployment(
         external_run_id=data.external_run_id,
         external_run_url=data.external_run_url,
     )
-    if result is None:  # unreachable: pre-checks validated release + env
+    if result == 'no_release':
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
                 f'Release {release_id!r} for project {project_id!r} not found'
+            ),
+        )
+    if result == 'no_env':
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=(
+                f'Environment {env_slug!r} not found in'
+                f' organization {org_slug!r}'
             ),
         )
     edge, _outcome = result
@@ -1515,7 +1484,7 @@ async def list_deployment_edges(
         env = graph.parse_agtype(row['env'])
         if not env:
             continue
-        deployments = _parse_deployments(
+        deployments = models.parse_deployment_events(
             graph.parse_agtype(row['deployments'])
         )
         results.append(_edge_to_response(env, deployments))
