@@ -884,6 +884,9 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.assertEqual(
             body['deployments'][0]['external_run_url'], 'https://gh/runs/99'
         )
+        # The webhook sends no performed_by; the refresh must keep the
+        # stored deployer rather than blanking it.
+        self.assertEqual(body['deployments'][0]['performed_by'], 'deployer')
 
     def test_record_deployment_without_run_id_stays_append_only(self) -> None:
         # Without an external_run_id the endpoint keeps append-only

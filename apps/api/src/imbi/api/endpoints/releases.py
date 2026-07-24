@@ -1126,11 +1126,15 @@ async def append_deployment_event(
         for idx in range(len(existing) - 1, -1, -1):
             candidate = existing[idx]
             if candidate.external_run_id == external_run_id:
+                # A caller passing ``performed_by=None`` means "unknown",
+                # not "clear" -- keep the stored deployer so a webhook
+                # refresh can't blank attribution a resync backfilled.
+                effective_performed_by = performed_by or candidate.performed_by
                 if (
                     candidate.status == status
                     and candidate.note == note
                     and candidate.external_run_url == external_run_url
-                    and candidate.performed_by == performed_by
+                    and candidate.performed_by == effective_performed_by
                 ):
                     return _edge_to_response(env, existing), 'noop'
                 refreshed = candidate.model_copy(
@@ -1140,7 +1144,7 @@ async def append_deployment_event(
                         'external_run_url': external_run_url,
                         'timestamp': timestamp
                         or datetime.datetime.now(datetime.UTC),
-                        'performed_by': performed_by,
+                        'performed_by': effective_performed_by,
                     }
                 )
                 updated_list = [

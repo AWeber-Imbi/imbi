@@ -375,7 +375,7 @@ async def execute_opslog_backfill(
             continue
         candidates = ops_log_version_candidates(tag, committish)
         events = common_models.parse_deployment_events(
-            graph.parse_agtype(row.get('deployments'))
+            graph.parse_agtype(row.get('deployments')), on_error='skip'
         )
         for event in sorted(events, key=lambda e: e.timestamp, reverse=True):
             if event.status != 'success' or not event.performed_by:
