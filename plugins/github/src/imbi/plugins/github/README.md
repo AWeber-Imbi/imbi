@@ -125,9 +125,10 @@ per call, so an identity-only or App-only Integration is valid:
 | `client_id`       | `identity`         | OAuth App client id.                              |
 | `client_secret`   | `identity`         | OAuth App client secret.                          |
 
-For the service capabilities (commit-sync, pr-sync, deployment,
-lifecycle) provide **either** `access_token` **or** `app_id` +
-`private_key`.
+For `commit-sync`, `pr-sync`, and `deployment` provide **either**
+`access_token` **or** `app_id` + `private_key`. `lifecycle` acts as the
+user and takes only `access_token` (or `token`) — it does not fall back
+to GitHub App credentials.
 
 ## License
 
