@@ -16,6 +16,7 @@ from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleContextBundle,
     LifecycleEvent,
     LifecycleInvocation,
+    _resolve_credentials,
     build_lifecycle_context_bundle,
     dispatch_lifecycle,
 )
@@ -23,6 +24,7 @@ from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.common.plugins.base import (
     Capability,
     ConfigurationCapability,
+    CredentialField,
     LifecycleCapability,
     LifecycleResult,
     LinkWriteback,
@@ -30,6 +32,7 @@ from imbi.common.plugins.base import (
     PluginManifest,
     ServiceWriteback,
 )
+from imbi.common.plugins.errors import PluginCredentialsMissing
 from imbi.common.plugins.registry import RegistryEntry
 
 
@@ -406,6 +409,67 @@ async def _passthrough_identity_retry(
     """Stub that skips identity hydration entirely."""
     del db, resolved, auth, identity_options, attached
     return await fn(ctx)
+
+
+class ResolveCredentialsTestCase(unittest.TestCase):
+    """Credential gating honors the manifest's declared field names."""
+
+    @staticmethod
+    def _resolved_with(
+        credential_fields: list[CredentialField],
+    ) -> ResolvedCapability:
+        class _Handler(LifecycleCapability):
+            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+                return LifecycleResult(status='ok')
+
+        entry = _entry('pd', _Handler)
+        entry.manifest.credentials = credential_fields
+        return _resolved(entry)
+
+    @staticmethod
+    def _call(
+        resolved: ResolvedCapability, blob: dict[str, str]
+    ) -> dict[str, str]:
+        ctx = PluginContext(
+            project_id='proj-1', project_slug='p', org_slug='o'
+        )
+        with mock.patch(
+            'imbi.api.plugins.lifecycle_dispatch'
+            '.decrypt_integration_credentials',
+            return_value=blob,
+        ):
+            return _resolve_credentials(ctx, resolved)
+
+    def test_api_key_credential_is_accepted(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='api_key', label='API key')]
+        )
+        self.assertEqual(
+            self._call(resolved, {'api_key': 'secret'}), {'api_key': 'secret'}
+        )
+
+    def test_missing_required_field_names_the_field(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='api_key', label='API key')]
+        )
+        with self.assertRaises(PluginCredentialsMissing) as ctx:
+            self._call(resolved, {'other': 'x'})
+        self.assertIn('missing api_key', str(ctx.exception))
+
+    def test_empty_blob_is_rejected_without_required_fields(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='access_token', label='PAT', required=False)]
+        )
+        with self.assertRaises(PluginCredentialsMissing):
+            self._call(resolved, {})
+
+    def test_optional_fields_only_accepts_any_populated_blob(self) -> None:
+        resolved = self._resolved_with(
+            [CredentialField(name='app_id', label='App ID', required=False)]
+        )
+        self.assertEqual(
+            self._call(resolved, {'app_id': '1'}), {'app_id': '1'}
+        )
 
 
 class LifecycleInvocationSerializationTestCase(unittest.TestCase):
