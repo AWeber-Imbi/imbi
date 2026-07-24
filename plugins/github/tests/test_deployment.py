@@ -1297,6 +1297,222 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(e.release_notes is None for e in events))
         self.assertEqual(first.call_count, 1)
 
+    @respx.mock
+    async def test_bot_creator_attributed_to_triggering_actor(self) -> None:
+        # A workflow-created deployment lists the app bot as creator; the
+        # status URL points at the Actions run, so attribution follows to
+        # the run's triggering actor (the human who started it).
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 123,
+                        'sha': 'botsha',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                        'creator': {
+                            'login': 'deployer[bot]',
+                            'id': 111,
+                            'type': 'Bot',
+                        },
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/123/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'state': 'success',
+                        'log_url': 'https://github.com/octo/demo/actions/runs/9001/job/55',
+                        'created_at': '2026-05-13T14:01:00Z',
+                    }
+                ],
+            )
+        )
+        run = respx.get(
+            'https://api.github.com/repos/octo/demo/actions/runs/9001'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'triggering_actor': {'login': 'octocat', 'id': 583231},
+                    'actor': {'login': 'someone-else', 'id': 42},
+                },
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(len(events), 1)
+        self.assertTrue(run.called)
+        self.assertEqual(events[0].creator, 'octocat')
+        self.assertEqual(events[0].creator_subject, '583231')
+
+    @respx.mock
+    async def test_bot_detection_is_case_insensitive(self) -> None:
+        # Bot detection must not depend on GitHub's casing: a creator
+        # with type 'bot' and a mixed-case '[Bot]' login suffix is still
+        # re-attributed to the run's triggering actor.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 123,
+                        'sha': 'botsha',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                        'creator': {
+                            'login': 'Deployer[Bot]',
+                            'id': 111,
+                            'type': 'bot',
+                        },
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/123/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'state': 'success',
+                        'log_url': 'https://github.com/octo/demo/actions/runs/9001/job/55',
+                        'created_at': '2026-05-13T14:01:00Z',
+                    }
+                ],
+            )
+        )
+        run = respx.get(
+            'https://api.github.com/repos/octo/demo/actions/runs/9001'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'triggering_actor': {'login': 'octocat', 'id': 583231},
+                },
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(len(events), 1)
+        self.assertTrue(run.called)
+        self.assertEqual(events[0].creator, 'octocat')
+        self.assertEqual(events[0].creator_subject, '583231')
+
+    @respx.mock
+    async def test_bot_creator_kept_when_run_fetch_fails(self) -> None:
+        # The run lookup 500s; attribution degrades gracefully to the bot
+        # creator rather than raising and failing the resync.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 123,
+                        'sha': 'botsha',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                        'creator': {
+                            'login': 'github-actions[bot]',
+                            'id': 111,
+                        },
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/123/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'state': 'success',
+                        'target_url': 'https://github.com/octo/demo/actions/runs/9001',
+                        'created_at': '2026-05-13T14:01:00Z',
+                    }
+                ],
+            )
+        )
+        run = respx.get(
+            'https://api.github.com/repos/octo/demo/actions/runs/9001'
+        ).mock(return_value=httpx.Response(500, json={'message': 'oops'}))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(len(events), 1)
+        self.assertTrue(run.called)
+        self.assertEqual(events[0].creator, 'github-actions[bot]')
+        self.assertEqual(events[0].creator_subject, '111')
+
+    @respx.mock
+    async def test_human_creator_skips_run_lookup(self) -> None:
+        # A human-created deployment must never issue the extra run
+        # fetch; the creator is used as-is.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 123,
+                        'sha': 'humansha',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                        'creator': {'login': 'octocat', 'id': 583231},
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/123/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'state': 'success',
+                        'log_url': 'https://github.com/octo/demo/actions/runs/9001',
+                        'created_at': '2026-05-13T14:01:00Z',
+                    }
+                ],
+            )
+        )
+        run = respx.get(
+            'https://api.github.com/repos/octo/demo/actions/runs/9001'
+        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(len(events), 1)
+        self.assertFalse(run.called)
+        self.assertEqual(events[0].creator, 'octocat')
+        self.assertEqual(events[0].creator_subject, '583231')
+
 
 class GetReleaseNotesTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
