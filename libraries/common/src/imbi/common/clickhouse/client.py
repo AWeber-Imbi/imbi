@@ -154,6 +154,29 @@ class Clickhouse:
                 table, data, column_names=column_names
             )
 
+    async def command(
+        self, statement: str, parameters: dict[str, typing.Any] | None = None
+    ) -> None:
+        """Execute a DDL/DML statement, ignoring any response body.
+
+        Use this rather than :meth:`query` for DDL. The driver's
+        ``query()`` wraps a command response in a ``QueryResult`` carrying
+        *empty* ``column_names``, so :meth:`query`'s strict
+        ``zip(column_names, row)`` raises as soon as the response body is
+        non-empty. Single-node ``CREATE`` returns an empty body and slips
+        through, but the same DDL rendered ``ON CLUSTER`` returns a
+        per-host status row and blows up.
+        """
+        if not self._clickhouse:
+            await self.initialize()
+        if not self._clickhouse:
+            raise RuntimeError('Failed to initialize ClickHouse client')
+        LOGGER.debug('Clickhouse COMMAND: %s', statement)
+        with _translate_errors('command'):
+            await self._clickhouse.command(
+                statement, parameters=parameters or {}
+            )
+
     async def query(
         self, statement: str, parameters: dict[str, typing.Any] | None = None
     ) -> list[dict[str, typing.Any]]:
@@ -276,7 +299,7 @@ class Clickhouse:
                 query_obj.query, cluster_name
             )
             try:
-                await self.query(statement)
+                await self.command(statement)
                 LOGGER.debug(
                     'Successfully executed schemata query: %s', query_obj.name
                 )

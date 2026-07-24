@@ -77,6 +77,91 @@ async def _backfill_integration_ids(db: graph.Graph) -> int:
     return count
 
 
+@main.command('setup-clickhouse')
+def setup_clickhouse() -> None:
+    """Apply the ClickHouse schema without running the full setup.
+
+    Executes the enabled DDL from the packaged ``schemata.toml`` — the
+    same work as step 3 of ``setup`` — so a deployment that adds tables
+    or materialized views can roll them out without re-seeding auth or
+    re-prompting for an admin user. Idempotent.
+    """
+    asyncio.run(_setup_clickhouse_async())
+
+
+async def _setup_clickhouse_async() -> None:
+    """Async body of ``setup-clickhouse``."""
+    try:
+        connected = await clickhouse.initialize()
+    except Exception as e:
+        typer.echo(f'✗ Failed to connect to ClickHouse: {e}', err=True)
+        raise typer.Exit(code=1) from e
+    if not connected:
+        typer.echo(
+            '✗ Failed to connect to ClickHouse: connection attempts exhausted',
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        await _apply_clickhouse_schema()
+    finally:
+        await clickhouse.aclose()
+
+
+async def _apply_clickhouse_schema() -> None:
+    """Execute the packaged ClickHouse DDL, reporting progress."""
+    try:
+        await clickhouse.setup_schema()
+        typer.echo('  ✓ ClickHouse schema created successfully')
+    except Exception as e:
+        typer.echo(f'✗ Failed to set up ClickHouse schema: {e}', err=True)
+        raise typer.Exit(code=1) from e
+
+
+@main.command('setup-permissions')
+def setup_permissions() -> None:
+    """Seed permissions and default roles without running the full setup.
+
+    Prunes retired permissions, then re-seeds the standard permissions
+    and default roles, refreshing each role's GRANTS edges. Use this to
+    roll out permissions added by a release without re-seeding an
+    organization or touching the admin user. Idempotent.
+    """
+    asyncio.run(_setup_permissions_async())
+
+
+async def _setup_permissions_async() -> None:
+    """Async body of ``setup-permissions``."""
+    db = graph.Graph()
+    try:
+        await db.open()
+    except Exception as e:
+        typer.echo(f'✗ Failed to connect to PostgreSQL: {e}', err=True)
+        raise typer.Exit(code=1) from e
+
+    try:
+        result = await seed.seed_permissions_and_roles(db)
+    except Exception as e:
+        typer.echo(f'✗ Failed to seed permissions and roles: {e}', err=True)
+        raise typer.Exit(code=1) from e
+    finally:
+        await db.close()
+
+    if result['retired']:
+        typer.echo(f'  ✓ Removed {result["retired"]} retired permission(s)')
+    if result['permissions'] or result['roles']:
+        typer.echo(
+            f'  ✓ Created {result["permissions"]} permission(s) '
+            f'and {result["roles"]} role(s)'
+        )
+    else:
+        typer.echo(
+            '  ✓ Permissions and roles already exist (no new entities created)'
+        )
+    typer.echo('\n✓ Permissions and roles are up to date')
+
+
 @main.command()
 def setup() -> None:
     """
@@ -105,11 +190,18 @@ async def _setup_async() -> None:
 
     # Initialize ClickHouse connection
     try:
-        await clickhouse.initialize()
+        connected = await clickhouse.initialize()
     except Exception as e:
         typer.echo(f'✗ Failed to connect to ClickHouse: {e}', err=True)
         await db.close()
         raise typer.Exit(code=1) from e
+    if not connected:
+        typer.echo(
+            '✗ Failed to connect to ClickHouse: connection attempts exhausted',
+            err=True,
+        )
+        await db.close()
+        raise typer.Exit(code=1)
 
     try:
         # Check if system is already set up
@@ -195,15 +287,7 @@ async def _setup_async() -> None:
 
         # Step 3: Set up ClickHouse schema
         typer.echo('\nStep 3: Setting up ClickHouse schema...')
-        try:
-            await clickhouse.setup_schema()
-            typer.echo('  ✓ ClickHouse schema created successfully')
-        except Exception as e:
-            typer.echo(
-                f'✗ Failed to set up ClickHouse schema: {e}',
-                err=True,
-            )
-            raise typer.Exit(code=1) from e
+        await _apply_clickhouse_schema()
 
         # Success message
         typer.echo('\n✓ Setup complete!')

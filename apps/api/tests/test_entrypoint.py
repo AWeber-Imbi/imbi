@@ -214,6 +214,16 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('Failed to connect to ClickHouse', result.output)
         self.mock_graph.close.assert_awaited_once()
 
+    def test_setup_clickhouse_connection_attempts_exhausted(self) -> None:
+        """Test setup when initialize() returns False without raising."""
+        self.mock_ch_init.return_value = False
+
+        result = self.runner.invoke(entrypoint.main, ['setup'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to connect to ClickHouse', result.output)
+        self.mock_graph.close.assert_awaited_once()
+
     def test_setup_empty_password(self) -> None:
         """Test setup rejects empty password."""
         self.mock_getpass.return_value = ''
@@ -263,6 +273,190 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('Failed to set up ClickHouse schema', result.output)
         self.mock_graph.close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()
+
+
+class SetupClickhouseTestCase(unittest.TestCase):
+    """Test cases for the ``setup-clickhouse`` command.
+
+    Uses regular TestCase because the command calls asyncio.run() which
+    creates its own event loop.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.runner = typer.testing.CliRunner()
+        self.mock_graph_cls = self.enterContext(
+            mock.patch.object(entrypoint.graph, 'Graph')
+        )
+        self.mock_ch_init = self.enterContext(
+            mock.patch.object(
+                entrypoint.clickhouse,
+                'initialize',
+                new_callable=mock.AsyncMock,
+            )
+        )
+        self.mock_ch_close = self.enterContext(
+            mock.patch.object(
+                entrypoint.clickhouse, 'aclose', new_callable=mock.AsyncMock
+            )
+        )
+        self.mock_ch_schema = self.enterContext(
+            mock.patch.object(
+                entrypoint.clickhouse,
+                'setup_schema',
+                new_callable=mock.AsyncMock,
+            )
+        )
+
+    def test_applies_schema(self) -> None:
+        """The schema is applied and the connection closed."""
+        result = self.runner.invoke(entrypoint.main, ['setup-clickhouse'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('ClickHouse schema created', result.output)
+        self.mock_ch_schema.assert_awaited_once()
+        self.mock_ch_close.assert_awaited_once()
+
+    def test_does_not_touch_postgres_or_prompt(self) -> None:
+        """No graph connection is opened and no input is requested."""
+        result = self.runner.invoke(entrypoint.main, ['setup-clickhouse'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.mock_graph_cls.assert_not_called()
+
+    def test_connection_failure(self) -> None:
+        """A ClickHouse connection failure exits non-zero."""
+        self.mock_ch_init.side_effect = ConnectionError('refused')
+
+        result = self.runner.invoke(entrypoint.main, ['setup-clickhouse'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to connect to ClickHouse', result.output)
+        self.mock_ch_schema.assert_not_awaited()
+
+    def test_exhausted_connection_attempts(self) -> None:
+        """A falsy initialize() result exits non-zero without the DDL.
+
+        ``initialize()`` returns False rather than raising once the
+        connect retries are exhausted, so the boolean has to be checked
+        or the schema step reports a misleading error instead.
+        """
+        self.mock_ch_init.return_value = False
+
+        result = self.runner.invoke(entrypoint.main, ['setup-clickhouse'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to connect to ClickHouse', result.output)
+        self.mock_ch_schema.assert_not_awaited()
+
+    def test_schema_failure_closes_connection(self) -> None:
+        """A schema failure exits non-zero and still closes the client."""
+        self.mock_ch_schema.side_effect = RuntimeError('schema error')
+
+        result = self.runner.invoke(entrypoint.main, ['setup-clickhouse'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to set up ClickHouse schema', result.output)
+        self.mock_ch_close.assert_awaited_once()
+
+
+class SetupPermissionsTestCase(unittest.TestCase):
+    """Test cases for the ``setup-permissions`` command.
+
+    Uses regular TestCase because the command calls asyncio.run() which
+    creates its own event loop.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.runner = typer.testing.CliRunner()
+        self.mock_graph = mock.MagicMock()
+        self.mock_graph.open = mock.AsyncMock()
+        self.mock_graph.close = mock.AsyncMock()
+        self.enterContext(
+            mock.patch.object(
+                entrypoint.graph, 'Graph', return_value=self.mock_graph
+            )
+        )
+        self.mock_ch_init = self.enterContext(
+            mock.patch.object(
+                entrypoint.clickhouse,
+                'initialize',
+                new_callable=mock.AsyncMock,
+            )
+        )
+        self.mock_seed = self.enterContext(
+            mock.patch.object(
+                entrypoint.seed,
+                'seed_permissions_and_roles',
+                new_callable=mock.AsyncMock,
+                return_value={'retired': 0, 'permissions': 4, 'roles': 3},
+            )
+        )
+
+    def test_seeds_permissions_and_roles(self) -> None:
+        """Permissions and roles are seeded and the connection closed."""
+        result = self.runner.invoke(entrypoint.main, ['setup-permissions'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('Created 4 permission(s) and 3 role(s)', result.output)
+        self.assertIn('up to date', result.output)
+        self.mock_seed.assert_awaited_once_with(self.mock_graph)
+        self.mock_graph.close.assert_awaited_once()
+
+    def test_reports_retired_permissions(self) -> None:
+        """Retired permissions are reported when any were removed."""
+        self.mock_seed.return_value = {
+            'retired': 2,
+            'permissions': 0,
+            'roles': 0,
+        }
+
+        result = self.runner.invoke(entrypoint.main, ['setup-permissions'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('Removed 2 retired permission(s)', result.output)
+
+    def test_reports_no_new_entities(self) -> None:
+        """A no-op re-run says so instead of reporting zero counts."""
+        self.mock_seed.return_value = {
+            'retired': 0,
+            'permissions': 0,
+            'roles': 0,
+        }
+
+        result = self.runner.invoke(entrypoint.main, ['setup-permissions'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('already exist', result.output)
+        self.assertNotIn('Created 0 permission(s)', result.output)
+
+    def test_does_not_touch_clickhouse_or_prompt(self) -> None:
+        """No ClickHouse connection is opened and no input is requested."""
+        result = self.runner.invoke(entrypoint.main, ['setup-permissions'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.mock_ch_init.assert_not_awaited()
+
+    def test_graph_connection_failure(self) -> None:
+        """A PostgreSQL connection failure exits non-zero."""
+        self.mock_graph.open.side_effect = ConnectionError('refused')
+
+        result = self.runner.invoke(entrypoint.main, ['setup-permissions'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to connect to PostgreSQL', result.output)
+        self.mock_seed.assert_not_awaited()
+
+    def test_seed_failure_closes_connection(self) -> None:
+        """A seeding failure exits non-zero and still closes the graph."""
+        self.mock_seed.side_effect = RuntimeError('boom')
+
+        result = self.runner.invoke(entrypoint.main, ['setup-permissions'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to seed permissions and roles', result.output)
+        self.mock_graph.close.assert_awaited_once()
 
 
 class BackfillNodeIdsTestCase(unittest.TestCase):

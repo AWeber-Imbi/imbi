@@ -262,13 +262,15 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             ch, '_load_schemata_queries', return_value=mock_queries
         ):
-            with mock.patch.object(ch, 'query', return_value=[]) as mock_query:
+            with mock.patch.object(
+                ch, 'command', return_value=None
+            ) as mock_command:
                 await ch.setup_schema()
 
                 # Only enabled queries should be executed
-                self.assertEqual(mock_query.call_count, 2)
-                mock_query.assert_any_call('CREATE TABLE test1')
-                mock_query.assert_any_call('CREATE TABLE test3')
+                self.assertEqual(mock_command.call_count, 2)
+                mock_command.assert_any_call('CREATE TABLE test1')
+                mock_command.assert_any_call('CREATE TABLE test3')
 
     async def test_initialize_connection_failure(self) -> None:
         """Test initialization with connection failure after retries."""
@@ -494,6 +496,39 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
 
         mock_sentry.capture_exception.assert_called_once()
 
+    async def test_command_executes_without_parsing_rows(self) -> None:
+        """command() runs DDL without mapping result rows to columns."""
+        ch = client.Clickhouse.get_instance()
+
+        with mock.patch.object(
+            ch, '_execute_schemata_queries', return_value=None
+        ):
+            await ch.initialize()
+
+        await ch.command('CREATE TABLE test ON CLUSTER c (id UInt32)')
+
+        self.mock_client.command.assert_called_once_with(
+            'CREATE TABLE test ON CLUSTER c (id UInt32)', parameters={}
+        )
+
+    async def test_command_database_error(self) -> None:
+        """command() translates driver errors into DatabaseError."""
+        ch = client.Clickhouse.get_instance()
+
+        self.mock_client.command.side_effect = exceptions.DatabaseError(
+            'Command failed'
+        )
+
+        with mock.patch.object(
+            ch, '_execute_schemata_queries', return_value=None
+        ):
+            await ch.initialize()
+
+        with self.assertRaises(client.DatabaseError) as cm:
+            await ch.command('CREATE TABLE test (id UInt32)')
+
+        self.assertIn('Command failed', str(cm.exception))
+
     async def test_connect_success(self) -> None:
         """Test successful connection."""
         ch = client.Clickhouse.get_instance()
@@ -636,13 +671,15 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             ch, '_load_schemata_queries', return_value=mock_queries
         ):
-            with mock.patch.object(ch, 'query', return_value=[]) as mock_query:
+            with mock.patch.object(
+                ch, 'command', return_value=None
+            ) as mock_command:
                 await ch._execute_schemata_queries()
 
                 # Only enabled queries should be executed
-                self.assertEqual(mock_query.call_count, 2)
-                mock_query.assert_any_call('SELECT 1')
-                mock_query.assert_any_call('SELECT 3')
+                self.assertEqual(mock_command.call_count, 2)
+                mock_command.assert_any_call('SELECT 1')
+                mock_command.assert_any_call('SELECT 3')
 
     async def test_execute_schemata_queries_with_error(self) -> None:
         """Test executing schemata queries continues on error."""
@@ -663,18 +700,18 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             ch, '_load_schemata_queries', return_value=mock_queries
         ):
-            with mock.patch.object(ch, 'query') as mock_query:
+            with mock.patch.object(ch, 'command') as mock_command:
                 # Second query fails
-                mock_query.side_effect = [
-                    [],
+                mock_command.side_effect = [
+                    None,
                     client.DatabaseError('SQL error'),
-                    [],
+                    None,
                 ]
 
                 # Should not raise, should continue with remaining queries
                 await ch._execute_schemata_queries()
 
-                self.assertEqual(mock_query.call_count, 3)
+                self.assertEqual(mock_command.call_count, 3)
 
     async def test_execute_schemata_queries_with_error_and_sentry(
         self,
@@ -692,8 +729,8 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             ch, '_load_schemata_queries', return_value=mock_queries
         ):
-            with mock.patch.object(ch, 'query') as mock_query:
-                mock_query.side_effect = client.DatabaseError('SQL error')
+            with mock.patch.object(ch, 'command') as mock_command:
+                mock_command.side_effect = client.DatabaseError('SQL error')
 
                 with mock.patch(
                     'imbi.common.clickhouse.client.sentry_sdk', mock_sentry
@@ -707,10 +744,10 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         ch = client.Clickhouse.get_instance()
 
         with mock.patch.object(ch, '_load_schemata_queries', return_value=[]):
-            with mock.patch.object(ch, 'query') as mock_query:
+            with mock.patch.object(ch, 'command') as mock_command:
                 await ch._execute_schemata_queries()
 
-                mock_query.assert_not_called()
+                mock_command.assert_not_called()
 
     async def test_execute_schemata_queries_without_cluster(self) -> None:
         """Without a cluster name, the placeholder is removed."""
@@ -726,10 +763,12 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             ch, '_load_schemata_queries', return_value=mock_queries
         ):
-            with mock.patch.object(ch, 'query', return_value=[]) as mock_query:
+            with mock.patch.object(
+                ch, 'command', return_value=None
+            ) as mock_command:
                 await ch._execute_schemata_queries()
 
-        mock_query.assert_called_once_with('CREATE TABLE imbi.t (id String)')
+        mock_command.assert_called_once_with('CREATE TABLE imbi.t (id String)')
 
     async def test_execute_schemata_queries_with_cluster(self) -> None:
         """With a cluster name, ON CLUSTER replaces the placeholder."""
@@ -745,10 +784,12 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(
             ch, '_load_schemata_queries', return_value=mock_queries
         ):
-            with mock.patch.object(ch, 'query', return_value=[]) as mock_query:
+            with mock.patch.object(
+                ch, 'command', return_value=None
+            ) as mock_command:
                 await ch._execute_schemata_queries()
 
-        mock_query.assert_called_once_with(
+        mock_command.assert_called_once_with(
             'CREATE TABLE imbi.t ON CLUSTER prod (id String)'
         )
 
