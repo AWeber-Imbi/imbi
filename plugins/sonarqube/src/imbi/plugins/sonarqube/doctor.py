@@ -114,6 +114,26 @@ def _component_key(
     return None
 
 
+def _token_type_hint(exc: Exception) -> str:
+    """Nudge toward a user token when SonarQube answers 403.
+
+    A 403 here is almost always the credential being one of SonarQube's
+    analysis tokens (``sqa_`` global, ``sqp_`` project) rather than a
+    user token (``squ_``): analysis tokens only reach the endpoints a
+    scanner uses, so they are refused regardless of the issuing
+    account's permissions.  Say so in the finding -- the bare status
+    code reads like a permissions problem and sends operators off
+    granting rights that cannot fix it.
+    """
+    if '403' not in str(exc):
+        return ''
+    return (
+        ' A 403 usually means the api_token credential is an analysis '
+        'token (`sqa_` / `sqp_`); this API needs a user token (`squ_`, '
+        'from My Account > Security).'
+    )
+
+
 def _canonical_url(base_url: str, key: str) -> str:
     quoted = urllib.parse.quote(key, safe='')
     return f'{base_url.rstrip("/")}/api/components/show?component={quoted}'
@@ -161,7 +181,9 @@ class SonarQubeDoctor(AnalysisCapability):
                     'SonarQube API token',
                     'warn',
                     'No api_token credential configured; cannot inspect the '
-                    'SonarQube project.',
+                    'SonarQube project. Set the Integration credential to a '
+                    'SonarQube user token (prefix `squ_`) -- analysis tokens '
+                    '(`sqa_` / `sqp_`) cannot read this API.',
                 )
             ]
 
@@ -189,7 +211,7 @@ class SonarQubeDoctor(AnalysisCapability):
                     'SonarQube project',
                     'warn',
                     f'Could not reach SonarQube to verify component {key!r}: '
-                    f'{exc}',
+                    f'{exc}{_token_type_hint(exc)}',
                 )
             ]
 

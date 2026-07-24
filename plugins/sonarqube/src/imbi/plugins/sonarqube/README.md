@@ -7,7 +7,8 @@ by the imbi-common registry's `imbi_plugin_*` convention scan via the
 module-level `PLUGIN` attribute. Its manifest declares:
 
 - a `service_url` integration-level option (the SonarQube base URL),
-- an `api_token` credential (the integration's only credential), and
+- an `api_token` credential (the integration's only credential) holding a
+  SonarQube **user** token, and
 - one `webhook-actions` capability cataloging the
   `update_project_from_webhook` action.
 
@@ -24,6 +25,16 @@ handler:
 
 Operators create a SonarQube Integration, set its `service_url` option, and
 store the SonarQube API token in the Integration's encrypted credentials.
+
+The `api_token` **must be a user token** — created under *My Account >
+Security* in SonarQube and prefixed `squ_`. SonarQube's analysis tokens,
+`sqa_` (global) and `sqp_` (project), are restricted to the endpoints a
+scanner uses and answer `403` to every request this plugin makes, including
+`/api/measures/component` and the Project Doctor's component lookup. The
+restriction rides on the token *type*, so issuing an analysis token from an
+administrator account does not help. Grant the token's account Browse on the
+projects being read, plus Create Projects if the Project Doctor should create
+missing SonarQube projects.
 
 A typical webhook rule:
 

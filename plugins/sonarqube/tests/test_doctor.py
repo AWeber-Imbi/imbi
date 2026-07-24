@@ -85,6 +85,30 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_warns_without_token(self) -> None:
         results = await SonarQubeDoctor().analyze(_ctx(), {})
         self.assertEqual(results[0].slug, 'api-token')
+        self.assertIn('squ_', results[0].description)
+
+    @respx.mock
+    async def test_forbidden_hints_at_analysis_token(self) -> None:
+        # A 403 reads like a permissions problem, so the finding has to
+        # point at the token *type* -- analysis tokens are refused here
+        # no matter what rights the issuing account holds.
+        respx.get(_SEARCH).mock(return_value=httpx.Response(403))
+        ctx = _ctx(connections=[_conn()])
+        results = await SonarQubeDoctor().analyze(ctx, _CREDS)
+        finding = _by_slug(results)['component']
+        self.assertEqual(finding.status, 'warn')
+        self.assertIn('status 403', finding.description)
+        self.assertIn('analysis token', finding.description)
+        self.assertIn('squ_', finding.description)
+
+    @respx.mock
+    async def test_other_errors_omit_token_hint(self) -> None:
+        respx.get(_SEARCH).mock(return_value=httpx.Response(500))
+        ctx = _ctx(connections=[_conn()])
+        results = await SonarQubeDoctor().analyze(ctx, _CREDS)
+        finding = _by_slug(results)['component']
+        self.assertIn('status 500', finding.description)
+        self.assertNotIn('analysis token', finding.description)
 
     async def test_warns_without_derivable_key(self) -> None:
         results = await SonarQubeDoctor().analyze(_ctx(team_slug=None), _CREDS)
