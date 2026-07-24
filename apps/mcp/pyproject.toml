@@ -1,6 +1,6 @@
 [project]
 name = "imbi-mcp"
-version = "2.18.0"
+version = "2.19.0"
 description = "Imbi MCP server"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -12,7 +12,7 @@ classifiers = []
 dependencies = [
   "fastmcp>=3.4.4",
   "httpx>=0.28.1",
-  "imbi-common[mcp]==2.18.0",
+  "imbi-common[mcp]==2.19.0",
   "pydantic~=2.12",
   "pyjwt>=2.10",
   "sentry-sdk>=2.48.0",
