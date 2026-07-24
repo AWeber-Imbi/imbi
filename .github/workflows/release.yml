@@ -52,7 +52,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ./container/Dockerfile
           platforms: ${{ matrix.platform }}
           build-args: |
             VITE_GIT_REF=${{ steps.ref.outputs.tag }}
