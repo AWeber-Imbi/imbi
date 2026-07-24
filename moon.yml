@@ -126,10 +126,10 @@ tasks:
     outputs:
       - 'build/coverage.xml'
 
-  # Build the production Docker image (Dockerfile lives in container/). Runs in
-  # `moon ci` as a build test only: `docker build` never pushes, and publishing
-  # remains release.yml's job. `always` so the image is validated on every CI
-  # run regardless of which project moon marks affected.
+  # Build the production Docker image (Dockerfile lives in container/) for
+  # local use. CI validates the image via test.yml's Image job instead, which
+  # exercises release.yml's docker/build-push-action configuration and writes
+  # the GHA build cache that release-tag runs reuse.
   image:
     command: 'docker'
     args:
@@ -143,7 +143,7 @@ tasks:
       - '.'
     options:
       cache: false
-      runInCI: 'always'
+      runInCI: false
 
   # Tear down the backing services and volumes.
   teardown:
