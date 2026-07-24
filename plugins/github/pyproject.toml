@@ -1,6 +1,6 @@
 [project]
 name = "imbi-plugin-github"
-version = "2.17.0"
+version = "2.18.0"
 description = "GitHub identity plugin for Imbi (github.com / GHEC / GHES)"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   "httpx>=0.27",
-  "imbi-common[databases]==2.17.0",
+  "imbi-common[databases]==2.18.0",
   "pydantic>=2",
   "pyjwt[crypto]>=2.8",
 ]
