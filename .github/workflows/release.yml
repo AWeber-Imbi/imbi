@@ -192,3 +192,8 @@ jobs:
         # and recommend tracking it instead of pinning a commit.
         # https://github.com/pypa/gh-action-pypi-publish#:~:text=release/v1
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Retry safety: a re-run (or re-pointed tag) after a partially
+          # failed release must not fail on the dists that already made it
+          # to PyPI.
+          skip-existing: true
