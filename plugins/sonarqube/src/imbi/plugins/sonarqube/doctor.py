@@ -114,23 +114,41 @@ def _component_key(
     return None
 
 
-def _token_type_hint(exc: Exception) -> str:
-    """Nudge toward a user token when SonarQube answers 403.
+def _token_type_hint(exc: Exception, api_token: str) -> str:
+    """Explain a 403 from the token's own prefix.
 
-    A 403 here is almost always the credential being one of SonarQube's
-    analysis tokens (``sqa_`` global, ``sqp_`` project) rather than a
-    user token (``squ_``): analysis tokens only reach the endpoints a
-    scanner uses, so they are refused regardless of the issuing
-    account's permissions.  Say so in the finding -- the bare status
-    code reads like a permissions problem and sends operators off
-    granting rights that cannot fix it.
+    SonarQube prefixes tokens by type, so the credential says which of
+    two unrelated causes is in play and the finding should not make the
+    operator guess.  An analysis token (``sqa_`` global, ``sqp_``
+    project) only reaches the endpoints a scanner uses and is refused
+    regardless of the issuing account's rights -- replacing it is the
+    only fix.  A user token (``squ_``) that is refused is a permissions
+    problem, where telling someone to swap a token that is already the
+    right type sends them in circles.  Tokens issued before SonarQube
+    added the prefixes carry neither, so those get both possibilities.
+    Returns ``''`` for non-403 failures, which need no token guidance.
     """
     if '403' not in str(exc):
         return ''
+    if api_token.startswith(('sqa_', 'sqp_')):
+        return (
+            ' The api_token credential is an analysis token, which only '
+            'reaches scanner endpoints; replace it with a user token '
+            '(`squ_`, from My Account > Security).'
+        )
+    if api_token.startswith('squ_'):
+        return (
+            ' The api_token credential is a user token, so this is the '
+            "token account's permissions rather than the token type -- "
+            'verify it has Browse on this project (SonarQube also '
+            'restricts some project APIs to administrators).'
+        )
     return (
-        ' A 403 usually means the api_token credential is an analysis '
-        'token (`sqa_` / `sqp_`); this API needs a user token (`squ_`, '
-        'from My Account > Security).'
+        ' Check whether the api_token credential is an analysis token '
+        '(`sqa_` / `sqp_`), which only reaches scanner endpoints and '
+        'needs replacing with a user token (`squ_`); if it is already a '
+        "user token, verify the token account's Browse permission on "
+        'this project.'
     )
 
 
@@ -211,7 +229,7 @@ class SonarQubeDoctor(AnalysisCapability):
                     'SonarQube project',
                     'warn',
                     f'Could not reach SonarQube to verify component {key!r}: '
-                    f'{exc}{_token_type_hint(exc)}',
+                    f'{exc}{_token_type_hint(exc, api_token)}',
                 )
             ]
 

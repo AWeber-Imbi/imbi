@@ -88,18 +88,39 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('squ_', results[0].description)
 
     @respx.mock
-    async def test_forbidden_hints_at_analysis_token(self) -> None:
-        # A 403 reads like a permissions problem, so the finding has to
-        # point at the token *type* -- analysis tokens are refused here
-        # no matter what rights the issuing account holds.
+    async def _forbidden_description(self, token: str) -> str:
         respx.get(_SEARCH).mock(return_value=httpx.Response(403))
-        ctx = _ctx(connections=[_conn()])
-        results = await SonarQubeDoctor().analyze(ctx, _CREDS)
+        results = await SonarQubeDoctor().analyze(
+            _ctx(connections=[_conn()]), {'api_token': token}
+        )
         finding = _by_slug(results)['component']
         self.assertEqual(finding.status, 'warn')
         self.assertIn('status 403', finding.description)
-        self.assertIn('analysis token', finding.description)
-        self.assertIn('squ_', finding.description)
+        return finding.description
+
+    async def test_forbidden_analysis_token_says_replace_it(self) -> None:
+        # The prefix makes the cause certain, so the finding names it
+        # rather than hedging: no permission grant can fix this one.
+        for prefix in ('sqa_', 'sqp_'):
+            with self.subTest(prefix=prefix):
+                desc = await self._forbidden_description(f'{prefix}abc')
+                self.assertIn('is an analysis token', desc)
+                self.assertIn('squ_', desc)
+                self.assertNotIn('Browse', desc)
+
+    async def test_forbidden_user_token_points_at_permissions(self) -> None:
+        # Telling someone holding a squ_ token to swap token types sends
+        # them in circles -- a refused user token is a rights problem.
+        desc = await self._forbidden_description('squ_abc')
+        self.assertIn('Browse', desc)
+        self.assertNotIn('replace it', desc)
+
+    async def test_forbidden_unprefixed_token_covers_both(self) -> None:
+        # Tokens predating SonarQube's prefixes tell us nothing, so the
+        # finding has to offer both causes.
+        desc = await self._forbidden_description('legacy-token')
+        self.assertIn('analysis token', desc)
+        self.assertIn('Browse', desc)
 
     @respx.mock
     async def test_other_errors_omit_token_hint(self) -> None:
@@ -109,6 +130,7 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         finding = _by_slug(results)['component']
         self.assertIn('status 500', finding.description)
         self.assertNotIn('analysis token', finding.description)
+        self.assertNotIn('Browse', finding.description)
 
     async def test_warns_without_derivable_key(self) -> None:
         results = await SonarQubeDoctor().analyze(_ctx(team_slug=None), _CREDS)
