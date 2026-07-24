@@ -35,6 +35,8 @@ const currentFor = (committish: string): CurrentReleaseEnvironment => ({
   environment: { name: 'testing', slug: 'testing' },
   external_run_url: null,
   last_event_at: '2026-06-01T00:00:00Z',
+  performed_by: 'Imbi Automations',
+  performed_by_email: null,
   release: {
     committish,
     created_at: '2026-06-01T00:00:00Z',
@@ -90,6 +92,12 @@ describe('CommitDeployCard', () => {
     expect(screen.getByText('HEAD')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Deploy/ })).toHaveLength(1)
     expect(screen.getAllByRole('button', { name: /Roll back/ })).toHaveLength(1)
+  })
+
+  it('attributes the running deployment to who deployed it and when', () => {
+    setup('bbb2222bbb2222')
+    expect(screen.getByText(/^Deployed/)).toBeInTheDocument()
+    expect(screen.getByText('Imbi Automations')).toBeInTheDocument()
   })
 
   it('pulls the deployed commit forward when it is outside the display window', () => {
