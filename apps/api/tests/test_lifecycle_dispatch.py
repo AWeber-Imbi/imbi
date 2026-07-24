@@ -74,7 +74,9 @@ def _make_lifecycle_entry(
     """
 
     class _FakeLifecycle(LifecycleCapability):
-        async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+        async def on_project_archived(
+            self, ctx: PluginContext, credentials: dict[str, str]
+        ) -> LifecycleResult:
             if archive_raises is not None:
                 raise archive_raises('archive boom')
             return LifecycleResult(
@@ -86,7 +88,9 @@ def _make_lifecycle_entry(
     if unarchive_raises is not None:
         _exc = unarchive_raises
 
-        async def _on_unarchived(self, ctx, credentials):  # type: ignore[no-untyped-def]
+        async def _on_unarchived(
+            self, ctx: PluginContext, credentials: dict[str, str]
+        ) -> LifecycleResult:
             raise _exc('unarchive boom')
 
         _FakeLifecycle.on_project_unarchived = _on_unarchived  # type: ignore[method-assign]
@@ -198,7 +202,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         # A lifecycle plugin that reports a link writeback on ctx
         # triggers a persist of the stored link via update_project_link.
         class _Reloc(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 ctx.link_writeback = LinkWriteback(
                     link_key='github-repository',
                     new_url='https://github.com/octo/renamed',
@@ -226,7 +232,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         # triggers an EXISTS_IN upsert + dashboard-link merge against the
         # integration it is bound to (ctx.integration_slug).
         class _Svc(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 ctx.service_writeback = ServiceWriteback(
                     identifier='134741',
                     canonical_url='https://api.x.ghe.com/repositories/134741',
@@ -266,7 +274,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
 
     def test_service_writeback_remove_deletes_edge(self) -> None:
         class _Svc(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 ctx.service_writeback = ServiceWriteback(
                     identifier='1',
                     canonical_url='https://api.x/1',
@@ -337,9 +347,9 @@ class DispatchLifecycleTestCase(unittest.TestCase):
 
     def test_http_exception_surfaces_failed(self) -> None:
         class _Raises(LifecycleCapability):
-            async def on_project_archived(  # type: ignore[override]
-                self, ctx, credentials
-            ):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 raise fastapi.HTTPException(
                     status_code=401,
                     detail={
@@ -512,7 +522,9 @@ class WidenedEventNotImplementedTestCase(unittest.TestCase):
         self, event: LifecycleEvent
     ) -> LifecycleInvocation:
         class _Bare(LifecycleCapability):
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 return LifecycleResult(status='ok')
 
         entry = _entry('bare', _Bare)
@@ -593,19 +605,27 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
         captured: dict[str, PluginContext] = {}
 
         class _Capture(LifecycleCapability):
-            async def on_project_created(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_created(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 captured['ctx'] = ctx
                 return LifecycleResult(status='ok')
 
-            async def on_project_updated(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_updated(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 captured['ctx'] = ctx
                 return LifecycleResult(status='ok')
 
-            async def on_project_deleted(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_deleted(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 captured['ctx'] = ctx
                 return LifecycleResult(status='ok')
 
-            async def on_project_archived(self, ctx, credentials):  # type: ignore[override]
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
                 return LifecycleResult(status='ok')
 
         entry = _entry('cap', _Capture)
