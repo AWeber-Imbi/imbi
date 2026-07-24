@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 
 import {
+  Clock,
   ExternalLink,
   GitCommitHorizontal,
   Loader2,
@@ -11,6 +12,7 @@ import {
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import type { ChipColors } from '@/lib/chip-colors'
 import type { RecentCommit } from '@/types'
@@ -78,10 +80,36 @@ export function CommitDeployCard({
       icon={GitCommitHorizontal}
       subtitle={
         currentSha ? (
-          <>
-            On <span className="font-mono">{currentSha.slice(0, 7)}</span> ·
-            deploy a newer commit or roll back
-          </>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>
+              On <span className="font-mono">{currentSha.slice(0, 7)}</span>
+            </span>
+            {stage.current?.last_event_at ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock size={13} />
+                  Deployed{' '}
+                  <RelativeTime
+                    value={stage.current.last_event_at}
+                    variant="long"
+                  />
+                </span>
+              </>
+            ) : null}
+            {stage.current?.performed_by ? (
+              <>
+                <span>by</span>
+                <UserIdentity
+                  actor={stage.current.performed_by}
+                  email={stage.current.performed_by_email}
+                  size="small"
+                />
+              </>
+            ) : null}
+            <span aria-hidden="true">·</span>
+            <span>deploy a newer commit or roll back</span>
+          </span>
         ) : (
           'Nothing deployed yet — deploy a commit to get started'
         )
@@ -196,6 +224,13 @@ function CommitRow({
       </span>
       {commit.ci_status !== 'unknown' ? (
         <CiStatusDot status={commit.ci_status} />
+      ) : null}
+      {commit.authored_at ? (
+        <RelativeTime
+          className="text-tertiary hidden shrink-0 text-xs sm:inline"
+          value={commit.authored_at}
+          variant="narrow"
+        />
       ) : null}
       {commit.author ? (
         <span className="hidden shrink-0 sm:inline">

@@ -35,6 +35,8 @@ const currentFor = (committish: string): CurrentReleaseEnvironment => ({
   environment: { name: 'testing', slug: 'testing' },
   external_run_url: null,
   last_event_at: '2026-06-01T00:00:00Z',
+  performed_by: 'Imbi Automations',
+  performed_by_email: null,
   release: {
     committish,
     created_at: '2026-06-01T00:00:00Z',
@@ -47,8 +49,11 @@ const currentFor = (committish: string): CurrentReleaseEnvironment => ({
   },
 })
 
-const makeStage = (committish: string): PipelineStage => ({
-  current: currentFor(committish),
+const makeStage = (
+  committish: string,
+  current: Partial<CurrentReleaseEnvironment> = {},
+): PipelineStage => ({
+  current: { ...currentFor(committish), ...current },
   env: ENV,
   kind: 'commit',
   pendingCommits: [],
@@ -72,14 +77,18 @@ const RECENT = [
   commit('ccc3333ccc3333', 'older change'),
 ]
 
-const setup = (committish: string, recentCommits: RecentCommit[] = RECENT) =>
+const setup = (
+  committish: string,
+  recentCommits: RecentCommit[] = RECENT,
+  current: Partial<CurrentReleaseEnvironment> = {},
+) =>
   render(
     <CommitDeployCard
       accent={null}
       actions={makeActions()}
       canTrigger
       recentCommits={recentCommits}
-      stage={makeStage(committish)}
+      stage={makeStage(committish, current)}
     />,
   )
 
@@ -90,6 +99,24 @@ describe('CommitDeployCard', () => {
     expect(screen.getByText('HEAD')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Deploy/ })).toHaveLength(1)
     expect(screen.getAllByRole('button', { name: /Roll back/ })).toHaveLength(1)
+  })
+
+  it('attributes the running deployment to who deployed it and when', () => {
+    setup('bbb2222bbb2222')
+    const deployedAt = screen.getByText(/^Deployed/).querySelector('time')
+    expect(deployedAt).toHaveAttribute('datetime', '2026-06-01T00:00:00Z')
+    expect(screen.getByText('Imbi Automations')).toBeInTheDocument()
+  })
+
+  it('omits the deploy metadata the stage did not record', () => {
+    const undated = RECENT.map(({ authored_at: _unused, ...rest }) => rest)
+    setup('bbb2222bbb2222', undated, {
+      last_event_at: null,
+      performed_by: null,
+    })
+    expect(screen.queryByText(/^Deployed/)).toBeNull()
+    expect(screen.queryByText('Imbi Automations')).toBeNull()
+    expect(document.querySelectorAll('time')).toHaveLength(0)
   })
 
   it('pulls the deployed commit forward when it is outside the display window', () => {
