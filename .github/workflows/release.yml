@@ -1,8 +1,10 @@
 name: Release
 
+# Release tags are unprefixed (2.18.0); "v*" remains only for the
+# one-off v2.17.0.
 on:
   push:
-    tags: ["v*"]
+    tags: ["[0-9]*", "v*"]
 
 env:
   GHCR_IMAGE: ghcr.io/aweber-imbi/imbi
@@ -92,8 +94,10 @@ jobs:
         run: |
           current="${GITHUB_REF#refs/tags/}"
           echo "tag=$current" >> "$GITHUB_OUTPUT"
-          highest=$(git tag --sort=-v:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
-          if [ "$highest" = "$current" ]; then
+          # Strip the legacy v prefix before comparing: "v" sorts above
+          # digits, so v2.17.0 would otherwise outrank 2.18.0 forever.
+          highest=$(git tag | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n 1)
+          if [ "$highest" = "${current#v}" ]; then
             echo "is_latest=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_latest=false" >> "$GITHUB_OUTPUT"

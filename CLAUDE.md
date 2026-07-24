@@ -39,7 +39,8 @@ moon project.
 All members share one `uv.lock`, one `.venv`, and the root tool config
 (ruff, basedpyright, mypy, coverage, pytest). Versions are lockstep:
 every member and the meta-package carry the same version, bumped
-together in one commit and released with one `v<version>` tag.
+together in one commit and released with one `<version>` tag (no `v`
+prefix — v2.17.0 was a one-off exception).
 
 ## Common Commands
 
@@ -129,7 +130,8 @@ uv run --env-file .env.test pytest apps/slackbot/tests/test_agent.py::TestAgent:
 ## Releasing
 
 Bump the version in the root pyproject **and every member pyproject**
-(lockstep), `uv lock`, commit, tag `v<version>`, push the tag.
+(lockstep), `uv lock`, commit, tag `<version>` (unprefixed, e.g.
+`2.18.0` — not `v2.18.0`; v2.17.0 was a one-off), push the tag.
 `release.yml` then builds the multi-arch Docker image
 (ghcr.io/aweber-imbi/imbi + aweber/imbi) and publishes every member
 wheel plus the `imbi` meta-package to PyPI via trusted publishing. The
