@@ -677,14 +677,15 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
                 'note': None,
             }
         ]
+        edge_row = [
+            {
+                'env': self._env(),
+                'deployments': json.dumps(existing),
+            }
+        ]
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],
-            [
-                {
-                    'env': self._env(),
-                    'deployments': json.dumps(existing),
-                }
-            ],
+            [{'release': _release_row()}],  # _fetch_release
+            edge_row,  # _fetch_deployment_edge
             [{'deployments': None}],
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
@@ -769,14 +770,17 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
                 'note': None,
             }
         ]
+        edge_row = [
+            {
+                'env': self._env(),
+                'deployments': json.dumps(existing),
+            }
+        ]
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
-            [
-                {
-                    'env': self._env(),
-                    'deployments': json.dumps(existing),
-                }
-            ],
+            edge_row,
+            [{'release': _release_row()}],
+            edge_row,
             [{'deployments': None}],
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
@@ -808,6 +812,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [{'env': self._env(), 'deployments': None}],
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
             [{'deployments': None}],
         ]
         with (
@@ -827,6 +833,90 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 200)
         mock_close.assert_not_called()
+
+    def test_record_deployment_dedupes_on_external_run_id(self) -> None:
+        # A webhook status update for a run the in-product deploy flow
+        # already recorded must refresh that event in place (not append a
+        # second, anonymous one) and persist the external_run_url — the
+        # duplicate anonymous event is what used to blank "Deployed by".
+        existing = [
+            {
+                'timestamp': '2026-04-20T10:00:00+00:00',
+                'status': 'in_progress',
+                'note': None,
+                'external_run_id': 'run-99',
+                'performed_by': 'deployer',
+            }
+        ]
+        edge_row = [{'env': self._env(), 'deployments': json.dumps(existing)}]
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],  # _fetch_release
+            edge_row,  # _fetch_deployment_edge
+            [{'deployments': None}],  # _set_deployments (in-place refresh)
+            [{'current_release': RELEASE_ID}],  # current_release write
+        ]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.complete_opslog_entry',
+                new_callable=mock.AsyncMock,
+                return_value=True,
+            ),
+        ):
+            response = self.client.post(
+                self._url(f'/{RELEASE_ID}/environments/production'),
+                json={
+                    'status': 'success',
+                    'external_run_id': 'run-99',
+                    'external_run_url': 'https://gh/runs/99',
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        # Refreshed in place: still a single event, now success, with the
+        # run URL stored.
+        self.assertEqual(len(body['deployments']), 1)
+        self.assertEqual(body['deployments'][0]['status'], 'success')
+        self.assertEqual(body['deployments'][0]['external_run_id'], 'run-99')
+        self.assertEqual(
+            body['deployments'][0]['external_run_url'], 'https://gh/runs/99'
+        )
+        # The webhook sends no performed_by; the refresh must keep the
+        # stored deployer rather than blanking it.
+        self.assertEqual(body['deployments'][0]['performed_by'], 'deployer')
+
+    def test_record_deployment_without_run_id_stays_append_only(self) -> None:
+        # Without an external_run_id the endpoint keeps append-only
+        # semantics, so a new event is added alongside the existing one.
+        existing = [
+            {
+                'timestamp': '2026-04-20T10:00:00+00:00',
+                'status': 'in_progress',
+                'note': None,
+                'external_run_id': 'run-99',
+            }
+        ]
+        edge_row = [{'env': self._env(), 'deployments': json.dumps(existing)}]
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            edge_row,
+            [{'deployments': None}],  # _set_deployments (append)
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url(f'/{RELEASE_ID}/environments/production'),
+                json={'status': 'failed'},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(len(body['deployments']), 2)
+        self.assertEqual(body['current_status'], 'failed')
 
     def test_list_deployment_edges(self) -> None:
         deployments = json.dumps(
@@ -917,6 +1007,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [{'env': self._env(), 'deployments': None}],
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
             [{'deployments': None}],  # create edge
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
@@ -948,6 +1040,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [{'env': self._env(), 'deployments': None}],
+            [{'release': _release_row()}],
+            [{'env': self._env(), 'deployments': None}],
             [{'deployments': None}],
         ]
         with mock.patch(
@@ -965,8 +1059,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self,
     ) -> None:
         self.mock_db.execute.side_effect = [
-            [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
+            [{'release': _release_row()}],  # _fetch_release
+            [{'env': self._env(), 'deployments': None}],  # _fetch_edge
             [{'deployments': None}],  # create edge
             [],  # current_release write matched nothing
         ]
@@ -1358,6 +1452,44 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
         by_slug = {row['environment']['slug']: row for row in data}
         self.assertIsNone(by_slug['testing']['release'])
         self.assertEqual(by_slug['production']['release']['tag'], '1.0.0')
+
+    def test_backfill_matches_committish_when_release_has_tag(self) -> None:
+        # A branch/SHA deploy records version = committish in the ops log,
+        # while the release still carries a tag; the backfill must probe
+        # both keys so "Deployed by" resolves from the committish-keyed
+        # ops-log row instead of showing blank.
+        deployments = self._events(('2026-04-22T10:00:00+00:00', 'success'))
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production'),
+                    'release': _release_row(tag='1.2.3', committish='abc1234'),
+                    'deployments': deployments,
+                }
+            ],
+        ]
+        lookup = mock.AsyncMock(
+            return_value={(PROJECT_ID, 'production'): 'deployer'}
+        )
+        with (
+            mock.patch(
+                'imbi.api.endpoints.releases.lookup_ops_log_performed_by',
+                new=lookup,
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        row = response.json()[0]
+        self.assertEqual(row['performed_by'], 'deployer')
+        # The target carries both the tag and the committish; the lookup
+        # probes them in order (tag first, committish second).
+        targets = lookup.await_args.args[0]
+        self.assertIn((PROJECT_ID, 'production', '1.2.3', 'abc1234'), targets)
 
     def test_performed_by_email_resolves_to_display_name(self) -> None:
         """An email ``performed_by`` that matches an Imbi user surfaces

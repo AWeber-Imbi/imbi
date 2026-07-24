@@ -26,6 +26,7 @@ import contextlib
 import datetime
 import hashlib
 import logging
+import re
 import time
 import typing
 import urllib.parse
@@ -1002,10 +1003,16 @@ class GitHubDeployment(DeploymentCapability):
         with explicit pagination if it ever needs to.
         """
         page_size = max(1, min(limit, 100))
+        # One run commonly backs several deployments in a sweep; cache
+        # the triggering-actor lookup by run id so we resolve each run
+        # at most once. Shared across the parallel per-env fan-out.
+        run_cache: dict[str, tuple[str, str] | None] = {}
         async with self._client(ctx, credentials) as client:
             per_env = await asyncio.gather(
                 *(
-                    self._list_deployments_for_env(client, env, page_size)
+                    self._list_deployments_for_env(
+                        client, env, page_size, run_cache
+                    )
                     for env in environments
                 )
             )
@@ -1035,6 +1042,7 @@ class GitHubDeployment(DeploymentCapability):
         client: httpx.AsyncClient,
         environment: str,
         page_size: int,
+        run_cache: dict[str, tuple[str, str] | None],
     ) -> list[RemoteDeployment]:
         try:
             resp = await client.get(
@@ -1067,7 +1075,7 @@ class GitHubDeployment(DeploymentCapability):
         observed: list[RemoteDeployment] = []
         for deployment in deployments:
             run = await self._observe_deployment(
-                client, environment, deployment
+                client, environment, deployment, run_cache
             )
             if run is not None:
                 observed.append(run)
@@ -1078,6 +1086,7 @@ class GitHubDeployment(DeploymentCapability):
         client: httpx.AsyncClient,
         environment: str,
         deployment: dict[str, typing.Any],
+        run_cache: dict[str, tuple[str, str] | None],
     ) -> RemoteDeployment | None:
         deployment_id = deployment.get('id')
         sha = deployment.get('sha')
@@ -1113,6 +1122,18 @@ class GitHubDeployment(DeploymentCapability):
             creator_id = creator_dict.get('id')
             if isinstance(creator_id, int):
                 creator_subject = str(creator_id)
+            # Deployments made by an Actions workflow carry the app bot
+            # as creator (``deployer[bot]``), never the human who
+            # triggered the run. Re-attribute to the run's triggering
+            # actor so the host can resolve the deploy to a real user.
+            if _is_bot(creator_dict):
+                run_id = _run_id_from_status_url(status_url)
+                if run_id is not None:
+                    actor = await self._resolve_triggering_actor(
+                        client, run_id, run_cache
+                    )
+                    if actor is not None:
+                        creator_login, creator_subject = actor
         return RemoteDeployment(
             environment=environment,
             sha=str(sha),
@@ -1127,6 +1148,53 @@ class GitHubDeployment(DeploymentCapability):
             creator=creator_login,
             creator_subject=creator_subject,
         )
+
+    async def _resolve_triggering_actor(
+        self,
+        client: httpx.AsyncClient,
+        run_id: str,
+        run_cache: dict[str, tuple[str, str] | None],
+    ) -> tuple[str, str] | None:
+        """Resolve a workflow run's human trigger to ``(login, subject)``.
+
+        Attributes a bot-created deployment to the person who started
+        the Actions run via ``GET /actions/runs/{run_id}``, preferring
+        ``triggering_actor`` (the account that re-ran or dispatched the
+        run) and falling back to ``actor``. Best-effort: a fetch/parse
+        error, a missing actor, or an actor that is itself a bot yields
+        ``None`` so the caller keeps the bot creator -- attribution must
+        never fail the resync. Results (including ``None``) are cached
+        per sweep because one run backs several deployments.
+        """
+        if run_id in run_cache:
+            return run_cache[run_id]
+        result: tuple[str, str] | None = None
+        try:
+            resp = await client.get(f'/actions/runs/{run_id}')
+            resp.raise_for_status()
+            run = typing.cast(dict[str, typing.Any], resp.json())
+        except (httpx.HTTPError, PluginAuthenticationFailed, ValueError):
+            LOGGER.warning(
+                'Failed to fetch workflow run %s for deploy attribution',
+                run_id,
+                exc_info=True,
+            )
+            run_cache[run_id] = None
+            return None
+        actor_raw = run.get('triggering_actor') or run.get('actor')
+        if isinstance(actor_raw, dict):
+            actor = typing.cast(dict[str, typing.Any], actor_raw)
+            login = actor.get('login')
+            actor_id = actor.get('id')
+            if (
+                isinstance(login, str)
+                and login
+                and isinstance(actor_id, int)
+                and not _is_bot(actor)
+            ):
+                result = (login, str(actor_id))
+        run_cache[run_id] = result
+        return result
 
     async def _release_notes_for_ref(
         self, client: httpx.AsyncClient, ref: str
@@ -1193,6 +1261,38 @@ class GitHubDeployment(DeploymentCapability):
         state = str(latest.get('state') or '').lower()
         log_url = latest.get('log_url') or latest.get('target_url')
         return _to_event_status(state), str(log_url) if log_url else None
+
+
+_RUN_ID_RE = re.compile(r'/actions/runs/(\d+)')
+
+
+def _is_bot(user: dict[str, typing.Any]) -> bool:
+    """Return ``True`` when a GitHub user object denotes an app/bot.
+
+    GitHub marks app identities with ``type == 'Bot'`` on the user
+    object and gives them a ``login`` suffixed ``[bot]``
+    (``github-actions[bot]``, ``deployer[bot]``). Either signal alone is
+    sufficient; both comparisons are case-insensitive.
+    """
+    if str(user.get('type') or '').lower() == 'bot':
+        return True
+    login = user.get('login')
+    return isinstance(login, str) and login.lower().endswith('[bot]')
+
+
+def _run_id_from_status_url(url: str | None) -> str | None:
+    """Extract the Actions run id from a deployment status URL.
+
+    A GitHub Actions deploy posts its status ``log_url``/``target_url``
+    pointing at the workflow run
+    (``.../actions/runs/{run_id}`` optionally followed by
+    ``/job/{job_id}``). Any URL that is not an Actions run link yields
+    ``None``.
+    """
+    if not url:
+        return None
+    match = _RUN_ID_RE.search(url)
+    return match.group(1) if match else None
 
 
 def _to_event_status(github_state: str) -> DeploymentEventStatus:

@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import typing
-
-import pydantic
 
 from imbi.common import graph, models
 from imbi.common.scoring import attribute, policies
@@ -188,18 +185,6 @@ def _parse_deployment_events(
     AGE round-trips the list as a JSON string; malformed entries are
     skipped rather than failing the whole score computation.
     """
-    parsed: typing.Any = graph.parse_agtype(raw)
-    if isinstance(parsed, str):
-        try:
-            parsed = json.loads(parsed)
-        except json.JSONDecodeError:
-            return []
-    if not isinstance(parsed, list):
-        return []
-    events: list[models.DeploymentEvent] = []
-    for item in parsed:  # pyright: ignore[reportUnknownVariableType]
-        try:
-            events.append(models.DeploymentEvent.model_validate(item))
-        except pydantic.ValidationError:
-            continue
-    return events
+    return models.parse_deployment_events(
+        graph.parse_agtype(raw), on_error='skip'
+    )

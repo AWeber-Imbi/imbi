@@ -2,15 +2,18 @@
 
 import collections.abc
 import contextlib
+import datetime
 import json
 import logging
 import typing
+import urllib.parse
 
 import fastapi
 import psycopg
 
 from imbi.api import patch as json_patch
 from imbi.common import graph
+from imbi.common import models as common_models
 from imbi.common.plugins.base import PluginContext, ServiceConnection
 
 LOGGER = logging.getLogger(__name__)
@@ -141,6 +144,91 @@ async def update_membership_role(
                 f' of organization {org_slug!r}'
             ),
         )
+
+
+_SAFE_AUDIT_URL_SCHEMES: frozenset[str] = frozenset({'http', 'https'})
+
+
+def safe_audit_url(value: str | None) -> str | None:
+    """Drop plugin-supplied URLs that aren't plain http(s).
+
+    Both ``run_url`` and ``release_url`` are surfaced by deployment
+    plugins and rendered as ``<a href>`` in the operations-log UI.
+    A malicious or buggy plugin could return a ``javascript:`` or
+    ``data:`` URL that, if echoed verbatim into the DOM, would land
+    as XSS. The UI already escapes attribute values, but defense in
+    depth: drop anything that isn't ``http(s)://`` server-side so
+    every consumer of the audit row sees a known-safe scheme.
+    """
+    if value is None:
+        return None
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme.lower() not in _SAFE_AUDIT_URL_SCHEMES:
+        LOGGER.warning(
+            'Dropping audit URL with unsupported scheme %r', parsed.scheme
+        )
+        return None
+    return value
+
+
+def deployed_operation_log(
+    *,
+    project_id: str,
+    project_slug: str,
+    environment_slug: str,
+    recorded_by: str,
+    performed_by: str | None,
+    action: str,
+    version: str | None,
+    plugin_slug: str = '',
+    run_url: str | None = None,
+    release_url: str | None = None,
+    from_environment: str | None = None,
+    external_run_id: str | None = None,
+    occurred_at: datetime.datetime | None = None,
+) -> common_models.OperationLog:
+    """Build a ``Deployed`` ``operations_log`` row.
+
+    Shared by the in-product deploy/promote audit writer and the
+    maintenance ops-log backfill so the history pane renders every
+    deploy identically. Plugin-supplied URLs (``run_url`` /
+    ``release_url``) are filtered through :func:`safe_audit_url` so
+    non-http(s) schemes never reach the audit JSON or the ``link``.
+
+    ``occurred_at`` is only overridden when supplied; callers that
+    backfill historical deploys pin it to the real deploy time because
+    ``lookup_ops_log_performed_by`` ranks with
+    ``argMax(performed_by, occurred_at)`` -- the row must sort by when
+    the deploy actually happened, not when it was recorded. Omitting it
+    keeps the model default (now).
+    """
+    safe_run_url = safe_audit_url(run_url)
+    description = json.dumps(
+        {
+            'action': action,
+            'plugin_slug': plugin_slug,
+            'run_url': safe_run_url,
+            'release_url': safe_audit_url(release_url),
+            'from_environment': from_environment,
+        },
+        sort_keys=True,
+    )
+    fields: dict[str, typing.Any] = {
+        'recorded_by': recorded_by,
+        'performed_by': performed_by,
+        'project_id': project_id,
+        'project_slug': project_slug,
+        'environment_slug': environment_slug,
+        'entry_type': 'Deployed',
+        'description': description,
+        'link': safe_run_url,
+        'version': version,
+        'plugin_slug': plugin_slug,
+        'external_run_id': external_run_id,
+    }
+    if occurred_at is not None:
+        fields['occurred_at'] = occurred_at
+    return common_models.OperationLog(**fields)
 
 
 async def lookup_project_slugs(

@@ -1230,6 +1230,65 @@ class DeploymentEventTestCase(unittest.TestCase):
         )
 
 
+class ParseDeploymentEventsTestCase(unittest.TestCase):
+    """Tests for the ``parse_deployment_events`` helper."""
+
+    def test_falsy_returns_empty(self) -> None:
+        for raw in (None, '', [], 0):
+            self.assertEqual(models.parse_deployment_events(raw), [])
+
+    def test_non_list_returns_empty(self) -> None:
+        self.assertEqual(models.parse_deployment_events('{"a": 1}'), [])
+        self.assertEqual(models.parse_deployment_events({'a': 1}), [])
+
+    def test_parses_json_string(self) -> None:
+        raw = json.dumps(
+            [
+                {
+                    'timestamp': '2026-04-20T10:00:00+00:00',
+                    'status': 'success',
+                }
+            ]
+        )
+        events = models.parse_deployment_events(raw)
+        self.assertEqual(len(events), 1)
+        self.assertIsInstance(events[0], models.DeploymentEvent)
+        self.assertEqual(events[0].status, 'success')
+
+    def test_parses_already_decoded_list(self) -> None:
+        events = models.parse_deployment_events(
+            [{'status': 'pending'}, {'status': 'failed'}]
+        )
+        self.assertEqual([e.status for e in events], ['pending', 'failed'])
+
+    def test_strict_mode_raises_on_corrupt_json(self) -> None:
+        with self.assertRaises(json.JSONDecodeError):
+            models.parse_deployment_events('not json')
+
+    def test_strict_mode_raises_on_invalid_entry(self) -> None:
+        raw = json.dumps([{'status': 'success'}, {'nope': True}])
+        with self.assertRaises(pydantic.ValidationError):
+            models.parse_deployment_events(raw)
+
+    def test_skip_mode_returns_empty_on_corrupt_json(self) -> None:
+        self.assertEqual(
+            models.parse_deployment_events('not json', on_error='skip'), []
+        )
+
+    def test_skip_mode_drops_bad_entry_keeps_good(self) -> None:
+        raw = json.dumps(
+            [
+                {
+                    'status': 'success',
+                    'timestamp': '2026-06-01T00:00:00+00:00',
+                },
+                {'nope': True},
+            ]
+        )
+        events = models.parse_deployment_events(raw, on_error='skip')
+        self.assertEqual([e.status for e in events], ['success'])
+
+
 class ReleaseLinkTestCase(unittest.TestCase):
     """Tests for the ReleaseLink model."""
 

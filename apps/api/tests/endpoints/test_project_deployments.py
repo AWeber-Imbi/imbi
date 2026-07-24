@@ -1763,37 +1763,37 @@ class LatestDeploymentTimestampTestCase(unittest.TestCase):
 
 
 class SafeAuditUrlTestCase(unittest.TestCase):
-    """Direct tests for ``_safe_audit_url`` (L22)."""
+    """Direct tests for ``safe_audit_url`` (L22)."""
 
     def test_returns_none_for_none(self) -> None:
-        from imbi.api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints._helpers import safe_audit_url
 
-        self.assertIsNone(_safe_audit_url(None))
+        self.assertIsNone(safe_audit_url(None))
 
     def test_allows_http_and_https(self) -> None:
-        from imbi.api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints._helpers import safe_audit_url
 
         for url in (
             'http://example.com/run/42',
             'https://github.com/o/r/actions/runs/1',
         ):
-            self.assertEqual(_safe_audit_url(url), url)
+            self.assertEqual(safe_audit_url(url), url)
 
     def test_strips_javascript_scheme(self) -> None:
-        from imbi.api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints._helpers import safe_audit_url
 
-        self.assertIsNone(_safe_audit_url('javascript:alert(1)'))
-        self.assertIsNone(_safe_audit_url('JavaScript:alert(1)'))
+        self.assertIsNone(safe_audit_url('javascript:alert(1)'))
+        self.assertIsNone(safe_audit_url('JavaScript:alert(1)'))
 
     def test_strips_data_scheme(self) -> None:
-        from imbi.api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints._helpers import safe_audit_url
 
-        self.assertIsNone(_safe_audit_url('data:text/html,<script>x</script>'))
+        self.assertIsNone(safe_audit_url('data:text/html,<script>x</script>'))
 
     def test_strips_file_scheme(self) -> None:
-        from imbi.api.endpoints.project_deployments import _safe_audit_url
+        from imbi.api.endpoints._helpers import safe_audit_url
 
-        self.assertIsNone(_safe_audit_url('file:///etc/passwd'))
+        self.assertIsNone(safe_audit_url('file:///etc/passwd'))
 
 
 def _relocating_resolved() -> ResolvedCapability:

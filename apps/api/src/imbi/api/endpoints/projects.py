@@ -671,10 +671,35 @@ def _latest_deployment_event(
     return latest_ts, latest_by
 
 
+def ops_log_version_candidates(
+    tag: str | None, committish: str | None
+) -> list[str]:
+    """Ordered, distinct version keys to probe in ``operations_log``.
+
+    The audit writer records ``version = matched_tag or committish_short``
+    (see ``project_deployments``), so a deploy from a branch/SHA stores the
+    short committish while the release still carries a tag. Probe the tag
+    first, then the committish, so the backfill join resolves the deployer
+    regardless of which the audit row captured.
+    """
+    candidates: list[str] = []
+    for value in (tag, committish):
+        if value and value not in candidates:
+            candidates.append(value)
+    return candidates
+
+
 async def lookup_ops_log_performed_by(
-    targets: list[tuple[str, str, str]],
-) -> dict[tuple[str, str, str], str]:
-    """Map ``(project_id, environment_slug, version)`` → ``performed_by``.
+    targets: list[tuple[str, str, str | None, str | None]],
+) -> dict[tuple[str, str], str]:
+    """Map ``(project_id, environment_slug)`` → ``performed_by``.
+
+    Each target is ``(project_id, environment_slug, tag, committish)``.
+    The audit writer records ``version = tag or committish``, so each
+    target's version candidates are probed tag-first, committish-second
+    (via :func:`ops_log_version_candidates`) and the first match wins —
+    folding the dual-key rule in here so callers don't expand and then
+    collapse it themselves.
 
     Backfills the deployer for releases whose
     ``DeploymentEvent.performed_by`` on the AGE edge is null.
@@ -693,6 +718,7 @@ async def lookup_ops_log_performed_by(
         ' argMax(performed_by, occurred_at) AS performed_by'
         ' FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed'"
+        ' AND is_deleted = 0'
         ' AND project_id IN {project_ids:Array(String)}'
         ' GROUP BY project_id, environment_slug, version'
     )
@@ -706,17 +732,24 @@ async def lookup_ops_log_performed_by(
             exc_info=True,
         )
         return {}
-    target_keys = set(targets)
-    result: dict[tuple[str, str, str], str] = {}
+    by_version: dict[tuple[str, str, str], str] = {}
     for row in rows:
+        performed_by = row.get('performed_by')
+        if not performed_by:
+            continue
         key = (
             str(row.get('project_id') or ''),
             str(row.get('environment_slug') or ''),
             str(row.get('version') or ''),
         )
-        performed_by = row.get('performed_by')
-        if performed_by and key in target_keys:
-            result[key] = str(performed_by)
+        by_version[key] = str(performed_by)
+    result: dict[tuple[str, str], str] = {}
+    for project_id, env_slug, tag, committish in targets:
+        for version in ops_log_version_candidates(tag, committish):
+            looked_up = by_version.get((project_id, env_slug, version))
+            if looked_up:
+                result[(project_id, env_slug)] = looked_up
+                break
     return result
 
 
@@ -796,22 +829,21 @@ async def _fetch_current_releases(
     # Backfill performed_by from operations_log for events whose
     # AGE edge left it null (in-product deploy/promote path).
     enrich_targets = [
-        (pid, env_slug, str(tag or committish or ''))
+        (pid, env_slug, tag, committish)
         for (pid, env_slug), (
             tag,
             committish,
             _ts,
             performed_by,
         ) in latest.items()
-        if performed_by is None and (tag or committish)
+        if performed_by is None
     ]
     performed_by_by_key = await lookup_ops_log_performed_by(enrich_targets)
     if performed_by_by_key:
         for key, (tag, committish, ts, performed_by) in list(latest.items()):
             if performed_by is not None:
                 continue
-            version = str(tag or committish or '')
-            looked_up = performed_by_by_key.get((key[0], key[1], version))
+            looked_up = performed_by_by_key.get(key)
             if looked_up:
                 latest[key] = (tag, committish, ts, looked_up)
 
