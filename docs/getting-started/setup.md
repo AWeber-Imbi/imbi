@@ -40,9 +40,27 @@ The setup command performs the following:
    roles with appropriate permissions
 3. **Creates the admin user** - Interactively prompts for email, display
    name, and password
+4. **Creates the ClickHouse schema** - Executes the DDL for the analytics
+   tables and materialized views
 
 The setup command is idempotent: it checks whether the system has already
 been seeded before making changes, so it is safe to run multiple times.
+
+## Applying Upgrades
+
+`setup` is interactive and covers everything, which is more than an
+existing instance needs when a release only adds ClickHouse tables or new
+permissions. Two commands run those steps on their own, without prompting
+or touching the admin user:
+
+```bash
+imbi-api setup-clickhouse    # apply the ClickHouse schema only
+imbi-api setup-permissions   # seed permissions and default roles only
+```
+
+Both are idempotent and safe to re-run. `setup-permissions` also refreshes
+each default role's permission grants and prunes permissions retired by a
+previous release.
 
 ## Post-Setup
 

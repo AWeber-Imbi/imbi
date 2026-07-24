@@ -822,6 +822,37 @@ async def seed_default_organization(
     return is_new
 
 
+async def seed_permissions_and_roles(db: graph.Graph) -> dict[str, int]:
+    """Prune retired permissions, then seed permissions and default roles.
+
+    Organization-independent half of :func:`bootstrap_auth_system`, so a
+    deployment that only needs to pick up newly declared permissions can
+    run it without re-seeding an organization or touching users. The
+    call order is load-bearing: ``seed_default_roles`` MATCHes the
+    ``Permission`` nodes it grants, so ``seed_permissions`` must run
+    first or roles silently come up without their GRANTS edges.
+    Idempotent.
+
+    Args:
+        db: Graph database connection.
+
+    Returns:
+        dict with keys:
+            - 'retired': Number of retired permissions removed
+            - 'permissions': Number of permissions created
+            - 'roles': Number of roles created
+
+    """
+    retired = await cleanup_retired_permissions(db)
+    permissions_created = await seed_permissions(db)
+    roles_created = await seed_default_roles(db)
+    return {
+        'retired': retired,
+        'permissions': permissions_created,
+        'roles': roles_created,
+    }
+
+
 async def bootstrap_auth_system(
     db: graph.Graph,
     org_slug: str = 'default',
@@ -848,9 +879,9 @@ async def bootstrap_auth_system(
     LOGGER.info('Starting authentication system bootstrap')
 
     org_created = await seed_default_organization(db, org_slug, org_name)
-    await cleanup_retired_permissions(db)
-    permissions_created = await seed_permissions(db)
-    roles_created = await seed_default_roles(db)
+    seeded = await seed_permissions_and_roles(db)
+    permissions_created = seeded['permissions']
+    roles_created = seeded['roles']
 
     result: dict[str, int | bool] = {
         'organization': org_created,
