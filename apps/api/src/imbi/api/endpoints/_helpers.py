@@ -180,6 +180,7 @@ def deployed_operation_log(
     performed_by: str | None,
     action: str,
     version: str | None,
+    commit_sha: str | None = None,
     plugin_slug: str = '',
     run_url: str | None = None,
     release_url: str | None = None,
@@ -195,6 +196,12 @@ def deployed_operation_log(
     ``release_url``) are filtered through :func:`safe_audit_url` so
     non-http(s) schemes never reach the audit JSON or the ``link``.
 
+    ``commit_sha`` is the committish the deploy shipped, recorded even
+    when ``version`` is a tag: the operations-log UI correlates the rows
+    of one release train across environments by tag *or* committish, and
+    an untagged environment (testing deploys straight off a commit) only
+    shares the committish with its later tagged promotions.
+
     ``occurred_at`` is only overridden when supplied; callers that
     backfill historical deploys pin it to the real deploy time because
     ``lookup_ops_log_performed_by`` ranks with
@@ -206,6 +213,7 @@ def deployed_operation_log(
     description = json.dumps(
         {
             'action': action,
+            'commit_sha': commit_sha,
             'plugin_slug': plugin_slug,
             'run_url': safe_run_url,
             'release_url': safe_audit_url(release_url),

@@ -303,6 +303,28 @@ def _edge_row(
     }
 
 
+def _existing_row(
+    *,
+    entry_id: str = 'opslog-1',
+    version: str = 'v1.2.3',
+    environment_slug: str = 'production',
+    description: str | None = None,
+) -> dict[str, object]:
+    """An ops-log row as ``SELECT *`` returns it, minus commit_sha."""
+    return {
+        'id': entry_id,
+        'environment_slug': environment_slug,
+        'entry_type': 'Deployed',
+        'description': description
+        if description is not None
+        else json.dumps({'action': 'deploy', 'plugin_slug': 'github'}),
+        'version': version,
+        'external_run_id': None,
+        '_row_version': 7,
+        'is_deleted': 0,
+    }
+
+
 def _event(
     *,
     status: str = 'success',
@@ -478,6 +500,78 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(row['link'])
         description = json.loads(str(row['description']))
         self.assertIsNone(description['run_url'])
+
+    async def test_fills_commit_sha_on_existing_row(self) -> None:
+        # A row written before the audit payload carried commit_sha is
+        # re-inserted with the edge's committish and a bumped
+        # _row_version, so ReplacingMergeTree collapses to the repaired
+        # row. The event itself dedupes away, so the repair is the only
+        # write.
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event(external_run_id=None)])],
+            existing_ch_rows=[_existing_row()],
+        )
+        self.assertEqual('succeeded', outcome)
+        row = self._inserted_row(instance)
+        self.assertEqual('opslog-1', row['id'])
+        description = json.loads(str(row['description']))
+        self.assertEqual('abc1234', description['commit_sha'])
+        self.assertEqual('deploy', description['action'])
+        self.assertGreater(int(str(row['_row_version'])), 7)
+
+    async def test_leaves_rows_that_already_have_commit_sha(self) -> None:
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event(external_run_id=None)])],
+            existing_ch_rows=[
+                _existing_row(
+                    description=json.dumps(
+                        {'action': 'deploy', 'commit_sha': 'abc1234'}
+                    )
+                )
+            ],
+        )
+        self.assertEqual('skipped', outcome)
+        instance.insert.assert_not_awaited()
+
+    async def test_leaves_free_text_descriptions_alone(self) -> None:
+        # Human-authored entries own their description; never rewrite one.
+        outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event(external_run_id=None)])],
+            existing_ch_rows=[
+                _existing_row(description='deployed by hand during incident')
+            ],
+        )
+        self.assertEqual('skipped', outcome)
+        instance.insert.assert_not_awaited()
+
+    async def test_repairs_row_matched_by_committish_version(self) -> None:
+        # The row records the committish as its version (an untagged
+        # deploy); it still gets the commit_sha so the tagged rows of the
+        # same release can join it.
+        _outcome, instance = await self._run(
+            edge_rows=[_edge_row(deployments=[_event(external_run_id=None)])],
+            existing_ch_rows=[_existing_row(version='abc1234')],
+        )
+        row = self._inserted_row(instance)
+        description = json.loads(str(row['description']))
+        self.assertEqual('abc1234', description['commit_sha'])
+
+    async def test_repairs_each_row_once(self) -> None:
+        # Two releases cut from the same commit both list the committish
+        # as a version candidate, so both edges resolve the same untagged
+        # row. It must be re-inserted once, not once per edge.
+        _outcome, instance = await self._run(
+            edge_rows=[
+                _edge_row(deployments=[_event(external_run_id=None)]),
+                _edge_row(
+                    tag='v1.2.4',
+                    deployments=[_event(external_run_id=None)],
+                ),
+            ],
+            existing_ch_rows=[_existing_row(version='abc1234')],
+        )
+        _table, values, _columns = instance.insert.await_args.args
+        self.assertEqual(1, len(values))
 
     async def test_existing_rows_query_filters_soft_deleted(self) -> None:
         # A tombstoned (is_deleted=1) ops-log row must not dedupe-suppress

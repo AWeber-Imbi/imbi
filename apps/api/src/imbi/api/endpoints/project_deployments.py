@@ -663,7 +663,9 @@ async def _record_deployment_audit(
 
     ``OperationLog.version`` is populated with ``tag if tag else
     committish`` — a single human-friendly display string that the
-    operations-log UI can render directly.
+    operations-log UI can render directly.  ``committish`` is *also*
+    recorded as ``commit_sha`` in the audit JSON so the UI can correlate
+    a tagged promotion with the untagged deploy of the same commit.
     """
     entry = deployed_operation_log(
         project_id=project_id,
@@ -673,6 +675,7 @@ async def _record_deployment_audit(
         performed_by=recorded_by,
         action=action,
         version=tag or committish,
+        commit_sha=committish,
         plugin_slug=plugin_slug,
         run_url=run_url,
         release_url=release_url,
