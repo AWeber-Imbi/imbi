@@ -115,6 +115,42 @@ describe('groupReleases', () => {
     ])
   })
 
+  it('keeps the fused train in the newest slot of the two it merged', () => {
+    const items = groupReleases([
+      // Legacy row: tag but no recorded committish. Newest, so the train
+      // it opens is the slot the fused train has to keep.
+      makeEntry({ description: payload('deploy', null), id: 'prod-no-sha' }),
+      // Ungrouped row sitting between the two trains. If the merge kept
+      // the absorbed (older) train's slot instead, the fused train would
+      // sort below this restart.
+      makeEntry({
+        entry_type: 'Restarted',
+        id: 'restart',
+        occurred_at: '2026-07-27T12:10:00.000Z',
+        version: null,
+      }),
+      makeEntry({
+        environment_slug: 'testing',
+        id: 'testing',
+        occurred_at: '2026-07-27T11:40:00.000Z',
+        version: SHA,
+      }),
+      // Knows both identities, so it fuses the two trains above.
+      makeEntry({
+        description: payload('promote'),
+        environment_slug: 'staging',
+        id: 'staging',
+        occurred_at: '2026-07-27T12:02:34.325Z',
+      }),
+    ])
+    expect(items.map((i) => i.kind)).toEqual(['release', 'single'])
+    if (items[0]!.kind !== 'release') return
+    expect(items[0]!.group.latestEntry.id).toBe('prod-no-sha')
+    expect(items[0]!.group.stops.map((s) => s.environment_slug).sort()).toEqual(
+      ['production', 'staging', 'testing'],
+    )
+  })
+
   it('keeps a tag as the display version over a bare committish', () => {
     const items = groupReleases([
       makeEntry({

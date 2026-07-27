@@ -518,9 +518,13 @@ async def execute_opslog_backfill(
             len(repairs),
             project_id,
         )
+        repair_columns = list(repairs[0].keys())
         await client_instance.insert(
             'operations_log',
-            [list(repair.values()) for repair in repairs],
-            list(repairs[0].keys()),
+            [
+                [repair[column] for column in repair_columns]
+                for repair in repairs
+            ],
+            repair_columns,
         )
     return 'succeeded'
