@@ -327,7 +327,7 @@ def _with_commit_sha(
     repair.  ``operations_log`` is a ``ReplacingMergeTree``, so an insert
     that reuses the row's ``id`` with a bumped ``_row_version`` replaces
     it -- the same read-modify-insert the PATCH endpoint and
-    ``complete_opslog_entry`` use.  ``_next_row_version`` is borrowed
+    ``complete_opslog_entry`` use.  ``next_row_version`` is borrowed
     from that module rather than reimplemented because its monotonic
     guard is process-wide state.
 
@@ -336,19 +336,22 @@ def _with_commit_sha(
     human-authored entries, and a payload that already has the
     committish is already correlatable.
     """
-    from imbi.api.endpoints.operations_log import _next_row_version
+    from imbi.api.endpoints.operations_log import next_row_version
 
     try:
-        payload = json.loads(str(row.get('description') or ''))
+        decoded: object = json.loads(str(row.get('description') or ''))
     except ValueError:
         return None
-    if not isinstance(payload, dict) or payload.get('commit_sha'):
+    if not isinstance(decoded, dict):
+        return None
+    payload = typing.cast(dict[str, typing.Any], decoded)
+    if payload.get('commit_sha'):
         return None
     repaired = dict(row)
     repaired['description'] = json.dumps(
         {**payload, 'commit_sha': committish}, sort_keys=True
     )
-    repaired['_row_version'] = _next_row_version(int(row['_row_version']))
+    repaired['_row_version'] = next_row_version(int(row['_row_version']))
     return repaired
 
 
