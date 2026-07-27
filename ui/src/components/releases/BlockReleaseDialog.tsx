@@ -67,6 +67,7 @@ export function BlockReleaseDialog({
             <Textarea
               autoFocus
               className="min-h-24 text-sm"
+              maxLength={500}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Rolled back — regression in the checkout flow"
               value={reason}
