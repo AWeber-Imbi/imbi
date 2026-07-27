@@ -1801,6 +1801,35 @@ class SafeAuditUrlTestCase(unittest.TestCase):
         self.assertIsNone(safe_audit_url('file:///etc/passwd'))
 
 
+class DeployedOperationLogTestCase(unittest.TestCase):
+    """The audit row records both release identities."""
+
+    @staticmethod
+    def _build(**kwargs: typing.Any) -> dict[str, typing.Any]:
+        from imbi.api.endpoints._helpers import deployed_operation_log
+
+        entry = deployed_operation_log(
+            project_id='p1',
+            project_slug='webform',
+            environment_slug='production',
+            recorded_by='dang@aweber.com',
+            performed_by='dang@aweber.com',
+            action='deploy',
+            **kwargs,
+        )
+        return json.loads(entry.description)
+
+    def test_commit_sha_recorded_alongside_a_tag(self) -> None:
+        # The UI joins the rows of one release train by tag *or*
+        # committish, so a tagged row must still carry the committish.
+        description = self._build(version='1.29.0', commit_sha='c67213d')
+        self.assertEqual('c67213d', description['commit_sha'])
+
+    def test_commit_sha_defaults_to_none(self) -> None:
+        description = self._build(version='1.29.0')
+        self.assertIsNone(description['commit_sha'])
+
+
 def _relocating_resolved() -> ResolvedCapability:
     return _make_resolved(
         _RelocatingDeploymentPlugin, options={'owner': 'octo', 'repo': 'demo'}

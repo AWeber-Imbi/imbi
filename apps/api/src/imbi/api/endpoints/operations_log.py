@@ -192,7 +192,7 @@ async def complete_opslog_entry(
         return False
     row = dict(rows[0])
     row['completed_at'] = completed_at
-    row['_row_version'] = _next_row_version(int(row['_row_version']))
+    row['_row_version'] = next_row_version(int(row['_row_version']))
     await _insert_row(row)
     return True
 
@@ -265,7 +265,7 @@ async def _fetch_current(
 _row_version_last: int = 0
 
 
-def _next_row_version(current_version: int) -> int:
+def next_row_version(current_version: int) -> int:
     """Return a strictly-increasing ``_row_version`` value.
 
     ClickHouse ``ReplacingMergeTree`` requires the version column to
@@ -640,7 +640,7 @@ async def patch_operation_log(
     entry.recorded_at = current['recorded_at']
     entry.recorded_by = current['recorded_by']
     entry.project_id = current['project_id']
-    entry.row_version = _next_row_version(int(current['_row_version']))
+    entry.row_version = next_row_version(int(current['_row_version']))
     entry.is_deleted = False
 
     row = _model_to_row(entry)
@@ -667,7 +667,7 @@ async def delete_operation_log(
         )
 
     tombstone = dict(current)
-    tombstone['_row_version'] = _next_row_version(int(current['_row_version']))
+    tombstone['_row_version'] = next_row_version(int(current['_row_version']))
     tombstone['is_deleted'] = 1
 
     await _insert_row(tombstone)

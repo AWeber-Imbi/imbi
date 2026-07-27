@@ -48,7 +48,7 @@ export const OperationsLogReleaseCard = memo(function OperationsLogReleaseCard({
   const latest = group.latestEntry
   const performer = latest.performed_by ?? latest.recorded_by
   const displayName = performerDisplayNames.get(performer) ?? performer
-  const version = group.stops[0]?.entry.version ?? latest.version ?? ''
+  const version = group.version || latest.version || ''
   const desc = renderEntryLabel(latest, {
     environment: environmentsBySlug.get(latest.environment_slug),
     performerDisplayName: displayName,
