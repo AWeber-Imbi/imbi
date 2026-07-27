@@ -103,7 +103,9 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
                 'Ensure the operations log has Deployed entries for every '
                 'attributed deployment event on each release, so deployer '
                 'attribution resolves for deployments recorded outside '
-                'Imbi.'
+                'Imbi. Also fills the release committish in on existing '
+                'entries that predate it, so release trains group across '
+                'every environment.'
             ),
             pause_key=None,
             enumerate=operations.enumerate_all_projects,

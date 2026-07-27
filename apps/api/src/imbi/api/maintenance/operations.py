@@ -18,6 +18,7 @@ endpoints package at import time.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 import typing
 
@@ -286,19 +287,89 @@ RETURN e.slug AS env_slug,
 """
 
 
+def _commit_sha_repairs(
+    *,
+    env_slug: str,
+    committish: str | None,
+    candidates: list[str],
+    existing_rows: dict[tuple[str, str], list[dict[str, typing.Any]]],
+    repaired_ids: set[str],
+) -> list[dict[str, typing.Any]]:
+    """Rows to re-insert so one deployment edge's env carries its sha.
+
+    Probes both version candidates because an untagged deploy stored the
+    committish where a tagged one stored the tag.  ``repaired_ids`` is
+    updated in place: two releases cut from the same commit both resolve
+    the same untagged row, and it should be rewritten once.
+    """
+    if not committish:
+        return []
+    repairs: list[dict[str, typing.Any]] = []
+    for candidate in candidates:
+        for existing in existing_rows.get((env_slug, candidate), []):
+            entry_id = str(existing.get('id') or '')
+            if entry_id in repaired_ids:
+                continue
+            repair = _with_commit_sha(existing, committish)
+            if repair is None:
+                continue
+            repaired_ids.add(entry_id)
+            repairs.append(repair)
+    return repairs
+
+
+def _with_commit_sha(
+    row: dict[str, typing.Any], committish: str
+) -> dict[str, typing.Any] | None:
+    """Rewrite an existing ops-log row to carry ``commit_sha``.
+
+    Returns the row to re-insert, or ``None`` when there is nothing to
+    repair.  ``operations_log`` is a ``ReplacingMergeTree``, so an insert
+    that reuses the row's ``id`` with a bumped ``_row_version`` replaces
+    it -- the same read-modify-insert the PATCH endpoint and
+    ``complete_opslog_entry`` use.  ``next_row_version`` is borrowed
+    from that module rather than reimplemented because its monotonic
+    guard is process-wide state.
+
+    Only rows whose ``description`` is a plugin payload object missing a
+    ``commit_sha`` are touched: free-text descriptions belong to
+    human-authored entries, and a payload that already has the
+    committish is already correlatable.
+    """
+    from imbi.api.endpoints.operations_log import next_row_version
+
+    try:
+        decoded: object = json.loads(str(row.get('description') or ''))
+    except ValueError:
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    payload = typing.cast(dict[str, typing.Any], decoded)
+    if payload.get('commit_sha'):
+        return None
+    repaired = dict(row)
+    repaired['description'] = json.dumps(
+        {**payload, 'commit_sha': committish}, sort_keys=True
+    )
+    repaired['_row_version'] = next_row_version(int(row['_row_version']))
+    return repaired
+
+
 async def _existing_opslog_rows(
     project_id: str,
-) -> tuple[set[str], set[tuple[str, str]]]:
+) -> tuple[set[str], dict[tuple[str, str], list[dict[str, typing.Any]]]]:
     """Return the ``operations_log`` 'Deployed' rows already on file.
 
-    Two dedupe indexes for one project: the set of ``external_run_id``
-    values, and the set of ``(environment_slug, version)`` pairs.  Read
-    ``FINAL`` so the ``ReplacingMergeTree`` collapse is applied and
-    superseded rows don't resurrect a stale key.
+    Two views of one project's rows: the set of ``external_run_id``
+    values, and the full rows grouped by ``(environment_slug,
+    version)``.  Both dedupe inserts; the grouped rows also let the
+    enrichment pass rewrite a row in place, which is why this reads whole
+    rows rather than the three key columns.  Read ``FINAL`` so the
+    ``ReplacingMergeTree`` collapse is applied and superseded rows don't
+    resurrect a stale key.
     """
     sql = (
-        'SELECT environment_slug, version, external_run_id'
-        ' FROM operations_log FINAL'
+        'SELECT * FROM operations_log FINAL'
         " WHERE entry_type = 'Deployed'"
         ' AND is_deleted = 0'
         ' AND project_id = {project_id:String}'
@@ -307,7 +378,7 @@ async def _existing_opslog_rows(
         sql, {'project_id': project_id}
     )
     run_ids: set[str] = set()
-    env_versions: set[tuple[str, str]] = set()
+    by_env_version: dict[tuple[str, str], list[dict[str, typing.Any]]] = {}
     for row in rows:
         run_id = row.get('external_run_id')
         if run_id:
@@ -315,8 +386,8 @@ async def _existing_opslog_rows(
         env = str(row.get('environment_slug') or '')
         version = str(row.get('version') or '')
         if env and version:
-            env_versions.add((env, version))
-    return run_ids, env_versions
+            by_env_version.setdefault((env, version), []).append(row)
+    return run_ids, by_env_version
 
 
 async def execute_opslog_backfill(
@@ -339,8 +410,15 @@ async def execute_opslog_backfill(
     newest-first per edge so the most recent attributed deployer is the
     one that survives dedupe for a given ``(environment, version)``.
 
-    Skipped when the project has no deployment edges or every attributed
-    event already has a matching ops-log row.
+    It also repairs the rows that already exist: any 'Deployed' row whose
+    audit payload predates ``commit_sha`` is re-inserted with the
+    committish from its deployment edge, so the operations-log UI can
+    join every environment of one release train (see
+    :func:`_commit_sha_repairs`).
+
+    Skipped when the project has no deployment edges, or every attributed
+    event already has a matching ops-log row and no row needs a
+    committish filled in.
     """
     from imbi.api.endpoints._helpers import (
         deployed_operation_log,
@@ -356,12 +434,13 @@ async def execute_opslog_backfill(
     if not rows:
         return 'skipped'
 
-    existing_run_ids, existing_env_versions = await _existing_opslog_rows(
-        project_id
-    )
+    existing_run_ids, existing_rows = await _existing_opslog_rows(project_id)
+    existing_env_versions = set(existing_rows)
     project_slug, _team_slug = await lookup_project_slugs(db, project_id)
 
     pending: list[common_models.OperationLog] = []
+    repairs: list[dict[str, typing.Any]] = []
+    repaired_ids: set[str] = set()
     for row in rows:
         env_slug = graph.parse_agtype(row.get('env_slug'))
         if not isinstance(env_slug, str) or not env_slug:
@@ -374,6 +453,19 @@ async def execute_opslog_backfill(
         if not version:
             continue
         candidates = ops_log_version_candidates(tag, committish)
+        # Rows written before the audit payload carried `commit_sha` can
+        # only be joined to the rest of their release train by tag, which
+        # leaves an untagged environment stranded. The edge knows the
+        # committish, so fill it in on the rows that already exist.
+        repairs.extend(
+            _commit_sha_repairs(
+                env_slug=env_slug,
+                committish=committish,
+                candidates=candidates,
+                existing_rows=existing_rows,
+                repaired_ids=repaired_ids,
+            )
+        )
         events = common_models.parse_deployment_events(
             graph.parse_agtype(row.get('deployments')), on_error='skip'
         )
@@ -394,6 +486,7 @@ async def execute_opslog_backfill(
                     performed_by=event.performed_by,
                     action='opslog-backfill',
                     version=version,
+                    commit_sha=committish,
                     run_url=event.external_run_url,
                     external_run_id=event.external_run_id,
                     occurred_at=event.timestamp,
@@ -403,18 +496,35 @@ async def execute_opslog_backfill(
                 existing_run_ids.add(run_id)
             existing_env_versions.add((env_slug, version))
 
-    if not pending:
+    if not pending and not repairs:
         return 'skipped'
 
-    columns: list[str] = []
-    values: list[list[typing.Any]] = []
-    for entry in pending:
-        dumped = entry.model_dump(by_alias=True, mode='python')
-        dumped['is_deleted'] = 1 if entry.is_deleted else 0
-        if not columns:
-            columns = list(dumped.keys())
-        values.append(list(dumped.values()))
-    await clickhouse.client.Clickhouse.get_instance().insert(
-        'operations_log', values, columns
-    )
+    client_instance = clickhouse.client.Clickhouse.get_instance()
+    if pending:
+        columns: list[str] = []
+        values: list[list[typing.Any]] = []
+        for entry in pending:
+            dumped = entry.model_dump(by_alias=True, mode='python')
+            dumped['is_deleted'] = 1 if entry.is_deleted else 0
+            if not columns:
+                columns = list(dumped.keys())
+            values.append(list(dumped.values()))
+        await client_instance.insert('operations_log', values, columns)
+    if repairs:
+        # A separate insert: the repaired rows come off ``SELECT *`` and
+        # need not share the model dump's column order.
+        LOGGER.debug(
+            'opslog-backfill: filling commit_sha on %d row(s) of project %s',
+            len(repairs),
+            project_id,
+        )
+        repair_columns = list(repairs[0].keys())
+        await client_instance.insert(
+            'operations_log',
+            [
+                [repair[column] for column in repair_columns]
+                for repair in repairs
+            ],
+            repair_columns,
+        )
     return 'succeeded'
