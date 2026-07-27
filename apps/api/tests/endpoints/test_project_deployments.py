@@ -2445,11 +2445,23 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
 
     def test_block_creates_release_node_for_a_synced_tag(self) -> None:
         """A tag synced but never cut in Imbi still blocks."""
-        # First SET matches nothing; after the upsert the second SET does.
-        # The upsert itself issues a create then an update read.
-        self.mock_db.execute = mock.AsyncMock(
-            side_effect=[[], [], [{'rid': 'r9'}], [{'rid': 'r9'}]]
-        )
+        # Dispatch on the query rather than call order: the block only
+        # lands once the upsert has created the node, and keying off the
+        # text survives a change in how many round-trips the upsert makes.
+        created: dict[str, bool] = {'node': False}
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'CREATE (p)-[:HAS_RELEASE]' in query:
+                created['node'] = True
+                return []
+            if 'SET r.blocked_at' in query:
+                return [{'rid': 'r9'}] if created['node'] else []
+            return [{'rid': 'r9'}]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
         query = mock.AsyncMock(return_value=[{'sha': '1a9c610abcdef'}])
         with (
             mock.patch(f'{_MODULE}.clickhouse.query', new=query),
