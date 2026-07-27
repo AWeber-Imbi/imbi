@@ -1265,6 +1265,17 @@ export interface Release {
   title: string
   updated_at?: null | string
 }
+export interface ReleaseBlockRequest {
+  reason: string
+}
+
+export interface ReleaseBlockResponse {
+  blocked: boolean
+  blocked_at?: null | string
+  blocked_by?: null | string
+  blocked_reason?: null | string
+  tag: string
+}
 export interface ReleaseDependenciesResponse {
   components: ReleaseDependencyComponent[]
   release_id: string
@@ -1283,6 +1294,7 @@ export interface ReleaseDependencyComponent {
   supplier?: null | string
   version: string
 }
+
 export interface ReleaseDependencyIdentifier {
   kind: string
   value: string
@@ -1305,6 +1317,11 @@ export interface ReleaseHistoryEntry {
   author?: null | string
   /** Imbi user email of the release author (the resolved `created_by`). */
   author_email?: null | string
+  /** Blocked releases are refused by deploy and promote with a 409. */
+  blocked?: boolean
+  blocked_at?: null | string
+  blocked_by?: null | string
+  blocked_reason?: null | string
   ci_status: DeploymentCommitCiStatus
   notes_markdown?: null | string
   package_url?: null | string

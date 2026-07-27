@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import {
+  Ban,
   Check,
   ChevronDown,
   ChevronUp,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react'
 
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import type { ChipColors } from '@/lib/chip-colors'
@@ -61,7 +63,10 @@ export function PendingReleasesCard({
   const activeIdx = pending.findIndex((rel) => rel.tag === active.tag)
   const rolledUp = pending.slice(activeIdx + 1).map((rel) => rel.tag)
   const stillPending = pending.slice(0, activeIdx).map((rel) => rel.tag)
-  const canSubmit = canTrigger && !actions.deployPending
+  // A blocked release is refused server-side with a 409, so the button is
+  // disabled rather than letting the deploy fail after the fact.
+  const blocked = !!active.blocked
+  const canSubmit = canTrigger && !actions.deployPending && !blocked
   // The upstream can legitimately run a release that semver-ranks below
   // this env's current one (divergent lines / roll-forward of an older
   // line) — deployable, but worth calling out.
@@ -152,6 +157,17 @@ export function PendingReleasesCard({
             </section>
           </>
         )}
+
+        {blocked ? (
+          <div className="border-danger bg-danger text-danger flex gap-2 rounded-md border px-3 py-2.5">
+            <Ban className="mt-0.5 size-3.5 shrink-0" />
+            <span className="text-xs leading-relaxed">
+              <span className="font-mono">{active.tag}</span> is blocked
+              {active.blocked_reason ? <> — {active.blocked_reason}</> : null}.
+              Unblock it on the Releases tab to deploy it.
+            </span>
+          </div>
+        ) : null}
 
         {isDowngrade ? (
           <div className="border-warning bg-warning text-warning flex gap-2 rounded-md border px-3 py-2.5">
@@ -256,6 +272,15 @@ function ReleaseStack({
                 {rel.tag}
               </span>
               <CiStatusDot size={13} status={rel.ci_status} />
+              {rel.blocked ? (
+                <Badge
+                  className="inline-flex shrink-0 items-center gap-1"
+                  variant="danger"
+                >
+                  <Ban className="size-3" />
+                  Blocked
+                </Badge>
+              ) : null}
               <span className="text-secondary min-w-0 flex-1 truncate text-xs">
                 {rel.title ?? ''}
               </span>

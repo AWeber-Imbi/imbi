@@ -86,6 +86,8 @@ export function ReleasesTab({ orgSlug, project }: ReleasesTabProps) {
         <ReleaseHistory
           artifact={artifact}
           currentTag={released?.tag ?? null}
+          orgSlug={orgSlug}
+          projectId={project.id}
           releases={history}
         />
       </Swap>

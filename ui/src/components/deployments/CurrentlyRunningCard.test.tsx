@@ -1,7 +1,8 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import * as releases from '@/api/releases'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -12,6 +13,20 @@ import type {
 import { CurrentlyRunningCard } from './CurrentlyRunningCard'
 import type { PipelineStage } from './pipeline'
 import type { DeploymentActions } from './useDeploymentActions'
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/api/releases', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/api/releases')>('@/api/releases')
+  return { ...actual, blockRelease: vi.fn(), unblockRelease: vi.fn() }
+})
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}))
+
+const blockRelease = vi.mocked(releases.blockRelease)
+const unblockRelease = vi.mocked(releases.unblockRelease)
 
 const ENV = {
   id: 'production',
@@ -70,16 +85,38 @@ const makeActions = (): DeploymentActions => ({
   promotePending: false,
 })
 
+const renderCard = (stage: PipelineStage = STAGE, actions = makeActions()) =>
+  render(
+    <CurrentlyRunningCard
+      accent={null}
+      actions={actions}
+      canTrigger
+      orgSlug="acme"
+      projectId="p1"
+      stage={stage}
+    />,
+  )
+
+/** The row toggle; anchored so the "Block <tag>" action doesn't match. */
+const rowToggle = (tag: string) =>
+  screen.getByRole('button', {
+    name: new RegExp(`^${tag.replace('.', '\\.')}`),
+  })
+
+const stageWith = (rel: ReleaseHistoryEntry): PipelineStage => ({
+  ...STAGE,
+  rollbackTargets: [rel],
+})
+
 describe('CurrentlyRunningCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    blockRelease.mockResolvedValue({ blocked: true, tag: 'v6.4.0' })
+    unblockRelease.mockResolvedValue({ blocked: false, tag: 'v6.4.0' })
+  })
+
   it('shows the running version, deployer, and environment URL', () => {
-    render(
-      <CurrentlyRunningCard
-        accent={null}
-        actions={makeActions()}
-        canTrigger
-        stage={STAGE}
-      />,
-    )
+    renderCard()
     expect(screen.getByText('v6.5.0')).toBeInTheDocument()
     expect(screen.getByText('gavin')).toBeInTheDocument()
     expect(screen.getByText('service.example.com')).toBeInTheDocument()
@@ -87,29 +124,15 @@ describe('CurrentlyRunningCard', () => {
 
   it('expands a recent release into its notes', async () => {
     const user = userEvent.setup()
-    render(
-      <CurrentlyRunningCard
-        accent={null}
-        actions={makeActions()}
-        canTrigger
-        stage={STAGE}
-      />,
-    )
-    await user.click(screen.getByRole('button', { name: /v6\.4\.0/ }))
+    renderCard()
+    await user.click(rowToggle('v6.4.0'))
     expect(screen.getByText('old fix')).toBeInTheDocument()
   })
 
   it('rolls back through the confirm dialog', async () => {
     const actions = makeActions()
     const user = userEvent.setup()
-    render(
-      <CurrentlyRunningCard
-        accent={null}
-        actions={actions}
-        canTrigger
-        stage={STAGE}
-      />,
-    )
+    renderCard(STAGE, actions)
     await user.click(screen.getByRole('button', { name: 'Roll back' }))
     await user.click(
       screen.getByRole('button', { name: 'Roll back to v6.4.0' }),
@@ -122,5 +145,41 @@ describe('CurrentlyRunningCard', () => {
       rollback: true,
       sha: '000999000999',
     })
+  })
+
+  it('blocks a recent release with a reason', async () => {
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Block v6.4.0' }))
+    const submit = screen.getByRole('button', { name: 'Block v6.4.0' })
+    expect(submit).toBeDisabled()
+    await user.type(screen.getByRole('textbox'), 'Regression in checkout')
+    await user.click(submit)
+    await waitFor(() =>
+      expect(blockRelease).toHaveBeenCalledWith('acme', 'p1', 'v6.4.0', {
+        reason: 'Regression in checkout',
+      }),
+    )
+  })
+
+  it('will not roll back to a blocked release, and can unblock it', async () => {
+    const user = userEvent.setup()
+    renderCard(
+      stageWith({
+        ...ROLLBACK,
+        blocked: true,
+        blocked_by: 'gavinr@aweber.com',
+        blocked_reason: 'Regression in checkout',
+      }),
+    )
+    // The Blocked badge replaces the Roll back button outright.
+    expect(screen.getByText('Blocked')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Roll back' })).toBeNull()
+    // Unblock sits with the reason, not in the collapsed row.
+    expect(screen.queryByRole('button', { name: 'Unblock' })).toBeNull()
+    await user.click(rowToggle('v6.4.0'))
+    expect(screen.getByText(/Regression in checkout/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Unblock' }))
+    expect(unblockRelease).toHaveBeenCalledWith('acme', 'p1', 'v6.4.0')
   })
 })

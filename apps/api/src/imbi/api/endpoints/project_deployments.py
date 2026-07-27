@@ -260,6 +260,36 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     release_url: str | None = None
     tag_url: str | None = None
     package_url: str | None = None
+    #: ``True`` when the release is blocked from shipping. Deploys and
+    #: promotes targeting it are refused with a 409; the UI renders the
+    #: row as blocked and surfaces ``blocked_reason``.
+    blocked: bool = False
+    blocked_reason: str | None = None
+    blocked_by: str | None = None
+    blocked_at: datetime.datetime | None = None
+
+
+class ReleaseBlockRequest(pydantic.BaseModel):
+    """Body for ``POST /deployments/releases/{tag}/block``."""
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    reason: typing.Annotated[
+        str,
+        pydantic.StringConstraints(
+            strip_whitespace=True, min_length=1, max_length=500
+        ),
+    ]
+
+
+class ReleaseBlockResponse(pydantic.BaseModel):
+    """Block state for a release after a block / unblock."""
+
+    tag: str
+    blocked: bool
+    blocked_reason: str | None = None
+    blocked_by: str | None = None
+    blocked_at: datetime.datetime | None = None
 
 
 class ReleaseCutRequest(pydantic.BaseModel):
@@ -1483,6 +1513,14 @@ async def _handle_deploy(
                 "this env's can_deploy flag."
             ),
         )
+    # Refuse before touching the plugin: a blocked release must not reach
+    # the remote at all, and the check is a single graph read.
+    await _assert_not_blocked(
+        db,
+        project_id,
+        tag=body.ref_label,
+        committish=body.committish[:7].lower(),
+    )
     resolved, ctx, credentials = await _resolve_and_context(
         db,
         org_slug,
@@ -1783,6 +1821,18 @@ async def _handle_promote(
                 "Enable the env's can_promote flag to allow promotes."
             ),
         )
+
+    # ``body.tag`` may name an existing release (promote-from-tag) or a SHA
+    # a new tag gets cut at; ``from_committish`` is the build being
+    # promoted.  Either identity resolving to a blocked release stops the
+    # promote, so blocking a rolled-back tag also stops it being re-cut
+    # from the same commit.
+    await _assert_not_blocked(
+        db,
+        project_id,
+        tag=body.tag,
+        committish=body.from_committish[:7].lower(),
+    )
 
     # Infer promote behaviour from the ref shape of ``body.tag``:
     #
@@ -2732,6 +2782,7 @@ async def get_release_history(
         node = nodes.get(name) or {}
         tagger = row.get('tagger_name')
         created_by = node.get('created_by')
+        blocked_at = node.get('blocked_at')
         entries.append(
             ReleaseHistoryEntry(
                 tag=name,
@@ -2750,6 +2801,10 @@ async def get_release_history(
                 release_url=_release_url_from_links(node.get('links')),
                 tag_url=str(row['url']) if row.get('url') else None,
                 package_url=None,
+                blocked=bool(blocked_at),
+                blocked_reason=node.get('blocked_reason'),
+                blocked_by=node.get('blocked_by'),
+                blocked_at=blocked_at,
             )
         )
     # Order by released version (highest semver first) so the head of the
@@ -2873,3 +2928,252 @@ async def cut_release(
         recorded=True,
         warning='; '.join(warnings) if warnings else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Release blocks
+#
+# Blocking a release keeps it from shipping again -- the rollback follow-up:
+# a regression is found, the release is rolled back, and the tag is blocked
+# so nobody re-deploys or re-promotes it while the fix is in flight.  The
+# block is global (every environment) and carries a required reason.  State
+# lives on the ``Release`` node as ``blocked_at`` / ``blocked_by`` /
+# ``blocked_reason``; ``blocked_at`` is the flag.
+# ---------------------------------------------------------------------------
+
+
+async def _tag_sha(project_id: str, tag: str) -> str | None:
+    """Return the synced commit SHA for ``tag``, or ``None``."""
+    rows = await clickhouse.query(
+        'SELECT sha FROM tags FINAL '
+        'WHERE project_id = {project_id:String} AND name = {tag:String} '
+        'LIMIT 1',
+        {'project_id': project_id, 'tag': tag},
+    )
+    return str(rows[0]['sha']) if rows and rows[0].get('sha') else None
+
+
+async def _set_release_block(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    blocked_at: str | None,
+    blocked_by: str | None,
+    reason: str | None,
+) -> bool:
+    """Write the ``blocked_*`` properties on a tagged ``Release``.
+
+    Passing ``None`` for all three clears the block (AGE stores a
+    ``null`` assignment as property removal).  Returns ``False`` when no
+    ``Release`` node for ``tag`` exists under the org, letting the caller
+    decide between creating one and returning a 404.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
+    SET r.blocked_at = {blocked_at},
+        r.blocked_by = {blocked_by},
+        r.blocked_reason = {reason},
+        r.updated_at = {now}
+    RETURN r.id AS rid
+    """
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'tag': tag,
+            'blocked_at': blocked_at,
+            'blocked_by': blocked_by,
+            'reason': reason,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        ['rid'],
+    )
+    return bool(rows)
+
+
+async def _blocked_release(
+    db: graph.Graph,
+    project_id: str,
+    *,
+    tag: str | None,
+    committish: str | None,
+) -> tuple[str, str | None] | None:
+    """Return ``(tag_or_committish, reason)`` for a blocked release.
+
+    Matches on either identity so both shipping paths are covered: a
+    deploy names a tag or a raw SHA, and a promote names the tag being
+    promoted plus the committish it was cut from.  ``None`` means
+    nothing blocked matches.  Empty strings stand in for the absent
+    identity -- neither ever matches a stored value, and AGE has no
+    NULL equality.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+    WHERE r.blocked_at IS NOT NULL
+      AND (COALESCE(r.tag, '') = {tag}
+           OR COALESCE(r.committish, '') = {committish})
+    RETURN r{{.tag, .committish, .blocked_reason}} AS release
+    """
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'tag': tag or '',
+            'committish': committish or '',
+        },
+        ['release'],
+    )
+    if not rows:
+        return None
+    node = typing.cast(
+        'dict[str, typing.Any]', graph.parse_agtype(rows[0]['release'])
+    )
+    label = node.get('tag') or node.get('committish') or (tag or committish)
+    reason = node.get('blocked_reason')
+    return str(label), str(reason) if reason else None
+
+
+async def _assert_not_blocked(
+    db: graph.Graph,
+    project_id: str,
+    *,
+    tag: str | None = None,
+    committish: str | None = None,
+) -> None:
+    """Raise 409 when the release being shipped is blocked."""
+    blocked = await _blocked_release(
+        db, project_id, tag=tag, committish=committish
+    )
+    if blocked is None:
+        return
+    label, reason = blocked
+    detail = f'Release {label!r} is blocked and cannot be deployed'
+    if reason:
+        detail += f': {reason}'
+    raise fastapi.HTTPException(status_code=409, detail=detail)
+
+
+@project_deployments_router.post('/releases/{tag}/block')
+async def block_release(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    body: ReleaseBlockRequest,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> ReleaseBlockResponse:
+    """Block ``tag`` from being deployed or promoted, with a reason.
+
+    Blocking is idempotent and re-blocking overwrites the reason and
+    re-stamps the actor.  A tag that has been synced but never cut
+    through Imbi has no ``Release`` node yet; one is created from the
+    synced tag so the block still holds.  A tag Imbi has never seen is
+    a 404.
+    """
+    blocked_at = datetime.datetime.now(datetime.UTC)
+    matched = await _set_release_block(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocked_at=blocked_at.isoformat(),
+        blocked_by=auth.principal_name,
+        reason=body.reason,
+    )
+    if not matched:
+        sha = await _tag_sha(project_id, tag)
+        if sha is None:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'No release found for tag {tag!r}',
+            )
+        await _upsert_release_node(
+            db,
+            project_id=project_id,
+            tag=tag,
+            committish=sha[:7].lower(),
+            title=tag,
+            notes_markdown='',
+            release_url=None,
+            created_by=auth.principal_name,
+        )
+        matched = await _set_release_block(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            tag=tag,
+            blocked_at=blocked_at.isoformat(),
+            blocked_by=auth.principal_name,
+            reason=body.reason,
+        )
+        if not matched:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'No release found for tag {tag!r}',
+            )
+    LOGGER.info(
+        'Release blocked: project=%s tag=%s actor=%s reason=%s',
+        project_id,
+        tag,
+        auth.principal_name,
+        body.reason,
+    )
+    return ReleaseBlockResponse(
+        tag=tag,
+        blocked=True,
+        blocked_reason=body.reason,
+        blocked_by=auth.principal_name,
+        blocked_at=blocked_at,
+    )
+
+
+@project_deployments_router.delete('/releases/{tag}/block')
+async def unblock_release(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> ReleaseBlockResponse:
+    """Clear the block on ``tag``, letting it ship again.
+
+    Unblocking an unblocked release is a no-op, not an error; a 404 only
+    means no ``Release`` node exists for the tag.
+    """
+    matched = await _set_release_block(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocked_at=None,
+        blocked_by=None,
+        reason=None,
+    )
+    if not matched:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'No release found for tag {tag!r}',
+        )
+    LOGGER.info(
+        'Release unblocked: project=%s tag=%s actor=%s',
+        project_id,
+        tag,
+        auth.principal_name,
+    )
+    return ReleaseBlockResponse(tag=tag, blocked=False)

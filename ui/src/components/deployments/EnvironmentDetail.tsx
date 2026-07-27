@@ -69,6 +69,8 @@ export function EnvironmentDetail({
         accent={accent}
         actions={actions}
         canTrigger={canTrigger}
+        orgSlug={orgSlug}
+        projectId={projectId}
         stage={stage}
       />
     </div>

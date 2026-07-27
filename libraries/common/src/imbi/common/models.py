@@ -897,6 +897,12 @@ class Release(GraphModel):
     share a tag like ``1.0.0``).  The active tag format is a runtime
     setting — see ``imbi.common.versioning.validate_version``.
 
+    A release may be blocked to keep it from shipping again — e.g. after
+    a rollback exposed a regression.  ``blocked_at`` is the flag: when it
+    is set, deploys and promotes targeting this release are refused, and
+    ``blocked_reason`` explains why.  Unblocking clears all three
+    ``blocked_*`` properties.
+
     """
 
     project: typing.Annotated[
@@ -929,6 +935,9 @@ class Release(GraphModel):
             ),
         ),
     ]
+    blocked_at: datetime.datetime | None = None
+    blocked_by: str | None = None
+    blocked_reason: str | None = None
 
 
 class ReleaseDeploymentEdge(RelationshipEdge):
