@@ -183,6 +183,38 @@ describe('PendingReleasesCard', () => {
     expect(screen.getByText('notes for v6.5.1')).toBeInTheDocument()
   })
 
+  it('refuses to deploy a blocked release and names the reason', () => {
+    renderCard([
+      {
+        ...entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix'),
+        blocked: true,
+        blocked_reason: 'Regression in the checkout flow',
+      },
+    ])
+    expect(
+      screen.getByText(/Regression in the checkout flow/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Deploy v6\.5\.1 to production/ }),
+    ).toBeDisabled()
+  })
+
+  it('marks blocked releases in the selectable stack', () => {
+    renderCard([
+      entry('v6.5.2', 'ccc333ccc333', 'Net-zero patch'),
+      {
+        ...entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix'),
+        blocked: true,
+        blocked_reason: 'Rolled back',
+      },
+    ])
+    // The newest is selected and deployable; the blocked one is labelled.
+    expect(screen.getByText('Blocked')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Deploy v6\.5\.2 to production/ }),
+    ).toBeEnabled()
+  })
+
   it('warns when the pending release ranks below the running one', () => {
     // Production runs 2.101.0; staging's 1.102.3 is still deployable but
     // flagged as a roll back to the older line.

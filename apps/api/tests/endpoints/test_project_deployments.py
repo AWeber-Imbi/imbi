@@ -245,6 +245,11 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             mock_get_current_user
         )
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        # Default every ad-hoc Cypher read to "no rows".  Without this the
+        # AsyncMock hands back a truthy MagicMock, which reads as a match to
+        # any caller that treats a non-empty result as a hit (e.g. the
+        # release-block gate).  Tests needing rows set their own side_effect.
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
@@ -2360,6 +2365,215 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         data = response.json()
         self.assertIsNotNone(data['warning'])
         self.assertIn('create_release', data['warning'])
+
+
+class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
+    """Blocking a release, unblocking it, and the deploy / promote gate."""
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _BLOCK = f'{_BASE}/releases/v3.32.2/block'
+
+    @staticmethod
+    def _blocked_row(
+        *,
+        tag: str = 'v3.32.2',
+        committish: str = '1a9c610',
+        reason: str | None = 'Regression in checkout',
+    ) -> list[dict[str, typing.Any]]:
+        """One row shaped like the ``_blocked_release`` projection."""
+        return [
+            {
+                'release': json.dumps(
+                    {
+                        'tag': tag,
+                        'committish': committish,
+                        'blocked_reason': reason,
+                    }
+                )
+            }
+        ]
+
+    def test_block_sets_state_and_echoes_reason(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[{'rid': 'r1'}])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BLOCK, json={'reason': 'Regression in checkout'}
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['tag'], 'v3.32.2')
+        self.assertTrue(data['blocked'])
+        self.assertEqual(data['blocked_reason'], 'Regression in checkout')
+        self.assertEqual(data['blocked_by'], 'admin@example.com')
+        self.assertIsNotNone(data['blocked_at'])
+
+    def test_block_requires_a_reason(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            blank = client.post(self._BLOCK, json={'reason': '   '})
+            missing = client.post(self._BLOCK, json={})
+        self.assertEqual(blank.status_code, 422)
+        self.assertEqual(missing.status_code, 422)
+
+    def test_block_creates_release_node_for_a_synced_tag(self) -> None:
+        """A tag synced but never cut in Imbi still blocks."""
+        # First SET matches nothing; after the upsert the second SET does.
+        # The upsert itself issues a create then an update read.
+        self.mock_db.execute = mock.AsyncMock(
+            side_effect=[[], [], [{'rid': 'r9'}], [{'rid': 'r9'}]]
+        )
+        query = mock.AsyncMock(return_value=[{'sha': '1a9c610abcdef'}])
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(self._BLOCK, json={'reason': 'Rolled back'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['blocked'])
+        self.assertEqual(query.await_args.args[1]['tag'], 'v3.32.2')
+
+    def test_block_unknown_tag_is_404(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch(
+                f'{_MODULE}.clickhouse.query',
+                new=mock.AsyncMock(return_value=[]),
+            ),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(self._BLOCK, json={'reason': 'Rolled back'})
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('No release found', response.json()['detail'])
+
+    def test_unblock_clears_the_state(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[{'rid': 'r1'}])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.delete(self._BLOCK)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['blocked'])
+        self.assertIsNone(data['blocked_reason'])
+        # All three properties are nulled in the SET.
+        params = self.mock_db.execute.await_args.args[1]
+        self.assertIsNone(params['blocked_at'])
+        self.assertIsNone(params['blocked_by'])
+        self.assertIsNone(params['reason'])
+
+    def test_unblock_unknown_tag_is_404(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.delete(self._BLOCK)
+        self.assertEqual(response.status_code, 404)
+
+    def test_deploy_of_a_blocked_release_is_409_with_the_reason(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=self._blocked_row())
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'deploy',
+                    'environment': 'production',
+                    'committish': '1a9c610',
+                    'ref_label': 'v3.32.2',
+                },
+            )
+        self.assertEqual(response.status_code, 409)
+        detail = response.json()['detail']
+        self.assertIn("Release 'v3.32.2' is blocked", detail)
+        self.assertIn('Regression in checkout', detail)
+
+    def test_promote_of_a_blocked_release_is_409(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=self._blocked_row())
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'promote',
+                    'from_environment': 'staging',
+                    'to_environment': 'production',
+                    'from_committish': '1a9c610',
+                    'tag': 'v3.32.2',
+                },
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('is blocked', response.json()['detail'])
+
+    def test_block_gate_omits_the_reason_when_none_recorded(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=self._blocked_row(reason=None)
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'deploy',
+                    'environment': 'production',
+                    'committish': '1a9c610',
+                    'ref_label': 'v3.32.2',
+                },
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()['detail'],
+            "Release 'v3.32.2' is blocked and cannot be deployed",
+        )
+
+    def test_release_history_reports_block_state(self) -> None:
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        blocked_at = datetime.datetime(2026, 1, 3, tzinfo=datetime.UTC)
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': 'v3.32.2',
+                        'sha': 'sha3322',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': when,
+                    },
+                    {
+                        'name': 'v3.32.1',
+                        'sha': 'sha3321',
+                        'tagged_at': when,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': when,
+                    },
+                ],
+                [],  # ci_status lookup
+            ]
+        )
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': 'v3.32.2',
+                            'title': 'Release 3.32.2',
+                            'created_by': 'gr',
+                            'blocked_at': blocked_at.isoformat(),
+                            'blocked_by': 'admin@example.com',
+                            'blocked_reason': 'Regression in checkout',
+                        }
+                    )
+                }
+            ]
+        )
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data[0]['tag'], 'v3.32.2')
+        self.assertTrue(data[0]['blocked'])
+        self.assertEqual(data[0]['blocked_reason'], 'Regression in checkout')
+        self.assertEqual(data[0]['blocked_by'], 'admin@example.com')
+        self.assertIsNotNone(data[0]['blocked_at'])
+        # A tag with no Release node is not blocked.
+        self.assertFalse(data[1]['blocked'])
+        self.assertIsNone(data[1]['blocked_reason'])
 
 
 class ResolveTagFormatsTestCase(unittest.IsolatedAsyncioTestCase):

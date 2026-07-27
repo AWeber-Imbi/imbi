@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import {
+  Ban,
   ChevronDown,
   ChevronRight,
   CircleDot,
@@ -9,7 +10,10 @@ import {
   RotateCcw,
 } from 'lucide-react'
 
+import { BlockReleaseDialog } from '@/components/releases/BlockReleaseDialog'
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
+import { useReleaseBlockMutation } from '@/components/releases/useReleaseBlockMutation'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
@@ -27,6 +31,8 @@ interface CurrentlyRunningCardProps {
   accent: ChipColors | null
   actions: DeploymentActions
   canTrigger: boolean
+  orgSlug: string
+  projectId: string
   stage: PipelineStage
 }
 
@@ -39,10 +45,21 @@ export function CurrentlyRunningCard({
   accent,
   actions,
   canTrigger,
+  orgSlug,
+  projectId,
   stage,
 }: CurrentlyRunningCardProps) {
   const [openTag, setOpenTag] = useState<null | string>(null)
   const [confirming, setConfirming] = useState<null | ReleaseHistoryEntry>(null)
+  const [blocking, setBlocking] = useState<null | string>(null)
+  const {
+    block,
+    isPending: blockPending,
+    unblock,
+  } = useReleaseBlockMutation({
+    orgSlug,
+    projectId,
+  })
   const release = stage.current?.release ?? null
   const envUrl = sanitizeHttpUrl(stage.env.url ?? null)
 
@@ -139,13 +156,16 @@ export function CurrentlyRunningCard({
             </p>
             {stage.rollbackTargets.map((rel) => (
               <RollbackRow
+                blockPending={blockPending}
                 canTrigger={canTrigger}
                 isOpen={openTag === rel.tag}
                 key={rel.tag}
+                onBlock={() => setBlocking(rel.tag)}
                 onRollback={() => setConfirming(rel)}
                 onToggle={() =>
                   setOpenTag((o) => (o === rel.tag ? null : rel.tag))
                 }
+                onUnblock={() => unblock(rel.tag)}
                 rel={rel}
               />
             ))}
@@ -184,23 +204,44 @@ export function CurrentlyRunningCard({
         open={confirming !== null}
         title={`Roll back ${stage.env.name}?`}
       />
+
+      <BlockReleaseDialog
+        isPending={blockPending}
+        onBlock={(reason) => {
+          if (blocking) block(blocking, reason)
+          setBlocking(null)
+        }}
+        onOpenChange={(next) => {
+          if (!next) setBlocking(null)
+        }}
+        open={blocking !== null}
+        tag={blocking ?? ''}
+      />
     </StageCardShell>
   )
 }
 
+// fallow-ignore-next-line complexity
 function RollbackRow({
+  blockPending,
   canTrigger,
   isOpen,
+  onBlock,
   onRollback,
   onToggle,
+  onUnblock,
   rel,
 }: {
+  blockPending: boolean
   canTrigger: boolean
   isOpen: boolean
+  onBlock: () => void
   onRollback: () => void
   onToggle: () => void
+  onUnblock: () => void
   rel: ReleaseHistoryEntry
 }) {
+  const blocked = !!rel.blocked
   return (
     <div
       className={cn(
@@ -230,20 +271,72 @@ function RollbackRow({
             value={rel.published_at}
           />
         </button>
-        <Button
-          className="h-7 px-2.5 text-xs"
-          disabled={!canTrigger}
-          onClick={onRollback}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <RotateCcw className="mr-1 size-3.5" />
-          Roll back
-        </Button>
+        {/* A blocked release can't be rolled back to, so the badge takes the
+            button's place rather than sitting beside a dead control. */}
+        {blocked ? (
+          <Badge className="inline-flex items-center gap-1" variant="danger">
+            <Ban className="size-3" />
+            Blocked
+          </Badge>
+        ) : (
+          <Button
+            className="h-7 px-2.5 text-xs"
+            disabled={!canTrigger}
+            onClick={onRollback}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RotateCcw className="mr-1 size-3.5" />
+            Roll back
+          </Button>
+        )}
+        {blocked ? (
+          // Keep the glyph in the slot so rows stay aligned; red, and inert
+          // because the Blocked badge already names the state and Unblock
+          // lives with the reason in the expanded row.
+          <span
+            aria-hidden="true"
+            className="text-danger flex h-7 items-center px-2"
+          >
+            <Ban className="size-3.5" />
+          </span>
+        ) : (
+          <Button
+            aria-label={`Block ${rel.tag}`}
+            className="text-tertiary hover:text-danger h-7 px-2"
+            disabled={blockPending}
+            onClick={onBlock}
+            size="sm"
+            title={`Block ${rel.tag} from being deployed`}
+            type="button"
+            variant="ghost"
+          >
+            <Ban className="size-3.5" />
+          </Button>
+        )}
       </div>
       {isOpen ? (
         <div className="px-2 pb-3 pl-8">
+          {blocked ? (
+            <div className="text-danger mb-2 flex items-start gap-1.5 text-xs leading-relaxed">
+              <Ban className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Blocked from deploying and promoting
+                {rel.blocked_reason ? <> — {rel.blocked_reason}</> : null}
+                {rel.blocked_by ? <> · by {rel.blocked_by}</> : null}
+              </span>
+              <Button
+                className="text-danger hover:bg-danger ml-auto h-auto shrink-0 px-2 py-0.5 text-xs"
+                disabled={blockPending}
+                onClick={onUnblock}
+                type="button"
+                variant="ghost"
+              >
+                Unblock
+              </Button>
+            </div>
+          ) : null}
           <ReleaseNotesMarkdown notes={rel.notes_markdown} />
           {rel.author ? (
             <div className="text-tertiary mt-2 inline-flex items-center gap-1.5 text-xs">

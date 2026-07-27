@@ -1,21 +1,32 @@
 import { useState } from 'react'
 
-import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import { Ban, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { ReleaseHistoryEntry } from '@/types'
 
 import type { ArtifactInfo } from './artifact'
+import { BlockReleaseDialog } from './BlockReleaseDialog'
 import { CiStatusDot } from './CiStatusDot'
+import { useReleaseBlockMutation } from './useReleaseBlockMutation'
+
+interface BlockedNoteProps {
+  isPending: boolean
+  onUnblock: () => void
+  rel: ReleaseHistoryEntry
+}
 
 interface ReleaseHistoryProps {
   artifact: ArtifactInfo
   currentTag: null | string
+  orgSlug: string
+  projectId: string
   releases: ReleaseHistoryEntry[]
 }
 
@@ -23,16 +34,26 @@ interface ReleaseRowProps {
   artifact: ArtifactInfo
   isCurrent: boolean
   isOpen: boolean
+  isPending: boolean
+  onBlock: () => void
   onToggle: () => void
+  onUnblock: () => void
   rel: ReleaseHistoryEntry
 }
 
 export function ReleaseHistory({
   artifact,
   currentTag,
+  orgSlug,
+  projectId,
   releases,
 }: ReleaseHistoryProps) {
   const [open, setOpen] = useState<null | string>(null)
+  const [blocking, setBlocking] = useState<null | string>(null)
+  const { block, isPending, unblock } = useReleaseBlockMutation({
+    orgSlug,
+    projectId,
+  })
   if (releases.length === 0) return null
   return (
     <div className="border-tertiary mt-3 border-t pt-3">
@@ -45,12 +66,62 @@ export function ReleaseHistory({
             artifact={artifact}
             isCurrent={rel.tag === currentTag}
             isOpen={open === rel.tag}
+            isPending={isPending}
             key={rel.tag}
+            onBlock={() => setBlocking(rel.tag)}
             onToggle={() => setOpen((o) => (o === rel.tag ? null : rel.tag))}
+            onUnblock={() => unblock(rel.tag)}
             rel={rel}
           />
         ))}
       </div>
+      <BlockReleaseDialog
+        isPending={isPending}
+        onBlock={(reason) => {
+          if (blocking) block(blocking, reason)
+          setBlocking(null)
+        }}
+        onOpenChange={(next) => {
+          if (!next) setBlocking(null)
+        }}
+        open={blocking !== null}
+        tag={blocking ?? ''}
+      />
+    </div>
+  )
+}
+
+/** Why the release is blocked, who blocked it, and how to lift it. */
+function BlockedNote({ isPending, onUnblock, rel }: BlockedNoteProps) {
+  return (
+    <div className="border-danger bg-danger text-danger mt-1 mb-3 flex items-start gap-2 rounded-md border px-3 py-2.5">
+      <Ban className="mt-0.5 size-3.5 shrink-0" />
+      <div className="min-w-0 flex-1 text-xs leading-relaxed">
+        <p>
+          Blocked from deploying and promoting
+          {rel.blocked_reason ? <> — {rel.blocked_reason}</> : null}
+        </p>
+        {rel.blocked_by ? (
+          <p className="mt-1 opacity-80">
+            by {rel.blocked_by}
+            {rel.blocked_at ? (
+              <>
+                {' · '}
+                <RelativeTime tooltip={false} value={rel.blocked_at} />
+              </>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
+      <Button
+        className="h-auto shrink-0 px-2 py-1 text-xs"
+        disabled={isPending}
+        onClick={onUnblock}
+        type="button"
+        variant="outline"
+      >
+        Unblock
+      </Button>
     </div>
   )
 }
@@ -60,9 +131,13 @@ function ReleaseRow({
   artifact,
   isCurrent,
   isOpen,
+  isPending,
+  onBlock,
   onToggle,
+  onUnblock,
   rel,
 }: ReleaseRowProps) {
+  const blocked = !!rel.blocked
   return (
     <div
       className={cn(
@@ -90,10 +165,25 @@ function ReleaseRow({
           tooltip={false}
           value={rel.published_at}
         />
-        {isCurrent ? <Badge variant="accent">Latest</Badge> : <span />}
+        <span className="flex items-center gap-1.5">
+          {blocked ? (
+            <Badge className="inline-flex items-center gap-1" variant="danger">
+              <Ban className="size-3" />
+              Blocked
+            </Badge>
+          ) : null}
+          {isCurrent ? <Badge variant="accent">Latest</Badge> : null}
+        </span>
       </button>
       {isOpen ? (
         <div className="px-2 pb-3 pl-[2.1rem]">
+          {blocked ? (
+            <BlockedNote
+              isPending={isPending}
+              onUnblock={onUnblock}
+              rel={rel}
+            />
+          ) : null}
           {rel.notes_markdown ? (
             <div className="document-markdown max-w-none text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
               <Markdown
@@ -143,6 +233,18 @@ function ReleaseRow({
                 {artifact.indexLabel ?? 'Package index'}
               </a>
             ) : null}
+            {blocked ? null : (
+              <Button
+                className="text-tertiary hover:text-danger ml-auto h-auto gap-1 px-0 py-0 text-xs"
+                disabled={isPending}
+                onClick={onBlock}
+                type="button"
+                variant="ghost"
+              >
+                <Ban className="size-3" />
+                Block release
+              </Button>
+            )}
           </div>
         </div>
       ) : null}

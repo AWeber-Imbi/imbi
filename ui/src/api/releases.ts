@@ -3,6 +3,8 @@
 import type {
   CutReleaseRequest,
   CutReleaseResponse,
+  ReleaseBlockRequest,
+  ReleaseBlockResponse,
   ReleaseDrift,
   ReleaseHistoryEntry,
 } from '@/types'
@@ -48,3 +50,21 @@ export const cutRelease = (
     `${base(orgSlug, projectId)}/releases/cut`,
     body,
   )
+
+const blockPath = (orgSlug: string, projectId: string, tag: string): string =>
+  `${base(orgSlug, projectId)}/releases/${encodeURIComponent(tag)}/block`
+
+export const blockRelease = (
+  orgSlug: string,
+  projectId: string,
+  tag: string,
+  body: ReleaseBlockRequest,
+): Promise<ReleaseBlockResponse> =>
+  apiClient.post<ReleaseBlockResponse>(blockPath(orgSlug, projectId, tag), body)
+
+export const unblockRelease = (
+  orgSlug: string,
+  projectId: string,
+  tag: string,
+): Promise<ReleaseBlockResponse> =>
+  apiClient.delete<ReleaseBlockResponse>(blockPath(orgSlug, projectId, tag))
