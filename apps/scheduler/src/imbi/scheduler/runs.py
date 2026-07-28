@@ -1,8 +1,11 @@
 """Run history.
 
-One row per attempt in ``imbi.scheduler_runs``, rewritten as the run
-transitions. ``_row_version`` increments on each write, so ReplacingMergeTree
-collapses a ``running`` row and its terminal row into one.
+One row per firing in ``imbi.scheduler_runs``, rewritten as the run
+transitions: the executor writes it ``running`` before attempting anything and
+the engine writes the terminal state over it. ``_row_version`` increments on
+that second write, so ReplacingMergeTree collapses the pair into one row.
+Retries do not add rows — only the attempt that ended the run is recorded, and
+its ``attempt`` says how many it took.
 
 Nothing secret reaches this table: :func:`excerpt` scrubs credentials out of
 response bodies and caps their length before anything is stored or logged.

@@ -32,6 +32,31 @@ HTTP_OK = 200
 DEFAULT_TOKEN_LIFETIME = 900
 
 
+def unresolvable(
+    identity: models.Identity | None, config: settings.Scheduler
+) -> str | None:
+    """Return why `identity` can never resolve, or None if it can.
+
+    Checked when a task is stored as well as when it fires, from here so the
+    two cannot drift: accepting an identity at creation that fire time refuses
+    produces a task that skips every firing and then disables itself, with the
+    reason buried in run history rather than returned to whoever created it.
+
+    Delegated identity is deliberately absent: it is refused at fire time
+    (ADR 0003) but a task may legitimately be written ahead of the
+    token-exchange grant landing.
+    """
+    if identity is None or identity.kind != 'service_account':
+        return None
+    if identity.subject != config.sa_slug:
+        return (
+            f'cannot run as service account {identity.subject!r}: '
+            "only the scheduler's own service account is available "
+            '(see ADR 0002)'
+        )
+    return None
+
+
 class IdentityError(Exception):
     """Identity could not be resolved.
 
@@ -156,13 +181,23 @@ class Resolver:
         return await self._delegated_bearer(task.identity)
 
     async def _service_account_bearer(self, identity: models.Identity) -> str:
-        if identity.subject != self._settings.sa_slug:
-            raise IdentityError(
-                f'cannot run as service account {identity.subject!r}: '
-                "only the scheduler's own service account is available "
-                '(see ADR 0002)'
-            )
+        reason = unresolvable(identity, self._settings)
+        if reason is not None:
+            raise IdentityError(reason)
         return await self.service_account.token()
+
+    def invalidate(self, task: models.Task) -> None:
+        """Discard the credential `task`'s next run would otherwise reuse.
+
+        A 401 from a target means the cached token is no longer good — a
+        rotated client secret, or a token revoked inside the refresh margin.
+        Without this the cache would keep serving it until its own
+        ``expires_at`` lapses, failing every run in between.
+        """
+        if task.identity is not None and (
+            task.identity.kind == 'service_account'
+        ):
+            self.service_account.invalidate()
 
     async def _delegated_bearer(self, identity: models.Identity) -> str:
         raise IdentityError(

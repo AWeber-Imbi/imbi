@@ -23,6 +23,8 @@ LOGGER = logging.getLogger(__name__)
 
 RETRYABLE_CLIENT_STATUS = 429
 
+HTTP_UNAUTHORIZED = 401
+
 HTTP_INTERNAL_SERVER_ERROR = 500
 
 
@@ -46,19 +48,26 @@ class Executor:
         *,
         trace_id: str = '',
     ) -> runs.Run:
-        """Fire `task` once, honoring its retry policy."""
+        """Fire `task` once, honoring its retry policy.
+
+        The `running` row is written before anything is attempted, and the
+        caller writes the terminal row over it. Two writes rather than one so
+        that an in-flight run is visible while it runs, and so a replica
+        killed mid-run leaves the firing in history instead of leaving no
+        trace that it ever happened.
+        """
         actor = self._resolver.actor_name(task)
         run = runs.start(task, fired_at, actor_name=actor, trace_id=trace_id)
+        await runs.record(run)
         try:
             bearer = await self._resolver.bearer(task)
         except identity.IdentityError as err:
             LOGGER.info('Skipping %s: %s', task.slug, err.reason)
-            return runs.skipped(
-                task,
-                fired_at,
-                err.reason,
-                actor_name=actor,
-                trace_id=trace_id,
+            return runs.finish(
+                run,
+                'skipped',
+                runs.Outcome(error_type='skipped', error_message=err.reason),
+                finished_at=fired_at,
             )
         try:
             request = self._render(task, run.run_id, fired_at)
@@ -107,14 +116,52 @@ class Executor:
     ) -> runs.Run:
         attempts = task.execution.retries + 1
         result = run
-        for attempt in range(1, attempts + 1):
+        reauthed = False
+        attempt = 1
+        while attempt <= attempts:
             current = run.model_copy(update={'attempt': attempt})
             result = await self._attempt(task, current, request, bearer)
+            if self._needs_reauth(result, bearer, reauthed=reauthed):
+                reauthed = True
+                try:
+                    bearer = await self._reauthenticate(task)
+                except identity.IdentityError as err:
+                    return runs.finish(
+                        current,
+                        'skipped',
+                        runs.Outcome(
+                            error_type='skipped', error_message=err.reason
+                        ),
+                    )
+                continue
             if not _is_retryable(result):
                 return result
             if attempt < attempts:
                 await asyncio.sleep(_backoff(task, attempt))
+            attempt += 1
         return result
+
+    def _needs_reauth(
+        self, result: runs.Run, bearer: str | None, *, reauthed: bool
+    ) -> bool:
+        """Return whether a 401 earns one more try under a fresh credential.
+
+        Exactly one, and it does not consume a retry: a rotated secret should
+        cost a token request, not the task's whole retry budget. A second 401
+        is the target's answer about the permission rather than the
+        credential.
+        """
+        return (
+            not reauthed
+            and bearer is not None
+            and result.http_status == HTTP_UNAUTHORIZED
+        )
+
+    async def _reauthenticate(self, task: models.Task) -> str | None:
+        """Discard the cached credential and resolve a new one."""
+        LOGGER.info('Re-authenticating after a 401 firing %s', task.slug)
+        self._resolver.invalidate(task)
+        return await self._resolver.bearer(task)
 
     async def _attempt(
         self,

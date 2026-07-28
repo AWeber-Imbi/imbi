@@ -5,7 +5,15 @@ import httpx
 import respx
 
 from apps.scheduler.tests import helpers
-from imbi.scheduler import executor, identity, models, render, settings
+from imbi.common import clickhouse
+from imbi.scheduler import (
+    executor,
+    identity,
+    models,
+    render,
+    runs,
+    settings,
+)
 
 FIRED_AT = datetime.datetime(2026, 7, 28, 6, tzinfo=datetime.UTC)
 API_URL = 'http://api.test'
@@ -27,6 +35,11 @@ def config(**overrides: object) -> settings.Scheduler:
 class ExecutorTestCase(helpers.TestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        # The executor writes the `running` row itself, so history is live
+        # here. respx does not intercept clickhouse-connect (urllib3, not
+        # httpx), so the two coexist.
+        self.assertTrue(await clickhouse.initialize())
+        await clickhouse.setup_schema()
         self.settings = config()
         self.client = httpx.AsyncClient()
         self.resolver = identity.Resolver(self.client, self.settings)
@@ -44,6 +57,7 @@ class ExecutorTestCase(helpers.TestCase):
     async def asyncTearDown(self) -> None:
         self.mock.stop()
         await self.client.aclose()
+        await clickhouse.aclose()
         await super().asyncTearDown()
 
 
@@ -128,6 +142,34 @@ class ApiTargetTests(ExecutorTestCase):
         self.assertEqual('succeeded', run.state)
         self.assertTrue(route.called)
 
+    async def test_a_prefix_match_is_not_a_scope_match(self) -> None:
+        # Without a separator boundary a task scoped to `acme` reaches
+        # `acme-corp` unrewritten — a different organization, with this
+        # task's credential.
+        route = self.mock.post(
+            f'{API_URL}/organizations/acme/organizations/acme-corp/projects'
+        ).mock(return_value=httpx.Response(202))
+        task = helpers.build_task(
+            organization='acme',
+            target=models.ApiTarget(
+                method='POST', path='/organizations/acme-corp/projects'
+            ),
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(route.called)
+
+    async def test_an_exact_scope_match_is_not_rewritten(self) -> None:
+        route = self.mock.post(f'{API_URL}/organizations/acme').mock(
+            return_value=httpx.Response(202)
+        )
+        task = helpers.build_task(
+            organization='acme',
+            target=models.ApiTarget(method='POST', path='/organizations/acme'),
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertTrue(route.called)
+
     async def test_renders_the_body_and_query(self) -> None:
         route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
             return_value=httpx.Response(202)
@@ -174,6 +216,158 @@ class ApiTargetTests(ExecutorTestCase):
         self.assertEqual('failed', run.state)
         self.assertEqual('render', run.error_type)
         self.assertFalse(route.called)
+
+
+class RunningRowTests(ExecutorTestCase):
+    """The run is visible while it runs, not only once it is over."""
+
+    async def test_a_running_row_is_written_before_the_request(self) -> None:
+        seen: list[str] = []
+
+        async def observe(_request: httpx.Request) -> httpx.Response:
+            # Reading history from inside the handler is the only way to
+            # assert on a row that a later write supersedes.
+            history = await runs.for_task(task.id)
+            seen.extend(run.state for run in history)
+            return httpx.Response(202)
+
+        task = helpers.build_task()
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=observe
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(['running'], seen)
+        self.assertEqual('succeeded', run.state)
+
+    async def test_the_terminal_row_supersedes_it(self) -> None:
+        task = helpers.build_task()
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        await runs.record(run)
+        history = await runs.for_task(task.id)
+        self.assertEqual(1, len(history))
+        self.assertEqual('succeeded', history[0].state)
+
+    async def test_a_retried_run_still_collapses_to_its_last_attempt(
+        self,
+    ) -> None:
+        # Retries do not add rows: the sort key is (task_id, run_id), and only
+        # the attempt that ended the run is recorded.
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=2, retry_backoff='none')
+        )
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[
+                httpx.Response(503),
+                httpx.Response(503),
+                httpx.Response(202),
+            ]
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        await runs.record(run)
+        history = await runs.for_task(task.id)
+        self.assertEqual(1, len(history))
+        self.assertEqual('succeeded', history[0].state)
+        self.assertEqual(3, history[0].attempt)
+
+    async def test_an_identity_skip_reuses_the_running_run(self) -> None:
+        # One firing is one run_id: a skip that minted its own would leave the
+        # `running` row behind forever as a second, never-finished run.
+        self.token_route.mock(return_value=httpx.Response(401))
+        task = helpers.build_task()
+        run = await self.executor.execute(task, FIRED_AT)
+        await runs.record(run)
+        history = await runs.for_task(task.id)
+        self.assertEqual(1, len(history))
+        self.assertEqual('skipped', history[0].state)
+
+
+class ReauthTests(ExecutorTestCase):
+    """A 401 earns exactly one re-auth, and it costs no retries."""
+
+    async def test_a_401_re_authenticates_and_retries_once(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[httpx.Response(401), httpx.Response(202)]
+        )
+        self.token_route.mock(
+            side_effect=[
+                httpx.Response(
+                    200, json={'access_token': 'stale', 'expires_in': 900}
+                ),
+                httpx.Response(
+                    200, json={'access_token': 'fresh', 'expires_in': 900}
+                ),
+            ]
+        )
+        task = helpers.build_task(execution=models.ExecutionPolicy(retries=0))
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertEqual(2, self.token_route.call_count)
+        self.assertEqual(
+            ['Bearer stale', 'Bearer fresh'],
+            [call.request.headers['authorization'] for call in route.calls],
+        )
+
+    async def test_the_re_auth_does_not_consume_a_retry(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[
+                httpx.Response(401),
+                httpx.Response(503),
+                httpx.Response(202),
+            ]
+        )
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=1, retry_backoff='none')
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertEqual(3, route.call_count)
+
+    async def test_a_second_401_is_the_answer_not_the_credential(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(401)
+        )
+        task = helpers.build_task(execution=models.ExecutionPolicy(retries=0))
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual('http_401', run.error_type)
+        self.assertEqual(2, route.call_count)
+        self.assertEqual(2, self.token_route.call_count)
+
+    async def test_a_401_without_a_bearer_is_not_re_authenticated(
+        self,
+    ) -> None:
+        route = self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(401)
+        )
+        task = helpers.build_task(
+            slug='synthetic-delivery',
+            identity=None,
+            target=models.GatewayTarget(webhook_id='w-1', payload={}),
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual(1, route.call_count)
+        self.assertFalse(self.token_route.called)
+
+    async def test_a_failed_re_auth_skips_rather_than_fails(self) -> None:
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(401)
+        )
+        self.token_route.mock(
+            side_effect=[
+                httpx.Response(
+                    200, json={'access_token': 'stale', 'expires_in': 900}
+                ),
+                httpx.Response(503),
+            ]
+        )
+        task = helpers.build_task(execution=models.ExecutionPolicy(retries=0))
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('skipped', run.state)
+        self.assertIn('503', run.error_message)
 
 
 class ApiPrefixTests(ExecutorTestCase):

@@ -284,6 +284,46 @@ class CalendarTriggerTests(unittest.TestCase):
         )
         self.assertIsNone(trigger.next_fire_time(utc(2026, 7, 3, 10), UTC))
 
+    def test_never_fires_before_start_at(self) -> None:
+        # `at_time` earlier in the day than `start_at` must not pull the first
+        # firing back before it, which anchoring on the date alone would.
+        trigger = triggers.CalendarTrigger(
+            days=1,
+            at_time=datetime.time(9),
+            start_at=utc(2027, 1, 1, 18),
+        )
+        self.assertEqual(
+            utc(2027, 1, 2, 9),
+            trigger.next_fire_time(utc(2026, 12, 31), UTC),
+        )
+
+    def test_start_at_at_the_firing_time_itself_fires_that_day(self) -> None:
+        trigger = triggers.CalendarTrigger(
+            days=1,
+            at_time=datetime.time(9),
+            start_at=utc(2027, 1, 1, 8),
+        )
+        self.assertEqual(
+            utc(2027, 1, 1, 9),
+            trigger.next_fire_time(utc(2026, 12, 31), UTC),
+        )
+
+    def test_the_lower_bound_matches_the_interval_trigger(self) -> None:
+        # The two disagreed on identical fields: interval clamped to
+        # `start_at`, calendar did not.
+        start = utc(2027, 1, 1, 18)
+        moment = utc(2026, 12, 31)
+        calendar_fires = triggers.CalendarTrigger(
+            days=1, at_time=datetime.time(9), start_at=start
+        ).next_fire_time(moment, UTC)
+        interval_fires = triggers.IntervalTrigger(
+            days=1, start_at=start
+        ).next_fire_time(moment, UTC)
+        assert calendar_fires is not None
+        assert interval_fires is not None
+        self.assertGreaterEqual(calendar_fires, start)
+        self.assertGreaterEqual(interval_fires, start)
+
     def test_rejects_months_with_days(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
             triggers.CalendarTrigger(months=1, days=1)

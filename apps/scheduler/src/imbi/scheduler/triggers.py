@@ -173,15 +173,20 @@ class CalendarTrigger(pydantic.BaseModel):
     def next_fire_time(
         self, after: datetime.datetime, tz: zoneinfo.ZoneInfo
     ) -> datetime.datetime | None:
-        """Return the first firing strictly after `after`."""
-        moment = _as_utc(after)
-        local = moment.astimezone(tz)
-        anchor = (
-            _as_utc(self.start_at).astimezone(tz).date()
-            if self.start_at is not None
-            else local.date()
-        )
-        candidate = self._seek(anchor, local, tz)
+        """Return the first firing strictly after `after`.
+
+        ``start_at`` is a lower bound as well as the step anchor, matching
+        `IntervalTrigger`. Anchoring on its date alone would let the first
+        firing land at ``at_time`` on that date — earlier in the day than
+        ``start_at`` itself.
+        """
+        floor = _as_utc(after)
+        anchor_at = floor
+        if self.start_at is not None:
+            anchor_at = _as_utc(self.start_at)
+            floor = max(floor, anchor_at)
+        local = floor.astimezone(tz)
+        candidate = self._seek(anchor_at.astimezone(tz).date(), local, tz)
         if candidate is None:
             return None
         fires = _as_utc(candidate)

@@ -11,7 +11,11 @@ import psycopg_pool
 from imbi.common import lifespan
 from imbi.common import settings as common_settings
 from imbi.scheduler.store.initializer import initialize, load_schemata
-from imbi.scheduler.store.tasks import NOTIFY_CHANNEL, Tasks
+from imbi.scheduler.store.tasks import (
+    NOTIFY_CHANNEL,
+    Tasks,
+    UnresolvableIdentity,
+)
 
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
@@ -73,6 +77,7 @@ __all__ = [
     'Pool',
     'TaskStore',
     'Tasks',
+    'UnresolvableIdentity',
     'create_pool',
     'initialize',
     'load_schemata',

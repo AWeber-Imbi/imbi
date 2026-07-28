@@ -53,3 +53,26 @@ columns = ["organization"]
 [[tables.indexes]]
 name = "tasks_kind_idx"
 columns = ["kind"]
+
+# In-flight execution slots. `max_running_instances` has to hold across
+# replicas, and an in-process counter only ever bounds one of them, so a slot
+# is reserved here before a firing starts.
+#
+# `expires_at` makes it a lease rather than a promise: a replica killed
+# mid-run never deletes its own row, so the slot has to free itself or the
+# task would never fire again.
+[[tables]]
+name = "run_leases"
+
+[tables.columns]
+id = "UUID NOT NULL"
+task_id = "UUID NOT NULL"
+acquired_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+expires_at = "TIMESTAMP WITH TIME ZONE NOT NULL"
+
+[tables.primary_key]
+columns = ["id"]
+
+[[tables.indexes]]
+name = "run_leases_task_idx"
+columns = ["task_id"]

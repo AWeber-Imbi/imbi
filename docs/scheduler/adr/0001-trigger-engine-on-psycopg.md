@@ -94,10 +94,16 @@ Implement the trigger loop directly on psycopg3.
   include a spring-forward and a fall-back boundary in a DST-observing zone,
   and by keeping resolution at one second (the design explicitly does not want
   sub-second precision).
-- **Misfire handling, coalescing, and concurrency limits are ours too.** These
-  are small — `misfire_grace_time`, `coalesce`, and `max_running_instances`
-  amount to comparisons against the claim timestamp and an `asyncio.Semaphore`
-  — but they are behavior APScheduler would have supplied and tested.
+- **Misfire handling, coalescing, and concurrency limits are ours too.** Two of
+  the three are small: `misfire_grace_time` is a comparison against the claim
+  timestamp, and coalescing falls out of claiming rather than needing a flag.
+  `max_running_instances` was underestimated here — it was first built as an
+  in-process counter, which silently bounds one replica rather than the task,
+  and the deployment runs three. It is now a lease row in
+  `scheduler.run_leases` taken under a per-task advisory lock, with an
+  `expires_at` so a replica killed mid-run frees its own slot. The
+  `asyncio.Semaphore` remains, but for what it can actually enforce: this
+  process's ceiling on concurrent runs (`max_concurrent_runs`).
 - If APScheduler 4 reaches a stable release and the platform later wants it,
   this is a swap of the engine module. The trigger models, task rows, target
   execution, and run history are untouched by that swap, so the decision stays

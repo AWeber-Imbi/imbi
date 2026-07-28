@@ -121,6 +121,17 @@ class RenderedRequest(typing.NamedTuple):
     headers: dict[str, str]
 
 
+def _scoped_to(path: str, organization: str) -> bool:
+    """Return whether `path` already addresses `organization`.
+
+    The boundary matters: a bare prefix test lets a task scoped to `acme`
+    reach `/organizations/acme-corp/...` unrewritten, which is a request
+    against a different organization made with the task's credential.
+    """
+    prefix = f'/organizations/{organization}'
+    return path == prefix or path.startswith(f'{prefix}/')
+
+
 def api_request(
     task: models.Task,
     target: models.ApiTarget,
@@ -134,7 +145,7 @@ def api_request(
     """
     path = renderer.text(target.path)
     organization = target.organization or task.organization
-    if organization and not path.startswith(f'/organizations/{organization}'):
+    if organization and not _scoped_to(path, organization):
         path = f'/organizations/{organization}{path}'
     return RenderedRequest(
         method=target.method,

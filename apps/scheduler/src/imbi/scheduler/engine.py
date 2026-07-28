@@ -2,7 +2,9 @@
 
 Each tick claims every task that has come due, fires them concurrently under a
 ceiling, and records what happened. Claiming is what makes this safe to run on
-several replicas at once — see ``Tasks.claim_due`` and ADR 0001.
+several replicas at once — see ``Tasks.claim_due`` and ADR 0001. Ticks overlap:
+the loop spawns each one and keeps polling, so a slow target delays its own
+task rather than every other task's.
 
 Waking is a bounded sleep plus a ``LISTEN`` on the task channel. A missed
 notification costs latency, not a missed run, because the bounded sleep
@@ -10,12 +12,10 @@ re-polls regardless.
 """
 
 import asyncio
-import collections
 import contextlib
 import datetime
 import logging
 import typing
-import uuid
 
 from psycopg import sql
 
@@ -39,7 +39,6 @@ class Engine:
         self._executor = executor
         self._settings = config or settings.Scheduler()
         self._semaphore = asyncio.Semaphore(self._settings.max_concurrent_runs)
-        self._in_flight: collections.Counter[uuid.UUID] = collections.Counter()
         self._wake = asyncio.Event()
 
     async def tick(
@@ -60,17 +59,18 @@ class Engine:
         self, task: models.Task, moment: datetime.datetime
     ) -> runs.Run | None:
         """Fire one claimed task, recording whatever happens."""
-        if self._at_instance_limit(task):
-            return await self._decline(
-                task,
-                moment,
-                f'{self._in_flight[task.id]} instance(s) already running, '
-                'max_running_instances already reached',
-            )
         misfire = self._misfire_reason(task, moment)
         if misfire is not None:
             return await self._decline(task, moment, misfire)
-        self._in_flight[task.id] += 1
+        lease = await self._tasks.acquire_lease(
+            task.id,
+            limit=task.execution.max_running_instances,
+            ttl=self._lease_ttl(task),
+        )
+        if lease is None:
+            return await self._decline(
+                task, moment, 'max_running_instances already reached'
+            )
         try:
             async with self._semaphore:
                 run = await self._executor.execute(task, moment)
@@ -87,10 +87,20 @@ class Engine:
                 ),
             )
         finally:
-            self._in_flight[task.id] -= 1
-            if not self._in_flight[task.id]:
-                del self._in_flight[task.id]
+            await self._tasks.release_lease(lease)
         return await self._record(task, run)
+
+    def _lease_ttl(self, task: models.Task) -> datetime.timedelta:
+        """Return how long a slot stays reserved without being released.
+
+        An upper bound on one firing rather than a guess: every attempt can
+        spend the full timeout, and the backoff between them is bounded by the
+        same. Only a replica that dies mid-run ever reaches it.
+        """
+        attempts = task.execution.retries + 1
+        return datetime.timedelta(
+            seconds=task.execution.timeout * (2 * attempts) + 60
+        )
 
     async def _decline(
         self, task: models.Task, moment: datetime.datetime, reason: str
@@ -110,9 +120,6 @@ class Engine:
         run = runs.skipped(task, moment, reason)
         await runs.record(run)
         return run
-
-    def _at_instance_limit(self, task: models.Task) -> bool:
-        return self._in_flight[task.id] >= task.execution.max_running_instances
 
     def _misfire_reason(
         self, task: models.Task, moment: datetime.datetime
@@ -179,17 +186,34 @@ class Engine:
     async def run_forever(self, stop: asyncio.Event) -> None:
         """Tick until `stop` is set."""
         LOGGER.info('Scheduler engine started')
+        ticks: set[asyncio.Task[list[runs.Run]]] = set()
         while not stop.is_set():
             # Cleared before the tick, not before the sleep: a notification
             # that lands *during* a tick must survive into the next sleep, or
             # a task mutation would wait out a full poll interval.
             self._wake.clear()
-            try:
-                await self.tick()
-            except Exception:
-                LOGGER.exception('Tick failed; continuing')
+            # Spawned rather than awaited. A tick awaits every firing it
+            # claimed, so one target sitting on its full timeout and retry
+            # budget would otherwise hold up every other task's firing for
+            # minutes. Overlapping ticks are safe: claiming advances
+            # `next_run_at` inside its own transaction, and the instance limit
+            # is a lease in Postgres rather than a property of one tick.
+            tick = asyncio.create_task(self._guarded_tick())
+            ticks.add(tick)
+            tick.add_done_callback(ticks.discard)
             await self._sleep(stop)
+        if ticks:
+            LOGGER.info('Waiting on %d tick(s) in flight', len(ticks))
+            await asyncio.gather(*ticks, return_exceptions=True)
         LOGGER.info('Scheduler engine stopped')
+
+    async def _guarded_tick(self) -> list[runs.Run]:
+        """Tick, keeping a failure from taking the loop down with it."""
+        try:
+            return await self.tick()
+        except Exception:
+            LOGGER.exception('Tick failed; continuing')
+            return []
 
     async def _sleep(self, stop: asyncio.Event) -> None:
         """Wait until the next firing is due, a change lands, or stop."""

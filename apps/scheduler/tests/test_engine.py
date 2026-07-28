@@ -17,6 +17,7 @@ from imbi.scheduler import (
     settings,
     store,
 )
+from imbi.scheduler.store import tasks as tasks_repo
 
 
 def utc(*args: int) -> datetime.datetime:
@@ -161,6 +162,37 @@ class MisfireTests(EngineTestCase):
 
 
 class InstanceLimitTests(EngineTestCase):
+    async def test_the_limit_holds_across_replicas(self) -> None:
+        # The reason the limit is a lease in Postgres rather than a counter in
+        # the process: a second replica claims the next firing while the first
+        # is still executing the previous one.
+        self.executor.delay = 0.3
+        task = await self.tasks.create(
+            helpers.build_task(
+                trigger={'kind': 'interval', 'seconds': 1},
+                next_run_at=utc(2026, 7, 28, 6),
+                execution=models.ExecutionPolicy(
+                    max_running_instances=1, misfire_grace_time=None
+                ),
+            )
+        )
+        other = engine.Engine(
+            tasks_repo.Tasks(self.pool, schema=test_store.TEST_SCHEMA),
+            StubExecutor(),  # type: ignore[arg-type]
+            self.settings,
+        )
+        first = asyncio.create_task(self.engine.tick(utc(2026, 7, 28, 6)))
+        await asyncio.sleep(0.05)
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None
+        await self.tasks.reschedule(stored)
+        second = await other.tick(
+            datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+        )
+        await first
+        self.assertEqual(['skipped'], [run.state for run in second])
+        self.assertEqual([], other._executor.fired)  # type: ignore[attr-defined]
+
     async def test_second_overlapping_run_is_skipped(self) -> None:
         self.executor.delay = 0.2
         await self.tasks.create(
@@ -313,6 +345,56 @@ class SleepTests(EngineTestCase):
         stop.set()
         self.engine.notify()
         await asyncio.wait_for(loop, timeout=2)
+
+    async def test_a_slow_firing_does_not_hold_up_the_loop(self) -> None:
+        # A target sitting on its timeout used to block every other task's
+        # firing, because the loop awaited the whole tick before re-polling.
+        stop = asyncio.Event()
+        ticks = 0
+        released = asyncio.Event()
+
+        async def slow_tick(
+            now: datetime.datetime | None = None,
+        ) -> list[runs.Run]:
+            nonlocal ticks
+            ticks += 1
+            self.engine.notify()
+            if ticks >= 3:
+                stop.set()
+            await released.wait()
+            return []
+
+        self.engine.tick = slow_tick  # type: ignore[method-assign]
+        self.engine.notify()
+        loop = asyncio.create_task(self.engine.run_forever(stop))
+        for _ in range(100):
+            if ticks >= 3:
+                break
+            await asyncio.sleep(0.01)
+        self.assertGreaterEqual(ticks, 3)
+        released.set()
+        await asyncio.wait_for(loop, timeout=2)
+
+    async def test_the_loop_waits_for_ticks_in_flight_before_exiting(
+        self,
+    ) -> None:
+        # Shutdown must not orphan a firing whose outcome is unrecorded.
+        stop = asyncio.Event()
+        finished = False
+
+        async def slow_tick(
+            now: datetime.datetime | None = None,
+        ) -> list[runs.Run]:
+            nonlocal finished
+            stop.set()
+            await asyncio.sleep(0.1)
+            finished = True
+            return []
+
+        self.engine.tick = slow_tick  # type: ignore[method-assign]
+        self.engine.notify()
+        await asyncio.wait_for(self.engine.run_forever(stop), timeout=2)
+        self.assertTrue(finished)
 
     async def test_a_failing_tick_does_not_stop_the_loop(self) -> None:
         stop = asyncio.Event()

@@ -18,9 +18,14 @@ import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
-from imbi.scheduler import models, settings
+from imbi.scheduler import identity, models, settings
 
 LOGGER = logging.getLogger(__name__)
+
+
+class UnresolvableIdentity(ValueError):
+    """A task names a principal the scheduler could never run as."""
+
 
 #: Channel the engine listens on so a task mutation wakes it immediately.
 NOTIFY_CHANNEL = 'scheduler_tasks'
@@ -66,17 +71,32 @@ class Tasks:
         schema: str | None = None,
     ) -> None:
         self._pool = pool
-        self._schema = schema or settings.Scheduler().schema_name
+        self._settings = settings.Scheduler()
+        self._schema = schema or self._settings.schema_name
 
     @property
     def _table(self) -> sql.Identifier:
         return sql.Identifier(self._schema, 'tasks')
 
+    @property
+    def _leases(self) -> sql.Identifier:
+        return sql.Identifier(self._schema, 'run_leases')
+
     def _columns(self) -> sql.Composed:
         return sql.SQL(', ').join(sql.Identifier(col) for col in COLUMNS)
 
     async def create(self, task: models.Task) -> models.Task:
-        """Insert `task`, returning it as stored."""
+        """Insert `task`, returning it as stored.
+
+        Raises `UnresolvableIdentity` for an identity that fire time would
+        refuse, so the caller can answer 422 rather than store a task that
+        skips every firing. Not a model validator: the same check would then
+        run on every read, and rotating ``IMBI_SCHEDULER_SA_SLUG`` would make
+        already-stored tasks unloadable instead of merely unrunnable.
+        """
+        reason = identity.unresolvable(task.identity, self._settings)
+        if reason is not None:
+            raise UnresolvableIdentity(reason)
         statement = sql.SQL(
             'INSERT INTO {table} ({columns}) VALUES ({values})'
             ' RETURNING {columns}'
@@ -289,6 +309,70 @@ class Tasks:
                 row = row.model_copy(update={'next_run_at': following})
             await self._notify(conn)
         return row
+
+    async def acquire_lease(
+        self,
+        task_id: uuid.UUID,
+        *,
+        limit: int,
+        ttl: datetime.timedelta,
+    ) -> uuid.UUID | None:
+        """Reserve one of `task_id`'s execution slots, if one is free.
+
+        Returns the lease to release afterwards, or ``None`` when `limit`
+        slots are already taken. The advisory lock is what makes this hold
+        across replicas: ``COUNT`` cannot lock rows that do not exist yet, so
+        without it two replicas both read `limit - 1` and both insert.
+
+        Expired leases are cleared here rather than by a sweeper: this is the
+        only code that cares whether a slot is free, and the delete is bounded
+        by the number of tasks that were running when a replica died.
+        """
+        lease = uuid.uuid4()
+        expires_at = datetime.datetime.now(datetime.UTC) + ttl
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor() as cursor,
+        ):
+            await cursor.execute(
+                'SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))',
+                (task_id,),
+            )
+            await cursor.execute(
+                sql.SQL(
+                    'DELETE FROM {leases}'
+                    ' WHERE task_id = %s AND expires_at <= NOW()'
+                ).format(leases=self._leases),
+                (task_id,),
+            )
+            await cursor.execute(
+                sql.SQL(
+                    'SELECT COUNT(*) FROM {leases} WHERE task_id = %s'
+                ).format(leases=self._leases),
+                (task_id,),
+            )
+            row = await cursor.fetchone()
+            if row is not None and row[0] >= limit:
+                return None
+            await cursor.execute(
+                sql.SQL(
+                    'INSERT INTO {leases} (id, task_id, expires_at)'
+                    ' VALUES (%s, %s, %s)'
+                ).format(leases=self._leases),
+                (lease, task_id, expires_at),
+            )
+        return lease
+
+    async def release_lease(self, lease: uuid.UUID) -> None:
+        """Free the slot `lease` reserved."""
+        async with self._pool.connection() as conn:
+            await conn.execute(
+                sql.SQL('DELETE FROM {leases} WHERE id = %s').format(
+                    leases=self._leases
+                ),
+                (lease,),
+            )
 
     async def record_outcome(
         self,

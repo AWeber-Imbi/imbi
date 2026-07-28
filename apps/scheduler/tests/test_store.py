@@ -47,11 +47,12 @@ class StoreTestCase(helpers.TestCase):
 
     async def _truncate(self) -> None:
         async with self.pool.connection() as conn:
-            await conn.execute(
-                sql.SQL('TRUNCATE {table}').format(
-                    table=sql.Identifier(TEST_SCHEMA, 'tasks')
+            for table in ('tasks', 'run_leases'):
+                await conn.execute(
+                    sql.SQL('TRUNCATE {table}').format(
+                        table=sql.Identifier(TEST_SCHEMA, table)
+                    )
                 )
-            )
 
     async def _column_value(
         self, task_id: uuid.UUID, column: str
@@ -108,11 +109,14 @@ class InitializerTests(StoreTestCase):
         self.assertEqual(1, row[0])
 
     async def test_declared_columns_match_the_model(self) -> None:
-        declared = set(
-            initializer.load_schemata()['tables'][0]['columns'].keys()
-        )
+        tables = {
+            table['name']: table
+            for table in initializer.load_schemata()['tables']
+        }
+        declared = set(tables['tasks']['columns'].keys())
         self.assertEqual(set(tasks_repo.COLUMNS), declared)
         self.assertEqual(set(models.Task.model_fields), declared)
+        self.assertIn('run_leases', tables)
 
 
 class CrudTests(StoreTestCase):
@@ -172,6 +176,32 @@ class CrudTests(StoreTestCase):
 
     async def test_get_by_unknown_id(self) -> None:
         self.assertIsNone(await self.tasks.get_by_id(uuid.uuid4()))
+
+    async def test_a_foreign_service_account_is_refused_at_creation(
+        self,
+    ) -> None:
+        # Fire time refuses it (ADR 0002), so storing it would only produce a
+        # task that skips every firing.
+        task = helpers.build_task(
+            identity=models.Identity(
+                kind='service_account', subject='someone-else'
+            )
+        )
+        with self.assertRaises(tasks_repo.UnresolvableIdentity):
+            await self.tasks.create(task)
+        self.assertIsNone(await self.tasks.get(task.slug))
+
+    async def test_a_delegated_task_is_still_creatable(self) -> None:
+        # Refused at fire time until the token-exchange grant lands, but a
+        # task may legitimately be written ahead of it.
+        task = helpers.build_task(
+            identity=models.Identity(
+                kind='delegated_user',
+                subject='gavinr@aweber.com',
+                consent_id='c-1',
+            )
+        )
+        self.assertIsNotNone(await self.tasks.create(task))
 
     async def test_duplicate_slug_is_rejected(self) -> None:
         await self.tasks.create(helpers.build_task())
@@ -410,6 +440,75 @@ class OutcomeTests(StoreTestCase):
         self.assertEqual(
             0, await self._column_value(task.id, 'consecutive_skips')
         )
+
+
+class LeaseTests(StoreTestCase):
+    """`max_running_instances` has to hold across replicas, not per process."""
+
+    ONE_MINUTE = datetime.timedelta(minutes=1)
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.task = await self.tasks.create(helpers.build_task())
+
+    async def _acquire(
+        self,
+        *,
+        limit: int = 1,
+        ttl: datetime.timedelta | None = None,
+        repo: tasks_repo.Tasks | None = None,
+    ) -> uuid.UUID | None:
+        return await (repo or self.tasks).acquire_lease(
+            self.task.id, limit=limit, ttl=ttl or self.ONE_MINUTE
+        )
+
+    async def test_a_free_slot_is_granted_and_released(self) -> None:
+        lease = await self._acquire()
+        assert lease is not None
+        self.assertIsNone(await self._acquire())
+        await self.tasks.release_lease(lease)
+        self.assertIsNotNone(await self._acquire())
+
+    async def test_the_limit_is_per_task_not_global(self) -> None:
+        other = await self.tasks.create(helpers.build_task(slug='other'))
+        self.assertIsNotNone(await self._acquire())
+        self.assertIsNotNone(
+            await self.tasks.acquire_lease(
+                other.id, limit=1, ttl=self.ONE_MINUTE
+            )
+        )
+
+    async def test_a_higher_limit_grants_more_slots(self) -> None:
+        self.assertIsNotNone(await self._acquire(limit=2))
+        self.assertIsNotNone(await self._acquire(limit=2))
+        self.assertIsNone(await self._acquire(limit=2))
+
+    async def test_a_separate_repository_sees_the_same_slots(self) -> None:
+        # Stands in for a second replica: an in-memory counter would grant
+        # both, which is the defect this table exists to close.
+        other_replica = tasks_repo.Tasks(self.pool, schema=TEST_SCHEMA)
+        self.assertIsNotNone(await self._acquire())
+        self.assertIsNone(await self._acquire(repo=other_replica))
+
+    async def test_concurrent_acquirers_do_not_oversubscribe(self) -> None:
+        replicas = [
+            tasks_repo.Tasks(self.pool, schema=TEST_SCHEMA) for _ in range(6)
+        ]
+        granted = await asyncio.gather(
+            *(self._acquire(limit=2, repo=replica) for replica in replicas)
+        )
+        self.assertEqual(2, len([lease for lease in granted if lease]))
+
+    async def test_an_expired_lease_frees_its_slot(self) -> None:
+        # A replica killed mid-run never releases; without expiry the task
+        # would never fire again.
+        self.assertIsNotNone(
+            await self._acquire(ttl=datetime.timedelta(seconds=-1))
+        )
+        self.assertIsNotNone(await self._acquire())
+
+    async def test_releasing_an_unknown_lease_is_harmless(self) -> None:
+        await self.tasks.release_lease(uuid.uuid4())
 
 
 class ScheduleTests(StoreTestCase):
