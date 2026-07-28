@@ -4,7 +4,7 @@ import fastapi
 import typer
 
 import imbi.scheduler
-from imbi.common import access_log, graph, lifespan, server
+from imbi.common import access_log, lifespan, server
 from imbi.scheduler import app_status, lifespans, store
 
 
@@ -13,10 +13,14 @@ def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         version=imbi.scheduler.version,
         started_at=datetime.datetime.now(datetime.UTC),
+        # No graph lifespan: the scheduler reads no graph entities, and
+        # `graph_lifespan` runs the full graph bootstrap (extensions, vlabels,
+        # indexes, embeddings table, SQL functions) plus opens a second
+        # psycopg pool — schema this member never touches, raced against
+        # imbi-api's own bootstrap on every boot. It comes back with the
+        # endpoints that resolve caller permissions from the graph.
         lifespan=lifespan.Lifespan(
-            graph.graph_lifespan,
-            lifespans.clickhouse_hook,
-            store.store_lifespan,
+            lifespans.clickhouse_hook, store.store_lifespan
         ),
     )
     app.include_router(app_status.router)

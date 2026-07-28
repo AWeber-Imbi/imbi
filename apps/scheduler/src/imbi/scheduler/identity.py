@@ -10,6 +10,7 @@ does not implement yet; there is deliberately no local-minting fallback (ADR
 0003), so a delegated task is refused rather than run under a lie.
 """
 
+import asyncio
 import datetime
 import logging
 
@@ -61,6 +62,9 @@ class ServiceAccountToken:
         self._settings = config or settings.Scheduler()
         self._token: str | None = None
         self._expires_at: datetime.datetime | None = None
+        #: Serializes refreshes so a cold cache under concurrent firings
+        #: makes one token request rather than one per run.
+        self._lock = asyncio.Lock()
 
     def _is_fresh(self, now: datetime.datetime) -> bool:
         return (
@@ -73,7 +77,13 @@ class ServiceAccountToken:
         now = datetime.datetime.now(datetime.UTC)
         if self._token is not None and self._is_fresh(now):
             return self._token
-        return await self._fetch(now)
+        async with self._lock:
+            # Re-check: a firing that queued behind the lock is served by
+            # whichever one did the fetch.
+            now = datetime.datetime.now(datetime.UTC)
+            if self._token is not None and self._is_fresh(now):
+                return self._token
+            return await self._fetch(now)
 
     async def _fetch(self, now: datetime.datetime) -> str:
         if not (
