@@ -22,8 +22,16 @@ class Scheduler(pydantic_settings.BaseSettings):
         alias='IMBI_SCHEDULER_SCHEMA',
         description='Postgres schema holding task definitions',
     )
-    gateway_url: pydantic.HttpUrl | None = pydantic.Field(
-        default=None,
+    # Where the scheduler reaches imbi-api. Distinct from ``IMBI_API_URL``
+    # (the API's *public* URL): this is the in-cluster address used for
+    # service-to-service calls, the same var imbi-assistant and imbi-mcp read.
+    api_url: str = pydantic.Field(
+        default='http://localhost:8000',
+        validation_alias='IMBI_INTERNAL_API_URL',
+        description='imbi-api base URL for api targets and token requests',
+    )
+    gateway_url: str = pydantic.Field(
+        default='http://localhost:8003',
         description='imbi-gateway base URL for gateway targets',
     )
     sa_slug: str = pydantic.Field(
