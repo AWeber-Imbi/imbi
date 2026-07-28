@@ -47,26 +47,26 @@ export interface PipelineStage {
 }
 
 /**
- * A release listed beside the env's current one. ``relation`` says which
- * side of the running release it falls on, so the row can offer a roll
- * back (``behind``) or a forward deploy (``ahead``) rather than assuming
- * everything listed is older.
+ * A release listed beside the env's current one, and what this env can do
+ * with it:
+ *
+ *   'behind'   — ranks below the running release; roll back to it.
+ *   'current'  — the running release itself.
+ *   'ahead'    — ranks above, and deployable: it is running (or already
+ *                validated) upstream, so moving forward to it is a
+ *                legitimate step. This is where a rollback leaves the
+ *                release it left behind.
+ *   'unreached' — ranks above but is not validated upstream. Listed so it
+ *                doesn't silently vanish, but not offered.
  */
 export interface RecentRelease {
-  /**
-   * Whether moving this env to the release is a legitimate forward move —
-   * true only when it is also running (or already validated) upstream,
-   * i.e. present in ``pendingReleases``. Always true for ``behind`` rows:
-   * this env ran the release already. Never true for ``current``.
-   */
-  deployable: boolean
   entry: ReleaseHistoryEntry
   relation: ReleaseRelation
 }
 
-export type ReleaseRelation = 'ahead' | 'behind' | 'current'
-
 export type StageKind = 'commit' | 'promote' | 'release'
+
+type ReleaseRelation = 'ahead' | 'behind' | 'current' | 'unreached'
 
 // Releases listed either side of the running one, regardless of age.
 // Rows ranking *above* current only appear after a rollback (or a
@@ -267,10 +267,9 @@ function pendingReleases(
  * Rows above current are *not* filtered out: after a rollback (v5 → v4)
  * the release just left behind still belongs in the list, or it silently
  * disappears from the env's history. Whether it can be deployed again is
- * a separate question, answered by ``pending`` — only what is validated
- * upstream is offered as a forward move.
+ * a separate question, answered by ``pending`` — what is validated
+ * upstream ranks 'ahead', the rest 'unreached'.
  */
-// fallow-ignore-next-line complexity
 function recentReleases(
   history: ReleaseHistoryEntry[],
   current: CurrentReleaseEnvironment | null,
@@ -279,47 +278,37 @@ function recentReleases(
 ): RecentRelease[] {
   const envTag = current?.release?.tag
   if (!currentEntry || !envTag) return []
-  const currentRow: RecentRelease = {
-    deployable: false,
-    entry: currentEntry,
-    relation: 'current',
-  }
-  const ahead = (entry: ReleaseHistoryEntry): RecentRelease => ({
-    deployable: pending.some((rel) => tagEq(rel.tag, entry.tag)),
-    entry,
-    relation: 'ahead',
-  })
-  const behind = (entry: ReleaseHistoryEntry): RecentRelease => ({
-    deployable: true,
-    entry,
-    relation: 'behind',
-  })
-  const idx = history.findIndex((entry) => tagEq(entry.tag, envTag))
-  if (idx >= 0) {
-    return [
-      ...history.slice(Math.max(0, idx - RELEASE_WINDOW), idx).map(ahead),
-      currentRow,
-      ...history.slice(idx + 1, idx + 1 + RELEASE_WINDOW).map(behind),
-    ]
-  }
-  // The env's tag isn't in the synced history (the tag sync hasn't caught
-  // up, or it runs a divergent line) — fall back to semver ranking so the
-  // list still renders with the running release in its right place. Tags
-  // that don't parse, or that rank equal on a different tag string, sit on
-  // neither side and are left out.
-  if (!semverKey(envTag)) return []
   const above: ReleaseHistoryEntry[] = []
   const below: ReleaseHistoryEntry[] = []
-  for (const entry of history) {
-    const cmp = compareTags(envTag, entry.tag)
-    if (cmp == null || cmp === 0) continue
-    if (cmp < 0) above.push(entry)
-    else below.push(entry)
+  const idx = history.findIndex((entry) => tagEq(entry.tag, envTag))
+  if (idx >= 0) {
+    above.push(...history.slice(0, idx))
+    below.push(...history.slice(idx + 1))
+  } else {
+    // The env's tag isn't in the synced history (the tag sync hasn't caught
+    // up, or it runs a divergent line) — rank by semver instead. Tags that
+    // don't parse, or that rank equal on a different tag string, sit on
+    // neither side and are left out; skipping the equal case also keeps the
+    // rendered rows' tag keys unique.
+    if (!semverKey(envTag)) return []
+    for (const entry of history) {
+      const cmp = compareTags(envTag, entry.tag)
+      if (cmp == null || cmp === 0) continue
+      if (cmp < 0) above.push(entry)
+      else below.push(entry)
+    }
   }
   return [
-    ...above.slice(-RELEASE_WINDOW).map(ahead),
-    currentRow,
-    ...below.slice(0, RELEASE_WINDOW).map(behind),
+    ...above.slice(-RELEASE_WINDOW).map((entry) => ({
+      entry,
+      relation: pending.some((rel) => tagEq(rel.tag, entry.tag))
+        ? ('ahead' as const)
+        : ('unreached' as const),
+    })),
+    { entry: currentEntry, relation: 'current' as const },
+    ...below
+      .slice(0, RELEASE_WINDOW)
+      .map((entry) => ({ entry, relation: 'behind' as const })),
   ]
 }
 

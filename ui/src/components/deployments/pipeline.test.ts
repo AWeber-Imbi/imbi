@@ -183,8 +183,8 @@ describe('buildPipeline', () => {
 
   it('keeps a rolled-back-from release listed and deployable', () => {
     // The reported bug: production rolled back v6.5.2 -> v6.5.1 while
-    // staging still runs v6.5.2. Neither v6.5.2 nor the unreached v6.5.3
-    // may vanish, but only what staging runs is deployable.
+    // staging still runs v6.5.2. Neither v6.5.2 nor v6.5.3 may vanish, but
+    // only what staging runs ranks 'ahead' — v6.5.3 is 'unreached'.
     const history = [entry('v6.5.3', 'eee555eee555'), ...HISTORY]
     const rolledBack = [
       currentRelease('testing', 'ddd444ddd444', null),
@@ -193,17 +193,13 @@ describe('buildPipeline', () => {
     ]
     const production = buildPipeline(ENVS, rolledBack, history, COMMITS)[2]
     expect(
-      production.recentReleases.map((r) => [
-        r.entry.tag,
-        r.relation,
-        r.deployable,
-      ]),
+      production.recentReleases.map((r) => [r.entry.tag, r.relation]),
     ).toEqual([
-      ['v6.5.3', 'ahead', false],
-      ['v6.5.2', 'ahead', true],
-      ['v6.5.1', 'current', false],
-      ['v6.5.0', 'behind', true],
-      ['v6.4.0', 'behind', true],
+      ['v6.5.3', 'unreached'],
+      ['v6.5.2', 'ahead'],
+      ['v6.5.1', 'current'],
+      ['v6.5.0', 'behind'],
+      ['v6.4.0', 'behind'],
     ])
   })
 
@@ -217,17 +213,13 @@ describe('buildPipeline', () => {
     ]
     const result = buildPipeline(ENVS, unsynced, HISTORY, COMMITS)
     expect(
-      result[2].recentReleases.map((r) => [
-        r.entry.tag,
-        r.relation,
-        r.deployable,
-      ]),
+      result[2].recentReleases.map((r) => [r.entry.tag, r.relation]),
     ).toEqual([
-      ['v6.5.2', 'ahead', true],
-      ['v6.5.1', 'ahead', true],
-      ['v6.5.0', 'ahead', true],
-      ['v6.4.0', 'ahead', true],
-      ['2.101.0', 'current', false],
+      ['v6.5.2', 'ahead'],
+      ['v6.5.1', 'ahead'],
+      ['v6.5.0', 'ahead'],
+      ['v6.4.0', 'ahead'],
+      ['2.101.0', 'current'],
     ])
     const olderLine = [currentRelease('production', '999000999000', 'v6.5.3')]
     const result2 = buildPipeline(ENVS, olderLine, HISTORY, COMMITS)

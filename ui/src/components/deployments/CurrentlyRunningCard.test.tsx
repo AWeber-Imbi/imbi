@@ -87,7 +87,6 @@ const AHEAD: ReleaseHistoryEntry = {
 }
 
 const behind = (entry: ReleaseHistoryEntry): RecentRelease => ({
-  deployable: true,
   entry,
   relation: 'behind',
 })
@@ -197,7 +196,7 @@ describe('CurrentlyRunningCard', () => {
     renderCard({
       ...STAGE,
       recentReleases: [
-        { deployable: false, entry: RUNNING_ENTRY, relation: 'current' },
+        { entry: RUNNING_ENTRY, relation: 'current' },
         behind(ROLLBACK),
       ],
     })
@@ -214,14 +213,7 @@ describe('CurrentlyRunningCard', () => {
     const actions = makeActions()
     const user = userEvent.setup()
     renderCard(
-      {
-        ...STAGE,
-        recentReleases: [
-          { deployable: true, entry: AHEAD, relation: 'ahead' },
-          { deployable: false, entry: RUNNING_ENTRY, relation: 'current' },
-          behind(ROLLBACK),
-        ],
-      },
+      { ...STAGE, recentReleases: [{ entry: AHEAD, relation: 'ahead' }] },
       actions,
     )
     expect(screen.getByText('v6.5.1')).toBeInTheDocument()
@@ -242,7 +234,7 @@ describe('CurrentlyRunningCard', () => {
   it('lists a release the upstream has not reached without a control', () => {
     renderCard({
       ...STAGE,
-      recentReleases: [{ deployable: false, entry: AHEAD, relation: 'ahead' }],
+      recentReleases: [{ entry: AHEAD, relation: 'unreached' }],
     })
     expect(screen.getByText('v6.5.1')).toBeInTheDocument()
     expect(screen.getByText('Not in staging')).toBeInTheDocument()
@@ -256,7 +248,7 @@ describe('CurrentlyRunningCard', () => {
     renderCard({
       ...STAGE,
       kind: 'promote',
-      recentReleases: [{ deployable: false, entry: AHEAD, relation: 'ahead' }],
+      recentReleases: [{ entry: AHEAD, relation: 'unreached' }],
       upstreamCurrent: {
         ...CURRENT,
         environment: { name: 'staging', slug: 'staging' },
