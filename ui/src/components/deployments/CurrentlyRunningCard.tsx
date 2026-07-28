@@ -65,7 +65,13 @@ export function CurrentlyRunningCard({
   })
   const release = stage.current?.release ?? null
   const envUrl = sanitizeHttpUrl(stage.env.url ?? null)
-  const upstreamName = stage.upstream?.name ?? 'upstream'
+  // Why a release above the running one isn't offered — only sayable when
+  // the upstream runs a tag to compare against. On a promote stage it runs
+  // an untagged commit, so there is no claim to make and the row simply
+  // carries no control.
+  const unreachedLabel = stage.upstreamCurrent?.release?.tag
+    ? `Not in ${(stage.upstream?.name ?? 'upstream').toLowerCase()}`
+    : null
 
   return (
     <StageCardShell
@@ -173,7 +179,7 @@ export function CurrentlyRunningCard({
                 }
                 onUnblock={() => unblock(row.entry.tag)}
                 row={row}
-                upstreamName={upstreamName}
+                unreachedLabel={unreachedLabel}
               />
             ))}
           </div>
@@ -264,7 +270,7 @@ function ReleaseRow({
   onToggle,
   onUnblock,
   row,
-  upstreamName,
+  unreachedLabel,
 }: {
   blockPending: boolean
   canTrigger: boolean
@@ -274,7 +280,7 @@ function ReleaseRow({
   onToggle: () => void
   onUnblock: () => void
   row: RecentRelease
-  upstreamName: string
+  unreachedLabel: null | string
 }) {
   const rel = row.entry
   const blocked = !!rel.blocked
@@ -312,7 +318,7 @@ function ReleaseRow({
           canTrigger={canTrigger}
           onDeploy={onDeploy}
           row={row}
-          upstreamName={upstreamName}
+          unreachedLabel={unreachedLabel}
         />
         {blocked ? (
           // Keep the glyph in the slot so rows stay aligned; red, and inert
@@ -385,8 +391,9 @@ function ReleaseRow({
  *   blocked            — "Blocked"; can't be deployed or promoted at all.
  *   behind             — roll back; this env already ran it.
  *   ahead + deployable — deploy; it is validated upstream.
- *   ahead              — "Not in <upstream>"; shipping it here would jump
- *                        the release train, so no control is offered.
+ *   ahead              — no control; shipping it here would jump the
+ *                        release train. Says why via ``unreachedLabel``
+ *                        when the upstream runs a tag to compare against.
  */
 // fallow-ignore-next-line complexity
 function RowAction({
@@ -394,13 +401,13 @@ function RowAction({
   canTrigger,
   onDeploy,
   row,
-  upstreamName,
+  unreachedLabel,
 }: {
   blocked: boolean
   canTrigger: boolean
   onDeploy: () => void
   row: RecentRelease
-  upstreamName: string
+  unreachedLabel: null | string
 }) {
   if (row.relation === 'current') {
     return (
@@ -420,13 +427,10 @@ function RowAction({
   }
   const ahead = row.relation === 'ahead'
   if (ahead && !row.deployable) {
+    if (!unreachedLabel) return null
     return (
-      <Badge
-        className="inline-flex items-center gap-1"
-        title={`${row.entry.tag} is not running in ${upstreamName.toLowerCase()} yet`}
-        variant="neutral"
-      >
-        Not in {upstreamName.toLowerCase()}
+      <Badge className="inline-flex items-center gap-1" variant="neutral">
+        {unreachedLabel}
       </Badge>
     )
   }

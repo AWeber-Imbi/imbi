@@ -100,13 +100,14 @@ export function buildPipeline(
       : upstreamCurrent?.release?.tag
         ? 'release'
         : 'promote'
-    const pending =
-      kind === 'release'
-        ? pendingReleases(history, upstreamCurrent, current)
-        : []
+    // No kind guard: pendingReleases already returns [] when the upstream
+    // runs no tag, which is what makes a stage 'promote' in the first
+    // place, and when there is no upstream at all.
+    const pending = pendingReleases(history, upstreamCurrent, current)
+    const currentEntry = currentReleaseEntry(history, current)
     return {
       current,
-      currentHistoryEntry: currentReleaseEntry(history, current),
+      currentHistoryEntry: currentEntry,
       env,
       kind,
       pendingCommits:
@@ -118,7 +119,7 @@ export function buildPipeline(
             )
           : [],
       pendingReleases: pending,
-      recentReleases: recentReleases(history, current, pending),
+      recentReleases: recentReleases(history, current, currentEntry, pending),
       upstream,
       upstreamCurrent,
     }
@@ -273,11 +274,16 @@ function pendingReleases(
 function recentReleases(
   history: ReleaseHistoryEntry[],
   current: CurrentReleaseEnvironment | null,
+  currentEntry: null | ReleaseHistoryEntry,
   pending: ReleaseHistoryEntry[],
 ): RecentRelease[] {
-  const release = current?.release
-  const envTag = release?.tag
-  if (!release || !envTag) return []
+  const envTag = current?.release?.tag
+  if (!currentEntry || !envTag) return []
+  const currentRow: RecentRelease = {
+    deployable: false,
+    entry: currentEntry,
+    relation: 'current',
+  }
   const ahead = (entry: ReleaseHistoryEntry): RecentRelease => ({
     deployable: pending.some((rel) => tagEq(rel.tag, entry.tag)),
     entry,
@@ -292,7 +298,7 @@ function recentReleases(
   if (idx >= 0) {
     return [
       ...history.slice(Math.max(0, idx - RELEASE_WINDOW), idx).map(ahead),
-      { deployable: false, entry: history[idx], relation: 'current' },
+      currentRow,
       ...history.slice(idx + 1, idx + 1 + RELEASE_WINDOW).map(behind),
     ]
   }
@@ -312,11 +318,7 @@ function recentReleases(
   }
   return [
     ...above.slice(-RELEASE_WINDOW).map(ahead),
-    {
-      deployable: false,
-      entry: entryFromRelease(release),
-      relation: 'current',
-    },
+    currentRow,
     ...below.slice(0, RELEASE_WINDOW).map(behind),
   ]
 }

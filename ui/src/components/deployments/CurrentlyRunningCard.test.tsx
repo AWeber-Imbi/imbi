@@ -101,7 +101,11 @@ const STAGE: PipelineStage = {
   pendingReleases: [],
   recentReleases: [behind(ROLLBACK)],
   upstream: { name: 'Staging', slug: 'staging' } as unknown as Environment,
-  upstreamCurrent: null,
+  // A tagged upstream — so an unreachable ahead row can say why.
+  upstreamCurrent: {
+    ...CURRENT,
+    environment: { name: 'staging', slug: 'staging' },
+  },
 }
 
 const makeActions = (): DeploymentActions => ({
@@ -240,6 +244,25 @@ describe('CurrentlyRunningCard', () => {
     })
     expect(screen.getByText('v6.5.1')).toBeInTheDocument()
     expect(screen.getByText('Not in staging')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Deploy' })).toBeNull()
+  })
+
+  it('claims nothing about an untagged upstream', () => {
+    // Promote stage: the upstream runs a raw commit, so there is no tag to
+    // compare against and "Not in staging" would assert something
+    // unevaluable. The row still lists, just without a control.
+    renderCard({
+      ...STAGE,
+      kind: 'promote',
+      recentReleases: [{ deployable: false, entry: AHEAD, relation: 'ahead' }],
+      upstreamCurrent: {
+        ...CURRENT,
+        environment: { name: 'staging', slug: 'staging' },
+        release: { ...CURRENT.release!, tag: null },
+      },
+    })
+    expect(screen.getByText('v6.5.1')).toBeInTheDocument()
+    expect(screen.queryByText(/^Not in/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Deploy' })).toBeNull()
   })
 
