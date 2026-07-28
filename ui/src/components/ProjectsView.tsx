@@ -54,6 +54,7 @@ interface DriftPair {
   from: string
   to: string
   toLabelColor?: null | string
+  toSlug: string
 }
 
 interface FilterHeaderProps {
@@ -871,6 +872,7 @@ function computeDriftPairs(
       from: a.name,
       to: b.name,
       toLabelColor: b.label_color ?? null,
+      toSlug: b.slug,
     })
   }
   return pairs
@@ -962,6 +964,7 @@ function DriftCell({
           slug: string
           sort_order?: null | number
         }[]
+    id: string
     project_types?: null | object[]
     release_summary?: null | {
       commits_since_tag: number
@@ -970,9 +973,11 @@ function DriftCell({
   }
 }) {
   const { isDarkMode } = useTheme()
+  // z-10 lifts the badges above the row/card overlay Link so their own
+  // deep-links win the click.
   const containerCls = inline
-    ? 'flex flex-row flex-wrap items-center gap-1'
-    : 'flex flex-col items-center gap-1.5'
+    ? 'relative z-10 flex flex-row flex-wrap items-center gap-1'
+    : 'relative z-10 flex flex-col items-center gap-1.5'
   const badgeBaseCls = inline
     ? 'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-mono text-xs'
     : 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs'
@@ -997,7 +1002,8 @@ function DriftCell({
           ? deriveChipColors(p.toLabelColor, isDarkMode)
           : null
         return (
-          <span
+          <Link
+            aria-label={`Deploy ${p.from} to ${p.to}`}
             className={
               derived
                 ? `${badgeBaseCls} border`
@@ -1013,21 +1019,26 @@ function DriftCell({
                   }
                 : undefined
             }
+            to={`/projects/${project.id}/deployments?env=${encodeURIComponent(p.toSlug)}`}
           >
             <span className="font-medium">Δ</span>
             <span>{abbreviateEnvName(p.from)}</span>
             <span>→</span>
             <span>{abbreviateEnvName(p.to)}</span>
-          </span>
+          </Link>
         )
       })}
       {releaseDrifted && (
-        <span className={`${badgeBaseCls} ${fallbackCls}`}>
+        <Link
+          aria-label="Cut a release"
+          className={`${badgeBaseCls} ${fallbackCls}`}
+          to={`/projects/${project.id}/releases`}
+        >
           <span className="font-medium">Δ</span>
           <span>C</span>
           <span>→</span>
           <span>R</span>
-        </span>
+        </Link>
       )}
     </div>
   )
