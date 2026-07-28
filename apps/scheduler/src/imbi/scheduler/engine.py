@@ -61,23 +61,15 @@ class Engine:
     ) -> runs.Run | None:
         """Fire one claimed task, recording whatever happens."""
         if self._at_instance_limit(task):
-            LOGGER.info(
-                'Skipping %s: %d instance(s) already running',
-                task.slug,
-                self._in_flight[task.id],
-            )
-            return await self._record(
+            return await self._decline(
                 task,
-                runs.skipped(
-                    task, moment, 'max_running_instances already reached'
-                ),
+                moment,
+                f'{self._in_flight[task.id]} instance(s) already running, '
+                'max_running_instances already reached',
             )
         misfire = self._misfire_reason(task, moment)
         if misfire is not None:
-            LOGGER.info('Skipping %s: %s', task.slug, misfire)
-            return await self._record(
-                task, runs.skipped(task, moment, misfire)
-            )
+            return await self._decline(task, moment, misfire)
         self._in_flight[task.id] += 1
         try:
             async with self._semaphore:
@@ -99,6 +91,25 @@ class Engine:
             if not self._in_flight[task.id]:
                 del self._in_flight[task.id]
         return await self._record(task, run)
+
+    async def _decline(
+        self, task: models.Task, moment: datetime.datetime, reason: str
+    ) -> runs.Run:
+        """Record a firing the engine itself declined to make.
+
+        The outcome counters are deliberately left untouched. The
+        consecutive-skip streak exists to disable a task whose principal can
+        no longer be established (PRD 9.1.4); an instance-limit or misfire
+        skip says nothing about the task's identity, so counting it would
+        permanently disable a task whose only fault is a slow target or a
+        scheduler that was down. Resetting the streak would be just as wrong —
+        it would let an unresolvable task escape the limit by misfiring — so
+        neither counter moves.
+        """
+        LOGGER.info('Skipping %s: %s', task.slug, reason)
+        run = runs.skipped(task, moment, reason)
+        await runs.record(run)
+        return run
 
     def _at_instance_limit(self, task: models.Task) -> bool:
         return self._in_flight[task.id] >= task.execution.max_running_instances

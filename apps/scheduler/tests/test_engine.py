@@ -9,7 +9,14 @@ import datetime
 
 from apps.scheduler.tests import helpers, test_store
 from imbi.common import clickhouse
-from imbi.scheduler import engine, models, runs, settings
+from imbi.scheduler import (
+    engine,
+    lifespans,
+    models,
+    runs,
+    settings,
+    store,
+)
 
 
 def utc(*args: int) -> datetime.datetime:
@@ -174,33 +181,77 @@ class InstanceLimitTests(EngineTestCase):
             datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
         )
         await first
-        self.assertEqual(
-            ['skipped'], [run.state for run in second] or ['skipped']
+        self.assertEqual(['skipped'], [run.state for run in second])
+
+    async def test_the_limit_skip_does_not_count_toward_disabling(
+        self,
+    ) -> None:
+        # A target slower than its interval would otherwise disable itself
+        # after `consecutive_skips_limit` firings.
+        self.executor.delay = 0.2
+        task = await self.tasks.create(
+            helpers.build_task(
+                trigger={'kind': 'interval', 'seconds': 1},
+                next_run_at=utc(2026, 7, 28, 6),
+                consecutive_skips=2,
+                execution=models.ExecutionPolicy(
+                    max_running_instances=1, misfire_grace_time=None
+                ),
+            )
         )
+        first = asyncio.create_task(self.engine.tick(utc(2026, 7, 28, 6)))
+        await asyncio.sleep(0.05)
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None
+        await self.tasks.reschedule(stored)
+        await self.engine.tick(
+            datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+        )
+        await first
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None
+        self.assertTrue(stored.enabled)
 
 
 class StreakTests(EngineTestCase):
     async def test_repeated_skips_disable_the_task(self) -> None:
+        # A skip from the executor is an identity failure — the only kind the
+        # limit is meant to catch.
+        self.executor.state = 'skipped'
         task = helpers.build_task(
             next_run_at=utc(2026, 7, 28, 6), consecutive_skips=2
         )
         await self.tasks.create(task)
-        # Well past grace, so this firing skips and trips the limit of 3.
-        await self.engine.tick(utc(2026, 7, 28, 8))
+        await self.engine.tick(utc(2026, 7, 28, 6, 0, 5))
         stored = await self.tasks.get(task.slug)
         assert stored is not None
         self.assertFalse(stored.enabled)
 
     async def test_skips_below_the_limit_leave_it_enabled(self) -> None:
+        self.executor.state = 'skipped'
         task = helpers.build_task(
             next_run_at=utc(2026, 7, 28, 6), consecutive_skips=0
         )
         await self.tasks.create(task)
-        await self.engine.tick(utc(2026, 7, 28, 8))
+        await self.engine.tick(utc(2026, 7, 28, 6, 0, 5))
         stored = await self.tasks.get(task.slug)
         assert stored is not None
         self.assertTrue(stored.enabled)
         self.assertEqual(1, stored.consecutive_skips)
+
+    async def test_a_misfire_does_not_count_toward_disabling(self) -> None:
+        # A task whose window was missed — a scheduler restart, a slow
+        # target — must not be disabled: its identity is not in question.
+        task = helpers.build_task(
+            next_run_at=utc(2026, 7, 28, 6), consecutive_skips=2
+        )
+        await self.tasks.create(task)
+        fired = await self.engine.tick(utc(2026, 7, 28, 8))
+        self.assertEqual(['skipped'], [run.state for run in fired])
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None
+        self.assertTrue(stored.enabled)
+        self.assertEqual(2, stored.consecutive_skips)
 
     async def test_success_resets_the_skip_counter(self) -> None:
         task = helpers.build_task(
@@ -282,6 +333,36 @@ class SleepTests(EngineTestCase):
         self.engine.notify()
         await asyncio.wait_for(self.engine.run_forever(stop), timeout=2)
         self.assertGreaterEqual(len(calls), 2)
+
+
+class WiringTests(EngineTestCase):
+    """The hook is what turns the process into a scheduler."""
+
+    async def test_the_hook_fires_a_due_task(self) -> None:
+        await self.tasks.create(
+            helpers.build_task(
+                slug='synthetic-delivery',
+                identity=None,
+                target=models.GatewayTarget(webhook_id='w-1', payload={}),
+                next_run_at=datetime.datetime.now(datetime.UTC),
+                execution=models.ExecutionPolicy(
+                    retries=0, misfire_grace_time=None
+                ),
+            )
+        )
+        stored = None
+        async with store.store_lifespan(), lifespans.engine_hook() as instance:
+            self.assertIsInstance(instance, engine.Engine)
+            for _ in range(100):
+                stored = await self.tasks.get('synthetic-delivery')
+                assert stored is not None
+                if stored.last_run_at is not None:
+                    break
+                await asyncio.sleep(0.05)
+        assert stored is not None
+        # The delivery itself fails — nothing is listening on the gateway
+        # port — but the firing is what this proves.
+        self.assertIsNotNone(stored.last_run_at)
 
 
 class ListenTests(EngineTestCase):

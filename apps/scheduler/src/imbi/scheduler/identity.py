@@ -93,7 +93,7 @@ class ServiceAccountToken:
                 'scheduler service account is not configured '
                 '(IMBI_SCHEDULER_SA_CLIENT_ID / _SECRET)'
             )
-        url = self._settings.api_url.rstrip('/') + TOKEN_PATH
+        url = self._settings.api_base_url + TOKEN_PATH
         try:
             response = await self._client.post(
                 url,

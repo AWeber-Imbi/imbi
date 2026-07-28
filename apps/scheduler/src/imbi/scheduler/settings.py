@@ -4,6 +4,8 @@ Shared settings (Postgres, ClickHouse, auth) come from
 :mod:`imbi.common.settings`; only what the scheduler adds lives here.
 """
 
+import urllib.parse
+
 import pydantic
 import pydantic_settings
 
@@ -29,6 +31,15 @@ class Scheduler(pydantic_settings.BaseSettings):
         default='http://localhost:8000',
         validation_alias='IMBI_INTERNAL_API_URL',
         description='imbi-api base URL for api targets and token requests',
+    )
+    # imbi-api mounts every router under the path component of its *public*
+    # URL (``imbi.api.settings.Server.api_prefix``), while
+    # ``IMBI_INTERNAL_API_URL`` is a bare origin. The prefix therefore has to
+    # be re-derived here — see :attr:`api_base_url`.
+    api_public_url: str = pydantic.Field(
+        default='',
+        validation_alias='IMBI_API_URL',
+        description="imbi-api's public URL, whose path is its route prefix",
     )
     gateway_url: str = pydantic.Field(
         default='http://localhost:8003',
@@ -65,3 +76,16 @@ class Scheduler(pydantic_settings.BaseSettings):
             'costs latency, not a missed run, because the loop re-polls.'
         ),
     )
+
+    @property
+    def api_base_url(self) -> str:
+        """Return the in-cluster imbi-api base URL, prefix included.
+
+        Every path the scheduler builds — the token endpoint and every `api`
+        target — must be joined onto this rather than onto
+        :attr:`api_url`: reaching ``http://imbi-api:8000/auth/token`` when the
+        deployment mounts the API at ``/api`` is a 404, which turns every run
+        into a skip.
+        """
+        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
+        return self.api_url.rstrip('/') + prefix

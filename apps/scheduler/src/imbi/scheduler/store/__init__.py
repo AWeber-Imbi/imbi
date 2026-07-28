@@ -29,16 +29,35 @@ def create_pool() -> Pool:
     )
 
 
+_pool: Pool | None = None
+
+
+def pool() -> Pool:
+    """Return the pool `store_lifespan` opened.
+
+    A lifespan hook receives no arguments and cannot read another hook's
+    state, so the engine hook — which needs the pool itself for ``LISTEN``,
+    not just the repository — reads it from here. Same shape as the API's
+    `_graph`. Hooks are entered in the order `Lifespan` was given them, so
+    `store_lifespan` must precede any hook that calls this.
+    """
+    if _pool is None:
+        raise RuntimeError('store_lifespan has not opened the pool')
+    return _pool
+
+
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[Tasks]:
     """Initialize the schema and hold the task repository open."""
+    global _pool  # noqa: PLW0603 -- see pool()
     await initialize()
-    pool = create_pool()
-    await pool.open()
+    _pool = create_pool()
+    await _pool.open()
     try:
-        yield Tasks(pool)
+        yield Tasks(_pool)
     finally:
-        await pool.close()
+        await _pool.close()
+        _pool = None
 
 
 async def _inject_tasks(
@@ -57,5 +76,6 @@ __all__ = [
     'create_pool',
     'initialize',
     'load_schemata',
+    'pool',
     'store_lifespan',
 ]

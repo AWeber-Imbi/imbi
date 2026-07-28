@@ -19,8 +19,12 @@ def create_app() -> fastapi.FastAPI:
         # psycopg pool — schema this member never touches, raced against
         # imbi-api's own bootstrap on every boot. It comes back with the
         # endpoints that resolve caller permissions from the graph.
+        # Order matters: `engine_hook` borrows the pool `store_lifespan`
+        # opens, and the run history it writes needs ClickHouse.
         lifespan=lifespan.Lifespan(
-            lifespans.clickhouse_hook, store.store_lifespan
+            lifespans.clickhouse_hook,
+            store.store_lifespan,
+            lifespans.engine_hook,
         ),
     )
     app.include_router(app_status.router)

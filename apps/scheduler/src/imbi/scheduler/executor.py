@@ -82,7 +82,7 @@ class Executor:
         match task.target:
             case models.ApiTarget():
                 request = render.api_request(
-                    task, task.target, renderer, self._settings.api_url
+                    task, task.target, renderer, self._settings.api_base_url
                 )
             case models.GatewayTarget():
                 request = render.gateway_request(

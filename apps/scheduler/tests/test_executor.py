@@ -176,6 +176,60 @@ class ApiTargetTests(ExecutorTestCase):
         self.assertFalse(route.called)
 
 
+class ApiPrefixTests(ExecutorTestCase):
+    """imbi-api mounts its routers under the path of its public URL.
+
+    ``IMBI_INTERNAL_API_URL`` is a bare origin, so without re-deriving that
+    prefix every request the scheduler makes is a 404.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.settings = config(IMBI_API_URL='https://imbi.test/api')
+        self.resolver = identity.Resolver(self.client, self.settings)
+        self.executor = executor.Executor(
+            self.client, self.resolver, self.settings
+        )
+        self.token_route = self.mock.post(f'{API_URL}/api/auth/token').mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'sa-token', 'expires_in': 900}
+            )
+        )
+
+    def test_base_url_carries_the_prefix(self) -> None:
+        self.assertEqual(f'{API_URL}/api', self.settings.api_base_url)
+
+    async def test_the_token_request_is_prefixed(self) -> None:
+        self.mock.post(f'{API_URL}/api/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        run = await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(self.token_route.called)
+
+    async def test_the_target_request_is_prefixed(self) -> None:
+        route = self.mock.post(f'{API_URL}/api/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual(
+            f'{API_URL}/api/scoring/recompute-all',
+            str(route.calls[0].request.url),
+        )
+
+    async def test_the_organization_scope_stays_inside_the_prefix(
+        self,
+    ) -> None:
+        route = self.mock.post(
+            f'{API_URL}/api/organizations/aweber/scoring/recompute-all'
+        ).mock(return_value=httpx.Response(202))
+        run = await self.executor.execute(
+            helpers.build_task(organization='aweber'), FIRED_AT
+        )
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(route.called)
+
+
 class GatewayTargetTests(ExecutorTestCase):
     def _task(self, **overrides: object) -> models.Task:
         fields: dict[str, object] = {

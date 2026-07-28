@@ -263,14 +263,30 @@ class Tasks:
     async def set_enabled(
         self, slug: str, *, enabled: bool
     ) -> models.Task | None:
-        """Enable or disable a task without deleting it."""
+        """Enable or disable a task without deleting it.
+
+        Enabling also reschedules. A task that has been disabled — by an
+        operator or by the engine's skip limit — keeps the ``next_run_at`` it
+        had at the time, which is in the past by the time anyone re-enables
+        it. Left alone, the first tick would read that as a misfire, so
+        re-enabling would be indistinguishable from never having recovered.
+        """
         statement = sql.SQL(
             'UPDATE {table} SET enabled = %s, updated_at = %s'
             ' WHERE slug = %s RETURNING {columns}'
         ).format(table=self._table, columns=self._columns())
         now = datetime.datetime.now(datetime.UTC)
-        async with self._pool.connection() as conn:
+        async with self._pool.connection() as conn, conn.transaction():
             row = await self._fetch_one(conn, statement, (enabled, now, slug))
+            if row is not None and enabled:
+                following = row.next_fire_time(now)
+                await conn.execute(
+                    sql.SQL(
+                        'UPDATE {table} SET next_run_at = %s WHERE id = %s'
+                    ).format(table=self._table),
+                    (following, row.id),
+                )
+                row = row.model_copy(update={'next_run_at': following})
             await self._notify(conn)
         return row
 

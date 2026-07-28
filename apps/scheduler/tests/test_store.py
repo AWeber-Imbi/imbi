@@ -207,6 +207,30 @@ class CrudTests(StoreTestCase):
         assert resumed is not None
         self.assertTrue(resumed.enabled)
 
+    async def test_enabling_reschedules_from_now(self) -> None:
+        task = await self.tasks.create(
+            helpers.build_task(next_run_at=utc(2020, 1, 1))
+        )
+        await self.tasks.set_enabled(task.slug, enabled=False)
+        resumed = await self.tasks.set_enabled(task.slug, enabled=True)
+        assert resumed is not None
+        assert resumed.next_run_at is not None
+        self.assertGreater(
+            resumed.next_run_at, datetime.datetime.now(datetime.UTC)
+        )
+        self.assertEqual(
+            resumed.next_run_at,
+            await self._column_value(task.id, 'next_run_at'),
+        )
+
+    async def test_disabling_leaves_the_schedule_alone(self) -> None:
+        task = await self.tasks.create(
+            helpers.build_task(next_run_at=utc(2026, 7, 28, 6))
+        )
+        paused = await self.tasks.set_enabled(task.slug, enabled=False)
+        assert paused is not None
+        self.assertEqual(utc(2026, 7, 28, 6), paused.next_run_at)
+
     async def test_set_enabled_unknown_task(self) -> None:
         self.assertIsNone(await self.tasks.set_enabled('nope', enabled=False))
 
