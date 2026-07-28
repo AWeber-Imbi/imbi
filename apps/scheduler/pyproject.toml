@@ -1,0 +1,46 @@
+[project]
+name = "imbi-scheduler"
+version = "2.19.0"
+description = "Imbi scheduled task trigger service"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "BSD-3-Clause"
+authors = [
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
+]
+classifiers = []
+dependencies = [
+  "croniter>=6.0",
+  "fastapi>=0.135.1,<0.137",
+  "httpx>=0.28.1",
+  "imbi-common[databases,server]==2.19.0",
+  "jinja2~=3.1",
+  "psycopg[binary,pool]~=3.3.2",
+  "pydantic~=2.12",
+  "sentry-sdk>=2.48.0",
+]
+
+[project.scripts]
+imbi-scheduler = "imbi.scheduler.app:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Coverage for the per-member `moon run scheduler:test` run. Scoped to this
+# member so the report/threshold reflect only imbi.scheduler; the aggregate
+# `root:coverage` run uses the root pyproject config instead.
+[tool.coverage.run]
+branch = true
+source_pkgs = ["imbi.scheduler"]
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 85
+show_missing = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi"]
+include = [
+  "src/imbi/scheduler/py.typed",
+]

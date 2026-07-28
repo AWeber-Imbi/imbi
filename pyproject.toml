@@ -33,6 +33,7 @@ dependencies = [
   "imbi-plugin-oidc==2.21.1",
   "imbi-plugin-pagerduty==2.21.1",
   "imbi-plugin-sonarqube==2.21.1",
+  "imbi-scheduler==2.21.1",
   "imbi-slackbot==2.21.1",
 ]
 
@@ -97,6 +98,7 @@ files = [
   "apps/assistant/src",
   "apps/gateway/src",
   "apps/mcp/src",
+  "apps/scheduler/src",
   "apps/slackbot/src",
   "plugins/aws/src",
   "plugins/github/src",
@@ -106,7 +108,7 @@ files = [
   "plugins/pagerduty/src",
   "plugins/sonarqube/src",
 ]
-mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/slackbot/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
@@ -140,6 +142,7 @@ extraPaths = [
   "apps/assistant/src",
   "apps/gateway/src",
   "apps/mcp/src",
+  "apps/scheduler/src",
   "apps/slackbot/src",
   "plugins/aws/src",
   "plugins/github/src",
@@ -643,6 +646,11 @@ max-complexity = 15
 "apps/assistant/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "apps/gateway/**" = ["TC", "UP"]
 "apps/mcp/**" = ["UP"]
+# TC003: pydantic needs annotation types (datetime) resolvable at runtime, so
+# they cannot move into a type-checking block. UP037: annotations referring to
+# type-checking-only imports must stay quoted without `from __future__ import
+# annotations`. Narrower than the ["TC", "UP"] the older members carry.
+"apps/scheduler/**" = ["TC003", "UP037"]
 "apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "conftest.py" = ["PLC0415"]
 "**/tests/**/*.py" = [
@@ -682,6 +690,7 @@ imbi-api = { workspace = true }
 imbi-assistant = { workspace = true }
 imbi-gateway = { workspace = true }
 imbi-mcp = { workspace = true }
+imbi-scheduler = { workspace = true }
 imbi-slackbot = { workspace = true }
 imbi-plugin-aws = { workspace = true }
 imbi-plugin-github = { workspace = true }
