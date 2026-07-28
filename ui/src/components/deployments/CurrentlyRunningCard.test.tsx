@@ -11,7 +11,7 @@ import type {
 } from '@/types'
 
 import { CurrentlyRunningCard } from './CurrentlyRunningCard'
-import type { PipelineStage } from './pipeline'
+import type { PipelineStage, RecentRelease } from './pipeline'
 import type { DeploymentActions } from './useDeploymentActions'
 
 // fallow-ignore-next-line unresolved-import
@@ -66,15 +66,45 @@ const ROLLBACK: ReleaseHistoryEntry = {
   tag: 'v6.4.0',
 }
 
+/** The running release as it appears in the synced history. */
+const RUNNING_ENTRY: ReleaseHistoryEntry = {
+  ci_status: 'pass',
+  notes_markdown: '### Added\n- current feature',
+  published_at: '2026-06-01T00:00:00Z',
+  sha: 'aaa111aaa111',
+  short_sha: 'aaa111a',
+  tag: 'v6.5.0',
+}
+
+/** A release ranking above the running one — where a rollback leaves it. */
+const AHEAD: ReleaseHistoryEntry = {
+  ci_status: 'pass',
+  notes_markdown: '### Fixed\n- newer fix',
+  published_at: '2026-06-15T00:00:00Z',
+  sha: 'bbb222bbb222',
+  short_sha: 'bbb222b',
+  tag: 'v6.5.1',
+}
+
+const behind = (entry: ReleaseHistoryEntry): RecentRelease => ({
+  entry,
+  relation: 'behind',
+})
+
 const STAGE: PipelineStage = {
   current: CURRENT,
+  currentHistoryEntry: null,
   env: ENV,
   kind: 'release',
   pendingCommits: [],
   pendingReleases: [],
-  rollbackTargets: [ROLLBACK],
-  upstream: null,
-  upstreamCurrent: null,
+  recentReleases: [behind(ROLLBACK)],
+  upstream: { name: 'Staging', slug: 'staging' } as unknown as Environment,
+  // A tagged upstream — so an unreachable ahead row can say why.
+  upstreamCurrent: {
+    ...CURRENT,
+    environment: { name: 'staging', slug: 'staging' },
+  },
 }
 
 const makeActions = (): DeploymentActions => ({
@@ -105,7 +135,7 @@ const rowToggle = (tag: string) =>
 
 const stageWith = (rel: ReleaseHistoryEntry): PipelineStage => ({
   ...STAGE,
-  rollbackTargets: [rel],
+  recentReleases: [behind(rel)],
 })
 
 describe('CurrentlyRunningCard', () => {
@@ -133,7 +163,7 @@ describe('CurrentlyRunningCard', () => {
     const actions = makeActions()
     const user = userEvent.setup()
     renderCard(STAGE, actions)
-    await user.click(screen.getByRole('button', { name: 'Roll back' }))
+    await user.click(screen.getByRole('button', { name: 'Roll back v6.4.0' }))
     await user.click(
       screen.getByRole('button', { name: 'Roll back to v6.4.0' }),
     )
@@ -162,6 +192,74 @@ describe('CurrentlyRunningCard', () => {
     )
   })
 
+  it('marks the running release rather than offering it as a target', () => {
+    renderCard({
+      ...STAGE,
+      recentReleases: [
+        { entry: RUNNING_ENTRY, relation: 'current' },
+        behind(ROLLBACK),
+      ],
+    })
+    expect(screen.getByText('Running')).toBeInTheDocument()
+    // One action button — the roll back on v6.4.0, not on the running row.
+    expect(screen.getAllByRole('button', { name: /^Roll back / })).toHaveLength(
+      1,
+    )
+  })
+
+  it('offers a forward deploy for a release above the running one', async () => {
+    // Production was rolled back v6.5.1 -> v6.5.0; v6.5.1 is still live in
+    // staging, so it stays deployable rather than vanishing from the list.
+    const actions = makeActions()
+    const user = userEvent.setup()
+    renderCard(
+      { ...STAGE, recentReleases: [{ entry: AHEAD, relation: 'ahead' }] },
+      actions,
+    )
+    expect(screen.getByText('v6.5.1')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Deploy v6.5.1' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Deploy v6.5.1 to production' }),
+    )
+    expect(actions.deploy).toHaveBeenCalledWith({
+      action: 'deploy',
+      envName: 'Production',
+      envSlug: 'production',
+      refLabel: 'v6.5.1',
+      rollback: false,
+      sha: 'bbb222bbb222',
+    })
+  })
+
+  it('lists a release the upstream has not reached without a control', () => {
+    renderCard({
+      ...STAGE,
+      recentReleases: [{ entry: AHEAD, relation: 'unreached' }],
+    })
+    expect(screen.getByText('v6.5.1')).toBeInTheDocument()
+    expect(screen.getByText('Not in staging')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Deploy v6.5.1' })).toBeNull()
+  })
+
+  it('claims nothing about an untagged upstream', () => {
+    // Promote stage: the upstream runs a raw commit, so there is no tag to
+    // compare against and "Not in staging" would assert something
+    // unevaluable. The row still lists, just without a control.
+    renderCard({
+      ...STAGE,
+      kind: 'promote',
+      recentReleases: [{ entry: AHEAD, relation: 'unreached' }],
+      upstreamCurrent: {
+        ...CURRENT,
+        environment: { name: 'staging', slug: 'staging' },
+        release: { ...CURRENT.release!, tag: null },
+      },
+    })
+    expect(screen.getByText('v6.5.1')).toBeInTheDocument()
+    expect(screen.queryByText(/^Not in/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Deploy v6.5.1' })).toBeNull()
+  })
+
   it('will not roll back to a blocked release, and can unblock it', async () => {
     const user = userEvent.setup()
     renderCard(
@@ -174,7 +272,9 @@ describe('CurrentlyRunningCard', () => {
     )
     // The Blocked badge replaces the Roll back button outright.
     expect(screen.getByText('Blocked')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Roll back' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Roll back v6.4.0' }),
+    ).toBeNull()
     // Unblock sits with the reason, not in the collapsed row.
     expect(screen.queryByRole('button', { name: 'Unblock' })).toBeNull()
     await user.click(rowToggle('v6.4.0'))

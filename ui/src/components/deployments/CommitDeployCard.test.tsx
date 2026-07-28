@@ -54,11 +54,12 @@ const makeStage = (
   current: Partial<CurrentReleaseEnvironment> = {},
 ): PipelineStage => ({
   current: { ...currentFor(committish), ...current },
+  currentHistoryEntry: null,
   env: ENV,
   kind: 'commit',
   pendingCommits: [],
   pendingReleases: [],
-  rollbackTargets: [],
+  recentReleases: [],
   upstream: null,
   upstreamCurrent: null,
 })

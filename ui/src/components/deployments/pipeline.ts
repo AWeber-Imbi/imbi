@@ -37,16 +37,41 @@ export interface PipelineStage {
   pendingCommits: RecentCommit[]
   /** Tagged releases live upstream but not here (newest first). */
   pendingReleases: ReleaseHistoryEntry[]
-  /** Releases this env could roll back to (newest first, excludes current). */
-  rollbackTargets: ReleaseHistoryEntry[]
+  /**
+   * Releases around the one this env runs (newest first), including the
+   * current one and any that rank above it. See ``RecentRelease``.
+   */
+  recentReleases: RecentRelease[]
   upstream: Environment | null
   upstreamCurrent: CurrentReleaseEnvironment | null
 }
 
+/**
+ * A release listed beside the env's current one, and what this env can do
+ * with it:
+ *
+ *   'behind'   — ranks below the running release; roll back to it.
+ *   'current'  — the running release itself.
+ *   'ahead'    — ranks above, and deployable: it is running (or already
+ *                validated) upstream, so moving forward to it is a
+ *                legitimate step. This is where a rollback leaves the
+ *                release it left behind.
+ *   'unreached' — ranks above but is not validated upstream. Listed so it
+ *                doesn't silently vanish, but not offered.
+ */
+export interface RecentRelease {
+  entry: ReleaseHistoryEntry
+  relation: ReleaseRelation
+}
+
 export type StageKind = 'commit' | 'promote' | 'release'
 
-// Most recent releases offered as rollback targets, regardless of age.
-const ROLLBACK_LIMIT = 10
+type ReleaseRelation = 'ahead' | 'behind' | 'current' | 'unreached'
+
+// Releases listed either side of the running one, regardless of age.
+// Rows ranking *above* current only appear after a rollback (or a
+// roll-forward of an older line), so the window is symmetric.
+const RELEASE_WINDOW = 10
 
 /**
  * Build the per-environment stage models. ``environments`` must already be
@@ -75,9 +100,14 @@ export function buildPipeline(
       : upstreamCurrent?.release?.tag
         ? 'release'
         : 'promote'
+    // No kind guard: pendingReleases already returns [] when the upstream
+    // runs no tag, which is what makes a stage 'promote' in the first
+    // place, and when there is no upstream at all.
+    const pending = pendingReleases(history, upstreamCurrent, current)
+    const currentEntry = currentReleaseEntry(history, current)
     return {
       current,
-      currentHistoryEntry: currentReleaseEntry(history, current),
+      currentHistoryEntry: currentEntry,
       env,
       kind,
       pendingCommits:
@@ -88,11 +118,8 @@ export function buildPipeline(
               current?.release?.committish ?? null,
             )
           : [],
-      pendingReleases:
-        kind === 'release'
-          ? pendingReleases(history, upstreamCurrent, current)
-          : [],
-      rollbackTargets: rollbackTargets(history, current),
+      pendingReleases: pending,
+      recentReleases: recentReleases(history, current, currentEntry, pending),
       upstream,
       upstreamCurrent,
     }
@@ -232,26 +259,57 @@ function pendingReleases(
   })
 }
 
-/** Releases older than the env's current tag (what it can roll back to). */
-function rollbackTargets(
+/**
+ * The releases listed beside the env's current one — a window of
+ * ``RELEASE_WINDOW`` either side, newest first, with the running release
+ * in place between them.
+ *
+ * Rows above current are *not* filtered out: after a rollback (v5 → v4)
+ * the release just left behind still belongs in the list, or it silently
+ * disappears from the env's history. Whether it can be deployed again is
+ * a separate question, answered by ``pending`` — what is validated
+ * upstream ranks 'ahead', the rest 'unreached'.
+ */
+function recentReleases(
   history: ReleaseHistoryEntry[],
   current: CurrentReleaseEnvironment | null,
-): ReleaseHistoryEntry[] {
+  currentEntry: null | ReleaseHistoryEntry,
+  pending: ReleaseHistoryEntry[],
+): RecentRelease[] {
   const envTag = current?.release?.tag
-  if (!envTag) return []
+  if (!currentEntry || !envTag) return []
+  const above: ReleaseHistoryEntry[] = []
+  const below: ReleaseHistoryEntry[] = []
   const idx = history.findIndex((entry) => tagEq(entry.tag, envTag))
-  if (idx >= 0) return history.slice(idx + 1, idx + 1 + ROLLBACK_LIMIT)
-  // The env's tag isn't in the synced history (e.g. the tag sync hasn't
-  // caught up) — fall back to semver ranking so the rollback list still
-  // renders with everything strictly older.
-  const envKey = semverKey(envTag)
-  if (!envKey) return []
-  return history
-    .filter((entry) => {
-      const key = semverKey(entry.tag)
-      return !!key && semverLess(key, envKey)
-    })
-    .slice(0, ROLLBACK_LIMIT)
+  if (idx >= 0) {
+    above.push(...history.slice(0, idx))
+    below.push(...history.slice(idx + 1))
+  } else {
+    // The env's tag isn't in the synced history (the tag sync hasn't caught
+    // up, or it runs a divergent line) — rank by semver instead. Tags that
+    // don't parse, or that rank equal on a different tag string, sit on
+    // neither side and are left out; skipping the equal case also keeps the
+    // rendered rows' tag keys unique.
+    if (!semverKey(envTag)) return []
+    for (const entry of history) {
+      const cmp = compareTags(envTag, entry.tag)
+      if (cmp == null || cmp === 0) continue
+      if (cmp < 0) above.push(entry)
+      else below.push(entry)
+    }
+  }
+  return [
+    ...above.slice(-RELEASE_WINDOW).map((entry) => ({
+      entry,
+      relation: pending.some((rel) => tagEq(rel.tag, entry.tag))
+        ? ('ahead' as const)
+        : ('unreached' as const),
+    })),
+    { entry: currentEntry, relation: 'current' as const },
+    ...below
+      .slice(0, RELEASE_WINDOW)
+      .map((entry) => ({ entry, relation: 'behind' as const })),
+  ]
 }
 
 /**

@@ -98,11 +98,12 @@ const makeStage = (
   envTag = 'v6.5.0',
 ): PipelineStage => ({
   current: current('production', envTag, 'aaa111aaa111'),
+  currentHistoryEntry: null,
   env: ENV,
   kind: 'release',
   pendingCommits: [],
   pendingReleases: pending,
-  rollbackTargets: [],
+  recentReleases: [],
   upstream: UPSTREAM,
   upstreamCurrent: current('staging', 'v6.5.2', 'ccc333ccc333'),
 })
