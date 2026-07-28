@@ -435,8 +435,10 @@ function RowAction({
     )
   }
   const Icon = ahead ? Rocket : RotateCcw
+  const verb = ahead ? 'Deploy' : 'Roll back'
   return (
     <Button
+      aria-label={`${verb} ${row.entry.tag}`}
       className="h-7 px-2.5 text-xs"
       disabled={!canTrigger}
       onClick={onDeploy}
@@ -445,7 +447,7 @@ function RowAction({
       variant="outline"
     >
       <Icon className="mr-1 size-3.5" />
-      {ahead ? 'Deploy' : 'Roll back'}
+      {verb}
     </Button>
   )
 }

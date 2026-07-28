@@ -164,7 +164,7 @@ describe('CurrentlyRunningCard', () => {
     const actions = makeActions()
     const user = userEvent.setup()
     renderCard(STAGE, actions)
-    await user.click(screen.getByRole('button', { name: 'Roll back' }))
+    await user.click(screen.getByRole('button', { name: 'Roll back v6.4.0' }))
     await user.click(
       screen.getByRole('button', { name: 'Roll back to v6.4.0' }),
     )
@@ -203,7 +203,9 @@ describe('CurrentlyRunningCard', () => {
     })
     expect(screen.getByText('Running')).toBeInTheDocument()
     // One action button — the roll back on v6.4.0, not on the running row.
-    expect(screen.getAllByRole('button', { name: 'Roll back' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /^Roll back / })).toHaveLength(
+      1,
+    )
   })
 
   it('offers a forward deploy for a release above the running one', async () => {
@@ -223,7 +225,7 @@ describe('CurrentlyRunningCard', () => {
       actions,
     )
     expect(screen.getByText('v6.5.1')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Deploy' }))
+    await user.click(screen.getByRole('button', { name: 'Deploy v6.5.1' }))
     await user.click(
       screen.getByRole('button', { name: 'Deploy v6.5.1 to production' }),
     )
@@ -244,7 +246,7 @@ describe('CurrentlyRunningCard', () => {
     })
     expect(screen.getByText('v6.5.1')).toBeInTheDocument()
     expect(screen.getByText('Not in staging')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Deploy' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Deploy v6.5.1' })).toBeNull()
   })
 
   it('claims nothing about an untagged upstream', () => {
@@ -263,7 +265,7 @@ describe('CurrentlyRunningCard', () => {
     })
     expect(screen.getByText('v6.5.1')).toBeInTheDocument()
     expect(screen.queryByText(/^Not in/)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Deploy' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Deploy v6.5.1' })).toBeNull()
   })
 
   it('will not roll back to a blocked release, and can unblock it', async () => {
@@ -278,7 +280,9 @@ describe('CurrentlyRunningCard', () => {
     )
     // The Blocked badge replaces the Roll back button outright.
     expect(screen.getByText('Blocked')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Roll back' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Roll back v6.4.0' }),
+    ).toBeNull()
     // Unblock sits with the reason, not in the collapsed row.
     expect(screen.queryByRole('button', { name: 'Unblock' })).toBeNull()
     await user.click(rowToggle('v6.4.0'))
