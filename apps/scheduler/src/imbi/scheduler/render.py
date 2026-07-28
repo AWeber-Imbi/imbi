@@ -12,6 +12,7 @@ untrusted input rather than as code.
 
 import datetime
 import typing
+from collections import abc
 
 import jinja2
 from jinja2 import sandbox
@@ -77,10 +78,10 @@ class Renderer:
         if isinstance(value, str):
             return self.text(value)
         if isinstance(value, dict):
-            mapping: dict[str, typing.Any] = value
+            mapping = typing.cast('dict[str, typing.Any]', value)
             return {key: self.document(item) for key, item in mapping.items()}
         if isinstance(value, list):
-            items: list[typing.Any] = value
+            items = typing.cast('abc.Sequence[typing.Any]', value)
             return [self.document(item) for item in items]
         return value
 
