@@ -45,9 +45,6 @@ class Scheduler(pydantic_settings.BaseSettings):
     default_misfire_grace_time: int = pydantic.Field(
         default=300, gt=0, description='Default misfire grace in seconds'
     )
-    run_retention_days: int = pydantic.Field(
-        default=90, gt=0, description='ClickHouse TTL for run history'
-    )
     consecutive_skips_limit: int = pydantic.Field(
         default=5,
         gt=0,
