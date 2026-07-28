@@ -5,7 +5,7 @@ import typer
 
 import imbi.scheduler
 from imbi.common import access_log, graph, lifespan, server
-from imbi.scheduler import app_status, lifespans
+from imbi.scheduler import app_status, lifespans, store
 
 
 def create_app() -> fastapi.FastAPI:
@@ -14,7 +14,9 @@ def create_app() -> fastapi.FastAPI:
         version=imbi.scheduler.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
-            graph.graph_lifespan, lifespans.clickhouse_hook
+            graph.graph_lifespan,
+            lifespans.clickhouse_hook,
+            store.store_lifespan,
         ),
     )
     app.include_router(app_status.router)

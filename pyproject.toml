@@ -647,11 +647,12 @@ max-complexity = 15
 "apps/assistant/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "apps/gateway/**" = ["TC", "UP"]
 "apps/mcp/**" = ["UP"]
-# TC003: pydantic needs annotation types (datetime) resolvable at runtime, so
-# they cannot move into a type-checking block. UP037: annotations referring to
-# type-checking-only imports must stay quoted without `from __future__ import
-# annotations`. Narrower than the ["TC", "UP"] the older members carry.
-"apps/scheduler/**" = ["TC003", "UP037"]
+# TC001-TC003: pydantic resolves annotations at runtime, so the types named in
+# model fields cannot move into a type-checking block. TC004 and up stay on —
+# they catch the inverse mistake, using a type-checking-only import at runtime.
+# UP037: annotations referring to type-checking-only imports must stay quoted
+# without `from __future__ import annotations`.
+"apps/scheduler/**" = ["TC001", "TC002", "TC003", "UP037"]
 "apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "conftest.py" = ["PLC0415"]
 "**/tests/**/*.py" = [

@@ -43,4 +43,5 @@ show_missing = true
 packages = ["src/imbi"]
 include = [
   "src/imbi/scheduler/py.typed",
+  "src/imbi/scheduler/store/schemata.toml",
 ]
