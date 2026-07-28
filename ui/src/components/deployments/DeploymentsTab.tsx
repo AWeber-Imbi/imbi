@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+
+import { useSearchParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 
@@ -92,11 +94,19 @@ export function DeploymentsTab({
     [environments, currentReleases, history, recentCommits],
   )
 
-  const [selectedSlug, setSelectedSlug] = useState<null | string>(null)
+  // `?env=<slug>` deep-links a specific stage (e.g. from the projects
+  // list's drift badges); an in-tab selection takes over from there.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedSlug = searchParams.get('env')
   const effectiveSlug =
-    selectedSlug && stages.some((s) => s.env.slug === selectedSlug)
-      ? selectedSlug
+    requestedSlug && stages.some((s) => s.env.slug === requestedSlug)
+      ? requestedSlug
       : defaultStageSlug(stages)
+  const selectStage = (slug: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('env', slug)
+    setSearchParams(next, { replace: true })
+  }
   const selectedStage = stages.find((s) => s.env.slug === effectiveSlug) ?? null
 
   const actions = useDeploymentActions({ onRunStarted, orgSlug, projectId })
@@ -126,7 +136,7 @@ export function DeploymentsTab({
         connectLabel={connectLabel}
         isDarkMode={isDarkMode}
         isSyncing={isSyncing}
-        onSelect={setSelectedSlug}
+        onSelect={selectStage}
         onSync={sync}
         readiness={readiness}
         selectedSlug={effectiveSlug}
