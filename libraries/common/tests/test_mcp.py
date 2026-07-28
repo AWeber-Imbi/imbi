@@ -243,6 +243,16 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
             names = await self._tool_names(handler)
         self.assertEqual(4, len(names))
 
+    async def test_fails_open_on_non_object_profile(self) -> None:
+        """Well-formed JSON that is not an object also fails open."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=['not', 'a', 'profile'])
+
+        with self.assertLogs('imbi.common.mcp', level='WARNING'):
+            names = await self._tool_names(handler)
+        self.assertEqual(4, len(names))
+
 
 class PermissionCacheTests(unittest.IsolatedAsyncioTestCase):
     """Profile caching in :class:`PermissionFilterMiddleware`."""

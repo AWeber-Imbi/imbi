@@ -257,6 +257,13 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
                 exc_info=True,
             )
             return None
+        if not isinstance(profile, dict):
+            LOGGER.warning(
+                'Unexpected /users/me payload of type %s; '
+                'returning the unfiltered tool list',
+                type(profile).__name__,
+            )
+            return None
         permissions = profile.get('permissions') or []
         resolved = (
             bool(profile.get('is_admin')),
