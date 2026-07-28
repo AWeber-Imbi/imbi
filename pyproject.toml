@@ -53,6 +53,7 @@ dev = [
   "respx",
   "ruff~=0.14.6",
   "tomli-w~=1.2",
+  "types-croniter>=6.0",
   "types-nanoid>=2.0.0.20260408",
   "watchfiles",
 ]
