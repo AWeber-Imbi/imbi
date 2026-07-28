@@ -94,19 +94,25 @@ class Tasks:
 
     async def get(self, slug: str) -> models.Task | None:
         """Return the task with `slug`, if it exists."""
-        statement = sql.SQL(
-            'SELECT {columns} FROM {table} WHERE slug = %s'
-        ).format(columns=self._columns(), table=self._table)
-        async with self._pool.connection() as conn:
-            return await self._fetch_one(conn, statement, (slug,))
+        return await self._fetch_by('slug', slug)
 
     async def get_by_id(self, task_id: uuid.UUID) -> models.Task | None:
         """Return the task with `task_id`, if it exists."""
+        return await self._fetch_by('id', task_id)
+
+    async def _fetch_by(
+        self, column: str, value: typing.Any
+    ) -> models.Task | None:
+        """Return the single task whose `column` equals `value`."""
         statement = sql.SQL(
-            'SELECT {columns} FROM {table} WHERE id = %s'
-        ).format(columns=self._columns(), table=self._table)
+            'SELECT {columns} FROM {table} WHERE {column} = %s'
+        ).format(
+            columns=self._columns(),
+            table=self._table,
+            column=sql.Identifier(column),
+        )
         async with self._pool.connection() as conn:
-            return await self._fetch_one(conn, statement, (task_id,))
+            return await self._fetch_one(conn, statement, (value,))
 
     async def search(
         self,
@@ -207,33 +213,37 @@ class Tasks:
             ' LIMIT %s'
             ' FOR UPDATE SKIP LOCKED'
         ).format(columns=self._columns(), table=self._table)
-        claimed: list[models.Task] = []
         async with (
             self._pool.connection() as conn,
             conn.transaction(),
             conn.cursor(row_factory=rows.dict_row) as cursor,
         ):
             await cursor.execute(statement, (now, limit))
-            for row in await cursor.fetchall():
-                task = _as_task(row)
-                claimed.append(task)
-                await self._advance(cursor, task, now)
+            claimed = [_as_task(row) for row in await cursor.fetchall()]
+            await self._advance(cursor, claimed, now)
         return claimed
 
     async def _advance(
         self,
         cursor: psycopg.AsyncCursor[typing.Any],
-        task: models.Task,
+        claimed: list[models.Task],
         now: datetime.datetime,
     ) -> None:
-        """Record the firing and compute the following one."""
-        following = task.next_fire_time(now)
-        await cursor.execute(
+        """Record each firing and compute the one that follows it.
+
+        One `executemany` rather than a statement per task: the claiming
+        transaction holds row locks for its whole duration, so a round trip
+        per claimed task is exactly the delay this method's contract says
+        not to incur.
+        """
+        if not claimed:
+            return
+        await cursor.executemany(
             sql.SQL(
                 'UPDATE {table} SET last_run_at = %s, next_run_at = %s'
                 ' WHERE id = %s'
             ).format(table=self._table),
-            (now, following, task.id),
+            [(now, task.next_fire_time(now), task.id) for task in claimed],
         )
 
     async def reschedule(self, task: models.Task) -> datetime.datetime | None:

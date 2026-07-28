@@ -92,8 +92,21 @@ async def _add_missing_columns(
 
     ``CREATE TABLE IF NOT EXISTS`` silently ignores new columns on an
     existing table, which would leave a deployed schema behind this file.
+
+    The catalog is read first so the steady state issues no DDL at all: even
+    a no-op ``ALTER TABLE`` takes a brief ACCESS EXCLUSIVE lock, and every
+    replica runs this on every start, where other replicas' claim queries
+    would queue behind it.
     """
+    await cursor.execute(
+        'SELECT column_name FROM information_schema.columns'
+        ' WHERE table_schema = %s AND table_name = %s',
+        (schema, table['name']),
+    )
+    existing = {row[0] for row in await cursor.fetchall()}
     for name, col_type in table['columns'].items():
+        if name in existing:
+            continue
         await cursor.execute(
             sql.SQL(
                 'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {type}'

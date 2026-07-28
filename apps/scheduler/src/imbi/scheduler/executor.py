@@ -21,14 +21,8 @@ from imbi.scheduler import identity, models, render, runs, settings
 
 LOGGER = logging.getLogger(__name__)
 
-#: Gateway dispositions are carried in the status code.
-GATEWAY_ACCEPTED = 202
-GATEWAY_DROPPED = 204
-
 RETRYABLE_CLIENT_STATUS = 429
 
-HTTP_OK = 200
-HTTP_MULTIPLE_CHOICES = 300
 HTTP_INTERNAL_SERVER_ERROR = 500
 
 
@@ -53,15 +47,19 @@ class Executor:
         trace_id: str = '',
     ) -> runs.Run:
         """Fire `task` once, honoring its retry policy."""
-        run = runs.start(task, fired_at, trace_id=trace_id)
-        run = run.model_copy(
-            update={'actor_name': self._resolver.actor_name(task)}
-        )
+        actor = self._resolver.actor_name(task)
+        run = runs.start(task, fired_at, actor_name=actor, trace_id=trace_id)
         try:
             bearer = await self._resolver.bearer(task)
         except identity.IdentityError as err:
             LOGGER.info('Skipping %s: %s', task.slug, err.reason)
-            return runs.skipped(task, fired_at, err.reason, trace_id=trace_id)
+            return runs.skipped(
+                task,
+                fired_at,
+                err.reason,
+                actor_name=actor,
+                trace_id=trace_id,
+            )
         try:
             request = self._render(task, run.run_id, fired_at)
         except render.RenderError as err:
@@ -79,14 +77,19 @@ class Executor:
         fired_at: datetime.datetime,
     ) -> render.RenderedRequest:
         renderer = render.Renderer(render.context(task, fired_at, run_id))
-        if isinstance(task.target, models.ApiTarget):
-            request = render.api_request(
-                task, task.target, renderer, self._settings.api_url
-            )
-        else:
-            request = render.gateway_request(
-                task.target, renderer, self._settings.gateway_url
-            )
+        # Exhaustive rather than if/else: a new target kind must fail loudly
+        # here instead of falling through to a gateway delivery.
+        match task.target:
+            case models.ApiTarget():
+                request = render.api_request(
+                    task, task.target, renderer, self._settings.api_url
+                )
+            case models.GatewayTarget():
+                request = render.gateway_request(
+                    task.target, renderer, self._settings.gateway_url
+                )
+            case _:  # pragma: no cover - the union is closed
+                typing.assert_never(task.target)
         if task.execution.idempotency_key:
             headers = dict(request.headers)
             headers['Idempotency-Key'] = renderer.text(
@@ -146,7 +149,7 @@ class Executor:
             )
         return runs.finish(
             run,
-            _classify(task, response.status_code),
+            task.target.classify(response),
             runs.Outcome(
                 http_status=response.status_code,
                 response=response.text,
@@ -157,25 +160,6 @@ class Executor:
                 ),
             ),
         )
-
-
-def _classify(
-    task: models.Task, status: int
-) -> typing.Literal['succeeded', 'no_effect', 'failed']:
-    """Map a status code to a terminal run state.
-
-    Gateway deliveries carry their disposition in the status: 202 means
-    accepted and handled, 204 means accepted and then dropped.
-    """
-    if task.target.kind == 'gateway':
-        if status == GATEWAY_ACCEPTED:
-            return 'succeeded'
-        if status == GATEWAY_DROPPED:
-            return 'no_effect'
-        return 'failed'
-    if HTTP_OK <= status < HTTP_MULTIPLE_CHOICES:
-        return 'succeeded'
-    return 'failed'
 
 
 def _is_retryable(run: runs.Run) -> bool:

@@ -15,6 +15,7 @@ import typing
 import uuid
 import zoneinfo
 
+import httpx
 import pydantic
 
 from imbi.scheduler import triggers
@@ -28,7 +29,6 @@ SLUG_MAX_LENGTH = 64
 #: 204 means the delivery was accepted and then dropped, and recording that as
 #: a success would hide a task that silently does nothing forever.
 RunState = typing.Literal[
-    'pending',
     'running',
     'succeeded',
     'no_effect',
@@ -50,6 +50,10 @@ TERMINAL_RUN_STATES: frozenset[str] = frozenset(
 )
 
 HttpMethod = typing.Literal['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+
+#: Gateway deliveries carry their disposition in the status code.
+GATEWAY_ACCEPTED = 202
+GATEWAY_DROPPED = 204
 
 
 def _validate_slug(value: str) -> str:
@@ -95,6 +99,28 @@ class ApiTarget(pydantic.BaseModel):
     body: dict[str, typing.Any] | None = None
     organization: str | None = None
 
+    #: An api call is made *as* somebody, so it needs a principal.
+    requires_identity: typing.ClassVar[bool] = True
+
+    def summary(self) -> str:
+        """Return a short, loggable description of this target."""
+        return f'{self.method} {self.path}'
+
+    def classify(
+        self, response: httpx.Response
+    ) -> typing.Literal['succeeded', 'no_effect', 'failed']:
+        """Map a response to a terminal run state."""
+        return 'succeeded' if response.is_success else 'failed'
+
+    def principal(self) -> str:
+        """Raise: an api target always runs as somebody.
+
+        Unreachable while the task validator holds. Raising rather than
+        inventing a label means a lapse in that validator surfaces loudly
+        instead of writing a fictional principal into run history.
+        """
+        raise RuntimeError('api targets always carry an identity')
+
     @pydantic.field_validator('path')
     @classmethod
     def _validate_path(cls, value: str) -> str:
@@ -121,6 +147,33 @@ class GatewayTarget(pydantic.BaseModel):
     payload: dict[str, typing.Any]
     headers: dict[str, str] = {}
 
+    #: The endpoint has no bearer check, so a credential would be theater.
+    requires_identity: typing.ClassVar[bool] = False
+
+    def summary(self) -> str:
+        """Return a short, loggable description of this target."""
+        return f'POST /notifications/{self.webhook_id}'
+
+    def principal(self) -> str:
+        """Return the principal recorded for an identity-less delivery."""
+        return f'gateway:{self.webhook_id}'
+
+    def classify(
+        self, response: httpx.Response
+    ) -> typing.Literal['succeeded', 'no_effect', 'failed']:
+        """Map a response to a terminal run state.
+
+        202 means accepted and handled; 204 means accepted and then dropped
+        — no matching webhook, no project resolved, or no rule matched.
+        Recording that as success would hide a task that silently does
+        nothing forever, so it gets its own terminal state.
+        """
+        if response.status_code == GATEWAY_ACCEPTED:
+            return 'succeeded'
+        if response.status_code == GATEWAY_DROPPED:
+            return 'no_effect'
+        return 'failed'
+
 
 Target = typing.Annotated[
     ApiTarget | GatewayTarget, pydantic.Field(discriminator='kind')
@@ -133,10 +186,13 @@ class ExecutionPolicy(pydantic.BaseModel):
     `timeout` defaults to two minutes rather than something generous: every
     target is one HTTP call, and a trigger endpoint is expected to enqueue
     rather than block.
+
+    There is no `coalesce` flag: one claim per due timestamp means a task that
+    fell behind fires once on catch-up rather than once per missed interval, so
+    coalescing is not optional behavior to configure.
     """
 
     misfire_grace_time: int | None = 300
-    coalesce: bool = True
     max_running_instances: int = 1
     timeout: int = 120
     retries: int = 0
@@ -144,7 +200,6 @@ class ExecutionPolicy(pydantic.BaseModel):
         'exponential'
     )
     idempotency_key: str | None = None
-    on_failure_notify: list[str] = []
 
     @pydantic.model_validator(mode='after')
     def _validate_bounds(self) -> typing.Self:
@@ -199,13 +254,18 @@ class Task(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def _validate_identity_matches_target(self) -> typing.Self:
-        if self.target.kind == 'gateway' and self.identity is not None:
+        """Require an identity exactly when the target needs one.
+
+        One symmetric check driven by the target, so a new target kind
+        declares its own rule rather than being added to two conditions here.
+        """
+        if self.target.requires_identity and self.identity is None:
+            raise ValueError(f'{self.target.kind} targets require an identity')
+        if not self.target.requires_identity and self.identity is not None:
             raise ValueError(
-                'gateway targets carry no identity: the endpoint has no '
-                'bearer check and derives attribution from the payload'
+                f'{self.target.kind} targets carry no identity: the endpoint '
+                'has no bearer check and derives attribution from the payload'
             )
-        if self.target.kind == 'api' and self.identity is None:
-            raise ValueError('api targets require an identity')
         return self
 
     @property
@@ -216,10 +276,9 @@ class Task(pydantic.BaseModel):
     @property
     def principal_name(self) -> str:
         """Return who this task runs as, for the run record."""
-        if self.identity is None:
-            gateway = typing.cast('GatewayTarget', self.target)
-            return f'gateway:{gateway.webhook_id}'
-        return self.identity.subject
+        if self.identity is not None:
+            return self.identity.subject
+        return self.target.principal()
 
     def next_fire_time(
         self, after: datetime.datetime
@@ -229,6 +288,4 @@ class Task(pydantic.BaseModel):
 
     def target_summary(self) -> str:
         """Return a short, loggable description of the target."""
-        if isinstance(self.target, ApiTarget):
-            return f'{self.target.method} {self.target.path}'
-        return f'POST /notifications/{self.target.webhook_id}'
+        return self.target.summary()

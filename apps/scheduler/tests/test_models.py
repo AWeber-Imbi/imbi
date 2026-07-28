@@ -54,7 +54,6 @@ class ExecutionPolicyTests(unittest.TestCase):
         policy = models.ExecutionPolicy()
         self.assertEqual(120, policy.timeout)
         self.assertEqual(300, policy.misfire_grace_time)
-        self.assertTrue(policy.coalesce)
         self.assertEqual('exponential', policy.retry_backoff)
 
     def test_rejects_zero_timeout(self) -> None:

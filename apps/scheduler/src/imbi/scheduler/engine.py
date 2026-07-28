@@ -10,6 +10,7 @@ re-polls regardless.
 """
 
 import asyncio
+import collections
 import contextlib
 import datetime
 import logging
@@ -38,7 +39,7 @@ class Engine:
         self._executor = executor
         self._settings = config or settings.Scheduler()
         self._semaphore = asyncio.Semaphore(self._settings.max_concurrent_runs)
-        self._in_flight: dict[uuid.UUID, int] = {}
+        self._in_flight: collections.Counter[uuid.UUID] = collections.Counter()
         self._wake = asyncio.Event()
 
     async def tick(
@@ -63,7 +64,7 @@ class Engine:
             LOGGER.info(
                 'Skipping %s: %d instance(s) already running',
                 task.slug,
-                self._in_flight.get(task.id, 0),
+                self._in_flight[task.id],
             )
             return await self._record(
                 task,
@@ -77,7 +78,7 @@ class Engine:
             return await self._record(
                 task, runs.skipped(task, moment, misfire)
             )
-        self._in_flight[task.id] = self._in_flight.get(task.id, 0) + 1
+        self._in_flight[task.id] += 1
         try:
             async with self._semaphore:
                 run = await self._executor.execute(task, moment)
@@ -94,18 +95,13 @@ class Engine:
                 ),
             )
         finally:
-            remaining = self._in_flight.get(task.id, 1) - 1
-            if remaining > 0:
-                self._in_flight[task.id] = remaining
-            else:
-                self._in_flight.pop(task.id, None)
+            self._in_flight[task.id] -= 1
+            if not self._in_flight[task.id]:
+                del self._in_flight[task.id]
         return await self._record(task, run)
 
     def _at_instance_limit(self, task: models.Task) -> bool:
-        return (
-            self._in_flight.get(task.id, 0)
-            >= task.execution.max_running_instances
-        )
+        return self._in_flight[task.id] >= task.execution.max_running_instances
 
     def _misfire_reason(
         self, task: models.Task, moment: datetime.datetime
@@ -125,12 +121,19 @@ class Engine:
         return None
 
     async def _record(self, task: models.Task, run: runs.Run) -> runs.Run:
-        """Persist a run and update the task's outcome counters."""
-        await runs.record(run)
-        await self._tasks.record_outcome(
-            task.id,
-            skipped=run.state == 'skipped',
-            no_effect=run.state == 'no_effect',
+        """Persist a run and update the task's outcome counters.
+
+        The two writes hit different databases and do not depend on each
+        other, so they go out together — the run stays counted against the
+        concurrency ceiling until both land.
+        """
+        await asyncio.gather(
+            runs.record(run),
+            self._tasks.record_outcome(
+                task.id,
+                skipped=run.state == 'skipped',
+                no_effect=run.state == 'no_effect',
+            ),
         )
         await self._apply_limits(task, run)
         return run

@@ -47,12 +47,6 @@ class Scheduler(pydantic_settings.BaseSettings):
     max_concurrent_runs: int = pydantic.Field(
         default=20, gt=0, description='Per-process ceiling on active runs'
     )
-    default_timeout: int = pydantic.Field(
-        default=120, gt=0, description='Default per-run timeout in seconds'
-    )
-    default_misfire_grace_time: int = pydantic.Field(
-        default=300, gt=0, description='Default misfire grace in seconds'
-    )
     consecutive_skips_limit: int = pydantic.Field(
         default=5,
         gt=0,

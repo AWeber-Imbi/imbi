@@ -9,6 +9,7 @@ happens in the task's IANA timezone, so a ``0 2 * * *`` cron stays at 02:00
 local across a daylight-saving transition rather than drifting by an hour.
 """
 
+import calendar
 import datetime
 import secrets
 import typing
@@ -21,10 +22,6 @@ import pydantic
 #: month, day-of-week) or six, where croniter reads the sixth as *seconds* —
 #: it trails the expression rather than leading it.
 CRON_FIELD_COUNTS = (5, 6)
-
-#: Guards the calendar-stepping loop against a pathological anchor. A daily
-#: step needs ~365 iterations per year of drift, so this covers centuries.
-_MAX_CALENDAR_STEPS = 100_000
 
 _MONTHS_PER_YEAR = 12
 
@@ -199,8 +196,10 @@ class CalendarTrigger(pydantic.BaseModel):
         tz: zoneinfo.ZoneInfo,
     ) -> datetime.datetime | None:
         """Walk forward from `anchor` to the first firing after `local`."""
+        # `_skip_ahead` floors, and candidate dates strictly increase, so the
+        # first firing after `local` is at `step` or the one after it.
         step = self._skip_ahead(anchor, local.date())
-        for offset in range(step, step + _MAX_CALENDAR_STEPS):
+        for offset in (step, step + 1):
             candidate = datetime.datetime.combine(
                 self._date_at(anchor, offset), self.at_time, tzinfo=tz
             )
@@ -234,7 +233,7 @@ class CalendarTrigger(pydantic.BaseModel):
         month = total % _MONTHS_PER_YEAR + 1
         # Clamp to the month's length so a day-31 anchor still fires in
         # February rather than being skipped.
-        last_day = _days_in_month(year, month)
+        last_day = calendar.monthrange(year, month)[1]
         return datetime.date(year, month, min(anchor.day, last_day))
 
 
@@ -254,15 +253,6 @@ class DateTrigger(pydantic.BaseModel):
         if fires > _as_utc(after):
             return fires
         return None
-
-
-def _days_in_month(year: int, month: int) -> int:
-    """Return the number of days in `month` of `year`."""
-    if month == _MONTHS_PER_YEAR:
-        return 31
-    first = datetime.date(year, month, 1)
-    following = datetime.date(year, month + 1, 1)
-    return (following - first).days
 
 
 Trigger = typing.Annotated[

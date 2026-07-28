@@ -28,33 +28,32 @@ RESPONSE_EXCERPT_LIMIT = 8192
 
 _REDACTED = '[redacted]'
 
-#: Patterns for material that must never be persisted. Ordered most specific
-#: first so a bearer header is redacted as a whole rather than leaving the
-#: scheme behind.
-_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r'(?i)\b(bearer|basic)\s+[\w\-.~+/=]+'),
-    re.compile(r'\bik_[A-Za-z0-9]{8,}'),
-    re.compile(r'\beyJ[\w-]+\.[\w-]+\.[\w-]+'),
-    re.compile(
-        r'(?i)"(password|secret|token|api_key|client_secret)"\s*:\s*"[^"]*"'
+#: Patterns for material that must never be persisted, each with the
+#: replacement that keeps enough context to read a log without the secret.
+#: Ordered most specific first so a bearer header is redacted whole rather
+#: than leaving the scheme behind.
+_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r'(?i)\b(bearer|basic)\s+[\w\-.~+/=]+'),
+        rf'\1 {_REDACTED}',
+    ),
+    (re.compile(r'\bik_[A-Za-z0-9]{8,}'), _REDACTED),
+    (re.compile(r'\beyJ[\w-]+\.[\w-]+\.[\w-]+'), _REDACTED),
+    (
+        re.compile(
+            r'(?i)"(password|secret|token|api_key|client_secret)"'
+            r'\s*:\s*"[^"]*"'
+        ),
+        rf'"\1": "{_REDACTED}"',
     ),
 )
 
 
 def scrub(text: str) -> str:
     """Return `text` with anything credential-shaped redacted."""
-    for pattern in _SECRET_PATTERNS:
-        text = pattern.sub(_redact, text)
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
     return text
-
-
-def _redact(match: re.Match[str]) -> str:
-    if match.re.groups and match.group(1):
-        prefix = match.group(1)
-        if prefix.lower() in {'bearer', 'basic'}:
-            return f'{prefix} {_REDACTED}'
-        return f'"{prefix}": "{_REDACTED}"'
-    return _REDACTED
 
 
 def excerpt(text: str | None) -> str:
@@ -110,6 +109,7 @@ def start(
     fired_at: datetime.datetime,
     *,
     attempt: int = 1,
+    actor_name: str = '',
     trace_id: str = '',
 ) -> Run:
     """Return a `running` run for `task`, ready to be recorded."""
@@ -125,6 +125,7 @@ def start(
         attempt=attempt,
         identity_kind=identity_kind,
         principal_name=task.principal_name,
+        actor_name=actor_name,
         consent_id=(
             task.identity.consent_id or '' if task.identity is not None else ''
         ),
@@ -183,6 +184,7 @@ def skipped(
     fired_at: datetime.datetime,
     reason: str,
     *,
+    actor_name: str = '',
     trace_id: str = '',
 ) -> Run:
     """Return a terminal `skipped` run.
@@ -191,7 +193,7 @@ def skipped(
     should stop quietly, so it neither consumes retries nor reads as an
     outage.
     """
-    run = start(task, fired_at, trace_id=trace_id)
+    run = start(task, fired_at, actor_name=actor_name, trace_id=trace_id)
     return finish(
         run,
         'skipped',
