@@ -16,6 +16,7 @@ Usage:
     app.openapi = openapi.create_custom_openapi(app)
 """
 
+import collections.abc
 import logging
 import threading
 import typing
@@ -337,8 +338,75 @@ def _build_schema(
         _hoist_defs_to_components(schemas)
 
     _mark_ai_excluded_operations(openapi_schema)
+    _mark_required_permissions(openapi_schema, app.routes)
 
     return openapi_schema, had_failure
+
+
+def _route_permissions(route: typing.Any) -> list[str]:
+    """Collect permissions enforced by a route's dependency tree.
+
+    ``require_permission`` returns a closure, so the permission string
+    it enforces is not introspectable from the signature; the factory
+    tags the closure with ``imbi_permission`` for this purpose. The
+    dependency tree is walked because permission dependencies may be
+    nested (declared on a router rather than the operation).
+    """
+    dependant = getattr(route, 'dependant', None)
+    if dependant is None:
+        return []
+    found: list[str] = []
+
+    def walk(dependency: typing.Any) -> None:
+        permission = getattr(dependency.call, 'imbi_permission', None)
+        if isinstance(permission, str) and permission not in found:
+            found.append(permission)
+        for sub_dependency in dependency.dependencies:
+            walk(sub_dependency)
+
+    walk(dependant)
+    return found
+
+
+def _mark_required_permissions(
+    openapi_schema: dict[str, typing.Any],
+    routes: collections.abc.Iterable[typing.Any],
+) -> None:
+    """Stamp ``x-imbi-permission`` with each operation's permissions.
+
+    Permission checks are FastAPI dependencies and so are absent from
+    the generated schema. AI consumers (imbi-mcp, imbi-assistant) read
+    this extension to filter a caller's toolset down to what that
+    caller can actually invoke, rather than surfacing tools that can
+    only ever return 403. The value is a list because an operation may
+    enforce more than one permission; ``admin`` means admin-only.
+
+    Advisory only -- the API remains the sole enforcement point.
+    """
+    paths: dict[str, typing.Any] = openapi_schema.get('paths', {})
+    for route in routes:
+        # ``path_format`` is what FastAPI keys ``paths`` by: it strips
+        # converter syntax, so ``/refs/{ref:path}`` is published as
+        # ``/refs/{ref}``. Matching on ``path`` would silently skip
+        # every converter-typed route, leaving it unstamped and so
+        # indistinguishable from an unguarded operation.
+        path = getattr(route, 'path_format', None) or getattr(
+            route, 'path', None
+        )
+        methods = getattr(route, 'methods', None)
+        # Routes hidden from the schema (``/docs``, ``/redoc``) have no
+        # entry in ``paths``.
+        if not methods or path not in paths:
+            continue
+        permissions = _route_permissions(route)
+        if not permissions:
+            continue
+        ops = typing.cast(dict[str, typing.Any], paths[path])
+        for method in methods:
+            operation = ops.get(method.lower())
+            if operation is not None:
+                op = typing.cast(dict[str, typing.Any], operation)
+                op['x-imbi-permission'] = permissions
 
 
 def _mark_ai_excluded_operations(

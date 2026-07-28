@@ -8,18 +8,23 @@ management platform. Exposes Imbi API functionality to AI agents via the
 
 At startup the server fetches the OpenAPI spec from a running
 [imbi-api](https://github.com/AWeber-Imbi/imbi-api) instance and
-auto-generates MCP tools, resources, and resource templates using
+auto-generates MCP tools using
 [FastMCP](https://github.com/jlowin/fastmcp).
 
 Route mapping rules control what gets exposed:
 
-- **Excluded** -- Auth, MFA, status, and thumbnail endpoints are hidden.
-- **Resources** -- `GET` endpoints that return collections.
-- **Resource templates** -- `GET` endpoints with path parameters.
-- **Tools** -- Everything else (create, update, delete operations).
+- **Excluded** -- Auth, MFA, status, and thumbnail endpoints are hidden,
+  as is any operation the API flags with `x-imbi-ai-tool: false`.
+- **Tools** -- Everything else, reads included. `GET` operations are
+  deliberately exposed as tools rather than as MCP resources or
+  resource templates: many clients only consume `tools/*`, and
+  classifying reads as resources hid them entirely.
 
 The caller's `Authorization` header is forwarded to the API so that
-requests run with the caller's permissions.
+requests run with the caller's permissions. On top of that, `tools/list`
+is filtered per caller: operations the caller lacks permission for are
+omitted, so an agent is not offered tools that could only return `403`.
+The filtering is advisory — the API remains the enforcement point.
 
 ## Authentication
 

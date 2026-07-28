@@ -25,34 +25,22 @@ from fastmcp.server.auth.auth import (
     TokenVerifier,
 )
 from fastmcp.server.dependencies import get_http_headers
-from fastmcp.server.providers.openapi import MCPType, RouteMap
 from pydantic import AnyHttpUrl
 from starlette.responses import JSONResponse
 
 import imbi.mcp
 from imbi.common.auth import core
-from imbi.common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
+from imbi.common.mcp import (
+    EXCLUDED_ROUTE_MAPS,
+    PermissionFilterMiddleware,
+    copy_permissions_to_meta,
+    exclude_non_ai_tools,
+)
 
 if typing.TYPE_CHECKING:
     from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
-
-
-# Read-only list endpoints → resources, parameterised GETs →
-# resource templates, everything else → tools.
-_SEMANTIC_ROUTE_MAPS = [
-    RouteMap(
-        methods=['GET'],
-        pattern=r'.*\{.*\}.*',
-        mcp_type=MCPType.RESOURCE_TEMPLATE,
-    ),
-    RouteMap(
-        methods=['GET'],
-        pattern=r'.*',
-        mcp_type=MCPType.RESOURCE,
-    ),
-]
 
 
 async def _inject_auth(request: httpx.Request) -> None:
@@ -151,12 +139,15 @@ def create_server(
         name='Imbi',
         version=imbi.mcp.version,
         auth=_build_auth(public_url, auth_server_url),
-        route_maps=[
-            *EXCLUDED_ROUTE_MAPS,
-            *_SEMANTIC_ROUTE_MAPS,
-        ],
+        route_maps=list(EXCLUDED_ROUTE_MAPS),
         route_map_fn=exclude_non_ai_tools,
+        mcp_component_fn=copy_permissions_to_meta,
     )
+
+    # ``client`` forwards the caller's Authorization header via
+    # ``_inject_auth``, so the middleware resolves permissions for the
+    # principal making the request rather than a fixed identity.
+    mcp.add_middleware(PermissionFilterMiddleware(client))
 
     @mcp.custom_route('/status', methods=['GET'])
     async def status(_request: Request) -> JSONResponse:

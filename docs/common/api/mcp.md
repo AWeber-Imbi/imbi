@@ -15,6 +15,12 @@ place instead of being copied into each consumer:
 - **`exclude_non_ai_tools`** — a `route_map_fn` that honours the
   `x-imbi-ai-tool: false` extension imbi-api stamps on sensitive
   operations (e.g. project Configuration / SSM Parameter Store).
+- **`copy_permissions_to_meta`** — an `mcp_component_fn` that records the
+  `x-imbi-permission` extension on each generated component's public
+  `meta`.
+- **`PermissionFilterMiddleware`** — narrows `tools/list` per caller to
+  the operations that caller has permission for. Requires
+  `copy_permissions_to_meta`; advisory only, and fails open.
 
 Keeping the *which* in imbi-api (it stamps the extension on tagged
 operations) and the *how to honour it* here means hiding a future endpoint
@@ -47,21 +53,46 @@ server = fastmcp.FastMCP.from_openapi(
 )
 ```
 
-A consumer that also classifies routes (e.g. read-only GETs as MCP
-resources) prepends the shared maps to its own:
+A consumer with its own classification rules prepends the shared maps to
+its own:
 
 ```python
 server = fastmcp.FastMCP.from_openapi(
     openapi_spec=spec,
     client=client,
-    route_maps=[*mcp.EXCLUDED_ROUTE_MAPS, *MY_SEMANTIC_ROUTE_MAPS],
+    route_maps=[*mcp.EXCLUDED_ROUTE_MAPS, *MY_ROUTE_MAPS],
     route_map_fn=mcp.exclude_non_ai_tools,
 )
 ```
 
+Note that every operation becomes a **tool** by default, reads included.
+Classifying `GET`s as MCP resources or resource templates hides them from
+clients that only consume `tools/*`, so consumers should not do it.
+
+To filter each caller's toolset down to what they can actually invoke,
+add the `mcp_component_fn` and the middleware:
+
+```python
+server = fastmcp.FastMCP.from_openapi(
+    openapi_spec=spec,
+    client=client,
+    route_maps=list(mcp.EXCLUDED_ROUTE_MAPS),
+    route_map_fn=mcp.exclude_non_ai_tools,
+    mcp_component_fn=mcp.copy_permissions_to_meta,
+)
+server.add_middleware(mcp.PermissionFilterMiddleware(client))
+```
+
+Both parts are required: without `copy_permissions_to_meta` no tool
+carries permission metadata, so the middleware has nothing to filter on
+and returns every tool. The `client` must forward the calling
+principal's credentials, or every caller is filtered against one
+identity.
+
 `exclude_non_ai_tools` is backward compatible: when the extension is
 absent it returns `None` and changes nothing, so a consumer can adopt it
-before or after imbi-api ships the flag.
+before or after imbi-api ships the flag. `copy_permissions_to_meta` is
+likewise a no-op on operations with no `x-imbi-permission`.
 
 ## API Reference
 
@@ -70,3 +101,13 @@ before or after imbi-api ships the flag.
 ::: imbi.common.mcp.EXCLUDED_ROUTE_MAPS
 
 ::: imbi.common.mcp.exclude_non_ai_tools
+
+::: imbi.common.mcp.PERMISSION_EXTENSION
+
+::: imbi.common.mcp.PERMISSION_META_KEY
+
+::: imbi.common.mcp.copy_permissions_to_meta
+
+::: imbi.common.mcp.required_permissions
+
+::: imbi.common.mcp.PermissionFilterMiddleware

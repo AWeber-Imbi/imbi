@@ -1,5 +1,6 @@
 """Tests for OpenAPI schema customization with blueprint models."""
 
+import typing
 import unittest
 import unittest.mock
 
@@ -10,6 +11,8 @@ import imbi.common.blueprints
 import imbi.common.models
 from imbi.api import models as imbi_models
 from imbi.api import openapi
+from imbi.api.auth import permissions
+from imbi.api.endpoints import graph_query
 from imbi.common import graph
 
 
@@ -446,6 +449,121 @@ class MarkAiExcludedOperationsTestCase(unittest.TestCase):
             False,
         )
         self.assertNotIn('x-imbi-ai-tool', schema['paths']['/teams/']['get'])
+
+
+class MarkRequiredPermissionsTestCase(unittest.TestCase):
+    """Test cases for _mark_required_permissions."""
+
+    def setUp(self) -> None:
+        """Reset module state and build a fresh app for each test."""
+        _reset_openapi_module_state()
+        self.app = fastapi.FastAPI(title='Test', version='1.0.0')
+
+    def tearDown(self) -> None:
+        _reset_openapi_module_state()
+
+    def test_stamps_operation_level_permission(self) -> None:
+        """A route's require_permission dependency reaches the schema."""
+
+        @self.app.get('/projects/')
+        async def list_projects(
+            _auth: typing.Annotated[
+                permissions.AuthContext,
+                fastapi.Depends(
+                    permissions.require_permission('project:read')
+                ),
+            ],
+        ) -> list[dict]:
+            return []
+
+        schema = openapi.create_custom_openapi(self.app)()
+
+        self.assertEqual(
+            ['project:read'],
+            schema['paths']['/projects/']['get']['x-imbi-permission'],
+        )
+
+    def test_stamps_router_level_permission(self) -> None:
+        """A permission declared on the router is found via nesting."""
+        router = fastapi.APIRouter(
+            dependencies=[
+                fastapi.Depends(
+                    permissions.require_permission('blueprint:write')
+                )
+            ]
+        )
+
+        @router.post('/blueprints/')
+        async def create_blueprint() -> dict:
+            return {}
+
+        self.app.include_router(router)
+
+        schema = openapi.create_custom_openapi(self.app)()
+
+        self.assertEqual(
+            ['blueprint:write'],
+            schema['paths']['/blueprints/']['post']['x-imbi-permission'],
+        )
+
+    def test_stamps_route_with_path_converter(self) -> None:
+        """A converter-typed path is still matched and stamped.
+
+        FastAPI publishes ``/refs/{ref:path}`` as ``/refs/{ref}``, so
+        matching on ``route.path`` rather than ``route.path_format``
+        would skip the route and leave it looking unguarded.
+        """
+
+        @self.app.get('/refs/{ref:path}/commits')
+        async def list_commits(
+            ref: str,
+            _auth: typing.Annotated[
+                permissions.AuthContext,
+                fastapi.Depends(
+                    permissions.require_permission('project:deployment:read')
+                ),
+            ],
+        ) -> list[dict]:
+            return []
+
+        schema = openapi.create_custom_openapi(self.app)()
+
+        self.assertEqual(
+            ['project:deployment:read'],
+            schema['paths']['/refs/{ref}/commits']['get']['x-imbi-permission'],
+        )
+
+    def test_unguarded_operation_not_stamped(self) -> None:
+        """A route with no permission dependency is left alone."""
+
+        @self.app.get('/health')
+        async def health() -> dict:
+            return {}
+
+        schema = openapi.create_custom_openapi(self.app)()
+
+        self.assertNotIn(
+            'x-imbi-permission', schema['paths']['/health']['get']
+        )
+
+    def test_admin_dependency_stamps_sentinel(self) -> None:
+        """require_admin is reported as the ``admin`` sentinel."""
+
+        @self.app.post('/graph/query')
+        async def query(
+            _auth: typing.Annotated[
+                permissions.AuthContext,
+                fastapi.Depends(graph_query.require_admin),
+            ],
+        ) -> dict:
+            return {}
+
+        schema = openapi.create_custom_openapi(self.app)()
+
+        self.assertEqual(
+            ['admin'],
+            schema['paths']['/graph/query']['post']['x-imbi-permission'],
+        )
 
 
 class HoistDefsToComponentsTestCase(unittest.TestCase):
