@@ -59,6 +59,7 @@ const commit = (sha: string): RecentCommit => ({
 const STAGES: PipelineStage[] = [
   {
     current: current('testing', null, 'ddd444ddd444'),
+    currentHistoryEntry: null,
     env: env('testing', 'Testing', 1),
     kind: 'commit',
     pendingCommits: [],
@@ -69,6 +70,7 @@ const STAGES: PipelineStage[] = [
   },
   {
     current: current('staging', 'v6.5.2', 'ccc333ccc333'),
+    currentHistoryEntry: null,
     env: env('staging', 'Staging', 2),
     kind: 'promote',
     pendingCommits: Array.from({ length: 8 }, (_, i) => commit(`sha${i}aaaa`)),
@@ -79,6 +81,7 @@ const STAGES: PipelineStage[] = [
   },
   {
     current: current('production', 'v6.5.0', 'aaa111aaa111'),
+    currentHistoryEntry: null,
     env: env('production', 'Production', 3),
     kind: 'release',
     pendingCommits: [],

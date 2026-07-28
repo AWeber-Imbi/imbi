@@ -98,6 +98,7 @@ const makeStage = (
   envTag = 'v6.5.0',
 ): PipelineStage => ({
   current: current('production', envTag, 'aaa111aaa111'),
+  currentHistoryEntry: null,
   env: ENV,
   kind: 'release',
   pendingCommits: [],
