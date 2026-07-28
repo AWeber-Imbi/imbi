@@ -158,29 +158,87 @@ describe('buildPipeline', () => {
     expect(result[2].pendingReleases[0].sha).toBe('123abc123abc')
   })
 
-  it('collects rollback targets older than the current tag', () => {
+  it('lists recent releases either side of the running one', () => {
+    // Production runs v6.5.0 with v6.5.2/v6.5.1 above it and v6.4.0 below.
     const production = stages[2]
-    expect(production.rollbackTargets.map((r) => r.tag)).toEqual(['v6.4.0'])
+    expect(
+      production.recentReleases.map((r) => [r.entry.tag, r.relation]),
+    ).toEqual([
+      ['v6.5.2', 'ahead'],
+      ['v6.5.1', 'ahead'],
+      ['v6.5.0', 'current'],
+      ['v6.4.0', 'behind'],
+    ])
+    // Staging runs the newest release, so nothing ranks above it.
     const staging = stages[1]
-    expect(staging.rollbackTargets.map((r) => r.tag)).toEqual([
-      'v6.5.1',
-      'v6.5.0',
-      'v6.4.0',
+    expect(
+      staging.recentReleases.map((r) => [r.entry.tag, r.relation]),
+    ).toEqual([
+      ['v6.5.2', 'current'],
+      ['v6.5.1', 'behind'],
+      ['v6.5.0', 'behind'],
+      ['v6.4.0', 'behind'],
+    ])
+  })
+
+  it('keeps a rolled-back-from release listed and deployable', () => {
+    // The reported bug: production rolled back v6.5.2 -> v6.5.1 while
+    // staging still runs v6.5.2. Neither v6.5.2 nor the unreached v6.5.3
+    // may vanish, but only what staging runs is deployable.
+    const history = [entry('v6.5.3', 'eee555eee555'), ...HISTORY]
+    const rolledBack = [
+      currentRelease('testing', 'ddd444ddd444', null),
+      currentRelease('staging', 'ccc333ccc333', 'v6.5.2'),
+      currentRelease('production', 'bbb222bbb222', 'v6.5.1'),
+    ]
+    const production = buildPipeline(ENVS, rolledBack, history, COMMITS)[2]
+    expect(
+      production.recentReleases.map((r) => [
+        r.entry.tag,
+        r.relation,
+        r.deployable,
+      ]),
+    ).toEqual([
+      ['v6.5.3', 'ahead', false],
+      ['v6.5.2', 'ahead', true],
+      ['v6.5.1', 'current', false],
+      ['v6.5.0', 'behind', true],
+      ['v6.4.0', 'behind', true],
     ])
   })
 
   it('falls back to semver ranking when the current tag is unsynced', () => {
-    // 2.101.0 is not in HISTORY; everything older still ranks below it.
-    const unsynced = [currentRelease('production', '999000999000', '2.101.0')]
+    // 2.101.0 is not in HISTORY; every v6 entry ranks above it. They are
+    // all deployable because pendingReleases already treats a divergent
+    // line's whole upstream slice as validated.
+    const unsynced = [
+      currentRelease('staging', 'ccc333ccc333', 'v6.5.2'),
+      currentRelease('production', '999000999000', '2.101.0'),
+    ]
     const result = buildPipeline(ENVS, unsynced, HISTORY, COMMITS)
-    expect(result[2].rollbackTargets.map((r) => r.tag)).toEqual([])
+    expect(
+      result[2].recentReleases.map((r) => [
+        r.entry.tag,
+        r.relation,
+        r.deployable,
+      ]),
+    ).toEqual([
+      ['v6.5.2', 'ahead', true],
+      ['v6.5.1', 'ahead', true],
+      ['v6.5.0', 'ahead', true],
+      ['v6.4.0', 'ahead', true],
+      ['2.101.0', 'current', false],
+    ])
     const olderLine = [currentRelease('production', '999000999000', 'v6.5.3')]
     const result2 = buildPipeline(ENVS, olderLine, HISTORY, COMMITS)
-    expect(result2[2].rollbackTargets.map((r) => r.tag)).toEqual([
-      'v6.5.2',
-      'v6.5.1',
-      'v6.5.0',
-      'v6.4.0',
+    expect(
+      result2[2].recentReleases.map((r) => [r.entry.tag, r.relation]),
+    ).toEqual([
+      ['v6.5.3', 'current'],
+      ['v6.5.2', 'behind'],
+      ['v6.5.1', 'behind'],
+      ['v6.5.0', 'behind'],
+      ['v6.4.0', 'behind'],
     ])
   })
 

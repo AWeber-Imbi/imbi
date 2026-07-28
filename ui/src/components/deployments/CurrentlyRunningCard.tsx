@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import {
   Ban,
@@ -7,6 +7,7 @@ import {
   CircleDot,
   Clock,
   Globe,
+  Rocket,
   RotateCcw,
 } from 'lucide-react'
 
@@ -19,10 +20,9 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import type { ChipColors } from '@/lib/chip-colors'
 import { cn, sanitizeHttpUrl } from '@/lib/utils'
-import type { ReleaseHistoryEntry } from '@/types'
 
 import { ConfirmActionDialog } from './ConfirmActionDialog'
-import type { PipelineStage } from './pipeline'
+import type { PipelineStage, RecentRelease } from './pipeline'
 import { ReleaseNotesMarkdown } from './ReleaseNotesMarkdown'
 import { StageCardShell } from './StageCardShell'
 import type { DeploymentActions } from './useDeploymentActions'
@@ -37,8 +37,11 @@ interface CurrentlyRunningCardProps {
 }
 
 /**
- * What the environment runs now, plus the recent releases it can roll
- * back to (each expandable into its release notes).
+ * What the environment runs now, plus the recent releases either side of
+ * it (each expandable into its release notes). Releases below the running
+ * one offer a roll back; releases above it — which is where a rolled-back
+ * env sits — offer a forward deploy, but only once they are validated
+ * upstream, so the list can't be used to jump the release train.
  */
 // fallow-ignore-next-line complexity
 export function CurrentlyRunningCard({
@@ -50,7 +53,7 @@ export function CurrentlyRunningCard({
   stage,
 }: CurrentlyRunningCardProps) {
   const [openTag, setOpenTag] = useState<null | string>(null)
-  const [confirming, setConfirming] = useState<null | ReleaseHistoryEntry>(null)
+  const [confirming, setConfirming] = useState<null | RecentRelease>(null)
   const [blocking, setBlocking] = useState<null | string>(null)
   const {
     block,
@@ -62,6 +65,7 @@ export function CurrentlyRunningCard({
   })
   const release = stage.current?.release ?? null
   const envUrl = sanitizeHttpUrl(stage.env.url ?? null)
+  const upstreamName = stage.upstream?.name ?? 'upstream'
 
   return (
     <StageCardShell
@@ -149,24 +153,27 @@ export function CurrentlyRunningCard({
           </section>
         ) : null}
 
-        {stage.rollbackTargets.length > 0 ? (
+        {stage.recentReleases.length > 0 ? (
           <div>
             <p className="text-tertiary mb-2 text-xs tracking-wider uppercase">
               Recent releases
             </p>
-            {stage.rollbackTargets.map((rel) => (
-              <RollbackRow
+            {stage.recentReleases.map((row) => (
+              <ReleaseRow
                 blockPending={blockPending}
                 canTrigger={canTrigger}
-                isOpen={openTag === rel.tag}
-                key={rel.tag}
-                onBlock={() => setBlocking(rel.tag)}
-                onRollback={() => setConfirming(rel)}
+                isOpen={openTag === row.entry.tag}
+                key={row.entry.tag}
+                onBlock={() => setBlocking(row.entry.tag)}
+                onDeploy={() => setConfirming(row)}
                 onToggle={() =>
-                  setOpenTag((o) => (o === rel.tag ? null : rel.tag))
+                  setOpenTag((o) =>
+                    o === row.entry.tag ? null : row.entry.tag,
+                  )
                 }
-                onUnblock={() => unblock(rel.tag)}
-                rel={rel}
+                onUnblock={() => unblock(row.entry.tag)}
+                row={row}
+                upstreamName={upstreamName}
               />
             ))}
           </div>
@@ -174,20 +181,8 @@ export function CurrentlyRunningCard({
       </div>
 
       <ConfirmActionDialog
-        confirmLabel={
-          confirming ? `Roll back to ${confirming.tag}` : 'Roll back'
-        }
-        description={
-          confirming ? (
-            <>
-              Redeploys <span className="font-mono">{confirming.tag}</span> to{' '}
-              {stage.env.name}. {stage.env.name} will show as behind until you
-              move forward again; no new tag is cut.
-            </>
-          ) : (
-            ''
-          )
-        }
+        confirmLabel={confirmLabel(confirming, stage)}
+        description={confirmDescription(confirming, stage)}
         onCancel={() => setConfirming(null)}
         onConfirm={() => {
           if (!confirming) return
@@ -195,14 +190,18 @@ export function CurrentlyRunningCard({
             action: 'deploy',
             envName: stage.env.name,
             envSlug: stage.env.slug,
-            refLabel: confirming.tag,
-            rollback: true,
-            sha: confirming.sha,
+            refLabel: confirming.entry.tag,
+            rollback: confirming.relation === 'behind',
+            sha: confirming.entry.sha,
           })
           setConfirming(null)
         }}
         open={confirming !== null}
-        title={`Roll back ${stage.env.name}?`}
+        title={
+          confirming?.relation === 'ahead'
+            ? `Deploy to ${stage.env.name}?`
+            : `Roll back ${stage.env.name}?`
+        }
       />
 
       <BlockReleaseDialog
@@ -221,26 +220,63 @@ export function CurrentlyRunningCard({
   )
 }
 
+/** Confirm-dialog body for the pending roll back / forward deploy. */
+function confirmDescription(
+  row: null | RecentRelease,
+  stage: PipelineStage,
+): ReactNode {
+  if (!row) return ''
+  const tag = <span className="font-mono">{row.entry.tag}</span>
+  if (row.relation === 'ahead') {
+    return (
+      <>
+        Deploys {tag} to {stage.env.name} — the release{' '}
+        {stage.env.name.toLowerCase()} was on before it was rolled back, or a
+        newer one already validated in{' '}
+        {(stage.upstream?.name ?? 'the upstream').toLowerCase()}. No new tag is
+        cut.
+      </>
+    )
+  }
+  return (
+    <>
+      Redeploys {tag} to {stage.env.name}. {stage.env.name} will show as behind
+      until you move forward again; no new tag is cut.
+    </>
+  )
+}
+
+/** Confirm-button label for the pending roll back / forward deploy. */
+function confirmLabel(row: null | RecentRelease, stage: PipelineStage): string {
+  if (!row) return 'Roll back'
+  return row.relation === 'ahead'
+    ? `Deploy ${row.entry.tag} to ${stage.env.name.toLowerCase()}`
+    : `Roll back to ${row.entry.tag}`
+}
+
 // fallow-ignore-next-line complexity
-function RollbackRow({
+function ReleaseRow({
   blockPending,
   canTrigger,
   isOpen,
   onBlock,
-  onRollback,
+  onDeploy,
   onToggle,
   onUnblock,
-  rel,
+  row,
+  upstreamName,
 }: {
   blockPending: boolean
   canTrigger: boolean
   isOpen: boolean
   onBlock: () => void
-  onRollback: () => void
+  onDeploy: () => void
   onToggle: () => void
   onUnblock: () => void
-  rel: ReleaseHistoryEntry
+  row: RecentRelease
+  upstreamName: string
 }) {
+  const rel = row.entry
   const blocked = !!rel.blocked
   return (
     <div
@@ -271,26 +307,13 @@ function RollbackRow({
             value={rel.published_at}
           />
         </button>
-        {/* A blocked release can't be rolled back to, so the badge takes the
-            button's place rather than sitting beside a dead control. */}
-        {blocked ? (
-          <Badge className="inline-flex items-center gap-1" variant="danger">
-            <Ban className="size-3" />
-            Blocked
-          </Badge>
-        ) : (
-          <Button
-            className="h-7 px-2.5 text-xs"
-            disabled={!canTrigger}
-            onClick={onRollback}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <RotateCcw className="mr-1 size-3.5" />
-            Roll back
-          </Button>
-        )}
+        <RowAction
+          blocked={blocked}
+          canTrigger={canTrigger}
+          onDeploy={onDeploy}
+          row={row}
+          upstreamName={upstreamName}
+        />
         {blocked ? (
           // Keep the glyph in the slot so rows stay aligned; red, and inert
           // because the Blocked badge already names the state and Unblock
@@ -351,5 +374,74 @@ function RollbackRow({
         </div>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * The row's action slot. Badges take the button's place rather than
+ * sitting beside a dead control:
+ *
+ *   current            — "Running"; there is nothing to move to.
+ *   blocked            — "Blocked"; can't be deployed or promoted at all.
+ *   behind             — roll back; this env already ran it.
+ *   ahead + deployable — deploy; it is validated upstream.
+ *   ahead              — "Not in <upstream>"; shipping it here would jump
+ *                        the release train, so no control is offered.
+ */
+// fallow-ignore-next-line complexity
+function RowAction({
+  blocked,
+  canTrigger,
+  onDeploy,
+  row,
+  upstreamName,
+}: {
+  blocked: boolean
+  canTrigger: boolean
+  onDeploy: () => void
+  row: RecentRelease
+  upstreamName: string
+}) {
+  if (row.relation === 'current') {
+    return (
+      <Badge className="inline-flex items-center gap-1" variant="success">
+        <CircleDot className="size-3" />
+        Running
+      </Badge>
+    )
+  }
+  if (blocked) {
+    return (
+      <Badge className="inline-flex items-center gap-1" variant="danger">
+        <Ban className="size-3" />
+        Blocked
+      </Badge>
+    )
+  }
+  const ahead = row.relation === 'ahead'
+  if (ahead && !row.deployable) {
+    return (
+      <Badge
+        className="inline-flex items-center gap-1"
+        title={`${row.entry.tag} is not running in ${upstreamName.toLowerCase()} yet`}
+        variant="neutral"
+      >
+        Not in {upstreamName.toLowerCase()}
+      </Badge>
+    )
+  }
+  const Icon = ahead ? Rocket : RotateCcw
+  return (
+    <Button
+      className="h-7 px-2.5 text-xs"
+      disabled={!canTrigger}
+      onClick={onDeploy}
+      size="sm"
+      type="button"
+      variant="outline"
+    >
+      <Icon className="mr-1 size-3.5" />
+      {ahead ? 'Deploy' : 'Roll back'}
+    </Button>
   )
 }

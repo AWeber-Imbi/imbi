@@ -102,7 +102,7 @@ const makeStage = (
   kind: 'release',
   pendingCommits: [],
   pendingReleases: pending,
-  rollbackTargets: [],
+  recentReleases: [],
   upstream: UPSTREAM,
   upstreamCurrent: current('staging', 'v6.5.2', 'ccc333ccc333'),
 })

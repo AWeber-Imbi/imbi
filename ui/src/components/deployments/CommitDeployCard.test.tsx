@@ -58,7 +58,7 @@ const makeStage = (
   kind: 'commit',
   pendingCommits: [],
   pendingReleases: [],
-  rollbackTargets: [],
+  recentReleases: [],
   upstream: null,
   upstreamCurrent: null,
 })
