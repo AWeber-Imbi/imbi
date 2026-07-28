@@ -45,6 +45,11 @@ async def require_admin(
     return auth
 
 
+# Read by ``openapi.py`` to stamp ``x-imbi-permission``; the sentinel
+# value marks endpoints no non-admin principal can reach.
+require_admin.imbi_permission = 'admin'  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------

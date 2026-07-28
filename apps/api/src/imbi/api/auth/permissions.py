@@ -762,6 +762,13 @@ def require_permission(
             )
         return auth
 
+    # Expose the required permission for schema generation. Permission
+    # enforcement lives in a closure, so it is otherwise invisible to
+    # ``app.openapi()``; ``openapi.py`` reads this attribute to stamp
+    # ``x-imbi-permission`` for AI consumers building per-caller
+    # toolsets.
+    check_permission.imbi_permission = permission  # type: ignore[attr-defined]
+
     return check_permission
 
 

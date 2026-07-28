@@ -159,48 +159,49 @@ class CreateServerTests(unittest.TestCase):
         self.assertIn(r'^/status/?$', patterns)
         self.assertIn(r'.*/thumbnail/?$', patterns)
 
-    @mock.patch('imbi.mcp.server.httpx.get')
-    @mock.patch('fastmcp.FastMCP.from_openapi')
-    def test_route_maps_classify_get_as_resources(
-        self, mock_from_openapi: mock.Mock, mock_get: mock.Mock
-    ) -> None:
-        mock_get.return_value = self.mock_response
-        mock_from_openapi.return_value = fastmcp.FastMCP(name='stub')
-        server.create_server('http://example:9000')
-        _, kwargs = mock_from_openapi.call_args
-        route_maps = kwargs['route_maps']
-        resource_maps = [
-            rm
-            for rm in route_maps
-            if rm.mcp_type in (MCPType.RESOURCE, MCPType.RESOURCE_TEMPLATE)
-        ]
-        self.assertTrue(
-            all('GET' in rm.methods for rm in resource_maps),
-            'All resource route maps should specify GET method',
-        )
-
 
 class CreateServerExcludesConfigTests(unittest.IsolatedAsyncioTestCase):
-    @mock.patch('imbi.mcp.server.httpx.get')
-    async def test_flagged_endpoint_not_exposed(
-        self, mock_get: mock.Mock
-    ) -> None:
+    def setUp(self) -> None:
         spec = _minimal_openapi_spec()
-        mock_get.return_value = httpx.Response(
+        self.mock_response = httpx.Response(
             200,
             content=json.dumps(spec).encode(),
             headers={'content-type': 'application/json'},
             request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
         )
+
+    @mock.patch('imbi.mcp.server.httpx.get')
+    async def test_flagged_endpoint_not_exposed(
+        self, mock_get: mock.Mock
+    ) -> None:
+        mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         async with fastmcp.Client(mcp) as client:
             tools = await client.list_tools()
-            resources = await client.list_resources()
         names = {t.name for t in tools}
         self.assertNotIn('set_configuration_value', names)
-        # A non-flagged GET still becomes a resource, proving the spec
-        # was processed rather than wholesale rejected.
-        self.assertTrue(resources)
+        # A non-flagged GET becomes a read tool, proving the spec was
+        # processed rather than wholesale rejected.
+        self.assertIn('list_projects', names)
+
+    @mock.patch('imbi.mcp.server.httpx.get')
+    async def test_reads_become_tools_not_resources(
+        self, mock_get: mock.Mock
+    ) -> None:
+        """GETs must be exposed as tools, never as resources.
+
+        Classifying reads as resources hid them from MCP clients that
+        only consume ``tools/*``, which left the toolset mutation-only.
+        """
+        mock_get.return_value = self.mock_response
+        mcp = server.create_server('http://localhost:8000')
+        async with fastmcp.Client(mcp) as client:
+            names = {tool.name for tool in await client.list_tools()}
+            resources = await client.list_resources()
+            templates = await client.list_resource_templates()
+        self.assertIn('list_projects', names)
+        self.assertEqual([], resources)
+        self.assertEqual([], templates)
 
 
 class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
