@@ -658,6 +658,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:read',
             'project_type:read',
             'organization:read',
+            'scheduled_task:read',
             'search:read',
             'team:read',
             'integration:read',
