@@ -175,6 +175,21 @@ _LIFECYCLE_OPTIONS: list[PluginOption] = [
         required=False,
     ),
     PluginOption(
+        name='create_visibility',
+        label='Visibility for created repos',
+        description=(
+            'Visibility applied to repos created by project creation.  '
+            'Leave blank to follow the Integration flavor: ``internal`` '
+            'on a GHEC tenant or GHES appliance, ``public`` on '
+            'github.com, which has no internal visibility.  Set a value '
+            'to override -- note that an org forbidding public repos '
+            'rejects ``public`` with a 422.'
+        ),
+        type='string',
+        choices=['private', 'internal', 'public'],
+        required=False,
+    ),
+    PluginOption(
         name='org_mapping',
         label='Project-type to org overrides',
         description=(

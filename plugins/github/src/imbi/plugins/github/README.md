@@ -109,6 +109,7 @@ Scoped to one capability and delivered on
 | `lifecycle` | `archive_target_org` | Org to transfer repos to before archiving; blank archives in place.                     |
 | `lifecycle` | `create_org`         | Default org for repo creation when no `org_mapping` entry matches.                       |
 | `lifecycle` | `org_mapping`        | Per-project-type-slug org overrides; the first match wins over `create_org`.             |
+| `lifecycle` | `create_visibility`  | Visibility for created repos: `private`, `internal`, or `public`. Blank follows the flavor — `internal` for `ghec`/`ghes`, `public` for `github`. |
 
 ## Credentials
 

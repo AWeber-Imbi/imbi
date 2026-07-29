@@ -75,6 +75,39 @@ _HTTP_TIMEOUT_SECONDS = 10.0
 # hanging the operator's archive request.
 _TRANSFER_ARCHIVE_BACKOFFS: tuple[float, ...] = (0.5, 1.0, 2.0)
 
+# Visibilities accepted by the ``create_visibility`` option.  ``internal``
+# is only meaningful on a GHEC tenant or GHES appliance.
+_VISIBILITIES = frozenset({'private', 'internal', 'public'})
+
+
+def _error_detail(response: httpx.Response) -> str:
+    """Flatten a GitHub error body into one operator-facing string.
+
+    Keeps the top-level ``message`` and each entry of the ``errors``
+    array (``field: message``) so a validation failure names the field
+    that GitHub rejected.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        return f'HTTP {response.status_code}: {response.text[:200]}'
+    payload = typing.cast(dict[str, object], body)
+    parts = [str(payload.get('message') or f'HTTP {response.status_code}')]
+    errors = payload.get('errors')
+    if isinstance(errors, list):
+        for item in typing.cast(list[object], errors):
+            if not isinstance(item, dict):
+                continue
+            entry = typing.cast(dict[str, object], item)
+            text = entry.get('message') or entry.get('code')
+            if not text:
+                continue
+            field = entry.get('field')
+            parts.append(f'{field}: {text}' if field else str(text))
+    return ' - '.join(parts)
+
 
 async def _raise_on_401(response: httpx.Response) -> None:
     """Convert a 401 from GitHub into :class:`PluginAuthenticationFailed`.
@@ -143,6 +176,35 @@ class GitHubLifecycle(LifecycleCapability):
         if isinstance(raw, str) and raw.strip():
             return raw.strip()
         return None
+
+    @staticmethod
+    def _default_visibility(ctx: PluginContext) -> str:
+        """Pick the create visibility when the option is unset.
+
+        The right default differs per host, so it can't be a manifest
+        constant: enterprise hosts (a GHEC tenant or a GHES appliance)
+        get ``internal`` -- readable across the enterprise, and the only
+        useful non-public choice on orgs that forbid public repos --
+        while github.com has no ``internal`` visibility at all and gets
+        ``public``.  Never *silently* narrower than that on enterprise
+        and never wider on github.com; operators who want something
+        else set ``create_visibility`` explicitly.
+        """
+        flavor = str(ctx.integration_options.get('flavor') or '').strip()
+        return 'public' if flavor == 'github' else 'internal'
+
+    def _resolve_visibility(self, ctx: PluginContext) -> str:
+        """Resolve the visibility new repos are created with.
+
+        An explicit ``create_visibility`` option wins; anything unset or
+        unrecognized falls back to the host-appropriate default rather
+        than inheriting GitHub's create API default of *public*, which
+        an enterprise org that forbids public repos rejects with a 422.
+        """
+        raw = ctx.capability_options.get('create_visibility')
+        if isinstance(raw, str) and raw.strip().lower() in _VISIBILITIES:
+            return raw.strip().lower()
+        return self._default_visibility(ctx)
 
     @staticmethod
     def _resolve_create_org(ctx: PluginContext) -> str | None:
@@ -616,15 +678,31 @@ class GitHubLifecycle(LifecycleCapability):
         org: str,
         ctx: PluginContext,
     ) -> dict[str, typing.Any]:
+        visibility = self._resolve_visibility(ctx)
         resp = await client.post(
             f'/orgs/{org}/repos',
             json={
                 'name': ctx.project_slug,
                 'description': ctx.project_description or '',
                 'homepage': ctx.project_ui_url or '',
+                # ``visibility`` is authoritative where it's supported;
+                # ``private`` rides along so a host that only honors the
+                # older field degrades to private instead of silently
+                # creating a public repo.
+                'visibility': visibility,
+                'private': visibility != 'public',
             },
         )
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # ``raise_for_status`` reports only the status line, hiding
+            # the ``message``/``errors`` body that says *why* -- e.g. an
+            # org whose policy forbids the requested visibility.
+            raise RuntimeError(
+                f'GitHub refused to create {org}/{ctx.project_slug} with '
+                f'visibility={visibility}: {_error_detail(exc.response)}'
+            ) from exc
         return typing.cast(dict[str, typing.Any], resp.json())
 
     async def _patch_repo_attrs(
