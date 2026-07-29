@@ -23,6 +23,8 @@ describe('UnconnectedIntegrationWidget', () => {
     const onDismiss = vi.fn()
     render(
       <UnconnectedIntegrationWidget
+        icon={null}
+        label="GitHub"
         onConnect={vi.fn()}
         onDismiss={onDismiss}
         onManage={vi.fn()}
@@ -42,6 +44,8 @@ describe('UnconnectedIntegrationWidget', () => {
   it('omits the dismiss control when onDismiss is not provided', () => {
     render(
       <UnconnectedIntegrationWidget
+        icon={null}
+        label="GitHub"
         onConnect={vi.fn()}
         onManage={vi.fn()}
         pending={false}

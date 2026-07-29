@@ -4,11 +4,19 @@ import logoDark from '@/assets/logo-dark.svg'
 import logoLight from '@/assets/logo-light.svg'
 import { pluginWidgetText } from '@/components/plugin-packages'
 import { Button } from '@/components/ui/button'
-import { EntityIcon } from '@/components/ui/entity-icon'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useIcon } from '@/lib/icons'
 import type { PluginPackage } from '@/types'
 
 interface UnconnectedIntegrationWidgetProps {
+  // Provider glyph, already resolved by the caller from the integration then
+  // its plugin, so this tile and the connections table can't disagree.
+  icon: null | string | undefined
+  // Display name for the provider — the integration's name, which
+  // distinguishes two integrations of the same plugin.  Required so there is
+  // a single display-name rule rather than a plugin-name fallback that can
+  // drift from the one the connections table uses.
+  label: string
   onConnect: () => void
   // When provided, renders a dismiss control so the actor can hide this
   // tile.  Omit it for a non-dismissable widget.
@@ -23,6 +31,8 @@ interface UnconnectedIntegrationWidgetProps {
 // connection is active, and the actor can dismiss it early via the close
 // control (persisted by the caller).
 export function UnconnectedIntegrationWidget({
+  icon,
+  label,
   onConnect,
   onDismiss,
   onManage,
@@ -30,17 +40,18 @@ export function UnconnectedIntegrationWidget({
   plugin,
 }: UnconnectedIntegrationWidgetProps) {
   const { isDarkMode } = useTheme()
+  const Icon = useIcon(icon, Plug)
 
   const body =
     pluginWidgetText(plugin) ||
     plugin.description ||
-    `Imbi can act on your behalf in ${plugin.name} once you link your account.`
+    `Imbi can act on your behalf in ${label} once you link your account.`
 
   return (
     <article className="border-border bg-card relative grid min-h-60 grid-cols-1 overflow-hidden rounded-2xl border shadow-sm md:grid-cols-[1fr_160px] xl:grid-cols-[1fr_200px]">
       {onDismiss ? (
         <button
-          aria-label={`Dismiss ${plugin.name} connection prompt`}
+          aria-label={`Dismiss ${label} connection prompt`}
           className="text-tertiary hover:bg-secondary hover:text-secondary focus:ring-ring absolute top-3 right-3 z-10 rounded p-1.5 transition-colors focus:ring-2 focus:outline-none"
           onClick={onDismiss}
           type="button"
@@ -54,11 +65,11 @@ export function UnconnectedIntegrationWidget({
             <span className="bg-amber-border relative inline-block size-1.5 rounded-full">
               <span className="border-amber-border absolute -inset-0.75 animate-[imbi-pulse-ring_2s_ease-out_infinite] rounded-full border-[1.5px]" />
             </span>
-            {plugin.name} · Not connected
+            {label} · Not connected
           </span>
 
           <h3 className="text-primary mt-3.5 mb-1 text-[17px] font-semibold tracking-tight">
-            {plugin.name} isn&apos;t linked to your account
+            {label} isn&apos;t linked to your account
           </h3>
 
           <p className="text-secondary m-0 max-w-[38ch] text-[13px] leading-relaxed">
@@ -94,7 +105,7 @@ export function UnconnectedIntegrationWidget({
             onClick={onConnect}
           >
             <Plug className="size-3.5" />
-            Connect {plugin.name}
+            Connect {label}
           </Button>
           <Button
             className="text-secondary hover:text-primary h-auto gap-1 p-0 text-xs font-medium hover:no-underline"
@@ -127,11 +138,7 @@ export function UnconnectedIntegrationWidget({
               <i className="block size-1.25 animate-[imbi-bridge-travel_1.6s_ease-in-out_infinite] rounded-full bg-(--text-color-tertiary) [animation-delay:0.45s]" />
             </div>
             <div className="border-border bg-card text-primary grid size-11.5 place-items-center rounded-xl border opacity-50 shadow-sm grayscale-[0.4]">
-              {plugin.icon ? (
-                <EntityIcon className="size-[22px]" icon={plugin.icon} />
-              ) : (
-                <Plug className="size-[22px]" />
-              )}
+              <Icon className="size-[22px]" />
             </div>
           </div>
         </div>

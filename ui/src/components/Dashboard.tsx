@@ -27,14 +27,13 @@ import {
   getOrgPullRequests,
   getProjects,
 } from '@/api/endpoints'
-import { pluginIsIdentity } from '@/components/plugin-packages'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useConnectableIdentities } from '@/hooks/useConnectableIdentities'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
-import type { IdentityConnectionResponse } from '@/types'
+import type { IdentityConnectionResponse, PluginPackage } from '@/types'
 
 import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCountsWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
@@ -59,8 +58,9 @@ interface ViewChangeEvent {
 }
 
 const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v4'
-// Plugin slugs whose "connect your account" tile the actor has dismissed.
-const DISMISSED_INTEGRATIONS_KEY = 'imbi-dashboard-dismissed-integrations-v1'
+// Integration ids whose "connect your account" tile the actor has dismissed.
+// v2 because v1 stored plugin slugs, which no longer match anything.
+const DISMISSED_INTEGRATIONS_KEY = 'imbi-dashboard-dismissed-integrations-v2'
 
 type WidgetId =
   | 'my-pull-request-counts'
@@ -202,6 +202,15 @@ interface SortableWidgetProps {
   id: string
 }
 
+// A connectable identity integration the actor hasn't linked yet, with its id
+// already narrowed — id-less legacy integrations can't start a connect flow.
+interface UnconnectedIdentity {
+  icon: null | string | undefined
+  id: string
+  label: string
+  plugin: PluginPackage
+}
+
 // fallow-ignore-next-line complexity
 export function Dashboard({
   onProjectSelect,
@@ -213,15 +222,14 @@ export function Dashboard({
   const orgSlug = selectedOrganization?.slug || ''
   const [showWidgetSelector, setShowWidgetSelector] = useState(false)
 
-  // Identity plugins the actor hasn't connected yet drive the
+  // Identity integrations the actor hasn't connected yet drive the
   // dashboard's "unconnected integration" widgets.  They disappear
   // automatically once the connection becomes active, and the actor can
-  // dismiss one early (persisted by plugin slug in localStorage).
+  // dismiss one early (persisted by integration id in localStorage).
   const [dismissedIntegrations, setDismissedIntegrations] = useState<string[]>(
     loadDismissedIntegrations,
   )
-  const { connectableSlugs, integrationsQuery, pluginsQuery } =
-    useConnectableIdentities(orgSlug)
+  const { connectable } = useConnectableIdentities(orgSlug)
   const identitiesQuery = useQuery<IdentityConnectionResponse[]>({
     queryFn: ({ signal }) => getMyIdentities(signal),
     queryKey: ['me-identities'],
@@ -231,30 +239,30 @@ export function Dashboard({
     staleTime: 5 * 60 * 1000,
   })
 
-  // Connections key off the integration id; map back to the plugin slug so
-  // an active connection hides that plugin's "connect" tile.
-  const pluginByIntegrationId = new Map<string, string>()
-  for (const i of integrationsQuery.data ?? []) {
-    if (i.id) pluginByIntegrationId.set(i.id, i.plugin)
-  }
-  // Slugs already connected (active) or dismissed by the actor — either
-  // way, don't prompt to connect them.
-  const hiddenSlugs = new Set<string>(dismissedIntegrations)
+  // Integration ids already connected (active) or dismissed by the actor —
+  // either way, don't prompt to connect them.  Both connections and
+  // dismissals key off the integration id, so connecting one integration
+  // leaves the tiles for a sibling integration of the same plugin (e.g. a
+  // second GitHub host) in place.
+  const hiddenIntegrationIds = new Set<string>(dismissedIntegrations)
   for (const c of identitiesQuery.data ?? []) {
-    if (c.status !== 'active') continue
-    const slug = pluginByIntegrationId.get(c.integration_id)
-    if (slug) hiddenSlugs.add(slug)
+    if (c.status === 'active') hiddenIntegrationIds.add(c.integration_id)
   }
-  // Only offer to connect identity plugins that actually have a configured
-  // integration in this org — a login provider (org-less) or a merely
-  // installed-but-unconfigured plugin isn't something the actor connects to.
-  const unconnectedIdentityPlugins = (pluginsQuery.data ?? []).filter(
-    (p) =>
-      p.enabled &&
-      pluginIsIdentity(p) &&
-      connectableSlugs.has(p.slug) &&
-      !hiddenSlugs.has(p.slug),
-  )
+  // Only offer to connect integrations with a stable id — the connect flow
+  // targets it, so a legacy integration without one can't be started.  Built
+  // as a loop rather than a filter so `id` stays narrowed to a string for the
+  // tile's key, connect URL, and dismissal entry.
+  const unconnectedIdentities: UnconnectedIdentity[] = []
+  for (const { integration, plugin } of connectable) {
+    const id = integration.id
+    if (!id || hiddenIntegrationIds.has(id)) continue
+    unconnectedIdentities.push({
+      icon: integration.icon ?? plugin.icon,
+      id,
+      label: integration.name,
+      plugin,
+    })
+  }
 
   const [selectedWidgets, setSelectedWidgets] = useState<WidgetId[]>(() => {
     try {
@@ -466,19 +474,21 @@ export function Dashboard({
 
       {/* Unconnected-integration widgets — disappear automatically when
           the matching connection becomes active, or when dismissed. */}
-      {unconnectedIdentityPlugins.length > 0 && (
+      {unconnectedIdentities.length > 0 && (
         <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {unconnectedIdentityPlugins.map((plugin) => (
+          {unconnectedIdentities.map(({ icon, id, label, plugin }) => (
             <UnconnectedIntegrationWidget
-              key={plugin.slug}
+              icon={icon}
+              key={id}
+              label={label}
               onConnect={() =>
                 navigate(
-                  `/settings/connections?connect=${encodeURIComponent(plugin.slug)}`,
+                  `/settings/connections?connect=${encodeURIComponent(id)}`,
                 )
               }
               onDismiss={() =>
                 setDismissedIntegrations((prev) =>
-                  prev.includes(plugin.slug) ? prev : [...prev, plugin.slug],
+                  prev.includes(id) ? prev : [...prev, id],
                 )
               }
               onManage={() => navigate('/settings/connections')}

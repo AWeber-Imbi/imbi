@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { identityIntegrationPluginSlugs } from '@/components/plugin-packages'
+import { identityIntegrations } from '@/components/plugin-packages'
 import type { Integration } from '@/types'
 
 const integration = (over: Partial<Integration>): Integration =>
@@ -17,28 +17,35 @@ const integration = (over: Partial<Integration>): Integration =>
     ...over,
   }) as unknown as Integration
 
-describe('identityIntegrationPluginSlugs', () => {
+describe('identityIntegrations', () => {
   it('includes only integrations with identity capability enabled', () => {
-    const slugs = identityIntegrationPluginSlugs([
+    const result = identityIntegrations([
       integration({
         capabilities: { identity: { enabled: true, options: {} } },
         plugin: 'github',
+        slug: 'github',
       }),
       // identity present but disabled — not connectable
       integration({
         capabilities: { identity: { enabled: false, options: {} } },
         plugin: 'aws',
+        slug: 'aws',
       }),
       // no identity capability at all
       integration({
         capabilities: { analysis: { enabled: true, options: {} } },
         plugin: 'sonarqube',
+        slug: 'sonarqube',
       }),
     ])
-    expect([...slugs]).toEqual(['github'])
+    expect(result.map((i) => i.slug)).toEqual(['github'])
   })
 
+  // The two-integrations-of-one-plugin regression is guarded on the hook that
+  // does the join (hooks/__tests__/useConnectableIdentities.test.tsx) — that's
+  // where the collapse-by-plugin-slug bug actually lived.
+
   it('is empty for no integrations', () => {
-    expect(identityIntegrationPluginSlugs([]).size).toBe(0)
+    expect(identityIntegrations([])).toEqual([])
   })
 })
