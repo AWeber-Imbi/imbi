@@ -1,3 +1,4 @@
+import datetime
 import typing
 
 import orjson
@@ -10,11 +11,47 @@ from .client import SchemataQuery
 __all__ = [
     'SchemataQuery',
     'aclose',
+    'as_utc',
+    'as_utc_or_none',
     'initialize',
     'insert',
+    'iso_utc',
     'query',
     'setup_schema',
 ]
+
+
+def as_utc(value: datetime.datetime) -> datetime.datetime:
+    """Attach UTC to a naive timestamp read back from ClickHouse.
+
+    ``DateTime``/``DateTime64`` columns store UTC but the driver hands
+    back naive ``datetime`` objects. Serialized without an offset, a
+    client parses them in its *own* zone and the value shifts by that
+    zone's offset, so tag the tzinfo on before the value leaves the API.
+    Already-aware values pass through untouched.
+    """
+    return (
+        value.replace(tzinfo=datetime.UTC) if value.tzinfo is None else value
+    )
+
+
+def as_utc_or_none(value: typing.Any) -> datetime.datetime | None:
+    """``as_utc`` for optional row values; ``None`` when absent.
+
+    Row dicts are loosely typed, so callers reading a nullable timestamp
+    column would otherwise repeat the ``isinstance`` narrowing.
+    """
+    return as_utc(value) if isinstance(value, datetime.datetime) else None
+
+
+def iso_utc(value: datetime.datetime | None) -> str | None:
+    """Render a ClickHouse timestamp as an offset-bearing ISO string.
+
+    Returns ``None`` for a missing value. Use in place of ``str(value)``,
+    which drops the offset *and* emits a space separator rather than
+    ``T`` — a form ``Date.parse`` is not required to accept.
+    """
+    return as_utc(value).isoformat() if value is not None else None
 
 
 def _dump(

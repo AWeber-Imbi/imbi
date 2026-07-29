@@ -2,6 +2,7 @@ import { FileText, FolderKanban, MessageSquare, Pin } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { parseServerTs } from '@/lib/formatDate'
 import type { Document } from '@/types'
 
 import {
@@ -141,7 +142,7 @@ function FeedCard({
 function feedDate(document: Document): string {
   const iso = document.updated_at ?? document.created_at
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return parseServerTs(iso).toLocaleDateString(undefined, {
       day: 'numeric',
       month: 'short',
       year: 'numeric',

@@ -1,4 +1,4 @@
-import { absTime } from '@/lib/formatDate'
+import { absTime, parseServerTs } from '@/lib/formatDate'
 import type { OperationsLogRecord } from '@/types'
 
 export { absTime }
@@ -70,7 +70,7 @@ export function bucketByDay(
       it.kind === 'release'
         ? it.group.latestEntry.occurred_at
         : it.entry.occurred_at
-    const dk = dayKeyFromDate(parseUtcIso(iso), todayMs)
+    const dk = dayKeyFromDate(parseServerTs(iso), todayMs)
     if (!current || current.key !== dk.key) {
       current = { date: dk.date, items: [], key: dk.key, label: dk.label }
       buckets.push(current)
@@ -255,8 +255,4 @@ function mergeBuckets(
     if (bucket === drop) byKey.set(key, keep)
   }
   return keep
-}
-
-function parseUtcIso(iso: string): Date {
-  return new Date(iso)
 }

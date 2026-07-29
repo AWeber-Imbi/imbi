@@ -10,6 +10,7 @@ import {
   SegmentedControlItem,
 } from '@/components/ui/segmented-control'
 import { Sk } from '@/components/ui/skeleton'
+import { formatDateTime } from '@/lib/formatDate'
 import type { IncidentView } from '@/types'
 
 interface IncidentsTabProps {
@@ -177,12 +178,6 @@ export function IncidentsTab({ orgSlug, projectId }: IncidentsTabProps) {
   )
 }
 
-function formatTimestamp(value: null | string | undefined): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
-}
-
 // fallow-ignore-next-line complexity
 function IncidentRow({ incident }: { incident: IncidentView }) {
   return (
@@ -207,10 +202,10 @@ function IncidentRow({ incident }: { incident: IncidentView }) {
         {incident.urgency ?? '—'}
       </td>
       <td className="text-muted-foreground px-3 py-2">
-        {formatTimestamp(incident.created_at)}
+        {formatDateTime(incident.created_at)}
       </td>
       <td className="text-muted-foreground px-3 py-2">
-        {formatTimestamp(incident.resolved_at)}
+        {formatDateTime(incident.resolved_at)}
       </td>
     </tr>
   )

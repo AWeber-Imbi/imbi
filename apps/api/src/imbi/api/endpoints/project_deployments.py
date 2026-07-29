@@ -2156,6 +2156,20 @@ def _release_tag_order_key(
     return (key is not None, key or (0, 0, 0), when_key)
 
 
+def _tag_timestamp(
+    row: dict[str, typing.Any],
+) -> datetime.datetime | None:
+    """When a ``tags`` row was published, as an aware UTC timestamp.
+
+    Falls back to ``recorded_at`` for rows synced without a tag date.
+    ClickHouse returns these columns naive, so ``as_utc`` tags the offset
+    on before Pydantic serializes them.
+    """
+    return clickhouse.as_utc_or_none(
+        row.get('tagged_at') or row.get('recorded_at')
+    )
+
+
 def _latest_release_tag(
     rows: list[dict[str, typing.Any]],
 ) -> dict[str, typing.Any] | None:
@@ -2527,7 +2541,7 @@ def _recent_commit_from_row(row: dict[str, typing.Any]) -> RecentCommit:
         message=str(row.get('message') or ''),
         author=str(author) if author else None,
         author_email=str(author_email) if author_email else None,
-        authored_at=row['authored_at'],
+        authored_at=clickhouse.as_utc(row['authored_at']),
         ci_status=str(row.get('ci_status') or 'unknown'),
         url=str(url) if url else None,
     )
@@ -2671,11 +2685,7 @@ async def get_release_drift(
     latest = _latest_release_tag(tag_rows)
     latest_tag = str(latest['name']) if latest else None
     latest_tag_sha = str(latest['sha']) if latest else None
-    latest_tag_at = (
-        (latest.get('tagged_at') or latest.get('recorded_at'))
-        if latest
-        else None
-    )
+    latest_tag_at = _tag_timestamp(latest) if latest else None
 
     head_rows = await clickhouse.query(
         'SELECT sha FROM commits FINAL '
@@ -2788,7 +2798,7 @@ async def get_release_history(
                 tag=name,
                 sha=sha,
                 short_sha=sha[:7],
-                published_at=row.get('tagged_at') or row.get('recorded_at'),
+                published_at=_tag_timestamp(row),
                 author=str(tagger) if tagger else (created_by or None),
                 author_email=(
                     str(created_by)

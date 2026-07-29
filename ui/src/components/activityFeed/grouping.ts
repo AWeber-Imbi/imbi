@@ -6,6 +6,8 @@
 // an expandable group. See docs note in RecentActivity.tsx for where a
 // backend `group_id` would replace this heuristic.
 
+import { toDateOnlyIso } from '@/lib/formatDate'
+
 export interface ActivityCluster<T> {
   /** Cluster members, preserving the input (newest-first) order. */
   items: T[]
@@ -78,7 +80,7 @@ export function sectionByDay<T>(
   const byKey = new Map<string, DaySection<T>>()
   for (const item of items) {
     const day = new Date(options.timeOf(item))
-    const key = dayKey(day)
+    const key = toDateOnlyIso(day)
     let section = byKey.get(key)
     if (!section) {
       section = { clusters: [], key, label: dayLabel(day, now) }
@@ -97,18 +99,12 @@ export function sectionByDay<T>(
   return sections
 }
 
-function dayKey(d: Date): string {
-  const m = `${d.getMonth() + 1}`.padStart(2, '0')
-  const day = `${d.getDate()}`.padStart(2, '0')
-  return `${d.getFullYear()}-${m}-${day}`
-}
-
 function dayLabel(d: Date, now: number): string {
   const today = new Date(now)
-  if (dayKey(d) === dayKey(today)) return 'Today'
+  if (toDateOnlyIso(d) === toDateOnlyIso(today)) return 'Today'
   const yesterday = new Date(now)
   yesterday.setDate(yesterday.getDate() - 1)
-  if (dayKey(d) === dayKey(yesterday)) return 'Yesterday'
+  if (toDateOnlyIso(d) === toDateOnlyIso(yesterday)) return 'Yesterday'
   return d.toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',

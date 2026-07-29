@@ -22,6 +22,7 @@ import {
   ScoreHistoryPoint,
 } from '@/api/endpoints'
 import { Sk } from '@/components/ui/skeleton'
+import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { computeScoreYAxis } from '@/lib/score-chart'
 
@@ -169,7 +170,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
     if (pts.length === 0) return pts
     const last = pts[pts.length - 1]
     const now = new Date()
-    const lastMs = new Date(toUtc(last.timestamp)).getTime()
+    const lastMs = parseServerTs(last.timestamp).getTime()
     // Only append if the last point is more than a minute old
     if (now.getTime() - lastMs > 60_000) {
       return [
@@ -201,7 +202,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
       rawEvents.forEach((e) => {
         if (e.change_reason == null) return
         const i = nearestChartPointIndex(
-          new Date(toUtc(e.timestamp)).getTime(),
+          parseServerTs(e.timestamp).getTime(),
           chartPoints,
         )
         if (!m.has(i)) m.set(i, e.change_reason)
@@ -219,7 +220,7 @@ export function ScoreHistoryTab({ orgSlug, projectId }: Props) {
     )
       return null
     return nearestChartPointIndex(
-      new Date(toUtc(rawEvents[hoveredEvent].timestamp)).getTime(),
+      parseServerTs(rawEvents[hoveredEvent].timestamp).getTime(),
       chartPoints,
     )
   }, [hoveredEvent, rawEvents, chartPoints])
@@ -442,7 +443,7 @@ function EventTimeline({
                 {fmtRel(e.timestamp)}
               </div>
               <div className="text-tertiary mt-0.5 font-mono text-[11px]">
-                {fmtISODate(e.timestamp)}
+                {toDateOnlyIso(parseServerTs(e.timestamp))}
               </div>
             </div>
             <div>
@@ -535,32 +536,24 @@ function EventTimelineSkeleton() {
 }
 
 function fmtDate(iso: string, withTime = false): string {
-  const d = new Date(toUtc(iso))
+  const d = parseServerTs(iso)
   if (withTime) {
-    return d.toLocaleString('en-US', {
+    return d.toLocaleString(undefined, {
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       month: 'short',
     })
   }
-  return d.toLocaleString('en-US', {
+  return d.toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   })
 }
 
-function fmtISODate(iso: string): string {
-  const d = new Date(toUtc(iso))
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 function fmtRel(iso: string): string {
-  const ms = Date.now() - new Date(toUtc(iso)).getTime()
+  const ms = Date.now() - parseServerTs(iso).getTime()
   const min = Math.round(ms / 60000)
   if (min < 60) return `${min}m ago`
   const hr = Math.round(min / 60)
@@ -589,7 +582,7 @@ function nearestChartPointIndex(
   let bestI = 0
   let bestDiff = Infinity
   pts.forEach((p, i) => {
-    const d = Math.abs(new Date(toUtc(p.timestamp)).getTime() - timestampMs)
+    const d = Math.abs(parseServerTs(p.timestamp).getTime() - timestampMs)
     if (d < bestDiff) {
       bestDiff = d
       bestI = i
@@ -603,11 +596,11 @@ function nearestProjectChange(
   events: EventRecord[],
   attributedTo?: string,
 ): null | ProjectChangePayload {
-  const scoreMs = new Date(toUtc(scoreTimestamp)).getTime()
+  const scoreMs = parseServerTs(scoreTimestamp).getTime()
   let best: null | ProjectChangePayload = null
   let bestDiff = 90_000 // 90s look-back window
   for (const e of events) {
-    const peMs = new Date(toUtc(e.recorded_at)).getTime()
+    const peMs = parseServerTs(e.recorded_at).getTime()
     const diff = scoreMs - peMs
     if (diff >= 0 && diff < bestDiff) {
       // If reason is a user email, prefer events attributed to that same user
@@ -623,10 +616,6 @@ function nearestProjectChange(
 }
 
 // Ensure bare ISO strings (no tz offset) are treated as UTC
-function toUtc(iso: string): string {
-  return /[Z+]|\d{2}:\d{2}$/.test(iso) ? iso : iso + 'Z'
-}
-
 // Reasons that represent bulk/policy operations — correlating these with a
 // specific attribute change would produce false positives.
 const NON_ATTRIBUTE_REASONS = new Set([

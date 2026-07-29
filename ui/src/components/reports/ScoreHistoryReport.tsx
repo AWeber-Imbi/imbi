@@ -20,6 +20,7 @@ import {
 } from '@/api/endpoints'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { Team } from '@/types'
 
 interface ChartSeries {
@@ -196,24 +197,16 @@ function DeltaBadge({ delta }: { delta: number }) {
 }
 
 function fmtDate(iso: string): string {
-  const d = new Date(toUtc(iso))
-  return d.toLocaleString('en-US', {
+  const d = parseServerTs(iso)
+  return d.toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   })
 }
 
-function fmtISODate(iso: string): string {
-  const d = new Date(toUtc(iso))
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 function fmtRel(iso: string): string {
-  const ms = Date.now() - new Date(toUtc(iso)).getTime()
+  const ms = Date.now() - parseServerTs(iso).getTime()
   const min = Math.round(ms / 60000)
   if (min < 60) return `${min}m ago`
   const hr = Math.round(min / 60)
@@ -264,7 +257,7 @@ function GlobalEventFeed({
                 {fmtRel(e.timestamp)}
               </div>
               <div className="text-tertiary mt-0.5 font-mono text-[11px]">
-                {fmtISODate(e.timestamp)}
+                {toDateOnlyIso(parseServerTs(e.timestamp))}
               </div>
             </div>
 
@@ -336,22 +329,20 @@ function MultiLineChart({ series }: { series: ChartSeries[] }) {
 
   const minTsMs = useMemo(
     () =>
-      allTimestamps.length > 0
-        ? new Date(toUtc(allTimestamps[0])).getTime()
-        : 0,
+      allTimestamps.length > 0 ? parseServerTs(allTimestamps[0]).getTime() : 0,
     [allTimestamps],
   )
   const maxTsMs = useMemo(
     () =>
       allTimestamps.length > 0
-        ? new Date(toUtc(allTimestamps[allTimestamps.length - 1])).getTime()
+        ? parseServerTs(allTimestamps[allTimestamps.length - 1]).getTime()
         : 1,
     [allTimestamps],
   )
   const tsRangeMs = maxTsMs - minTsMs || 1
 
   const xForTs = (ts: string) => {
-    const t = new Date(toUtc(ts)).getTime()
+    const t = parseServerTs(ts).getTime()
     return padL + ((t - minTsMs) / tsRangeMs) * innerW
   }
 
@@ -693,10 +684,6 @@ function Segmented({
       ))}
     </div>
   )
-}
-
-function toUtc(iso: string): string {
-  return /[Z+]|\d{2}:\d{2}$/.test(iso) ? iso : iso + 'Z'
 }
 
 const REASON_META: Record<

@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { parseServerTs } from '@/lib/formatDate'
 import type { OperationsLogRecord } from '@/types'
 
 import { parseDescription } from './parseDescription'
@@ -197,7 +198,7 @@ function cleanNotes(notes: string): string {
 
 function formatAbsolute(iso: string): string {
   try {
-    return parseUtcIso(iso).toLocaleString(undefined, {
+    return parseServerTs(iso).toLocaleString(undefined, {
       dateStyle: 'medium',
       timeStyle: 'short',
     })
@@ -221,9 +222,4 @@ function MetaChip({
       <span className="text-primary">{children}</span>
     </span>
   )
-}
-
-function parseUtcIso(iso: string): Date {
-  const hasOffset = /(Z|[+-]\d\d:?\d\d)$/.test(iso)
-  return new Date(hasOffset ? iso : iso + 'Z')
 }

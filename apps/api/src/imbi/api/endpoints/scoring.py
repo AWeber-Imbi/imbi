@@ -28,6 +28,19 @@ _GRANULARITY_EXPR = {
 }
 
 
+def _ts(value: typing.Any) -> str:
+    """Render a ClickHouse timestamp column for a ``str`` model field.
+
+    The score-history models carry timestamps as strings, so they bypass
+    Pydantic's datetime serializer; ``iso_utc`` supplies the UTC offset
+    that ``str(datetime)`` would drop. Row values are loosely typed, so
+    anything already stringified is passed through as-is.
+    """
+    if isinstance(value, datetime.datetime):
+        return clickhouse.iso_utc(value) or ''
+    return str(value or '')
+
+
 @scoring_router.get(
     '/organizations/{org_slug}/projects/{project_id}/score/history'
 )
@@ -86,7 +99,7 @@ async def get_score_history(
         if granularity == 'raw':
             points.append(
                 scoring_models.ScoreHistoryPoint(
-                    timestamp=str(row['timestamp']),
+                    timestamp=_ts(row['timestamp']),
                     score=float(row['score']),
                     previous_score=(
                         float(row['previous_score'])
@@ -99,7 +112,7 @@ async def get_score_history(
         else:
             points.append(
                 scoring_models.ScoreHistoryPoint(
-                    timestamp=str(row['ts']),
+                    timestamp=_ts(row['ts']),
                     score=float(row['score']),
                 )
             )
@@ -230,7 +243,7 @@ async def score_rollup(
             continue
         latest = float(row.get('latest_score') or 0.0)
         last_upd = (
-            str(row['last_updated']) if row.get('last_updated') else None
+            _ts(row['last_updated']) if row.get('last_updated') else None
         )
         scores_by_key.setdefault(dim_key, []).append(latest)
         existing_upd = last_updated_by_key.get(dim_key)
@@ -414,7 +427,7 @@ async def score_history_by_team(
         team = project_team.get(pid)
         if not team:
             continue
-        ts = str(row['ts'])
+        ts = _ts(row['ts'])
         score = float(row['score'])
         team_ts_scores.setdefault(team, {}).setdefault(ts, []).append(score)
     teams: list[scoring_models.TeamScoreSeries] = []
@@ -495,7 +508,7 @@ async def score_history_feed(
         project_name, team_key = info
         out.append(
             scoring_models.GlobalScoreEvent(
-                timestamp=str(row['timestamp']),
+                timestamp=_ts(row['timestamp']),
                 project_id=pid,
                 project_name=project_name,
                 team_key=team_key,

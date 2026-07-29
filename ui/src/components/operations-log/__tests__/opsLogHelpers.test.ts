@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { OperationsLogRecord } from '@/types'
 
-import { groupReleases } from '../opsLogHelpers'
+import { bucketByDay, type FeedItem, groupReleases } from '../opsLogHelpers'
 
 const SHA = 'c67213d'
 
@@ -208,5 +208,44 @@ describe('groupReleases', () => {
       makeEntry({ id: 'other', project_slug: 'messages-client' }),
     ])
     expect(items).toHaveLength(2)
+  })
+})
+
+// bucketByDay used to call a local parseUtcIso() stub that was a plain
+// `new Date(iso)`, so an offset-less timestamp landed in the viewer's zone
+// and could bucket under the wrong day. Both spellings must agree.
+describe('bucketByDay', () => {
+  const NOON_UTC = Date.UTC(2026, 6, 29, 12, 0, 0)
+
+  function single(occurredAt: string): FeedItem {
+    return { entry: makeEntry({ occurred_at: occurredAt }), kind: 'single' }
+  }
+
+  it('reads a naive occurred_at as UTC', () => {
+    const naive = bucketByDay([single('2026-07-29T12:00:00')], NOON_UTC)
+    const explicit = bucketByDay([single('2026-07-29T12:00:00Z')], NOON_UTC)
+    expect(naive[0].key).toBe(explicit[0].key)
+    expect(naive[0].date.getTime()).toBe(explicit[0].date.getTime())
+  })
+
+  it('labels the current local day Today', () => {
+    const now = new Date(2026, 6, 29, 12, 0, 0)
+    const iso = new Date(2026, 6, 29, 9, 0, 0).toISOString()
+    const buckets = bucketByDay([single(iso)], now.getTime())
+    expect(buckets[0].label).toBe('Today')
+  })
+
+  it('splits entries that fall on different local days', () => {
+    const now = new Date(2026, 6, 29, 12, 0, 0)
+    const buckets = bucketByDay(
+      [
+        single(new Date(2026, 6, 29, 9, 0, 0).toISOString()),
+        single(new Date(2026, 6, 28, 9, 0, 0).toISOString()),
+      ],
+      now.getTime(),
+    )
+    expect(buckets).toHaveLength(2)
+    expect(buckets[0].label).toBe('Today')
+    expect(buckets[1].label).toBe('Yesterday')
   })
 })

@@ -7,6 +7,7 @@ import { CheckCircle2, Clipboard, ClockIcon, XCircle } from 'lucide-react'
 import type { EventHandlerOutcome, EventRecord } from '@/api/endpoints'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { formatDateTime } from '@/lib/formatDate'
 
 interface DispositionMeta {
   label: string
@@ -63,7 +64,7 @@ export function WebhookHistoryRow({
       >
         <ClockIcon className="text-tertiary size-4" />
         <span className="text-secondary text-sm tabular-nums">
-          {new Date(event.recorded_at).toLocaleString()}
+          {formatDateTime(event.recorded_at)}
         </span>
         <Badge variant="secondary">{event.integration}</Badge>
         <span className="text-primary text-sm font-medium">

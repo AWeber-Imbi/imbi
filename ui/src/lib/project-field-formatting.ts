@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from 'date-fns'
 
 import type { ProjectSchemaSection } from '@/api/endpoints'
+import { parseServerTs } from '@/lib/formatDate'
 import type { Project } from '@/types'
 
 export const COLOR_TEXT: Record<string, string> = {
@@ -103,9 +104,11 @@ export function formatFieldValue(
     return raw === 'true' ? 'True' : 'False'
   }
 
-  // Dates and datetimes — display as relative time
+  // Dates and datetimes — display as relative time. parseServerTs anchors
+  // a date-only value at local midnight rather than UTC midnight, so the
+  // relative reading no longer swings by the viewer's offset.
   if (format === 'date-time' || format === 'date') {
-    const d = new Date(raw)
+    const d = parseServerTs(raw)
     if (!isNaN(d.getTime())) {
       return formatDistanceToNow(d, { addSuffix: true })
     }

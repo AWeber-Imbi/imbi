@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   absTime,
+  formatByFormat,
   formatDate,
+  formatDateTime,
   formatRelativeDate,
+  parseServerTs,
   relTime,
+  toDateOnlyIso,
 } from '@/lib/formatDate'
 
 // Fixed reference instant so relative-time math stays deterministic
@@ -172,5 +176,144 @@ describe('absTime', () => {
 
   it('returns em-dash for an unparseable input', () => {
     expect(absTime('not-a-date')).toBe('—')
+  })
+})
+
+// The API is not consistent about offsets: ClickHouse-backed endpoints have
+// serialized naive UTC timestamps, and `str(datetime)` adds a space
+// separator. These assert on epoch milliseconds rather than rendered text so
+// they hold in whatever zone CI runs under.
+describe('parseServerTs', () => {
+  const EXPECTED = Date.UTC(2026, 6, 29, 12, 0, 0)
+
+  it('reads a naive timestamp as UTC, not local', () => {
+    expect(parseServerTs('2026-07-29T12:00:00').getTime()).toBe(EXPECTED)
+  })
+
+  it('reads the space-separated form Python str() emits', () => {
+    expect(parseServerTs('2026-07-29 12:00:00').getTime()).toBe(EXPECTED)
+  })
+
+  it('reads naive fractional seconds as UTC', () => {
+    expect(parseServerTs('2026-07-29T12:00:00.500').getTime()).toBe(
+      EXPECTED + 500,
+    )
+  })
+
+  it('reads six-digit fractional seconds as UTC', () => {
+    expect(parseServerTs('2026-07-29 12:00:00.500000').getTime()).toBe(
+      EXPECTED + 500,
+    )
+  })
+
+  it('honours an explicit Z', () => {
+    expect(parseServerTs('2026-07-29T12:00:00Z').getTime()).toBe(EXPECTED)
+  })
+
+  it('honours an explicit +00:00 offset', () => {
+    expect(parseServerTs('2026-07-29T12:00:00+00:00').getTime()).toBe(EXPECTED)
+  })
+
+  it('honours a non-UTC offset', () => {
+    expect(parseServerTs('2026-07-29T08:00:00-04:00').getTime()).toBe(EXPECTED)
+  })
+
+  it('honours a colon-less offset', () => {
+    expect(parseServerTs('2026-07-29T08:00:00-0400').getTime()).toBe(EXPECTED)
+  })
+
+  it('passes a millisecond timestamp straight through', () => {
+    expect(parseServerTs(EXPECTED).getTime()).toBe(EXPECTED)
+  })
+
+  // A date-only value names a calendar day, so it must anchor to local
+  // midnight — parsing it as UTC midnight renders the previous day for any
+  // viewer west of Greenwich.
+  it('anchors a date-only value at local midnight', () => {
+    const d = parseServerTs('2026-07-29')
+    expect(d.getFullYear()).toBe(2026)
+    expect(d.getMonth()).toBe(6)
+    expect(d.getDate()).toBe(29)
+    expect(d.getHours()).toBe(0)
+  })
+
+  it('yields an invalid date for unparseable input', () => {
+    expect(Number.isNaN(parseServerTs('not-a-date').getTime())).toBe(true)
+  })
+})
+
+describe('toDateOnlyIso', () => {
+  it('uses local calendar fields, not UTC ones', () => {
+    expect(toDateOnlyIso(new Date(2026, 6, 29, 23, 30))).toBe('2026-07-29')
+  })
+
+  it('zero-pads month and day', () => {
+    expect(toDateOnlyIso(new Date(2026, 0, 5))).toBe('2026-01-05')
+  })
+
+  // The round trip is what the InlineDate editor does: display a stored
+  // date-only value, then write back whatever day the picker returns.
+  it('round-trips a date-only value unchanged', () => {
+    expect(toDateOnlyIso(parseServerTs('2026-07-29'))).toBe('2026-07-29')
+  })
+})
+
+describe('formatDate with a date-only value', () => {
+  it('renders the day it names rather than shifting a day', () => {
+    expect(formatDate('2026-07-29')).toBe(
+      new Date(2026, 6, 29).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    )
+  })
+
+  it('returns the fallback for unparseable input', () => {
+    expect(formatDate('not-a-date')).toBe('—')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('treats a naive timestamp as UTC', () => {
+    expect(formatDateTime('2026-07-29T12:00:00')).toBe(
+      formatDateTime('2026-07-29T12:00:00Z'),
+    )
+  })
+
+  it('returns the fallback for unparseable input', () => {
+    expect(formatDateTime('not-a-date')).toBe('—')
+  })
+})
+
+describe('formatByFormat', () => {
+  it('renders a date-only field with no clock time', () => {
+    expect(formatByFormat('2026-07-29', 'date')).toBe(formatDate('2026-07-29'))
+  })
+
+  it('renders a date-time field with a clock time', () => {
+    expect(formatByFormat('2026-07-29T12:00:00Z', 'date-time')).toBe(
+      formatDateTime('2026-07-29T12:00:00Z'),
+    )
+  })
+
+  it('defaults to date-time when the format is unknown', () => {
+    expect(formatByFormat('2026-07-29T12:00:00Z')).toBe(
+      formatDateTime('2026-07-29T12:00:00Z'),
+    )
+  })
+})
+
+describe('relTime with server timestamps', () => {
+  it('treats a naive timestamp as UTC', () => {
+    const now = Date.UTC(2026, 6, 29, 14, 0, 0)
+    expect(relTime('2026-07-29T12:00:00', now)).toBe('2h')
+  })
+
+  it('agrees with the Z-suffixed form', () => {
+    const now = Date.UTC(2026, 6, 29, 14, 0, 0)
+    expect(relTime('2026-07-29 12:00:00', now)).toBe(
+      relTime('2026-07-29T12:00:00Z', now),
+    )
   })
 })
