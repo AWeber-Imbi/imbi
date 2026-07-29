@@ -1422,8 +1422,10 @@ name = "imbi-common"
 version = "2.21.1"
 source = { editable = "libraries/common" }
 dependencies = [
+    { name = "argon2-cffi" },
     { name = "cryptography" },
     { name = "httpx" },
+    { name = "jsonpatch" },
     { name = "jsonpointer" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py" },
@@ -1474,12 +1476,14 @@ server = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.40" },
+    { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "clickhouse-connect", extras = ["async"], marker = "extra == 'databases'", specifier = "==1.0.0" },
     { name = "cryptography", specifier = ">=42.0.4" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
     { name = "fastembed", marker = "extra == 'databases'", specifier = ">=0.6" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3,<4" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
+    { name = "jsonpatch", specifier = ">=1.33" },
     { name = "jsonpointer", specifier = ">=3.1.1" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py", specifier = ">=3.0" },

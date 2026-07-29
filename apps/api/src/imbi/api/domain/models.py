@@ -73,23 +73,15 @@ __all__ = [
 ]
 
 
-class User(models.GraphModel):
-    """User account for authentication and authorization."""
-
-    email: pydantic.EmailStr
-    display_name: str
-    password_hash: str | None = None
-    is_active: bool = True
-    is_admin: bool = False
-    is_service_account: bool = False
-    last_login: datetime.datetime | None = None
-    avatar_url: pydantic.HttpUrl | None = None
-    email_notifications: bool = True
-
-    organizations: typing.Annotated[
-        list[OrganizationEdge],
-        models.Edge(rel_type='MEMBER_OF', direction='OUTGOING'),
-    ] = []  # noqa: RUF012
+# Authentication principals now live in ``imbi.common.models``: three
+# members resolve bearer tokens against the graph, so the shared auth
+# path in ``imbi.common.auth.permissions`` owns the principal types.
+# Re-exported here so every ``models.User`` reference in this service
+# keeps resolving to the same class object.
+MembershipProperties = models.MembershipProperties
+OrganizationEdge = models.OrganizationEdge
+ServiceAccount = models.ServiceAccount
+User = models.User
 
 
 class OAuthIdentity(models.GraphModel):
@@ -201,19 +193,6 @@ class LocalAuthConfig(models.GraphModel):
     updated_at: datetime.datetime | None = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
-
-
-class MembershipProperties(pydantic.BaseModel):
-    """Properties on User->Organization MEMBER_OF relationships."""
-
-    role: str  # Role slug
-
-
-class OrganizationEdge(typing.NamedTuple):
-    """Edge type for User->Organization MEMBER_OF relationships."""
-
-    node: models.Organization
-    properties: MembershipProperties
 
 
 class OrgMembership(pydantic.BaseModel):
@@ -486,22 +465,6 @@ class PasswordChangeRequest(pydantic.BaseModel):
         if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in value):
             raise ValueError('Password must contain at least one special')
         return value
-
-
-class ServiceAccount(models.GraphModel):
-    """Service account for machine-to-machine authentication."""
-
-    slug: str
-    display_name: str
-    description: str | None = None
-    is_active: bool = True
-    last_authenticated: datetime.datetime | None = None
-    avatar_url: str | None = None
-
-    organizations: typing.Annotated[
-        list[OrganizationEdge],
-        models.Edge(rel_type='MEMBER_OF', direction='OUTGOING'),
-    ] = []  # noqa: RUF012
 
 
 class ServiceAccountCreate(pydantic.BaseModel):

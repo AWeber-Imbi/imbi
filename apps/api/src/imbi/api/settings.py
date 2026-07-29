@@ -110,12 +110,9 @@ class Auth(settings.Auth):  # type: ignore[misc]
     # API Key Configuration
     api_key_max_lifetime_days: int = 365
 
-    # Throttle interval for ``last_used`` / ``last_activity`` stamps.
-    # Authentication runs on every request, but persisting the stamp
-    # every time spikes graph write pressure for no UX benefit -- the
-    # value only needs to be accurate to the nearest minute or so.
-    # Set to 0 to disable throttling.
-    last_used_throttle_seconds: int = 60
+    # ``last_used_throttle_seconds`` is inherited from imbi-common's Auth
+    # now that the API-key auth path that reads it is shared. The
+    # ``last_activity`` stamps in this service use the same value.
 
     # MFA Configuration (Phase 5)
     mfa_issuer_name: str = 'Imbi'

@@ -7,10 +7,6 @@ from imbi.api.domain for a single import path:
     models.User(...)
 """
 
-import json
-import typing
-import warnings
-
 from imbi.api.domain import models as _domain
 from imbi.common import models as _common
 
@@ -93,36 +89,6 @@ User = _domain.User
 UserCreate = _domain.UserCreate
 UserResponse = _domain.UserResponse
 
-
-@warnings.deprecated(
-    'parse_scopes is a compatibility shim for legacy AGE rows that '
-    "stored list properties as PostgreSQL-array strings (e.g. '{a,b}')."
-    ' Cypher writes have stored lists as JSON since the list-'
-    'serialization fix; callers should switch to ``graph.parse_agtype``'
-    ' once every legacy scope row has been rewritten. Plan to remove '
-    'this helper alongside that backfill -- see CODE_REVIEW_PUNCHLIST '
-    'L4 for the open migration deadline.'
-)
-def parse_scopes(value: typing.Any) -> list[str]:
-    """Convert AGE scope values to a Python list.
-
-    AGE may store list properties as PostgreSQL array strings
-    (e.g. ``'{}'`` or ``'{read,write}'``), or as JSON-serialized
-    strings (e.g. ``'["read","write"]'``) when they were written
-    before the Cypher list-serialization fix.
-
-    """
-    if isinstance(value, list):
-        return [str(v) for v in typing.cast(list[object], value)]
-    if isinstance(value, str):
-        stripped = value.strip()
-        if stripped.startswith('['):
-            try:
-                parsed = json.loads(stripped)
-                if isinstance(parsed, list):
-                    return [str(v) for v in typing.cast(list[object], parsed)]
-            except json.JSONDecodeError, ValueError:
-                pass
-        inner = stripped.strip('{}')
-        return inner.split(',') if inner else []
-    return []
+# Moved to imbi-common alongside the principal models the shared auth
+# path needs; still reachable as ``models.parse_scopes`` here.
+parse_scopes = _common.parse_scopes
