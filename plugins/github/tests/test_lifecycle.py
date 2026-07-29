@@ -7,6 +7,7 @@ archived repo, the rename-on-transfer case, repo-resolution failure
 from absent links, and the 401 -> PluginAuthenticationFailed path.
 """
 
+import json
 import unittest
 import unittest.mock
 
@@ -97,6 +98,18 @@ class ManifestTestCase(unittest.TestCase):
         self.assertEqual(opts['create_org'].type, 'string')
         self.assertIn('org_mapping', opts)
         self.assertEqual(opts['org_mapping'].type, 'mapping')
+
+    def test_create_visibility_option_has_no_manifest_default(self) -> None:
+        # The default is flavor-dependent, so it must be resolved by the
+        # handler -- a manifest default gets pre-filled into the stored
+        # options by the admin wizard and would defeat that.
+        opts = {opt.name: opt for opt in _lifecycle_cap().options}
+        self.assertIn('create_visibility', opts)
+        self.assertIsNone(opts['create_visibility'].default)
+        self.assertEqual(
+            opts['create_visibility'].choices,
+            ['private', 'internal', 'public'],
+        )
 
     def test_no_host_option(self) -> None:
         # Host now comes from the Integration's flavor/host options, not a
@@ -826,9 +839,16 @@ class CreateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, 'ok')
         self.assertEqual(create_route.calls.call_count, 1)
         self.assertEqual(
-            create_route.calls.last.request.read(),
-            b'{"name":"demo","description":"An example API",'
-            b'"homepage":"https://imbi.example.com/projects/p"}',
+            json.loads(create_route.calls.last.request.read()),
+            {
+                'name': 'demo',
+                'description': 'An example API',
+                'homepage': 'https://imbi.example.com/projects/p',
+                # ``github`` flavor, no option set -> public, the only
+                # visibility github.com shares with the enterprise hosts.
+                'visibility': 'public',
+                'private': False,
+            },
         )
         self.assertIsNotNone(ctx.link_writeback)
         assert ctx.link_writeback is not None
@@ -866,6 +886,126 @@ class CreateTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.status, 'ok')
         self.assertEqual(create_route.calls.call_count, 1)
+
+    @respx.mock
+    async def test_create_honors_configured_visibility(self) -> None:
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/aweber-apis/demo',
+                },
+            )
+        )
+        ctx = _ctx(
+            options={
+                'org_mapping': {'api-service': 'aweber-apis'},
+                'create_visibility': 'private',
+            },
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_created(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        body = json.loads(create_route.calls.last.request.read())
+        # The option overrides the ``internal`` default.
+        self.assertEqual(body['visibility'], 'private')
+        self.assertIs(body['private'], True)
+
+    async def _create_on(
+        self, flavor: str, host: str, api_base: str
+    ) -> dict[str, object]:
+        """Run a create against one flavor, returning the POST body."""
+        respx.get(f'{api_base}/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        create_route = respx.post(f'{api_base}/orgs/aweber-apis/repos').mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    'name': 'demo',
+                    'html_url': f'https://{host}/aweber-apis/demo',
+                },
+            )
+        )
+        ctx = _ctx(
+            options={'org_mapping': {'api-service': 'aweber-apis'}},
+            project_links={},
+            project_type_slugs=['api-service'],
+            connection=_connection(flavor, host),
+        )
+        result = await GitHubLifecycle().on_project_created(ctx, _CREDS)
+        self.assertEqual(result.status, 'ok')
+        body: dict[str, object] = json.loads(
+            create_route.calls.last.request.read()
+        )
+        return body
+
+    @respx.mock
+    async def test_create_defaults_to_internal_on_ghec(self) -> None:
+        # An unset option on an enterprise host means ``internal``, not
+        # the ``public`` default that github.com gets.
+        body = await self._create_on(
+            'ghec', 'tenant.ghe.com', 'https://api.tenant.ghe.com'
+        )
+        self.assertEqual(body['visibility'], 'internal')
+        self.assertIs(body['private'], True)
+
+    @respx.mock
+    async def test_create_defaults_to_internal_on_ghes(self) -> None:
+        body = await self._create_on(
+            'ghes', 'github.example.com', 'https://github.example.com/api/v3'
+        )
+        self.assertEqual(body['visibility'], 'internal')
+        self.assertIs(body['private'], True)
+
+    @respx.mock
+    async def test_create_surfaces_github_validation_detail(self) -> None:
+        # A 422 from GitHub (e.g. org policy forbids the visibility) must
+        # name the reason -- ``raise_for_status`` alone hides the body.
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        respx.post('https://api.github.com/orgs/aweber-apis/repos').mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    'message': 'Repository creation failed.',
+                    'errors': [
+                        {
+                            'resource': 'Repository',
+                            'field': 'visibility',
+                            'message': "Visibility can't be public",
+                        }
+                    ],
+                },
+            )
+        )
+        ctx = _ctx(
+            options={
+                'org_mapping': {'api-service': 'aweber-apis'},
+                'create_visibility': 'public',
+            },
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecycle()
+        with self.assertRaises(RuntimeError) as raised:
+            await plugin.on_project_created(ctx, _CREDS)
+
+        message = str(raised.exception)
+        self.assertIn('aweber-apis/demo', message)
+        self.assertIn('visibility=public', message)
+        self.assertIn('Repository creation failed.', message)
+        self.assertIn("visibility: Visibility can't be public", message)
 
     async def test_create_skips_when_no_target_org_configured(self) -> None:
         # Neither mapping nor template -> clean skip rather than HTTP.
