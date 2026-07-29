@@ -89,3 +89,23 @@ class Scheduler(pydantic_settings.BaseSettings):
         """
         prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
         return self.api_url.rstrip('/') + prefix
+
+
+_settings: Scheduler | None = None
+
+
+def get_settings() -> Scheduler:
+    """Return the process-wide Scheduler settings.
+
+    Constructing ``Scheduler()`` re-reads the environment and revalidates
+    every field, so anything on a request path wants this instead of a fresh
+    instance. Mirrors ``imbi.common.settings.get_auth_settings``.
+
+    Not for code that reads :attr:`Scheduler.schema_name`: the store is
+    constructed against whatever schema the environment names at the time, and
+    a cached instance would pin the first one seen.
+    """
+    global _settings  # noqa: PLW0603 -- singleton, as imbi-common does it
+    if _settings is None:
+        _settings = Scheduler()
+    return _settings

@@ -23,18 +23,9 @@ from imbi.common.auth import permissions as _shared
 __all__ = [
     'ACCESS_COOKIE_NAME',
     'AuthContext',
-    'IdentityInfo',
-    'PrincipalLabel',
-    'PrincipalMatchProp',
-    'authenticate_api_key',
-    'authenticate_jwt',
     'check_resource_permission',
-    'clear_api_key_cache',
     'get_current_user',
     'get_current_user_cookie_fallback',
-    'load_all_permission_names',
-    'load_principal_permissions',
-    'oauth2_scheme',
     'require_permission',
     'require_resource_access',
     'validate_scopes',
@@ -42,19 +33,13 @@ __all__ = [
 
 LOGGER = logging.getLogger(__name__)
 
+# Only the names this service actually imports from here. The rest of the
+# shared auth surface is reachable as ``imbi.common.auth.permissions``; a
+# wider shim would advertise a compatibility guarantee nothing relies on.
 ACCESS_COOKIE_NAME = _shared.ACCESS_COOKIE_NAME
 AuthContext = _shared.AuthContext
-IdentityInfo = _shared.IdentityInfo
-PrincipalLabel = _shared.PrincipalLabel
-PrincipalMatchProp = _shared.PrincipalMatchProp
-authenticate_api_key = _shared.authenticate_api_key
-authenticate_jwt = _shared.authenticate_jwt
-clear_api_key_cache = _shared.clear_api_key_cache
 get_current_user = _shared.get_current_user
 get_current_user_cookie_fallback = _shared.get_current_user_cookie_fallback
-load_all_permission_names = _shared.load_all_permission_names
-load_principal_permissions = _shared.load_principal_permissions
-oauth2_scheme = _shared.oauth2_scheme
 require_permission = _shared.require_permission
 validate_scopes = _shared.validate_scopes
 

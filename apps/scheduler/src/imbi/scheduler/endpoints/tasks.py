@@ -46,10 +46,6 @@ READONLY_PATHS: frozenset[str] = frozenset(
     ]
 )
 
-#: Paging bounds for run history.
-DEFAULT_HISTORY_LIMIT = 50
-MAX_HISTORY_LIMIT = 500
-
 
 class TaskCreate(pydantic.BaseModel):
     """A new scheduled task, as a caller supplies it."""
@@ -90,11 +86,15 @@ def _created(body: TaskCreate, created_by: str) -> models.Task:
     )
 
 
-@router.get('/tasks', summary='List scheduled tasks', operation_id='listTasks')
-async def list_tasks(  # noqa: PLR0913 -- one parameter per PRD filter
+@router.get(
+    '/tasks',
+    summary='List scheduled tasks',
+    operation_id='listTasks',
+    dependencies=[dependencies.requires(dependencies.READ)],
+)
+async def list_tasks(
     *,
     tasks: dependencies.Tasks,
-    auth: dependencies.RequiresRead,
     organization: str | None = None,
     kind: typing.Literal['system', 'user'] | None = None,
     enabled: bool | None = None,
@@ -105,7 +105,6 @@ async def list_tasks(  # noqa: PLR0913 -- one parameter per PRD filter
     Unfiltered by ownership: reading the schedule is not managing it, and an
     operator debugging why something fired needs to see the task that did it.
     """
-    del auth
     return await tasks.search(
         organization=organization, kind=kind, enabled=enabled, tag=tag
     )
@@ -155,15 +154,14 @@ async def create_task(
     '/tasks/{slug}',
     summary='Fetch a scheduled task',
     operation_id='getTask',
+    dependencies=[dependencies.requires(dependencies.READ)],
 )
 async def get_task(
     *,
     tasks: dependencies.Tasks,
     slug: str,
-    auth: dependencies.RequiresRead,
 ) -> models.Task:
     """Return one task, including its computed ``next_run_at``."""
-    del auth
     return await dependencies.load(tasks, slug)
 
 
@@ -202,7 +200,9 @@ async def patch_task(
             status_code=400,
             detail='slug identifies the task and cannot be patched',
         )
-    reason = _unresolvable(updated)
+    # The same predicate ``Tasks.create`` and fire time use, so a patch cannot
+    # put a task into a state creation would have refused.
+    reason = identity.unresolvable(updated.identity, settings.get_settings())
     if reason is not None:
         raise fastapi.HTTPException(status_code=422, detail=reason)
     if _reschedules(task, updated):
@@ -237,15 +237,6 @@ def _errors(err: pydantic.ValidationError) -> list[dict[str, typing.Any]]:
         }
         for error in err.errors(include_context=False, include_url=False)
     ]
-
-
-def _unresolvable(task: models.Task) -> str | None:
-    """Return why `task`'s identity could never resolve, if so.
-
-    The same predicate ``Tasks.create`` and fire time use, so a patch cannot
-    put a task into a state creation would have refused.
-    """
-    return identity.unresolvable(task.identity, settings.Scheduler())
 
 
 def _reschedules(before: models.Task, after: models.Task) -> bool:
@@ -346,13 +337,13 @@ async def run_task(
     '/tasks/{slug}/dry-run',
     summary='Render a firing without making it',
     operation_id='dryRunTask',
+    dependencies=[dependencies.requires(dependencies.READ)],
 )
 async def dry_run_task(
     *,
     tasks: dependencies.Tasks,
     engine: dependencies.Engine,
     slug: str,
-    auth: dependencies.RequiresRead,
 ) -> executor.DryRun:
     """Resolve identity and render the target, making no outbound call.
 
@@ -361,6 +352,5 @@ async def dry_run_task(
     task is misbehaving, so gating it behind write access would push them
     toward firing it for real to find out why.
     """
-    del auth
     task = await dependencies.load(tasks, slug)
     return await engine.dry_run(task)

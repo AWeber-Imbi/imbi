@@ -107,12 +107,10 @@ class Auth(settings.Auth):  # type: ignore[misc]
     password_require_digit: bool = True
     password_require_special: bool = True
 
-    # API Key Configuration
+    # API Key Configuration. ``last_used_throttle_seconds`` is inherited from
+    # imbi-common's Auth, since the API-key path that reads it is shared now;
+    # this service's ``last_activity`` stamps use the same value.
     api_key_max_lifetime_days: int = 365
-
-    # ``last_used_throttle_seconds`` is inherited from imbi-common's Auth
-    # now that the API-key auth path that reads it is shared. The
-    # ``last_activity`` stamps in this service use the same value.
 
     # MFA Configuration (Phase 5)
     mfa_issuer_name: str = 'Imbi'

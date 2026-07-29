@@ -76,6 +76,10 @@ class Tasks:
         schema: str | None = None,
     ) -> None:
         self._pool = pool
+        # Deliberately not `get_settings()`: this reads `schema_name`, and the
+        # store tests relocate the schema per case by setting
+        # IMBI_SCHEDULER_SCHEMA, which a cached instance would not see. Built
+        # once per repository, so the parse costs nothing per request.
         self._settings = settings.Scheduler()
         self._schema = schema or self._settings.schema_name
 

@@ -45,15 +45,21 @@ Engine = typing.Annotated[
 AuthContext = permissions.AuthContext
 
 
-# One alias per permission. A route annotates its caller with the access it
-# needs, which is also what stamps `x-imbi-permission` into the OpenAPI schema
-# for AI consumers building per-caller toolsets. Spelled out rather than built
-# by a helper because a helper returning `Any` is invisible to the type
-# checker, and then every route's `auth` parameter becomes untyped.
-RequiresRead = typing.Annotated[
-    permissions.AuthContext,
-    fastapi.Depends(permissions.require_permission(READ)),
-]
+def requires(permission: str) -> typing.Any:
+    """Return a route-level dependency enforcing `permission`.
+
+    For routes that need the permission checked but never read the resulting
+    context -- the read-only ones. Route-level rather than a parameter so
+    there is no unused argument to discard, and the permission stays
+    introspectable: the OpenAPI stamper walks the whole dependency tree.
+    """
+    return fastapi.Depends(permissions.require_permission(permission))
+
+
+# An alias per permission whose routes actually use the context, to hand to
+# `authorize`. Spelled out rather than built by a helper because a helper
+# returning `Any` is invisible to the type checker, which would leave every
+# route's `auth` parameter untyped.
 RequiresCreate = typing.Annotated[
     permissions.AuthContext,
     fastapi.Depends(permissions.require_permission(CREATE)),

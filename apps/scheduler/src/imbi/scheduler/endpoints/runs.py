@@ -38,19 +38,18 @@ class CancelResult(pydantic.BaseModel):
     '/tasks/{slug}/runs',
     summary='List a task run history',
     operation_id='listTaskRuns',
+    dependencies=[dependencies.requires(dependencies.READ)],
 )
 async def list_task_runs(
     *,
     tasks: dependencies.Tasks,
     slug: str,
-    auth: dependencies.RequiresRead,
     limit: typing.Annotated[
         int, fastapi.Query(ge=1, le=MAX_HISTORY_LIMIT)
     ] = DEFAULT_HISTORY_LIMIT,
     offset: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
 ) -> list[runs_module.Run]:
     """Return the task's runs, newest first."""
-    del auth
     task = await dependencies.load(tasks, slug)
     return await runs_module.for_task(task.id, limit=limit, offset=offset)
 
@@ -59,14 +58,13 @@ async def list_task_runs(
     '/runs/{run_id}',
     summary='Fetch a single run',
     operation_id='getRun',
+    dependencies=[dependencies.requires(dependencies.READ)],
 )
 async def get_run(
     *,
     run_id: str,
-    auth: dependencies.RequiresRead,
 ) -> runs_module.Run:
     """Return one run with its response excerpt and timings."""
-    del auth
     run = await runs_module.get(run_id)
     if run is None:
         raise fastapi.HTTPException(

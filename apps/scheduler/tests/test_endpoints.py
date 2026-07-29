@@ -578,29 +578,30 @@ class HistoryTests(EndpointTestCase):
 
 
 class CancelEndpointTests(EndpointTestCase):
-    async def _in_flight(self) -> tuple[models.Task, runs.Run, uuid.UUID]:
-        """Store a task with a recorded running run holding a lease."""
-        task = await self.given_task()
-        run_id = uuid.uuid4()
+    async def _in_flight(self, **overrides: typing.Any) -> runs.Run:
+        """Record a running run for a task and give it an execution lease."""
+        task = await self.given_task(**overrides)
         run = runs.start(
-            task, datetime.datetime.now(datetime.UTC), run_id=run_id
+            task, datetime.datetime.now(datetime.UTC), run_id=uuid.uuid4()
         )
         await runs.record(run)
         lease = await self.tasks.acquire_lease(
             task.id,
-            run_id=run_id,
+            run_id=uuid.UUID(run.run_id),
             limit=1,
             ttl=datetime.timedelta(minutes=1),
         )
         assert lease is not None
-        return task, run, run_id
+        return run
 
     async def test_cancelling_an_in_flight_run_is_accepted(self) -> None:
-        _, run, run_id = await self._in_flight()
+        run = await self._in_flight()
         response = await self.client.post(f'/api/runs/{run.run_id}/cancel')
         self.assertEqual(200, response.status_code)
         self.assertTrue(response.json()['requested'])
-        self.assertTrue(await self.tasks.cancel_requested(run_id))
+        self.assertTrue(
+            await self.tasks.cancel_requested(uuid.UUID(run.run_id))
+        )
 
     async def test_cancelling_a_finished_run_is_409(self) -> None:
         task = await self.given_task()
@@ -633,18 +634,7 @@ class CancelEndpointTests(EndpointTestCase):
         )
 
     async def test_cancelling_anothers_run_needs_admin(self) -> None:
-        task = await self.given_task(created_by=OTHER)
-        run_id = uuid.uuid4()
-        run = runs.start(
-            task, datetime.datetime.now(datetime.UTC), run_id=run_id
-        )
-        await runs.record(run)
-        await self.tasks.acquire_lease(
-            task.id,
-            run_id=run_id,
-            limit=1,
-            ttl=datetime.timedelta(minutes=1),
-        )
+        run = await self._in_flight(created_by=OTHER)
         self.as_user(OWNER, {dependencies.RUN})
         self.assertEqual(
             403,

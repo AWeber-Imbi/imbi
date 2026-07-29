@@ -9,13 +9,11 @@ local-auth, MFA, and the user endpoints import them from this module.
 from imbi.common.auth.password import (
     hash_password,
     needs_rehash,
-    password_hasher,
     verify_password,
 )
 
 __all__ = [
     'hash_password',
     'needs_rehash',
-    'password_hasher',
     'verify_password',
 ]
