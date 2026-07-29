@@ -96,13 +96,16 @@ describe('DependenciesTab', () => {
   })
 
   it('ignores untagged releases entirely', async () => {
+    const user = userEvent.setup()
     vi.spyOn(endpoints, 'listProjectReleases').mockResolvedValue([
       makeRelease({
+        committish: 'deadbee',
         created_at: '2026-06-01T00:00:00Z',
         id: 'rel-untagged',
         tag: null,
       }),
       makeRelease({
+        committish: 'abc1234',
         created_at: '2026-05-01T00:00:00Z',
         id: 'rel-tagged',
         tag: '1.0.0',
@@ -124,6 +127,13 @@ describe('DependenciesTab', () => {
       'rel-tagged',
       expect.any(AbortSignal),
     )
+
+    // The dropdown offers the tag alone — no committish label, and no
+    // entry at all for the untagged release.
+    await user.click(screen.getByRole('combobox', { name: /release/i }))
+    const options = await screen.findAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual(['1.0.0'])
+    expect(screen.queryByText(/abc1234|deadbee/)).not.toBeInTheDocument()
   })
 
   it('renders the dependencies of the most recent release by default', async () => {
