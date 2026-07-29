@@ -4,21 +4,19 @@
 // them from `capabilities` instead of reading top-level flags.
 import type { Integration, PluginPackage } from '@/types'
 
-// Plugin slugs that have at least one configured integration with the
-// identity capability enabled — i.e. providers the actor can actually
-// connect a personal account to. Global login providers are org-less and
-// never appear in an org's integration list, so they're excluded; so are
-// identity plugins that are merely installed but not configured here.
-export function identityIntegrationPluginSlugs(
+// Configured integrations with the identity capability enabled — i.e. the
+// providers the actor can actually connect a personal account to. Global
+// login providers are org-less and never appear in an org's integration
+// list, so they're excluded; so are identity plugins that are merely
+// installed but not configured here.
+//
+// This returns integrations rather than plugin slugs because one plugin can
+// back several integrations (e.g. a `github` integration per GitHub host),
+// and each is connected independently.
+export function identityIntegrations(
   integrations: Integration[],
-): Set<string> {
-  const slugs = new Set<string>()
-  for (const integration of integrations) {
-    if (integration.capabilities?.identity?.enabled) {
-      slugs.add(integration.plugin)
-    }
-  }
-  return slugs
+): Integration[] {
+  return integrations.filter((i) => i.capabilities?.identity?.enabled)
 }
 
 // A plugin the actor can connect a personal account to (drives the
