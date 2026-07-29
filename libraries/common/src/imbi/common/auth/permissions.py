@@ -44,13 +44,27 @@ _auth_settings_provider: collections.abc.Callable[[], settings.Auth] = (
 def set_auth_settings_provider(
     provider: collections.abc.Callable[[], settings.Auth],
 ) -> None:
-    """Register how this module resolves Auth settings.
+    """Register how *this module* resolves Auth settings.
 
     A member with an ``Auth`` subclass must call this so token
     verification reads the same singleton the member's own code does.
     Two singletons would each auto-generate a JWT secret when
     ``IMBI_AUTH_JWT_SECRET`` is unset, and tokens minted against one
     would fail verification against the other.
+
+    Scoped to the authentication path, and deliberately not a fix for the
+    split in general: :mod:`imbi.common.access_log` and
+    :mod:`imbi.common.auth.encryption` still call
+    ``settings.get_auth_settings`` directly, so they read imbi-common's
+    singleton even in a process that registered a provider here. Closing
+    that properly means one singleton for the whole process -- a
+    registerable concrete class on ``settings.get_auth_settings``, or an
+    injected dependency -- which is a larger change than the auth
+    extraction warranted.
+
+    This is a process-wide mutable hook, so it is order-dependent by
+    construction: the last caller wins, and in a single-process test run
+    an import is enough to set it.
     """
     global _auth_settings_provider
     _auth_settings_provider = provider

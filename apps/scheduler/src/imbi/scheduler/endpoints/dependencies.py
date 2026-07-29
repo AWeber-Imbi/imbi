@@ -11,9 +11,7 @@ import typing
 
 import fastapi
 
-from imbi.common import lifespan
 from imbi.common.auth import permissions
-from imbi.scheduler import engine as engine_module
 from imbi.scheduler import lifespans, models, store
 
 #: Every permission this service checks. Named here so the routes read as the
@@ -25,22 +23,11 @@ DELETE = 'scheduled_task:delete'
 RUN = 'scheduled_task:run'
 ADMIN = 'scheduled_task:admin'
 
-
-def _inject_tasks(context: lifespan.InjectLifespan) -> store.Tasks:
-    return context.get_state(store.store_lifespan)
-
-
-def _inject_engine(
-    context: lifespan.InjectLifespan,
-) -> engine_module.Engine:
-    return context.get_state(lifespans.engine_hook)
-
-
-Tasks = typing.Annotated[store.Tasks, fastapi.Depends(_inject_tasks)]
-
-Engine = typing.Annotated[
-    engine_module.Engine, fastapi.Depends(_inject_engine)
-]
+# Each injected resource is declared beside the lifespan hook that opens it,
+# so there is one dependency identity per resource. A second alias here would
+# mean a test overriding one of them silently misses routes wired to the other.
+Tasks = store.TaskStore
+Engine = lifespans.EngineDependency
 
 AuthContext = permissions.AuthContext
 
@@ -78,21 +65,33 @@ RequiresRun = typing.Annotated[
 ]
 
 
-def authorize(auth: AuthContext, task: models.Task) -> None:
-    """Raise 403 unless `auth` may manage `task`.
+def is_admin(auth: AuthContext) -> bool:
+    """Return whether `auth` may manage tasks it does not own."""
+    return ADMIN in auth.permissions or auth.is_admin
+
+
+def authorize_system_kind(auth: AuthContext, kind: str) -> None:
+    """Raise 403 unless `auth` may act on a task of `kind`.
 
     A ``system`` task is off limits without ``scheduled_task:admin`` however
     it was created: those are the platform's own jobs, and the scheduler's
-    service account is what created them, so ownership alone would hand
-    control of every system task to that account's holders.
+    service account is what creates them, so ownership alone would hand
+    control of every system task to that account's holders. Creation checks
+    this too -- against the requested kind rather than a stored one -- which
+    is why it lives here and not inside :func:`authorize`.
     """
-    if ADMIN in auth.permissions or auth.is_admin:
-        return
-    if task.kind == 'system':
+    if kind == 'system' and not is_admin(auth):
         raise fastapi.HTTPException(
             status_code=403,
             detail=f'{ADMIN} is required to manage system tasks',
         )
+
+
+def authorize(auth: AuthContext, task: models.Task) -> None:
+    """Raise 403 unless `auth` may manage `task`."""
+    if is_admin(auth):
+        return
+    authorize_system_kind(auth, task.kind)
     if task.created_by != auth.principal_name:
         raise fastapi.HTTPException(
             status_code=403,

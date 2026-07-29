@@ -17,6 +17,7 @@ import datetime
 import logging
 import typing
 import uuid
+from collections import abc
 
 from psycopg import sql
 
@@ -379,10 +380,35 @@ class Engine:
     async def listening(
         self, pool: store.Pool
     ) -> 'typing.AsyncGenerator[None]':
-        """Listen for task changes and cancel requests within the block."""
+        """Listen for task changes and cancel requests within the block.
+
+        A connection each rather than two ``LISTEN``s on one: cancels carry a
+        payload and mean "stop this run", so they must not queue behind the
+        task channel's backlog. It costs two of the pool's connections for the
+        process's life.
+        """
         watchers = [
-            asyncio.create_task(self._listen(pool)),
-            asyncio.create_task(self._listen_cancels(pool)),
+            asyncio.create_task(
+                self._subscribe(
+                    pool,
+                    tasks_repo.NOTIFY_CHANNEL,
+                    lambda _: self.notify(),
+                    # Losing this one degrades latency, not correctness: the
+                    # bounded sleep keeps polling.
+                    'Task change listener stopped',
+                )
+            ),
+            asyncio.create_task(
+                self._subscribe(
+                    pool,
+                    tasks_repo.CANCEL_CHANNEL,
+                    self._cancel_local,
+                    # Losing this one costs correctness: a cancel would be
+                    # recorded and never enforced.
+                    'Cancel listener stopped; cancel requests reaching this '
+                    'replica will be recorded but not enforced',
+                )
+            ),
         ]
         try:
             yield
@@ -393,52 +419,30 @@ class Engine:
                 with contextlib.suppress(asyncio.CancelledError):
                     await watcher
 
-    async def _listen(self, pool: store.Pool) -> None:
-        """Set the wake event whenever a task changes."""
-        try:
-            async with pool.connection() as conn:
-                await conn.set_autocommit(True)
-                await conn.execute(
-                    sql.SQL('LISTEN {channel}').format(
-                        channel=sql.Identifier(tasks_repo.NOTIFY_CHANNEL)
-                    )
-                )
-                async for _ in conn.notifies():
-                    self.notify()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            # Losing the listener degrades latency, not correctness: the
-            # bounded sleep keeps polling.
-            LOGGER.exception('Task change listener stopped')
+    async def _subscribe(
+        self,
+        pool: store.Pool,
+        channel: str,
+        handler: 'abc.Callable[[str], None]',
+        failure_message: str,
+    ) -> None:
+        """Call `handler` with each payload delivered on `channel`.
 
-    async def _listen_cancels(self, pool: store.Pool) -> None:
-        """Cancel in-flight runs this replica owns when asked.
-
-        Its own connection rather than a second ``LISTEN`` on the task
-        channel: these notifications carry a payload and mean "stop this run",
-        and a cancel must not be lost behind the task listener's backlog.
-
-        Unlike the task listener, losing this one costs correctness, not just
-        latency -- a cancel request would be recorded and never enforced. It
-        is still swallowed rather than raised, because taking the whole
-        scheduler down over it would stop far more work than it saves.
+        Failures are logged and swallowed rather than raised: losing a
+        listener degrades the scheduler, but taking the whole process down
+        over it would stop far more work than it saves.
         """
         try:
             async with pool.connection() as conn:
                 await conn.set_autocommit(True)
                 await conn.execute(
                     sql.SQL('LISTEN {channel}').format(
-                        channel=sql.Identifier(tasks_repo.CANCEL_CHANNEL)
+                        channel=sql.Identifier(channel)
                     )
                 )
                 async for notice in conn.notifies():
-                    if notice.payload:
-                        self._cancel_local(notice.payload)
+                    handler(notice.payload)
         except asyncio.CancelledError:
             raise
         except Exception:
-            LOGGER.exception(
-                'Cancel listener stopped; cancel requests reaching this '
-                'replica will be recorded but not enforced'
-            )
+            LOGGER.exception('%s', failure_message)

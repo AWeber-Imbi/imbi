@@ -34,6 +34,16 @@ class CancelResult(pydantic.BaseModel):
     detail: str
 
 
+async def _load(run_id: str) -> runs_module.Run:
+    """Return the run with `run_id`, or raise 404."""
+    run = await runs_module.get(run_id)
+    if run is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No such run: {run_id}'
+        )
+    return run
+
+
 @router.get(
     '/tasks/{slug}/runs',
     summary='List a task run history',
@@ -65,12 +75,7 @@ async def get_run(
     run_id: str,
 ) -> runs_module.Run:
     """Return one run with its response excerpt and timings."""
-    run = await runs_module.get(run_id)
-    if run is None:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'No such run: {run_id}'
-        )
-    return run
+    return await _load(run_id)
 
 
 @router.post(
@@ -93,11 +98,7 @@ async def cancel_run(
     ``scheduled_task:run``: there is no owner left to check, and refusing
     would leave a job nobody can stop.
     """
-    run = await runs_module.get(run_id)
-    if run is None:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f'No such run: {run_id}'
-        )
+    run = await _load(run_id)
     task = await tasks.get_by_id(uuid.UUID(run.task_id))
     if task is not None:
         dependencies.authorize(auth, task)

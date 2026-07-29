@@ -55,20 +55,48 @@ class StoreTestCase(helpers.TestCase):
                 )
 
     async def _column_value(
-        self, task_id: uuid.UUID, column: str
+        self,
+        task_id: uuid.UUID,
+        column: str,
+        *,
+        table: str = 'tasks',
+        key: str = 'id',
     ) -> typing.Any:
+        """Return one column of one row, by key.
+
+        Composed rather than interpolated, per this member's SQL convention:
+        every identifier goes through ``sql.Identifier``, including in tests.
+        """
         async with self.pool.connection() as conn:
             async with conn.cursor(row_factory=rows.dict_row) as cursor:
                 await cursor.execute(
-                    sql.SQL('SELECT {col} FROM {table} WHERE id = %s').format(
+                    sql.SQL(
+                        'SELECT {col} FROM {table} WHERE {key} = %s'
+                    ).format(
                         col=sql.Identifier(column),
-                        table=sql.Identifier(TEST_SCHEMA, 'tasks'),
+                        table=sql.Identifier(TEST_SCHEMA, table),
+                        key=sql.Identifier(key),
                     ),
                     (task_id,),
                 )
                 row = await cursor.fetchone()
         assert row is not None
         return row[column]
+
+    async def _lease_rows(self, task_id: uuid.UUID) -> list[uuid.UUID]:
+        """Return the run_ids of `task_id`'s outstanding execution leases."""
+        async with (
+            self.pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                sql.SQL(
+                    'SELECT run_id FROM {table} WHERE task_id = %s'
+                ).format(table=sql.Identifier(TEST_SCHEMA, 'run_leases')),
+                (task_id,),
+            )
+            found = await cursor.fetchall()
+        return [row['run_id'] for row in found]
 
 
 class InitializerTests(StoreTestCase):
@@ -452,8 +480,8 @@ class OutcomeTests(StoreTestCase):
         )
 
 
-class LeaseTests(StoreTestCase):
-    """`max_running_instances` has to hold across replicas, not per process."""
+class LeasedTaskTestCase(StoreTestCase):
+    """One stored task plus the lease fixture its subclasses share."""
 
     ONE_MINUTE = datetime.timedelta(minutes=1)
 
@@ -475,6 +503,10 @@ class LeaseTests(StoreTestCase):
             limit=limit,
             ttl=ttl or self.ONE_MINUTE,
         )
+
+
+class LeaseTests(LeasedTaskTestCase):
+    """`max_running_instances` has to hold across replicas, not per process."""
 
     async def test_a_free_slot_is_granted_and_released(self) -> None:
         lease = await self._acquire()
@@ -528,23 +560,15 @@ class LeaseTests(StoreTestCase):
         await self.tasks.release_lease(uuid.uuid4())
 
 
-class CancelRequestTests(StoreTestCase):
+class CancelRequestTests(LeasedTaskTestCase):
     """The lease row is what makes a run cancellable by id."""
-
-    ONE_MINUTE = datetime.timedelta(minutes=1)
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        self.task = await self.tasks.create(helpers.build_task())
         self.run_id = uuid.uuid4()
 
     async def _lease(self, run_id: uuid.UUID | None = None) -> uuid.UUID:
-        lease = await self.tasks.acquire_lease(
-            self.task.id,
-            run_id=run_id or self.run_id,
-            limit=1,
-            ttl=self.ONE_MINUTE,
-        )
+        lease = await self._acquire(run_id=run_id or self.run_id)
         assert lease is not None
         return lease
 
@@ -584,17 +608,7 @@ class CancelRequestTests(StoreTestCase):
 
     async def test_the_lease_records_which_run_holds_it(self) -> None:
         await self._lease()
-        async with (
-            self.pool.connection() as conn,
-            conn.cursor(row_factory=rows.dict_row) as cursor,
-        ):
-            await cursor.execute(
-                sql.SQL('SELECT run_id FROM {table}').format(
-                    table=sql.Identifier(TEST_SCHEMA, 'run_leases')
-                )
-            )
-            found = await cursor.fetchall()
-        self.assertEqual([self.run_id], [row['run_id'] for row in found])
+        self.assertEqual([self.run_id], await self._lease_rows(self.task.id))
 
 
 class ScheduleTests(StoreTestCase):

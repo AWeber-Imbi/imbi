@@ -5,9 +5,10 @@ import contextlib
 import logging
 import typing
 
+import fastapi
 import httpx
 
-from imbi.common import clickhouse
+from imbi.common import clickhouse, lifespan
 from imbi.scheduler import engine as engine_module
 from imbi.scheduler import executor as executor_module
 from imbi.scheduler import identity, settings, store
@@ -63,3 +64,17 @@ async def engine_hook() -> 'abc.AsyncGenerator[engine_module.Engine]':
                     LOGGER.warning(
                         'Trigger loop exited with error', exc_info=True
                     )
+
+
+def _inject_engine(
+    context: lifespan.InjectLifespan,
+) -> engine_module.Engine:
+    return context.get_state(engine_hook)
+
+
+#: The running engine, for the routes that fire or cancel a run. Declared here
+#: rather than in the endpoints package so the dependency lives beside the hook
+#: that opens it, matching :data:`imbi.scheduler.store.TaskStore`.
+EngineDependency = typing.Annotated[
+    engine_module.Engine, fastapi.Depends(_inject_engine)
+]

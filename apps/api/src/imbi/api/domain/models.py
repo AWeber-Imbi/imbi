@@ -1,9 +1,14 @@
 """API-specific domain models.
 
-These models are used exclusively by imbi-api for authentication,
-authorization, user management, and file uploads. They were moved
-from imbi-common to keep the shared library focused on models
-needed across all Imbi services.
+These models serve imbi-api's authentication, authorization, user
+management, and file uploads. They live here rather than in imbi-common
+because no other member needs them.
+
+The exception is the authentication principals -- ``User``,
+``ServiceAccount``, and the two types ``User.organizations`` needs. Those
+moved back into ``imbi.common.models`` once imbi-assistant and
+imbi-scheduler also began resolving bearer tokens, and are re-exported
+below so this module stays the one import path for the service.
 """
 
 import datetime

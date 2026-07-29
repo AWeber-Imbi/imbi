@@ -23,7 +23,14 @@ from imbi.common import clickhouse
 from imbi.common import models as common_models
 from imbi.common.auth import permissions
 from imbi.scheduler import engine as engine_module
-from imbi.scheduler import models, runs, settings, triggers
+from imbi.scheduler import (
+    lifespans,
+    models,
+    runs,
+    settings,
+    store,
+    triggers,
+)
 from imbi.scheduler.endpoints import dependencies
 
 ALL_PERMISSIONS = frozenset(
@@ -71,10 +78,11 @@ class EndpointTestCase(test_store.StoreTestCase):
             settings.Scheduler(),
         )
         self.app = imbi.scheduler.app.create_app()
-        self.app.dependency_overrides[dependencies._inject_tasks] = (
-            lambda: self.tasks
-        )
-        self.app.dependency_overrides[dependencies._inject_engine] = (
+        # The injectors, not the Annotated aliases: there is one of each, so an
+        # override here reaches every route regardless of how it spells the
+        # dependency.
+        self.app.dependency_overrides[store._inject_tasks] = lambda: self.tasks
+        self.app.dependency_overrides[lifespans._inject_engine] = (
             lambda: self.engine
         )
         self.as_user(OWNER, ALL_PERMISSIONS)
@@ -726,32 +734,16 @@ class CancelEnforcementTests(test_engine.EngineTestCase):
             await self._wait_for_lease(task.id)
             await self.engine.cancel(str(await self._lease_run_id(task.id)))
             await asyncio.wait_for(firing, timeout=10)
-        self.assertEqual(0, await self._lease_count(task.id))
+        self.assertEqual([], await self._lease_rows(task.id))
 
     async def _wait_for_lease(self, task_id: uuid.UUID) -> None:
         for _ in range(500):
-            if await self._lease_count(task_id):
+            if await self._lease_rows(task_id):
                 return
             await asyncio.sleep(0.01)
         self.fail('no lease was taken')
 
-    async def _lease_count(self, task_id: uuid.UUID) -> int:
-        async with self.pool.connection() as conn, conn.cursor() as cursor:
-            await cursor.execute(
-                f'SELECT COUNT(*) FROM {test_store.TEST_SCHEMA}.run_leases'
-                ' WHERE task_id = %s',
-                (task_id,),
-            )
-            row = await cursor.fetchone()
-        return int(row[0]) if row else 0
-
     async def _lease_run_id(self, task_id: uuid.UUID) -> uuid.UUID:
-        async with self.pool.connection() as conn, conn.cursor() as cursor:
-            await cursor.execute(
-                f'SELECT run_id FROM {test_store.TEST_SCHEMA}.run_leases'
-                ' WHERE task_id = %s',
-                (task_id,),
-            )
-            row = await cursor.fetchone()
-        assert row is not None
-        return typing.cast('uuid.UUID', row[0])
+        leases = await self._lease_rows(task_id)
+        self.assertEqual(1, len(leases))
+        return leases[0]

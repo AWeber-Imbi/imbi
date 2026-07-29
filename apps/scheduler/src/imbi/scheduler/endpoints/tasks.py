@@ -69,21 +69,27 @@ class TaskCreate(pydantic.BaseModel):
 def _created(body: TaskCreate, created_by: str) -> models.Task:
     """Build the task to store from a create request."""
     now = datetime.datetime.now(datetime.UTC)
-    task = models.Task(
-        id=uuid.uuid4(),
-        created_by=created_by,
-        created_at=now,
-        updated_at=now,
-        **body.model_dump(),
+    return _scheduled(
+        models.Task(
+            id=uuid.uuid4(),
+            created_by=created_by,
+            created_at=now,
+            updated_at=now,
+            **body.model_dump(),
+        )
     )
-    # Through the model so the trigger's own timezone handling applies, and
-    # so an enabled task is scheduled from creation rather than from whenever
-    # the first tick happens to notice it.
-    return task.model_copy(
-        update={
-            'next_run_at': task.next_fire_time(now) if task.enabled else None
-        }
-    )
+
+
+def _scheduled(task: models.Task) -> models.Task:
+    """Return `task` with its next firing computed from now.
+
+    Through the model so the trigger's own timezone handling applies. A
+    disabled task carries no firing time at all, rather than a stale one that
+    would read as a misfire whenever it is re-enabled.
+    """
+    now = datetime.datetime.now(datetime.UTC)
+    following = task.next_fire_time(now) if task.enabled else None
+    return task.model_copy(update={'next_run_at': following})
 
 
 @router.get(
@@ -123,15 +129,7 @@ async def create_task(
     auth: dependencies.RequiresCreate,
 ) -> models.Task:
     """Create a task owned by the authenticated caller."""
-    if body.kind == 'system' and not (
-        dependencies.ADMIN in auth.permissions or auth.is_admin
-    ):
-        raise fastapi.HTTPException(
-            status_code=403,
-            detail=(
-                f'{dependencies.ADMIN} is required to create system tasks'
-            ),
-        )
+    dependencies.authorize_system_kind(auth, body.kind)
     try:
         task = _created(body, auth.principal_name)
     except pydantic.ValidationError as err:
@@ -206,14 +204,7 @@ async def patch_task(
     if reason is not None:
         raise fastapi.HTTPException(status_code=422, detail=reason)
     if _reschedules(task, updated):
-        now = datetime.datetime.now(datetime.UTC)
-        updated = updated.model_copy(
-            update={
-                'next_run_at': updated.next_fire_time(now)
-                if updated.enabled
-                else None
-            }
-        )
+        updated = _scheduled(updated)
     stored = await tasks.update(updated)
     if stored is None:  # pragma: no cover - it was loaded a moment ago
         raise fastapi.HTTPException(status_code=404, detail=slug)
