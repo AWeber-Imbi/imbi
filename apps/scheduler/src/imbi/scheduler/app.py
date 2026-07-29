@@ -5,12 +5,7 @@ import typer
 
 import imbi.scheduler
 from imbi.common import access_log, graph, lifespan, server
-from imbi.scheduler import app_status, endpoints, lifespans, store
-
-#: Base path for the API, per PRD section 10. The Caddyfile mounts this
-#: service under `/scheduler` with `handle_path`, which strips that segment,
-#: so the prefix here is what a caller sees after it.
-API_PREFIX = '/api'
+from imbi.scheduler import app_status, endpoints, lifespans, settings, store
 
 
 def create_app() -> fastapi.FastAPI:
@@ -35,11 +30,19 @@ def create_app() -> fastapi.FastAPI:
             lifespans.engine_hook,
         ),
     )
+    # `/status` stays unprefixed, as imbi-assistant does it: a health check
+    # should not move when the API is relocated, and the probes read it
+    # directly on the pod rather than through the Caddy mount.
     app.include_router(app_status.router)
-    app.include_router(endpoints.router, prefix=API_PREFIX)
+    # A fresh read rather than `get_settings()`: this runs once at startup, so
+    # the parse is free, and the route table should reflect the environment as
+    # it is now rather than whenever something first cached it.
+    app.include_router(
+        endpoints.router, prefix=settings.Scheduler().api_prefix
+    )
     app.add_middleware(
         access_log.AccessLogMiddleware,
-        quiet_paths={'/status', '/scheduler/status'},
+        quiet_paths={'/status'},
     )
     return app
 

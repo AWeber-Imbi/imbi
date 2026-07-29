@@ -27,6 +27,13 @@ services:
       IMBI_EMAIL_SMTP_USE_TLS: "false"
       IMBI_ENVIRONMENT: testing
       POSTGRES_URL: postgresql://postgres:secret@postgres/imbi
+      # imbi-scheduler stays disabled until it has its own service-account
+      # credentials, because it runs every task as that account (ADR 0002).
+      # They cannot be hardcoded here: the account has to exist in the
+      # database, so create one in the UI under Service Accounts and issue it
+      # a client credential, then uncomment these with the values shown.
+      # IMBI_SCHEDULER_SA_CLIENT_ID: ""
+      # IMBI_SCHEDULER_SA_CLIENT_SECRET: ""
       S3_ACCESS_KEY: test
       S3_ENDPOINT_URL: http://localstack:4566
       S3_SECRET_KEY: test

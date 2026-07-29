@@ -8,15 +8,21 @@ replicaCount: 1
 
 # Service mode:
 # - "all": run all services in one pod (uses replicaCount above)
-# - "api" | "assistant" | "gateway" | "mcp": run a single service
+# - "api" | "assistant" | "gateway" | "mcp" | "scheduler" | "slackbot":
+#   run a single service
 # Use the matching .service.<name>.replicas value to scale that service.
 service:
   mode: all
-  # Internal upstream URL imbi-mcp and imbi-assistant use to reach
-  # imbi-api. The default works for "all" and "api" modes; override
-  # when running "mcp" or "assistant" as separate pods (e.g.
+  # Internal upstream URL imbi-mcp, imbi-assistant, and imbi-scheduler use
+  # to reach imbi-api. The default works for "all" and "api" modes; override
+  # when running "mcp", "assistant", or "scheduler" as separate pods (e.g.
   # http://imbi-api.<namespace>.svc.cluster.local:8000).
   internalApiUrl: "http://localhost:8000"
+  # imbi-api's *public* URL, whose path component is the prefix it mounts
+  # its routes under. imbi-scheduler re-derives that prefix to build the
+  # paths it calls, so a scheduler pod cannot reach an API mounted under a
+  # path (e.g. https://imbi.example.com/api) unless this is set to match.
+  publicApiUrl: ""
   api:
     replicas: 1
   assistant:
@@ -25,14 +31,33 @@ service:
     replicas: 1
   mcp:
     replicas: 1
+  scheduler:
+    # More than one replica is safe: firings are arbitrated with a Postgres
+    # advisory lock, so exactly one replica runs any given task occurrence.
+    replicas: 1
+  slackbot:
+    # Socket mode: each replica opens its own connection to Slack and Slack
+    # delivers an event to one of them, so replicas do not duplicate work.
+    replicas: 1
 
 # Required authentication settings
 auth:
   jwtSecret: ""
   encryptionKey: ""
 
+# Scheduler configuration
+scheduler:
+  # The scheduler runs every task as its own service account (ADR 0002 removed
+  # the per-task credential store). Without these it starts and schedules, but
+  # resolves no principal for an api target, so every such firing is skipped.
+  serviceAccount:
+    clientId: ""
+    clientSecret: ""
+
 # Optional: reference an existing secret instead of specifying values above.
-# The secret must contain keys: jwt-secret, encryption-key
+# The secret must contain keys: jwt-secret, encryption-key, clickhouse-url,
+# postgres-url, and -- when running the scheduler --
+# scheduler-sa-client-id and scheduler-sa-client-secret.
 existingSecret: ""
 
 ingress:

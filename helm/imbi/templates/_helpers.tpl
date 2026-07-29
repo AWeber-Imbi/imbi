@@ -44,8 +44,31 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- else if eq .Values.service.mode "mcp" }}8001
 {{- else if eq .Values.service.mode "assistant" }}8002
 {{- else if eq .Values.service.mode "gateway" }}8003
+{{- else if eq .Values.service.mode "slackbot" }}8004
+{{- else if eq .Values.service.mode "scheduler" }}8005
 {{- else }}8080
 {{- end }}
+{{- end }}
+
+{{/*
+The path imbi-api answers its status route on.
+
+imbi-api mounts every router -- the status route included -- under the path
+component of its public URL, so a deployment serving the API at
+https://imbi.example.com/api answers /api/status and nothing at /status. The
+probe has to follow it. In "all" mode the request goes through the bundled
+Caddy, which preserves the path when forwarding to imbi-api, so the same
+derived path applies.
+
+imbi-scheduler and imbi-slackbot deliberately leave /status unprefixed and do
+not use this.
+*/}}
+{{- define "imbi.apiStatusPath" -}}
+{{- $prefix := "" }}
+{{- if .Values.service.publicApiUrl }}
+{{- $prefix = (urlParse .Values.service.publicApiUrl).path | trimSuffix "/" }}
+{{- end }}
+{{- printf "%s/status" $prefix }}
 {{- end }}
 
 {{- define "imbi.postgresUrl" -}}

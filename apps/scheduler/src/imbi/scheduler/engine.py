@@ -15,7 +15,6 @@ import asyncio
 import contextlib
 import datetime
 import logging
-import typing
 import uuid
 from collections import abc
 
@@ -291,7 +290,7 @@ class Engine:
         """Disable or flag a task whose streak has hit a limit.
 
         A run of skips means the task can no longer establish its principal,
-        so it is disabled and its owner notified. A run of `no_effect` is
+        so it is disabled. A run of `no_effect` is
         flagged but not disabled: intermittent no-ops are legitimate when the
         gateway's rules are conditional.
         """
@@ -377,9 +376,7 @@ class Engine:
         self._wake.set()
 
     @contextlib.asynccontextmanager
-    async def listening(
-        self, pool: store.Pool
-    ) -> 'typing.AsyncGenerator[None]':
+    async def listening(self, pool: store.Pool) -> 'abc.AsyncGenerator[None]':
         """Listen for task changes and cancel requests within the block.
 
         A connection each rather than two ``LISTEN``s on one: cancels carry a

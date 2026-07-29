@@ -37,6 +37,14 @@
 		reverse_proxy 127.0.0.1:8003
 	}
 
+	# handle_path, so /scheduler is stripped and the service sees the path it
+	# mounts its own routes under (IMBI_SCHEDULER_API_PREFIX, default /api).
+	# A caller therefore reaches /scheduler/api/tasks, and /scheduler/status
+	# for the health check.
+	handle_path /scheduler/* {
+		reverse_proxy 127.0.0.1:8005
+	}
+
 	# MCP clients derive AS metadata discovery from the /mcp resource
 	# URL, requesting /mcp/.well-known/oauth-authorization-server. Strip
 	# the /mcp prefix and serve it from imbi-api (which registers the

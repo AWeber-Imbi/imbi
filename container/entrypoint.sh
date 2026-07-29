@@ -45,6 +45,24 @@ require_slackbot_vars() {
     require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
 }
 
+require_scheduler_vars() {
+    # Postgres holds task definitions and the execution leases; ClickHouse
+    # holds run history and is written on every firing.
+    require_common_vars
+    require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
+    require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. clickhouse+http://default:password@clickhouse:8123/imbi)"
+    # Its own service account, per ADR 0002: there is no credential store, so
+    # these are the only credentials the scheduler can run a task as. Without
+    # them every api-target firing resolves no principal and is skipped.
+    require_var IMBI_SCHEDULER_SA_CLIENT_ID "Client id of the scheduler's service account"
+    require_var IMBI_SCHEDULER_SA_CLIENT_SECRET "Client secret of the scheduler's service account"
+    # imbi-api mounts its routes under the path of its *public* URL, while
+    # IMBI_INTERNAL_API_URL is a bare origin. The scheduler re-derives that
+    # prefix from IMBI_API_URL; unset, every api target requests a path
+    # without it and 404s, turning every run into a failure.
+    require_var IMBI_API_URL "imbi-api's public URL, whose path is its route prefix"
+}
+
 check_errors() {
     if [ -n "$errors" ]; then
         echo "ERROR: Missing required environment variables for $1:" >&2
@@ -84,7 +102,9 @@ case "$IMBI_SERVICE" in
         require_gateway_vars
         # Slack bot is optional in 'all' mode: it auto-enables only when
         # ANTHROPIC_API_KEY and the SLACK_* tokens are present, so its vars
-        # are not required here.
+        # are not required here. The scheduler is optional on the same terms:
+        # it needs its own service-account credentials to run anything, so
+        # without them it would only skip.
         ;;
     api)
         require_api_vars
@@ -98,12 +118,15 @@ case "$IMBI_SERVICE" in
     mcp)
         # No required vars currently
         ;;
+    scheduler)
+        require_scheduler_vars
+        ;;
     slackbot)
         require_slackbot_vars
         ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp, slackbot" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot" >&2
         exit 1
         ;;
 esac
@@ -198,6 +221,11 @@ start_slackbot() {
     imbi-slackbot serve --host 0.0.0.0 --port 8004 &
 }
 
+start_scheduler() {
+    echo "Starting imbi-scheduler on :8005..."
+    imbi-scheduler serve --host 0.0.0.0 --port 8005 &
+}
+
 start_caddy() {
     echo "Starting caddy reverse proxy on :8080..."
     caddy run --config /etc/caddy/Caddyfile &
@@ -220,6 +248,16 @@ case "$IMBI_SERVICE" in
         else
             echo "imbi-slackbot disabled (needs SLACK_APP_TOKEN, SLACK_BOT_TOKEN, ANTHROPIC_API_KEY)"
         fi
+        # Optional on the same terms as the slack bot: without its own
+        # service-account credentials every api-target firing would resolve no
+        # principal and be skipped, so a scheduler that cannot run anything is
+        # not started rather than left logging skips forever.
+        if [ -n "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] && \
+           [ -n "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
+            start_scheduler
+        else
+            echo "imbi-scheduler disabled (needs IMBI_SCHEDULER_SA_CLIENT_ID, IMBI_SCHEDULER_SA_CLIENT_SECRET)"
+        fi
         start_caddy
         ;;
     api)
@@ -234,12 +272,15 @@ case "$IMBI_SERVICE" in
     mcp)
         exec imbi-mcp serve --transport streamable-http --host 0.0.0.0 --port 8001
         ;;
+    scheduler)
+        exec imbi-scheduler serve --host 0.0.0.0 --port 8005
+        ;;
     slackbot)
         exec imbi-slackbot serve --host 0.0.0.0 --port 8004
         ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp, slackbot" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot" >&2
         exit 1
         ;;
 esac

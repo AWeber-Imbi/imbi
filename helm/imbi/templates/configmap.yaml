@@ -12,6 +12,12 @@ data:
   # service.internalApiUrl when running imbi-mcp or imbi-assistant
   # as separate pods.
   IMBI_INTERNAL_API_URL: {{ .Values.service.internalApiUrl | quote }}
+  {{- if .Values.service.publicApiUrl }}
+  # imbi-api's public URL. Its path component is the prefix imbi-api mounts
+  # its routes under, and the prefix imbi-scheduler re-derives to build the
+  # paths it calls. Both read it from here, so they cannot disagree.
+  IMBI_API_URL: {{ .Values.service.publicApiUrl | quote }}
+  {{- end }}
   IMBI_EMAIL_ENABLED: {{ .Values.email.enabled | quote }}
   {{- if .Values.email.enabled }}
   IMBI_EMAIL_SMTP_HOST: {{ .Values.email.smtp.host | quote }}

@@ -24,6 +24,17 @@ class Scheduler(pydantic_settings.BaseSettings):
         alias='IMBI_SCHEDULER_SCHEMA',
         description='Postgres schema holding task definitions',
     )
+    # The path every route below `/status` is mounted under, per PRD §10.
+    # Configurable rather than a constant so a deployment can relocate the API
+    # without a code change, which is what imbi-api and imbi-assistant both
+    # allow. Unlike theirs this is the prefix itself, not a public URL to
+    # derive one from: the Caddyfile mounts this service with `handle_path`,
+    # which strips `/scheduler` before the request arrives, so the path the
+    # app serves is deliberately not the path a caller used.
+    api_prefix: str = pydantic.Field(
+        default='/api',
+        description='Path prefix for the task and run routes',
+    )
     # Where the scheduler reaches imbi-api. Distinct from ``IMBI_API_URL``
     # (the API's *public* URL): this is the in-cluster address used for
     # service-to-service calls, the same var imbi-assistant and imbi-mcp read.
@@ -55,6 +66,14 @@ class Scheduler(pydantic_settings.BaseSettings):
     sa_client_secret: str | None = pydantic.Field(
         default=None, description='Service account client credential secret'
     )
+    # Deliberately unrelated to ``POSTGRES_MAX_POOL_SIZE`` (default 10, of
+    # which the engine's two LISTEN connections hold one each for the life of
+    # the process). A firing takes a connection only for short round trips --
+    # claiming the lease, the pre-flight cancel check, releasing it -- and
+    # holds none across the HTTP call itself, because neither the executor nor
+    # the identity resolver touches Postgres. So 20 concurrent runs against 8
+    # free connections queues briefly on checkout rather than deadlocking, and
+    # capping this at the pool size would throttle throughput for no reason.
     max_concurrent_runs: int = pydantic.Field(
         default=20, gt=0, description='Per-process ceiling on active runs'
     )
@@ -66,7 +85,7 @@ class Scheduler(pydantic_settings.BaseSettings):
     consecutive_no_effect_limit: int = pydantic.Field(
         default=5,
         gt=0,
-        description='Consecutive no-effect runs before the owner is notified',
+        description='Consecutive no-effect runs before a warning is logged',
     )
     poll_interval: int = pydantic.Field(
         default=30,
@@ -76,6 +95,21 @@ class Scheduler(pydantic_settings.BaseSettings):
             'costs latency, not a missed run, because the loop re-polls.'
         ),
     )
+
+    @pydantic.field_validator('api_prefix')
+    @classmethod
+    def _validate_api_prefix(cls, value: str) -> str:
+        """Require an absolute path, or nothing at all.
+
+        A prefix like ``api`` would mount the routes at ``apitasks``; failing
+        at startup beats serving a route table nobody can reach.
+        """
+        trimmed = value.rstrip('/')
+        if trimmed and not trimmed.startswith('/'):
+            raise ValueError(
+                f'must be an absolute path (e.g. /api); got {value!r}'
+            )
+        return trimmed
 
     @property
     def api_base_url(self) -> str:

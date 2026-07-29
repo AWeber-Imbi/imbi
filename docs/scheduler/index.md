@@ -19,7 +19,8 @@ service owns them. The scheduler pokes that service and records what came back.
 
 1. A trigger comes due. The claiming query
    (`FOR UPDATE SKIP LOCKED` over `scheduler.tasks`) guarantees exactly one
-   replica fires it — there is no lock to hold and no lease to renew.
+   replica fires it: concurrent replicas receive disjoint task sets, and the
+   claiming transaction advances `next_run_at` before committing.
 2. The task's identity is resolved *at fire time*, never at creation time. A
    `service_account` task uses the scheduler's own client credential; a
    `delegated_user` task exchanges that credential for a short-lived token

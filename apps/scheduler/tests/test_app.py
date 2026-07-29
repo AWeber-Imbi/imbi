@@ -2,6 +2,7 @@ import datetime
 import unittest.mock
 
 import fastapi.testclient
+import pydantic
 
 import imbi.scheduler.app
 from apps.scheduler.tests import helpers
@@ -60,6 +61,31 @@ class AppTests(helpers.TestCase):
         ]:
             with self.subTest(route=f'{method} {path}'):
                 self.assertIn((method, path), mounted)
+
+    def test_the_prefix_is_configurable(self) -> None:
+        # A deployment relocating the API must not need a code edit. The
+        # default is the PRD's `/api`; this proves nothing hardcodes it.
+        with self.override_environment(IMBI_SCHEDULER_API_PREFIX='/jobs/v1'):
+            app_instance = imbi.scheduler.app.create_app()
+        paths = {route.path for route in app_instance.routes}
+        self.assertIn('/jobs/v1/tasks', paths)
+        self.assertNotIn('/api/tasks', paths)
+
+    def test_status_is_never_prefixed(self) -> None:
+        # The health path must not move when the API does: the container and
+        # helm probes read it directly on the pod, not through the Caddy mount.
+        with self.override_environment(IMBI_SCHEDULER_API_PREFIX='/jobs/v1'):
+            app_instance = imbi.scheduler.app.create_app()
+        self.assertIn('/status', {route.path for route in app_instance.routes})
+
+    def test_a_relative_prefix_is_refused(self) -> None:
+        # 'api' would mount the routes at '/apitasks'. Failing at startup
+        # beats serving a route table nobody can reach.
+        with (
+            self.override_environment(IMBI_SCHEDULER_API_PREFIX='api'),
+            self.assertRaises(pydantic.ValidationError),
+        ):
+            imbi.scheduler.app.create_app()
 
     def test_no_credentials_routes_exist(self) -> None:
         # ADR 0002 removed the credential store; a route managing one would
