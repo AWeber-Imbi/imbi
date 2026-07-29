@@ -34,7 +34,32 @@ scanner uses and answer `403` to every request this plugin makes, including
 restriction rides on the token *type*, so issuing an analysis token from an
 administrator account does not help. Grant the token's account Browse on the
 projects being read, plus Create Projects if the Project Doctor should create
-missing SonarQube projects.
+missing SonarQube projects and Administer on a project whose main branch it
+should switch.
+
+## Project Doctor
+
+The `analysis` capability checks two things and offers a fix for each:
+
+1. **The `EXISTS_IN` edge** — that the component key
+   (`<team-slug>:<project-slug>`, or the edge's own identifier) exists in
+   SonarQube, and that the edge's canonical URL and `sonarqube` dashboard link
+   match it. The fix searches for the component, creates it when absent, and
+   writes the edge.
+2. **The main branch** — SonarQube reports a project's state from the single
+   branch flagged `isMain`, so a repository that moved from `master` to `main`
+   keeps syncing measures from an analysis that stopped running. When
+   `/api/project_branches/list` shows the expected branch and it is *not* the
+   main branch, the finding fails and the fix `POST`s
+   `/api/project_branches/set_main`. A component that does not have the
+   expected branch at all is left alone — there is nothing to switch to.
+
+The expected branch is the capability's `main_branch` option, defaulting to
+`main`. Set it on the Integration's *Project doctor* capability for the
+org-wide convention; because the host layers capability options
+(Integration < project-type `USES` edge < project `USES` edge), a project
+type or single project whose trunk is named something else can override it
+without changing the default.
 
 A typical webhook rule:
 

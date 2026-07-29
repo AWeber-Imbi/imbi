@@ -254,3 +254,129 @@ class CreateProjectTests(unittest.IsolatedAsyncioTestCase):
                 key='team:demo',
                 name='demo',
             )
+
+
+class ListBranchesTests(unittest.IsolatedAsyncioTestCase):
+    url = 'https://sonarqube.example.com/api/project_branches/list'
+
+    @respx.mock
+    async def test_returns_branches(self) -> None:
+        route = respx.get(self.url).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'branches': [
+                        {'name': 'master', 'isMain': True},
+                        {'name': 'main', 'isMain': False},
+                    ]
+                },
+            )
+        )
+        result = await client.list_branches(
+            base_url='https://sonarqube.example.com/',
+            api_token='t',
+            key='team:demo',
+        )
+        self.assertEqual(['master', 'main'], [b['name'] for b in result])
+        self.assertEqual(
+            'team:demo', route.calls.last.request.url.params.get('project')
+        )
+
+    @respx.mock
+    async def test_missing_branches_returns_empty(self) -> None:
+        respx.get(self.url).mock(return_value=httpx.Response(200, json={}))
+        result = await client.list_branches(
+            base_url='https://sonarqube.example.com',
+            api_token='t',
+            key='team:demo',
+        )
+        self.assertEqual([], result)
+
+    @respx.mock
+    async def test_non_dict_entries_are_dropped(self) -> None:
+        respx.get(self.url).mock(
+            return_value=httpx.Response(
+                200, json={'branches': ['nope', {'name': 'main'}]}
+            )
+        )
+        result = await client.list_branches(
+            base_url='https://sonarqube.example.com',
+            api_token='t',
+            key='team:demo',
+        )
+        self.assertEqual([{'name': 'main'}], result)
+
+    @respx.mock
+    async def test_non_2xx_raises(self) -> None:
+        respx.get(self.url).mock(
+            return_value=httpx.Response(403, text='forbidden')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.list_branches(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+    @respx.mock
+    async def test_transport_error_raises(self) -> None:
+        respx.get(self.url).mock(side_effect=httpx.ConnectError('refused'))
+        with pytest.raises(client.SonarqubeClientError):
+            await client.list_branches(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+    @respx.mock
+    async def test_non_json_raises(self) -> None:
+        respx.get(self.url).mock(
+            return_value=httpx.Response(200, text='not-json')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.list_branches(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+            )
+
+
+class SetMainBranchTests(unittest.IsolatedAsyncioTestCase):
+    url = 'https://sonarqube.example.com/api/project_branches/set_main'
+
+    @respx.mock
+    async def test_posts_project_and_branch(self) -> None:
+        route = respx.post(self.url).mock(return_value=httpx.Response(204))
+        await client.set_main_branch(
+            base_url='https://sonarqube.example.com/',
+            api_token='t',
+            key='team:demo',
+            branch='main',
+        )
+        params = route.calls.last.request.url.params
+        self.assertEqual('team:demo', params.get('project'))
+        self.assertEqual('main', params.get('branch'))
+
+    @respx.mock
+    async def test_non_2xx_raises(self) -> None:
+        respx.post(self.url).mock(
+            return_value=httpx.Response(400, text='unknown branch')
+        )
+        with pytest.raises(client.SonarqubeClientError):
+            await client.set_main_branch(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+                branch='main',
+            )
+
+    @respx.mock
+    async def test_transport_error_raises(self) -> None:
+        respx.post(self.url).mock(side_effect=httpx.ConnectError('refused'))
+        with pytest.raises(client.SonarqubeClientError):
+            await client.set_main_branch(
+                base_url='https://sonarqube.example.com',
+                api_token='t',
+                key='team:demo',
+                branch='main',
+            )

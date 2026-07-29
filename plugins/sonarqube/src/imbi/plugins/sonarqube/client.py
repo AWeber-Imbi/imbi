@@ -130,6 +130,95 @@ async def search_project(
     return None
 
 
+async def list_branches(
+    *,
+    base_url: str,
+    api_token: str,
+    key: str,
+    timeout: float = 15.0,
+) -> list[dict[str, typing.Any]]:
+    """Return the branches SonarQube holds for project ``key``.
+
+    Calls ``GET {base_url}/api/project_branches/list``.  Exactly one entry
+    carries ``isMain: true`` -- the branch whose analysis SonarQube reports
+    as the project's state.  A project with no analysis yet yields an empty
+    list.  Raises :class:`SonarqubeClientError` on transport / non-2xx
+    failure.
+    """
+    url = base_url.rstrip('/') + '/api/project_branches/list'
+    params = {'project': key}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as http_client:
+            response = await http_client.get(
+                url, params=params, headers=_headers(api_token)
+            )
+    except httpx.RequestError as exc:
+        raise SonarqubeClientError(f'SonarQube request failed: {exc}') from exc
+    if response.is_error:
+        LOGGER.warning(
+            'SonarQube %s %s returned %d: %s',
+            response.request.method,
+            response.request.url,
+            response.status_code,
+            response.text,
+        )
+        raise SonarqubeClientError(
+            f'SonarQube returned status {response.status_code}'
+        )
+    try:
+        payload = typing.cast('dict[str, typing.Any]', response.json())
+    except ValueError as exc:
+        raise SonarqubeClientError(
+            'SonarQube returned non-JSON response'
+        ) from exc
+    branches_obj = payload.get('branches', [])
+    if not isinstance(branches_obj, list):
+        return []
+    return [
+        typing.cast('dict[str, typing.Any]', branch)
+        for branch in typing.cast('list[object]', branches_obj)
+        if isinstance(branch, dict)
+    ]
+
+
+async def set_main_branch(
+    *,
+    base_url: str,
+    api_token: str,
+    key: str,
+    branch: str,
+    timeout: float = 15.0,
+) -> None:
+    """Make ``branch`` the main branch of project ``key``.
+
+    Calls ``POST {base_url}/api/project_branches/set_main``, which answers
+    ``204`` with no body.  The branch SonarQube tracked before becomes an
+    ordinary branch.  Raises :class:`SonarqubeClientError` on transport /
+    non-2xx failure -- notably an unknown branch, or a token whose account
+    lacks Administer on the project.
+    """
+    url = base_url.rstrip('/') + '/api/project_branches/set_main'
+    params = {'project': key, 'branch': branch}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as http_client:
+            response = await http_client.post(
+                url, params=params, headers=_headers(api_token)
+            )
+    except httpx.RequestError as exc:
+        raise SonarqubeClientError(f'SonarQube request failed: {exc}') from exc
+    if response.is_error:
+        LOGGER.warning(
+            'SonarQube %s %s returned %d: %s',
+            response.request.method,
+            response.request.url,
+            response.status_code,
+            response.text,
+        )
+        raise SonarqubeClientError(
+            f'SonarQube returned status {response.status_code}'
+        )
+
+
 async def create_project(
     *,
     base_url: str,
