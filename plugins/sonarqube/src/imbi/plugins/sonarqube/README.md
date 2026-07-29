@@ -39,7 +39,8 @@ should switch.
 
 ## Project Doctor
 
-The `analysis` capability checks two things and offers a fix for each:
+The `analysis` capability checks three things, offering a fix for the
+first two:
 
 1. **The `EXISTS_IN` edge** — that the component key
    (`<team-slug>:<project-slug>`, or the edge's own identifier) exists in
