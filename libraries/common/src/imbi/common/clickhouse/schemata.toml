@@ -221,7 +221,13 @@ CREATE TABLE IF NOT EXISTS imbi.scheduler_runs {on_cluster}(
     error_type        LowCardinality(String) DEFAULT '',
     error_message     String DEFAULT '',
     trace_id          String DEFAULT '',
-    _row_version      UInt64 DEFAULT 1
+    _row_version      UInt64 DEFAULT 1,
+    -- `run_id` is the second key column, so a lookup by it alone cannot use
+    -- the primary key and would read every part. Both the single-run read
+    -- (`GET /runs/{run_id}`) and the cancel path do exactly that, and neither
+    -- knows the task_id that would make the key usable. Mirrors
+    -- `operations_log`, which indexes `id` for the same reason.
+    INDEX idx_run_id run_id TYPE bloom_filter GRANULARITY 4
 ) ENGINE = {replicated}ReplacingMergeTree(_row_version)
 PARTITION BY toYYYYMM(fired_at)
 ORDER BY (task_id, run_id);
