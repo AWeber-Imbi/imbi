@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select'
 import { Sk } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import type { Project, ReleaseDependencyComponent } from '@/types'
+import type { Project, Release, ReleaseDependencyComponent } from '@/types'
 
 interface DependenciesTabProps {
   orgSlug: string
@@ -118,7 +118,15 @@ export function DependenciesTab({ orgSlug, project }: DependenciesTabProps) {
     queryKey: ['project-releases', orgSlug, project.id],
   })
 
-  const releases = useMemo(() => releasesQuery.data ?? [], [releasesQuery.data])
+  // Only tagged releases are selectable — untagged committishes are noise
+  // in the dropdown.
+  const releases = useMemo(
+    () =>
+      (releasesQuery.data ?? []).filter(
+        (release): release is Release & { tag: string } => Boolean(release.tag),
+      ),
+    [releasesQuery.data],
+  )
 
   const [selectedReleaseId, setSelectedReleaseId] = useState<null | string>(
     null,
@@ -165,8 +173,8 @@ export function DependenciesTab({ orgSlug, project }: DependenciesTabProps) {
     return (
       <Card>
         <CardContent className="text-muted-foreground p-8 text-center">
-          No releases yet. Once a release is created and a CycloneDX SBoM is
-          ingested, its dependencies will appear here.
+          No tagged releases yet. Once a tagged release is created and a
+          CycloneDX SBoM is ingested, its dependencies will appear here.
         </CardContent>
       </Card>
     )
@@ -197,7 +205,7 @@ export function DependenciesTab({ orgSlug, project }: DependenciesTabProps) {
           <SelectContent>
             {releases.map((release) => (
               <SelectItem key={release.id} value={release.id}>
-                {release.tag ?? release.committish}
+                {release.tag}
               </SelectItem>
             ))}
           </SelectContent>

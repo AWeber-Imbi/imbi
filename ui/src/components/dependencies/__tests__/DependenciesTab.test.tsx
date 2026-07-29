@@ -78,18 +78,62 @@ beforeEach(() => {
 })
 
 describe('DependenciesTab', () => {
-  it('shows the empty state when the project has no releases', async () => {
-    vi.spyOn(endpoints, 'listProjectReleases').mockResolvedValue([])
-    const depsSpy = vi
-      .spyOn(endpoints, 'listReleaseDependencies')
-      .mockResolvedValue(makeDeps('rel-1', { components: [] }))
+  it.each([
+    ['the project has no releases', []],
+    ['every release is untagged', [makeRelease({ tag: null })]],
+  ])('shows the empty state when %s', async (_label, releases) => {
+    vi.spyOn(endpoints, 'listProjectReleases').mockResolvedValue(releases)
+    const depsSpy = vi.spyOn(endpoints, 'listReleaseDependencies')
 
     render(<DependenciesTab orgSlug="org" project={PROJECT} />, {
       wrapper: wrapper(qc),
     })
 
-    expect(await screen.findByText(/No releases yet/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/No tagged releases yet/i),
+    ).toBeInTheDocument()
     expect(depsSpy).not.toHaveBeenCalled()
+  })
+
+  it('ignores untagged releases entirely', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(endpoints, 'listProjectReleases').mockResolvedValue([
+      makeRelease({
+        committish: 'deadbee',
+        created_at: '2026-06-01T00:00:00Z',
+        id: 'rel-untagged',
+        tag: null,
+      }),
+      makeRelease({
+        committish: 'abc1234',
+        created_at: '2026-05-01T00:00:00Z',
+        id: 'rel-tagged',
+        tag: '1.0.0',
+      }),
+    ])
+    const depsSpy = vi
+      .spyOn(endpoints, 'listReleaseDependencies')
+      .mockResolvedValue(makeDeps('rel-tagged'))
+
+    render(<DependenciesTab orgSlug="org" project={PROJECT} />, {
+      wrapper: wrapper(qc),
+    })
+
+    // The newest release is untagged, so the tagged one is selected.
+    expect(await screen.findByText('express')).toBeInTheDocument()
+    expect(depsSpy).toHaveBeenCalledWith(
+      'org',
+      'proj-1',
+      'rel-tagged',
+      expect.any(AbortSignal),
+    )
+
+    // The dropdown offers the tag alone — no committish label, and no
+    // entry at all for the untagged release.
+    await user.click(screen.getByRole('combobox', { name: /release/i }))
+    const options = await screen.findAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual(['1.0.0'])
+    expect(screen.queryByText(/abc1234|deadbee/)).not.toBeInTheDocument()
   })
 
   it('renders the dependencies of the most recent release by default', async () => {
