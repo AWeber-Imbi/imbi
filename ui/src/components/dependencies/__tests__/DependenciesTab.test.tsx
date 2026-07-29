@@ -78,18 +78,52 @@ beforeEach(() => {
 })
 
 describe('DependenciesTab', () => {
-  it('shows the empty state when the project has no releases', async () => {
-    vi.spyOn(endpoints, 'listProjectReleases').mockResolvedValue([])
-    const depsSpy = vi
-      .spyOn(endpoints, 'listReleaseDependencies')
-      .mockResolvedValue(makeDeps('rel-1', { components: [] }))
+  it.each([
+    ['the project has no releases', []],
+    ['every release is untagged', [makeRelease({ tag: null })]],
+  ])('shows the empty state when %s', async (_label, releases) => {
+    vi.spyOn(endpoints, 'listProjectReleases').mockResolvedValue(releases)
+    const depsSpy = vi.spyOn(endpoints, 'listReleaseDependencies')
 
     render(<DependenciesTab orgSlug="org" project={PROJECT} />, {
       wrapper: wrapper(qc),
     })
 
-    expect(await screen.findByText(/No releases yet/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/No tagged releases yet/i),
+    ).toBeInTheDocument()
     expect(depsSpy).not.toHaveBeenCalled()
+  })
+
+  it('ignores untagged releases entirely', async () => {
+    vi.spyOn(endpoints, 'listProjectReleases').mockResolvedValue([
+      makeRelease({
+        created_at: '2026-06-01T00:00:00Z',
+        id: 'rel-untagged',
+        tag: null,
+      }),
+      makeRelease({
+        created_at: '2026-05-01T00:00:00Z',
+        id: 'rel-tagged',
+        tag: '1.0.0',
+      }),
+    ])
+    const depsSpy = vi
+      .spyOn(endpoints, 'listReleaseDependencies')
+      .mockResolvedValue(makeDeps('rel-tagged'))
+
+    render(<DependenciesTab orgSlug="org" project={PROJECT} />, {
+      wrapper: wrapper(qc),
+    })
+
+    // The newest release is untagged, so the tagged one is selected.
+    expect(await screen.findByText('express')).toBeInTheDocument()
+    expect(depsSpy).toHaveBeenCalledWith(
+      'org',
+      'proj-1',
+      'rel-tagged',
+      expect.any(AbortSignal),
+    )
   })
 
   it('renders the dependencies of the most recent release by default', async () => {
