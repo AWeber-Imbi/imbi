@@ -141,6 +141,25 @@ describe('CommitDeployCard', () => {
     ).toBeInTheDocument()
   })
 
+  it('links the PR references in a commit subject', () => {
+    setup('bbb2222bbb2222', [
+      {
+        ...commit('aaa1111aaa1111', 'Key identity connections (#172)'),
+        url: 'https://github.com/aweber-imbi/imbi/commit/aaa1111aaa1111',
+      },
+    ])
+    expect(screen.getByRole('link', { name: '#172' })).toHaveAttribute(
+      'href',
+      'https://github.com/aweber-imbi/imbi/pull/172',
+    )
+  })
+
+  it('leaves the subject plain when the commit has no URL', () => {
+    setup('bbb2222bbb2222', [commit('aaa1111aaa1111', 'Key identities (#172)')])
+    expect(screen.queryByRole('link', { name: '#172' })).toBeNull()
+    expect(screen.getByText('Key identities (#172)')).toBeInTheDocument()
+  })
+
   it('prompts for a sync when no commits are synced', () => {
     setup('bbb2222bbb2222', [])
     expect(

@@ -112,13 +112,14 @@ const renderCard = (
   pending: ReleaseHistoryEntry[],
   actions = makeActions(),
   envTag = 'v6.5.0',
+  recentCommits = RECENT_COMMITS,
 ) =>
   render(
     <PendingReleasesCard
       accent={null}
       actions={actions}
       canTrigger
-      recentCommits={RECENT_COMMITS}
+      recentCommits={recentCommits}
       stage={makeStage(pending, envTag)}
     />,
   )
@@ -214,6 +215,26 @@ describe('PendingReleasesCard', () => {
     expect(
       screen.getByRole('button', { name: /Deploy v6\.5\.2 to production/ }),
     ).toBeEnabled()
+  })
+
+  it('links the PR references in the changes list', () => {
+    renderCard(
+      [entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')],
+      makeActions(),
+      'v6.5.0',
+      [
+        {
+          ...RECENT_COMMITS[0],
+          message: 'Fix the cache TTL (#82)',
+          url: 'https://github.com/aweber-imbi/imbi/commit/bbb222bbb222',
+        },
+        RECENT_COMMITS[1],
+      ],
+    )
+    expect(screen.getByRole('link', { name: '#82' })).toHaveAttribute(
+      'href',
+      'https://github.com/aweber-imbi/imbi/pull/82',
+    )
   })
 
   it('warns when the pending release ranks below the running one', () => {
