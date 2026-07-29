@@ -14,6 +14,7 @@ import {
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CommitSubject } from '@/components/ui/commit-subject'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import type { ChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
@@ -344,9 +345,11 @@ function SingleReleaseChanges({
               key={c.sha}
             >
               <span className="shrink-0 font-mono text-xs">{c.short_sha}</span>
-              <span className="min-w-0 flex-1 truncate text-sm">
-                {c.message.split('\n')[0]}
-              </span>
+              <CommitSubject
+                className="min-w-0 flex-1 truncate text-sm"
+                commitUrl={c.url}
+                message={c.message}
+              />
               {c.ci_status !== 'unknown' ? (
                 <CiStatusDot status={c.ci_status} />
               ) : null}

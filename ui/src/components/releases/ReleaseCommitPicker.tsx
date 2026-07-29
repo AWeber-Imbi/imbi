@@ -1,7 +1,8 @@
-import { Check, ExternalLink } from 'lucide-react'
+import { Check, ExternalLink, GitPullRequest } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import type { ChipColors } from '@/lib/chip-colors'
+import { pullRequestRefs } from '@/lib/commit-refs'
 import { cn } from '@/lib/utils'
 import type { DeploymentCommitCiStatus } from '@/types'
 
@@ -142,9 +143,15 @@ function CommitRow({
           {body}
         </pre>
       ) : null}
+      {/* The row itself is the select control, so ``#N`` references can't be
+          linked inline (no anchors inside a button) — they get their own
+          affordance here, beside the commit link. */}
       {active && commit.url ? (
         <div
-          className={cn('px-3 pb-2 pl-13', !accent && 'bg-action/5')}
+          className={cn(
+            'flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-2 pl-13',
+            !accent && 'bg-action/5',
+          )}
           style={activeBg}
         >
           <a
@@ -156,6 +163,18 @@ function CommitRow({
             <ExternalLink size={11} />
             View commit
           </a>
+          {pullRequestRefs(subject, commit.url).map((ref) => (
+            <a
+              className="text-warning inline-flex items-center gap-1 text-xs hover:underline"
+              href={ref.href}
+              key={ref.href}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <GitPullRequest size={11} />
+              {ref.label}
+            </a>
+          ))}
         </div>
       ) : null}
     </div>

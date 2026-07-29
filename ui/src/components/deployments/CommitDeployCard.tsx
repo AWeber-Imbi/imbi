@@ -12,6 +12,7 @@ import {
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CommitSubject } from '@/components/ui/commit-subject'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import type { ChipColors } from '@/lib/chip-colors'
@@ -219,9 +220,11 @@ function CommitRow({
     >
       <span className="shrink-0 font-mono text-xs">{commit.short_sha}</span>
       {isHead ? <Badge variant="outline">HEAD</Badge> : null}
-      <span className="min-w-0 flex-1 truncate text-sm">
-        {commit.message.split('\n')[0]}
-      </span>
+      <CommitSubject
+        className="min-w-0 flex-1 truncate text-sm"
+        commitUrl={commit.url}
+        message={commit.message}
+      />
       {commit.ci_status !== 'unknown' ? (
         <CiStatusDot status={commit.ci_status} />
       ) : null}
