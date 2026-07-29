@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatByFormat } from '@/lib/formatDate'
 import { getIcon } from '@/lib/icons'
 import {
   applyDisplayFormat,
@@ -57,9 +58,11 @@ export function AttributeValue({
     : 'text-primary'
 
   const isDate = def?.format === 'date-time' || def?.format === 'date'
+  // A `date` field names a calendar day, so it gets no clock time — and
+  // must not be shifted into the viewer's zone the way `date-time` is.
   const title =
     isDate && rawValue != null
-      ? new Date(String(rawValue)).toLocaleString()
+      ? formatByFormat(String(rawValue), def?.format)
       : undefined
 
   return (

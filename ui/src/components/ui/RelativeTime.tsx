@@ -6,7 +6,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { absTime, formatRelativeDate, relTime } from '@/lib/formatDate'
+import {
+  absTime,
+  formatRelativeDate,
+  parseServerTs,
+  relTime,
+} from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 
 interface RelativeTimeProps {
@@ -68,7 +73,7 @@ function formatValue(
   try {
     if (variant === 'narrow') return relTime(value)
     if (variant === 'long') {
-      return formatDistanceToNow(new Date(value), { addSuffix: true })
+      return formatDistanceToNow(parseServerTs(value), { addSuffix: true })
     }
     return formatRelativeDate(
       typeof value === 'number' ? new Date(value).toISOString() : value,

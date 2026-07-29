@@ -1,4 +1,5 @@
 import { LABEL_SWATCHES } from '@/lib/chip-colors'
+import { parseServerTs } from '@/lib/formatDate'
 import type { Document, DocumentTemplate, TagRef } from '@/types'
 
 /**
@@ -70,7 +71,7 @@ export function documentTitle(document: Document): string {
 export function formatFull(iso: null | string | undefined): string {
   if (!iso) return ''
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return parseServerTs(iso).toLocaleString(undefined, {
       dateStyle: 'medium',
       timeStyle: 'short',
     })
@@ -86,7 +87,7 @@ export function formatUpdated(document: Document): string {
 
 function relativeShort(iso: null | string | undefined): string {
   if (!iso) return ''
-  const then = new Date(iso).getTime()
+  const then = parseServerTs(iso).getTime()
   if (!Number.isFinite(then)) return ''
   const diff = Date.now() - then
   const m = Math.round(diff / 60000)
@@ -98,7 +99,7 @@ function relativeShort(iso: null | string | undefined): string {
   if (d < 14) return `${d}d ago`
   const w = Math.round(d / 7)
   if (w < 8) return `${w}w ago`
-  return new Date(iso).toLocaleDateString(undefined, {
+  return parseServerTs(iso).toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',
   })

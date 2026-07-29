@@ -29,6 +29,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ConnectableIdentity } from '@/hooks/useConnectableIdentities'
 import { useConnectableIdentities } from '@/hooks/useConnectableIdentities'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import { formatDateTime } from '@/lib/formatDate'
 import { useIcon } from '@/lib/icons'
 import type {
   IdentityConnectionResponse,
@@ -417,7 +418,7 @@ export function SettingsConnections() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-secondary text-sm">
-                      {formatRelative(connection?.last_used_at ?? null)}
+                      {formatDateTime(connection?.last_used_at ?? null)}
                     </TableCell>
                     <TableCell className="text-right">
                       <ConnectionActions
@@ -635,13 +636,6 @@ function ConnectionsSkeleton() {
       </Card>
     </div>
   )
-}
-
-function formatRelative(value: null | string): string {
-  if (!value) return '—'
-  const ts = new Date(value)
-  if (Number.isNaN(ts.getTime())) return '—'
-  return ts.toLocaleString()
 }
 
 // The primary label is the integration's name, since that's what tells two

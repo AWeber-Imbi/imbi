@@ -42,6 +42,7 @@ import { Sk } from '@/components/ui/skeleton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { deriveChipColors } from '@/lib/chip-colors'
+import { parseServerTs } from '@/lib/formatDate'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { ConfigKeyResponse, Environment } from '@/types'
 
@@ -1014,7 +1015,7 @@ function DetailPane({
             {selected?.last_modified && (
               <span className="text-tertiary text-xs">
                 Last modified{' '}
-                {new Date(selected.last_modified).toLocaleString()}
+                {parseServerTs(selected.last_modified).toLocaleString()}
               </span>
             )}
           </>

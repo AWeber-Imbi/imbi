@@ -9,6 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 
 import { InlineDisplay } from './InlineDisplay'
 
@@ -34,7 +35,10 @@ export function InlineDate({
   value,
 }: InlineDateProps) {
   const [open, setOpen] = useState(false)
-  const current = value ? new Date(value) : undefined
+  // parseServerTs keeps a date-only value on the day it names: DayPicker
+  // works in local time, so parsing "2026-07-29" as UTC midnight would
+  // select (and display) the 28th for any viewer west of Greenwich.
+  const current = value ? parseServerTs(value) : undefined
   const hasValid = !!current && !Number.isNaN(current.getTime())
 
   return (
@@ -73,6 +77,8 @@ export function InlineDate({
 }
 
 function toIso(d: Date, mode: 'date' | 'date-time'): string {
-  if (mode === 'date') return d.toISOString().slice(0, 10)
+  // DayPicker hands back local midnight, so `toISOString()` would roll a
+  // date-only pick to the previous day east of Greenwich.
+  if (mode === 'date') return toDateOnlyIso(d)
   return d.toISOString()
 }

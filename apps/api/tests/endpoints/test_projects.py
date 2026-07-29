@@ -2547,3 +2547,90 @@ class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
             await projects._emit_change_events(
                 'p1', 'alice', {'name': 'A'}, {'name': 'B'}
             )
+
+
+class ReleaseSummaryTimestampTestCase(unittest.IsolatedAsyncioTestCase):
+    """The projects-list release summary must emit offset-bearing times.
+
+    ``_fetch_release_summaries`` reads ``tagged_at``/``recorded_at`` from
+    the ClickHouse ``tags`` table and ``authored_at`` from ``commits``.
+    DateTime64 columns come back naive, so passing them straight into
+    ``ReleaseSummary`` serialized them without an offset and the browser
+    read them in its own zone — head-commit and latest-tag dates on the
+    projects list drifted by that zone's offset.
+    """
+
+    # Naive on purpose: ClickHouse returns naive DateTime64 values.
+    NAIVE = datetime.datetime(2026, 1, 1, 12, 0, 0)  # noqa: DTZ001
+
+    async def _summaries(
+        self, tag_row: dict[str, typing.Any] | None
+    ) -> typing.Any:
+        from imbi.api.endpoints import projects
+
+        tag_rows = [tag_row] if tag_row else []
+        head_rows = [
+            {
+                'project_id': 'p1',
+                'sha': 'a' * 40,
+                'short_sha': 'aaaaaaa',
+                'author_name': 'Alice',
+                'author_user': 'alice',
+                'authored_at': self.NAIVE,
+            }
+        ]
+        with mock.patch(
+            'imbi.api.endpoints.projects.clickhouse.query',
+            mock.AsyncMock(side_effect=[tag_rows, head_rows, []]),
+        ):
+            result = await projects._fetch_release_summaries(['p1'])
+        return result['p1']
+
+    def _assert_utc(self, value: datetime.datetime | None) -> None:
+        self.assertIsNotNone(value)
+        assert value is not None
+        self.assertEqual(value.utcoffset(), datetime.timedelta(0))
+        self.assertEqual(value, self.NAIVE.replace(tzinfo=datetime.UTC))
+
+    async def test_head_authored_at_carries_utc_offset(self) -> None:
+        summary = await self._summaries(None)
+        self._assert_utc(summary.head_authored_at)
+
+    async def test_latest_tag_at_carries_utc_offset(self) -> None:
+        summary = await self._summaries(
+            {
+                'project_id': 'p1',
+                'name': 'v1.0.0',
+                'sha': 'b' * 40,
+                'tagged_at': self.NAIVE,
+                'recorded_at': None,
+                'tagger_name': 'Rel Bot',
+            }
+        )
+        self._assert_utc(summary.latest_tag_at)
+
+    async def test_latest_tag_at_falls_back_to_recorded_at(self) -> None:
+        summary = await self._summaries(
+            {
+                'project_id': 'p1',
+                'name': 'v1.0.0',
+                'sha': 'b' * 40,
+                'tagged_at': None,
+                'recorded_at': self.NAIVE,
+                'tagger_name': '',
+            }
+        )
+        self._assert_utc(summary.latest_tag_at)
+
+    async def test_latest_tag_at_is_none_when_undated(self) -> None:
+        summary = await self._summaries(
+            {
+                'project_id': 'p1',
+                'name': 'v1.0.0',
+                'sha': 'b' * 40,
+                'tagged_at': None,
+                'recorded_at': None,
+                'tagger_name': '',
+            }
+        )
+        self.assertIsNone(summary.latest_tag_at)

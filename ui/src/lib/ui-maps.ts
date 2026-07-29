@@ -18,6 +18,8 @@ interface ThresholdEntry {
 
 type ThresholdMap = Record<string, string>
 
+import { parseServerTs } from '@/lib/formatDate'
+
 const OP_REGEX = /^(>=|>|<=|<|==)\s*(.+)$/
 
 const DURATION_UNITS: Record<string, number> = {
@@ -160,7 +162,7 @@ function parseThresholds(
  */
 function resolveAge(map: ThresholdMap, rawValue: unknown): string | undefined {
   if (rawValue == null) return undefined
-  const date = new Date(String(rawValue))
+  const date = parseServerTs(String(rawValue))
   if (isNaN(date.getTime())) return undefined
   const elapsedSeconds = (Date.now() - date.getTime()) / 1000
   const entries = parseThresholds(map, parseDuration)

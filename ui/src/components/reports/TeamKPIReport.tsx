@@ -6,6 +6,7 @@ import { RefreshCw } from 'lucide-react'
 import { getScoreRollup, listTeams, ScoreRollupRow } from '@/api/endpoints'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { parseServerTs } from '@/lib/formatDate'
 import { Team } from '@/types'
 
 interface BarChartProps {
@@ -210,8 +211,7 @@ export function TeamKPIReport() {
 
 function fmtRelative(iso: null | string): string {
   if (!iso) return '—'
-  const ms =
-    Date.now() - new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()
+  const ms = Date.now() - parseServerTs(iso).getTime()
   const min = Math.round(ms / 60000)
   if (min < 60) return `${min}m ago`
   const hr = Math.round(min / 60)

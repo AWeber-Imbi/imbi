@@ -995,13 +995,13 @@ async def _fetch_release_summaries(
         head_author = str(raw_author) if raw_author else None
         raw_login = head_row.get('author_user') if head_row else None
         head_author_login = str(raw_login) if raw_login else None
-        head_authored_at: datetime.datetime | None = (
+        head_authored_at = clickhouse.as_utc_or_none(
             head_row.get('authored_at') if head_row else None
         )
         latest_tag = str(latest['name']) if latest else None
         latest_tag_sha = str(latest['sha']) if latest else None
-        latest_tag_at: datetime.datetime | None = (
-            latest.get('tagged_at') or latest.get('recorded_at')
+        latest_tag_at = clickhouse.as_utc_or_none(
+            (latest.get('tagged_at') or latest.get('recorded_at'))
             if latest
             else None
         )

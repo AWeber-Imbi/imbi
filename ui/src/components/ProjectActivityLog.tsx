@@ -27,6 +27,7 @@ import { UserIdentity } from '@/components/ui/user-identity'
 import { usePluginOpsLogTemplates } from '@/hooks/usePluginOpsLogTemplates'
 import type { PluginOpsLogTemplateMap } from '@/hooks/usePluginOpsLogTemplates'
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
+import { parseServerTs, toDateOnlyIso } from '@/lib/formatDate'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import type { Environment, Integration, OperationsLogRecord } from '@/types'
 
@@ -133,12 +134,12 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
     const events: ActivityItem[] = (eventsPage?.entries ?? []).map((e) => ({
       data: e,
       kind: 'event' as const,
-      ts: new Date(e.recorded_at),
+      ts: parseServerTs(e.recorded_at),
     }))
     const ops: ActivityItem[] = (opsPage?.entries ?? []).map((o) => ({
       data: o,
       kind: 'ops' as const,
-      ts: new Date(o.occurred_at),
+      ts: parseServerTs(o.occurred_at),
     }))
     return [...events, ...ops]
       .sort((a, b) => b.ts.getTime() - a.ts.getTime())
@@ -148,7 +149,7 @@ export function ProjectActivityLog({ orgSlug, projectId, projectSlug }: Props) {
   const groups = useMemo(() => {
     const map = new Map<string, { items: ActivityItem[]; label: string }>()
     for (const item of merged) {
-      const key = dayKey(item.ts)
+      const key = toDateOnlyIso(item.ts)
       if (!map.has(key)) map.set(key, { items: [], label: dayLabel(item.ts) })
       map.get(key)!.items.push(item)
     }
@@ -245,15 +246,11 @@ function commentHref(projectId: string, payload: unknown): string | undefined {
     : base
 }
 
-function dayKey(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
 function dayLabel(d: Date): string {
   const today = new Date()
-  if (dayKey(d) === dayKey(today)) return 'TODAY'
+  if (toDateOnlyIso(d) === toDateOnlyIso(today)) return 'TODAY'
   return d
-    .toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+    .toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
     .toUpperCase()
 }
 

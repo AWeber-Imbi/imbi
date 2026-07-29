@@ -685,3 +685,56 @@ class ScoringEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(len(body), 1)
         self.assertIsNone(body[0]['previous_score'])
         self.assertEqual(body[0]['change_reason'], 'initial')
+
+    # --- ClickHouse naive-timestamp serialization ---------------------
+    #
+    # The score-history models type ``timestamp`` as ``str``, so they skip
+    # Pydantic's datetime serializer. These endpoints used to render it
+    # with ``str(value)``, which drops the UTC offset and emits a space
+    # separator instead of ``T`` — the browser then read the value in its
+    # own zone and every score-history chart was shifted by that offset.
+
+    # Naive on purpose: ClickHouse returns naive DateTime64 values.
+    NAIVE = datetime.datetime(2026, 4, 1, 12, 0, 0)  # noqa: DTZ001
+    EXPECTED = '2026-04-01T12:00:00+00:00'
+
+    def _history(self, granularity: str, rows: list[dict]) -> dict:
+        self.mock_db.execute = mock.AsyncMock(return_value=[{'id': 'p1'}])
+        with mock.patch(
+            'imbi.api.endpoints.scoring.clickhouse.query',
+            mock.AsyncMock(return_value=rows),
+        ):
+            response = self.client.get(
+                '/organizations/eng/projects/p1/score/history',
+                params={'granularity': granularity},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def test_raw_history_timestamp_carries_utc_offset(self) -> None:
+        body = self._history(
+            'raw',
+            [
+                {
+                    'timestamp': self.NAIVE,
+                    'score': 80.0,
+                    'previous_score': 70.0,
+                    'change_reason': 'attribute_change',
+                }
+            ],
+        )
+        ts = body['points'][0]['timestamp']
+        self.assertEqual(ts, self.EXPECTED)
+        self.assertEqual(
+            datetime.datetime.fromisoformat(ts).utcoffset(),
+            datetime.timedelta(0),
+        )
+
+    def test_bucketed_history_timestamp_carries_utc_offset(self) -> None:
+        body = self._history('day', [{'ts': self.NAIVE, 'score': 80.0}])
+        self.assertEqual(body['points'][0]['timestamp'], self.EXPECTED)
+
+    def test_aware_timestamp_is_left_alone(self) -> None:
+        aware = self.NAIVE.replace(tzinfo=datetime.UTC)
+        body = self._history('day', [{'ts': aware, 'score': 80.0}])
+        self.assertEqual(body['points'][0]['timestamp'], self.EXPECTED)

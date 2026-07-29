@@ -2150,6 +2150,98 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             recorded,
         )
 
+    # --- ClickHouse naive-timestamp serialization ---------------------
+    #
+    # DateTime64 columns come back naive even though they hold UTC. Passed
+    # straight into a Pydantic model the JSON carries no offset, and the
+    # browser then reads the value in its own zone — commit and release
+    # dates drifted by that zone's offset.
+
+    # Naive on purpose: ClickHouse returns naive DateTime64 values.
+    _NAIVE = datetime.datetime(2026, 1, 1, 12, 0, 0)  # noqa: DTZ001
+
+    def _assert_utc(self, value: str) -> None:
+        parsed = datetime.datetime.fromisoformat(value)
+        self.assertIsNotNone(parsed.tzinfo, f'{value!r} carries no offset')
+        self.assertEqual(parsed.utcoffset(), datetime.timedelta(0))
+        self.assertEqual(parsed, self._NAIVE.replace(tzinfo=datetime.UTC))
+
+    def test_recent_commits_authored_at_carries_utc_offset(self) -> None:
+        row = self._commit_row('abc1234def')
+        row['authored_at'] = self._NAIVE
+        self._patch_query([[row]])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/recent-commits')
+        self.assertEqual(response.status_code, 200, response.text)
+        self._assert_utc(response.json()[0]['authored_at'])
+
+    def test_release_history_published_at_carries_utc_offset(self) -> None:
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'sha10',
+                        'tagged_at': self._NAIVE,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': None,
+                    }
+                ],
+                [{'sha': 'sha10', 'ci_status': 'pass'}],
+            ]
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        self._assert_utc(response.json()[0]['published_at'])
+
+    def test_release_history_falls_back_to_recorded_at(self) -> None:
+        """No tag date recorded -> recorded_at, still offset-bearing."""
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'sha10',
+                        'tagged_at': None,
+                        'tagger_name': '',
+                        'url': '',
+                        'recorded_at': self._NAIVE,
+                    }
+                ],
+                [],
+            ]
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        self._assert_utc(response.json()[0]['published_at'])
+
+    def test_release_history_published_at_null_when_undated(self) -> None:
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': 'v1.0.0',
+                        'sha': 'sha10',
+                        'tagged_at': None,
+                        'tagger_name': '',
+                        'url': '',
+                        'recorded_at': None,
+                    }
+                ],
+                [],
+            ]
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()[0]['published_at'])
+
     def test_release_history_joins_tags_and_nodes(self) -> None:
         when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         self._patch_query(
