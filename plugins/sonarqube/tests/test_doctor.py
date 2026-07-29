@@ -242,7 +242,13 @@ class MainBranchAnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
             capability_options=capability_options,
         )
         results = await SonarQubeDoctor().analyze(ctx, _CREDS)
-        return _by_slug(results).get('main-branch')
+        # The check reports under one of two slugs depending on what is
+        # wrong, and exactly one of them is ever emitted.
+        branch_findings = [
+            i for i in results if i.slug.startswith('main-branch')
+        ]
+        self.assertLessEqual(len(branch_findings), 1)
+        return branch_findings[0] if branch_findings else None
 
     @respx.mock
     async def test_stale_main_branch_offers_the_switch(self) -> None:
@@ -265,23 +271,39 @@ class MainBranchAnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(finding.remediation)
 
     @respx.mock
-    async def test_project_without_a_main_branch_passes(self) -> None:
-        # Never migrated: there is no 'main' branch to switch to, so
-        # nagging about it would be noise.
+    async def test_project_without_the_branch_fails_unfixably(self) -> None:
+        # Never migrated. Reported apart from the switchable case and with
+        # no Fix button: no SonarQube call creates a branch.
         finding = await self._finding(_branch_list(('master', True)))
         assert finding is not None
-        self.assertEqual(finding.status, 'pass')
+        self.assertEqual(finding.slug, 'main-branch-missing')
+        self.assertEqual(finding.status, 'fail')
+        self.assertIsNone(finding.remediation)
         self.assertIn("no 'main' branch", finding.description)
         self.assertIn("'master'", finding.description)
+        # Both escapes are named: run CI on it, or fix the option.
+        self.assertIn('CI', finding.description)
+        self.assertIn(MAIN_BRANCH_OPTION, finding.description)
 
     @respx.mock
-    async def test_unanalyzed_project_passes(self) -> None:
+    async def test_unanalyzed_project_fails_unfixably(self) -> None:
         # A created-but-never-scanned component has no branches at all,
         # and the finding still has to read sensibly.
         finding = await self._finding(_branch_list())
         assert finding is not None
-        self.assertEqual(finding.status, 'pass')
+        self.assertEqual(finding.slug, 'main-branch-missing')
+        self.assertEqual(finding.status, 'fail')
         self.assertIn('no branch is flagged', finding.description)
+
+    @respx.mock
+    async def test_missing_configured_branch_names_it(self) -> None:
+        finding = await self._finding(
+            _branch_list(('main', True)), {MAIN_BRANCH_OPTION: 'trunk'}
+        )
+        assert finding is not None
+        self.assertEqual(finding.slug, 'main-branch-missing')
+        self.assertEqual(finding.status, 'fail')
+        self.assertIn("no 'trunk' branch", finding.description)
 
     @respx.mock
     async def test_branch_list_failure_degrades_to_warn(self) -> None:
@@ -304,7 +326,9 @@ class MainBranchAnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(_SEARCH).mock(return_value=_components())
         branches = respx.get(_BRANCHES)
         results = await SonarQubeDoctor().analyze(_ctx(), _CREDS)
-        self.assertNotIn('main-branch', _by_slug(results))
+        self.assertEqual(
+            [], [i for i in results if i.slug.startswith('main-branch')]
+        )
         self.assertFalse(branches.called)
 
     @respx.mock

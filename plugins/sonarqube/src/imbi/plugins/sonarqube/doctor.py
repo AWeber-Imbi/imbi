@@ -14,7 +14,9 @@ analysis that stopped running. The repair points the main branch at the
 expected one, which is the ``main_branch`` capability option (default
 ``main``): set on the Integration for the org-wide convention and
 overridden per project-type / project by the ``USES`` edge, for the
-repository whose trunk is named something else.
+repository whose trunk is named something else. A component that has no
+such branch at all is a separate, unrepairable finding — there is nothing
+to switch to until an analysis runs on that branch.
 
 The component key convention is ``<owning-team-slug>:<project-slug>``.
 An existing edge's identifier wins over the derived default so a
@@ -62,6 +64,17 @@ _SET_MAIN_BRANCH = 'set-main-branch'
 #: SonarQube's dashboard link uses the integration slug as its key (unlike
 #: GitHub's bespoke ``github-repository`` key).
 _LINK_KEY = 'sonarqube'
+
+#: Finding slug for "the expected branch is not the one SonarQube tracks",
+#: which ``_SET_MAIN_BRANCH`` fixes.
+_MAIN_BRANCH_SLUG = 'main-branch'
+
+#: Finding slug for "SonarQube has no such branch". Deliberately separate
+#: from :data:`_MAIN_BRANCH_SLUG`: it carries no remediation because no
+#: SonarQube call can conjure the branch, and keeping the two apart lets
+#: an operator sweeping the fleet tell "one click away" from "needs a CI
+#: run" without reading every description.
+_MAIN_BRANCH_MISSING_SLUG = 'main-branch-missing'
 
 #: Capability option naming the branch SonarQube is expected to track. It
 #: is capability- rather than integration-scoped so the host's option
@@ -364,11 +377,15 @@ class SonarQubeDoctor(AnalysisCapability):
     ) -> AnalysisResultItem:
         """Check that SonarQube tracks ``branch`` as the main branch.
 
-        A repository that migrated from ``master`` to ``main`` keeps the
-        abandoned branch flagged ``isMain`` in SonarQube, which goes on
-        reporting the analysis it last ran. Only a component that *has*
-        ``branch`` can be repaired, so one that never adopted it (still on
-        ``master``) passes rather than nagging.
+        Two distinct defects, reported under their own slugs because they
+        need different work: a repository that migrated from ``master`` to
+        ``main`` keeps the abandoned branch flagged ``isMain``, which is
+        one ``set_main`` call away from correct
+        (:data:`_MAIN_BRANCH_SLUG`); a component that has no ``branch`` at
+        all cannot be switched to it at any price
+        (:data:`_MAIN_BRANCH_MISSING_SLUG`) — SonarQube only records a
+        branch once an analysis runs on it, so that one is CI's to fix, or
+        the operator's if ``main_branch`` names the wrong branch.
         """
         try:
             branches = await client.list_branches(
@@ -376,7 +393,7 @@ class SonarQubeDoctor(AnalysisCapability):
             )
         except client.SonarqubeClientError as exc:
             return _item(
-                'main-branch',
+                _MAIN_BRANCH_SLUG,
                 'Main branch',
                 'warn',
                 f'Could not list the branches of component {key!r}: '
@@ -385,21 +402,25 @@ class SonarQubeDoctor(AnalysisCapability):
         main = _named_branch(branches, branch)
         if main is None:
             return _item(
-                'main-branch',
+                _MAIN_BRANCH_MISSING_SLUG,
                 'Main branch',
-                'pass',
-                f'SonarQube has no {branch!r} branch for {key!r}; '
-                f'{_tracked_phrase(branches)}.',
+                'fail',
+                f'SonarQube has no {branch!r} branch for {key!r} -- '
+                f'{_tracked_phrase(branches)}. There is no branch to switch '
+                'to: SonarQube only records a branch once an analysis runs '
+                f'on it, so CI has to analyze {branch!r} -- or, if this '
+                'project deliberately uses another branch, name it in the '
+                f'{MAIN_BRANCH_OPTION} option.',
             )
         if main.get('isMain') is True:
             return _item(
-                'main-branch',
+                _MAIN_BRANCH_SLUG,
                 'Main branch',
                 'pass',
                 f'SonarQube tracks {branch!r} as the main branch.',
             )
         return _item(
-            'main-branch',
+            _MAIN_BRANCH_SLUG,
             'Main branch',
             'fail',
             f'SonarQube does not track {branch!r} as the main branch of '

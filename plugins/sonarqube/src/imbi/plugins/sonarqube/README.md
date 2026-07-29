@@ -46,13 +46,17 @@ The `analysis` capability checks two things and offers a fix for each:
    SonarQube, and that the edge's canonical URL and `sonarqube` dashboard link
    match it. The fix searches for the component, creates it when absent, and
    writes the edge.
-2. **The main branch** — SonarQube reports a project's state from the single
-   branch flagged `isMain`, so a repository that moved from `master` to `main`
-   keeps syncing measures from an analysis that stopped running. When
-   `/api/project_branches/list` shows the expected branch and it is *not* the
-   main branch, the finding fails and the fix `POST`s
-   `/api/project_branches/set_main`. A component that does not have the
-   expected branch at all is left alone — there is nothing to switch to.
+2. **The main branch** (`main-branch`) — SonarQube reports a project's state
+   from the single branch flagged `isMain`, so a repository that moved from
+   `master` to `main` keeps syncing measures from an analysis that stopped
+   running. When `/api/project_branches/list` shows the expected branch and it
+   is *not* the main branch, the finding fails and the fix `POST`s
+   `/api/project_branches/set_main`.
+3. **The main branch is missing** (`main-branch-missing`) — when SonarQube has
+   no such branch at all, the finding fails with **no** fix offered: SonarQube
+   only records a branch once an analysis has run on it, so nothing this plugin
+   can call will create one. Either CI needs to analyze that branch, or the
+   project genuinely uses a different one and `main_branch` should say so.
 
 The expected branch is the capability's `main_branch` option, defaulting to
 `main`. Set it on the Integration's *Project doctor* capability for the
