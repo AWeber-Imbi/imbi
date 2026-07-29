@@ -1,4 +1,9 @@
-"""JSON Patch (RFC 6902) utilities."""
+"""JSON Patch (RFC 6902) utilities.
+
+Shared: imbi-api applies patches to its domain entities and
+imbi-scheduler to scheduled-task definitions, both per the platform
+PATCH convention.
+"""
 
 import logging
 import typing

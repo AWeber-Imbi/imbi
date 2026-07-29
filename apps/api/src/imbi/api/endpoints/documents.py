@@ -22,7 +22,6 @@ import fastapi.responses
 import nanoid
 import pydantic
 
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.endpoints import _document_history
 from imbi.api.endpoints._helpers import fetch_or_404
@@ -32,6 +31,7 @@ from imbi.api.endpoints._pagination import (
     encode_cursor,
 )
 from imbi.common import graph
+from imbi.common import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
 

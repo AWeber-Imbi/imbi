@@ -11,9 +11,9 @@ import urllib.parse
 import fastapi
 import psycopg
 
-from imbi.api import patch as json_patch
 from imbi.common import graph
 from imbi.common import models as common_models
+from imbi.common import patch as json_patch
 from imbi.common.plugins.base import PluginContext, ServiceConnection
 
 LOGGER = logging.getLogger(__name__)

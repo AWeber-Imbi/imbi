@@ -17,7 +17,6 @@ import psycopg
 import pydantic
 
 from imbi.api import blueprint_attributes
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.domain import scoring as scoring_models
 from imbi.api.domain.models import ExistsInResponse
@@ -39,6 +38,7 @@ from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.api.settings import get_server_config
 from imbi.common import blueprints, clickhouse, graph, models
+from imbi.common import patch as json_patch
 from imbi.common.clickhouse import client as ch_client
 from imbi.common.plugins.base import (
     LifecycleCapability,

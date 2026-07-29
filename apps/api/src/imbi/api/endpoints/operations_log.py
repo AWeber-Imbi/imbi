@@ -22,7 +22,6 @@ import fastapi.responses
 import nanoid
 import pydantic
 
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.endpoints._pagination import (
     build_link_header,
@@ -31,6 +30,7 @@ from imbi.api.endpoints._pagination import (
     parse_iso,
 )
 from imbi.common import clickhouse, models
+from imbi.common import patch as json_patch
 from imbi.common.plugins import OpsLogTemplate
 from imbi.common.plugins.registry import list_plugins
 
