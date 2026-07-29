@@ -14,6 +14,8 @@ from imbi.common.plugins.errors import PluginRemediationNotSupported
 from imbi.plugins.sonarqube.doctor import (
     _RECONCILE_EDGE,
     _REPAIR_EDGE,
+    _SET_MAIN_BRANCH,
+    MAIN_BRANCH_OPTION,
     SonarQubeDoctor,
 )
 
@@ -26,6 +28,8 @@ _DASHBOARD = f'{_URL}/dashboard?id=platform%3Ademo'
 _LINK_KEY = 'sonarqube'
 _SEARCH = f'{_URL}/api/projects/search'
 _CREATE = f'{_URL}/api/projects/create'
+_BRANCHES = f'{_URL}/api/project_branches/list'
+_SET_MAIN = f'{_URL}/api/project_branches/set_main'
 
 
 def _conn(
@@ -42,6 +46,7 @@ def _ctx(
     connections: list[ServiceConnection] | None = None,
     links: dict[str, str] | None = None,
     options: dict[str, object] | None = None,
+    capability_options: dict[str, object] | None = None,
     team_slug: str | None = 'platform',
 ) -> PluginContext:
     return PluginContext(
@@ -53,6 +58,7 @@ def _ctx(
         integration_options=options
         if options is not None
         else {'service_url': _URL},
+        capability_options=capability_options or {},
         service_connections=connections or [],
         project_links=links or {},
     )
@@ -68,6 +74,27 @@ def _components(*keys: str) -> httpx.Response:
     return httpx.Response(
         200, json={'components': [{'key': k, 'name': k} for k in keys]}
     )
+
+
+def _branch_list(*branches: tuple[str, bool]) -> httpx.Response:
+    """Build a ``project_branches/list`` payload from (name, isMain) pairs."""
+    return httpx.Response(
+        200,
+        json={
+            'branches': [
+                {'name': name, 'isMain': is_main, 'type': 'BRANCH'}
+                for name, is_main in branches
+            ]
+        },
+    )
+
+
+#: The healthy shape: SonarQube tracks ``main``.
+_MAIN_TRACKED = (('main', True),)
+
+#: The shape this doctor exists for: a project migrated off ``master`` whose
+#: abandoned branch is still the one SonarQube reports on.
+_MAIN_STALE = (('master', True), ('main', False))
 
 
 class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
@@ -140,12 +167,15 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_edge_present_all_pass(self) -> None:
         respx.get(_SEARCH).mock(return_value=_components(_KEY))
+        respx.get(_BRANCHES).mock(return_value=_branch_list(*_MAIN_TRACKED))
         ctx = _ctx(connections=[_conn()], links={_LINK_KEY: _DASHBOARD})
         results = await SonarQubeDoctor().analyze(ctx, _CREDS)
         by_slug = _by_slug(results)
         self.assertEqual(by_slug['component'].status, 'pass')
         self.assertEqual(by_slug['canonical-url'].status, 'pass')
         self.assertEqual(by_slug['dashboard-link'].status, 'pass')
+        self.assertEqual(by_slug['main-branch'].status, 'pass')
+        self.assertIsNone(by_slug['main-branch'].remediation)
 
     @respx.mock
     async def test_edge_present_component_missing_offers_create(self) -> None:
@@ -160,6 +190,7 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_edge_present_canonical_and_link_drift(self) -> None:
         respx.get(_SEARCH).mock(return_value=_components(_KEY))
+        respx.get(_BRANCHES).mock(return_value=_branch_list(*_MAIN_TRACKED))
         ctx = _ctx(
             connections=[_conn(canonical='https://old/url')],
             links={_LINK_KEY: 'https://old/dash'},
@@ -172,6 +203,7 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_no_edge_component_found(self) -> None:
         respx.get(_SEARCH).mock(return_value=_components(_KEY))
+        respx.get(_BRANCHES).mock(return_value=_branch_list(*_MAIN_TRACKED))
         results = await SonarQubeDoctor().analyze(_ctx(), _CREDS)
         finding = _by_slug(results)['exists-in']
         self.assertEqual(finding.status, 'warn')
@@ -192,6 +224,147 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(_SEARCH).mock(return_value=httpx.Response(401, text='no'))
         results = await SonarQubeDoctor().analyze(_ctx(), _CREDS)
         self.assertEqual(_by_slug(results)['component'].status, 'warn')
+
+
+class MainBranchAnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
+    """The branch SonarQube reports the project's state from."""
+
+    async def _finding(
+        self,
+        branches: httpx.Response,
+        capability_options: dict[str, object] | None = None,
+    ) -> AnalysisResultItem | None:
+        respx.get(_SEARCH).mock(return_value=_components(_KEY))
+        respx.get(_BRANCHES).mock(return_value=branches)
+        ctx = _ctx(
+            connections=[_conn()],
+            links={_LINK_KEY: _DASHBOARD},
+            capability_options=capability_options,
+        )
+        results = await SonarQubeDoctor().analyze(ctx, _CREDS)
+        # The check reports under one of two slugs depending on what is
+        # wrong, and exactly one of them is ever emitted.
+        branch_findings = [
+            i for i in results if i.slug.startswith('main-branch')
+        ]
+        self.assertLessEqual(len(branch_findings), 1)
+        return branch_findings[0] if branch_findings else None
+
+    @respx.mock
+    async def test_stale_main_branch_offers_the_switch(self) -> None:
+        finding = await self._finding(_branch_list(*_MAIN_STALE))
+        assert finding is not None
+        self.assertEqual(finding.status, 'fail')
+        # The operator needs to know which branch is being abandoned.
+        self.assertIn("'master'", finding.description)
+        assert finding.remediation is not None
+        self.assertEqual(finding.remediation.id, _SET_MAIN_BRANCH)
+        self.assertTrue(finding.remediation.destructive)
+
+    @respx.mock
+    async def test_main_branch_tracked_passes(self) -> None:
+        finding = await self._finding(
+            _branch_list(('main', True), ('master', False))
+        )
+        assert finding is not None
+        self.assertEqual(finding.status, 'pass')
+        self.assertIsNone(finding.remediation)
+
+    @respx.mock
+    async def test_project_without_the_branch_fails_unfixably(self) -> None:
+        # Never migrated. Reported apart from the switchable case and with
+        # no Fix button: no SonarQube call creates a branch.
+        finding = await self._finding(_branch_list(('master', True)))
+        assert finding is not None
+        self.assertEqual(finding.slug, 'main-branch-missing')
+        self.assertEqual(finding.status, 'fail')
+        self.assertIsNone(finding.remediation)
+        self.assertIn("no 'main' branch", finding.description)
+        self.assertIn("'master'", finding.description)
+        # Both escapes are named: run CI on it, or fix the option.
+        self.assertIn('CI', finding.description)
+        self.assertIn(MAIN_BRANCH_OPTION, finding.description)
+
+    @respx.mock
+    async def test_unanalyzed_project_fails_unfixably(self) -> None:
+        # A created-but-never-scanned component has no branches at all,
+        # and the finding still has to read sensibly.
+        finding = await self._finding(_branch_list())
+        assert finding is not None
+        self.assertEqual(finding.slug, 'main-branch-missing')
+        self.assertEqual(finding.status, 'fail')
+        self.assertIn('no branch is flagged', finding.description)
+
+    @respx.mock
+    async def test_missing_configured_branch_names_it(self) -> None:
+        finding = await self._finding(
+            _branch_list(('main', True)), {MAIN_BRANCH_OPTION: 'trunk'}
+        )
+        assert finding is not None
+        self.assertEqual(finding.slug, 'main-branch-missing')
+        self.assertEqual(finding.status, 'fail')
+        self.assertIn("no 'trunk' branch", finding.description)
+
+    @respx.mock
+    async def test_branch_list_failure_degrades_to_warn(self) -> None:
+        finding = await self._finding(httpx.Response(403))
+        assert finding is not None
+        self.assertEqual(finding.status, 'warn')
+        self.assertIn('status 403', finding.description)
+
+    @respx.mock
+    async def test_checked_without_an_exists_in_edge(self) -> None:
+        # A stale main branch reports stale measures whether or not Imbi
+        # has linked the component yet.
+        respx.get(_SEARCH).mock(return_value=_components(_KEY))
+        respx.get(_BRANCHES).mock(return_value=_branch_list(*_MAIN_STALE))
+        results = await SonarQubeDoctor().analyze(_ctx(), _CREDS)
+        self.assertEqual(_by_slug(results)['main-branch'].status, 'fail')
+
+    @respx.mock
+    async def test_skipped_when_component_is_missing(self) -> None:
+        respx.get(_SEARCH).mock(return_value=_components())
+        branches = respx.get(_BRANCHES)
+        results = await SonarQubeDoctor().analyze(_ctx(), _CREDS)
+        self.assertEqual(
+            [], [i for i in results if i.slug.startswith('main-branch')]
+        )
+        self.assertFalse(branches.called)
+
+    @respx.mock
+    async def test_configured_branch_replaces_the_default(self) -> None:
+        # A repository whose trunk is 'trunk' must be judged against it,
+        # not against 'main' -- which here is a stale side branch.
+        finding = await self._finding(
+            _branch_list(('main', True), ('trunk', False)),
+            {MAIN_BRANCH_OPTION: 'trunk'},
+        )
+        assert finding is not None
+        self.assertEqual(finding.status, 'fail')
+        assert finding.remediation is not None
+        self.assertIn("'trunk'", finding.remediation.label)
+        assert finding.remediation.confirm is not None
+        self.assertIn("'trunk'", finding.remediation.confirm)
+
+    @respx.mock
+    async def test_configured_branch_tracked_passes(self) -> None:
+        finding = await self._finding(
+            _branch_list(('trunk', True), ('main', False)),
+            {MAIN_BRANCH_OPTION: 'trunk'},
+        )
+        assert finding is not None
+        self.assertEqual(finding.status, 'pass')
+
+    @respx.mock
+    async def test_blank_option_falls_back_to_the_default(self) -> None:
+        # An option cleared in the admin UI arrives as '' rather than
+        # absent, and must not turn into a search for a branch named ''.
+        finding = await self._finding(
+            _branch_list(*_MAIN_STALE), {MAIN_BRANCH_OPTION: '   '}
+        )
+        assert finding is not None
+        self.assertEqual(finding.status, 'fail')
+        self.assertIn("'main'", finding.description)
 
 
 class RemediateTestCase(unittest.IsolatedAsyncioTestCase):
@@ -288,3 +461,78 @@ class RemediateTestCase(unittest.IsolatedAsyncioTestCase):
             _ctx(), _CREDS, _REPAIR_EDGE
         )
         self.assertEqual(result.status, 'failed')
+
+
+class SetMainBranchTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_no_token_failed(self) -> None:
+        result = await SonarQubeDoctor().remediate(
+            _ctx(), {}, _SET_MAIN_BRANCH
+        )
+        self.assertEqual(result.status, 'failed')
+
+    @respx.mock
+    async def test_stale_main_branch_is_switched(self) -> None:
+        respx.get(_BRANCHES).mock(return_value=_branch_list(*_MAIN_STALE))
+        set_main = respx.post(_SET_MAIN).mock(return_value=httpx.Response(204))
+        ctx = _ctx(connections=[_conn()])
+        result = await SonarQubeDoctor().remediate(
+            ctx, _CREDS, _SET_MAIN_BRANCH
+        )
+        self.assertEqual(result.status, 'fixed')
+        self.assertTrue(set_main.called)
+        request = set_main.calls.last.request
+        self.assertEqual(request.url.params['project'], _KEY)
+        self.assertEqual(request.url.params['branch'], 'main')
+        # This repair lives entirely in SonarQube -- no Imbi state moves.
+        self.assertIsNone(ctx.service_writeback)
+
+    @respx.mock
+    async def test_already_tracked_is_noop(self) -> None:
+        # The report may be stale by the time Fix is clicked; re-reading
+        # keeps a redundant write off the wire.
+        respx.get(_BRANCHES).mock(return_value=_branch_list(*_MAIN_TRACKED))
+        set_main = respx.post(_SET_MAIN)
+        result = await SonarQubeDoctor().remediate(
+            _ctx(connections=[_conn()]), _CREDS, _SET_MAIN_BRANCH
+        )
+        self.assertEqual(result.status, 'noop')
+        self.assertFalse(set_main.called)
+
+    @respx.mock
+    async def test_vanished_main_branch_fails(self) -> None:
+        respx.get(_BRANCHES).mock(return_value=_branch_list(('master', True)))
+        set_main = respx.post(_SET_MAIN)
+        result = await SonarQubeDoctor().remediate(
+            _ctx(connections=[_conn()]), _CREDS, _SET_MAIN_BRANCH
+        )
+        self.assertEqual(result.status, 'failed')
+        self.assertFalse(set_main.called)
+
+    @respx.mock
+    async def test_configured_branch_is_the_one_posted(self) -> None:
+        respx.get(_BRANCHES).mock(
+            return_value=_branch_list(('main', True), ('trunk', False))
+        )
+        set_main = respx.post(_SET_MAIN).mock(return_value=httpx.Response(204))
+        result = await SonarQubeDoctor().remediate(
+            _ctx(
+                connections=[_conn()],
+                capability_options={MAIN_BRANCH_OPTION: 'trunk'},
+            ),
+            _CREDS,
+            _SET_MAIN_BRANCH,
+        )
+        self.assertEqual(result.status, 'fixed')
+        self.assertEqual(
+            set_main.calls.last.request.url.params['branch'], 'trunk'
+        )
+
+    @respx.mock
+    async def test_rejected_write_failed(self) -> None:
+        respx.get(_BRANCHES).mock(return_value=_branch_list(*_MAIN_STALE))
+        respx.post(_SET_MAIN).mock(return_value=httpx.Response(403))
+        result = await SonarQubeDoctor().remediate(
+            _ctx(connections=[_conn()]), _CREDS, _SET_MAIN_BRANCH
+        )
+        self.assertEqual(result.status, 'failed')
+        self.assertIn('status 403', result.message)

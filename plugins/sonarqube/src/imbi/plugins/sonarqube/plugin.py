@@ -11,7 +11,11 @@ SonarQube component binding.
 import logging
 
 from imbi.common import plugins
-from imbi.plugins.sonarqube.doctor import SonarQubeDoctor
+from imbi.plugins.sonarqube.doctor import (
+    DEFAULT_MAIN_BRANCH,
+    MAIN_BRANCH_OPTION,
+    SonarQubeDoctor,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -89,7 +93,8 @@ class SonarQubePlugin(plugins.Plugin):
                         'permissions the issuing account holds. The token '
                         'needs Browse on the projects being read, plus '
                         'Create Projects if the Project Doctor should create '
-                        'missing SonarQube projects.'
+                        'missing SonarQube projects and Administer on a '
+                        'project whose main branch it should switch.'
                     ),
                 }
             ],
@@ -107,9 +112,30 @@ class SonarQubePlugin(plugins.Plugin):
                     'label': 'Project doctor',
                     'description': (
                         'Validate the SonarQube project component '
-                        '(EXISTS_IN edge) against the live API and offer a '
-                        'one-click search-and-create repair.'
+                        '(EXISTS_IN edge) and the branch SonarQube tracks as '
+                        'its main branch against the live API, and offer '
+                        'one-click repairs for both.'
                     ),
+                    'options': [
+                        {
+                            'name': MAIN_BRANCH_OPTION,
+                            'label': 'Expected main branch',
+                            'description': (
+                                'Branch SonarQube should track as a '
+                                "project's main branch -- the one whose "
+                                'analysis it reports as the project state. '
+                                'The doctor fails, and offers to switch, '
+                                'when this branch exists in SonarQube but '
+                                'is not the main one; a project without it '
+                                'is left alone. Override it on a project '
+                                'type or project whose trunk is named '
+                                'something else.'
+                            ),
+                            'type': 'string',
+                            'required': False,
+                            'default': DEFAULT_MAIN_BRANCH,
+                        }
+                    ],
                     'handler': SonarQubeDoctor,
                 },
             ],

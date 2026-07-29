@@ -34,7 +34,37 @@ scanner uses and answer `403` to every request this plugin makes, including
 restriction rides on the token *type*, so issuing an analysis token from an
 administrator account does not help. Grant the token's account Browse on the
 projects being read, plus Create Projects if the Project Doctor should create
-missing SonarQube projects.
+missing SonarQube projects and Administer on a project whose main branch it
+should switch.
+
+## Project Doctor
+
+The `analysis` capability checks three things, offering a fix for the
+first two:
+
+1. **The `EXISTS_IN` edge** — that the component key
+   (`<team-slug>:<project-slug>`, or the edge's own identifier) exists in
+   SonarQube, and that the edge's canonical URL and `sonarqube` dashboard link
+   match it. The fix searches for the component, creates it when absent, and
+   writes the edge.
+2. **The main branch** (`main-branch`) — SonarQube reports a project's state
+   from the single branch flagged `isMain`, so a repository that moved from
+   `master` to `main` keeps syncing measures from an analysis that stopped
+   running. When `/api/project_branches/list` shows the expected branch and it
+   is *not* the main branch, the finding fails and the fix `POST`s
+   `/api/project_branches/set_main`.
+3. **The main branch is missing** (`main-branch-missing`) — when SonarQube has
+   no such branch at all, the finding fails with **no** fix offered: SonarQube
+   only records a branch once an analysis has run on it, so nothing this plugin
+   can call will create one. Either CI needs to analyze that branch, or the
+   project genuinely uses a different one and `main_branch` should say so.
+
+The expected branch is the capability's `main_branch` option, defaulting to
+`main`. Set it on the Integration's *Project doctor* capability for the
+org-wide convention; because the host layers capability options
+(Integration < project-type `USES` edge < project `USES` edge), a project
+type or single project whose trunk is named something else can override it
+without changing the default.
 
 A typical webhook rule:
 
