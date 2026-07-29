@@ -116,7 +116,17 @@ class InitializerTests(StoreTestCase):
         declared = set(tables['tasks']['columns'].keys())
         self.assertEqual(set(tasks_repo.COLUMNS), declared)
         self.assertEqual(set(models.Task.model_fields), declared)
-        self.assertIn('run_leases', tables)
+        self.assertEqual(
+            {
+                'id',
+                'task_id',
+                'run_id',
+                'acquired_at',
+                'expires_at',
+                'cancel_requested',
+            },
+            set(tables['run_leases']['columns'].keys()),
+        )
 
 
 class CrudTests(StoreTestCase):
@@ -457,9 +467,13 @@ class LeaseTests(StoreTestCase):
         limit: int = 1,
         ttl: datetime.timedelta | None = None,
         repo: tasks_repo.Tasks | None = None,
+        run_id: uuid.UUID | None = None,
     ) -> uuid.UUID | None:
         return await (repo or self.tasks).acquire_lease(
-            self.task.id, limit=limit, ttl=ttl or self.ONE_MINUTE
+            self.task.id,
+            run_id=run_id or uuid.uuid4(),
+            limit=limit,
+            ttl=ttl or self.ONE_MINUTE,
         )
 
     async def test_a_free_slot_is_granted_and_released(self) -> None:
@@ -474,7 +488,10 @@ class LeaseTests(StoreTestCase):
         self.assertIsNotNone(await self._acquire())
         self.assertIsNotNone(
             await self.tasks.acquire_lease(
-                other.id, limit=1, ttl=self.ONE_MINUTE
+                other.id,
+                run_id=uuid.uuid4(),
+                limit=1,
+                ttl=self.ONE_MINUTE,
             )
         )
 
@@ -509,6 +526,75 @@ class LeaseTests(StoreTestCase):
 
     async def test_releasing_an_unknown_lease_is_harmless(self) -> None:
         await self.tasks.release_lease(uuid.uuid4())
+
+
+class CancelRequestTests(StoreTestCase):
+    """The lease row is what makes a run cancellable by id."""
+
+    ONE_MINUTE = datetime.timedelta(minutes=1)
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.task = await self.tasks.create(helpers.build_task())
+        self.run_id = uuid.uuid4()
+
+    async def _lease(self, run_id: uuid.UUID | None = None) -> uuid.UUID:
+        lease = await self.tasks.acquire_lease(
+            self.task.id,
+            run_id=run_id or self.run_id,
+            limit=1,
+            ttl=self.ONE_MINUTE,
+        )
+        assert lease is not None
+        return lease
+
+    async def test_requesting_a_cancel_marks_the_lease(self) -> None:
+        await self._lease()
+        self.assertFalse(await self.tasks.cancel_requested(self.run_id))
+        self.assertTrue(await self.tasks.request_cancel(str(self.run_id)))
+        self.assertTrue(await self.tasks.cancel_requested(self.run_id))
+
+    async def test_a_run_with_no_lease_cannot_be_cancelled(self) -> None:
+        # Finished, never started, or its replica died and the lease expired.
+        # All three look alike, and all three mean there is nothing to stop.
+        self.assertFalse(await self.tasks.request_cancel(str(uuid.uuid4())))
+
+    async def test_a_released_lease_cannot_be_cancelled(self) -> None:
+        lease = await self._lease()
+        await self.tasks.release_lease(lease)
+        self.assertFalse(await self.tasks.request_cancel(str(self.run_id)))
+
+    async def test_cancel_requested_is_false_for_an_unknown_run(self) -> None:
+        self.assertFalse(await self.tasks.cancel_requested(uuid.uuid4()))
+
+    async def test_a_cancel_reaches_a_listener(self) -> None:
+        """The NOTIFY is the enforcement half; without it the flag is inert."""
+        await self._lease()
+        async with self.pool.connection() as listener:
+            await listener.set_autocommit(True)
+            await listener.execute(
+                sql.SQL('LISTEN {channel}').format(
+                    channel=sql.Identifier(tasks_repo.CANCEL_CHANNEL)
+                )
+            )
+            await self.tasks.request_cancel(str(self.run_id))
+            notices = listener.notifies(timeout=5, stop_after=1)
+            payloads = [notice.payload async for notice in notices]
+        self.assertEqual([str(self.run_id)], payloads)
+
+    async def test_the_lease_records_which_run_holds_it(self) -> None:
+        await self._lease()
+        async with (
+            self.pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                sql.SQL('SELECT run_id FROM {table}').format(
+                    table=sql.Identifier(TEST_SCHEMA, 'run_leases')
+                )
+            )
+            found = await cursor.fetchall()
+        self.assertEqual([self.run_id], [row['run_id'] for row in found])
 
 
 class ScheduleTests(StoreTestCase):

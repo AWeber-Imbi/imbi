@@ -61,14 +61,22 @@ columns = ["kind"]
 # `expires_at` makes it a lease rather than a promise: a replica killed
 # mid-run never deletes its own row, so the slot has to free itself or the
 # task would never fire again.
+#
+# The row doubles as the registry of what is running right now, which is what
+# makes `POST /runs/{run_id}/cancel` answerable: `run_id` names the firing and
+# `cancel_requested` is the durable record that somebody asked it to stop.
+# Enforcement is a NOTIFY to whichever replica owns the run — see
+# `Tasks.request_cancel`.
 [[tables]]
 name = "run_leases"
 
 [tables.columns]
 id = "UUID NOT NULL"
 task_id = "UUID NOT NULL"
+run_id = "UUID NOT NULL"
 acquired_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 expires_at = "TIMESTAMP WITH TIME ZONE NOT NULL"
+cancel_requested = "BOOLEAN NOT NULL DEFAULT FALSE"
 
 [tables.primary_key]
 columns = ["id"]
@@ -76,3 +84,8 @@ columns = ["id"]
 [[tables.indexes]]
 name = "run_leases_task_idx"
 columns = ["task_id"]
+
+[[tables.indexes]]
+name = "run_leases_run_key"
+columns = ["run_id"]
+unique = true

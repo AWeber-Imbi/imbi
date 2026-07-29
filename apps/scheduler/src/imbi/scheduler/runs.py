@@ -107,18 +107,24 @@ class Run(pydantic.BaseModel):
         return self.state in models.TERMINAL_RUN_STATES
 
 
-def start(
+def start(  # noqa: PLR0913 -- every field is one column of the run record
     task: models.Task,
     fired_at: datetime.datetime,
     *,
+    run_id: uuid.UUID | None = None,
     attempt: int = 1,
     actor_name: str = '',
     trace_id: str = '',
 ) -> Run:
-    """Return a `running` run for `task`, ready to be recorded."""
+    """Return a `running` run for `task`, ready to be recorded.
+
+    The caller may supply `run_id`: the engine mints one before it takes the
+    execution lease, because the lease row records the run and a cancel
+    request finds the firing by that id. Left unset, a run gets a fresh one.
+    """
     identity_kind = task.identity.kind if task.identity else 'none'
     return Run(
-        run_id=str(uuid.uuid4()),
+        run_id=str(run_id or uuid.uuid4()),
         task_id=str(task.id),
         task_slug=task.slug,
         organization=task.organization or '',

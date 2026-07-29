@@ -16,6 +16,7 @@ import contextlib
 import datetime
 import logging
 import typing
+import uuid
 
 from psycopg import sql
 
@@ -40,6 +41,14 @@ class Engine:
         self._settings = config or settings.Scheduler()
         self._semaphore = asyncio.Semaphore(self._settings.max_concurrent_runs)
         self._wake = asyncio.Event()
+        # Runs this replica is executing, by run_id. A cancel request arrives
+        # on every replica; only the one holding the run has something to
+        # cancel, and this is how it knows.
+        self._in_flight: dict[str, asyncio.Task[runs.Run]] = {}
+        # Runs this replica cancelled on purpose. Without it, `_execute` could
+        # not tell a requested cancellation from the loop being torn down or
+        # the caller going away, and would report either as "cancelled".
+        self._cancelling: set[str] = set()
 
     async def tick(
         self, now: datetime.datetime | None = None
@@ -62,8 +71,47 @@ class Engine:
         misfire = self._misfire_reason(task, moment)
         if misfire is not None:
             return await self._decline(task, moment, misfire)
+        return await self._fire_under_lease(task, moment)
+
+    async def run_now(self, task: models.Task) -> runs.Run:
+        """Fire `task` immediately, as ``POST /tasks/{slug}/run`` asks.
+
+        The misfire check is skipped and only that: an on-demand run is by
+        definition on time, but it is still a real firing, so it takes an
+        execution slot, counts against this process's concurrency ceiling,
+        resolves identity, and lands in history like any other.
+        """
+        run = await self._fire_under_lease(
+            task, datetime.datetime.now(datetime.UTC)
+        )
+        if run is None:  # pragma: no cover - the lease path always records
+            raise RuntimeError('on-demand run produced no record')
+        return run
+
+    async def dry_run(self, task: models.Task) -> executor_module.DryRun:
+        """Report what firing `task` would do, without firing it.
+
+        No lease and no semaphore: nothing is executed, so nothing needs a
+        slot, and a dry run must stay available while every slot is busy --
+        that is exactly when an operator wants it.
+        """
+        return await self._executor.dry_run(
+            task, datetime.datetime.now(datetime.UTC)
+        )
+
+    async def _fire_under_lease(
+        self, task: models.Task, moment: datetime.datetime
+    ) -> runs.Run | None:
+        """Take a slot, execute, and record, whatever the outcome.
+
+        The run_id is minted here rather than inside the executor because the
+        lease row carries it: a cancel request has to be able to name a
+        firing before that firing has written anything.
+        """
+        run_id = uuid.uuid4()
         lease = await self._tasks.acquire_lease(
             task.id,
+            run_id=run_id,
             limit=task.execution.max_running_instances,
             ttl=self._lease_ttl(task),
         )
@@ -72,23 +120,105 @@ class Engine:
                 task, moment, 'max_running_instances already reached'
             )
         try:
-            async with self._semaphore:
-                run = await self._executor.execute(task, moment)
-        except Exception:
-            # A crash here would silently drop the firing, so record it as a
-            # failure rather than letting the gather propagate.
-            LOGGER.exception('Unhandled error firing %s', task.slug)
-            run = runs.finish(
-                runs.start(task, moment),
-                'failed',
-                runs.Outcome(
-                    error_type='internal',
-                    error_message='unhandled scheduler error',
-                ),
-            )
+            run = await self._execute(task, moment, run_id)
         finally:
             await self._tasks.release_lease(lease)
         return await self._record(task, run)
+
+    async def _execute(
+        self,
+        task: models.Task,
+        moment: datetime.datetime,
+        run_id: uuid.UUID,
+    ) -> runs.Run:
+        """Run the firing as a cancellable task, and classify how it ended."""
+        if await self._tasks.cancel_requested(run_id):
+            # Cancelled between taking the lease and starting: the NOTIFY had
+            # nothing to find in `_in_flight` yet, so catch it here.
+            return self._cancelled_run(task, moment, run_id, started=False)
+        key = str(run_id)
+        async with self._semaphore:
+            pending = asyncio.create_task(
+                self._executor.execute(task, moment, run_id=run_id)
+            )
+            self._in_flight[key] = pending
+            try:
+                return await pending
+            except asyncio.CancelledError:
+                if key not in self._cancelling:
+                    # Not a cancel request: the loop is being torn down, or
+                    # whoever awaited this went away. Swallowing it would
+                    # report a phantom cancellation and break the caller's
+                    # cancellation, so it propagates.
+                    raise
+                LOGGER.info('Run %s cancelled while firing %s', key, task.slug)
+                return self._cancelled_run(task, moment, run_id, started=True)
+            except Exception:
+                # A crash here would silently drop the firing, so record it as
+                # a failure rather than letting the gather propagate.
+                LOGGER.exception('Unhandled error firing %s', task.slug)
+                return runs.finish(
+                    runs.start(task, moment, run_id=run_id),
+                    'failed',
+                    runs.Outcome(
+                        error_type='internal',
+                        error_message='unhandled scheduler error',
+                    ),
+                )
+            finally:
+                self._in_flight.pop(key, None)
+                self._cancelling.discard(key)
+
+    def _cancelled_run(
+        self,
+        task: models.Task,
+        moment: datetime.datetime,
+        run_id: uuid.UUID,
+        *,
+        started: bool,
+    ) -> runs.Run:
+        """Return the terminal record for a cancelled firing.
+
+        The message distinguishes the two cases because they differ in what
+        the operator still has to check. Cancelling before the call means
+        nothing happened. Cancelling during it means the request was already
+        on the wire: the target may have acted and the response was simply
+        never read, so claiming nothing happened would be a lie.
+        """
+        message = (
+            'cancelled after the request was sent; the target may have '
+            'already acted on it'
+            if started
+            else 'cancelled before the request was sent'
+        )
+        return runs.finish(
+            runs.start(task, moment, run_id=run_id),
+            'cancelled',
+            runs.Outcome(error_type='cancelled', error_message=message),
+        )
+
+    async def cancel(self, run_id: str) -> bool:
+        """Ask for `run_id` to stop, wherever it is running.
+
+        Reports whether a lease existed to cancel. The local task is not
+        cancelled here: ``request_cancel`` notifies every replica including
+        this one, so the listener does it, and cancellation takes one path
+        whether the caller happened to reach the replica running the job.
+        """
+        return await self._tasks.request_cancel(run_id)
+
+    def _cancel_local(self, run_id: str) -> None:
+        """Cancel `run_id` if this replica is the one running it.
+
+        Marked as ours before it is cancelled, so ``_execute`` can tell this
+        apart from a cancellation it did not ask for.
+        """
+        pending = self._in_flight.get(run_id)
+        if pending is None:
+            return
+        LOGGER.info('Cancelling in-flight run %s', run_id)
+        self._cancelling.add(run_id)
+        pending.cancel()
 
     def _lease_ttl(self, task: models.Task) -> datetime.timedelta:
         """Return how long a slot stays reserved without being released.
@@ -249,14 +379,19 @@ class Engine:
     async def listening(
         self, pool: store.Pool
     ) -> 'typing.AsyncGenerator[None]':
-        """Wake the loop on ``NOTIFY`` for the duration of the block."""
-        listener = asyncio.create_task(self._listen(pool))
+        """Listen for task changes and cancel requests within the block."""
+        watchers = [
+            asyncio.create_task(self._listen(pool)),
+            asyncio.create_task(self._listen_cancels(pool)),
+        ]
         try:
             yield
         finally:
-            listener.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await listener
+            for watcher in watchers:
+                watcher.cancel()
+            for watcher in watchers:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await watcher
 
     async def _listen(self, pool: store.Pool) -> None:
         """Set the wake event whenever a task changes."""
@@ -276,3 +411,34 @@ class Engine:
             # Losing the listener degrades latency, not correctness: the
             # bounded sleep keeps polling.
             LOGGER.exception('Task change listener stopped')
+
+    async def _listen_cancels(self, pool: store.Pool) -> None:
+        """Cancel in-flight runs this replica owns when asked.
+
+        Its own connection rather than a second ``LISTEN`` on the task
+        channel: these notifications carry a payload and mean "stop this run",
+        and a cancel must not be lost behind the task listener's backlog.
+
+        Unlike the task listener, losing this one costs correctness, not just
+        latency -- a cancel request would be recorded and never enforced. It
+        is still swallowed rather than raised, because taking the whole
+        scheduler down over it would stop far more work than it saves.
+        """
+        try:
+            async with pool.connection() as conn:
+                await conn.set_autocommit(True)
+                await conn.execute(
+                    sql.SQL('LISTEN {channel}').format(
+                        channel=sql.Identifier(tasks_repo.CANCEL_CHANNEL)
+                    )
+                )
+                async for notice in conn.notifies():
+                    if notice.payload:
+                        self._cancel_local(notice.payload)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            LOGGER.exception(
+                'Cancel listener stopped; cancel requests reaching this '
+                'replica will be recorded but not enforced'
+            )

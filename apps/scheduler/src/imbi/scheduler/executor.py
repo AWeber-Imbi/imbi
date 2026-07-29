@@ -14,8 +14,10 @@ import asyncio
 import datetime
 import logging
 import typing
+import uuid
 
 import httpx
+import pydantic
 
 from imbi.scheduler import identity, models, render, runs, settings
 
@@ -26,6 +28,32 @@ RETRYABLE_CLIENT_STATUS = 429
 HTTP_UNAUTHORIZED = 401
 
 HTTP_INTERNAL_SERVER_ERROR = 500
+
+
+class DryRun(pydantic.BaseModel):
+    """What a firing *would* do, without doing it.
+
+    Both failure modes a task can have before it ever reaches the network are
+    reported rather than raised: an identity that will not resolve and a
+    template that will not render are exactly what an operator is debugging,
+    and a 500 would tell them less than the reason does.
+
+    ``bearer_resolved`` rather than the credential itself -- a debugging
+    endpoint that echoes a live token back over HTTP would be a credential
+    leak, and knowing whether resolution succeeded is the diagnostic.
+    """
+
+    would_run: bool
+    method: str = ''
+    url: str = ''
+    query: dict[str, str] = {}
+    body: dict[str, typing.Any] | None = None
+    headers: dict[str, str] = {}
+    identity_kind: str = ''
+    principal_name: str = ''
+    actor_name: str = ''
+    bearer_resolved: bool = False
+    reason: str = ''
 
 
 class Executor:
@@ -46,6 +74,7 @@ class Executor:
         task: models.Task,
         fired_at: datetime.datetime,
         *,
+        run_id: uuid.UUID | None = None,
         trace_id: str = '',
     ) -> runs.Run:
         """Fire `task` once, honoring its retry policy.
@@ -57,7 +86,13 @@ class Executor:
         trace that it ever happened.
         """
         actor = self._resolver.actor_name(task)
-        run = runs.start(task, fired_at, actor_name=actor, trace_id=trace_id)
+        run = runs.start(
+            task,
+            fired_at,
+            run_id=run_id,
+            actor_name=actor,
+            trace_id=trace_id,
+        )
         await runs.record(run)
         try:
             bearer = await self._resolver.bearer(task)
@@ -78,6 +113,55 @@ class Executor:
                 runs.Outcome(error_type='render', error_message=str(err)),
             )
         return await self._attempt_with_retries(task, run, request, bearer)
+
+    async def dry_run(
+        self,
+        task: models.Task,
+        fired_at: datetime.datetime,
+    ) -> DryRun:
+        """Resolve identity and render the target without calling it.
+
+        Deliberately shares :meth:`_render` and the resolver with
+        :meth:`execute`: a dry run that built the request its own way could
+        agree with the real path right up to the moment it stopped being
+        useful. Nothing is recorded — a dry run is not a firing, and putting
+        one in history would corrupt the outcome counters.
+        """
+        actor = self._resolver.actor_name(task)
+        identity_kind = task.identity.kind if task.identity else 'none'
+        base = DryRun(
+            would_run=False,
+            identity_kind=identity_kind,
+            principal_name=task.principal_name,
+            actor_name=actor,
+        )
+        try:
+            bearer = await self._resolver.bearer(task)
+        except identity.IdentityError as err:
+            return base.model_copy(update={'reason': err.reason})
+        try:
+            request = self._render(task, str(uuid.uuid4()), fired_at)
+        except render.RenderError as err:
+            return base.model_copy(
+                update={
+                    'bearer_resolved': bearer is not None,
+                    'reason': f'render failed: {err}',
+                }
+            )
+        headers = dict(request.headers)
+        if bearer:
+            headers['Authorization'] = 'Bearer <redacted>'
+        return base.model_copy(
+            update={
+                'would_run': True,
+                'method': request.method,
+                'url': request.url,
+                'query': request.query,
+                'body': request.body,
+                'headers': headers,
+                'bearer_resolved': bearer is not None,
+            }
+        )
 
     def _render(
         self,

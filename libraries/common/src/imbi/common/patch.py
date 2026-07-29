@@ -9,7 +9,7 @@ import logging
 import typing
 
 import fastapi
-import jsonpatch  # type: ignore[import-untyped]
+import jsonpatch
 import pydantic
 
 LOGGER = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ def apply_patch(
         ops_list.append(d)
 
     try:
-        result = jsonpatch.apply_patch(  # type: ignore[no-any-expr]
+        result = jsonpatch.apply_patch(
             document,
             ops_list,
         )

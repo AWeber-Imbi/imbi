@@ -6,6 +6,7 @@ claiming, misfire, instance limits, counter streaks — rather than HTTP.
 
 import asyncio
 import datetime
+import uuid
 
 from apps.scheduler.tests import helpers, test_store
 from imbi.common import clickhouse
@@ -16,6 +17,9 @@ from imbi.scheduler import (
     runs,
     settings,
     store,
+)
+from imbi.scheduler import (
+    executor as executor_module,
 )
 from imbi.scheduler.store import tasks as tasks_repo
 
@@ -44,6 +48,7 @@ class StubExecutor:
         task: models.Task,
         fired_at: datetime.datetime,
         *,
+        run_id: uuid.UUID | None = None,
         trace_id: str = '',
     ) -> runs.Run:
         self.fired.append(task.slug)
@@ -51,8 +56,18 @@ class StubExecutor:
             await asyncio.sleep(self.delay)
         if self.raises:
             raise RuntimeError('boom')
-        run = runs.start(task, fired_at, trace_id=trace_id)
+        run = runs.start(task, fired_at, run_id=run_id, trace_id=trace_id)
         return runs.finish(run, self.state, runs.Outcome(http_status=202))
+
+    async def dry_run(
+        self, task: models.Task, fired_at: datetime.datetime
+    ) -> executor_module.DryRun:
+        del fired_at
+        self.dry_ran = getattr(self, 'dry_ran', [])
+        self.dry_ran.append(task.slug)
+        return executor_module.DryRun(
+            would_run=True, method='POST', url='https://api.test/x'
+        )
 
 
 class EngineTestCase(test_store.StoreTestCase):

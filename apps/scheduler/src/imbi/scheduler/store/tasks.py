@@ -30,6 +30,11 @@ class UnresolvableIdentity(ValueError):
 #: Channel the engine listens on so a task mutation wakes it immediately.
 NOTIFY_CHANNEL = 'scheduler_tasks'
 
+#: Channel carrying a run_id every replica should try to cancel. Separate from
+#: `NOTIFY_CHANNEL` because it carries a payload and means "act on this run",
+#: not "re-read the table".
+CANCEL_CHANNEL = 'scheduler_cancels'
+
 #: Columns in the order the model reads them back.
 COLUMNS = (
     'id',
@@ -314,6 +319,7 @@ class Tasks:
         self,
         task_id: uuid.UUID,
         *,
+        run_id: uuid.UUID,
         limit: int,
         ttl: datetime.timedelta,
     ) -> uuid.UUID | None:
@@ -323,6 +329,9 @@ class Tasks:
         slots are already taken. The advisory lock is what makes this hold
         across replicas: ``COUNT`` cannot lock rows that do not exist yet, so
         without it two replicas both read `limit - 1` and both insert.
+
+        `run_id` is recorded because the row is also the answer to "what is
+        running right now" — :meth:`request_cancel` finds a firing by it.
 
         Expired leases are cleared here rather than by a sweeper: this is the
         only code that cares whether a slot is free, and the delete is bounded
@@ -357,10 +366,10 @@ class Tasks:
                 return None
             await cursor.execute(
                 sql.SQL(
-                    'INSERT INTO {leases} (id, task_id, expires_at)'
-                    ' VALUES (%s, %s, %s)'
+                    'INSERT INTO {leases} (id, task_id, run_id, expires_at)'
+                    ' VALUES (%s, %s, %s, %s)'
                 ).format(leases=self._leases),
-                (lease, task_id, expires_at),
+                (lease, task_id, run_id, expires_at),
             )
         return lease
 
@@ -373,6 +382,61 @@ class Tasks:
                 ),
                 (lease,),
             )
+
+    async def request_cancel(self, run_id: str) -> bool:
+        """Ask whichever replica owns `run_id` to stop it.
+
+        Reports whether a lease for `run_id` existed, which is the only thing
+        the caller can distinguish: a run that already finished, never
+        existed, or whose lease expired all look alike from here.
+
+        Two steps because cancellation crosses processes. The flag is the
+        durable record that somebody asked — it survives a listener being
+        down, and it is what an operator sees. The ``NOTIFY`` is the
+        enforcement: every replica listens, and the one holding this run's
+        ``asyncio`` task cancels it, which interrupts the in-flight HTTP call
+        instead of waiting out its timeout.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor() as cursor,
+        ):
+            await cursor.execute(
+                sql.SQL(
+                    'UPDATE {leases} SET cancel_requested = TRUE'
+                    ' WHERE run_id = %s'
+                ).format(leases=self._leases),
+                (run_id,),
+            )
+            if cursor.rowcount < 1:
+                return False
+            # `pg_notify` rather than `NOTIFY`: the statement form takes a
+            # string literal for its payload, not a bound parameter, and
+            # interpolating a run_id into SQL is not worth the saving.
+            await cursor.execute(
+                'SELECT pg_notify(%s, %s)', (CANCEL_CHANNEL, run_id)
+            )
+        return True
+
+    async def cancel_requested(self, run_id: uuid.UUID) -> bool:
+        """Return whether `run_id` has been asked to stop.
+
+        Checked once before a firing starts, which closes the window between
+        taking the lease and the first HTTP call — a ``NOTIFY`` arriving in
+        that window has nothing to cancel yet.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor() as cursor,
+        ):
+            await cursor.execute(
+                sql.SQL(
+                    'SELECT cancel_requested FROM {leases} WHERE run_id = %s'
+                ).format(leases=self._leases),
+                (run_id,),
+            )
+            row = await cursor.fetchone()
+        return bool(row[0]) if row is not None else False
 
     async def record_outcome(
         self,
