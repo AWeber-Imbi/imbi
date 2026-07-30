@@ -65,7 +65,7 @@ class Scheduler(pydantic_settings.BaseSettings):
     )
     # `SecretStr`, so the value masks itself in `repr`, `str`, and any
     # `model_dump` that reaches a log line or an error page. Read it with
-    # `.get_secret_value()` -- see `identity.ServiceAccountToken.refresh`,
+    # `.get_secret_value()` -- see `identity.ServiceAccountToken._fetch`,
     # which is the one place that has to send it.
     sa_client_secret: pydantic.SecretStr | None = pydantic.Field(
         default=None, description='Service account client credential secret'
