@@ -17,7 +17,7 @@ no pickled job payloads. The design this service was specified from chose
 APScheduler 4.x, using its shared relational data store to arbitrate single
 firing and its `PostgresqlEventBroker` to wake replicas.
 
-Checking that choice against the workspace as it stands at 2.19.0:
+Checking that choice against the workspace as it stood when this was decided:
 
 1. **APScheduler 4.x has not shipped.** The newest release is `4.0.0a6`,
    uploaded 2025-04-27 — an alpha, fifteen months old at the time of writing,

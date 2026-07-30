@@ -166,7 +166,14 @@ def _api_key_cache_lookup(key: str) -> AuthContext | None:
         return None
     # Refresh LRU recency on hit.
     _api_key_cache.move_to_end(h)
-    return ctx
+    # A copy, not the cached instance. `AuthContext` is not frozen, so handing
+    # out the shared object means anything that mutated it -- adding a
+    # permission, replacing `identities` -- would change what every later
+    # request authenticating with the same API key sees. Nothing mutates it
+    # today, so this is latent rather than a live bug; a copy costs one model
+    # construction per cache hit and removes the trap rather than documenting
+    # it.
+    return ctx.model_copy(deep=True)
 
 
 def _api_key_cache_store(key: str, ctx: AuthContext) -> None:

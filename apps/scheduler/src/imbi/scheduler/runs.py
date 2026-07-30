@@ -189,7 +189,12 @@ def finish(
             'http_status': result.http_status,
             'response_excerpt': excerpt(result.response),
             'error_type': result.error_type,
-            'error_message': scrub(result.error_message),
+            # `excerpt`, not `scrub`: both redact, only `excerpt` also caps the
+            # length. An embedded traceback or a verbose library error grows
+            # this column without bound exactly as a response body would, and
+            # the column has no more tolerance for one than the other. Named
+            # for response bodies; applied here for the same reason.
+            'error_message': excerpt(result.error_message),
             'row_version': run.row_version + 1,
         }
     )

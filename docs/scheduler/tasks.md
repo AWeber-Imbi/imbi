@@ -18,7 +18,7 @@ Every route below is relative to `IMBI_SCHEDULER_API_PREFIX` (default `/api`).
 | `POST` | `/tasks/{slug}/pause` | `scheduled_task:write` |
 | `POST` | `/tasks/{slug}/resume` | `scheduled_task:write` |
 | `POST` | `/tasks/{slug}/run` | `scheduled_task:run` |
-| `POST` | `/tasks/{slug}/dry-run` | `scheduled_task:run` |
+| `POST` | `/tasks/{slug}/dry-run` | `scheduled_task:read` |
 | `GET` | `/tasks/{slug}/runs` | `scheduled_task:read` |
 | `GET` | `/runs/{run_id}` | `scheduled_task:read` |
 | `POST` | `/runs/{run_id}/cancel` | `scheduled_task:run` |

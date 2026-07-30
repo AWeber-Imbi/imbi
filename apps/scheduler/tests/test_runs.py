@@ -60,6 +60,40 @@ class ScrubTests(unittest.TestCase):
         self.assertEqual(body, runs.scrub(body))
 
 
+class ErrorMessageBoundTests(unittest.TestCase):
+    """`error_message` is capped, not merely scrubbed."""
+
+    def test_a_long_error_message_is_truncated(self) -> None:
+        # An embedded traceback grows this column exactly as a response body
+        # would; `scrub` alone left it unbounded.
+        run = runs.start(helpers.build_task(), FIRED_AT)
+        finished = runs.finish(
+            run,
+            'failed',
+            runs.Outcome(error_type='internal', error_message='x' * 20000),
+        )
+        self.assertLessEqual(
+            len(finished.error_message), runs.RESPONSE_EXCERPT_LIMIT + 32
+        )
+        self.assertTrue(finished.error_message.endswith('[truncated]'))
+
+    def test_a_short_error_message_is_untouched_but_still_scrubbed(
+        self,
+    ) -> None:
+        run = runs.start(helpers.build_task(), FIRED_AT)
+        finished = runs.finish(
+            run,
+            'failed',
+            runs.Outcome(
+                error_type='http_401',
+                error_message='rejected Bearer abc123.def-456',
+            ),
+        )
+        self.assertIn('Bearer [redacted]', finished.error_message)
+        self.assertNotIn('abc123', finished.error_message)
+        self.assertNotIn('[truncated]', finished.error_message)
+
+
 class ExcerptTests(unittest.TestCase):
     def test_empty_body(self) -> None:
         self.assertEqual('', runs.excerpt(None))

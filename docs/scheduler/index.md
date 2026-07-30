@@ -9,7 +9,7 @@ platform:
 
 | Target | Goes to | Runs as |
 | --- | --- | --- |
-| `api` | `imbi-api` | the scheduler's service account, or a delegated user |
+| `api` | `imbi-api` | the scheduler's service account. A delegated user is phase 2: such a task is stored, but every firing is `skipped` until the exchange grant lands |
 | `gateway` | `imbi-gateway` | nothing — the endpoint has no bearer check and derives attribution from the payload |
 
 Long-running work, agentic execution, and rule evaluation belong to whichever

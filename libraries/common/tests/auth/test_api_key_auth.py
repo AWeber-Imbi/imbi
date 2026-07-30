@@ -390,8 +390,12 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_db, self.full_key, self.auth_settings
             )
         self.assertEqual(mock_db.execute.await_count, calls_after_first)
-        # Cache returns the same AuthContext instance.
-        self.assertIs(second, first)
+        # Equal but not identical: the cache hands out a copy per hit, so a
+        # caller that mutated one context cannot change what the next request
+        # using the same key sees. This was `assertIs`, which pinned the
+        # shared instance as though it were the intent.
+        self.assertEqual(second, first)
+        self.assertIsNot(second, first)
 
     async def test_clear_api_key_cache_forces_refetch(self) -> None:
         """M15: clear_api_key_cache makes the next call hit the DB."""
@@ -431,6 +435,35 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_db, self.full_key, self.auth_settings
             )
         self.assertGreater(mock_db.execute.await_count, calls_after_first)
+
+
+class ApiKeyCacheIsolationTests(unittest.TestCase):
+    """A cache hit must not hand out the cached instance itself."""
+
+    def setUp(self) -> None:
+        permissions.clear_api_key_cache()
+
+    def test_each_hit_returns_an_independent_context(self) -> None:
+        # `AuthContext` is not frozen, so returning the shared object means a
+        # mutation by one request changes what every later request using the
+        # same API key sees. Nothing mutates it today; this keeps that true by
+        # construction rather than by convention.
+        ctx = permissions.AuthContext(
+            auth_method='api_key', permissions={'project:read'}
+        )
+        permissions._api_key_cache_store('ik_isolation', ctx)
+
+        first = permissions._api_key_cache_lookup('ik_isolation')
+        second = permissions._api_key_cache_lookup('ik_isolation')
+        assert first is not None and second is not None
+        self.assertIsNot(first, second)
+        self.assertIsNot(first, ctx)
+
+        first.permissions.add('project:write')
+        self.assertEqual({'project:read'}, second.permissions)
+        third = permissions._api_key_cache_lookup('ik_isolation')
+        assert third is not None
+        self.assertEqual({'project:read'}, third.permissions)
 
 
 class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
