@@ -995,8 +995,8 @@ def _tag_record(
     url: str = '',
     published_at: datetime.datetime | None = None,
     fallback_tagged_at: datetime.datetime | None = None,
-) -> TagRecord:
-    """Build the ClickHouse row for one tag.
+) -> TagRecord | None:
+    """Build the ClickHouse row for one tag, ``None`` to skip it.
 
     ``sha`` records the *commit* the tag resolves to, never the hash of an
     annotated tag object. Callers pass whatever the ref points at, which
@@ -1005,6 +1005,16 @@ def _tag_record(
     breaks every downstream consumer, all of which key on commit SHAs --
     the ``commits`` join that supplies a release's CI status and
     authorship, and the Deployments tab's release-to-commit matching.
+
+    An annotated tag that cannot be peeled to a commit is *skipped*
+    rather than recorded against the tag object: a row whose sha matches
+    no commit renders a release with unknown CI, no author, and an empty
+    commit list, which is the failure this peeling exists to prevent.
+    Skipping keeps the bad value out of ClickHouse and leaves a warning
+    to diagnose from. GitHub always returns ``object`` on a tag object, so
+    this is defensive -- a tag pointing at a tree/blob, or a nested
+    annotated tag (which is legal git but never a release, and is not
+    peeled recursively), takes the same path.
 
     ``tagged_at`` preference: the GitHub release's published date
     (*published_at*), then the annotated tag's tagger date, then the
@@ -1021,10 +1031,25 @@ def _tag_record(
         )
     tagger: dict[str, typing.Any] = annotated.get('tagger') or {}
     target: dict[str, typing.Any] = annotated.get('object') or {}
+    commit_sha = str(target.get('sha') or '')
+    # A payload carrying a sha but no type is trusted: GitHub sends both,
+    # and defaulting to 'commit' keeps a well-formed row from being
+    # dropped over a missing field.
+    target_type = str(target.get('type') or 'commit')
+    if not commit_sha or target_type != 'commit':
+        LOGGER.warning(
+            'github-commit-sync: skipping tag %s for project %s; its tag '
+            'object %s resolves to %s, not a commit',
+            name,
+            project_id,
+            sha,
+            f'{target_type} {commit_sha}' if commit_sha else 'nothing',
+        )
+        return None
     return TagRecord(
         project_id=project_id,
         name=name,
-        sha=str(target.get('sha') or sha),
+        sha=commit_sha,
         url=url,
         message=str(annotated.get('message') or ''),
         tagger_name=str(tagger.get('name') or ''),
@@ -1077,21 +1102,21 @@ async def _reconcile_tags(
                 if obj.get('type') == 'tag'
                 else None
             )
-            out.append(
-                _tag_record(
-                    project_id=project_id,
-                    name=name,
-                    sha=sha,
-                    annotated=annotated,
-                    url=_tag_web_url(client, name),
-                    published_at=published,
-                    fallback_tagged_at=(
-                        await _commit_date(client, sha, max_wait=max_wait)
-                        if annotated is None and published is None
-                        else None
-                    ),
-                )
+            record = _tag_record(
+                project_id=project_id,
+                name=name,
+                sha=sha,
+                annotated=annotated,
+                url=_tag_web_url(client, name),
+                published_at=published,
+                fallback_tagged_at=(
+                    await _commit_date(client, sha, max_wait=max_wait)
+                    if annotated is None and published is None
+                    else None
+                ),
             )
+            if record is not None:
+                out.append(record)
         next_url = _next_page_url(resp.headers.get('link'))
         if next_url is None:
             return out
@@ -1137,23 +1162,24 @@ async def sync_tags(
             published = await _release_published_for_tag(
                 client, name, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
             )
-            records: list[pydantic.BaseModel] = [
-                _tag_record(
-                    project_id=ctx.project_id,
-                    name=name,
-                    sha=after,
-                    annotated=annotated,
-                    url=_tag_web_url(client, name),
-                    published_at=published,
-                    fallback_tagged_at=(
-                        await _commit_date(
-                            client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
-                        )
-                        if annotated is None and published is None
-                        else None
-                    ),
-                )
-            ]
+            pushed = _tag_record(
+                project_id=ctx.project_id,
+                name=name,
+                sha=after,
+                annotated=annotated,
+                url=_tag_web_url(client, name),
+                published_at=published,
+                fallback_tagged_at=(
+                    await _commit_date(
+                        client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                    )
+                    if annotated is None and published is None
+                    else None
+                ),
+            )
+            records: list[pydantic.BaseModel] = (
+                [] if pushed is None else [pushed]
+            )
             if action_config.reconcile_all:
                 extra = await _reconcile_tags(
                     client, ctx.project_id, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
@@ -1168,6 +1194,8 @@ async def sync_tags(
             exc,
         )
         return
+    if not records:
+        return  # every tag in this delivery was unpeelable (warned above)
     try:
         await clickhouse.insert('tags', records)
     except Exception:

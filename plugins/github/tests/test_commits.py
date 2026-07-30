@@ -1434,11 +1434,10 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         # committishes are keyed by.
         self.assertEqual(commit_sha, record.sha)
 
-    @respx.mock
-    async def test_annotated_tag_falls_back_when_unpeelable(self) -> None:
-        # A tag object payload without ``object`` (a provider quirk, or a
-        # 200 with an unexpected shape) must still produce a usable row
-        # rather than an empty sha.
+    async def _tags_recorded_for_target(
+        self, target: dict[str, str] | None
+    ) -> list[TagRecord]:
+        """Run a backfill whose one annotated tag points at *target*."""
         self._mock_default_branch()
         respx.get(f'{self._REPO}/commits').mock(
             return_value=httpx.Response(200, json=[_commit('c' * 40)])
@@ -1458,17 +1457,63 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 ],
             )
         )
+        body: dict[str, typing.Any] = {'message': 'Release 2.0.0'}
+        if target is not None:
+            body['object'] = target
         respx.get(f'{self._REPO}/git/tags/{tag_sha}').mock(
-            return_value=httpx.Response(200, json={'message': 'no object'})
+            return_value=httpx.Response(200, json=body)
         )
         with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
             await commits.GitHubCommitSync().sync_all_history(
                 ctx=self._ctx(), credentials=_CREDS
             )
-        tag_call = next(
-            c for c in insert.await_args_list if c.args[0] == 'tags'
+        return [
+            r
+            for c in insert.await_args_list
+            if c.args[0] == 'tags'
+            for r in c.args[1]
+        ]
+
+    @respx.mock
+    async def test_unpeelable_annotated_tag_is_skipped(self) -> None:
+        # A 200 tag object with no ``object`` leaves no way to resolve the
+        # commit. Recording it against the tag object hash would put back
+        # exactly the unjoinable sha this peeling removes, so the tag is
+        # dropped instead.
+        self.assertEqual([], await self._tags_recorded_for_target(None))
+
+    @respx.mock
+    async def test_annotated_tag_on_tree_is_skipped(self) -> None:
+        # A tag may legally point at a tree or blob. Neither is a release
+        # and neither hash joins to ``commits``, so it is skipped.
+        self.assertEqual(
+            [],
+            await self._tags_recorded_for_target(
+                {'sha': 'd' * 40, 'type': 'tree'}
+            ),
         )
-        self.assertEqual(tag_sha, tag_call.args[1][0].sha)
+
+    @respx.mock
+    async def test_nested_annotated_tag_is_skipped(self) -> None:
+        # A tag object pointing at another tag object is legal git but
+        # never a release; peeling is deliberately not recursive, so the
+        # tag is skipped rather than recorded against the inner tag hash.
+        self.assertEqual(
+            [],
+            await self._tags_recorded_for_target(
+                {'sha': 'd' * 40, 'type': 'tag'}
+            ),
+        )
+
+    @respx.mock
+    async def test_annotated_tag_on_commit_is_recorded(self) -> None:
+        # The positive control for the three skip cases above: an ordinary
+        # annotated release tag still lands, carrying the peeled commit.
+        recorded = await self._tags_recorded_for_target(
+            {'sha': 'd' * 40, 'type': 'commit'}
+        )
+        self.assertEqual(1, len(recorded))
+        self.assertEqual('d' * 40, recorded[0].sha)
 
 
 class WebBaseTestCase(unittest.TestCase):
