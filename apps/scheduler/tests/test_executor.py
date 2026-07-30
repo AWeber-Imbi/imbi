@@ -824,6 +824,30 @@ class PathTraversalTests(unittest.TestCase):
         with self.assertRaises(pydantic.ValidationError):
             models.ApiTarget(method='POST', path='/../other-org/widgets')
 
+    def test_the_model_is_what_keeps_a_rendered_path_rooted(self) -> None:
+        """Why only traversal is re-checked on the rendered value.
+
+        A template can introduce a dot-segment mid-path, which is why
+        `api_request` re-checks that. It cannot drop the leading slash or
+        move the host: the model requires the source to begin with a literal
+        `/`, and a literal prefix survives rendering, so an unrooted path is
+        refused at create time instead. A scheme appearing in the rendered
+        value is inert, because the path is appended to an absolute base.
+        """
+        with self.assertRaises(pydantic.ValidationError):
+            models.ApiTarget(method='POST', path='{{ x }}/widgets')
+        for source in ('/{{ x }}', '/ {{- x }}', '/{{ x }}//{{ x }}'):
+            with self.subTest(path=source):
+                rendered = render.api_request(
+                    helpers.build_task(organization='acme'),
+                    models.ApiTarget(method='POST', path=source),
+                    render.Renderer({'x': 'http://evil.com'}),
+                    API_URL,
+                )
+                url = httpx.URL(rendered.url)
+                self.assertEqual(httpx.URL(API_URL).host, url.host)
+                self.assertTrue(url.path.startswith('/organizations/acme/'))
+
     def test_the_model_refuses_a_non_slug_organization(self) -> None:
         for org in ('../other', 'acme/evil', 'ACME'):
             with self.subTest(organization=org):
