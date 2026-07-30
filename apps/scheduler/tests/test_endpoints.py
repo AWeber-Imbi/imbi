@@ -681,6 +681,28 @@ class CancelEndpointTests(EndpointTestCase):
             ).status_code,
         )
 
+    async def test_a_non_canonical_run_id_never_reaches_the_cancel(
+        self,
+    ) -> None:
+        """Why `Engine.cancel` needs no UUID normalization.
+
+        Postgres matches any textual UUID spelling in the leases table, so a
+        broadcast keyed on a non-canonical id would flag the lease while
+        `_cancel_local` failed to find it in `_in_flight`, which is keyed by
+        `str(uuid4())`. That is unreachable: run history is a ClickHouse
+        ``String`` compared byte-for-byte, so the lookup 404s before a cancel
+        is ever requested. If this test fails, `Engine.cancel` needs to
+        canonicalize.
+        """
+        run = await self._in_flight()
+        response = await self.client.post(
+            f'/api/runs/{run.run_id.upper()}/cancel'
+        )
+        self.assertEqual(404, response.status_code)
+        self.assertFalse(
+            await self.tasks.cancel_requested(uuid.UUID(run.run_id))
+        )
+
     async def test_cancelling_anothers_run_needs_admin(self) -> None:
         run = await self._in_flight(created_by=OTHER)
         self.as_user(OWNER, {dependencies.RUN})
