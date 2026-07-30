@@ -90,6 +90,30 @@ class PrefixValidationTestCase(unittest.IsolatedAsyncioTestCase):
             await plugin.list_keys(_ctx(path_prefix='imbi/'), _creds())
 
 
+class DescribePrefixTestCase(unittest.TestCase):
+    def test_describe_prefix_expands_variables(self) -> None:
+        # Keys are returned prefix-stripped, so the UI relies on this to
+        # show where they live — including the project-type remapping.
+        prefix = SSMConfiguration().describe_prefix(
+            _ctx(
+                path_prefix='/imbi/${project_type_slug}/${project_slug}/',
+                project_type_slugs=['apis'],
+                extras={},
+            )
+        )
+        self.assertEqual(prefix, '/imbi/apis/widget/')
+
+    def test_describe_prefix_applies_project_type_path_map(self) -> None:
+        ctx = _ctx(
+            path_prefix='/imbi/${project_type_slug}/${project_slug}/',
+            project_type_slugs=['apis'],
+        )
+        ctx.integration_options['project_type_path_map'] = {'apis': 'api'}
+        self.assertEqual(
+            SSMConfiguration().describe_prefix(ctx), '/imbi/api/widget/'
+        )
+
+
 class CredentialsTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_missing_credentials_raises(self) -> None:

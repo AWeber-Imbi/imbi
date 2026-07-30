@@ -1058,6 +1058,16 @@ class ConfigurationCapability(CapabilityHandler):
         key: str,
     ) -> None: ...
 
+    def describe_prefix(self, ctx: PluginContext) -> str | None:
+        """The resolved key prefix the capability reads and writes under.
+
+        Keys are returned with this prefix stripped, so the UI has no way
+        to reconstruct it — capability options may reference variables
+        (e.g. ``${project_type_slug}``) that only the plugin can expand.
+        Returns ``None`` for capabilities that have no prefix.
+        """
+        return None
+
 
 class LogsCapability(CapabilityHandler):
     @abc.abstractmethod

@@ -852,6 +852,12 @@ class ConfigKeyResponse(pydantic.BaseModel):
     secret: bool = False
 
 
+class ConfigPrefixResponse(pydantic.BaseModel):
+    """Response model for the resolved configuration key prefix."""
+
+    prefix: str | None = None
+
+
 class ConfigKeyValueResponse(ConfigKeyResponse):
     """Response model for a configuration key with its value."""
 

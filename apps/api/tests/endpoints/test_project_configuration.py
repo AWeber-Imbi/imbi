@@ -79,7 +79,9 @@ class _FakePlugin(Plugin):
     pass
 
 
-def _entry() -> RegistryEntry:
+def _entry(
+    handler: type[ConfigurationCapability] = _FakeConfigurationHandler,
+) -> RegistryEntry:
     return RegistryEntry(
         plugin_cls=_FakePlugin,
         manifest=PluginManifest(
@@ -89,7 +91,7 @@ def _entry() -> RegistryEntry:
                 Capability(
                     kind='configuration',
                     label='Configuration',
-                    handler=_FakeConfigurationHandler,
+                    handler=handler,
                 )
             ],
         ),
@@ -98,8 +100,11 @@ def _entry() -> RegistryEntry:
     )
 
 
-def _resolved(plugin_id: str) -> ResolvedCapability:
-    entry = _entry()
+def _resolved(
+    plugin_id: str,
+    handler: type[ConfigurationCapability] = _FakeConfigurationHandler,
+) -> ResolvedCapability:
+    entry = _entry(handler)
     return ResolvedCapability(
         integration_id=plugin_id,
         integration_slug='ssm-prod',
@@ -465,6 +470,91 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         )
         self.assertEqual(captured[0].project_slug, 'my-project')
         self.assertEqual(captured[0].team_slug, 'my-team')
+
+    # ----- prefix -----------------------------------------------------
+
+    def test_get_configuration_prefix(self) -> None:
+        # The prefix has to come from the plugin: keys are returned with
+        # it stripped, so the UI cannot reconstruct it.
+        captured: list[PluginContext] = []
+
+        class _PrefixHandler(_FakeConfigurationHandler):
+            def describe_prefix(self, ctx: PluginContext) -> str:
+                captured.append(ctx)
+                return f'/imbi/{ctx.environment}/acct/'
+
+        resolved = _resolved(self.plugin_id, _PrefixHandler)
+        with testclient.TestClient(self.test_app) as client:
+            with (
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
+                    return_value=resolved,
+                ),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration'
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
+                ),
+            ):
+                response = client.get(
+                    f'/organizations/myorg/projects/{self.project_id}'
+                    '/configuration/prefix'
+                )
+        self.assertEqual(response.status_code, 200)
+        # No environment given → the placeholder round-trips as a literal
+        # rather than expanding to any one environment's value.
+        self.assertEqual(
+            response.json()['prefix'], '/imbi/${environment}/acct/'
+        )
+        self.assertEqual(captured[0].environment, '${environment}')
+
+    def test_get_configuration_prefix_for_environment(self) -> None:
+        class _PrefixHandler(_FakeConfigurationHandler):
+            def describe_prefix(self, ctx: PluginContext) -> str:
+                return f'/imbi/{ctx.environment}/acct/'
+
+        resolved = _resolved(self.plugin_id, _PrefixHandler)
+        with testclient.TestClient(self.test_app) as client:
+            with (
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
+                    return_value=resolved,
+                ),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration'
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
+                ),
+            ):
+                response = client.get(
+                    f'/organizations/myorg/projects/{self.project_id}'
+                    '/configuration/prefix',
+                    params={'environment': 'testing'},
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['prefix'], '/imbi/testing/acct/')
+
+    def test_get_configuration_prefix_unsupported(self) -> None:
+        # Capabilities that declare no prefix fall back to the base
+        # implementation and report ``null``.
+        with testclient.TestClient(self.test_app) as client:
+            with (
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration.resolve_capability',
+                    return_value=_resolved(self.plugin_id),
+                ),
+                mock.patch(
+                    'imbi.api.endpoints.project_configuration'
+                    '.decrypt_integration_credentials',
+                    return_value={'token': 'x'},
+                ),
+            ):
+                response = client.get(
+                    f'/organizations/myorg/projects/{self.project_id}'
+                    '/configuration/prefix'
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['prefix'])
 
     # ----- value fetch ------------------------------------------------
 
