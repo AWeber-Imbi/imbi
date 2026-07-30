@@ -12,6 +12,7 @@ import {
   commitRange,
   compareTags,
   defaultStageSlug,
+  newestTag,
 } from './pipeline'
 
 const env = (slug: string, sortOrder: number): Environment =>
@@ -234,6 +235,90 @@ describe('buildPipeline', () => {
     ])
   })
 
+  it('offers a release already cut inside the promote range', () => {
+    // The reported bug: v6.5.2 was tagged out of band at ccc333, so staging
+    // (whose upstream runs untagged commits) listed it with no way to deploy
+    // it and offered to cut a second tag over the same commit instead.
+    const outOfBand = [
+      currentRelease('testing', 'fff666fff666', null),
+      currentRelease('staging', 'bbb222bbb222', 'v6.5.1'),
+    ]
+    const staging = buildPipeline(ENVS, outOfBand, HISTORY, COMMITS)[1]
+    expect(staging.kind).toBe('promote')
+    expect(staging.pendingReleases.map((r) => r.tag)).toEqual(['v6.5.2'])
+    expect(
+      staging.recentReleases.map((r) => [r.entry.tag, r.relation]),
+    ).toEqual([
+      ['v6.5.2', 'ahead'],
+      ['v6.5.1', 'current'],
+      ['v6.5.0', 'behind'],
+      ['v6.4.0', 'behind'],
+    ])
+    // Both moves stay available: deploy v6.5.2, or tag the commits that
+    // superseded it. Only the latter are promotable — re-tagging ccc333
+    // would duplicate v6.5.2.
+    expect(staging.pendingCommits.map((c) => c.sha)).toEqual([
+      'fff666fff666',
+      'eee555eee555',
+      'ddd444ddd444',
+      'ccc333ccc333',
+    ])
+    expect(staging.promotableCommits.map((c) => c.sha)).toEqual([
+      'fff666fff666',
+      'eee555eee555',
+      'ddd444ddd444',
+    ])
+  })
+
+  it('has nothing to promote when the pending release is the newest commit', () => {
+    // Testing runs the released commit itself, so deploying v6.5.2 is the
+    // whole move and the promote form has no commits to offer.
+    const atRelease = [
+      currentRelease('testing', 'ccc333ccc333', null),
+      currentRelease('staging', 'bbb222bbb222', 'v6.5.1'),
+    ]
+    const staging = buildPipeline(ENVS, atRelease, HISTORY, COMMITS)[1]
+    expect(staging.pendingReleases.map((r) => r.tag)).toEqual(['v6.5.2'])
+    expect(staging.promotableCommits).toEqual([])
+  })
+
+  it('leaves a promote stage with no releases when the range is untagged', () => {
+    // Staging runs the newest release; the one commit waiting carries no tag,
+    // so promoting (cutting a tag) is still the only move.
+    expect(stages[1].pendingReleases).toEqual([])
+    expect(stages[1].promotableCommits.map((c) => c.sha)).toEqual([
+      'ddd444ddd444',
+    ])
+  })
+
+  it('identifies the running release by commit when the tag is missing', () => {
+    // A deploy recorded against an untagged Release node (a raw-SHA deploy,
+    // or one that attached to a webhook-created node) still ran whatever was
+    // cut at that commit. Without resolving by committish the env reads as
+    // untagged and its whole release list vanishes.
+    const untagged = [
+      currentRelease('testing', 'fff666fff666', null),
+      currentRelease('staging', 'ccc333ccc333', null),
+    ]
+    const staging = buildPipeline(ENVS, untagged, HISTORY, COMMITS)[1]
+    expect(staging.currentHistoryEntry?.tag).toBe('v6.5.2')
+    expect(
+      staging.recentReleases.map((r) => [r.entry.tag, r.relation]),
+    ).toEqual([
+      ['v6.5.2', 'current'],
+      ['v6.5.1', 'behind'],
+      ['v6.5.0', 'behind'],
+      ['v6.4.0', 'behind'],
+    ])
+  })
+
+  it('lists nothing when the deployed commit matches no release', () => {
+    const unknown = [currentRelease('staging', '777zzz777zzz', null)]
+    const staging = buildPipeline(ENVS, unknown, HISTORY, COMMITS)[1]
+    expect(staging.currentHistoryEntry).toBeNull()
+    expect(staging.recentReleases).toEqual([])
+  })
+
   it('treats a tagged upstream as release-kind even mid-train', () => {
     const envs = [...ENVS, env('dr', 4)]
     const current = [...CURRENT, currentRelease('dr', '000999000999', 'v6.4.0')]
@@ -274,6 +359,23 @@ describe('compareTags', () => {
     expect(compareTags('1.102.3', '2.101.0')).toBeLessThan(0)
     expect(compareTags('v6.5.2', '6.5.2')).toBe(0)
     expect(compareTags('not-semver', '1.0.0')).toBeNull()
+  })
+})
+
+describe('newestTag', () => {
+  it('picks the highest-semver tag regardless of list order', () => {
+    expect(newestTag(HISTORY)).toBe('v6.5.2')
+    expect(newestTag([entry('v6.4.0', 'a'), entry('v6.10.0', 'b')])).toBe(
+      'v6.10.0',
+    )
+  })
+
+  it('ignores tags that do not parse, and empty history', () => {
+    expect(newestTag([entry('nightly', 'a'), entry('v1.2.3', 'b')])).toBe(
+      'v1.2.3',
+    )
+    expect(newestTag([])).toBeNull()
+    expect(newestTag([entry('nightly', 'a')])).toBeNull()
   })
 })
 

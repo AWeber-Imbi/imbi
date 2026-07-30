@@ -6,6 +6,7 @@ import {
   X,
 } from 'lucide-react'
 
+import { IconTooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { DeploymentCommitCiStatus } from '@/types'
 
@@ -31,7 +32,11 @@ const MAP: Record<string, { color: string; icon: LucideIcon; title: string }> =
     },
   }
 
-/** A small, colour-independent CI status indicator (icon carries meaning). */
+/**
+ * A small, colour-independent CI status indicator (icon carries meaning).
+ * Hovering names the status in words, through the design-system tooltip
+ * rather than a native ``title``.
+ */
 export function CiStatusDot({
   className,
   size = 14,
@@ -40,16 +45,18 @@ export function CiStatusDot({
   const s = MAP[status ?? 'unknown'] ?? MAP.unknown
   const Icon = s.icon
   return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full border',
-        s.color,
-        className,
-      )}
-      style={{ height: size + 2, width: size + 2 }}
-      title={s.title}
-    >
-      <Icon size={size - 4} strokeWidth={3} />
-    </span>
+    <IconTooltip label={s.title}>
+      <span
+        aria-label={s.title}
+        className={cn(
+          'inline-flex shrink-0 items-center justify-center rounded-full border',
+          s.color,
+          className,
+        )}
+        style={{ height: size + 2, width: size + 2 }}
+      >
+        <Icon size={size - 4} strokeWidth={3} />
+      </span>
+    </IconTooltip>
   )
 }

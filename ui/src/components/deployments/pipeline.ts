@@ -31,12 +31,25 @@ export interface PipelineStage {
   env: Environment
   kind: StageKind
   /**
-   * Commits deployed upstream but not here (newest first) — what a
-   * promotion would tag. Only populated for promote stages.
+   * Highest-semver tag in the project's release history — what a new tag is
+   * bumped from. See ``newestTag``.
+   */
+  latestTag: null | string
+  /**
+   * Commits deployed upstream but not here (newest first). Only populated
+   * for promote stages.
    */
   pendingCommits: RecentCommit[]
   /** Tagged releases live upstream but not here (newest first). */
   pendingReleases: ReleaseHistoryEntry[]
+  /**
+   * The slice of ``pendingCommits`` a new tag would cover (newest first):
+   * everything above the newest release already cut inside the range, since
+   * that release is deployed on its own rather than re-tagged. Equals
+   * ``pendingCommits`` when nothing in the range is tagged, and is empty
+   * when the newest pending commit *is* the tagged one.
+   */
+  promotableCommits: RecentCommit[]
   /**
    * Releases around the one this env runs (newest first), including the
    * current one and any that rank above it. See ``RecentRelease``.
@@ -88,6 +101,7 @@ export function buildPipeline(
   const currentBySlug = new Map(
     currentReleases.map((row) => [row.environment.slug, row]),
   )
+  const latestTag = newestTag(history)
   // fallow-ignore-next-line complexity
   return environments.map((env, idx) => {
     const upstream = idx > 0 ? environments[idx - 1] : null
@@ -100,26 +114,39 @@ export function buildPipeline(
       : upstreamCurrent?.release?.tag
         ? 'release'
         : 'promote'
-    // No kind guard: pendingReleases already returns [] when the upstream
-    // runs no tag, which is what makes a stage 'promote' in the first
-    // place, and when there is no upstream at all.
-    const pending = pendingReleases(history, upstreamCurrent, current)
+    const pendingCommits =
+      kind === 'promote' && upstreamCurrent?.release
+        ? commitRange(
+            commits,
+            upstreamCurrent.release.committish,
+            current?.release?.committish ?? null,
+          )
+        : []
+    // A promote stage's upstream runs no tag, so what's deployable here is
+    // any release already cut for a commit in the promote range — a tag made
+    // out of band, or one whose deploy never reached this env. Otherwise it's
+    // the slice of history between the two envs' tags (also [] when there is
+    // no upstream at all).
+    const pending =
+      kind === 'promote'
+        ? releasesInRange(history, pendingCommits)
+        : pendingReleases(history, upstreamCurrent, current)
     const currentEntry = currentReleaseEntry(history, current)
     return {
       current,
       currentHistoryEntry: currentEntry,
       env,
       kind,
-      pendingCommits:
-        kind === 'promote' && upstreamCurrent?.release
-          ? commitRange(
-              commits,
-              upstreamCurrent.release.committish,
-              current?.release?.committish ?? null,
-            )
-          : [],
+      latestTag,
+      pendingCommits,
       pendingReleases: pending,
-      recentReleases: recentReleases(history, current, currentEntry, pending),
+      promotableCommits: commitsAbove(pendingCommits, pending[0]?.sha ?? null),
+      recentReleases: recentReleases(
+        history,
+        currentEntry?.tag ?? null,
+        currentEntry,
+        pending,
+      ),
       upstream,
       upstreamCurrent,
     }
@@ -175,19 +202,64 @@ export function defaultStageSlug(stages: PipelineStage[]): null | string {
   return stages[stages.length - 1]?.env.slug ?? null
 }
 
+/**
+ * The highest-semver tag in the synced release history, ``null`` when the
+ * history is empty or nothing parses. This — not the tag an environment
+ * happens to run — is what a new tag must be bumped from, or a release cut
+ * out of band gets a successor that ranks below it.
+ */
+export function newestTag(history: ReleaseHistoryEntry[]): null | string {
+  let best: null | string = null
+  for (const entry of history) {
+    if (!semverKey(entry.tag)) continue
+    const cmp = compareTags(best, entry.tag)
+    if (best === null || (cmp != null && cmp < 0)) best = entry.tag
+  }
+  return best
+}
+
 /** SHA-prefix match in either direction (events may record short SHAs). */
 export function shaMatch(a: string, b: string): boolean {
   return !!a && !!b && (a.startsWith(b) || b.startsWith(a))
 }
 
-/** History entry for the currently running release, if any. */
+/**
+ * The commits ranking above ``sha`` in a newest-first list — everything
+ * newer than the release already cut at that commit. The whole list when
+ * ``sha`` is null or isn't in it.
+ */
+function commitsAbove(
+  commits: RecentCommit[],
+  sha: null | string,
+): RecentCommit[] {
+  if (!sha) return commits
+  const idx = commits.findIndex((c) => shaMatch(c.sha, sha))
+  return idx < 0 ? commits : commits.slice(0, idx)
+}
+
+/**
+ * History entry for the currently running release, if any.
+ *
+ * Falls back to matching on the deployed *commit* when the release the env
+ * runs carries no tag: a raw-SHA deploy (or one recorded against an
+ * untagged Release node) still ran whatever release was cut at that commit,
+ * and without this the env reads as "running an untagged commit" and its
+ * whole release list disappears.
+ */
 function currentReleaseEntry(
   history: ReleaseHistoryEntry[],
   current: CurrentReleaseEnvironment | null,
 ): null | ReleaseHistoryEntry {
   const release = current?.release
-  if (!release?.tag) return null
-  const tag = release.tag ?? null
+  if (!release) return null
+  if (!release.tag) {
+    return (
+      history.find(
+        (entry) => !!entry.sha && shaMatch(entry.sha, release.committish),
+      ) ?? null
+    )
+  }
+  const tag = release.tag
   const idx = history.findIndex((entry) => tagEq(entry.tag, tag))
   if (idx >= 0) return history[idx]
   return entryFromRelease(release)
@@ -272,11 +344,10 @@ function pendingReleases(
  */
 function recentReleases(
   history: ReleaseHistoryEntry[],
-  current: CurrentReleaseEnvironment | null,
+  envTag: null | string,
   currentEntry: null | ReleaseHistoryEntry,
   pending: ReleaseHistoryEntry[],
 ): RecentRelease[] {
-  const envTag = current?.release?.tag
   if (!currentEntry || !envTag) return []
   const above: ReleaseHistoryEntry[] = []
   const below: ReleaseHistoryEntry[] = []
@@ -310,6 +381,26 @@ function recentReleases(
       .slice(0, RELEASE_WINDOW)
       .map((entry) => ({ entry, relation: 'behind' as const })),
   ]
+}
+
+/**
+ * Releases that already exist for the commits waiting to promote, newest
+ * first (``pendingCommits`` order). These are deployable as they stand:
+ * cutting another tag at the same commit would duplicate the release.
+ */
+function releasesInRange(
+  history: ReleaseHistoryEntry[],
+  pendingCommits: RecentCommit[],
+): ReleaseHistoryEntry[] {
+  const byShortSha = new Map(
+    history.filter((e) => !!e.sha).map((e) => [e.sha.slice(0, 7), e]),
+  )
+  const out: ReleaseHistoryEntry[] = []
+  for (const commit of pendingCommits) {
+    const entry = byShortSha.get(commit.sha.slice(0, 7))
+    if (entry) out.push(entry)
+  }
+  return out
 }
 
 /**

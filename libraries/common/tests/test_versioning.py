@@ -170,6 +170,29 @@ class IsCommitishTestCase(unittest.TestCase):
         self.assertFalse(versioning.is_commitish('main'))
 
 
+class ShortCommittishTestCase(unittest.TestCase):
+    """Tests for ``short_committish``."""
+
+    def test_full_sha_is_shortened(self) -> None:
+        self.assertEqual(
+            'abc1234', versioning.short_committish('abc1234' + 'd' * 33)
+        )
+
+    def test_uppercase_sha_is_lowercased(self) -> None:
+        self.assertEqual('abc1234', versioning.short_committish('ABC1234'))
+
+    def test_short_sha_unchanged(self) -> None:
+        self.assertEqual('abc1234', versioning.short_committish('abc1234'))
+
+    def test_branch_name_unchanged(self) -> None:
+        self.assertEqual('main', versioning.short_committish('main'))
+
+    def test_tag_unchanged(self) -> None:
+        self.assertEqual(
+            'release-2.4.0', versioning.short_committish('release-2.4.0')
+        )
+
+
 class MatchesTagFormatsTestCase(unittest.TestCase):
     """Tests for ``matches_tag_formats``."""
 

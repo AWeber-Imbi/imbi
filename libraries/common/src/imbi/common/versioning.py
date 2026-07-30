@@ -76,6 +76,20 @@ def is_commitish(value: str) -> bool:
     return bool(COMMITISH_RE.match(value))
 
 
+def short_committish(value: str) -> str:
+    """The short, lowercase form a ``Release.committish`` is stored as.
+
+    Every writer records ``sha[:7].lower()`` and the deploy path looks
+    releases up by that form, so a full-length SHA yields a node nothing can
+    ever match.  Only a SHA-shaped value is shortened: a committish naming a
+    branch or tag (``main``, ``release-2.4.0``) is returned unchanged, since
+    truncating it would corrupt the identity rather than normalize it.
+    """
+    if is_commitish(value.lower()):
+        return value[:7].lower()
+    return value
+
+
 def validate_version(version: str, fmt: VersionFormat) -> str:
     """Validate ``version`` against ``fmt`` and return it.
 

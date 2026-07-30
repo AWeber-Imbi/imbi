@@ -24,6 +24,12 @@ interface EnvironmentDetailProps {
  * hero card: commit-based deploys for the entry env, an inline promote
  * form when the upstream runs untagged commits, or the pending-release
  * stack when the upstream already runs tags.
+ *
+ * A release already cut inside a promote range (a tag made out of band)
+ * doesn't get its own card: the promote form drops it from the commits it
+ * offers, so no second tag is cut over it, and the currently-running card's
+ * recent-releases row is where it gets deployed. The pending-release stack
+ * stands in only when there is nothing left to tag above it.
  */
 export function EnvironmentDetail({
   accent,
@@ -45,9 +51,16 @@ export function EnvironmentDetail({
       />
     )
   }
+  // On a promote stage the form is the hero. It steps aside only when a
+  // pending release accounts for every commit waiting, leaving nothing to
+  // tag — then deploying that release is the whole move and the
+  // pending-release stack says so.
+  const showPromote =
+    stage.kind === 'promote' &&
+    (stage.pendingReleases.length === 0 || stage.promotableCommits.length > 0)
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {stage.kind === 'promote' ? (
+      {showPromote ? (
         <PendingPromoteCard
           accent={accent}
           actions={actions}

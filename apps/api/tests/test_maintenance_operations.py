@@ -608,3 +608,173 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
                 mock.AsyncMock(), mock.AsyncMock(), 'p1'
             )
         self.assertEqual('skipped', outcome)
+
+
+def _release_row(
+    node_id: str,
+    tag: str | None,
+    committish: str,
+    edges: int = 0,
+    description: str | None = None,
+    created_at: str = '2026-01-01T00:00:00+00:00',
+) -> dict[str, object]:
+    """One row as ``_RELEASE_NODES_QUERY`` returns it (agtype-parsed)."""
+    return {
+        'id': node_id,
+        'tag': tag,
+        'committish': committish,
+        'description': description,
+        'links': None,
+        'created_at': created_at,
+        'edges': edges,
+    }
+
+
+class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
+    """The release-identity repair, driven off stubbed graph rows."""
+
+    @staticmethod
+    def _db(rows: list[dict[str, object]]) -> mock.AsyncMock:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(side_effect=[rows] + [[]] * 20)
+        return db
+
+    @staticmethod
+    def _queries(db: mock.AsyncMock) -> list[str]:
+        return [call.args[0] for call in db.execute.await_args_list[1:]]
+
+    async def test_skipped_without_releases(self) -> None:
+        outcome = await operations.execute_release_repair(
+            self._db([]), mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('skipped', outcome)
+
+    async def test_skipped_when_nothing_needs_repair(self) -> None:
+        db = self._db([_release_row('r1', '2.21.0', '287d291', edges=1)])
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual([], self._queries(db))
+
+    async def test_normalizes_a_full_length_committish(self) -> None:
+        db = self._db(
+            [
+                _release_row(
+                    'r1',
+                    '2.21.0',
+                    '287d2912fb7ae2086a9a25dd56a8369a1b2c3d4e',
+                )
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        params = db.execute.await_args_list[1].args[1]
+        self.assertEqual('287d291', params['committish'])
+        self.assertEqual('r1', params['id'])
+
+    async def test_leaves_a_branch_committish_alone(self) -> None:
+        db = self._db([_release_row('r1', None, 'main', edges=1)])
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('skipped', outcome)
+
+    async def test_moves_the_tag_onto_the_node_owning_history(self) -> None:
+        # The reported break: the deploy attached to the untagged node, so
+        # the env showed a bare SHA while the tag sat on an edge-less node.
+        db = self._db(
+            [
+                _release_row('untagged', None, '287d291', edges=1),
+                _release_row(
+                    'tagged', '2.21.0', '287d291', description='notes'
+                ),
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        queries = self._queries(db)
+        self.assertIn('SET r.tag', queries[0])
+        retag = db.execute.await_args_list[1].args[1]
+        self.assertEqual('untagged', retag['id'])
+        self.assertEqual('2.21.0', retag['tag'])
+        self.assertEqual('notes', retag['description'])
+        # ...and the now-redundant edge-less node is removed.
+        self.assertIn('DETACH DELETE', queries[1])
+        self.assertEqual('tagged', db.execute.await_args_list[2].args[1]['id'])
+
+    async def test_salvages_notes_from_the_deleted_duplicate(self) -> None:
+        # The target already carries the tag but no notes, while the
+        # edge-less duplicate about to be deleted holds them.
+        db = self._db(
+            [
+                _release_row('kept', '2.21.0', '287d291', edges=1),
+                _release_row('dupe', '2.21.0', '287d291', description='notes'),
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        queries = self._queries(db)
+        self.assertIn('SET r.tag', queries[0])
+        salvage = db.execute.await_args_list[1].args[1]
+        self.assertEqual('kept', salvage['id'])
+        self.assertEqual('notes', salvage['description'])
+        self.assertIn('DETACH DELETE', queries[1])
+        self.assertEqual('dupe', db.execute.await_args_list[2].args[1]['id'])
+
+    async def test_no_salvage_write_when_the_target_has_the_notes(
+        self,
+    ) -> None:
+        # Nothing to move: the target already holds notes, so the duplicate
+        # is simply removed without a pointless write.
+        db = self._db(
+            [
+                _release_row(
+                    'kept', '2.21.0', '287d291', edges=1, description='mine'
+                ),
+                _release_row(
+                    'dupe', '2.21.0', '287d291', description='theirs'
+                ),
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        queries = self._queries(db)
+        self.assertNotIn('SET r.tag', ' '.join(queries))
+        self.assertIn('DETACH DELETE', queries[0])
+        self.assertEqual('dupe', db.execute.await_args_list[1].args[1]['id'])
+
+    async def test_keeps_a_duplicate_that_carries_history(self) -> None:
+        db = self._db(
+            [
+                _release_row('a', None, '287d291', edges=2),
+                _release_row('b', '2.21.0', '287d291', edges=1),
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertNotIn('DETACH DELETE', ' '.join(self._queries(db)))
+
+    async def test_leaves_a_retagged_commit_alone(self) -> None:
+        # Two tags on one commit is ambiguous — never guess which wins.
+        db = self._db(
+            [
+                _release_row('a', '2.21.0', '287d291', edges=1),
+                _release_row('b', '2.21.1', '287d291'),
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual([], self._queries(db))

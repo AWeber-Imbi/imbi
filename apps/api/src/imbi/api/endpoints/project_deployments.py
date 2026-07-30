@@ -25,7 +25,7 @@ import httpx
 import nanoid
 import pydantic
 
-from imbi.api.auth import permissions
+from imbi.api.auth import permissions, principals
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.deployment_sync import service as deployment_sync_service
 from imbi.api.endpoints._helpers import (
@@ -60,9 +60,32 @@ from imbi.common.plugins.base import (
     PluginContext,
     Ref,
     RemoteDeployment,
+    RemoteRelease,
 )
 
 LOGGER = logging.getLogger(__name__)
+
+# Tags the release-notes backfill will fetch in one pass. Bounded because
+# each one is a remote API call, and only tags missing notes are counted --
+# a first sync of a long-lived repo tops out here and the next sync picks up
+# where it left off.
+_NOTES_BACKFILL_CAP = 25
+
+#: A commit's author as an *identity*: the source host's user (a stable
+#: handle the identity connections can resolve) when the sync recorded one,
+#: otherwise the raw git author email. Rows attribute to one Imbi user only
+#: when they agree on a single value, so the preference order matters.
+_AUTHOR_EMAIL_SQL = (
+    "coalesce(nullIf(author_user, ''), nullIf(author_email, ''))"
+)
+
+#: Every synced tag for a project. Deliberately unfiltered by timestamp:
+#: callers rank the full candidate set by semver, so a late-synced or
+#: backported tag must still be able to reach the head of the list.
+_PROJECT_TAGS_SQL = (
+    'SELECT name, sha, tagged_at, recorded_at FROM tags FINAL '
+    'WHERE project_id = {project_id:String}'
+)
 
 project_deployments_router = fastapi.APIRouter(tags=['Project: Deployments'])
 
@@ -214,9 +237,13 @@ class RecentCommit(pydantic.BaseModel):
     message: str
     author: str | None = None
     #: Email of the Imbi user the commit author resolves to via identity
-    #: attribution (``commits.author_user``); ``None`` when the author
-    #: maps to no active identity connection. Lets the UI link the author
-    #: to their profile and render their Gravatar.
+    #: attribution (``commits.author_user``), falling back to the git
+    #: author's own email when the author maps to no active identity
+    #: connection; ``None`` when neither is recorded. Lets the UI link the
+    #: author to their profile, render their Gravatar, and -- since the git
+    #: *name* varies per commit (a squash merge records the source host's
+    #: profile name, a local commit whatever git config holds) -- show one
+    #: person under one name down a commit list.
     author_email: str | None = None
     authored_at: datetime.datetime
     ci_status: str = 'unknown'
@@ -874,6 +901,24 @@ async def _existing_tag_for_committish(
     return None
 
 
+async def _best_effort[T](
+    call: collections.abc.Awaitable[T], label: str
+) -> T | None:
+    """Await an *optional* plugin call, degrading any failure to ``None``.
+
+    The shared contract for capability methods a plugin need not implement:
+    ``NotImplementedError``, a remote error, or a timeout all yield ``None``
+    so the caller falls back rather than failing the write it is enriching.
+    """
+    try:
+        return await call_with_timeout(call)
+    except NotImplementedError:
+        return None
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('%s failed', label, exc_info=True)
+        return None
+
+
 async def _get_release_notes(
     handler: DeploymentCapability,
     ctx: PluginContext,
@@ -889,17 +934,57 @@ async def _get_release_notes(
     a timeout -- degrades to ``None`` so a notes lookup never blocks the
     surrounding write.
     """
-    try:
-        return await call_with_timeout(
-            handler.get_release_notes(ctx, credentials, tag)
-        )
-    except NotImplementedError:
-        return None
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'get_release_notes failed for tag=%s', tag, exc_info=True
-        )
-        return None
+    return await _best_effort(
+        handler.get_release_notes(ctx, credentials, tag),
+        f'get_release_notes tag={tag}',
+    )
+
+
+async def _get_release(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    tag: str,
+) -> RemoteRelease | None:
+    """Best-effort fetch of the remote release for ``tag``.
+
+    The metadata-carrying counterpart to :func:`_get_release_notes`, with
+    the same degradation contract: a capability that doesn't implement it,
+    a remote 404/403, or a timeout all yield ``None`` so a caller can fall
+    back to the notes-only path rather than failing its write.
+    """
+    return await _best_effort(
+        handler.get_release(ctx, credentials, tag), f'get_release tag={tag}'
+    )
+
+
+async def _remote_principal(
+    login: str | None,
+    subject: str | None,
+    resolve_user: collections.abc.Callable[
+        [str], collections.abc.Awaitable[str | None]
+    ]
+    | None,
+) -> str | None:
+    """Who to credit a remote actor to, as a stored principal.
+
+    Prefers the Imbi user the actor's remote subject resolves to (an email,
+    matching what the in-product flows record) and falls back to the remote
+    login.  ``None`` when the remote credits nobody, leaving the caller's own
+    default in place.  Resolution is best-effort: a failing identity lookup
+    degrades to the login rather than failing the write being attributed.
+    """
+    if subject and resolve_user is not None:
+        try:
+            email = await resolve_user(subject)
+        except Exception:  # noqa: BLE001 - attribution is best-effort
+            LOGGER.warning(
+                'failed to resolve remote subject=%s', subject, exc_info=True
+            )
+            email = None
+        if email:
+            return email
+    return login or None
 
 
 async def fetch_release_notes_for_tag(
@@ -928,6 +1013,107 @@ async def fetch_release_notes_for_tag(
     return await _get_release_notes(
         handler, ctx, _resolve_credentials(ctx, credentials), tag
     )
+
+
+async def backfill_release_notes(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    limit: int = _NOTES_BACKFILL_CAP,
+) -> int:
+    """Give synced tags that have no notes a ``Release`` node with them.
+
+    A tag cut outside imbi -- a release script, CI, the source host's own
+    UI -- reaches the ``tags`` table through commit sync but never gets a
+    ``Release`` node, so the Deployments tab lists it with no title and
+    "No release notes".  For the newest ``limit`` such tags this asks the
+    deployment capability for the remote release and upserts the node from
+    it: body, title, URL, and the release's *remote* author, resolved
+    through the project's identity connections to an Imbi user where one
+    matches.  Returns the number of tags enriched.
+
+    Best-effort throughout: a project with no deployment capability, a
+    plugin that implements neither ``get_release`` nor
+    ``get_release_notes``, or a tag with no remote release each yield
+    nothing rather than raising.  The upsert never clobbers notes that are
+    already there.
+    """
+    tag_rows = await clickhouse.query(
+        _PROJECT_TAGS_SQL, {'project_id': project_id}
+    )
+    if not tag_rows:
+        return 0
+    nodes = await _release_nodes_by_tag(db, org_slug, project_id)
+    missing = [
+        row
+        for row in tag_rows
+        if row.get('sha')
+        and not (nodes.get(str(row['name'])) or {}).get('description')
+    ]
+    if not missing:
+        return 0
+    missing.sort(
+        key=lambda r: _release_tag_order_key(
+            str(r['name']), r.get('tagged_at') or r.get('recorded_at')
+        ),
+        reverse=True,
+    )
+    try:
+        resolved, ctx, credentials = await _resolve_and_context(
+            db, org_slug, project_id, auth, best_effort_identity=True
+        )
+    except fastapi.HTTPException:
+        return 0
+    handler = _handler(resolved)
+    creds = _resolve_credentials(ctx, credentials)
+    # Resolve the remote's release author to an Imbi user the same way the
+    # deployment resync resolves a deployer, so a release reads as the person
+    # who cut it rather than as the login that happens to appear upstream.
+    integration_ids = await attribution.identity_integration_ids_for_project(
+        db, project_id
+    )
+    resolve_user = attribution.make_user_resolver(db, integration_ids)
+    enriched = 0
+    for row in missing[:limit]:
+        tag = str(row['name'])
+        release = await _get_release(handler, ctx, creds, tag)
+        notes = (
+            release.body_markdown
+            if release
+            else await _get_release_notes(handler, ctx, creds, tag)
+        )
+        if not notes:
+            continue
+        author = (
+            await _remote_principal(
+                release.author, release.author_subject, resolve_user
+            )
+            if release
+            else None
+        )
+        try:
+            await _upsert_release_node(
+                db,
+                project_id=project_id,
+                tag=tag,
+                committish=str(row['sha']),
+                title=(release.name if release and release.name else tag),
+                notes_markdown=notes,
+                release_url=release.html_url if release else None,
+                created_by=author or auth.principal_name,
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'release-notes backfill failed for project=%s tag=%s',
+                project_id,
+                tag,
+                exc_info=True,
+            )
+            continue
+        enriched += 1
+    return enriched
 
 
 async def resync_for_project(
@@ -1126,6 +1312,11 @@ async def _apply_remote_deployment(
         )
         is not None
     )
+    # Attribute the deploy to an Imbi user when the remote subject
+    # resolves; otherwise keep the raw remote login for display.
+    performed_by = await _remote_principal(
+        observed.creator, observed.creator_subject, resolve_user
+    )
     release_id = await _upsert_release_node(
         db,
         project_id=project_id,
@@ -1134,7 +1325,11 @@ async def _apply_remote_deployment(
         title=title,
         notes_markdown=notes or observed.description or '',
         release_url=observed.deployment_url,
-        created_by=recorded_by,
+        # Credit whoever the remote says deployed it, not the resync
+        # worker's own principal: this is a release Imbi observed rather
+        # than one it performed, and ``created_by`` is what the release
+        # history shows as the author.
+        created_by=performed_by or recorded_by,
     )
     if first_time_this_resync:
         seen_identities.add(identity)
@@ -1142,13 +1337,6 @@ async def _apply_remote_deployment(
             summary.releases_updated += 1
         else:
             summary.releases_created += 1
-    # Attribute the deploy to an Imbi user when the remote subject
-    # resolves; otherwise keep the raw remote login for display.
-    performed_by = observed.creator
-    if observed.creator_subject and resolve_user is not None:
-        resolved_email = await resolve_user(observed.creator_subject)
-        if resolved_email:
-            performed_by = resolved_email
     result = await append_deployment_event(
         db,
         org_slug=org_slug,
@@ -2026,7 +2214,14 @@ async def _upsert_release_node(
     tag from the same SHA is benign and refreshes notes / links;
     re-tagging the same SHA produces a new ``Release`` node.
     Returns the resulting ``Release.id``.
+
+    The committish is normalized to the short, lowercase form here rather
+    than trusted from the caller: it is the identity every reader looks a
+    release up by (``_release_id_for``, the deploy path, the release
+    history), so one writer passing a full SHA yields a node nothing can
+    match and a deploy that silently attaches to a different release.
     """
+    committish = versioning.short_committish(committish)
     now = datetime.datetime.now(datetime.UTC).isoformat()
     links_json = (
         json.dumps([{'type': 'github_release', 'url': release_url}])
@@ -2081,6 +2276,11 @@ async def _upsert_release_node(
     # preserves whatever the node already holds.  Without this guard a
     # resync that can't fetch notes would wipe the "What's Changed" body a
     # promote (or an earlier enriched create) had already written.
+    #
+    # ``created_by`` is refreshed only in one direction: a node still
+    # credited to a background worker takes the real author when one is
+    # known, but a person already recorded is never overwritten (including
+    # by a later worker-driven pass).
     update_query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
@@ -2088,6 +2288,9 @@ async def _upsert_release_node(
     SET r.description = CASE WHEN {description} = ''
             THEN r.description ELSE {description} END,
         r.links = CASE WHEN {links} = '[]' THEN r.links ELSE {links} END,
+        r.created_by = CASE WHEN {author} <> ''
+                AND COALESCE(r.created_by, '') IN {synthetic}
+            THEN {author} ELSE r.created_by END,
         r.updated_at = {now}
     RETURN r.id AS rid
     """
@@ -2099,6 +2302,12 @@ async def _upsert_release_node(
             'tag': tag,
             'description': notes_markdown,
             'links': links_json,
+            'author': (
+                ''
+                if principals.is_process_principal(created_by)
+                else created_by
+            ),
+            'synthetic': [*sorted(principals.PROCESS_PRINCIPALS), ''],
             'now': now,
         },
         ['rid'],
@@ -2217,17 +2426,20 @@ def _fallback_notes(commits: list[Commit]) -> str:
     """Group commits by conventional-commit prefix as the fallback body."""
     if not commits:
         return '_No commits between the chosen base and head._'
-    buckets: dict[str, list[Commit]] = {}
+    buckets: dict[str, list[str]] = {}
     for commit in commits:
-        prefix = commit.message.split(':', 1)[0].lower().strip()
+        # Subject only: a body pasted into a bullet breaks the markdown.
+        subject = commit.message.split('\n', 1)[0].strip()
+        prefix = subject.split(':', 1)[0].lower().strip()
         if not prefix or len(prefix) > 16:
             prefix = 'other'
-        buckets.setdefault(prefix, []).append(commit)
+        buckets.setdefault(prefix, []).append(
+            f'- {subject} ({commit.short_sha})'
+        )
     lines: list[str] = []
     for prefix in sorted(buckets):
         lines.append(f'### {prefix}')
-        for commit in buckets[prefix]:
-            lines.append(f'- {commit.message} ({commit.short_sha})')
+        lines.extend(buckets[prefix])
         lines.append('')
     return '\n'.join(lines).rstrip()
 
@@ -2320,6 +2532,13 @@ async def draft_release_notes(
     if not _SEMVER_RE.match(notes.version.lstrip('v')):
         notes = notes.model_copy(
             update={'version': _bump_semver(body.last_tag, notes.bump)}
+        )
+    # A body is what ships on the release, so an empty one is never useful:
+    # fall back to the deterministic commit-prefix grouping. Reached when
+    # every commit in the range reads as excludable to the model.
+    if not notes.notes_markdown.strip() and commits:
+        notes = notes.model_copy(
+            update={'notes_markdown': _fallback_notes(commits)}
         )
     return DraftReleaseNotesResponse(
         bump=notes.bump,
@@ -2547,13 +2766,23 @@ def _recent_commit_from_row(row: dict[str, typing.Any]) -> RecentCommit:
     )
 
 
-async def _ci_status_by_sha(
-    project_id: str, shas: list[str]
-) -> dict[str, str]:
-    """Look up ``ci_status`` for a bounded set of shas, ``{}`` when empty.
+class _CommitFacts(typing.NamedTuple):
+    """The synced-commit facts a release-history entry is built from."""
 
-    Uses enumerated string params (the sha list is small and bounded by
-    the caller) rather than an Array binding, keeping to the parameter
+    ci_status: str
+    author: str | None
+    author_email: str | None
+
+
+async def _commit_facts_by_sha(
+    project_id: str, shas: list[str]
+) -> dict[str, _CommitFacts]:
+    """Map ``sha -> _CommitFacts`` for a bounded sha set, ``{}`` when empty.
+
+    One query for both the CI state and the commit's author: the release
+    history needs each per tagged commit, and ``FINAL`` is the expensive
+    part.  Uses enumerated string params (the sha list is small and bounded
+    by the caller) rather than an Array binding, keeping to the parameter
     features already exercised elsewhere in the codebase.
     """
     if not shas:
@@ -2562,14 +2791,45 @@ async def _ci_status_by_sha(
     placeholders = ', '.join(f'{{sha{i}:String}}' for i in range(len(shas)))
     # placeholders are generated indices; all values are bound params.
     sql = (
-        'SELECT sha, ci_status FROM commits FINAL '  # noqa: S608
+        f'SELECT sha, ci_status, author_name, {_AUTHOR_EMAIL_SQL} AS email '  # noqa: S608
+        'FROM commits FINAL '
         'WHERE project_id = {project_id:String} '
         f'AND sha IN ({placeholders})'
     )
     rows = await clickhouse.query(
         sql, {'project_id': project_id, **sha_params}
     )
-    return {str(r['sha']): str(r.get('ci_status') or 'unknown') for r in rows}
+    return {
+        str(r['sha']): _CommitFacts(
+            ci_status=str(r.get('ci_status') or 'unknown'),
+            author=str(r['author_name']) if r.get('author_name') else None,
+            author_email=str(r['email']) if r.get('email') else None,
+        )
+        for r in rows
+    }
+
+
+def _release_author(
+    tagger: typing.Any,
+    created_by: typing.Any,
+    commit: _CommitFacts,
+) -> tuple[str | None, str | None]:
+    """Resolve ``(author, author_email)`` for a release-history entry.
+
+    Preference order: the tag's own tagger, then whoever recorded the
+    ``Release`` node, then the author of the tagged commit. A background
+    worker's principal is skipped rather than shown -- ``created_by`` holds
+    whatever wrote the node, so a release the deployment resync or a
+    maintenance pass observed would otherwise read as "released by
+    deployment-sync" instead of the person who cut it.
+    """
+    recorded = str(created_by) if created_by else ''
+    if principals.is_process_principal(recorded):
+        recorded = ''
+    author = (str(tagger) if tagger else None) or recorded or commit.author
+    return author or None, (
+        (recorded if '@' in recorded else None) or commit.author_email
+    )
 
 
 def _release_url_from_links(raw: typing.Any) -> str | None:
@@ -2639,8 +2899,9 @@ async def list_recent_commits(
     """
     capped = max(1, min(limit, 200))
     sql = (
-        'SELECT sha, short_sha, message, author_name AS author, '
-        'author_user AS author_email, '
+        # The interpolated fragment is a module constant; values are params.
+        'SELECT sha, short_sha, message, author_name AS author, '  # noqa: S608
+        f'{_AUTHOR_EMAIL_SQL} AS author_email, '
         'authored_at, ci_status, url FROM commits FINAL '
         'WHERE project_id = {project_id:String} '
         "AND ({ref:String} = '' OR ref = {ref:String}) "
@@ -2678,9 +2939,7 @@ async def get_release_drift(
     # treated as the base, or the "commits since the last tag" delta below
     # is computed from the wrong tag.
     tag_rows = await clickhouse.query(
-        'SELECT name, sha, tagged_at, recorded_at FROM tags FINAL '
-        'WHERE project_id = {project_id:String}',
-        {'project_id': project_id},
+        _PROJECT_TAGS_SQL, {'project_id': project_id}
     )
     latest = _latest_release_tag(tag_rows)
     latest_tag = str(latest['name']) if latest else None
@@ -2727,7 +2986,7 @@ async def get_release_drift(
     commit_rows = await clickhouse.query(
         # WHERE is a fixed string; all values are bound params.
         'SELECT sha, short_sha, message, author_name AS author, '  # noqa: S608
-        'author_user AS author_email, '
+        f'{_AUTHOR_EMAIL_SQL} AS author_email, '
         'authored_at, ci_status, url FROM commits FINAL '
         f'WHERE {where} '
         'ORDER BY authored_at DESC LIMIT {cap:UInt32}',
@@ -2782,30 +3041,29 @@ async def get_release_history(
         {'project_id': project_id},
     )
     nodes = await _release_nodes_by_tag(db, org_slug, project_id)
-    ci_by_sha = await _ci_status_by_sha(
-        project_id, [str(r['sha']) for r in tag_rows if r.get('sha')]
-    )
+    shas = [str(r['sha']) for r in tag_rows if r.get('sha')]
+    facts_by_sha = await _commit_facts_by_sha(project_id, shas)
+    unknown = _CommitFacts(ci_status='unknown', author=None, author_email=None)
     entries: list[ReleaseHistoryEntry] = []
     for row in tag_rows:
         name = str(row['name'])
         sha = str(row['sha'])
         node = nodes.get(name) or {}
         tagger = row.get('tagger_name')
-        created_by = node.get('created_by')
         blocked_at = node.get('blocked_at')
+        facts = facts_by_sha.get(sha, unknown)
+        author, author_email = _release_author(
+            tagger, node.get('created_by'), facts
+        )
         entries.append(
             ReleaseHistoryEntry(
                 tag=name,
                 sha=sha,
                 short_sha=sha[:7],
                 published_at=_tag_timestamp(row),
-                author=str(tagger) if tagger else (created_by or None),
-                author_email=(
-                    str(created_by)
-                    if created_by and '@' in str(created_by)
-                    else None
-                ),
-                ci_status=ci_by_sha.get(sha, 'unknown'),
+                author=author,
+                author_email=author_email,
+                ci_status=facts.ci_status,
                 title=node.get('title'),
                 notes_markdown=node.get('description'),
                 release_url=_release_url_from_links(node.get('links')),

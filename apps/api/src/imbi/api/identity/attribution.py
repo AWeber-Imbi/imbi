@@ -82,11 +82,19 @@ def make_user_resolver(
     lookups entirely. A subject resolving to two different users across
     Integrations is treated as unresolved (logged), never
     mis-attributed.
+
+    Answers are cached for the resolver's lifetime: callers resolve the same
+    handful of subjects once per row (a resync's deployments, a tag
+    backfill's releases), and each miss costs a graph query per Integration.
     """
     if not integration_ids:
         return None
 
+    cache: dict[str, str | None] = {}
+
     async def _resolve(subject: str) -> str | None:
+        if subject in cache:
+            return cache[subject]
         emails: set[str] = set()
         for integration_id in integration_ids:
             user_id = await identity_repository.find_user_by_subject(
@@ -105,7 +113,9 @@ def make_user_resolver(
                 integration_ids,
                 sorted(emails),
             )
+            cache[subject] = None
             return None
-        return next(iter(emails), None)
+        cache[subject] = next(iter(emails), None)
+        return cache[subject]
 
     return _resolve

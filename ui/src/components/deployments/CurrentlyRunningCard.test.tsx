@@ -96,8 +96,10 @@ const STAGE: PipelineStage = {
   currentHistoryEntry: null,
   env: ENV,
   kind: 'release',
+  latestTag: null,
   pendingCommits: [],
   pendingReleases: [],
+  promotableCommits: [],
   recentReleases: [behind(ROLLBACK)],
   upstream: { name: 'Staging', slug: 'staging' } as unknown as Environment,
   // A tagged upstream — so an unreachable ahead row can say why.
