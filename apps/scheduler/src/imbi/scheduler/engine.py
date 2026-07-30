@@ -26,6 +26,12 @@ from imbi.scheduler.store import tasks as tasks_repo
 
 LOGGER = logging.getLogger(__name__)
 
+#: Backoff bounds for re-establishing a lost `LISTEN` subscription. The floor
+#: keeps a flapping connection from spinning; the ceiling keeps a replica from
+#: sitting cancel-deaf for minutes after Postgres comes back.
+LISTEN_RETRY_MIN_DELAY = 1.0
+LISTEN_RETRY_MAX_DELAY = 30.0
+
 
 class Engine:
     """Claims due tasks and fires them."""
@@ -477,21 +483,44 @@ class Engine:
     ) -> None:
         """Call `handler` with each payload delivered on `channel`.
 
-        Failures are logged and swallowed rather than raised: losing a
-        listener degrades the scheduler, but taking the whole process down
-        over it would stop far more work than it saves.
+        Reconnects rather than returning on failure. Swallowing the error and
+        stopping meant one transient Postgres blip ended the subscription for
+        the life of the process -- and on the cancel channel that is not a
+        degradation an operator would notice, because cancels keep being
+        recorded and simply stop being enforced on this replica.
+
+        A failure is still never raised: taking the process down over a lost
+        listener would stop far more work than it saves. The backoff exists so
+        a Postgres that is down does not turn into a hot reconnect loop, and
+        `CancelledError` still propagates untouched so shutdown stays prompt
+        rather than waiting out a sleep.
         """
-        try:
-            async with pool.connection() as conn:
-                await conn.set_autocommit(True)
-                await conn.execute(
-                    sql.SQL('LISTEN {channel}').format(
-                        channel=sql.Identifier(channel)
+        delay = LISTEN_RETRY_MIN_DELAY
+        while True:
+            try:
+                async with pool.connection() as conn:
+                    await conn.set_autocommit(True)
+                    await conn.execute(
+                        sql.SQL('LISTEN {channel}').format(
+                            channel=sql.Identifier(channel)
+                        )
                     )
+                    # Reset only once the subscription is actually live, so a
+                    # connection that fails during `LISTEN` still backs off.
+                    delay = LISTEN_RETRY_MIN_DELAY
+                    async for notice in conn.notifies():
+                        handler(notice.payload)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                LOGGER.exception('%s; retrying in %ss', failure_message, delay)
+            else:
+                # `notifies()` ended without an error -- the server closed the
+                # connection cleanly. Still a lost subscription.
+                LOGGER.warning(
+                    '%s: the notification stream ended; retrying in %ss',
+                    failure_message,
+                    delay,
                 )
-                async for notice in conn.notifies():
-                    handler(notice.payload)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            LOGGER.exception('%s', failure_message)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, LISTEN_RETRY_MAX_DELAY)

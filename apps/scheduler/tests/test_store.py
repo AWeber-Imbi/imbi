@@ -722,3 +722,33 @@ class ScheduleTests(StoreTestCase):
 
     async def test_next_due_at_with_no_tasks(self) -> None:
         self.assertIsNone(await self.tasks.next_due_at())
+
+
+class UpdateInvariantTests(StoreTestCase):
+    """`update` guards the same invariant `create` does."""
+
+    async def test_update_refuses_an_unresolvable_identity(self) -> None:
+        # The store, not just `patch_task`. A full-replace update is a path
+        # into the table, and the invariant is that no path can leave a task
+        # in a state fire time would refuse.
+        task = await self.tasks.create(helpers.build_task())
+        broken = task.model_copy(
+            update={
+                'identity': models.Identity(
+                    kind='service_account', subject='not-the-scheduler'
+                )
+            }
+        )
+        with self.assertRaises(tasks_repo.UnresolvableIdentity):
+            await self.tasks.update(broken)
+        # And the stored row is untouched.
+        stored = await self.tasks.get(task.slug)
+        assert stored is not None and stored.identity is not None
+        self.assertEqual('imbi-scheduler', stored.identity.subject)
+
+    async def test_update_still_accepts_a_resolvable_identity(self) -> None:
+        task = await self.tasks.create(helpers.build_task())
+        renamed = task.model_copy(update={'name': 'Renamed'})
+        updated = await self.tasks.update(renamed)
+        assert updated is not None
+        self.assertEqual('Renamed', updated.name)

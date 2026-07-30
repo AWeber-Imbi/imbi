@@ -12,7 +12,13 @@ data:
   # service.internalApiUrl when running imbi-mcp or imbi-assistant
   # as separate pods.
   IMBI_INTERNAL_API_URL: {{ .Values.service.internalApiUrl | quote }}
-  {{- if .Values.service.publicApiUrl }}
+  {{- if eq .Values.service.mode "scheduler" }}
+  # Required in scheduler mode, not optional as below: the container's
+  # require_scheduler_vars() exits at startup without it, so an unset value
+  # here is a CrashLoopBackOff rather than a degraded pod. Failed at render
+  # time instead, where the message says what to set.
+  IMBI_API_URL: {{ required "service.publicApiUrl is required when service.mode is 'scheduler' -- imbi-scheduler re-derives imbi-api's route prefix from its path, and the container refuses to start without it" .Values.service.publicApiUrl | quote }}
+  {{- else if .Values.service.publicApiUrl }}
   # imbi-api's public URL. Its path component is the prefix imbi-api mounts
   # its routes under, and the prefix imbi-scheduler re-derives to build the
   # paths it calls. Both read it from here, so they cannot disagree.

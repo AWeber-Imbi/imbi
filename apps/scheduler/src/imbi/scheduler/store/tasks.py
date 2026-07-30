@@ -188,7 +188,18 @@ class Tasks:
         return [_as_task(row) for row in found]
 
     async def update(self, task: models.Task) -> models.Task | None:
-        """Replace the stored task with `task`, refreshing `updated_at`."""
+        """Replace the stored task with `task`, refreshing `updated_at`.
+
+        Raises `UnresolvableIdentity` on the same terms as :meth:`create`.
+        The invariant is that no path into this table can leave a task in a
+        state fire time would refuse, and a full-replace update is such a
+        path. `patch_task` checks this too, but that made the guarantee a
+        property of one caller rather than of the store -- so a second caller,
+        or a future one, would silently not have it.
+        """
+        reason = identity.unresolvable(task.identity, self._settings)
+        if reason is not None:
+            raise UnresolvableIdentity(reason)
         assignments = sql.SQL(', ').join(
             sql.SQL('{col} = %s').format(col=sql.Identifier(col))
             for col in COLUMNS

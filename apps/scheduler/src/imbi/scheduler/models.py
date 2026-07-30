@@ -12,7 +12,6 @@ is attributable by construction.
 import datetime
 import re
 import typing
-import urllib.parse
 import uuid
 import zoneinfo
 
@@ -68,7 +67,7 @@ def _validate_slug(value: str) -> str:
 
 
 def ensure_no_traversal(path: str) -> str:
-    """Return `path`, or raise if any segment walks back up the tree.
+    """Return `path`, or raise if it could address anything above itself.
 
     Load-bearing rather than defensive. :func:`imbi.scheduler.render.
     api_request` confines an organization-scoped task by prefixing
@@ -78,14 +77,35 @@ def ensure_no_traversal(path: str) -> str:
     ``acme`` leaves as ``/admin/users``: the scoping is defeated and the
     request still carries the scheduler's service-account credential.
 
-    Percent-encoded forms are rejected on the same footing even though
-    ``httpx`` leaves them alone. That they survive is the problem — whether
-    ``%2e%2e`` walks up a level then depends on the receiving server's
-    normalization, and which routes a task can reach must not be a property of
-    something this far away.
+    Separators are rejected outright rather than decoded, because decoding is
+    a game this side cannot win. An earlier version of this function split on
+    ``/`` and *then* decoded each piece, which let ``/..%2fadmin/users``
+    through — the encoded slash kept the segment whole, so it never equalled
+    ``'..'`` — and ``%252e`` needs two passes before it even looks like a dot.
+    Any rule of that shape is only as good as the encodings someone thought
+    to enumerate.
+
+    So: no ``%`` and no backslash anywhere in a path, and no literal ``.`` or
+    ``..`` segment. These are internal `imbi-api` paths addressing
+    kebab-case slugs, so an author loses nothing they can legitimately want,
+    and the entire encoded-separator class stops existing rather than being
+    chased. ``httpx`` passes both characters through untouched, which means
+    whether they traverse would otherwise be decided by the receiving
+    server — and which routes a task can reach must not be a property of
+    something that far away.
     """
+    for forbidden, why in (
+        ('%', 'percent-encoding'),
+        ('\\', 'a backslash'),
+    ):
+        if forbidden in path:
+            raise ValueError(
+                f'path may not contain {why}: an encoded separator is '
+                'indistinguishable from a traversal by the time it reaches '
+                'the server'
+            )
     for segment in path.split('/'):
-        if urllib.parse.unquote(segment) in {'.', '..'}:
+        if segment in {'.', '..'}:
             raise ValueError(
                 f'path may not contain the traversal segment {segment!r}'
             )

@@ -5,6 +5,7 @@ claiming, misfire, instance limits, counter streaks — rather than HTTP.
 """
 
 import asyncio
+import contextlib
 import datetime
 import unittest.mock
 import uuid
@@ -587,3 +588,63 @@ class ListenTests(EngineTestCase):
                     break
                 await asyncio.sleep(0.05)
         self.assertTrue(self.engine._wake.is_set())
+
+
+class ListenerReconnectTests(EngineTestCase):
+    """A dropped subscription must come back, not end the process's."""
+
+    async def test_a_failed_subscription_is_retried(self) -> None:
+        # Before this, `_subscribe` logged and returned, so one transient
+        # Postgres blip left the replica permanently cancel-deaf while cancels
+        # kept being recorded -- a failure with no visible symptom.
+        attempts = 0
+        connected = asyncio.Event()
+
+        class FlakyPool:
+            def connection(self) -> object:
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    raise RuntimeError('postgres is down')
+                connected.set()
+                raise asyncio.CancelledError
+
+        with unittest.mock.patch.object(
+            engine, 'LISTEN_RETRY_MIN_DELAY', 0.01
+        ):
+            task = asyncio.create_task(
+                self.engine._subscribe(
+                    FlakyPool(),  # type: ignore[arg-type]
+                    'ch',
+                    lambda _payload: None,
+                    'listener lost',
+                )
+            )
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=5)
+        self.assertTrue(connected.is_set())
+        self.assertGreaterEqual(attempts, 3)
+
+    async def test_shutdown_is_not_delayed_by_the_backoff(self) -> None:
+        # `CancelledError` must propagate rather than be caught and slept on,
+        # or a stop would wait out the retry delay.
+        class DeadPool:
+            def connection(self) -> object:
+                raise RuntimeError('postgres is down')
+
+        with unittest.mock.patch.object(
+            engine, 'LISTEN_RETRY_MIN_DELAY', 30.0
+        ):
+            task = asyncio.create_task(
+                self.engine._subscribe(
+                    DeadPool(),  # type: ignore[arg-type]
+                    'ch',
+                    lambda _payload: None,
+                    'listener lost',
+                )
+            )
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=2)
+        self.assertTrue(task.done())

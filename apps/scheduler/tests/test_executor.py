@@ -726,6 +726,51 @@ class PathTraversalTests(unittest.TestCase):
                 with self.assertRaises(render.RenderError):
                     self._url(encoded)
 
+    def test_an_encoded_separator_is_refused(self) -> None:
+        # The bypass an earlier version of this guard allowed: splitting on
+        # literal '/' and decoding afterwards leaves `..%2fadmin` whole, so it
+        # never equals '..'. Each of these reached httpx as a live traversal.
+        for path in (
+            '/%2e%2e%2f%2e%2e/admin/users',
+            '/%2e%2e%2fother-org/widgets',
+            '/..%2fadmin/users',
+            '/..%2Fadmin/users',
+        ):
+            with self.subTest(path=path):
+                with self.assertRaises(render.RenderError):
+                    self._url(path)
+
+    def test_a_doubly_encoded_traversal_is_refused(self) -> None:
+        # `%252e` needs two decode passes before it even looks like a dot, so
+        # any single-pass rule misses it.
+        with self.assertRaises(render.RenderError):
+            self._url('/%252e%252e/admin/users')
+
+    def test_a_backslash_separator_is_refused(self) -> None:
+        # httpx passes both forms through untouched, leaving it to the server
+        # to decide whether a backslash separates -- the same delegation the
+        # percent-encoded forms were rejected for.
+        for path in ('/..%5cadmin/users', '/..\\admin/users'):
+            with self.subTest(path=path):
+                with self.assertRaises(render.RenderError):
+                    self._url(path)
+
+    def test_an_encoded_separator_from_a_template_is_refused(self) -> None:
+        # The model validator sees only the source, so this is the encoded
+        # case that only the render-time check can catch.
+        task = helpers.build_task(organization='acme')
+        target = models.ApiTarget.model_construct(
+            kind='api',
+            method='POST',
+            path='/{{ escape }}/admin/users',
+            query={},
+            body=None,
+        )
+        with self.assertRaises(render.RenderError):
+            render.api_request(
+                task, target, render.Renderer({'escape': '..%2f..'}), API_URL
+            )
+
     def test_a_single_dot_segment_is_refused(self) -> None:
         with self.assertRaises(render.RenderError):
             self._url('/./widgets')
