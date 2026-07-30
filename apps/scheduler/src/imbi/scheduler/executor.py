@@ -93,6 +93,13 @@ class Executor:
             actor_name=actor,
             trace_id=trace_id,
         )
+        # Unguarded on purpose, but only because something else guards it:
+        # `engine._execute` awaits this coroutine inside `except Exception`
+        # and turns a raise into a recorded `failed` run. That is the whole
+        # protection -- there is none here -- so narrowing that catch would
+        # let a ClickHouse outage propagate out of `run_now` as a 500. The
+        # two sibling writes, `engine._record` and `engine._decline`, guard
+        # themselves; this one is the exception and depends on its caller.
         await runs.record(run)
         try:
             bearer = await self._resolver.bearer(task)
