@@ -279,10 +279,24 @@ class Engine:
         scheduler that was down. Resetting the streak would be just as wrong —
         it would let an unresolvable task escape the limit by misfiring — so
         neither counter moves.
+
+        The history write cannot propagate, for the reason given on
+        :meth:`_record`: the decline is already decided by the time this runs,
+        so raising would discard the `Run` describing it. `tick` would absorb
+        that, but ``POST /tasks/{slug}/run`` reaches here through
+        `_fire_under_lease` with nothing in between, and would answer 500 for
+        what is really a successful — if negative — outcome.
         """
         LOGGER.info('Skipping %s: %s', task.slug, reason)
         run = runs.skipped(task, moment, reason)
-        await runs.record(run)
+        try:
+            await runs.record(run)
+        except Exception:
+            LOGGER.exception(
+                'Failed to record the declined run %s for %s',
+                run.run_id,
+                task.slug,
+            )
         return run
 
     def _misfire_reason(

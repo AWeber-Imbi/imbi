@@ -202,6 +202,33 @@ class TickTests(EngineTestCase):
             ['succeeded'], [r.state for r in await runs.for_task(task.id)]
         )
 
+    async def test_a_decline_survives_a_history_write_failure(self) -> None:
+        # `run_now` reaches `_decline` through `_fire_under_lease` with
+        # nothing in between, so an unguarded write here answers 500 for what
+        # is a successful -- if negative -- outcome. `tick` would absorb it;
+        # the endpoint would not.
+        task = await self.tasks.create(
+            helpers.build_task(
+                execution=models.ExecutionPolicy(max_running_instances=1)
+            )
+        )
+        # Hold the only slot so the next firing is declined.
+        await self.tasks.acquire_lease(
+            task.id,
+            run_id=uuid.uuid4(),
+            limit=1,
+            ttl=datetime.timedelta(minutes=5),
+        )
+
+        async def boom(_run: runs.Run) -> None:
+            raise RuntimeError('clickhouse is down')
+
+        with unittest.mock.patch.object(runs, 'record', boom):
+            run = await self.engine.run_now(task)
+        self.assertEqual('skipped', run.state)
+        self.assertIn('max_running_instances', run.error_message)
+        self.assertEqual([], self.executor.fired)
+
     async def test_an_executor_crash_is_recorded_as_failure(self) -> None:
         self.executor.raises = True
         await self.tasks.create(
