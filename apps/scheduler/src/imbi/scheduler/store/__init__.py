@@ -13,6 +13,7 @@ from imbi.common import settings as common_settings
 from imbi.scheduler.store.initializer import initialize, load_schemata
 from imbi.scheduler.store.tasks import (
     NOTIFY_CHANNEL,
+    DuplicateSlug,
     Tasks,
     UnresolvableIdentity,
 )
@@ -82,6 +83,7 @@ TaskStore = typing.Annotated[Tasks, fastapi.Depends(_inject_tasks)]
 
 __all__ = [
     'NOTIFY_CHANNEL',
+    'DuplicateSlug',
     'Pool',
     'TaskStore',
     'Tasks',

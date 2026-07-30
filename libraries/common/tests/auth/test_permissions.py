@@ -11,7 +11,6 @@ from unittest import mock
 
 from imbi.common import models
 from imbi.common.auth import permissions
-from imbi.common.auth import permissions as shared_permissions
 
 
 class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
@@ -352,15 +351,15 @@ class ApiKeyAccessLogPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
         ctx = self._ctx()
         with (
             mock.patch.object(
-                shared_permissions,
+                permissions,
                 'authenticate_api_key',
                 mock.AsyncMock(return_value=ctx),
             ),
             mock.patch.object(
-                shared_permissions.access_log, 'remember_api_key_principal'
+                permissions.access_log, 'remember_api_key_principal'
             ) as remember,
         ):
-            result = await shared_permissions._authenticate_token(
+            result = await permissions._authenticate_token(
                 mock.AsyncMock(), 'ik_abc123_secret', mock.Mock()
             )
         self.assertIs(result, ctx)
@@ -369,15 +368,15 @@ class ApiKeyAccessLogPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_jwt_does_not_register(self) -> None:
         with (
             mock.patch.object(
-                shared_permissions,
+                permissions,
                 'authenticate_jwt',
                 mock.AsyncMock(return_value=self._ctx()),
             ),
             mock.patch.object(
-                shared_permissions.access_log, 'remember_api_key_principal'
+                permissions.access_log, 'remember_api_key_principal'
             ) as remember,
         ):
-            await shared_permissions._authenticate_token(
+            await permissions._authenticate_token(
                 mock.AsyncMock(), 'jwt.token.here', mock.Mock()
             )
         remember.assert_not_called()

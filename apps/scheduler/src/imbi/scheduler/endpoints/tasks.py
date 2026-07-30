@@ -146,6 +146,11 @@ async def create_task(
         # principal this scheduler could never run as, so every firing would
         # skip. Refusing at creation beats storing a task that never works.
         raise fastapi.HTTPException(status_code=422, detail=str(err)) from err
+    except store.DuplicateSlug as err:
+        # 409, not 422 and formerly not a 500: the document is valid, the slug
+        # is simply taken. `slug` identifies a task -- `patch_task` refuses to
+        # change one for the same reason -- so a conflict is the honest answer.
+        raise fastapi.HTTPException(status_code=409, detail=str(err)) from err
 
 
 @router.get(

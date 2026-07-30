@@ -531,9 +531,11 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'admin',
         "Manage other principals' and system scheduled tasks",
     ),
-    # Cross-cutting capability, deliberately granted to no default role:
-    # scheduling a task that runs as somebody else. Mirrors ADR 0016's
-    # `auth:delegate` on the imbi-api side.
+    # Cross-cutting capability: scheduling a task that runs as somebody else.
+    # Mirrors ADR 0016's `auth:delegate` on the imbi-api side. Granted to no
+    # *non-admin* default role -- `admin` receives every entry in
+    # STANDARD_PERMISSIONS by construction (see the `DEFAULT_ROLES` grant
+    # below), so it holds this one too.
     (
         'scheduler:impersonate',
         'scheduler',

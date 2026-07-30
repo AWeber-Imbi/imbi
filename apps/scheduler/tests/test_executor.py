@@ -39,27 +39,29 @@ class ExecutorTestCase(helpers.TestCase):
         # The executor writes the `running` row itself, so history is live
         # here. respx does not intercept clickhouse-connect (urllib3, not
         # httpx), so the two coexist.
+        # Registered as cleanups rather than torn down in `asyncTearDown`,
+        # which only runs if setup *completed*. A failure between acquiring
+        # one of these and the end of setup used to leak it into every
+        # subsequent case in the process -- a started respx mock intercepting
+        # their requests, or an open client and ClickHouse connection.
         self.assertTrue(await clickhouse.initialize())
+        self.addAsyncCleanup(clickhouse.aclose)
         await clickhouse.setup_schema()
         self.settings = config()
         self.client = httpx.AsyncClient()
+        self.addAsyncCleanup(self.client.aclose)
         self.resolver = identity.Resolver(self.client, self.settings)
         self.executor = executor.Executor(
             self.client, self.resolver, self.settings
         )
         self.mock = respx.mock(assert_all_called=False)
         self.mock.start()
+        self.addCleanup(self.mock.stop)
         self.token_route = self.mock.post(f'{API_URL}/auth/token').mock(
             return_value=httpx.Response(
                 200, json={'access_token': 'sa-token', 'expires_in': 900}
             )
         )
-
-    async def asyncTearDown(self) -> None:
-        self.mock.stop()
-        await self.client.aclose()
-        await clickhouse.aclose()
-        await super().asyncTearDown()
 
 
 class ApiTargetTests(ExecutorTestCase):
@@ -822,6 +824,56 @@ class PathTraversalTests(unittest.TestCase):
             render.gateway_request(
                 target, render.Renderer({'escape': '../admin'}), GATEWAY_URL
             )
+
+
+class RenderFailureContainmentTests(unittest.TestCase):
+    """Every template failure is a `RenderError`, not just Jinja's own."""
+
+    def test_expression_errors_are_contained(self) -> None:
+        # `jinja2.TemplateError` covers syntax and StrictUndefined but not what
+        # the rendered expression raises. Uncaught, these left the
+        # render-failure path: recorded as `unhandled scheduler error` through
+        # `execute`, and a 500 through `dry_run`, which has no wrapper.
+        renderer = render.Renderer({'n': 0, 's': 'x'})
+        for template in ('{{ 1 // n }}', '{{ s + 1 }}', '{{ n.missing() }}'):
+            with self.subTest(template=template):
+                with self.assertRaises(render.RenderError):
+                    renderer.text(template)
+
+    def test_jinja_errors_are_still_contained(self) -> None:
+        renderer = render.Renderer({})
+        for template in ('{{ nope }}', '{{ 1 +/ }}'):
+            with self.subTest(template=template):
+                with self.assertRaises(render.RenderError):
+                    renderer.text(template)
+
+    def test_a_literal_still_passes_through(self) -> None:
+        renderer = render.Renderer({})
+        self.assertEqual('/scoring/x', renderer.text('/scoring/x'))
+
+
+class TokenPublicationTests(ExecutorTestCase):
+    """A token is published only once the whole response validated."""
+
+    async def test_a_bad_expires_in_on_refresh_does_not_serve_the_token(
+        self,
+    ) -> None:
+        # Assigning `_token` above the `expires_in` conversion defeated the
+        # guard beside it: on a refresh the raise left the new token cached
+        # against the *previous* expiry, which `_is_fresh` can still accept.
+        sa = self.resolver.service_account
+        self.assertEqual('sa-token', await sa.token())
+
+        self.token_route.mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'poisoned', 'expires_in': 'soon'}
+            )
+        )
+        sa.invalidate()
+        with self.assertRaises(identity.IdentityError):
+            await sa.token()
+        # Neither published nor left serveable.
+        self.assertIsNone(sa._token)
 
 
 class ServiceAccountSecretTests(ExecutorTestCase):

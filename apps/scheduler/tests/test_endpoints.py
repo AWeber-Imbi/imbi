@@ -256,6 +256,16 @@ class OwnershipTests(EndpointTestCase):
 
 
 class CreateTests(EndpointTestCase):
+    async def test_a_duplicate_slug_is_a_conflict_not_a_crash(self) -> None:
+        # `tasks_slug_key` is a unique index, and the resulting
+        # `UniqueViolation` reached the handler unhandled -- a 500 for a
+        # request whose only fault is that the slug is taken.
+        first = await self.client.post('/api/tasks', json=task_body())
+        self.assertEqual(201, first.status_code)
+        second = await self.client.post('/api/tasks', json=task_body())
+        self.assertEqual(409, second.status_code)
+        self.assertIn('already exists', second.json()['detail'])
+
     async def test_the_server_owns_the_derived_fields(self) -> None:
         response = await self.client.post('/api/tasks', json=task_body())
         self.assertEqual(201, response.status_code)

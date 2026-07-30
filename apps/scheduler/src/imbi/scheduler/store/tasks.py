@@ -27,6 +27,17 @@ class UnresolvableIdentity(ValueError):
     """A task names a principal the scheduler could never run as."""
 
 
+class DuplicateSlug(ValueError):
+    """A task with this slug already exists.
+
+    Typed here rather than left as `psycopg.errors.UniqueViolation` for the
+    endpoint to catch, so the store keeps owning its own constraints:
+    `tasks_slug_key` is declared in `schemata.toml`, and a caller should not
+    have to know psycopg to handle it. Same shape as
+    :class:`UnresolvableIdentity`.
+    """
+
+
 #: Channel the engine listens on so a task mutation wakes it immediately.
 NOTIFY_CHANNEL = 'scheduler_tasks'
 
@@ -114,9 +125,17 @@ class Tasks:
             columns=self._columns(),
             values=sql.SQL(', ').join(sql.Placeholder() * len(COLUMNS)),
         )
-        async with self._pool.connection() as conn:
-            row = await self._fetch_one(conn, statement, _as_params(task))
-            await self._notify(conn)
+        try:
+            async with self._pool.connection() as conn:
+                row = await self._fetch_one(conn, statement, _as_params(task))
+                await self._notify(conn)
+        except psycopg.errors.UniqueViolation as err:
+            # `tasks_slug_key`. Re-POSTing an existing slug is a conflict the
+            # caller can act on, not a server fault -- unhandled it reached the
+            # endpoint as a 500.
+            raise DuplicateSlug(
+                f'a task with slug {task.slug!r} already exists'
+            ) from err
         if row is None:  # pragma: no cover - RETURNING always yields a row
             raise RuntimeError('insert returned no row')
         return row

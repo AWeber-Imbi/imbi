@@ -11,10 +11,6 @@ from fastapi import security
 from imbi.common import models, settings
 from imbi.common.auth import password, permissions
 
-# Alias kept so the cases that reach for module internals read the
-# same as the ones that use the public names.
-shared_permissions = permissions
-
 
 class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
     """Test authenticate_api_key function."""
@@ -551,7 +547,7 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
         )
         request = self._request({permissions.ACCESS_COOKIE_NAME: 'cookie'})
         with mock.patch.object(
-            shared_permissions, '_authenticate_token', new=mock.AsyncMock()
+            permissions, '_authenticate_token', new=mock.AsyncMock()
         ) as mock_auth:
             mock_auth.return_value = self.ctx
             result = await permissions.get_current_user_cookie_fallback(
@@ -566,7 +562,7 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
             {permissions.ACCESS_COOKIE_NAME: 'cookie-token'}
         )
         with mock.patch.object(
-            shared_permissions, '_authenticate_token', new=mock.AsyncMock()
+            permissions, '_authenticate_token', new=mock.AsyncMock()
         ) as mock_auth:
             mock_auth.return_value = self.ctx
             result = await permissions.get_current_user_cookie_fallback(
@@ -600,7 +596,7 @@ class StampApiKeyLastUsedTestCase(unittest.IsolatedAsyncioTestCase):
             last_used_throttle_seconds=60,
         )
 
-        await shared_permissions._stamp_api_key_last_used(
+        await permissions._stamp_api_key_last_used(
             mock_db, 'ik_abc', auth_settings
         )
 
@@ -626,7 +622,7 @@ class StampApiKeyLastUsedTestCase(unittest.IsolatedAsyncioTestCase):
             last_used_throttle_seconds=0,
         )
 
-        await shared_permissions._stamp_api_key_last_used(
+        await permissions._stamp_api_key_last_used(
             mock_db, 'ik_abc', auth_settings
         )
 
@@ -643,6 +639,6 @@ class StampApiKeyLastUsedTestCase(unittest.IsolatedAsyncioTestCase):
             jwt_secret='test-secret-key-min-32-chars-long',
         )
 
-        await shared_permissions._stamp_api_key_last_used(
+        await permissions._stamp_api_key_last_used(
             mock_db, 'ik_abc', auth_settings
         )

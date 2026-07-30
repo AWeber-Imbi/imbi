@@ -87,7 +87,18 @@ class Renderer:
             return template
         try:
             return _compile(template).render(self._values)
-        except jinja2.TemplateError as err:
+        except Exception as err:
+            # `Exception`, not `jinja2.TemplateError`. That class covers a
+            # syntax error and a StrictUndefined, but *not* what the rendered
+            # expression itself raises: `{{ 1 // 0 }}` gives
+            # `ZeroDivisionError` and `{{ 'x' + 1 }}` a `TypeError`, both
+            # straight out of the generated code. Uncaught they left the
+            # render-failure path
+            # entirely -- recorded as `unhandled scheduler error` through
+            # `execute`, and a 500 through `dry_run`, which has no wrapper and
+            # is the endpoint an operator uses to catch exactly this before
+            # scheduling it. Every template failure is the task definition's
+            # fault, so every one of them is a `RenderError`.
             raise RenderError(f'{template!r}: {err}') from err
 
     def mapping(self, values: dict[str, str]) -> dict[str, str]:

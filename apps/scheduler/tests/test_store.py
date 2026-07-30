@@ -269,8 +269,12 @@ class CrudTests(StoreTestCase):
         self.assertIsNotNone(await self.tasks.create(task))
 
     async def test_duplicate_slug_is_rejected(self) -> None:
+        # `DuplicateSlug`, not `psycopg.errors.UniqueViolation`. Asserting the
+        # raw driver error is what let it reach the endpoint unhandled as a
+        # 500; the store now names its own constraint violation so a caller can
+        # answer 409 without having to know psycopg.
         await self.tasks.create(helpers.build_task())
-        with self.assertRaises(psycopg.errors.UniqueViolation):
+        with self.assertRaises(tasks_repo.DuplicateSlug):
             await self.tasks.create(helpers.build_task(id=uuid.uuid4()))
 
     async def test_update_replaces_and_stamps(self) -> None:

@@ -162,13 +162,20 @@ class ServiceAccountToken:
         token = payload.get('access_token')
         if not isinstance(token, str) or not token:
             raise IdentityError('token response carried no access_token')
-        self._token = token
         try:
             expires_in = int(payload.get('expires_in', DEFAULT_TOKEN_LIFETIME))
         except (TypeError, ValueError) as err:
             raise IdentityError(
                 f'token response carried an invalid expires_in: {err}'
             ) from err
+        # Both together, after every check. Publishing `_token` above the
+        # conversion defeated the guard it sits next to: on a *refresh* the
+        # raise left the new token cached against the *previous* token's
+        # `_expires_at`, which `_is_fresh` can still consider valid for up to
+        # `REFRESH_MARGIN` -- so a response with a garbage `expires_in` got
+        # served as fresh instead of retried. Nothing is published unless the
+        # whole response parsed.
+        self._token = token
         self._expires_at = now + datetime.timedelta(seconds=expires_in)
         LOGGER.debug(
             'Service account token refreshed, valid until %s', self._expires_at

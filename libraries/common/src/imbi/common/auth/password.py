@@ -41,7 +41,10 @@ def verify_password(password: str, password_hash: str) -> bool:
         password_hasher.verify(password_hash, password)
         return True
     except (
-        argon2.exceptions.VerifyMismatchError,
+        # `VerificationError` alone. `VerifyMismatchError` is a subclass of it
+        # -- VerifyMismatchError -> VerificationError -> Argon2Error -- so
+        # naming both caught nothing the parent did not. `InvalidHashError`
+        # is a sibling under `Argon2Error`, not a subclass, so it stays.
         argon2.exceptions.VerificationError,
         argon2.exceptions.InvalidHashError,
     ):

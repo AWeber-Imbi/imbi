@@ -22,6 +22,7 @@ Caddy routes requests to backend services based on path prefix:
 | Path | Service | Prefix |
 |------|---------|--------|
 | `/api/*` | imbi-api | preserved |
+| `/status` | imbi-api | preserved |
 | `/assistant/*` | imbi-assistant | preserved |
 | `/mcp/*` | imbi-mcp | preserved |
 | `/gateway/*` | imbi-gateway | stripped |
@@ -38,6 +39,13 @@ service mounts its routes:
 - **Stripped** (`handle_path`) for imbi-gateway, which mounts at the root, and
   imbi-scheduler, which mounts under its own `IMBI_SCHEDULER_API_PREFIX`
   (default `/api`) — so a caller reaches `/scheduler/api/tasks`.
+
+`/status` is routed separately from `/api/*` rather than being covered by it,
+because imbi-api serves its status route under the path of `IMBI_API_URL`: with
+that unset — the chart default — the route *is* `/status`, which `/api/*` would
+never match. Without this route it fell through to the static UI, which answers
+200 from `index.html` whatever imbi-api is doing, so the chart's liveness and
+readiness probes passed against a dead API.
 
 imbi-slackbot has no route: it connects out to Slack over socket mode and its
 port exists only for its health check.
