@@ -1,3 +1,4 @@
+import collections.abc
 import datetime
 import unittest
 
@@ -82,6 +83,28 @@ class ApiTargetTests(ExecutorTestCase):
         await self.executor.execute(helpers.build_task(), FIRED_AT)
         self.assertEqual(
             'Bearer sa-token', route.calls[0].request.headers['authorization']
+        )
+
+    async def test_oversized_body_stops_reading_at_the_excerpt_limit(
+        self,
+    ) -> None:
+        """A huge body must not be buffered whole just to be truncated."""
+        chunks = 0
+
+        async def body() -> collections.abc.AsyncIterator[bytes]:
+            nonlocal chunks
+            for _ in range(1000):
+                chunks += 1
+                yield b'x' * 4096
+
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202, content=body())
+        )
+        run = await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(run.response_excerpt.endswith('…[truncated]'))
+        self.assertLessEqual(
+            chunks, runs.RESPONSE_EXCERPT_LIMIT // 4096 + 1, 'read past limit'
         )
 
     async def test_client_error_does_not_retry(self) -> None:

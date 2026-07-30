@@ -265,14 +265,15 @@ class Executor:
         if bearer:
             headers['Authorization'] = f'Bearer {bearer}'
         try:
-            response = await self._client.request(
+            async with self._client.stream(
                 request.method,
                 request.url,
                 params=request.query or None,
                 json=request.body,
                 headers=headers,
                 timeout=task.execution.timeout,
-            )
+            ) as response:
+                body = await _read_excerpt(response)
         except httpx.TimeoutException as err:
             return runs.finish(
                 run,
@@ -290,7 +291,7 @@ class Executor:
             task.target.classify(response),
             runs.Outcome(
                 http_status=response.status_code,
-                response=response.text,
+                response=body,
                 error_type=(
                     ''
                     if response.is_success
@@ -298,6 +299,32 @@ class Executor:
                 ),
             ),
         )
+
+
+async def _read_excerpt(response: httpx.Response) -> str:
+    """Return at most an excerpt's worth of the body, then stop reading.
+
+    `response.text` buffers the whole body before `runs.excerpt` truncates it,
+    so a target answering with -- or slowly dripping -- a very large body could
+    exhaust memory shared with every other task in this process. Targets are
+    operator-configured and include third-party APIs, so the body's size is not
+    ours to trust. Reading one byte past the limit lets `runs.excerpt` see the
+    overflow and mark the excerpt truncated; leaving the `stream` block closes
+    the connection without draining the rest.
+
+    `charset_encoding` rather than `encoding`, which can fall back to sniffing
+    `response.content` -- unavailable on a body that was never buffered.
+    """
+    read = 0
+    chunks: list[bytes] = []
+    async for chunk in response.aiter_bytes():
+        chunks.append(chunk)
+        read += len(chunk)
+        if read > runs.RESPONSE_EXCERPT_LIMIT:
+            break
+    return b''.join(chunks).decode(
+        response.charset_encoding or 'utf-8', errors='replace'
+    )
 
 
 def _is_retryable(run: runs.Run) -> bool:
