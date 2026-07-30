@@ -479,7 +479,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         captured: list[PluginContext] = []
 
         class _PrefixHandler(_FakeConfigurationHandler):
-            def describe_prefix(self, ctx):  # type: ignore[override]
+            def describe_prefix(self, ctx: PluginContext) -> str:
                 captured.append(ctx)
                 return f'/imbi/{ctx.environment}/acct/'
 
@@ -510,7 +510,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
 
     def test_get_configuration_prefix_for_environment(self) -> None:
         class _PrefixHandler(_FakeConfigurationHandler):
-            def describe_prefix(self, ctx):  # type: ignore[override]
+            def describe_prefix(self, ctx: PluginContext) -> str:
                 return f'/imbi/{ctx.environment}/acct/'
 
         resolved = _resolved(self.plugin_id, _PrefixHandler)
