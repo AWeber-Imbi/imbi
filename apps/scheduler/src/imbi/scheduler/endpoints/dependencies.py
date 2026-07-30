@@ -47,6 +47,10 @@ def requires(permission: str) -> typing.Any:
 # `authorize`. Spelled out rather than built by a helper because a helper
 # returning `Any` is invisible to the type checker, which would leave every
 # route's `auth` parameter untyped.
+RequiresRead = typing.Annotated[
+    permissions.AuthContext,
+    fastapi.Depends(permissions.require_permission(READ)),
+]
 RequiresCreate = typing.Annotated[
     permissions.AuthContext,
     fastapi.Depends(permissions.require_permission(CREATE)),

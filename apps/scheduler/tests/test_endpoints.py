@@ -624,6 +624,57 @@ class HistoryTests(EndpointTestCase):
             404, (await self.client.get('/api/tasks/nope/runs')).status_code
         )
 
+    async def _anothers_run(self) -> tuple[models.Task, runs.Run]:
+        """Record a run for a task owned by ``OTHER``, viewed as ``OWNER``."""
+        task = await self.given_task(created_by=OTHER)
+        run = runs.start(task, datetime.datetime.now(datetime.UTC))
+        await runs.record(run)
+        self.as_user(OWNER, ALL_PERMISSIONS)
+        return task, run
+
+    async def test_another_owners_history_is_refused(self) -> None:
+        # `response_excerpt` carries part of the target's reply, so run
+        # history is ownership-scoped even though the definition is not.
+        task, _ = await self._anothers_run()
+        response = await self.client.get(f'/api/tasks/{task.slug}/runs')
+        self.assertEqual(403, response.status_code)
+
+    async def test_another_owners_run_is_refused_by_id(self) -> None:
+        # The by-id route must not be a way around the listing route.
+        _, run = await self._anothers_run()
+        response = await self.client.get(f'/api/runs/{run.run_id}')
+        self.assertEqual(403, response.status_code)
+
+    async def test_an_admin_reads_another_owners_runs(self) -> None:
+        task, run = await self._anothers_run()
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        self.assertEqual(
+            200, (await self.client.get(f'/api/runs/{run.run_id}')).status_code
+        )
+        self.assertEqual(
+            200,
+            (
+                await self.client.get(f'/api/tasks/{task.slug}/runs')
+            ).status_code,
+        )
+
+    async def test_a_run_whose_task_is_gone_needs_admin(self) -> None:
+        # No owner left to authorize against. Unlike `cancel_run`, which
+        # allows this so a job is never left unstoppable, a read has no such
+        # necessity -- so it is admin-only rather than open.
+        task = await self.given_task(created_by=OTHER)
+        run = runs.start(task, datetime.datetime.now(datetime.UTC))
+        await runs.record(run)
+        self.assertTrue(await self.tasks.delete(task.slug))
+        self.as_user(OWNER, ALL_PERMISSIONS)
+        self.assertEqual(
+            404, (await self.client.get(f'/api/runs/{run.run_id}')).status_code
+        )
+        self.as_user(OWNER, ALL_PERMISSIONS, admin=True)
+        self.assertEqual(
+            200, (await self.client.get(f'/api/runs/{run.run_id}')).status_code
+        )
+
 
 class CancelEndpointTests(EndpointTestCase):
     async def _in_flight(self, **overrides: typing.Any) -> runs.Run:

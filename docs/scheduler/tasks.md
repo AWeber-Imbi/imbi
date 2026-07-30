@@ -23,8 +23,13 @@ Every route below is relative to `IMBI_SCHEDULER_API_PREFIX` (default `/api`).
 | `GET` | `/runs/{run_id}` | `scheduled_task:read` |
 | `POST` | `/runs/{run_id}/cancel` | `scheduled_task:run` |
 
-Reading is unrestricted by ownership: seeing the schedule is not managing it, and
-an operator asking why something fired needs to see the task that did it.
+Reading a task *definition* is unrestricted by ownership: seeing the schedule is
+not managing it, and an operator asking why something fired needs to see the task
+that did it. Reading a task's *run history* is not — `GET /tasks/{slug}/runs` and
+`GET /runs/{run_id}` additionally require having created the task or holding
+`scheduled_task:admin`. A run carries `response_excerpt`, part of what the target
+sent back, which the definition never exposes. A run whose task has since been
+deleted is readable only with `scheduled_task:admin`.
 Changing a task requires either having created it or holding
 `scheduled_task:admin`. A `kind: system` task needs `scheduled_task:admin`
 however it was created — those are the platform's own jobs, and the scheduler's
