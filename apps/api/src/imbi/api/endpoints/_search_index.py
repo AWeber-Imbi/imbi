@@ -15,9 +15,12 @@ should schedule :func:`index` as a background task rather than paying
 for it before the response.
 """
 
+import logging
 import typing
 
 from imbi.common import graph, models
+
+LOGGER = logging.getLogger(__name__)
 
 
 async def index(
@@ -49,5 +52,20 @@ async def drop(
     node_type: type[models.GraphModel],
     node_id: str,
 ) -> None:
-    """Delete every embedding row for a node that was just deleted."""
-    await db.delete_node_embeddings(node_type.__name__, node_id)
+    """Delete every embedding row for a node that was just deleted.
+
+    Best-effort like :func:`index`: the node itself is already gone by
+    the time this runs, so a failure here must not turn a successful
+    delete into a 500.  The orphaned rows are cleaned up by the next
+    ``search-reindex``.
+    """
+    try:
+        await db.delete_node_embeddings(node_type.__name__, node_id)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to drop embeddings for %s id=%s; a search-reindex '
+            'will clean this up',
+            node_type.__name__,
+            node_id,
+            exc_info=True,
+        )

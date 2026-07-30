@@ -421,29 +421,44 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(data[0]['node_id'], 'rel-1')
 
     def test_comment_node_ids_included(self) -> None:
-        """Comment IN_THREAD query nodes are included in org scope."""
-        self.mock_db.execute.side_effect = [
-            [{'org_id': '"org-abc"'}],
-            *self._scope_rows(q6=[{'nid': '"comment-1"'}]),  # q6: Comments
-        ]
-        self.mock_db.search.return_value = [
-            self._make_result(
-                node_id='comment-1',
-                node_label='Comment',
-                attribute='body',
-            ),
-        ]
-        response = self.client.get(f'{_BASE_URL}?q=test')
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['node_id'], 'comment-1')
+        """Comments follow the same three attachment kinds as Documents.
+
+        A comment is only reachable through its parent document, so the
+        comment traversals have to cover Project-, ProjectType-, and
+        User-attached documents too — otherwise a document in scope
+        would surface without its comments.
+        """
+        # q6/q7/q8 are the Project-, ProjectType-, and User-attached
+        # comment traversals.
+        for position, comment_id in enumerate(
+            ('project-comment', 'project-type-comment', 'user-comment'),
+            start=6,
+        ):
+            with self.subTest(comment=comment_id):
+                self.mock_db.execute.side_effect = [
+                    [{'org_id': '"org-abc"'}],
+                    *self._scope_rows(
+                        **{f'q{position}': [{'nid': f'"{comment_id}"'}]},
+                    ),
+                ]
+                self.mock_db.search.return_value = [
+                    self._make_result(
+                        node_id=comment_id,
+                        node_label='Comment',
+                        attribute='body',
+                    ),
+                ]
+                response = self.client.get(f'{_BASE_URL}?q=test')
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertEqual(len(data), 1)
+                self.assertEqual(data[0]['node_id'], comment_id)
 
     def test_component_node_ids_included(self) -> None:
         """Component dependency-graph query nodes are in org scope."""
         self.mock_db.execute.side_effect = [
             [{'org_id': '"org-abc"'}],
-            *self._scope_rows(q7=[{'nid': '"comp-1"'}]),  # q7: Components
+            *self._scope_rows(q9=[{'nid': '"comp-1"'}]),  # q9: Components
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='comp-1', node_label='Component'),

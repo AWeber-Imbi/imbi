@@ -552,6 +552,60 @@ class PatchReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(body['description'], 'New desc')
         self.assertEqual(len(body['links']), 1)
 
+    def test_patch_title_reindexes(self) -> None:
+        """A changed embeddable field re-embeds the release."""
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],  # _conflict_query — no collision
+            [{'release': _release_row(title='Updated')}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                self._url(f'/{RELEASE_ID}'),
+                json=[
+                    {'op': 'replace', 'path': '/title', 'value': 'Updated'},
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        node = self.mock_db.embed_node.await_args.args[0]
+        self.assertEqual('Updated', node.title)
+
+    def test_patch_links_only_skips_reindex(self) -> None:
+        """Embedding is skipped when no embeddable field changed.
+
+        Chunking and running the embedding model is not free, so a
+        tag- or links-only patch must not pay for it.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],  # _conflict_query — no collision
+            [{'release': _release_row()}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                self._url(f'/{RELEASE_ID}'),
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/links',
+                        'value': [
+                            {
+                                'type': 'github_release',
+                                'url': 'https://example.com/',
+                            }
+                        ],
+                    },
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.embed_node.assert_not_awaited()
+
     def test_patch_title_to_empty_string(self) -> None:
         """Explicit empty-string patches of ``title`` must persist."""
         self.mock_db.execute.side_effect = [

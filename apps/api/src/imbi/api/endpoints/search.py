@@ -66,6 +66,14 @@ _ORG_SCOPE_QUERIES: tuple[str, ...] = (
     '-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
     ' WHERE coalesce(p.archived, false) = false'
     ' RETURN c.id AS nid',
+    'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
+    '(:Document)-[:ATTACHED_TO]->(:ProjectType)-[:BELONGS_TO]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' RETURN c.id AS nid',
+    'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
+    '(:Document)-[:ATTACHED_TO]->(:User)-[:MEMBER_OF]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' RETURN c.id AS nid',
     'MATCH (comp:Component)-[:HAS_RELEASE]->(:ComponentRelease)'
     '<-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)'
     '-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
@@ -90,7 +98,8 @@ async def _get_org_node_ids(
 
     Documents are reached through all three attachment kinds — Project,
     ProjectType, and User — so an org-scoped search sees every document
-    the org's document index lists.
+    the org's document index lists.  Comments follow the same three
+    kinds, so a document in scope always has its comments in scope too.
 
     Archived projects are excluded, along with the Documents, Releases,
     Comments, and Components reached through them, so search never

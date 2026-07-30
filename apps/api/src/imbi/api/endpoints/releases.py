@@ -1006,14 +1006,17 @@ async def patch_release(
             ),
         )
     release_data = graph.parse_agtype(rows[0]['release'])
-    background_tasks.add_task(
-        _search_index.index,
-        db,
-        models.Release,
-        release_id,
-        title=merged_title,
-        description=merged_description,
-    )
+    if merged_title != data['title'] or merged_description != data.get(
+        'description'
+    ):
+        background_tasks.add_task(
+            _search_index.index,
+            db,
+            models.Release,
+            release_id,
+            title=merged_title,
+            description=merged_description,
+        )
     return _release_to_response(release_data, project_id)
 
 
