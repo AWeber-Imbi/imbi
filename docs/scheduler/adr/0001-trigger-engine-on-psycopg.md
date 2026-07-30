@@ -12,8 +12,8 @@ named APScheduler 4.x as the core.
 ## Context
 
 The scheduler needs four trigger kinds (cron, interval, calendar, one-shot), a
-guarantee that a given firing happens exactly once across replicas, and no
-pickled job payloads. The design this service was specified from chose
+guarantee that a given occurrence is claimed exactly once across replicas, and
+no pickled job payloads. The design this service was specified from chose
 APScheduler 4.x, using its shared relational data store to arbitrate single
 firing and its `PostgresqlEventBroker` to wake replicas.
 

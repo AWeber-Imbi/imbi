@@ -19,7 +19,17 @@ def build_task(**overrides: typing.Any) -> models.Task:
 
     Defaults to a system task on an `api` target running as the scheduler's
     service account — the shape phase 1 actually supports.
+
+    An override that is not a `Task` field raises rather than being dropped.
+    `model_validate` ignores extras by default, so `timzeone=...` would
+    otherwise leave the default in place and the case would assert against a
+    task it did not describe.
     """
+    unknown = set(overrides) - set(models.Task.model_fields)
+    if unknown:
+        raise TypeError(
+            f'build_task() got unexpected field(s): {sorted(unknown)}'
+        )
     now = datetime.datetime(2026, 7, 28, 6, tzinfo=datetime.UTC)
     fields: dict[str, typing.Any] = {
         'id': uuid.uuid4(),

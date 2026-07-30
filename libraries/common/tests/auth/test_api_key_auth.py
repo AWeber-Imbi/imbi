@@ -439,10 +439,6 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         """Set up test fixtures."""
         permissions.clear_api_key_cache()
-        self.auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
-        )
-
         self.test_user = models.User(
             email='test@example.com',
             display_name='Test User',
@@ -487,15 +483,10 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
 
         mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
-        with (
-            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
-            mock.patch(
-                'imbi.common.graph.parse_agtype',
-                side_effect=lambda x: x,
-            ),
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            mock_settings.return_value = self.auth_settings
-
             credentials = security.HTTPAuthorizationCredentials(
                 scheme='Bearer', credentials=self.full_key
             )
@@ -514,9 +505,6 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        self.auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
-        )
         self.ctx = permissions.AuthContext(auth_method='jwt')
 
     def _request(self, cookies: dict[str, str]) -> fastapi.Request:
@@ -529,13 +517,9 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
             scheme='Bearer', credentials='header-token'
         )
         request = self._request({permissions.ACCESS_COOKIE_NAME: 'cookie'})
-        with (
-            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
-            mock.patch.object(
-                shared_permissions, '_authenticate_token', new=mock.AsyncMock()
-            ) as mock_auth,
-        ):
-            mock_settings.return_value = self.auth_settings
+        with mock.patch.object(
+            shared_permissions, '_authenticate_token', new=mock.AsyncMock()
+        ) as mock_auth:
             mock_auth.return_value = self.ctx
             result = await permissions.get_current_user_cookie_fallback(
                 mock.AsyncMock(), request, credentials
@@ -548,13 +532,9 @@ class GetCurrentUserCookieFallbackTestCase(unittest.IsolatedAsyncioTestCase):
         request = self._request(
             {permissions.ACCESS_COOKIE_NAME: 'cookie-token'}
         )
-        with (
-            mock.patch('imbi.api.settings.get_auth_settings') as mock_settings,
-            mock.patch.object(
-                shared_permissions, '_authenticate_token', new=mock.AsyncMock()
-            ) as mock_auth,
-        ):
-            mock_settings.return_value = self.auth_settings
+        with mock.patch.object(
+            shared_permissions, '_authenticate_token', new=mock.AsyncMock()
+        ) as mock_auth:
             mock_auth.return_value = self.ctx
             result = await permissions.get_current_user_cookie_fallback(
                 mock.AsyncMock(), request, None

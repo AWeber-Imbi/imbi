@@ -157,6 +157,25 @@ class TaskTests(unittest.TestCase):
         self.assertIsInstance(task.id, uuid.UUID)
 
 
+class BuildTaskHelperTests(unittest.TestCase):
+    """The fixture builder must not silently swallow a typo."""
+
+    def test_an_unknown_override_raises(self) -> None:
+        # `model_validate` ignores extras, so without the guard this would
+        # return a task with the *default* timezone and any case asserting on
+        # it would be testing something it did not ask for.
+        with self.assertRaises(TypeError) as caught:
+            helpers.build_task(timzeone='America/New_York')
+        self.assertIn('timzeone', str(caught.exception))
+
+    def test_a_known_override_still_applies(self) -> None:
+        task = helpers.build_task(timezone='America/New_York')
+        self.assertEqual('America/New_York', task.timezone)
+
+    def test_no_overrides_is_valid(self) -> None:
+        self.assertEqual('nightly-recompute', helpers.build_task().slug)
+
+
 class RunStateTests(unittest.TestCase):
     def test_no_effect_is_terminal_and_distinct(self) -> None:
         self.assertIn('no_effect', models.TERMINAL_RUN_STATES)
