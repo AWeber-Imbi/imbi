@@ -27,11 +27,13 @@ audit gap is visible, and deleted rather than deprecated once the exchange grant
 ships. Its own recommendation was to build phase 1 with service-account identity
 only and skip minting; the flag existed to make the alternative explicit.
 
-What changed is sequencing. Phase 2 — the `Consent` model, the token-exchange
-grant, `AuthContext.actor` — is being built in the same worktree as phase 1
-rather than deferred to unscheduled work. The bridge's entire justification was
-the gap between the two phases, and that gap is now measured in days of the same
-branch.
+What changed is that the bridge stopped being worth its cost. Phase 2 — the
+`Consent` model, the token-exchange grant, `AuthContext.actor` — is deferred:
+`imbi-api` does not implement the exchange grant, so a `delegated_user` task is
+stored but every firing is recorded as `skipped`. The bridge's justification was
+to cover the gap between the phases, but covering it means minting tokens for
+users who never consented, which is precisely the audit gap the bridge was
+supposed to be a concession to. A visible `skipped` run is the better failure.
 
 ## Decision
 

@@ -56,8 +56,17 @@ scheduler:
 
 # Optional: reference an existing secret instead of specifying values above.
 # The secret must contain keys: jwt-secret, encryption-key, clickhouse-url,
-# postgres-url, and -- when running the scheduler --
-# scheduler-sa-client-id and scheduler-sa-client-secret.
+# postgres-url.
+#
+# Conditionally required, because the deployment reads them from this same
+# secret whenever the corresponding feature is switched on:
+#   - anthropic-api-key            when assistant.enabled
+#   - s3-access-key, s3-secret-key when storage.accessKey is set
+# Those two refs are not optional, so a secret missing a key the deployment
+# asks for will fail the pod. The scheduler's scheduler-sa-client-id and
+# scheduler-sa-client-secret are read whenever existingSecret is set, but are
+# marked optional, so omitting them only leaves the scheduler unable to
+# resolve a principal for api targets.
 existingSecret: ""
 
 ingress:

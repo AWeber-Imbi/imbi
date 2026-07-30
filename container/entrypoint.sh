@@ -59,7 +59,8 @@ require_scheduler_vars() {
     # imbi-api mounts its routes under the path of its *public* URL, while
     # IMBI_INTERNAL_API_URL is a bare origin. The scheduler re-derives that
     # prefix from IMBI_API_URL; unset, every api target requests a path
-    # without it and 404s, turning every run into a failure.
+    # without it and 404s -- including the token request, whose 404 becomes an
+    # IdentityError, so every such firing is recorded as skipped.
     require_var IMBI_API_URL "imbi-api's public URL, whose path is its route prefix"
     # And the origin the prefix is joined onto. Its default (localhost:8000) is
     # only ever right in 'all' mode, where imbi-api shares the container; in

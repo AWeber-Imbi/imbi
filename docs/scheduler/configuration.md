@@ -38,8 +38,9 @@ Two variables, deliberately distinct:
 imbi-api mounts every router under the path component of its public URL, while
 the internal URL is a bare origin. The scheduler joins the two: with the values
 above it calls `http://imbi-api:8000/api/...`. Setting only the internal URL
-means every request omits the prefix and 404s, which turns every run into a
-failure — so both are required.
+means every request omits the prefix and 404s — including the token request,
+whose 404 becomes an `IdentityError`, so every `api`-target firing is recorded
+as `skipped` rather than failed. Both are required.
 
 ## Optional
 
