@@ -198,6 +198,13 @@ async def patch_task(
             status_code=400,
             detail='slug identifies the task and cannot be patched',
         )
+    # Against the *patched* kind, not the stored one. `load_for_management`
+    # has already authorized the caller for the task as it exists, which says
+    # nothing about what they are turning it into: an owner holding only
+    # `scheduled_task:write` could otherwise patch `/kind` to `system` and
+    # take a task creation would never have let them make. Deliberately not
+    # a readonly path, so an admin can still promote one.
+    dependencies.authorize_system_kind(auth, updated.kind)
     # The same predicate ``Tasks.create`` and fire time use, so a patch cannot
     # put a task into a state creation would have refused.
     reason = identity.unresolvable(updated.identity, settings.get_settings())

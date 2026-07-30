@@ -314,6 +314,30 @@ class CreateTests(EndpointTestCase):
 
 
 class PatchTests(EndpointTestCase):
+    async def test_patching_kind_to_system_needs_admin(self) -> None:
+        # Escalation by patch. `load_for_management` authorizes the caller for
+        # the task as it stands, which says nothing about what they are turning
+        # it into, so an owner holding only `write` could otherwise promote
+        # their own `user` task to `system` and acquire one that creation
+        # (`test_creating_a_system_task_needs_admin`) would have refused them.
+        task = await self.given_task()
+        self.as_user(OWNER, {dependencies.WRITE})
+        promote = [{'op': 'replace', 'path': '/kind', 'value': 'system'}]
+        refused = await self.client.patch(
+            f'/api/tasks/{task.slug}', json=promote
+        )
+        self.assertEqual(403, refused.status_code)
+        unchanged = await self.tasks.get(task.slug)
+        self.assertIsNotNone(unchanged)
+        self.assertEqual('user', unchanged.kind)
+        # Still permitted for an admin: the field is guarded, not frozen.
+        self.as_user(OWNER, {dependencies.WRITE, dependencies.ADMIN})
+        allowed = await self.client.patch(
+            f'/api/tasks/{task.slug}', json=promote
+        )
+        self.assertEqual(200, allowed.status_code)
+        self.assertEqual('system', allowed.json()['kind'])
+
     async def test_a_trigger_change_recomputes_the_next_firing(self) -> None:
         task = await self.given_task(
             trigger=triggers.CronTrigger(expression='0 6 * * *'),
