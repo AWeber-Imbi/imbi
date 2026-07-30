@@ -608,9 +608,12 @@ async def authenticate_api_key(
                 detail='API key expired',
             )
 
-    # Verify key secret (hashed)
-    if not await asyncio.to_thread(
-        password.verify_password, key_secret, api_key_data['key_hash']
+    # Verify key secret (hashed). A row without `key_hash` is unverifiable,
+    # which is a failed authentication and not a server fault -- subscripting
+    # it would raise `KeyError` and answer a bad credential with a 500.
+    key_hash = api_key_data.get('key_hash')
+    if not key_hash or not await asyncio.to_thread(
+        password.verify_password, key_secret, key_hash
     ):
         raise fastapi.HTTPException(
             status_code=401, detail='Invalid or revoked API key'

@@ -144,6 +144,14 @@ def api_request(
     task scoped to an organization does not have to repeat it in every path.
     """
     path = renderer.text(target.path)
+    # Checked here as well as on the model, because `target.path` is a Jinja
+    # template: a field validator only ever sees the source, while this sees
+    # what the render actually produced. Checked *before* `_scoped_to`,
+    # because defeating that predicate is exactly what a traversal does.
+    try:
+        models.ensure_no_traversal(path)
+    except ValueError as err:
+        raise RenderError(f'{target.path!r}: {err}') from err
     organization = target.organization or task.organization
     if organization and not _scoped_to(path, organization):
         path = f'/organizations/{organization}{path}'
@@ -162,12 +170,17 @@ def gateway_request(
     base_url: str,
 ) -> RenderedRequest:
     """Render an `imbi-gateway` webhook delivery."""
+    # Same reasoning as `api_request`: the id is a template interpolated into
+    # a path, so the rendered value is what has to be safe, not the source
+    # the model validated.
+    webhook_id = renderer.text(target.webhook_id)
+    try:
+        models.ensure_no_traversal(webhook_id)
+    except ValueError as err:
+        raise RenderError(f'{target.webhook_id!r}: {err}') from err
     return RenderedRequest(
         method='POST',
-        url=(
-            base_url.rstrip('/')
-            + f'/notifications/{renderer.text(target.webhook_id)}'
-        ),
+        url=base_url.rstrip('/') + f'/notifications/{webhook_id}',
         query={},
         body=renderer.document(target.payload),
         headers=renderer.mapping(target.headers),

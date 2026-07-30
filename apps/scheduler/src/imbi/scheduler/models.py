@@ -12,6 +12,7 @@ is attributable by construction.
 import datetime
 import re
 import typing
+import urllib.parse
 import uuid
 import zoneinfo
 
@@ -64,6 +65,31 @@ def _validate_slug(value: str) -> str:
             'must be lowercase alphanumeric with interior hyphens'
         )
     return value
+
+
+def ensure_no_traversal(path: str) -> str:
+    """Return `path`, or raise if any segment walks back up the tree.
+
+    Load-bearing rather than defensive. :func:`imbi.scheduler.render.
+    api_request` confines an organization-scoped task by prefixing
+    ``/organizations/<slug>``, and it decides whether the prefix is needed by
+    string comparison — *before* anything normalizes the path. ``httpx``
+    resolves ``..`` client-side, so ``/../../admin/users`` on a task scoped to
+    ``acme`` leaves as ``/admin/users``: the scoping is defeated and the
+    request still carries the scheduler's service-account credential.
+
+    Percent-encoded forms are rejected on the same footing even though
+    ``httpx`` leaves them alone. That they survive is the problem — whether
+    ``%2e%2e`` walks up a level then depends on the receiving server's
+    normalization, and which routes a task can reach must not be a property of
+    something this far away.
+    """
+    for segment in path.split('/'):
+        if urllib.parse.unquote(segment) in {'.', '..'}:
+            raise ValueError(
+                f'path may not contain the traversal segment {segment!r}'
+            )
+    return path
 
 
 class Identity(pydantic.BaseModel):
@@ -130,7 +156,18 @@ class ApiTarget(pydantic.BaseModel):
             )
         if not value.startswith('/'):
             raise ValueError('path must begin with /')
-        return value
+        # Also checked on the *rendered* path at fire time, because this
+        # value is a Jinja template and a traversal can arrive from the
+        # context rather than the source. Kept here as well so an author gets
+        # a 422 at create time rather than a failed run months later.
+        return ensure_no_traversal(value)
+
+    @pydantic.field_validator('organization')
+    @classmethod
+    def _validate_organization(cls, value: str | None) -> str | None:
+        # Interpolated straight into the path by `render.api_request`, so a
+        # slash or dot-segment here is the same escape by another door.
+        return None if value is None else _validate_slug(value)
 
 
 class GatewayTarget(pydantic.BaseModel):
@@ -173,6 +210,14 @@ class GatewayTarget(pydantic.BaseModel):
         if response.status_code == GATEWAY_DROPPED:
             return 'no_effect'
         return 'failed'
+
+    @pydantic.field_validator('webhook_id')
+    @classmethod
+    def _validate_webhook_id(cls, value: str) -> str:
+        # `render.gateway_request` interpolates this into
+        # `/notifications/<id>`, so an unconstrained value walks out of that
+        # path the same way an api target's would.
+        return _validate_slug(value)
 
 
 Target = typing.Annotated[
@@ -242,6 +287,14 @@ class Task(pydantic.BaseModel):
     @classmethod
     def _validate_slug(cls, value: str) -> str:
         return _validate_slug(value)
+
+    @pydantic.field_validator('organization')
+    @classmethod
+    def _validate_organization(cls, value: str | None) -> str | None:
+        # The fallback scope `render.api_request` uses when the target names
+        # no organization of its own, and interpolated into the path exactly
+        # the same way.
+        return None if value is None else _validate_slug(value)
 
     @pydantic.field_validator('timezone')
     @classmethod

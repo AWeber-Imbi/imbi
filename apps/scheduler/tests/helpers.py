@@ -43,7 +43,7 @@ def build_task(**overrides: typing.Any) -> models.Task:
         'target': models.ApiTarget(
             method='POST', path='/scoring/recompute-all'
         ),
-        'created_by': 'gavinr@aweber.com',
+        'created_by': 'scheduler-tests@example.com',
         'created_at': now,
         'updated_at': now,
     }

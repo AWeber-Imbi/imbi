@@ -12,12 +12,14 @@ from imbi.scheduler import models, triggers
 class IdentityTests(unittest.TestCase):
     def test_delegated_user_requires_consent(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
-            models.Identity(kind='delegated_user', subject='gavinr@aweber.com')
+            models.Identity(
+                kind='delegated_user', subject='scheduler-tests@example.com'
+            )
 
     def test_delegated_user_with_consent(self) -> None:
         identity = models.Identity(
             kind='delegated_user',
-            subject='gavinr@aweber.com',
+            subject='scheduler-tests@example.com',
             consent_id='c-1',
         )
         self.assertEqual('imbi-api:*', identity.scope)

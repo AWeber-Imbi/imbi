@@ -28,7 +28,22 @@ def load_schemata() -> dict[str, typing.Any]:
 
 
 async def initialize() -> None:
-    """Create the scheduler schema, tables, and indexes."""
+    """Create the scheduler schema, tables, and indexes.
+
+    Serialized across replicas by a session-level advisory lock, because
+    every replica runs this on every start and `IF NOT EXISTS` is not
+    race-free in PostgreSQL: two backends that both find an object absent can
+    both proceed to create it, and the loser raises `duplicate key value
+    violates unique constraint "pg_type_typname_nsp_index"` rather than
+    quietly doing nothing.
+
+    A lock rather than catching that error. Catching it would make the race
+    invisible while leaving whichever replica lost part-way through its
+    table-and-index sequence, so a replica could start against a schema it
+    only half created. Holding the lock makes bootstrap what it always should
+    have been -- one replica at a time, each seeing the finished work of the
+    last.
+    """
     postgres = common_settings.Postgres()
     schema = settings.Scheduler().schema_name
     schemata = load_schemata()
@@ -38,10 +53,22 @@ async def initialize() -> None:
         ) as conn,
         conn.cursor() as cursor,
     ):
-        await _create_schema(cursor, schema)
-        for table in schemata.get('tables', []):
-            await _create_table(cursor, schema, table)
-            await _create_indexes(cursor, schema, table)
+        # Keyed on the schema name so two deployments using different schemas
+        # in one database do not queue behind each other.
+        await cursor.execute(
+            'SELECT pg_advisory_lock(hashtextextended(%s::text, 0))',
+            (f'imbi.scheduler.initialize.{schema}',),
+        )
+        try:
+            await _create_schema(cursor, schema)
+            for table in schemata.get('tables', []):
+                await _create_table(cursor, schema, table)
+                await _create_indexes(cursor, schema, table)
+        finally:
+            await cursor.execute(
+                'SELECT pg_advisory_unlock(hashtextextended(%s::text, 0))',
+                (f'imbi.scheduler.initialize.{schema}',),
+            )
     LOGGER.info('Scheduler schema %r initialized', schema)
 
 

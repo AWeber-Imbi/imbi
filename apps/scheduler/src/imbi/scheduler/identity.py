@@ -120,13 +120,19 @@ class ServiceAccountToken:
                 '(IMBI_SCHEDULER_SA_CLIENT_ID / _SECRET)'
             )
         url = self._settings.api_base_url + TOKEN_PATH
+        # The one place the secret is unwrapped. `SecretStr` stringifies to
+        # `**********`, so sending it without this posts a literal row of
+        # asterisks and every api-target firing fails to authenticate.
+        secret = self._settings.sa_client_secret
         try:
             response = await self._client.post(
                 url,
                 data={
                     'grant_type': 'client_credentials',
                     'client_id': self._settings.sa_client_id,
-                    'client_secret': self._settings.sa_client_secret,
+                    'client_secret': (
+                        secret.get_secret_value() if secret else None
+                    ),
                 },
             )
         except httpx.HTTPError as err:

@@ -131,9 +131,16 @@ class Engine:
             ttl=self._lease_ttl(task),
         )
         if lease is None:
-            return await self._decline(
-                task, moment, 'max_running_instances already reached'
+            # Two causes since the existence check landed, and they send an
+            # operator to different places: a saturated ceiling is a live
+            # concurrency question, while a vanished task means the firing
+            # raced a delete and there is nothing to investigate.
+            reason = (
+                'max_running_instances already reached'
+                if await self._tasks.get_by_id(task.id) is not None
+                else 'the task was deleted before the firing could start'
             )
+            return await self._decline(task, moment, reason)
         try:
             run = await self._execute(task, moment, run_id)
         finally:
@@ -401,6 +408,11 @@ class Engine:
         finally:
             for waiter in waiters:
                 waiter.cancel()
+            # Awaited, not just cancelled: a cancelled task that is never
+            # retrieved leaves the loop to report "Task was destroyed but it
+            # is pending" at shutdown, which reads as a scheduler bug in the
+            # logs of an otherwise clean stop.
+            await asyncio.gather(*waiters, return_exceptions=True)
 
     async def _delay(self) -> float:
         """Return how long to sleep, bounded by the poll interval."""

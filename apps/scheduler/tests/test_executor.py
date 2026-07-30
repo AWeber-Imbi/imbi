@@ -2,6 +2,7 @@ import datetime
 import unittest
 
 import httpx
+import pydantic
 import respx
 
 from apps.scheduler.tests import helpers
@@ -516,7 +517,7 @@ class IdentityFailureTests(ExecutorTestCase):
         task = helpers.build_task(
             identity=models.Identity(
                 kind='delegated_user',
-                subject='gavinr@aweber.com',
+                subject='scheduler-tests@example.com',
                 consent_id='c-1',
             )
         )
@@ -675,4 +676,128 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(
             {'n': 1, 'b': True, 'z': None},
             renderer.document({'n': 1, 'b': True, 'z': None}),
+        )
+
+
+class PathTraversalTests(unittest.TestCase):
+    """Organization scoping must not be walkable.
+
+    `api_request` confines an org-scoped task by prefixing
+    `/organizations/<slug>`, deciding whether the prefix is needed by string
+    comparison before anything normalizes the path. `httpx` resolves `..`
+    client-side, so without these checks a dot-segment leaves the prefix
+    behind and the request still carries the service-account credential.
+    """
+
+    def _url(self, path: str, *, organization: str = 'acme') -> str:
+        task = helpers.build_task(organization=organization)
+        target = models.ApiTarget.model_construct(
+            kind='api', method='POST', path=path, query={}, body=None
+        )
+        rendered = render.api_request(
+            task, target, render.Renderer({}), API_URL
+        )
+        return httpx.URL(rendered.url).path
+
+    def test_an_ordinary_path_still_resolves_under_the_org(self) -> None:
+        self.assertEqual('/organizations/acme/widgets', self._url('/widgets'))
+
+    def test_an_already_scoped_path_is_not_prefixed_twice(self) -> None:
+        self.assertEqual(
+            '/organizations/acme/widgets',
+            self._url('/organizations/acme/widgets'),
+        )
+
+    def test_a_cross_org_traversal_is_refused(self) -> None:
+        # Would otherwise leave as /organizations/other-org/widgets.
+        with self.assertRaises(render.RenderError):
+            self._url('/../other-org/widgets')
+
+    def test_an_admin_route_traversal_is_refused(self) -> None:
+        # Would otherwise leave as /admin/users, outside org scoping entirely.
+        with self.assertRaises(render.RenderError):
+            self._url('/../../admin/users')
+
+    def test_a_percent_encoded_traversal_is_refused(self) -> None:
+        # httpx leaves these as written, so whether they escape depends on the
+        # receiving server -- not a decision to delegate.
+        for encoded in ('/%2e%2e/other-org/x', '/%2E%2E/other-org/x'):
+            with self.subTest(path=encoded):
+                with self.assertRaises(render.RenderError):
+                    self._url(encoded)
+
+    def test_a_single_dot_segment_is_refused(self) -> None:
+        with self.assertRaises(render.RenderError):
+            self._url('/./widgets')
+
+    def test_a_traversal_produced_by_the_template_is_refused(self) -> None:
+        # The model validator only ever sees the template source, so this is
+        # the case only the render-time check can catch.
+        task = helpers.build_task(organization='acme')
+        target = models.ApiTarget.model_construct(
+            kind='api',
+            method='POST',
+            path='/{{ escape }}/other-org/widgets',
+            query={},
+            body=None,
+        )
+        with self.assertRaises(render.RenderError):
+            render.api_request(
+                task, target, render.Renderer({'escape': '..'}), API_URL
+            )
+
+    def test_the_model_refuses_a_literal_traversal_at_create_time(
+        self,
+    ) -> None:
+        # Belt to the render-time braces: an author gets a 422 now rather
+        # than a failed run later.
+        with self.assertRaises(pydantic.ValidationError):
+            models.ApiTarget(method='POST', path='/../other-org/widgets')
+
+    def test_the_model_refuses_a_non_slug_organization(self) -> None:
+        for org in ('../other', 'acme/evil', 'ACME'):
+            with self.subTest(organization=org):
+                with self.assertRaises(pydantic.ValidationError):
+                    models.ApiTarget(
+                        method='POST', path='/x', organization=org
+                    )
+
+    def test_the_model_refuses_a_non_slug_webhook_id(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.GatewayTarget(webhook_id='../admin', payload={})
+
+    def test_a_rendered_webhook_id_traversal_is_refused(self) -> None:
+        target = models.GatewayTarget.model_construct(
+            kind='gateway',
+            webhook_id='{{ escape }}',
+            payload={},
+            headers={},
+        )
+        with self.assertRaises(render.RenderError):
+            render.gateway_request(
+                target, render.Renderer({'escape': '../admin'}), GATEWAY_URL
+            )
+
+
+class ServiceAccountSecretTests(ExecutorTestCase):
+    """`SecretStr` is only useful if the one place that unwraps it does."""
+
+    async def test_the_real_secret_is_sent_not_the_mask(self) -> None:
+        # The whole risk of the SecretStr change: `str(SecretStr)` is
+        # `**********`, so a missing `.get_secret_value()` would post that
+        # and every api-target firing would fail to authenticate -- against a
+        # mock that accepts anything, which is why this asserts the wire
+        # value rather than the outcome.
+        await self.resolver.service_account.token()
+        sent = self.token_route.calls[0].request.content.decode()
+        self.assertIn('client_secret=secret', sent)
+        self.assertNotIn('*', sent)
+
+    def test_the_secret_does_not_appear_in_repr_or_dump(self) -> None:
+        config_ = config()
+        assert config_.sa_client_secret is not None
+        self.assertEqual('secret', config_.sa_client_secret.get_secret_value())
+        self.assertNotIn('secret', repr(config_.sa_client_secret))
+        self.assertNotIn(
+            'secret', str(config_.model_dump().get('sa_client_secret'))
         )

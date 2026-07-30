@@ -262,7 +262,7 @@ class CrudTests(StoreTestCase):
         task = helpers.build_task(
             identity=models.Identity(
                 kind='delegated_user',
-                subject='gavinr@aweber.com',
+                subject='scheduler-tests@example.com',
                 consent_id='c-1',
             )
         )
