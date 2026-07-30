@@ -8,15 +8,24 @@ replicaCount: 1
 
 # Service mode:
 # - "all": run all services in one pod (uses replicaCount above)
-# - "api" | "assistant" | "gateway" | "mcp": run a single service
+# - "api" | "assistant" | "gateway" | "mcp" | "scheduler" | "slackbot":
+#   run a single service
 # Use the matching .service.<name>.replicas value to scale that service.
 service:
   mode: all
-  # Internal upstream URL imbi-mcp and imbi-assistant use to reach
-  # imbi-api. The default works for "all" and "api" modes; override
-  # when running "mcp" or "assistant" as separate pods (e.g.
-  # http://imbi-api.<namespace>.svc.cluster.local:8000).
+  # Internal upstream URL imbi-mcp, imbi-assistant, and imbi-scheduler use
+  # to reach imbi-api. The default works for "all" and "api" modes; override
+  # when running "mcp", "assistant", or "scheduler" as separate pods (e.g.
+  # http://imbi-api.<namespace>.svc.cluster.local:8000). In "scheduler" mode
+  # the chart fails to render if this is left at the loopback default: there
+  # it resolves to the scheduler's own pod, and the resulting pod reports
+  # healthy while every api-target firing fails.
   internalApiUrl: "http://localhost:8000"
+  # imbi-api's *public* URL, whose path component is the prefix it mounts
+  # its routes under. imbi-scheduler re-derives that prefix to build the
+  # paths it calls, so a scheduler pod cannot reach an API mounted under a
+  # path (e.g. https://imbi.example.com/api) unless this is set to match.
+  publicApiUrl: ""
   api:
     replicas: 1
   assistant:
@@ -25,14 +34,46 @@ service:
     replicas: 1
   mcp:
     replicas: 1
+  scheduler:
+    # More than one replica is safe. Claiming is what makes it so: claim_due
+    # takes due tasks with FOR UPDATE SKIP LOCKED, so concurrent replicas get
+    # disjoint sets and one replica claims a given occurrence. The advisory
+    # lock does a different job -- enforcing execution.max_running_instances
+    # and ordering a lease against a task delete -- and is not what arbitrates
+    # firing. See docs/scheduler/adr/0001-trigger-engine-on-psycopg.md.
+    replicas: 1
+  slackbot:
+    # Socket mode: each replica opens its own connection to Slack and Slack
+    # delivers an event to one of them, so replicas do not duplicate work.
+    replicas: 1
 
 # Required authentication settings
 auth:
   jwtSecret: ""
   encryptionKey: ""
 
+# Scheduler configuration
+scheduler:
+  # The scheduler runs every task as its own service account (ADR 0002 removed
+  # the per-task credential store). Without these it starts and schedules, but
+  # resolves no principal for an api target, so every such firing is skipped.
+  serviceAccount:
+    clientId: ""
+    clientSecret: ""
+
 # Optional: reference an existing secret instead of specifying values above.
-# The secret must contain keys: jwt-secret, encryption-key
+# The secret must contain keys: jwt-secret, encryption-key, clickhouse-url,
+# postgres-url.
+#
+# Conditionally required, because the deployment reads them from this same
+# secret whenever the corresponding feature is switched on:
+#   - anthropic-api-key            when assistant.enabled
+#   - s3-access-key, s3-secret-key when storage.accessKey is set
+# Those two refs are not optional, so a secret missing a key the deployment
+# asks for will fail the pod. The scheduler's scheduler-sa-client-id and
+# scheduler-sa-client-secret are read whenever existingSecret is set, but are
+# marked optional, so omitting them only leaves the scheduler unable to
+# resolve a principal for api targets.
 existingSecret: ""
 
 ingress:

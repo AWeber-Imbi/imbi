@@ -122,6 +122,14 @@ nav:
       - Gateway:
           - Lifespan Pattern: gateway/lifespan-pattern.md
           - Webhook Filter Expressions: gateway/webhook-filter-expressions.md
+      - Scheduler:
+          - Overview: scheduler/index.md
+          - Configuration: scheduler/configuration.md
+          - Scheduled Tasks: scheduler/tasks.md
+          - Architecture Decision Records:
+              - 0001 Trigger Engine on psycopg3: scheduler/adr/0001-trigger-engine-on-psycopg.md
+              - 0002 No Credential Store in v1: scheduler/adr/0002-no-credential-store-in-v1.md
+              - 0003 No Local Token-Minting Bridge: scheduler/adr/0003-no-local-token-minting-bridge.md
       - Slackbot:
           - Slack App Manifest: slackbot/slack-app-manifest.md
 
@@ -136,6 +144,7 @@ plugins:
             - apps/assistant/src
             - apps/gateway/src
             - apps/mcp/src
+            - apps/scheduler/src
             - apps/slackbot/src
             - plugins/aws/src
             - plugins/github/src

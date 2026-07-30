@@ -1,10 +1,15 @@
-"""JSON Patch (RFC 6902) utilities."""
+"""JSON Patch (RFC 6902) utilities.
+
+Shared: imbi-api applies patches to its domain entities and
+imbi-scheduler to scheduled-task definitions, both per the platform
+PATCH convention.
+"""
 
 import logging
 import typing
 
 import fastapi
-import jsonpatch  # type: ignore[import-untyped]
+import jsonpatch
 import pydantic
 
 LOGGER = logging.getLogger(__name__)
@@ -85,7 +90,7 @@ def apply_patch(
         ops_list.append(d)
 
     try:
-        result = jsonpatch.apply_patch(  # type: ignore[no-any-expr]
+        result = jsonpatch.apply_patch(
             document,
             ops_list,
         )

@@ -23,9 +23,9 @@ import fastapi
 import nanoid
 import pydantic
 
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.common import graph
+from imbi.common import patch as json_patch
 from imbi.common.clickhouse import client as ch_client
 
 LOGGER = logging.getLogger(__name__)

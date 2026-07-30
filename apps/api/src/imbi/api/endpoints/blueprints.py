@@ -8,12 +8,12 @@ import fastapi
 import pydantic
 
 from imbi.api import openapi
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.common import graph, models
+from imbi.common import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
 

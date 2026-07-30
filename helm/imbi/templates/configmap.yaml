@@ -12,6 +12,21 @@ data:
   # service.internalApiUrl when running imbi-mcp or imbi-assistant
   # as separate pods.
   IMBI_INTERNAL_API_URL: {{ .Values.service.internalApiUrl | quote }}
+  {{- if eq .Values.service.mode "scheduler" }}
+  {{- if eq .Values.service.internalApiUrl "http://localhost:8000" }}
+  {{- fail "service.internalApiUrl must point at imbi-api when service.mode is 'scheduler' (e.g. http://imbi-api.<namespace>.svc.cluster.local:8000) -- the default is an in-pod loopback, which in a standalone scheduler pod resolves to the scheduler itself, so every api-target firing fails while the pod reports healthy" }}
+  {{- end }}
+  # Required in scheduler mode, not optional as below: the container's
+  # require_scheduler_vars() exits at startup without it, so an unset value
+  # here is a CrashLoopBackOff rather than a degraded pod. Failed at render
+  # time instead, where the message says what to set.
+  IMBI_API_URL: {{ required "service.publicApiUrl is required when service.mode is 'scheduler' -- imbi-scheduler re-derives imbi-api's route prefix from its path, and the container refuses to start without it" .Values.service.publicApiUrl | quote }}
+  {{- else if .Values.service.publicApiUrl }}
+  # imbi-api's public URL. Its path component is the prefix imbi-api mounts
+  # its routes under, and the prefix imbi-scheduler re-derives to build the
+  # paths it calls. Both read it from here, so they cannot disagree.
+  IMBI_API_URL: {{ .Values.service.publicApiUrl | quote }}
+  {{- end }}
   IMBI_EMAIL_ENABLED: {{ .Values.email.enabled | quote }}
   {{- if .Values.email.enabled }}
   IMBI_EMAIL_SMTP_HOST: {{ .Values.email.smtp.host | quote }}

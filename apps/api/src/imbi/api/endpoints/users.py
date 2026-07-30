@@ -8,11 +8,11 @@ from urllib import parse as urlparse
 import fastapi
 
 from imbi.api import models
-from imbi.api import patch as json_patch
 from imbi.api.auth import password, permissions
 from imbi.api.endpoints import _helpers
 from imbi.api.identity import repository as identity_repository
 from imbi.common import graph
+from imbi.common import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
 

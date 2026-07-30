@@ -10,13 +10,13 @@ import typing
 import fastapi
 import pydantic
 
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.domain import scoring as scoring_models
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.common import graph
+from imbi.common import patch as json_patch
 from imbi.common.scoring import models as scoring_common
 
 LOGGER = logging.getLogger(__name__)

@@ -54,6 +54,15 @@ class Auth(pydantic_settings.BaseSettings):
     access_token_expire_seconds: int = 3600  # 1 hour
     refresh_token_expire_seconds: int = 2592000  # 30 days
 
+    # Throttle interval for the ``last_used`` stamp the shared API-key
+    # auth path writes. Authentication runs on every request, but
+    # persisting the stamp every time spikes graph write pressure for no
+    # UX benefit -- the value only needs to be accurate to the nearest
+    # minute or so. Set to 0 to disable throttling. Constrained rather than
+    # clamped: the stamp path takes `max(0, ...)`, so a typo like `-1` would
+    # otherwise silently disable throttling and write on every request.
+    last_used_throttle_seconds: int = pydantic.Field(default=60, ge=0)
+
     # Encryption Configuration (Phase 5)
     encryption_key: str | None = pydantic.Field(
         default=None,

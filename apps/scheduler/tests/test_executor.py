@@ -1,0 +1,977 @@
+import collections.abc
+import datetime
+import unittest
+
+import httpx
+import pydantic
+import respx
+
+from apps.scheduler.tests import helpers
+from imbi.common import clickhouse
+from imbi.scheduler import (
+    executor,
+    identity,
+    models,
+    render,
+    runs,
+    settings,
+)
+
+FIRED_AT = datetime.datetime(2026, 7, 28, 6, tzinfo=datetime.UTC)
+API_URL = 'http://api.test'
+GATEWAY_URL = 'http://gateway.test'
+
+
+def config(**overrides: object) -> settings.Scheduler:
+    values: dict[str, object] = {
+        'IMBI_INTERNAL_API_URL': API_URL,
+        'gateway_url': GATEWAY_URL,
+        'sa_slug': 'imbi-scheduler',
+        'sa_client_id': 'cid',
+        'sa_client_secret': 'secret',
+    }
+    values.update(overrides)
+    return settings.Scheduler.model_validate(values)
+
+
+class ExecutorTestCase(helpers.TestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        # The executor writes the `running` row itself, so history is live
+        # here. respx does not intercept clickhouse-connect (urllib3, not
+        # httpx), so the two coexist.
+        # Registered as cleanups rather than torn down in `asyncTearDown`,
+        # which only runs if setup *completed*. A failure between acquiring
+        # one of these and the end of setup used to leak it into every
+        # subsequent case in the process -- a started respx mock intercepting
+        # their requests, or an open client and ClickHouse connection.
+        self.assertTrue(await clickhouse.initialize())
+        self.addAsyncCleanup(clickhouse.aclose)
+        await clickhouse.setup_schema()
+        self.settings = config()
+        self.client = httpx.AsyncClient()
+        self.addAsyncCleanup(self.client.aclose)
+        self.resolver = identity.Resolver(self.client, self.settings)
+        self.executor = executor.Executor(
+            self.client, self.resolver, self.settings
+        )
+        self.mock = respx.mock(assert_all_called=False)
+        self.mock.start()
+        self.addCleanup(self.mock.stop)
+        self.token_route = self.mock.post(f'{API_URL}/auth/token').mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'sa-token', 'expires_in': 900}
+            )
+        )
+
+
+class ApiTargetTests(ExecutorTestCase):
+    async def test_success(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202, json={'queued': 12})
+        )
+        run = await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertEqual(202, run.http_status)
+        self.assertEqual('imbi-scheduler', run.principal_name)
+        self.assertTrue(route.called)
+
+    async def test_sends_the_service_account_bearer(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual(
+            'Bearer sa-token', route.calls[0].request.headers['authorization']
+        )
+
+    async def test_oversized_body_stops_reading_at_the_excerpt_limit(
+        self,
+    ) -> None:
+        """A huge body must not be buffered whole just to be truncated."""
+        chunks = 0
+
+        async def body() -> collections.abc.AsyncIterator[bytes]:
+            nonlocal chunks
+            for _ in range(1000):
+                chunks += 1
+                yield b'x' * 4096
+
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202, content=body())
+        )
+        run = await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(run.response_excerpt.endswith('…[truncated]'))
+        self.assertLessEqual(
+            chunks, runs.RESPONSE_EXCERPT_LIMIT // 4096 + 1, 'read past limit'
+        )
+
+    async def test_client_error_does_not_retry(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(403, text='forbidden')
+        )
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=3, retry_backoff='none')
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual('http_403', run.error_type)
+        self.assertEqual(1, route.call_count)
+
+    async def test_server_error_retries_to_exhaustion(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(503)
+        )
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=2, retry_backoff='none')
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual(3, route.call_count)
+        self.assertEqual(3, run.attempt)
+
+    async def test_rate_limit_is_retried(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[httpx.Response(429), httpx.Response(202)]
+        )
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=1, retry_backoff='none')
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertEqual(2, route.call_count)
+
+    async def test_timeout(self) -> None:
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=httpx.ReadTimeout('too slow')
+        )
+        task = helpers.build_task(execution=models.ExecutionPolicy(retries=0))
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('timed_out', run.state)
+        self.assertEqual('timeout', run.error_type)
+
+    async def test_transport_error(self) -> None:
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=httpx.ConnectError('refused')
+        )
+        run = await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual('transport', run.error_type)
+
+    async def test_organization_scoped_path(self) -> None:
+        route = self.mock.post(
+            f'{API_URL}/organizations/aweber/scoring/recompute-all'
+        ).mock(return_value=httpx.Response(202))
+        task = helpers.build_task(organization='aweber')
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(route.called)
+
+    async def test_a_prefix_match_is_not_a_scope_match(self) -> None:
+        # Without a separator boundary a task scoped to `acme` reaches
+        # `acme-corp` unrewritten — a different organization, with this
+        # task's credential.
+        route = self.mock.post(
+            f'{API_URL}/organizations/acme/organizations/acme-corp/projects'
+        ).mock(return_value=httpx.Response(202))
+        task = helpers.build_task(
+            organization='acme',
+            target=models.ApiTarget(
+                method='POST', path='/organizations/acme-corp/projects'
+            ),
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(route.called)
+
+    async def test_an_exact_scope_match_is_not_rewritten(self) -> None:
+        route = self.mock.post(f'{API_URL}/organizations/acme').mock(
+            return_value=httpx.Response(202)
+        )
+        task = helpers.build_task(
+            organization='acme',
+            target=models.ApiTarget(method='POST', path='/organizations/acme'),
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertTrue(route.called)
+
+    async def test_renders_the_body_and_query(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        task = helpers.build_task(
+            target=models.ApiTarget(
+                method='POST',
+                path='/scoring/recompute-all',
+                query={'slug': '{{ task.slug }}'},
+                body={'reason': 'run {{ run.id }}'},
+            )
+        )
+        await self.executor.execute(task, FIRED_AT)
+        request = route.calls[0].request
+        self.assertIn('slug=nightly-recompute', str(request.url))
+        self.assertIn(b'run ', request.content)
+
+    async def test_sends_the_idempotency_key(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(
+                idempotency_key='{{ task.slug }}-{{ run.id }}'
+            )
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertTrue(
+            route.calls[0]
+            .request.headers['idempotency-key']
+            .startswith('nightly-recompute-')
+        )
+
+    async def test_render_failure_makes_no_request(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        task = helpers.build_task(
+            target=models.ApiTarget(
+                method='POST', path='/scoring/{{ missing.thing }}'
+            )
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual('render', run.error_type)
+        self.assertFalse(route.called)
+
+
+class RunningRowTests(ExecutorTestCase):
+    """The run is visible while it runs, not only once it is over."""
+
+    async def test_a_running_row_is_written_before_the_request(self) -> None:
+        seen: list[str] = []
+
+        async def observe(_request: httpx.Request) -> httpx.Response:
+            # Reading history from inside the handler is the only way to
+            # assert on a row that a later write supersedes.
+            history = await runs.for_task(task.id)
+            seen.extend(run.state for run in history)
+            return httpx.Response(202)
+
+        task = helpers.build_task()
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=observe
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(['running'], seen)
+        self.assertEqual('succeeded', run.state)
+
+    async def test_the_terminal_row_supersedes_it(self) -> None:
+        task = helpers.build_task()
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        await runs.record(run)
+        history = await runs.for_task(task.id)
+        self.assertEqual(1, len(history))
+        self.assertEqual('succeeded', history[0].state)
+
+    async def test_a_retried_run_still_collapses_to_its_last_attempt(
+        self,
+    ) -> None:
+        # Retries do not add rows: the sort key is (task_id, run_id), and only
+        # the attempt that ended the run is recorded.
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=2, retry_backoff='none')
+        )
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[
+                httpx.Response(503),
+                httpx.Response(503),
+                httpx.Response(202),
+            ]
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        await runs.record(run)
+        history = await runs.for_task(task.id)
+        self.assertEqual(1, len(history))
+        self.assertEqual('succeeded', history[0].state)
+        self.assertEqual(3, history[0].attempt)
+
+    async def test_an_identity_skip_reuses_the_running_run(self) -> None:
+        # One firing is one run_id: a skip that minted its own would leave the
+        # `running` row behind forever as a second, never-finished run.
+        self.token_route.mock(return_value=httpx.Response(401))
+        task = helpers.build_task()
+        run = await self.executor.execute(task, FIRED_AT)
+        await runs.record(run)
+        history = await runs.for_task(task.id)
+        self.assertEqual(1, len(history))
+        self.assertEqual('skipped', history[0].state)
+
+
+class ReauthTests(ExecutorTestCase):
+    """A 401 earns exactly one re-auth, and it costs no retries."""
+
+    async def test_a_401_re_authenticates_and_retries_once(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[httpx.Response(401), httpx.Response(202)]
+        )
+        self.token_route.mock(
+            side_effect=[
+                httpx.Response(
+                    200, json={'access_token': 'stale', 'expires_in': 900}
+                ),
+                httpx.Response(
+                    200, json={'access_token': 'fresh', 'expires_in': 900}
+                ),
+            ]
+        )
+        task = helpers.build_task(execution=models.ExecutionPolicy(retries=0))
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertEqual(2, self.token_route.call_count)
+        self.assertEqual(
+            ['Bearer stale', 'Bearer fresh'],
+            [call.request.headers['authorization'] for call in route.calls],
+        )
+
+    async def test_the_re_auth_does_not_consume_a_retry(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            side_effect=[
+                httpx.Response(401),
+                httpx.Response(503),
+                httpx.Response(202),
+            ]
+        )
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=1, retry_backoff='none')
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertEqual(3, route.call_count)
+
+    async def test_a_second_401_is_the_answer_not_the_credential(self) -> None:
+        route = self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(401)
+        )
+        task = helpers.build_task(execution=models.ExecutionPolicy(retries=0))
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual('http_401', run.error_type)
+        self.assertEqual(2, route.call_count)
+        self.assertEqual(2, self.token_route.call_count)
+
+    async def test_a_401_without_a_bearer_is_not_re_authenticated(
+        self,
+    ) -> None:
+        route = self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(401)
+        )
+        task = helpers.build_task(
+            slug='synthetic-delivery',
+            identity=None,
+            target=models.GatewayTarget(webhook_id='w-1', payload={}),
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('failed', run.state)
+        self.assertEqual(1, route.call_count)
+        self.assertFalse(self.token_route.called)
+
+    async def test_a_failed_re_auth_skips_rather_than_fails(self) -> None:
+        self.mock.post(f'{API_URL}/scoring/recompute-all').mock(
+            return_value=httpx.Response(401)
+        )
+        self.token_route.mock(
+            side_effect=[
+                httpx.Response(
+                    200, json={'access_token': 'stale', 'expires_in': 900}
+                ),
+                httpx.Response(503),
+            ]
+        )
+        task = helpers.build_task(execution=models.ExecutionPolicy(retries=0))
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('skipped', run.state)
+        self.assertIn('503', run.error_message)
+
+
+class ApiPrefixTests(ExecutorTestCase):
+    """imbi-api mounts its routers under the path of its public URL.
+
+    ``IMBI_INTERNAL_API_URL`` is a bare origin, so without re-deriving that
+    prefix every request the scheduler makes is a 404.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.settings = config(IMBI_API_URL='https://imbi.test/api')
+        self.resolver = identity.Resolver(self.client, self.settings)
+        self.executor = executor.Executor(
+            self.client, self.resolver, self.settings
+        )
+        self.token_route = self.mock.post(f'{API_URL}/api/auth/token').mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'sa-token', 'expires_in': 900}
+            )
+        )
+
+    def test_base_url_carries_the_prefix(self) -> None:
+        self.assertEqual(f'{API_URL}/api', self.settings.api_base_url)
+
+    def test_a_schemeless_public_url_fails_at_startup(self) -> None:
+        # `urlparse` reads a schemeless value as all path, so this would
+        # otherwise build `http://api.test` + `imbi.test/api` and skip every
+        # run on a 404 that names nothing.
+        with self.assertRaises(pydantic.ValidationError):
+            config(IMBI_API_URL='imbi.test/api')
+
+    def test_an_unset_public_url_still_means_no_prefix(self) -> None:
+        self.assertEqual(API_URL, config(IMBI_API_URL='').api_base_url)
+
+    async def test_the_token_request_is_prefixed(self) -> None:
+        self.mock.post(f'{API_URL}/api/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        run = await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(self.token_route.called)
+
+    async def test_the_target_request_is_prefixed(self) -> None:
+        route = self.mock.post(f'{API_URL}/api/scoring/recompute-all').mock(
+            return_value=httpx.Response(202)
+        )
+        await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual(
+            f'{API_URL}/api/scoring/recompute-all',
+            str(route.calls[0].request.url),
+        )
+
+    async def test_the_organization_scope_stays_inside_the_prefix(
+        self,
+    ) -> None:
+        route = self.mock.post(
+            f'{API_URL}/api/organizations/aweber/scoring/recompute-all'
+        ).mock(return_value=httpx.Response(202))
+        run = await self.executor.execute(
+            helpers.build_task(organization='aweber'), FIRED_AT
+        )
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(route.called)
+
+
+class GatewayTargetTests(ExecutorTestCase):
+    def _task(self, **overrides: object) -> models.Task:
+        fields: dict[str, object] = {
+            'slug': 'synthetic-delivery',
+            'identity': None,
+            'target': models.GatewayTarget(
+                webhook_id='w-1', payload={'event': 'ping'}
+            ),
+        }
+        fields.update(overrides)
+        return helpers.build_task(**fields)
+
+    async def test_accepted_is_success(self) -> None:
+        route = self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(202)
+        )
+        run = await self.executor.execute(self._task(), FIRED_AT)
+        self.assertEqual('succeeded', run.state)
+        self.assertTrue(route.called)
+
+    async def test_dropped_is_no_effect_not_success(self) -> None:
+        self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(204)
+        )
+        run = await self.executor.execute(self._task(), FIRED_AT)
+        self.assertEqual('no_effect', run.state)
+        self.assertEqual(204, run.http_status)
+
+    async def test_no_effect_is_not_retried(self) -> None:
+        route = self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(204)
+        )
+        task = self._task(
+            execution=models.ExecutionPolicy(retries=3, retry_backoff='none')
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(1, route.call_count)
+
+    async def test_unparseable_body_is_failure(self) -> None:
+        self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(422)
+        )
+        run = await self.executor.execute(self._task(), FIRED_AT)
+        self.assertEqual('failed', run.state)
+
+    async def test_carries_no_authorization_header(self) -> None:
+        route = self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(202)
+        )
+        await self.executor.execute(self._task(), FIRED_AT)
+        self.assertNotIn('authorization', route.calls[0].request.headers)
+        self.assertFalse(self.token_route.called)
+
+    async def test_principal_is_the_webhook(self) -> None:
+        self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(202)
+        )
+        run = await self.executor.execute(self._task(), FIRED_AT)
+        self.assertEqual('gateway:w-1', run.principal_name)
+        self.assertEqual('none', run.identity_kind)
+
+    async def test_renders_nested_payload_values(self) -> None:
+        route = self.mock.post(f'{GATEWAY_URL}/notifications/w-1').mock(
+            return_value=httpx.Response(202)
+        )
+        task = self._task(
+            target=models.GatewayTarget(
+                webhook_id='w-1',
+                payload={'meta': {'slugs': ['{{ task.slug }}']}},
+            )
+        )
+        await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(
+            b'{"meta":{"slugs":["synthetic-delivery"]}}',
+            route.calls[0].request.content,
+        )
+
+
+class IdentityFailureTests(ExecutorTestCase):
+    async def test_unconfigured_service_account_skips(self) -> None:
+        bare = config(sa_client_id=None, sa_client_secret=None)
+        exec_ = executor.Executor(
+            self.client, identity.Resolver(self.client, bare), bare
+        )
+        run = await exec_.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('skipped', run.state)
+        self.assertIn('not configured', run.error_message)
+
+    async def test_delegated_identity_skips_until_phase_two(self) -> None:
+        task = helpers.build_task(
+            identity=models.Identity(
+                kind='delegated_user',
+                subject='scheduler-tests@example.com',
+                consent_id='c-1',
+            )
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('skipped', run.state)
+        self.assertIn('token-exchange', run.error_message)
+
+    async def test_foreign_service_account_skips(self) -> None:
+        task = helpers.build_task(
+            identity=models.Identity(
+                kind='service_account', subject='someone-else'
+            )
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual('skipped', run.state)
+        self.assertIn('ADR 0002', run.error_message)
+
+    async def test_token_endpoint_failure_skips(self) -> None:
+        self.token_route.mock(return_value=httpx.Response(401))
+        run = await self.executor.execute(helpers.build_task(), FIRED_AT)
+        self.assertEqual('skipped', run.state)
+        self.assertIn('401', run.error_message)
+
+    async def test_skip_does_not_consume_retries(self) -> None:
+        self.token_route.mock(return_value=httpx.Response(401))
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retries=5, retry_backoff='none')
+        )
+        run = await self.executor.execute(task, FIRED_AT)
+        self.assertEqual(1, run.attempt)
+        self.assertEqual(1, self.token_route.call_count)
+
+
+class ServiceAccountTokenTests(ExecutorTestCase):
+    async def test_token_is_cached(self) -> None:
+        await self.resolver.service_account.token()
+        await self.resolver.service_account.token()
+        self.assertEqual(1, self.token_route.call_count)
+
+    async def test_invalidate_forces_a_refetch(self) -> None:
+        await self.resolver.service_account.token()
+        self.resolver.service_account.invalidate()
+        await self.resolver.service_account.token()
+        self.assertEqual(2, self.token_route.call_count)
+
+    async def test_near_expiry_token_is_refreshed(self) -> None:
+        self.token_route.mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'brief', 'expires_in': 10}
+            )
+        )
+        await self.resolver.service_account.token()
+        await self.resolver.service_account.token()
+        self.assertEqual(2, self.token_route.call_count)
+
+    async def test_missing_access_token(self) -> None:
+        self.token_route.mock(return_value=httpx.Response(200, json={}))
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_transport_failure(self) -> None:
+        self.token_route.mock(side_effect=httpx.ConnectError('refused'))
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_a_non_numeric_expires_in_is_an_identity_error(self) -> None:
+        # Anything escaping as its own exception type would crash the firing
+        # instead of recording it as `skipped`, which is what `execute` does
+        # with an `IdentityError`.
+        self.token_route.mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'x', 'expires_in': 'soon'}
+            )
+        )
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_a_null_expires_in_is_an_identity_error(self) -> None:
+        self.token_route.mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'x', 'expires_in': None}
+            )
+        )
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_a_non_string_access_token_is_an_identity_error(
+        self,
+    ) -> None:
+        # Truthy but not a credential. Without a type check this is cached and
+        # handed to httpx as a bearer token.
+        for value in (12345, {'jwt': 'x'}, ['x']):
+            with self.subTest(access_token=value):
+                self.token_route.mock(
+                    return_value=httpx.Response(
+                        200, json={'access_token': value, 'expires_in': 900}
+                    )
+                )
+                with self.assertRaises(identity.IdentityError):
+                    await self.resolver.service_account.token()
+
+    async def test_a_non_json_body_is_an_identity_error(self) -> None:
+        self.token_route.mock(
+            return_value=httpx.Response(200, content=b'not json')
+        )
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_a_json_array_body_is_an_identity_error(self) -> None:
+        self.token_route.mock(return_value=httpx.Response(200, json=[]))
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+
+class BackoffTests(unittest.TestCase):
+    def test_none(self) -> None:
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retry_backoff='none')
+        )
+        self.assertEqual(0.0, executor._backoff(task, 3))
+
+    def test_linear(self) -> None:
+        task = helpers.build_task(
+            execution=models.ExecutionPolicy(retry_backoff='linear')
+        )
+        self.assertEqual(3.0, executor._backoff(task, 3))
+
+    def test_exponential(self) -> None:
+        task = helpers.build_task()
+        self.assertEqual(
+            [1.0, 2.0, 4.0],
+            [executor._backoff(task, n) for n in (1, 2, 3)],
+        )
+
+
+class RenderTests(unittest.TestCase):
+    def test_sandbox_blocks_attribute_escapes(self) -> None:
+        renderer = render.Renderer({'task': {'slug': 'a'}})
+        with self.assertRaises(render.RenderError):
+            renderer.text("{{ ''.__class__.__mro__ }}")
+
+    def test_strict_undefined(self) -> None:
+        renderer = render.Renderer({})
+        with self.assertRaises(render.RenderError):
+            renderer.text('{{ nope }}')
+
+    def test_document_leaves_keys_alone(self) -> None:
+        renderer = render.Renderer({'task': {'slug': 'a'}})
+        self.assertEqual(
+            {'{{ literal }}': 'a'},
+            renderer.document({'{{ literal }}': '{{ task.slug }}'}),
+        )
+
+    def test_document_passes_non_strings_through(self) -> None:
+        renderer = render.Renderer({})
+        self.assertEqual(
+            {'n': 1, 'b': True, 'z': None},
+            renderer.document({'n': 1, 'b': True, 'z': None}),
+        )
+
+
+class PathTraversalTests(unittest.TestCase):
+    """Organization scoping must not be walkable.
+
+    `api_request` confines an org-scoped task by prefixing
+    `/organizations/<slug>`, deciding whether the prefix is needed by string
+    comparison before anything normalizes the path. `httpx` resolves `..`
+    client-side, so without these checks a dot-segment leaves the prefix
+    behind and the request still carries the service-account credential.
+    """
+
+    def _url(self, path: str, *, organization: str = 'acme') -> str:
+        task = helpers.build_task(organization=organization)
+        target = models.ApiTarget.model_construct(
+            kind='api', method='POST', path=path, query={}, body=None
+        )
+        rendered = render.api_request(
+            task, target, render.Renderer({}), API_URL
+        )
+        return httpx.URL(rendered.url).path
+
+    def test_an_ordinary_path_still_resolves_under_the_org(self) -> None:
+        self.assertEqual('/organizations/acme/widgets', self._url('/widgets'))
+
+    def test_an_already_scoped_path_is_not_prefixed_twice(self) -> None:
+        self.assertEqual(
+            '/organizations/acme/widgets',
+            self._url('/organizations/acme/widgets'),
+        )
+
+    def test_a_cross_org_traversal_is_refused(self) -> None:
+        # Would otherwise leave as /organizations/other-org/widgets.
+        with self.assertRaises(render.RenderError):
+            self._url('/../other-org/widgets')
+
+    def test_an_admin_route_traversal_is_refused(self) -> None:
+        # Would otherwise leave as /admin/users, outside org scoping entirely.
+        with self.assertRaises(render.RenderError):
+            self._url('/../../admin/users')
+
+    def test_a_percent_encoded_traversal_is_refused(self) -> None:
+        # httpx leaves these as written, so whether they escape depends on the
+        # receiving server -- not a decision to delegate.
+        for encoded in ('/%2e%2e/other-org/x', '/%2E%2E/other-org/x'):
+            with self.subTest(path=encoded):
+                with self.assertRaises(render.RenderError):
+                    self._url(encoded)
+
+    def test_an_encoded_separator_is_refused(self) -> None:
+        # The bypass an earlier version of this guard allowed: splitting on
+        # literal '/' and decoding afterwards leaves `..%2fadmin` whole, so it
+        # never equals '..'. Each of these reached httpx as a live traversal.
+        for path in (
+            '/%2e%2e%2f%2e%2e/admin/users',
+            '/%2e%2e%2fother-org/widgets',
+            '/..%2fadmin/users',
+            '/..%2Fadmin/users',
+        ):
+            with self.subTest(path=path):
+                with self.assertRaises(render.RenderError):
+                    self._url(path)
+
+    def test_a_doubly_encoded_traversal_is_refused(self) -> None:
+        # `%252e` needs two decode passes before it even looks like a dot, so
+        # any single-pass rule misses it.
+        with self.assertRaises(render.RenderError):
+            self._url('/%252e%252e/admin/users')
+
+    def test_a_backslash_separator_is_refused(self) -> None:
+        # httpx passes both forms through untouched, leaving it to the server
+        # to decide whether a backslash separates -- the same delegation the
+        # percent-encoded forms were rejected for.
+        for path in ('/..%5cadmin/users', '/..\\admin/users'):
+            with self.subTest(path=path):
+                with self.assertRaises(render.RenderError):
+                    self._url(path)
+
+    def test_an_encoded_separator_from_a_template_is_refused(self) -> None:
+        # The model validator sees only the source, so this is the encoded
+        # case that only the render-time check can catch.
+        task = helpers.build_task(organization='acme')
+        target = models.ApiTarget.model_construct(
+            kind='api',
+            method='POST',
+            path='/{{ escape }}/admin/users',
+            query={},
+            body=None,
+        )
+        with self.assertRaises(render.RenderError):
+            render.api_request(
+                task, target, render.Renderer({'escape': '..%2f..'}), API_URL
+            )
+
+    def test_a_single_dot_segment_is_refused(self) -> None:
+        with self.assertRaises(render.RenderError):
+            self._url('/./widgets')
+
+    def test_a_traversal_produced_by_the_template_is_refused(self) -> None:
+        # The model validator only ever sees the template source, so this is
+        # the case only the render-time check can catch.
+        task = helpers.build_task(organization='acme')
+        target = models.ApiTarget.model_construct(
+            kind='api',
+            method='POST',
+            path='/{{ escape }}/other-org/widgets',
+            query={},
+            body=None,
+        )
+        with self.assertRaises(render.RenderError):
+            render.api_request(
+                task, target, render.Renderer({'escape': '..'}), API_URL
+            )
+
+    def test_the_model_refuses_a_literal_traversal_at_create_time(
+        self,
+    ) -> None:
+        # Belt to the render-time braces: an author gets a 422 now rather
+        # than a failed run later.
+        with self.assertRaises(pydantic.ValidationError):
+            models.ApiTarget(method='POST', path='/../other-org/widgets')
+
+    def test_the_model_is_what_keeps_a_rendered_path_rooted(self) -> None:
+        """Why only traversal is re-checked on the rendered value.
+
+        A template can introduce a dot-segment mid-path, which is why
+        `api_request` re-checks that. It cannot drop the leading slash or
+        move the host: the model requires the source to begin with a literal
+        `/`, and a literal prefix survives rendering, so an unrooted path is
+        refused at create time instead. A scheme appearing in the rendered
+        value is inert, because the path is appended to an absolute base.
+        """
+        with self.assertRaises(pydantic.ValidationError):
+            models.ApiTarget(method='POST', path='{{ x }}/widgets')
+        for source in ('/{{ x }}', '/ {{- x }}', '/{{ x }}//{{ x }}'):
+            with self.subTest(path=source):
+                rendered = render.api_request(
+                    helpers.build_task(organization='acme'),
+                    models.ApiTarget(method='POST', path=source),
+                    render.Renderer({'x': 'http://evil.com'}),
+                    API_URL,
+                )
+                url = httpx.URL(rendered.url)
+                self.assertEqual(httpx.URL(API_URL).host, url.host)
+                self.assertTrue(url.path.startswith('/organizations/acme/'))
+
+    def test_the_model_refuses_a_non_slug_organization(self) -> None:
+        for org in ('../other', 'acme/evil', 'ACME'):
+            with self.subTest(organization=org):
+                with self.assertRaises(pydantic.ValidationError):
+                    models.ApiTarget(
+                        method='POST', path='/x', organization=org
+                    )
+
+    def test_the_model_refuses_a_non_slug_webhook_id(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.GatewayTarget(webhook_id='../admin', payload={})
+
+    def test_a_rendered_webhook_id_traversal_is_refused(self) -> None:
+        target = models.GatewayTarget.model_construct(
+            kind='gateway',
+            webhook_id='{{ escape }}',
+            payload={},
+            headers={},
+        )
+        with self.assertRaises(render.RenderError):
+            render.gateway_request(
+                target, render.Renderer({'escape': '../admin'}), GATEWAY_URL
+            )
+
+    def test_a_rendered_webhook_id_must_still_be_a_slug(self) -> None:
+        # Traversal alone permits a separator, so this reached
+        # `/notifications/foo/bar` -- a path the id does not name, with no
+        # `..` for the traversal check to catch. The model refuses the same
+        # value at the source; the render has to refuse it too.
+        target = models.GatewayTarget.model_construct(
+            kind='gateway',
+            webhook_id='{{ escape }}',
+            payload={},
+            headers={},
+        )
+        for value in ('foo/bar', 'UPPER', 'has space'):
+            with self.subTest(rendered=value):
+                with self.assertRaises(render.RenderError):
+                    render.gateway_request(
+                        target,
+                        render.Renderer({'escape': value}),
+                        GATEWAY_URL,
+                    )
+
+
+class RenderFailureContainmentTests(unittest.TestCase):
+    """Every template failure is a `RenderError`, not just Jinja's own."""
+
+    def test_expression_errors_are_contained(self) -> None:
+        # `jinja2.TemplateError` covers syntax and StrictUndefined but not what
+        # the rendered expression raises. Uncaught, these left the
+        # render-failure path: recorded as `unhandled scheduler error` through
+        # `execute`, and a 500 through `dry_run`, which has no wrapper.
+        renderer = render.Renderer({'n': 0, 's': 'x'})
+        for template in ('{{ 1 // n }}', '{{ s + 1 }}', '{{ n.missing() }}'):
+            with self.subTest(template=template):
+                with self.assertRaises(render.RenderError):
+                    renderer.text(template)
+
+    def test_jinja_errors_are_still_contained(self) -> None:
+        renderer = render.Renderer({})
+        for template in ('{{ nope }}', '{{ 1 +/ }}'):
+            with self.subTest(template=template):
+                with self.assertRaises(render.RenderError):
+                    renderer.text(template)
+
+    def test_a_literal_still_passes_through(self) -> None:
+        renderer = render.Renderer({})
+        self.assertEqual('/scoring/x', renderer.text('/scoring/x'))
+
+
+class TokenPublicationTests(ExecutorTestCase):
+    """A token is published only once the whole response validated."""
+
+    async def test_a_bad_expires_in_on_refresh_does_not_serve_the_token(
+        self,
+    ) -> None:
+        # Assigning `_token` above the `expires_in` conversion defeated the
+        # guard beside it: on a refresh the raise left the new token cached
+        # against the *previous* expiry, which `_is_fresh` can still accept.
+        sa = self.resolver.service_account
+        self.assertEqual('sa-token', await sa.token())
+
+        self.token_route.mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'poisoned', 'expires_in': 'soon'}
+            )
+        )
+        sa.invalidate()
+        with self.assertRaises(identity.IdentityError):
+            await sa.token()
+        # Neither published nor left serveable.
+        self.assertIsNone(sa._token)
+
+
+class ServiceAccountSecretTests(ExecutorTestCase):
+    """`SecretStr` is only useful if the one place that unwraps it does."""
+
+    async def test_the_real_secret_is_sent_not_the_mask(self) -> None:
+        # The whole risk of the SecretStr change: `str(SecretStr)` is
+        # `**********`, so a missing `.get_secret_value()` would post that
+        # and every api-target firing would fail to authenticate -- against a
+        # mock that accepts anything, which is why this asserts the wire
+        # value rather than the outcome.
+        await self.resolver.service_account.token()
+        sent = self.token_route.calls[0].request.content.decode()
+        self.assertIn('client_secret=secret', sent)
+        self.assertNotIn('*', sent)
+
+    def test_the_secret_does_not_appear_in_repr_or_dump(self) -> None:
+        config_ = config()
+        assert config_.sa_client_secret is not None
+        self.assertEqual('secret', config_.sa_client_secret.get_secret_value())
+        self.assertNotIn('secret', repr(config_.sa_client_secret))
+        self.assertNotIn(
+            'secret', str(config_.model_dump().get('sa_client_secret'))
+        )

@@ -9,7 +9,6 @@ import fastapi
 import nanoid
 import pydantic
 
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.domain import models
 from imbi.api.endpoints._helpers import (
@@ -19,6 +18,7 @@ from imbi.api.endpoints._helpers import (
 )
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph
+from imbi.common import patch as json_patch
 from imbi.common.auth import encryption
 
 LOGGER = logging.getLogger(__name__)

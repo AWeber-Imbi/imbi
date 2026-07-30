@@ -24,6 +24,7 @@ members = [
     "imbi-plugin-oidc",
     "imbi-plugin-pagerduty",
     "imbi-plugin-sonarqube",
+    "imbi-scheduler",
     "imbi-slackbot",
 ]
 
@@ -611,6 +612,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/b2/d83c5403155172a43ba47c08641bad3f89822d8405102423a41339d2c857/coverage-7.15.1-cp314-cp314t-win_amd64.whl", hash = "sha256:724e878b213b302ad46e9f2fc872d386613f20ebfc492a211482d917ea76c14f", size = 224908, upload-time = "2026-07-12T20:58:13.956Z" },
     { url = "https://files.pythonhosted.org/packages/cc/41/442b74cad832cc77712080585455482e7cc4f4a9a13192f65731dcd18231/coverage-7.15.1-cp314-cp314t-win_arm64.whl", hash = "sha256:ce2f05c14d077f406fefc4fa5e4f093ad0e0787549f6582535d6e28766f0361b", size = 224219, upload-time = "2026-07-12T20:58:16.315Z" },
     { url = "https://files.pythonhosted.org/packages/34/98/07a67cf1a26e795d617ed5c540c042b0ac87b72f810c30c07f076cf334f3/coverage-7.15.1-py3-none-any.whl", hash = "sha256:717d01e6e00bed56ad13306f19e0dd2f4f645ee8159d2c72c72301d6cfc7090c", size = 213284, upload-time = "2026-07-12T20:58:18.079Z" },
+]
+
+[[package]]
+name = "croniter"
+version = "6.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/57/2e2a65aee2a70483cb28e2b7e15a072d00a523207593b44400d4717bb100/croniter-6.2.4.tar.gz", hash = "sha256:fc124f751b1b04805c2a04b061898b436b45ab2320b045e1e052ea895de65189", size = 166267, upload-time = "2026-07-10T09:52:59.955Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cd/ba/d678e5bd329646ca51d3c92addbc77804e86d21f4b6b6a027218e6abb010/croniter-6.2.4-py3-none-any.whl", hash = "sha256:8ef3d544107a5c05a150a2d78f8bf5a8eb9c5c4d93405a736b824109574e3f4d", size = 46677, upload-time = "2026-07-10T09:52:58.425Z" },
 ]
 
 [[package]]
@@ -1215,6 +1228,7 @@ dependencies = [
     { name = "imbi-plugin-oidc" },
     { name = "imbi-plugin-pagerduty" },
     { name = "imbi-plugin-sonarqube" },
+    { name = "imbi-scheduler" },
     { name = "imbi-slackbot" },
 ]
 
@@ -1234,6 +1248,7 @@ dev = [
     { name = "respx" },
     { name = "ruff" },
     { name = "tomli-w" },
+    { name = "types-croniter" },
     { name = "types-nanoid" },
     { name = "watchfiles" },
 ]
@@ -1263,6 +1278,7 @@ requires-dist = [
     { name = "imbi-plugin-oidc", editable = "plugins/oidc" },
     { name = "imbi-plugin-pagerduty", editable = "plugins/pagerduty" },
     { name = "imbi-plugin-sonarqube", editable = "plugins/sonarqube" },
+    { name = "imbi-scheduler", editable = "apps/scheduler" },
     { name = "imbi-slackbot", editable = "apps/slackbot" },
 ]
 
@@ -1282,6 +1298,7 @@ dev = [
     { name = "respx" },
     { name = "ruff", specifier = "~=0.14.6" },
     { name = "tomli-w", specifier = "~=1.2" },
+    { name = "types-croniter", specifier = ">=6.0" },
     { name = "types-nanoid", specifier = ">=2.0.0.20260408" },
     { name = "watchfiles" },
 ]
@@ -1405,8 +1422,10 @@ name = "imbi-common"
 version = "2.21.1"
 source = { editable = "libraries/common" }
 dependencies = [
+    { name = "argon2-cffi" },
     { name = "cryptography" },
     { name = "httpx" },
+    { name = "jsonpatch" },
     { name = "jsonpointer" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py" },
@@ -1457,12 +1476,14 @@ server = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'llm'", specifier = ">=0.40" },
+    { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "clickhouse-connect", extras = ["async"], marker = "extra == 'databases'", specifier = "==1.0.0" },
     { name = "cryptography", specifier = ">=42.0.4" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
     { name = "fastembed", marker = "extra == 'databases'", specifier = ">=0.6" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3,<4" },
     { name = "httpx", specifier = ">=0.28.1,<1" },
+    { name = "jsonpatch", specifier = ">=1.33" },
     { name = "jsonpointer", specifier = ">=3.1.1" },
     { name = "jsonschema-models" },
     { name = "markdown-it-py", specifier = ">=3.0" },
@@ -1663,6 +1684,33 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "imbi-common", editable = "libraries/common" },
     { name = "pydantic", specifier = ">=2" },
+]
+
+[[package]]
+name = "imbi-scheduler"
+version = "2.21.1"
+source = { editable = "apps/scheduler" }
+dependencies = [
+    { name = "croniter" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "imbi-common", extra = ["databases", "server"] },
+    { name = "jinja2" },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "pydantic" },
+    { name = "sentry-sdk" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "croniter", specifier = ">=6.0" },
+    { name = "fastapi", specifier = ">=0.135.1,<0.137" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "imbi-common", extras = ["databases", "server"], editable = "libraries/common" },
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.3.2" },
+    { name = "pydantic", specifier = "~=2.12" },
+    { name = "sentry-sdk", specifier = ">=2.48.0" },
 ]
 
 [[package]]
@@ -3860,6 +3908,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7c/f7/68adc395201b20b872d68e975386832e8005ffeacedd43a1d837a32815be/typer-0.26.8.tar.gz", hash = "sha256:c244a6bd558886fe3f8780efb6bdd28bb9aff005a94eedebaa5cb32926fe2f7e", size = 202097, upload-time = "2026-06-26T09:22:45.705Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/80/87/b9fd69c92c6102a066e1b86a35243f53e70bd4c709f2a26d9f4fee4f4dc0/typer-0.26.8-py3-none-any.whl", hash = "sha256:3512ca79ac5c11113414b36e80281b872884477722440691c89d1112e321a49c", size = 122564, upload-time = "2026-06-26T09:22:44.72Z" },
+]
+
+[[package]]
+name = "types-croniter"
+version = "6.2.4.20260711"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/e1/ef8900515a103efa41b29ce81e59efb18e72bc9642139c5a3a17f6022641/types_croniter-6.2.4.20260711.tar.gz", hash = "sha256:807793e109f4e0d51ec18f6277a1a5f1d133e425ac6bee3a7c3254ab1793e0ea", size = 12164, upload-time = "2026-07-11T04:51:18.624Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/3f/896a98180a55f855bd068b97e8c99fd4ce1885a4b43f68fd7b29641084f6/types_croniter-6.2.4.20260711-py3-none-any.whl", hash = "sha256:601b68139a47fe1b2177f433132cc81fd91155f3059a49c5cb63404c389dff01", size = 9746, upload-time = "2026-07-11T04:51:17.662Z" },
 ]
 
 [[package]]

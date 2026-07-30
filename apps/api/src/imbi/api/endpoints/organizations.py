@@ -7,11 +7,11 @@ import typing
 import fastapi
 import pydantic
 
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.common import graph, models
+from imbi.common import patch as json_patch
 
 from .comments import comments_router
 from .document_presence import document_presence_router

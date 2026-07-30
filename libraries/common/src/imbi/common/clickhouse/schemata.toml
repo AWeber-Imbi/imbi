@@ -189,3 +189,59 @@ PARTITION BY toYear(recorded_at)
 ORDER BY (project_id, name);
 """
 enabled = true
+
+# Scheduler run history. One row per attempt, rewritten as the run
+# transitions: `_row_version` increments so a `running` row and its terminal
+# row collapse to one under ReplacingMergeTree.
+#
+# `no_effect` is a distinct terminal state, not a flavor of success — a gateway
+# 204 means the delivery was accepted and then dropped, and folding that into
+# `succeeded` would hide a task that silently does nothing forever.
+[scheduler_runs]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.scheduler_runs {on_cluster}(
+    run_id            String,
+    task_id           String,
+    task_slug         LowCardinality(String),
+    organization      LowCardinality(String) DEFAULT '',
+    fired_at          DateTime64(3, 'UTC'),
+    started_at        Nullable(DateTime64(3, 'UTC')),
+    finished_at       Nullable(DateTime64(3, 'UTC')),
+    duration_ms       UInt32 DEFAULT 0,
+    state             LowCardinality(String),
+    attempt           UInt8 DEFAULT 1,
+    identity_kind     LowCardinality(String) DEFAULT '',
+    principal_name    LowCardinality(String) DEFAULT '',
+    actor_name        LowCardinality(String) DEFAULT '',
+    consent_id        String DEFAULT '',
+    target_kind       LowCardinality(String),
+    target_summary    String,
+    http_status       UInt16 DEFAULT 0,
+    response_excerpt  String DEFAULT '',
+    error_type        LowCardinality(String) DEFAULT '',
+    error_message     String DEFAULT '',
+    trace_id          String DEFAULT '',
+    _row_version      UInt64 DEFAULT 1,
+    -- `run_id` is the second key column, so a lookup by it alone cannot use
+    -- the primary key and would read every part. Both the single-run read
+    -- (`GET /runs/<run_id>`) and the cancel path do exactly that, and neither
+    -- knows the task_id that would make the key usable. Mirrors
+    -- `operations_log`, which indexes `id` for the same reason.
+    INDEX idx_run_id run_id TYPE bloom_filter GRANULARITY 4
+) ENGINE = {replicated}ReplacingMergeTree(_row_version)
+PARTITION BY toYYYYMM(fired_at)
+ORDER BY (task_id, run_id)
+-- 90 day retention, on `fired_at` and with no DELETE WHERE. Both choices are
+-- forced by the two-row write: `start` inserts the `running` row and `finish`
+-- inserts the terminal one, and TTL is evaluated per row at merge time. A
+-- predicate sparing `running` rows -- or a TTL on the Nullable `finished_at`,
+-- which only the terminal row has -- expires the terminal row while keeping
+-- its `running` twin, and dedup then resurrects that twin as the survivor: a
+-- long-finished run reads as permanently in flight. Verified against a live
+-- server, both ways. Keying on `fired_at`, which every row of a run shares,
+-- expires the pair together instead. The cost is that a run stranded in
+-- `running` by a replica that died mid-flight also ages out at 90 days rather
+-- than being kept as evidence.
+TTL fired_at + INTERVAL 90 DAY;
+"""
+enabled = true

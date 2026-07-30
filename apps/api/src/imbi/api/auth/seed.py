@@ -492,6 +492,56 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'dashboard:read',
         'View the admin system-health dashboard',
     ),
+    # Scheduled tasks (imbi-scheduler). Entity CRUD plus two capabilities:
+    # `run` covers firing on demand, and `admin` covers managing tasks the
+    # caller does not own — including every `kind='system'` task.
+    (
+        'scheduled_task:read',
+        'scheduled_task',
+        'read',
+        'View scheduled tasks and their run history',
+    ),
+    (
+        'scheduled_task:create',
+        'scheduled_task',
+        'create',
+        'Create scheduled tasks',
+    ),
+    (
+        'scheduled_task:write',
+        'scheduled_task',
+        'write',
+        'Update, pause, and resume scheduled tasks',
+    ),
+    (
+        'scheduled_task:delete',
+        'scheduled_task',
+        'delete',
+        'Delete scheduled tasks',
+    ),
+    (
+        'scheduled_task:run',
+        'scheduled_task',
+        'run',
+        'Run scheduled tasks on demand and cancel in-flight runs',
+    ),
+    (
+        'scheduled_task:admin',
+        'scheduled_task',
+        'admin',
+        "Manage other principals' and system scheduled tasks",
+    ),
+    # Cross-cutting capability: scheduling a task that runs as somebody else.
+    # Mirrors ADR 0016's `auth:delegate` on the imbi-api side. Granted to no
+    # *non-admin* default role -- `admin` receives every entry in
+    # STANDARD_PERMISSIONS by construction (see the `DEFAULT_ROLES` grant
+    # below), so it holds this one too.
+    (
+        'scheduler:impersonate',
+        'scheduler',
+        'impersonate',
+        'Schedule tasks that run as another user',
+    ),
 ]
 
 # Permissions retired by the ThirdPartyService -> Integration rename.
@@ -537,6 +587,11 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'organization:read',
             'organization:update',
             'project_type:read',
+            'scheduled_task:create',
+            'scheduled_task:delete',
+            'scheduled_task:read',
+            'scheduled_task:run',
+            'scheduled_task:write',
             'scoring_policy:rescore',
             'team:read',
             'team:update',
@@ -580,6 +635,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:read',
             'project_type:read',
             'role:read',
+            'scheduled_task:read',
             'scoring_policy:rescore',
             'search:read',
             'tag:read',
@@ -604,6 +660,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:read',
             'project_type:read',
             'organization:read',
+            'scheduled_task:read',
             'search:read',
             'team:read',
             'integration:read',

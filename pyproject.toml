@@ -33,6 +33,7 @@ dependencies = [
   "imbi-plugin-oidc==2.21.1",
   "imbi-plugin-pagerduty==2.21.1",
   "imbi-plugin-sonarqube==2.21.1",
+  "imbi-scheduler==2.21.1",
   "imbi-slackbot==2.21.1",
 ]
 
@@ -52,6 +53,7 @@ dev = [
   "respx",
   "ruff~=0.14.6",
   "tomli-w~=1.2",
+  "types-croniter>=6.0",
   "types-nanoid>=2.0.0.20260408",
   "watchfiles",
 ]
@@ -97,6 +99,7 @@ files = [
   "apps/assistant/src",
   "apps/gateway/src",
   "apps/mcp/src",
+  "apps/scheduler/src",
   "apps/slackbot/src",
   "plugins/aws/src",
   "plugins/github/src",
@@ -106,7 +109,7 @@ files = [
   "plugins/pagerduty/src",
   "plugins/sonarqube/src",
 ]
-mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/slackbot/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
+mypy_path = "typings:libraries/common/src:apps/api/src:apps/assistant/src:apps/gateway/src:apps/mcp/src:apps/scheduler/src:apps/slackbot/src:plugins/aws/src:plugins/github/src:plugins/google/src:plugins/logzio/src:plugins/oidc/src:plugins/pagerduty/src:plugins/sonarqube/src"
 
 [[tool.mypy.overrides]]
 module = ["clickhouse_connect.*", "jsonpointer", "nanoid", "pgvector.*"]
@@ -140,6 +143,7 @@ extraPaths = [
   "apps/assistant/src",
   "apps/gateway/src",
   "apps/mcp/src",
+  "apps/scheduler/src",
   "apps/slackbot/src",
   "plugins/aws/src",
   "plugins/github/src",
@@ -260,6 +264,31 @@ reportUnusedFunction = "none"
 
 [[tool.pyright.executionEnvironments]]
 root = "apps/mcp/tests"
+extraPaths = ["."]
+reportUnnecessaryIsInstance = "none"
+reportTypedDictNotRequiredAccess = "none"
+reportGeneralTypeIssues = "none"
+reportUnusedVariable = "none"
+reportUnusedClass = "none"
+reportIncompatibleMethodOverride = "none"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "apps/scheduler/tests"
 extraPaths = ["."]
 reportUnnecessaryIsInstance = "none"
 reportTypedDictNotRequiredAccess = "none"
@@ -643,6 +672,12 @@ max-complexity = 15
 "apps/assistant/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "apps/gateway/**" = ["TC", "UP"]
 "apps/mcp/**" = ["UP"]
+# TC001-TC003: pydantic resolves annotations at runtime, so the types named in
+# model fields cannot move into a type-checking block. TC004 and up stay on —
+# they catch the inverse mistake, using a type-checking-only import at runtime.
+# UP037: annotations referring to type-checking-only imports must stay quoted
+# without `from __future__ import annotations`.
+"apps/scheduler/**" = ["TC001", "TC002", "TC003", "UP037"]
 "apps/slackbot/**" = ["ARG002", "PLR0913", "PLR2004", "PLW0603", "TC", "UP"]
 "conftest.py" = ["PLC0415"]
 "**/tests/**/*.py" = [
@@ -682,6 +717,7 @@ imbi-api = { workspace = true }
 imbi-assistant = { workspace = true }
 imbi-gateway = { workspace = true }
 imbi-mcp = { workspace = true }
+imbi-scheduler = { workspace = true }
 imbi-slackbot = { workspace = true }
 imbi-plugin-aws = { workspace = true }
 imbi-plugin-github = { workspace = true }

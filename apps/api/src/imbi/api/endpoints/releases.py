@@ -20,7 +20,6 @@ import fastapi
 import nanoid
 import pydantic
 
-from imbi.api import patch as json_patch
 from imbi.api import sbom
 from imbi.api.auth import permissions
 from imbi.api.domain.models import User
@@ -31,6 +30,7 @@ from imbi.api.plugins import call_with_timeout
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.common import graph, models
+from imbi.common import patch as json_patch
 from imbi.common.plugins.base import CheckStatus
 
 LOGGER = logging.getLogger(__name__)

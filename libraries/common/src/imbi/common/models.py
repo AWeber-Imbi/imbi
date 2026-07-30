@@ -3,6 +3,7 @@ import datetime
 import json
 import re
 import typing
+import warnings
 
 import nanoid
 import pydantic
@@ -35,9 +36,11 @@ __all__ = [
     'Integration',
     'LinkDefinition',
     'MCPServer',
+    'MembershipProperties',
     'Node',
     'OperationLog',
     'Organization',
+    'OrganizationEdge',
     'Project',
     'ProjectEnvironmentEdge',
     'ProjectRelationships',
@@ -50,10 +53,13 @@ __all__ = [
     'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
+    'ServiceAccount',
     'Tag',
     'TagFormat',
     'TagRecord',
     'Team',
+    'User',
+    'parse_scopes',
 ]
 
 Schema = schema_models.Schema
@@ -1181,3 +1187,94 @@ class PullRequestRecord(pydantic.BaseModel):
     recorded_at: datetime.datetime = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
     )
+
+
+# Authentication principals. These lived in ``imbi.api.domain.models``
+# while imbi-api was the only service that authenticated callers. They
+# are here now because three members resolve a bearer token against the
+# graph -- api, assistant, and scheduler -- and the shared auth path in
+# ``imbi.common.auth.permissions`` needs the principal types. The
+# ``imbi.api.domain.models`` names remain as re-exports, so every
+# existing ``models.User`` reference resolves to this same class.
+
+
+class MembershipProperties(pydantic.BaseModel):
+    """Properties on User->Organization MEMBER_OF relationships."""
+
+    role: str  # Role slug
+
+
+class OrganizationEdge(typing.NamedTuple):
+    """Edge type for User->Organization MEMBER_OF relationships."""
+
+    node: Organization
+    properties: MembershipProperties
+
+
+class User(GraphModel):
+    """User account for authentication and authorization."""
+
+    email: pydantic.EmailStr
+    display_name: str
+    password_hash: str | None = None
+    is_active: bool = True
+    is_admin: bool = False
+    is_service_account: bool = False
+    last_login: datetime.datetime | None = None
+    avatar_url: pydantic.HttpUrl | None = None
+    email_notifications: bool = True
+
+    organizations: typing.Annotated[
+        list[OrganizationEdge],
+        Edge(rel_type='MEMBER_OF', direction='OUTGOING'),
+    ] = []
+
+
+class ServiceAccount(GraphModel):
+    """Service account for machine-to-machine authentication."""
+
+    slug: str
+    display_name: str
+    description: str | None = None
+    is_active: bool = True
+    last_authenticated: datetime.datetime | None = None
+    avatar_url: str | None = None
+
+    organizations: typing.Annotated[
+        list[OrganizationEdge],
+        Edge(rel_type='MEMBER_OF', direction='OUTGOING'),
+    ] = []
+
+
+@warnings.deprecated(
+    'parse_scopes is a compatibility shim for legacy AGE rows that '
+    "stored list properties as PostgreSQL-array strings (e.g. '{a,b}')."
+    ' Cypher writes have stored lists as JSON since the list-'
+    'serialization fix; callers should switch to ``graph.parse_agtype``'
+    ' once every legacy scope row has been rewritten. Plan to remove '
+    'this helper alongside that backfill -- see CODE_REVIEW_PUNCHLIST '
+    'L4 for the open migration deadline.'
+)
+def parse_scopes(value: typing.Any) -> list[str]:
+    """Convert AGE scope values to a Python list.
+
+    AGE may store list properties as PostgreSQL array strings
+    (e.g. ``'{}'`` or ``'{read,write}'``), or as JSON-serialized
+    strings (e.g. ``'["read","write"]'``) when they were written
+    before the Cypher list-serialization fix.
+
+    """
+    if isinstance(value, list):
+        return [str(v) for v in typing.cast(list[object], value)]
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith('['):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, list):
+                    return [str(v) for v in typing.cast(list[object], parsed)]
+            except json.JSONDecodeError, ValueError:
+                pass
+        inner = stripped.strip('{}')
+        return inner.split(',') if inner else []
+    return []

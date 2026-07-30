@@ -8,11 +8,11 @@ import fastapi
 import pydantic
 
 from imbi.api import models
-from imbi.api import patch as json_patch
 from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.relationships import relationship_link
 from imbi.common import graph
+from imbi.common import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
 

@@ -166,6 +166,20 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             'Readonly role should only have read or self-service permissions',
         )
 
+    def test_read_only_roles_can_read_the_schedule(self) -> None:
+        """Every read-only role grants ``scheduled_task:read``.
+
+        imbi-scheduler leaves its list and history routes open to anyone
+        holding it -- reading the schedule is not managing it, and an operator
+        asking why something fired needs to see the task that did it. A role
+        granting every other ``:read`` and not this one would hide the
+        scheduler from exactly those users.
+        """
+        for slug in ('default', 'readonly'):
+            with self.subTest(role=slug):
+                role = next(r for r in seed.DEFAULT_ROLES if r[0] == slug)
+                self.assertIn('scheduled_task:read', role[4])
+
     def test_no_group_permissions(self) -> None:
         """Verify no group permissions exist."""
         perm_names = {p[0] for p in seed.STANDARD_PERMISSIONS}
