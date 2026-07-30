@@ -728,6 +728,30 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('DETACH DELETE', queries[1])
         self.assertEqual('dupe', db.execute.await_args_list[2].args[1]['id'])
 
+    async def test_no_salvage_write_when_the_target_has_the_notes(
+        self,
+    ) -> None:
+        # Nothing to move: the target already holds notes, so the duplicate
+        # is simply removed without a pointless write.
+        db = self._db(
+            [
+                _release_row(
+                    'kept', '2.21.0', '287d291', edges=1, description='mine'
+                ),
+                _release_row(
+                    'dupe', '2.21.0', '287d291', description='theirs'
+                ),
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        queries = self._queries(db)
+        self.assertNotIn('SET r.tag', ' '.join(queries))
+        self.assertIn('DETACH DELETE', queries[0])
+        self.assertEqual('dupe', db.execute.await_args_list[1].args[1]['id'])
+
     async def test_keeps_a_duplicate_that_carries_history(self) -> None:
         db = self._db(
             [

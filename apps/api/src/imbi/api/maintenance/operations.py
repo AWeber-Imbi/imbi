@@ -569,9 +569,9 @@ class _ReleaseNode(typing.NamedTuple):
     edges: int
 
 
-def _has_notes(node: _ReleaseNode) -> bool:
-    """Whether the node carries release notes worth salvaging."""
-    return bool(node.description or (node.links and node.links != '[]'))
+def _links(node: _ReleaseNode) -> str | None:
+    """The node's release links, or ``None`` when it carries none."""
+    return node.links if node.links and node.links != '[]' else None
 
 
 def _release_nodes(rows: list[dict[str, typing.Any]]) -> list[_ReleaseNode]:
@@ -678,16 +678,25 @@ async def execute_release_repair(
         # Ties break on the oldest node so repeated runs pick the same one.
         target = min(group, key=lambda n: (-n.edges, n.created_at, n.id))
         # Notes live on whichever sibling the writer happened to fill in, so
-        # salvage them before the edge-less duplicates are deleted. The tag
-        # carrier is preferred, and _SET_RELEASE_TAG's COALESCE guards leave
-        # anything the target already holds alone.
-        siblings = [n for n in group if n.id != target.id]
-        donor = next(
-            (n for n in siblings if n.tag == tag and _has_notes(n)),
-            next((n for n in siblings if _has_notes(n)), None),
+        # salvage whatever the target lacks before the edge-less duplicates
+        # are deleted. Each field is sourced independently, preferring the
+        # tag carrier, and _SET_RELEASE_TAG's COALESCE guards leave anything
+        # the target already holds alone.
+        siblings = sorted(
+            (n for n in group if n.id != target.id),
+            key=lambda n: n.tag != tag,
         )
-        if target.tag is None or donor is not None:
-            source = donor or next(n for n in group if n.tag == tag)
+        description = target.description or next(
+            (n.description for n in siblings if n.description), None
+        )
+        links = _links(target) or next(
+            (_links(n) for n in siblings if _links(n)), None
+        )
+        salvages = bool(
+            (description and not target.description)
+            or (links and not _links(target))
+        )
+        if target.tag is None or salvages:
             await db.execute(
                 _SET_RELEASE_TAG,
                 {
@@ -695,8 +704,8 @@ async def execute_release_repair(
                     'id': target.id,
                     'tag': tag,
                     'title': tag,
-                    'description': source.description or '',
-                    'links': source.links or '[]',
+                    'description': description or '',
+                    'links': links or '[]',
                 },
                 ['id'],
             )
