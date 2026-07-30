@@ -887,12 +887,30 @@ async def sync_commits(
 
 async def _annotated_tag(
     client: httpx.AsyncClient, sha: str, *, max_wait: float
-) -> dict[str, typing.Any] | None:
-    """Fetch annotated-tag metadata, ``None`` for a lightweight tag."""
+) -> tuple[dict[str, typing.Any] | None, bool]:
+    """Fetch annotated-tag metadata as ``(payload, conclusive)``.
+
+    Three outcomes, which callers must keep apart:
+
+    * ``(payload, True)``  -- an annotated tag; *payload* carries the
+      tagger/message and the ``object`` to peel.
+    * ``(None, True)``     -- a 404: *sha* is not a tag object, so the ref
+      points straight at a commit (a lightweight tag).
+    * ``(None, False)``    -- any other failure (5xx, permissions). We
+      cannot tell which of the two it was.
+
+    Collapsing the last case into the lightweight one would record the
+    ref target as if it were a commit, which for an annotated tag is the
+    tag object hash -- the unjoinable value :func:`_tag_record` exists to
+    keep out. Callers skip the tag instead; a later push or backfill
+    re-syncs it (``ReplacingMergeTree`` dedupes).
+    """
     resp = await _request(client, 'GET', f'/git/tags/{sha}', max_wait=max_wait)
+    if resp.status_code == 404:
+        return None, True
     if resp.status_code != 200:
-        return None
-    return typing.cast('dict[str, typing.Any]', resp.json())
+        return None, False
+    return typing.cast('dict[str, typing.Any]', resp.json()), True
 
 
 async def _commit_date(
@@ -1097,11 +1115,25 @@ async def _reconcile_tags(
                     client, max_wait=max_wait
                 )
             published = released.get(name)
-            annotated = (
-                await _annotated_tag(client, sha, max_wait=max_wait)
-                if obj.get('type') == 'tag'
-                else None
-            )
+            # The ref tells us whether this is an annotated tag, so an
+            # inconclusive lookup is not a lightweight tag -- it is a tag
+            # we cannot peel. Skip it rather than recording the ref target
+            # (the tag object) as if it were the commit.
+            annotated: dict[str, typing.Any] | None = None
+            if obj.get('type') == 'tag':
+                annotated, conclusive = await _annotated_tag(
+                    client, sha, max_wait=max_wait
+                )
+                if annotated is None:
+                    LOGGER.warning(
+                        'github-commit-sync: skipping tag %s for project '
+                        '%s; its tag object %s could not be %s',
+                        name,
+                        project_id,
+                        sha,
+                        'read' if conclusive else 'fetched',
+                    )
+                    continue
             record = _tag_record(
                 project_id=project_id,
                 name=name,
@@ -1156,27 +1188,41 @@ async def sync_tags(
     token = await _resolve_bearer(credentials, base, owner, repo)
     try:
         async with _client(base, owner, repo, token) as client:
-            annotated = await _annotated_tag(
+            annotated, conclusive = await _annotated_tag(
                 client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
             )
             published = await _release_published_for_tag(
                 client, name, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
             )
-            pushed = _tag_record(
-                project_id=ctx.project_id,
-                name=name,
-                sha=after,
-                annotated=annotated,
-                url=_tag_web_url(client, name),
-                published_at=published,
-                fallback_tagged_at=(
-                    await _commit_date(
-                        client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
-                    )
-                    if annotated is None and published is None
-                    else None
-                ),
-            )
+            # A push payload carries no object type, so only a conclusive
+            # 404 proves ``after`` is a commit. An inconclusive lookup may
+            # be an annotated tag, whose ref target is the tag object --
+            # skip rather than record it as the commit.
+            pushed: TagRecord | None = None
+            if conclusive:
+                pushed = _tag_record(
+                    project_id=ctx.project_id,
+                    name=name,
+                    sha=after,
+                    annotated=annotated,
+                    url=_tag_web_url(client, name),
+                    published_at=published,
+                    fallback_tagged_at=(
+                        await _commit_date(
+                            client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                        )
+                        if annotated is None and published is None
+                        else None
+                    ),
+                )
+            else:
+                LOGGER.warning(
+                    'github-commit-sync: skipping tag %s for project %s; '
+                    'could not determine whether %s is a tag object',
+                    name,
+                    ctx.project_id,
+                    after,
+                )
             records: list[pydantic.BaseModel] = (
                 [] if pushed is None else [pushed]
             )
@@ -1184,7 +1230,10 @@ async def sync_tags(
                 extra = await _reconcile_tags(
                     client, ctx.project_id, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
                 )
-                seen = {name}
+                # Only reserve the pushed name when it actually produced a
+                # row: when it was skipped, the reconcile pass may have
+                # resolved the same tag and that result should stand.
+                seen = {name} if pushed is not None else set[str]()
                 records.extend(r for r in extra if r.name not in seen)
     except PluginRateLimited as exc:
         LOGGER.warning(
