@@ -20,7 +20,7 @@ firing and its `PostgresqlEventBroker` to wake replicas.
 Checking that choice against the workspace as it stands at 2.19.0:
 
 1. **APScheduler 4.x has not shipped.** The newest release is `4.0.0a6`,
-   uploaded 2025-04-27 — an alpha, eighteen months old at the time of writing,
+   uploaded 2025-04-27 — an alpha, fifteen months old at the time of writing,
    declaring `requires_python>=3.9` and predating the Python 3.14 this
    workspace requires.
 2. **It would introduce a second database stack.** Its relational data store
@@ -59,11 +59,17 @@ Implement the trigger loop directly on psycopg3.
   ```
 
   Two replicas running this concurrently receive disjoint task sets. The
-  claiming transaction advances `next_run_at` before committing, so a firing is
-  consumed exactly once. This preserves the property the original design valued
-  — no lease to hold, no dispatch-and-reconcile machinery, no Valkey — and it
-  replaces the per-date `SETNX` lock `run_daily_tick` uses today for the same
-  reason.
+  claiming transaction advances `next_run_at` before committing, so an
+  occurrence is *claimed* exactly once: no two replicas fire the same
+  occurrence. That is a guarantee about claim consumption, not about delivery.
+  Because the claim commits before the outbound call is made, a replica that
+  dies in between loses the occurrence, and one that dies after the call but
+  before recording leaves an effect with no run row — so execution is
+  at-most-once and best-effort, and a target whose duplicate or missed
+  invocation matters has to be idempotent on its own. This preserves the
+  property the original design valued — no lease to hold, no
+  dispatch-and-reconcile machinery, no Valkey — and it replaces the per-date
+  `SETNX` lock `run_daily_tick` uses today for the same reason.
 - **Waking** is `LISTEN`/`NOTIFY` on task mutation, plus a sleep bounded by the
   nearest `next_run_at`. A missed notification costs latency, not a missed run,
   because the bounded sleep re-polls.

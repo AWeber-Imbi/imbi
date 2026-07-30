@@ -58,8 +58,10 @@ Removed from the model and the schema:
 - The `IMBI_CONFIG_ENCRYPTION_KEY` Helm wiring, which is now unnecessary
 
 The scheduler therefore stores **no secrets of any kind**. Its own service
-account client credential arrives by environment variable; delegated tokens are
-obtained at fire time and held in memory only.
+account client credential arrives by environment variable, and the token it
+buys with it is held in memory only. Delegated tokens are not obtained at all
+in phase 1 — see [ADR 0003](0003-no-local-token-minting-bridge.md) — and when
+the exchange grant lands they will be held in memory only, on the same terms.
 
 A validation rule already planned for a different reason now covers the gap
 cleanly: a target that resolves to an `imbi-*` service must be an `api` or

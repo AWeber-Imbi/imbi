@@ -38,9 +38,12 @@ branch.
 Do not build the bridge. No `IMBI_SCHEDULER_ALLOW_LOCAL_MINT` setting, no
 minting code path, no `identity_kind='minted'` value in the run model.
 
-Phase 1 supports `identity.kind='service_account'` only. Creating a task with
-`kind='delegated_user'` returns 422 with a pointer to the delegation work until
-phase 2 lands, at which point it starts working through the exchange grant.
+Phase 1 executes `identity.kind='service_account'` only. A task with
+`kind='delegated_user'` is still accepted and stored — the definition is valid,
+and rejecting it at creation would make the phase-2 cutover a data migration
+rather than a code change. It simply cannot run: resolving its identity raises,
+so every firing is recorded as `skipped` with a pointer to the token-exchange
+grant it is waiting on, until phase 2 lands and the exchange makes it work.
 
 ## Consequences
 

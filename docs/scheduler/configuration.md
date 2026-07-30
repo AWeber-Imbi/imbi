@@ -14,6 +14,7 @@ shared with the rest of the platform and keep their platform-wide names.
 | `IMBI_SCHEDULER_SA_CLIENT_ID` | The scheduler's own service-account client id |
 | `IMBI_SCHEDULER_SA_CLIENT_SECRET` | Its client secret |
 | `IMBI_API_URL` | imbi-api's **public** URL — see [Reaching imbi-api](#reaching-imbi-api) |
+| `IMBI_INTERNAL_API_URL` | Where the scheduler **connects** to imbi-api — see [Reaching imbi-api](#reaching-imbi-api) |
 
 Without the service-account credentials the service still starts and still
 schedules, but no `api` target can resolve a principal, so every such firing is
@@ -86,7 +87,11 @@ pod rather than through the reverse proxy.
 
 Safe, and the point of the design. A due firing is claimed with
 `FOR UPDATE SKIP LOCKED`, so concurrent replicas receive disjoint task sets and
-each occurrence is consumed exactly once. Per-task concurrency
+each occurrence is *claimed* by exactly one replica. That is a guarantee about
+the claim, not about delivery: the claim commits before the outbound call, so a
+replica lost in between drops the occurrence rather than duplicating it.
+Execution is therefore at-most-once and best-effort — see
+[ADR 0001](adr/0001-trigger-engine-on-psycopg.md). Per-task concurrency
 (`execution.max_running_instances`) is enforced across replicas with a Postgres
 advisory lock over a short-lived lease row.
 

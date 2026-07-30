@@ -18,13 +18,18 @@ service owns them. The scheduler pokes that service and records what came back.
 ## How a run happens
 
 1. A trigger comes due. The claiming query
-   (`FOR UPDATE SKIP LOCKED` over `scheduler.tasks`) guarantees exactly one
-   replica fires it: concurrent replicas receive disjoint task sets, and the
-   claiming transaction advances `next_run_at` before committing.
+   (`FOR UPDATE SKIP LOCKED` over `scheduler.tasks`) gives exactly one replica
+   the claim: concurrent replicas receive disjoint task sets, and the claiming
+   transaction advances `next_run_at` before committing. That bounds the claim,
+   not delivery — execution is at-most-once, so see
+   [ADR 0001](adr/0001-trigger-engine-on-psycopg.md).
 2. The task's identity is resolved *at fire time*, never at creation time. A
    `service_account` task uses the scheduler's own client credential; a
-   `delegated_user` task exchanges that credential for a short-lived token
-   scoped to the target user. `gateway` targets skip this step.
+   `delegated_user` task will exchange that credential for a short-lived token
+   scoped to the target user, once `imbi-api` implements the exchange grant —
+   until then such a task is stored but every firing is `skipped`
+   ([ADR 0003](adr/0003-no-local-token-minting-bridge.md)). `gateway` targets
+   skip this step.
 3. The target is rendered. `path`, `body`, `query`, and header values are Jinja2
    templates over `{now, task, run, last_run}`, matching the templating model
    `imbi-automations` uses so operators learn it once.

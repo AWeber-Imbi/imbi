@@ -73,5 +73,5 @@ individually and scale them independently behind a load balancer.
 | imbi-assistant | Horizontal - stateless, scale based on concurrent conversations |
 | imbi-gateway | Horizontal - stateless, scale based on webhook volume |
 | imbi-mcp | Horizontal - stateless, scale based on agent connections |
-| imbi-scheduler | Horizontal - firings are claimed with `FOR UPDATE SKIP LOCKED`, so replicas never duplicate a run |
+| imbi-scheduler | Horizontal - firings are claimed with `FOR UPDATE SKIP LOCKED`, so replicas take disjoint claims and only one claims a given occurrence |
 | imbi-slackbot | Horizontal - socket mode gives each replica its own connection, and Slack delivers an event to one of them |

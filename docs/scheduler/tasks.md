@@ -60,6 +60,11 @@ coalescing is not behavior to configure.
 | `service_account` | The scheduler's own account | nothing further |
 | `delegated_user` | `subject`, via a short-lived token | `consent_id` |
 
+`delegated_user` is accepted and stored but does not execute yet: it needs the
+token-exchange grant `imbi-api` has not implemented, so every firing is
+`skipped` until then. See
+[ADR 0003](adr/0003-no-local-token-minting-bridge.md).
+
 Identity is resolved **at fire time**, never at creation time, so revoking
 consent or deactivating a user stops future runs without touching the task. A
 task that cannot resolve its principal records a `skipped` run — not a failure,
