@@ -101,20 +101,25 @@ def mount_prefix(spec: collections.abc.Mapping[str, typing.Any]) -> str:
     Returns:
         The prefix (``''`` when the API is mounted at the root),
         derived from the spec path ending in :data:`PROFILE_PATH`.
-        Falls back to ``''`` when that path is absent, which leaves
-        behaviour as it was before the prefix was taken into account.
+
+    Raises:
+        ValueError: When the spec does not contain exactly one path
+            ending in :data:`PROFILE_PATH`. This fails *closed*:
+            assuming the root would unanchor
+            :func:`excluded_route_maps`, re-exposing auth and MFA
+            operations as tools, and would point
+            :class:`PermissionFilterMiddleware` at a profile URL that
+            does not exist.
 
     """
     paths: collections.abc.Iterable[str] = spec.get('paths') or {}
     matches = [path for path in paths if path.endswith(PROFILE_PATH)]
     if len(matches) != 1:
-        LOGGER.warning(
-            'Expected exactly one spec path ending in %s, found %d; '
-            'assuming the API is mounted at the root',
-            PROFILE_PATH,
-            len(matches),
+        raise ValueError(
+            f'Cannot determine the API mount prefix: expected exactly '
+            f'one spec path ending in {PROFILE_PATH}, found '
+            f'{len(matches)}'
         )
-        return ''
     return matches[0].removesuffix(PROFILE_PATH)
 
 

@@ -46,6 +46,15 @@ def _minimal_openapi_spec() -> dict[str, object]:
                     },
                 },
             },
+            '/users/me': {
+                'get': {
+                    'operationId': 'profile',
+                    'summary': 'Current user profile',
+                    'responses': {
+                        '200': {'description': 'OK'},
+                    },
+                },
+            },
             '/organizations/{org_slug}/projects/{id}/configuration/{key}': {
                 'put': {
                     'operationId': 'set_configuration_value',

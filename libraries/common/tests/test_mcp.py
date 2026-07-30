@@ -103,10 +103,21 @@ class MountPrefixTestCase(unittest.TestCase):
             '/imbi/api', mcp.mount_prefix(_spec(prefix='/imbi/api'))
         )
 
-    def test_missing_profile_path_falls_back_to_root(self) -> None:
-        """Without the anchor path the API is assumed root-mounted."""
-        with self.assertLogs('imbi.common.mcp', level='WARNING'):
-            self.assertEqual('', mcp.mount_prefix(_openapi_spec({})))
+    def test_missing_profile_path_raises(self) -> None:
+        """Without the anchor path the prefix cannot be resolved."""
+        with self.assertRaises(ValueError):
+            mcp.mount_prefix(_openapi_spec({}))
+
+    def test_ambiguous_profile_path_raises(self) -> None:
+        """Two candidate anchors are ambiguous, so resolution fails."""
+        spec = _openapi_spec(
+            {
+                f'/api{mcp.PROFILE_PATH}': {'get': OK},
+                f'/v2{mcp.PROFILE_PATH}': {'get': OK},
+            }
+        )
+        with self.assertRaises(ValueError):
+            mcp.mount_prefix(spec)
 
 
 #: Boilerplate ``responses`` block every test operation needs.

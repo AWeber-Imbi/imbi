@@ -25,7 +25,9 @@ place instead of being copied into each consumer:
 - **`mount_prefix`** — the path prefix imbi-api mounts its routers under
   (the path of `IMBI_API_URL`, e.g. `/api`), read back off the spec.
   Spec paths carry it but a client's `base_url` does not, so anything
-  naming a path by hand has to add it back.
+  naming a path by hand has to add it back. Raises `ValueError` when the
+  prefix cannot be resolved unambiguously, so a spec glitch fails closed
+  rather than silently unanchoring the exclusions above.
 
 Keeping the *which* in imbi-api (it stamps the extension on tagged
 operations) and the *how to honour it* here means hiding a future endpoint
