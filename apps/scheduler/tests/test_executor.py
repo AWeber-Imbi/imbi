@@ -872,6 +872,26 @@ class PathTraversalTests(unittest.TestCase):
                 target, render.Renderer({'escape': '../admin'}), GATEWAY_URL
             )
 
+    def test_a_rendered_webhook_id_must_still_be_a_slug(self) -> None:
+        # Traversal alone permits a separator, so this reached
+        # `/notifications/foo/bar` -- a path the id does not name, with no
+        # `..` for the traversal check to catch. The model refuses the same
+        # value at the source; the render has to refuse it too.
+        target = models.GatewayTarget.model_construct(
+            kind='gateway',
+            webhook_id='{{ escape }}',
+            payload={},
+            headers={},
+        )
+        for value in ('foo/bar', 'UPPER', 'has space'):
+            with self.subTest(rendered=value):
+                with self.assertRaises(render.RenderError):
+                    render.gateway_request(
+                        target,
+                        render.Renderer({'escape': value}),
+                        GATEWAY_URL,
+                    )
+
 
 class RenderFailureContainmentTests(unittest.TestCase):
     """Every template failure is a `RenderError`, not just Jinja's own."""

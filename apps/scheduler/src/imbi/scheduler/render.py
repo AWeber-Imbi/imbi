@@ -184,9 +184,16 @@ def gateway_request(
     # Same reasoning as `api_request`: the id is a template interpolated into
     # a path, so the rendered value is what has to be safe, not the source
     # the model validated.
+    #
+    # The whole slug rule, not just `ensure_no_traversal`. The model requires a
+    # bare kebab-case slug, while traversal alone permits a separator, so
+    # `{{ x }}` rendering to `foo/bar` addressed `/notifications/foo/bar` -- a
+    # path the id does not name, with no `..` anywhere for the traversal check
+    # to catch. Re-applying the model's own rule stops the two ends drifting.
     webhook_id = renderer.text(target.webhook_id)
     try:
         models.ensure_no_traversal(webhook_id)
+        models.ensure_slug(webhook_id)
     except ValueError as err:
         raise RenderError(f'{target.webhook_id!r}: {err}') from err
     return RenderedRequest(

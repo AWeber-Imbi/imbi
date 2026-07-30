@@ -56,7 +56,8 @@ GATEWAY_ACCEPTED = 202
 GATEWAY_DROPPED = 204
 
 
-def _validate_slug(value: str) -> str:
+def ensure_slug(value: str) -> str:
+    """Return `value`, or raise unless it is a bare kebab-case slug."""
     if len(value) > SLUG_MAX_LENGTH:
         raise ValueError(f'must be at most {SLUG_MAX_LENGTH} characters')
     if not SLUG_PATTERN.match(value):
@@ -187,7 +188,7 @@ class ApiTarget(pydantic.BaseModel):
     def _validate_organization(cls, value: str | None) -> str | None:
         # Interpolated straight into the path by `render.api_request`, so a
         # slash or dot-segment here is the same escape by another door.
-        return None if value is None else _validate_slug(value)
+        return None if value is None else ensure_slug(value)
 
 
 class GatewayTarget(pydantic.BaseModel):
@@ -237,7 +238,7 @@ class GatewayTarget(pydantic.BaseModel):
         # `render.gateway_request` interpolates this into
         # `/notifications/<id>`, so an unconstrained value walks out of that
         # path the same way an api target's would.
-        return _validate_slug(value)
+        return ensure_slug(value)
 
 
 Target = typing.Annotated[
@@ -306,7 +307,7 @@ class Task(pydantic.BaseModel):
     @pydantic.field_validator('slug')
     @classmethod
     def _validate_slug(cls, value: str) -> str:
-        return _validate_slug(value)
+        return ensure_slug(value)
 
     @pydantic.field_validator('organization')
     @classmethod
@@ -314,7 +315,7 @@ class Task(pydantic.BaseModel):
         # The fallback scope `render.api_request` uses when the target names
         # no organization of its own, and interpolated into the path exactly
         # the same way.
-        return None if value is None else _validate_slug(value)
+        return None if value is None else ensure_slug(value)
 
     @pydantic.field_validator('timezone')
     @classmethod
