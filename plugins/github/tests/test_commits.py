@@ -634,7 +634,11 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_annotated_tag_metadata(self) -> None:
+        # A tag-push delivery's ``after`` is the tag object for an
+        # annotated tag, so the recorded sha must be the commit it peels
+        # to -- not ``after``.
         sha = 't' * 40
+        commit_sha = 'c' * 40
         respx.get(
             'https://api.github.com/repos/octo/demo/releases/tags/v1.2.3'
         ).mock(return_value=httpx.Response(404))
@@ -645,6 +649,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 200,
                 json={
                     'message': 'Release 1.2.3',
+                    'object': {'sha': commit_sha, 'type': 'commit'},
                     'tagger': {
                         'name': 'Rel Bot',
                         'email': 'rel@example.com',
@@ -665,6 +670,82 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('Release 1.2.3', records[0].message)
         self.assertEqual('Rel Bot', records[0].tagger_name)
         self.assertIsNotNone(records[0].tagged_at)
+        self.assertEqual(commit_sha, records[0].sha)
+
+    @respx.mock
+    async def test_inconclusive_tag_lookup_skips_push(self) -> None:
+        # A push payload carries no object type, so only a 404 proves
+        # ``after`` is a commit. On a 5xx it may be an annotated tag, whose
+        # ``after`` is the tag object -- record nothing rather than risk
+        # storing a sha that joins to no commit.
+        sha = 't' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/git/tags/{sha}'
+        ).mock(return_value=httpx.Response(500))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v1.2.3'
+        ).mock(return_value=httpx.Response(404))
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_tags(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=commits.SyncTagsConfig(),
+                event=_event(self._tag_push(after=sha)),
+            )
+        insert.assert_not_awaited()
+
+    @respx.mock
+    async def test_reconcile_recovers_a_skipped_push(self) -> None:
+        # The pushed tag is skipped (its tag-object lookup fails), then the
+        # reconcile pass resolves the same tag on a retry. Its name must not
+        # be reserved by the skipped push, or the good row is dropped too.
+        tag_sha = 't' * 40
+        commit_sha = 'c' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/git/tags/{tag_sha}'
+        ).mock(
+            side_effect=[
+                httpx.Response(500),
+                httpx.Response(
+                    200,
+                    json={
+                        'message': 'Release 1.2.3',
+                        'object': {'sha': commit_sha, 'type': 'commit'},
+                    },
+                ),
+            ]
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v1.2.3'
+        ).mock(return_value=httpx.Response(404))
+        respx.get('https://api.github.com/repos/octo/demo/releases').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/git/matching-refs/tags'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'ref': 'refs/tags/v1.2.3',
+                        'object': {'sha': tag_sha, 'type': 'tag'},
+                    }
+                ],
+            )
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_tags(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=commits.SyncTagsConfig(reconcile_all=True),
+                event=_event(self._tag_push(after=tag_sha)),
+            )
+        _, records = _await_args(insert)
+        self.assertEqual(['v1.2.3'], [r.name for r in records])
+        self.assertEqual(commit_sha, records[0].sha)
 
     @respx.mock
     async def test_reconcile_all_adds_full_list(self) -> None:
@@ -1383,6 +1464,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json=[])
         )
         tag_sha = 'a' * 40
+        commit_sha = 'c' * 40
         respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
             return_value=httpx.Response(
                 200,
@@ -1399,6 +1481,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 200,
                 json={
                     'message': 'Release 2.0.0',
+                    'object': {'sha': commit_sha, 'type': 'commit'},
                     'tagger': {
                         'name': 'Rel Bot',
                         'email': 'rel@example.com',
@@ -1421,6 +1504,119 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             'https://github.com/octo/demo/releases/tag/v2.0.0', record.url
         )
+        # The ref points at the tag object; the row must carry the commit
+        # it peels to, which is what ``commits`` and the deployment
+        # committishes are keyed by.
+        self.assertEqual(commit_sha, record.sha)
+
+    async def _tags_recorded_for_target(
+        self, target: dict[str, str] | None, status: int = 200
+    ) -> list[TagRecord]:
+        """Run a backfill whose one annotated tag points at *target*.
+
+        *status* overrides the ``/git/tags`` response code so a failed
+        tag-object lookup can be exercised.
+        """
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        respx.get(f'{self._REPO}/releases').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        tag_sha = 'a' * 40
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'ref': 'refs/tags/v2.0.0',
+                        'object': {'sha': tag_sha, 'type': 'tag'},
+                    }
+                ],
+            )
+        )
+        body: dict[str, typing.Any] = {'message': 'Release 2.0.0'}
+        if target is not None:
+            body['object'] = target
+        respx.get(f'{self._REPO}/git/tags/{tag_sha}').mock(
+            return_value=(
+                httpx.Response(status)
+                if status != 200
+                else httpx.Response(200, json=body)
+            )
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.GitHubCommitSync().sync_all_history(
+                ctx=self._ctx(), credentials=_CREDS
+            )
+        return [
+            r
+            for c in insert.await_args_list
+            if c.args[0] == 'tags'
+            for r in c.args[1]
+        ]
+
+    @respx.mock
+    async def test_unpeelable_annotated_tag_is_skipped(self) -> None:
+        # A 200 tag object with no ``object`` leaves no way to resolve the
+        # commit. Recording it against the tag object hash would put back
+        # exactly the unjoinable sha this peeling removes, so the tag is
+        # dropped instead.
+        self.assertEqual([], await self._tags_recorded_for_target(None))
+
+    @respx.mock
+    async def test_annotated_tag_on_tree_is_skipped(self) -> None:
+        # A tag may legally point at a tree or blob. Neither is a release
+        # and neither hash joins to ``commits``, so it is skipped.
+        self.assertEqual(
+            [],
+            await self._tags_recorded_for_target(
+                {'sha': 'd' * 40, 'type': 'tree'}
+            ),
+        )
+
+    @respx.mock
+    async def test_nested_annotated_tag_is_skipped(self) -> None:
+        # A tag object pointing at another tag object is legal git but
+        # never a release; peeling is deliberately not recursive, so the
+        # tag is skipped rather than recorded against the inner tag hash.
+        self.assertEqual(
+            [],
+            await self._tags_recorded_for_target(
+                {'sha': 'd' * 40, 'type': 'tag'}
+            ),
+        )
+
+    @respx.mock
+    async def test_annotated_tag_lookup_failure_is_skipped(self) -> None:
+        # The ref said ``type: tag``, so a 5xx on the tag object is not a
+        # lightweight tag -- it is a tag we cannot peel. Recording it would
+        # store the ref target (the tag object) as if it were the commit.
+        self.assertEqual(
+            [],
+            await self._tags_recorded_for_target(
+                {'sha': 'd' * 40, 'type': 'commit'}, status=500
+            ),
+        )
+
+    @respx.mock
+    async def test_annotated_tag_on_commit_is_recorded(self) -> None:
+        # The positive control for the skip cases above: an ordinary
+        # annotated release tag still lands, carrying the peeled commit.
+        recorded = await self._tags_recorded_for_target(
+            {'sha': 'd' * 40, 'type': 'commit'}
+        )
+        self.assertEqual(1, len(recorded))
+        self.assertEqual('d' * 40, recorded[0].sha)
+
+    @respx.mock
+    async def test_annotated_tag_without_target_type_is_recorded(self) -> None:
+        # GitHub always sends ``type``, so a payload carrying only a sha is
+        # trusted as a commit rather than dropped over a missing field.
+        recorded = await self._tags_recorded_for_target({'sha': 'd' * 40})
+        self.assertEqual(1, len(recorded))
+        self.assertEqual('d' * 40, recorded[0].sha)
 
 
 class WebBaseTestCase(unittest.TestCase):

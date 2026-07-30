@@ -1127,6 +1127,14 @@ class TagRecord(pydantic.BaseModel):
     ``ReplacingMergeTree`` keyed by ``(project_id, name)``; annotated-tag
     metadata (``message``, ``tagger_*``, ``tagged_at``) is populated when
     the provider exposes it and left at its default otherwise.
+
+    ``sha`` is always the **commit** the tag resolves to. Providers that
+    expose annotated tags as their own objects (git, hence GitHub) must
+    peel the tag before recording it: consumers join this column against
+    ``commits.sha`` and match it against deployment committishes, so a tag
+    object hash silently matches nothing. A tag that cannot be peeled to a
+    commit must be skipped rather than recorded against the unresolved
+    hash -- no row is better than one nothing can join to.
     """
 
     project_id: str
