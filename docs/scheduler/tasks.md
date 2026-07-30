@@ -167,7 +167,7 @@ enqueue rather than block. Long-running work belongs to the service that owns it
 | `no_effect` | Gateway `204` — accepted, then dropped |
 | `failed` | Non-2xx, or the template would not render |
 | `timed_out` | Exceeded `timeout` |
-| `skipped` | No principal could be resolved, or the misfire grace elapsed |
+| `skipped` | No principal could be resolved, the misfire grace elapsed, the instance limit was full, or the task was deleted as it fired |
 | `cancelled` | Cancelled through the API |
 
 History lives in ClickHouse (`imbi.scheduler_runs`) and is read through
