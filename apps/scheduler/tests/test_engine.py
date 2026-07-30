@@ -6,6 +6,7 @@ claiming, misfire, instance limits, counter streaks — rather than HTTP.
 
 import asyncio
 import datetime
+import unittest.mock
 import uuid
 
 from apps.scheduler.tests import helpers, test_store
@@ -37,10 +38,14 @@ class StubExecutor:
         *,
         delay: float = 0.0,
         raises: bool = False,
+        delays: dict[str, float] | None = None,
     ) -> None:
         self.state = state
         self.delay = delay
         self.raises = raises
+        #: Per-slug override of `delay`, for tests that need one firing in a
+        #: tick to still be running while another has already finished.
+        self.delays = delays or {}
         self.fired: list[str] = []
 
     async def execute(
@@ -52,8 +57,9 @@ class StubExecutor:
         trace_id: str = '',
     ) -> runs.Run:
         self.fired.append(task.slug)
-        if self.delay:
-            await asyncio.sleep(self.delay)
+        delay = self.delays.get(task.slug, self.delay)
+        if delay:
+            await asyncio.sleep(delay)
         if self.raises:
             raise RuntimeError('boom')
         run = runs.start(task, fired_at, run_id=run_id, trace_id=trace_id)
@@ -125,6 +131,37 @@ class TickTests(EngineTestCase):
         history = await runs.for_task(task.id)
         self.assertEqual(1, len(history))
         self.assertEqual('succeeded', history[0].state)
+
+    async def test_a_recording_failure_does_not_cancel_siblings(self) -> None:
+        # `_execute` catches its own failures, but `_record` — the ClickHouse
+        # write — does not. Propagating that out of the tick's `gather` would
+        # cancel every sibling firing, including ones whose request is already
+        # on the wire, so the effect would land with no run row for it.
+        for index in range(4):
+            await self.tasks.create(
+                helpers.build_task(
+                    slug=f'task-{index}', next_run_at=utc(2026, 7, 28, 6)
+                )
+            )
+        self.executor.delays = {f'task-{index}': 0.25 for index in range(1, 4)}
+        original = self.engine._record
+
+        async def record(task: models.Task, run: runs.Run) -> runs.Run:
+            if task.slug == 'task-0':
+                raise RuntimeError('clickhouse is down')
+            return await original(task, run)
+
+        with unittest.mock.patch.object(self.engine, '_record', record):
+            fired = await self.engine.tick(utc(2026, 7, 28, 6, 0, 5))
+        self.assertEqual(
+            {'task-1', 'task-2', 'task-3'}, {run.task_slug for run in fired}
+        )
+        # And every sibling ran to completion rather than being cancelled
+        # part-way through its outbound call.
+        self.assertEqual(
+            {'task-0', 'task-1', 'task-2', 'task-3'}, set(self.executor.fired)
+        )
+        self.assertEqual({'succeeded'}, {run.state for run in fired})
 
     async def test_an_executor_crash_is_recorded_as_failure(self) -> None:
         self.executor.raises = True
@@ -460,6 +497,46 @@ class WiringTests(EngineTestCase):
         # The delivery itself fails — nothing is listening on the gateway
         # port — but the firing is what this proves.
         self.assertIsNotNone(stored.last_run_at)
+
+    async def test_shutdown_drains_the_ticks_in_flight(self) -> None:
+        # `stop.set()` and `notify()` only schedule the loop's waiters to
+        # resume, so cancelling straight afterwards would always tear
+        # `run_forever` out of its sleep before it reached the post-loop
+        # drain — abandoning a firing whose outcome is unrecorded, and
+        # closing the shared httpx client out from under it.
+        drained = asyncio.Event()
+
+        async def slow_tick(
+            _self: engine.Engine, now: datetime.datetime | None = None
+        ) -> list[runs.Run]:
+            del now
+            await asyncio.sleep(0.1)
+            drained.set()
+            return []
+
+        with unittest.mock.patch.object(engine.Engine, 'tick', slow_tick):
+            async with store.store_lifespan(), lifespans.engine_hook():
+                await asyncio.sleep(0.02)
+        self.assertTrue(drained.is_set())
+
+    async def test_shutdown_cancels_a_loop_that_will_not_drain(self) -> None:
+        # The graceful wait is bounded: a tick that never returns must not
+        # hold the process open past its termination grace period.
+        async def stuck_tick(
+            _self: engine.Engine, now: datetime.datetime | None = None
+        ) -> list[runs.Run]:
+            del now
+            await asyncio.Event().wait()
+            return []
+
+        with (
+            unittest.mock.patch.object(engine.Engine, 'tick', stuck_tick),
+            unittest.mock.patch.object(
+                lifespans, 'SHUTDOWN_DRAIN_TIMEOUT', 0.05
+            ),
+        ):
+            async with store.store_lifespan(), lifespans.engine_hook():
+                await asyncio.sleep(0.02)
 
 
 class ListenTests(EngineTestCase):

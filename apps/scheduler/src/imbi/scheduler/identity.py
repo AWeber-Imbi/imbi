@@ -13,6 +13,7 @@ does not implement yet; there is deliberately no local-minting fallback (ADR
 import asyncio
 import datetime
 import logging
+import typing
 
 import httpx
 
@@ -137,14 +138,29 @@ class ServiceAccountToken:
                 'service account token request returned '
                 f'{response.status_code}'
             )
-        payload = response.json()
+        # Every failure past this point has to arrive as an `IdentityError`:
+        # that is the contract `executor.execute` relies on to record the run
+        # as `skipped`, and anything else escaping crashes the firing instead.
+        try:
+            decoded: typing.Any = response.json()
+        except ValueError as err:
+            raise IdentityError(
+                f'token response was not valid JSON: {err}'
+            ) from err
+        if not isinstance(decoded, dict):
+            raise IdentityError('token response was not a JSON object')
+        payload = typing.cast('dict[str, typing.Any]', decoded)
         token: str | None = payload.get('access_token')
         if not token:
             raise IdentityError('token response carried no access_token')
         self._token = token
-        self._expires_at = now + datetime.timedelta(
-            seconds=int(payload.get('expires_in', DEFAULT_TOKEN_LIFETIME))
-        )
+        try:
+            expires_in = int(payload.get('expires_in', DEFAULT_TOKEN_LIFETIME))
+        except (TypeError, ValueError) as err:
+            raise IdentityError(
+                f'token response carried an invalid expires_in: {err}'
+            ) from err
+        self._expires_at = now + datetime.timedelta(seconds=expires_in)
         LOGGER.debug(
             'Service account token refreshed, valid until %s', self._expires_at
         )

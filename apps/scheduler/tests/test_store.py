@@ -8,6 +8,7 @@ import asyncio
 import datetime
 import os
 import typing
+import unittest.mock
 import uuid
 
 import psycopg
@@ -155,6 +156,32 @@ class InitializerTests(StoreTestCase):
             },
             set(tables['run_leases']['columns'].keys()),
         )
+
+
+class LifespanTests(StoreTestCase):
+    async def test_a_failed_open_leaves_no_pool_behind(self) -> None:
+        # Publishing the pool before it opened would make `pool()` hand out a
+        # pool that never opened -- and is never closed -- instead of raising,
+        # for every caller after a boot with Postgres unreachable.
+        closed = False
+
+        class Unopenable:
+            async def open(self) -> None:
+                raise psycopg.OperationalError('connection refused')
+
+            async def close(self) -> None:
+                nonlocal closed
+                closed = True
+
+        with unittest.mock.patch.object(
+            store, 'create_pool', lambda: Unopenable()
+        ):
+            with self.assertRaises(psycopg.OperationalError):
+                async with store.store_lifespan():
+                    self.fail('the body must not run')
+        self.assertTrue(closed)
+        with self.assertRaises(RuntimeError):
+            store.pool()
 
 
 class CrudTests(StoreTestCase):

@@ -18,6 +18,11 @@ if typing.TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
+#: How long shutdown waits for `run_forever` to drain the ticks it has in
+#: flight before cancelling it. Kept under Kubernetes' 30s default
+#: `terminationGracePeriodSeconds`, since SIGKILL would end the drain anyway.
+SHUTDOWN_DRAIN_TIMEOUT = 25.0
+
 
 @contextlib.asynccontextmanager
 async def clickhouse_hook() -> 'abc.AsyncGenerator[None]':
@@ -55,7 +60,19 @@ async def engine_hook() -> 'abc.AsyncGenerator[engine_module.Engine]':
             finally:
                 stop.set()
                 engine.notify()
-                loop.cancel()
+                # `stop.set()` and `notify()` only schedule the loop's waiters
+                # to resume, so cancelling straight afterwards would always
+                # tear `run_forever` out of its sleep before it could observe
+                # `stop` and await the ticks still in flight. Give it that
+                # chance first; cancellation is the fallback for a loop that
+                # is genuinely stuck.
+                await asyncio.wait({loop}, timeout=SHUTDOWN_DRAIN_TIMEOUT)
+                if not loop.done():
+                    LOGGER.warning(
+                        'Trigger loop did not drain in %ss; cancelling',
+                        SHUTDOWN_DRAIN_TIMEOUT,
+                    )
+                    loop.cancel()
                 try:
                     await loop
                 except asyncio.CancelledError:

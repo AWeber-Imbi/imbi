@@ -59,10 +59,25 @@ class Engine:
         if not claimed:
             return []
         LOGGER.debug('Claimed %d due task(s)', len(claimed))
+        # `return_exceptions` is not optional here. `_execute` catches its own
+        # failures, but the lease calls and the ClickHouse write in `_record`
+        # do not, and a bare `gather` propagating one of those would cancel
+        # every sibling firing in the same tick — including ones whose request
+        # is already on the wire, whose effect would then land with no run row
+        # ever written for it.
         results = await asyncio.gather(
-            *(self._fire(task, moment) for task in claimed)
+            *(self._fire(task, moment) for task in claimed),
+            return_exceptions=True,
         )
-        return [run for run in results if run is not None]
+        fired: list[runs.Run] = []
+        for task, result in zip(claimed, results, strict=True):
+            if isinstance(result, BaseException):
+                LOGGER.error(
+                    'Unhandled error firing %s', task.slug, exc_info=result
+                )
+            elif result is not None:
+                fired.append(result)
+        return fired
 
     async def _fire(
         self, task: models.Task, moment: datetime.datetime
@@ -138,6 +153,12 @@ class Engine:
             return self._cancelled_run(task, moment, run_id, started=False)
         key = str(run_id)
         async with self._semaphore:
+            # Checked again after the slot is granted, not only before. A run
+            # can sit queued here for as long as the concurrency ceiling is
+            # saturated, and a cancel arriving in that window finds nothing in
+            # `_in_flight` to interrupt, so the gate above has already passed.
+            if await self._tasks.cancel_requested(run_id):
+                return self._cancelled_run(task, moment, run_id, started=False)
             pending = asyncio.create_task(
                 self._executor.execute(task, moment, run_id=run_id)
             )

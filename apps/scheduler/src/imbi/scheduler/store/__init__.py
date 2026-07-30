@@ -55,8 +55,16 @@ async def store_lifespan() -> abc.AsyncGenerator[Tasks]:
     """Initialize the schema and hold the task repository open."""
     global _pool  # noqa: PLW0603 -- see pool()
     await initialize()
-    _pool = create_pool()
-    await _pool.open()
+    # Published only once it is actually open. Assigning first would leave
+    # `pool()` handing out a pool that never opened — and never gets closed —
+    # instead of raising, if Postgres is unreachable at boot.
+    candidate = create_pool()
+    try:
+        await candidate.open()
+    except BaseException:
+        await candidate.close()
+        raise
+    _pool = candidate
     try:
         yield Tasks(_pool)
     finally:

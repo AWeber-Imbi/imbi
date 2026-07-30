@@ -698,6 +698,32 @@ class CancelEnforcementTests(test_engine.EngineTestCase):
         self.assertIn('before the request was sent', run.error_message)
         self.assertEqual([], self.executor.fired)
 
+    async def test_a_cancel_while_queued_for_a_slot_is_honoured(self) -> None:
+        # With the ceiling saturated, a leased run waits inside the semaphore.
+        # A cancel arriving in that window finds nothing in `_in_flight` to
+        # interrupt and the pre-semaphore gate has already passed, so it has
+        # to be caught again once the slot is granted — otherwise the run
+        # fires anyway, against the operator's explicit ask.
+        queue_engine = engine_module.Engine(
+            self.tasks,
+            self.executor,  # type: ignore[arg-type]
+            settings.Scheduler(max_concurrent_runs=1),
+        )
+        self.executor.delay = 2
+        holder = await self.tasks.create(helpers.build_task(slug='holder'))
+        queued = await self.tasks.create(helpers.build_task(slug='queued'))
+        first = asyncio.create_task(queue_engine.run_now(holder))
+        await self._wait_for_lease(holder.id)
+        second = asyncio.create_task(queue_engine.run_now(queued))
+        await self._wait_for_lease(queued.id)
+        queued_run_id = await self._lease_run_id(queued.id)
+        await self.tasks.request_cancel(str(queued_run_id))
+        run = await asyncio.wait_for(second, timeout=15)
+        self.assertEqual('cancelled', run.state)
+        self.assertIn('before the request was sent', run.error_message)
+        self.assertNotIn('queued', self.executor.fired)
+        await asyncio.wait_for(first, timeout=15)
+
     async def test_a_replica_not_running_the_job_does_nothing(self) -> None:
         # Every replica gets the NOTIFY; only the owner has a task to cancel.
         self.engine._cancel_local(str(uuid.uuid4()))

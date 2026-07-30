@@ -582,6 +582,39 @@ class ServiceAccountTokenTests(ExecutorTestCase):
         with self.assertRaises(identity.IdentityError):
             await self.resolver.service_account.token()
 
+    async def test_a_non_numeric_expires_in_is_an_identity_error(self) -> None:
+        # Anything escaping as its own exception type would crash the firing
+        # instead of recording it as `skipped`, which is what `execute` does
+        # with an `IdentityError`.
+        self.token_route.mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'x', 'expires_in': 'soon'}
+            )
+        )
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_a_null_expires_in_is_an_identity_error(self) -> None:
+        self.token_route.mock(
+            return_value=httpx.Response(
+                200, json={'access_token': 'x', 'expires_in': None}
+            )
+        )
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_a_non_json_body_is_an_identity_error(self) -> None:
+        self.token_route.mock(
+            return_value=httpx.Response(200, content=b'not json')
+        )
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
+    async def test_a_json_array_body_is_an_identity_error(self) -> None:
+        self.token_route.mock(return_value=httpx.Response(200, json=[]))
+        with self.assertRaises(identity.IdentityError):
+            await self.resolver.service_account.token()
+
 
 class BackoffTests(unittest.TestCase):
     def test_none(self) -> None:
