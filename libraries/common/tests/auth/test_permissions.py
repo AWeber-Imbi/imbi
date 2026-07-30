@@ -274,10 +274,18 @@ class ServiceAccountPermissionTestCase(
         self,
     ) -> None:
         """JWT with auth_method=client_credentials loads SA."""
-        from imbi.api import settings
+        # `imbi.common`, not `imbi.api`: this suite must not require imbi-api
+        # to be installed, and reaching into the API's settings singleton
+        # inverts the dependency direction the extraction was for. Matches
+        # what the sibling `test_authorization.py` does.
+        from imbi.common import settings
         from imbi.common.auth import core
 
-        auth_settings = settings.get_auth_settings()
+        auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-32-characters!',
+            jwt_algorithm='HS256',
+            access_token_expire_seconds=3600,
+        )
 
         # Create a token with client_credentials auth_method
         token = core.create_access_token(

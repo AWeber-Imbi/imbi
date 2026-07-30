@@ -212,12 +212,25 @@ class Tasks:
         return row
 
     async def delete(self, slug: str) -> bool:
-        """Delete the task with `slug`, reporting whether it existed."""
+        """Delete the task with `slug`, reporting whether it existed.
+
+        The task's leases go with it. There is no foreign key to cascade —
+        the tables are created `IF NOT EXISTS`, so adding one would not reach
+        an environment that already has them — and a lease outlives its task
+        otherwise, since nothing else ever deletes by `task_id`. Both
+        statements share one transaction so a task is never removed while its
+        leases survive.
+        """
         statement = sql.SQL('DELETE FROM {table} WHERE slug = %s').format(
             table=self._table
         )
+        leases = sql.SQL(
+            'DELETE FROM {leases} WHERE task_id IN'
+            ' (SELECT id FROM {table} WHERE slug = %s)'
+        ).format(leases=self._leases, table=self._table)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cursor:
+                await cursor.execute(leases, (slug,))
                 await cursor.execute(statement, (slug,))
                 deleted = cursor.rowcount
             await self._notify(conn)

@@ -160,7 +160,6 @@ class PermissionTests(EndpointTestCase):
                 dependencies.WRITE,
                 {'json': [{'op': 'replace', 'path': '/name', 'value': 'x'}]},
             ),
-            ('DELETE', f'/api/tasks/{task.slug}', dependencies.DELETE, {}),
             ('POST', f'/api/tasks/{task.slug}/pause', dependencies.WRITE, {}),
             ('POST', f'/api/tasks/{task.slug}/resume', dependencies.WRITE, {}),
             ('POST', f'/api/tasks/{task.slug}/run', dependencies.RUN, {}),
@@ -168,6 +167,9 @@ class PermissionTests(EndpointTestCase):
             ('GET', f'/api/tasks/{task.slug}/runs', dependencies.READ, {}),
             ('GET', f'/api/runs/{run.run_id}', dependencies.READ, {}),
             ('POST', f'/api/runs/{run.run_id}/cancel', dependencies.RUN, {}),
+            # Last on purpose: it removes the task every case above addresses,
+            # and from here they would 404 rather than reach their handler.
+            ('DELETE', f'/api/tasks/{task.slug}', dependencies.DELETE, {}),
         ]
         for method, path, needed, kwargs in cases:
             with self.subTest(route=f'{method} {path}', permission=needed):
@@ -177,6 +179,10 @@ class PermissionTests(EndpointTestCase):
                 self.as_user(OWNER, {needed})
                 allowed = await self.client.request(method, path, **kwargs)
                 self.assertNotEqual(403, allowed.status_code)
+                # Not just "not 403": a 404 would satisfy that while proving
+                # only that the route exists, never that the granted
+                # permission carried the request into the handler.
+                self.assertNotEqual(404, allowed.status_code)
 
     async def test_an_admin_user_bypasses_the_permission_check(self) -> None:
         await self.given_task()

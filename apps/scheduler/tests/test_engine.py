@@ -163,6 +163,44 @@ class TickTests(EngineTestCase):
         )
         self.assertEqual({'succeeded'}, {run.state for run in fired})
 
+    async def test_a_history_write_failure_does_not_break_run_now(
+        self,
+    ) -> None:
+        # The firing has already hit the real target by the time `_record`
+        # runs, so a ClickHouse outage must not turn a delivered action into
+        # a 500 from `POST /tasks/{slug}/run`.
+        self.executor.state = 'skipped'
+        task = await self.tasks.create(helpers.build_task())
+
+        async def boom(_run: runs.Run) -> None:
+            raise RuntimeError('clickhouse is down')
+
+        with unittest.mock.patch.object(runs, 'record', boom):
+            run = await self.engine.run_now(task)
+        self.assertEqual('skipped', run.state)
+        self.assertEqual(['nightly-recompute'], self.executor.fired)
+        # The Postgres leg of the gather still landed: the skip was counted
+        # even though the ClickHouse leg raised.
+        self.assertEqual(
+            1, await self._column_value(task.id, 'consecutive_skips')
+        )
+
+    async def test_an_outcome_write_failure_does_not_break_run_now(
+        self,
+    ) -> None:
+        task = await self.tasks.create(helpers.build_task())
+
+        async def boom(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError('postgres is down')
+
+        with unittest.mock.patch.object(self.tasks, 'record_outcome', boom):
+            run = await self.engine.run_now(task)
+        self.assertEqual('succeeded', run.state)
+        # And the run still reached history, since the legs are independent.
+        self.assertEqual(
+            ['succeeded'], [r.state for r in await runs.for_task(task.id)]
+        )
+
     async def test_an_executor_crash_is_recorded_as_failure(self) -> None:
         self.executor.raises = True
         await self.tasks.create(

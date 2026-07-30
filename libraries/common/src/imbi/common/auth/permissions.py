@@ -596,6 +596,12 @@ async def authenticate_api_key(
             expires_at = datetime.datetime.fromisoformat(
                 expires_at,
             )
+        # A stored value with no offset parses naive, and comparing that to an
+        # aware `now` raises `TypeError` -- which on this path would answer an
+        # expired key with a 500 instead of a 401. Assume UTC, which is what
+        # every writer of this property stores.
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=datetime.UTC)
         if expires_at < datetime.datetime.now(datetime.UTC):
             raise fastapi.HTTPException(
                 status_code=401,

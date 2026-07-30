@@ -145,6 +145,13 @@ class CalendarTrigger(pydantic.BaseModel):
     across daylight-saving transitions, because each candidate is built from
     a local date plus ``at_time`` and only then converted to UTC.
 
+    One exception, on one date per year: an ``at_time`` inside the hour a
+    spring-forward skips (``02:30`` in ``America/New_York``, say) names a
+    local time that does not exist. :func:`_as_utc` resolves it with
+    ``fold=0``, i.e. the pre-transition offset, so that occurrence lands an
+    hour off the intended wall clock and is not normalized to the post-gap
+    time. Choosing an ``at_time`` outside 02:00-03:00 avoids it entirely.
+
     The step is expressed either in ``months`` or in ``weeks``/``days``, not
     both — combining them makes the anchor semantics ambiguous for no
     practical gain.

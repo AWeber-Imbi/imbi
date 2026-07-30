@@ -293,6 +293,34 @@ class CrudTests(StoreTestCase):
         self.assertFalse(await self.tasks.delete(task.slug))
         self.assertIsNone(await self.tasks.get(task.slug))
 
+    async def test_delete_takes_the_tasks_leases_with_it(self) -> None:
+        # There is no FK to cascade, and nothing else ever deletes a lease by
+        # task_id, so without this a lease outlives its task forever.
+        task = await self.tasks.create(helpers.build_task())
+        await self.tasks.acquire_lease(
+            task.id,
+            run_id=uuid.uuid4(),
+            limit=5,
+            ttl=datetime.timedelta(minutes=5),
+        )
+        self.assertEqual(1, len(await self._lease_rows(task.id)))
+        self.assertTrue(await self.tasks.delete(task.slug))
+        self.assertEqual([], await self._lease_rows(task.id))
+
+    async def test_delete_leaves_another_tasks_leases_alone(self) -> None:
+        doomed = await self.tasks.create(helpers.build_task(slug='doomed'))
+        keeper = await self.tasks.create(helpers.build_task(slug='keeper'))
+        for task in (doomed, keeper):
+            await self.tasks.acquire_lease(
+                task.id,
+                run_id=uuid.uuid4(),
+                limit=5,
+                ttl=datetime.timedelta(minutes=5),
+            )
+        await self.tasks.delete(doomed.slug)
+        self.assertEqual([], await self._lease_rows(doomed.id))
+        self.assertEqual(1, len(await self._lease_rows(keeper.id)))
+
     async def test_set_enabled(self) -> None:
         task = await self.tasks.create(helpers.build_task())
         paused = await self.tasks.set_enabled(task.slug, enabled=False)
@@ -474,7 +502,12 @@ class ClaimTests(StoreTestCase):
                 )
             )
         now = utc(2026, 7, 28, 7)
-        claimers = [tasks_repo.Tasks(self.pool, schema=TEST_SCHEMA)] * 4
+        # A comprehension, not `[...] * 4`: list multiplication repeats one
+        # reference, which models a single claimer making four calls rather
+        # than the four replicas this test is about.
+        claimers = [
+            tasks_repo.Tasks(self.pool, schema=TEST_SCHEMA) for _ in range(4)
+        ]
         results = await asyncio.gather(
             *(claimer.claim_due(now) for claimer in claimers)
         )

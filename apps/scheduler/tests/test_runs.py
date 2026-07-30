@@ -34,8 +34,29 @@ class ScrubTests(unittest.TestCase):
         self.assertNotIn('hunter2', scrubbed)
         self.assertIn('"keep": "me"', scrubbed)
 
+    def test_redacts_oauth_style_token_fields(self) -> None:
+        # The keyword can sit anywhere in the key. Requiring the key to *be*
+        # `token` let an OAuth-shaped response body persist its credentials
+        # into `response_excerpt` verbatim.
+        for key in (
+            'access_token',
+            'refresh_token',
+            'id_token',
+            'api_key_id',
+            'client_secret_new',
+            'my_password_field',
+        ):
+            with self.subTest(key=key):
+                scrubbed = runs.scrub(f'{{"{key}": "opaque-credential"}}')
+                self.assertNotIn('opaque-credential', scrubbed)
+                self.assertIn(key, scrubbed)
+
     def test_leaves_ordinary_text_alone(self) -> None:
         body = '{"queued": 42, "reason": "scheduled_recompute"}'
+        self.assertEqual(body, runs.scrub(body))
+
+    def test_the_widened_key_pattern_spares_unrelated_fields(self) -> None:
+        body = '{"project": "imbi", "count": "42", "status": "ok"}'
         self.assertEqual(body, runs.scrub(body))
 
 

@@ -295,15 +295,34 @@ class Engine:
         The two writes hit different databases and do not depend on each
         other, so they go out together — the run stays counted against the
         concurrency ceiling until both land.
+
+        Neither write is allowed to propagate. The firing has already happened
+        against the real target by the time this runs, so raising here would
+        turn a delivered action into a 500 from ``POST /tasks/{slug}/run`` and
+        lose the `Run` the caller needs. A failed `runs.record` also leaves the
+        executor's `running` row unsuperseded, which is exactly the case an
+        operator has to be told about rather than have hidden by a traceback.
         """
-        await asyncio.gather(
+        results = await asyncio.gather(
             runs.record(run),
             self._tasks.record_outcome(
                 task.id,
                 skipped=run.state == 'skipped',
                 no_effect=run.state == 'no_effect',
             ),
+            return_exceptions=True,
         )
+        for label, result in zip(
+            ('run history', 'outcome counters'), results, strict=True
+        ):
+            if isinstance(result, BaseException):
+                LOGGER.error(
+                    'Failed to persist %s for run %s of %s',
+                    label,
+                    run.run_id,
+                    task.slug,
+                    exc_info=result,
+                )
         await self._apply_limits(task, run)
         return run
 

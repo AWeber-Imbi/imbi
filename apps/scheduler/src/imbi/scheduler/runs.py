@@ -42,9 +42,16 @@ _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (re.compile(r'\bik_[A-Za-z0-9]{8,}'), _REDACTED),
     (re.compile(r'\beyJ[\w-]+\.[\w-]+\.[\w-]+'), _REDACTED),
+    # The keyword may sit anywhere in the key rather than be the whole of it:
+    # `access_token` and `refresh_token` are every bit as sensitive as
+    # `token`, and requiring an exact match let them through into
+    # `response_excerpt`. `client_secret` needs no separate alternative now
+    # that `secret` matches as a substring. Deliberately over-broad —
+    # redacting a `token_type` costs a log reader nothing, while missing an
+    # access token costs a credential.
     (
         re.compile(
-            r'(?i)"(password|secret|token|api_key|client_secret)"'
+            r'(?i)"([\w-]*(?:password|secret|token|api_key)[\w-]*)"'
             r'\s*:\s*"[^"]*"'
         ),
         rf'"\1": "{_REDACTED}"',
