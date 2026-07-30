@@ -23,6 +23,7 @@ import pydantic
 from imbi.api import sbom
 from imbi.api.auth import permissions
 from imbi.api.domain.models import User
+from imbi.api.endpoints import _search_index
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.endpoints.operations_log import complete_opslog_entry
 from imbi.api.endpoints.projects import lookup_ops_log_performed_by
@@ -474,6 +475,7 @@ async def create_release(
     project_id: str,
     data: ReleaseCreate,
     db: graph.Pool,
+    background_tasks: fastapi.BackgroundTasks,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -582,6 +584,14 @@ async def create_release(
             detail=f'Project {project_id!r} not found',
         )
     release_data = graph.parse_agtype(rows[0]['release'])
+    background_tasks.add_task(
+        _search_index.index,
+        db,
+        models.Release,
+        props['id'],
+        title=props['title'],
+        description=description,
+    )
     return _release_to_response(release_data, project_id)
 
 
@@ -879,6 +889,7 @@ async def patch_release(
     release_id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
+    background_tasks: fastapi.BackgroundTasks,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -995,6 +1006,14 @@ async def patch_release(
             ),
         )
     release_data = graph.parse_agtype(rows[0]['release'])
+    background_tasks.add_task(
+        _search_index.index,
+        db,
+        models.Release,
+        release_id,
+        title=merged_title,
+        description=merged_description,
+    )
     return _release_to_response(release_data, project_id)
 
 

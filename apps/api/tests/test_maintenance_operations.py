@@ -6,6 +6,7 @@ import contextlib
 import datetime
 import json
 import time
+import typing
 import unittest
 from unittest import mock
 
@@ -14,6 +15,8 @@ import fastapi
 from imbi.api.commit_sync.service import CommitSyncUnavailable
 from imbi.api.maintenance import operations
 from imbi.api.pr_sync.service import PRSyncUnavailable
+from imbi.common import graph
+from imbi.common import models as common_models
 from imbi.common.plugins.errors import PluginRateLimited
 
 
@@ -778,3 +781,67 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual('skipped', outcome)
         self.assertEqual([], self._queries(db))
+
+
+class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
+    def _db(
+        self,
+        rows: list[dict[str, str]] | None = None,
+        nodes: list[typing.Any] | None = None,
+    ) -> mock.AsyncMock:
+        db = mock.AsyncMock()
+        db.execute.return_value = rows or []
+        db.match.return_value = nodes or []
+        return db
+
+    async def test_enumerates_every_embeddable_label(self) -> None:
+        db = self._db([{'id': '"n-1"'}, {'id': '""'}])
+        items = await operations.enumerate_embeddable_nodes(db)
+        labels = [t.__name__ for t in graph.embeddable_node_types()]
+        # One item per label, falsy ids dropped.
+        self.assertEqual([f'{label}:n-1' for label in labels], items)
+        self.assertIn('Document', labels)
+        self.assertIn('Comment', labels)
+
+    async def test_reindexes_the_matched_node(self) -> None:
+        node = common_models.Document.model_construct(
+            id='doc-1', title='Runbook', content='body'
+        )
+        db = self._db(nodes=[node])
+        outcome = await operations.execute_search_reindex(
+            db, mock.AsyncMock(), 'Document:doc-1'
+        )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual(common_models.Document, db.match.await_args.args[0])
+        self.assertEqual({'id': 'doc-1'}, db.match.await_args.args[1])
+        self.assertIs(node, db.embed_node.await_args.args[0])
+        # A silent embedding failure must not be reported as success.
+        self.assertTrue(db.embed_node.await_args.kwargs['raise_on_error'])
+
+    async def test_skips_a_node_deleted_mid_run(self) -> None:
+        db = self._db()
+        outcome = await operations.execute_search_reindex(
+            db, mock.AsyncMock(), 'Document:ghost'
+        )
+        self.assertEqual('skipped', outcome)
+        db.embed_node.assert_not_awaited()
+
+    async def test_skips_a_label_that_is_no_longer_embeddable(self) -> None:
+        db = self._db()
+        outcome = await operations.execute_search_reindex(
+            db, mock.AsyncMock(), 'Retired:n-1'
+        )
+        self.assertEqual('skipped', outcome)
+        db.match.assert_not_awaited()
+
+    async def test_embedding_failure_is_recorded_against_the_node(
+        self,
+    ) -> None:
+        db = self._db(
+            nodes=[common_models.Document.model_construct(id='doc-1')]
+        )
+        db.embed_node.side_effect = RuntimeError('model unavailable')
+        with self.assertRaises(operations.MaintenanceItemFailed):
+            await operations.execute_search_reindex(
+                db, mock.AsyncMock(), 'Document:doc-1'
+            )

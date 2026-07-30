@@ -36,8 +36,8 @@ export function MaintenanceManagement() {
           Maintenance
         </h1>
         <p className="text-secondary mt-1 text-sm">
-          Global background operations — each run applies to every project
-          across all organizations.
+          Global background operations — each run applies to every project or
+          document it covers, across all organizations.
         </p>
       </div>
 
@@ -88,7 +88,7 @@ export function MaintenanceManagement() {
         confirmLabel="Run"
         description={
           confirming
-            ? `"${confirming.label}" runs across every project in all organizations. This may take a while and generate significant load.`
+            ? `"${confirming.label}" runs across everything it covers in all organizations. This may take a while and generate significant load.`
             : ''
         }
         onCancel={() => setConfirming(null)}

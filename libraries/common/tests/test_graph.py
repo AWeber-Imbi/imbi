@@ -576,6 +576,59 @@ class AutoEmbedTests(unittest.IsolatedAsyncioTestCase):
             await g._auto_embed(org)
 
 
+class EmbedNodeTests(unittest.IsolatedAsyncioTestCase):
+    """The public hook raw-Cypher writers use to stay searchable."""
+
+    def _failing_graph(self) -> graph.Graph:
+        g = graph.Graph()
+        g.opened = True
+        pool = mock.MagicMock()
+        pool.connection.side_effect = RuntimeError('pool fail')
+        g.pool = pool
+        return g
+
+    def _node(self) -> models.Organization:
+        return models.Organization(
+            name='Org',
+            slug='org',
+            description='A description',
+        )
+
+    async def test_failure_is_swallowed_by_default(self) -> None:
+        with self.assertLogs('imbi.common.graph', level='WARNING'):
+            await self._failing_graph().embed_node(self._node())
+
+    async def test_raise_on_error_propagates(self) -> None:
+        """A reindex must not report a failed embedding as success."""
+        with self.assertRaises(RuntimeError):
+            await self._failing_graph().embed_node(
+                self._node(),
+                raise_on_error=True,
+            )
+
+    async def test_delete_node_embeddings_requires_open_pool(self) -> None:
+        with self.assertRaises(RuntimeError):
+            await graph.Graph().delete_node_embeddings('Document', 'doc-1')
+
+    async def test_delete_node_embeddings_deletes_every_row(self) -> None:
+        g = graph.Graph()
+        g.opened = True
+        conn = mock.AsyncMock()
+        pool = mock.MagicMock()
+        pool.connection.return_value.__aenter__.return_value = conn
+        g.pool = pool
+        with mock.patch.object(
+            graph.Graph,
+            '_delete_embeddings_where',
+        ) as deleter:
+            await g.delete_node_embeddings('Document', 'doc-1')
+        deleter.assert_awaited_once_with(
+            conn,
+            node_label='Document',
+            node_id='doc-1',
+        )
+
+
 class SearchResultTests(unittest.TestCase):
     def test_search_result_creation(self) -> None:
         r = graph.SearchResult(

@@ -1107,6 +1107,10 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {'lifecycle_results': []})
+        # A deleted project must not linger in search results.
+        self.mock_db.delete_node_embeddings.assert_awaited_once_with(
+            'Project', PROJECT_ID
+        )
 
     def test_delete_not_found(self) -> None:
         """Test deleting nonexistent project."""
@@ -1118,6 +1122,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
+        self.mock_db.delete_node_embeddings.assert_not_awaited()
 
     def test_delete_succeeds_when_snapshot_raises(self) -> None:
         """A lifecycle snapshot failure must not abort the delete.

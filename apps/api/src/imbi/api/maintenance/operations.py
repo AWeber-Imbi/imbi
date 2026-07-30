@@ -746,3 +746,55 @@ async def execute_release_repair(
         removed,
     )
     return 'succeeded'
+
+
+#: Reindex work items are ``Label:node_id`` -- the maintenance framework
+#: distributes opaque item id strings, and a reindex spans every model
+#: that declares ``Embeddable`` fields, not one node type.
+_REINDEX_ITEM_SEPARATOR = ':'
+
+
+async def enumerate_embeddable_nodes(db: graph.Graph) -> list[str]:
+    """Every ``Label:node_id`` whose model declares embeddable fields."""
+    items: list[str] = []
+    for node_type in graph.embeddable_node_types():
+        label = node_type.__name__
+        rows = await db.execute(
+            f'MATCH (n:{label}) RETURN n.id AS id', {}, ['id']
+        )
+        items.extend(
+            f'{label}{_REINDEX_ITEM_SEPARATOR}{node_id}'
+            for node_id in (graph.parse_agtype(row.get('id')) for row in rows)
+            if node_id
+        )
+    return items
+
+
+async def execute_search_reindex(
+    db: graph.Graph, client: valkey.Valkey, item_id: str
+) -> ExecuteOutcome:
+    """Rebuild one node's search embeddings from its current properties.
+
+    Skipped when the node went away between enumeration and execution,
+    or when its label is no longer embeddable (a run that outlives a
+    model change).  ``raise_on_error`` is set so an embedding failure
+    is recorded against the node instead of counting as a success --
+    reindexing *is* the operation here.
+    """
+    label, _, node_id = item_id.partition(_REINDEX_ITEM_SEPARATOR)
+    node_type = {t.__name__: t for t in graph.embeddable_node_types()}.get(
+        label
+    )
+    if node_type is None:
+        return 'skipped'
+    nodes = await db.match(node_type, {'id': node_id})
+    if not nodes:
+        return 'skipped'
+    try:
+        await db.embed_node(nodes[0], raise_on_error=True)
+    except Exception as exc:
+        LOGGER.exception('search-reindex failed for %s', item_id)
+        raise MaintenanceItemFailed(
+            'Could not rebuild the search index for this node.'
+        ) from exc
+    return 'succeeded'

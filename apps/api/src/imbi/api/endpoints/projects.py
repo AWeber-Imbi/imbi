@@ -20,6 +20,7 @@ from imbi.api import blueprint_attributes
 from imbi.api.auth import permissions
 from imbi.api.domain import scoring as scoring_models
 from imbi.api.domain.models import ExistsInResponse
+from imbi.api.endpoints import _search_index
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.endpoints._json_fields import (
     JSONFields,
@@ -1237,6 +1238,7 @@ async def create_project(
     org_slug: str,
     data: ProjectCreate,
     request: fastapi.Request,
+    background: fastapi.BackgroundTasks,
     db: graph.Pool,
     valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
@@ -1430,6 +1432,14 @@ async def create_project(
             'Lifecycle dispatch failed after creating project %s',
             project_id,
         )
+    background.add_task(
+        _search_index.index,
+        db,
+        models.Project,
+        project_id,
+        name=props['name'],
+        description=props.get('description'),
+    )
     return ProjectMutationResponse(
         **ProjectResponse.model_validate(project_data).model_dump(),
         lifecycle_results=lifecycle_results,
@@ -2895,6 +2905,17 @@ async def patch_project(
         request,
         db,
     )
+    if response.name != project_data.get(
+        'name'
+    ) or response.description != project_data.get('description'):
+        background.add_task(
+            _search_index.index,
+            db,
+            models.Project,
+            project_id,
+            name=response.name,
+            description=response.description,
+        )
     await score_queue.enqueue_recompute(
         valkey_client, project_id, 'attribute_change'
     )
@@ -3307,6 +3328,7 @@ async def delete_project(
             status_code=404,
             detail=f'Project {project_id!r} not found',
         )
+    await _search_index.drop(db, models.Project, project_id)
 
     # Project node is gone; never let a dispatch hiccup turn a
     # successful delete into a 500.  ``delete_repository=false`` skips

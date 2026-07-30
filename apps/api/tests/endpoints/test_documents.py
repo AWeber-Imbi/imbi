@@ -877,6 +877,10 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             '/organizations/engineering/projects/proj-abc/documents/document-1'
         )
         self.assertEqual(response.status_code, 204)
+        # A deleted document must not linger in search results.
+        self.mock_db.delete_node_embeddings.assert_awaited_once_with(
+            'Document', 'document-1'
+        )
 
     def test_delete_not_found(self) -> None:
         self.mock_db.execute.return_value = []
@@ -884,6 +888,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             '/organizations/engineering/projects/proj-abc/documents/ghost'
         )
         self.assertEqual(response.status_code, 404)
+        self.mock_db.delete_node_embeddings.assert_not_awaited()
 
     def test_delete_org_document(self) -> None:
         self.mock_db.execute.return_value = [{'deleted': 1}]
@@ -891,6 +896,79 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             '/organizations/engineering/documents/document-1'
         )
         self.assertEqual(response.status_code, 204)
+
+    # -- Search embeddings ---------------------------------------------
+
+    def _embedded_document(self) -> typing.Any:
+        """The node passed to the single expected ``embed_node`` call."""
+        self.mock_db.embed_node.assert_awaited_once()
+        return self.mock_db.embed_node.await_args.args[0]
+
+    def test_create_embeds_document(self) -> None:
+        """Creation is raw Cypher, so it must embed the document itself."""
+        self.mock_db.execute.side_effect = [
+            [{'id': 'document-1', 'version': 2}],
+            [self._project_row()],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/projects/proj-abc/documents/',
+                json={
+                    'title': 'DB lock runbook',
+                    'content': 'Watch out for DB locks',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        node = self._embedded_document()
+        # The response body is the canned fixture row, so compare against
+        # the id the CREATE actually wrote.
+        create_call = self.mock_db.execute.await_args_list[0]
+        self.assertEqual(node.id, create_call.args[1]['id'])
+        self.assertEqual(node.title, 'DB lock runbook')
+        self.assertEqual(node.content, 'Watch out for DB locks')
+
+    def test_patch_content_re_embeds_document(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1', 'version': 2}],
+            [self._project_row(n=self._document_data(content='New content'))],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/content',
+                        'value': 'New content',
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        node = self._embedded_document()
+        self.assertEqual(node.id, 'document-1')
+        self.assertEqual(node.content, 'New content')
+
+    def test_patch_is_pinned_does_not_re_embed(self) -> None:
+        """A pin toggle leaves title/content alone, so nothing to re-embed."""
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1', 'version': 2}],
+            [self._project_row(n=self._document_data(is_pinned=True))],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[{'op': 'replace', 'path': '/is_pinned', 'value': True}],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.embed_node.assert_not_awaited()
 
     # -- Pagination + cursor edge cases --------------------------------
 

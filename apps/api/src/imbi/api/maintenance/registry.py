@@ -28,6 +28,7 @@ MaintenanceSlug = typing.Literal[
     'release-repair',
     'commit-sync',
     'pr-sync',
+    'search-reindex',
 ]
 
 
@@ -152,6 +153,20 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=pr_sync_queue.PAUSE_KEY,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_pr_sync,
+        ),
+        OperationDefinition(
+            slug='search-reindex',
+            label='Reindex Search',
+            description=(
+                'Rebuild the vector search index for every searchable node '
+                '-- documents, comments, releases, projects, and the rest '
+                '-- from its current content. Run this after a bulk import '
+                'or a change to the embedding model; ordinary saves index '
+                'themselves.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_embeddable_nodes,
+            execute=operations.execute_search_reindex,
         ),
     )
 }

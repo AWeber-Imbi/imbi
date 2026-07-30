@@ -136,6 +136,12 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(body['project_id'], PROJECT_ID)
         self.assertEqual(body['id'], RELEASE_ID)
         self.assertEqual(body['created_by'], 'alice@example.com')
+        # Releases are written as raw Cypher, so the endpoint owns
+        # keeping them searchable.
+        node = self.mock_db.embed_node.await_args.args[0]
+        self.assertEqual(RELEASE_ID, node.id)
+        self.assertEqual('Initial release', node.title)
+        self.assertEqual('First cut', node.description)
 
     def test_create_with_explicit_created_by(self) -> None:
         self.mock_db.execute.side_effect = [
