@@ -246,7 +246,10 @@ export function DocumentsPinboardReader({
 
   // Reader is navigable from the same tab; filter rail keeps rail semantics.
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
+    <div
+      className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]"
+      data-documents-reader
+    >
       <DocumentsFilterRail
         active={EMPTY_ACTIVE}
         counts={counts}
