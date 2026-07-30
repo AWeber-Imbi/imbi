@@ -21,6 +21,21 @@
 		reverse_proxy 127.0.0.1:8000
 	}
 
+	# The Kubernetes liveness/readiness target in `all` mode. Without this
+	# route /status falls through to the SPA below, which answers 200 from
+	# index.html whatever imbi-api is doing -- so a dead API would never be
+	# restarted and never leave the endpoints list.
+	#
+	# Not redundant with /api/* above. `handle` does not strip, so imbi-api
+	# receives whatever it was sent, and imbi-api mounts its routes under the
+	# path of IMBI_API_URL. With that unset -- the chart default -- the prefix
+	# is empty and the status route *is* /status, which /api/* would never
+	# match. With it set to .../api the chart probes /api/status instead and
+	# this route is simply not exercised.
+	handle /status {
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	handle /assistant/* {
 		reverse_proxy 127.0.0.1:8002
 	}
