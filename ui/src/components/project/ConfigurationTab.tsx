@@ -30,6 +30,7 @@ import { ApiError } from '@/api/client'
 import {
   deleteConfigurationKey,
   fetchConfigurationValues,
+  getConfigurationPrefix,
   listConfigurationKeys,
   listProjectPlugins,
   setConfigurationValue,
@@ -42,7 +43,6 @@ import { Sk } from '@/components/ui/skeleton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { deriveChipColors } from '@/lib/chip-colors'
-import { resolvePrefixPlaceholders } from '@/lib/configPrefix'
 import { parseServerTs } from '@/lib/formatDate'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { ConfigKeyResponse, Environment } from '@/types'
@@ -69,8 +69,6 @@ interface ConfigurationTabProps {
   environments: Environment[]
   orgSlug: string
   projectId: string
-  projectSlug: string
-  teamSlug: string
 }
 
 interface CreateDraft {
@@ -131,8 +129,6 @@ export function ConfigurationTab({
   environments,
   orgSlug,
   projectId,
-  projectSlug,
-  teamSlug,
 }: ConfigurationTabProps) {
   const queryClient = useQueryClient()
   const sortedEnvironments = useMemo(
@@ -196,32 +192,23 @@ export function ConfigurationTab({
   const activeSource = sources.some((s) => s.id === source)
     ? source
     : sources[0]?.id
-  const activeAssignment = configAssignments.find(
-    (a) => a.plugin_id === activeSource,
-  )
-  const configuredPrefix = (() => {
-    const raw = activeAssignment?.options?.path_prefix
-    if (typeof raw !== 'string' || !raw) return ''
-    // Expand the variables we can resolve client-side, so users see a
-    // concrete prefix instead of `${...}`.
-    // ${environment} stays unexpanded — it varies per row, and rendering
-    // any single env's value would be misleading at the panel level.
-    // ${project_type_slug} isn't expanded from the project type either: a
-    // plugin may remap it (e.g. the AWS integration's
-    // project_type_path_map: apis -> api) via an integration-level option
-    // the client doesn't have, so the raw project-type slug would be wrong
-    // wherever a mapping exists. Anything left over is recovered from the
-    // resolved keys below instead.
-    const vars: Record<string, string> = {
-      org_slug: orgSlug,
-      project_id: projectId,
-      project_slug: projectSlug,
-      team_slug: teamSlug,
-    }
-    return raw.replace(/\$\{([^}]+)\}/g, (match, name: string) =>
-      name in vars ? vars[name] : match,
-    )
-  })()
+  // The plugin's `path_prefix` can only be expanded server-side: keys come
+  // back with the prefix stripped, and `${project_type_slug}` is remapped
+  // by an integration-level option the client doesn't have. Asking without
+  // an environment leaves `${environment}` literal, which is what we want
+  // at the panel level — it varies per row.
+  const { data: configuredPrefix } = useQuery({
+    enabled: Boolean(activeSource),
+    queryFn: ({ signal }) =>
+      getConfigurationPrefix(
+        orgSlug,
+        projectId,
+        { source: activeSource },
+        signal,
+      ),
+    queryKey: ['config-prefix', orgSlug, projectId, activeSource],
+    staleTime: 5 * 60 * 1000,
+  })
 
   // Reset reveals whenever the data scope changes.
   useEffect(() => {
@@ -332,30 +319,18 @@ export function ConfigurationTab({
     return aggregated.filter((p) => p.key.toLowerCase().includes(q))
   }, [aggregated, filter])
 
-  // The configured `path_prefix` (with ${...} variables) is the canonical
-  // prefix declared on the assignment. The keys returned by the plugin have
-  // those variables already expanded — and they expand differently per
-  // environment (e.g. ${environment} → testing/staging/production), so the
-  // longest common prefix across the aggregated key set is shorter than the
-  // configured one. We display the configured value when present and only
-  // fall back to a derived prefix when the assignment doesn't declare one.
+  // The plugin strips its `path_prefix` from every key it returns, so the
+  // longest common prefix across the key set only finds structure *inside*
+  // the prefix. Display the resolved prefix when the plugin reports one and
+  // fall back to the derived value otherwise.
   const derivedPrefix = useMemo(
     () => commonPrefix(aggregated.map((a) => a.key)),
     [aggregated],
   )
-  // For list-row truncation we still need a prefix that actually matches the
+  // For list-row truncation we need a prefix that actually matches the
   // keys, so use the derived value there.
   const prefix = derivedPrefix
-  // Variables the client can't expand (${project_type_slug} and, when it
-  // resolves the same everywhere, ${environment}) are recovered from the
-  // resolved keys so the panel shows a concrete path.
-  const displayPrefix = useMemo(() => {
-    if (!configuredPrefix) return derivedPrefix
-    return resolvePrefixPlaceholders(
-      configuredPrefix,
-      aggregated.map((a) => a.key),
-    )
-  }, [configuredPrefix, derivedPrefix, aggregated])
+  const displayPrefix = configuredPrefix?.prefix || derivedPrefix
 
   const selected = useMemo(
     () => aggregated.find((a) => a.key === selectedKey) ?? null,

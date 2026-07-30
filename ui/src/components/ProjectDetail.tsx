@@ -1237,8 +1237,6 @@ export function ProjectDetail({
               environments={sortedEnvironments}
               orgSlug={orgSlug}
               projectId={project.id}
-              projectSlug={project.slug}
-              teamSlug={project.team.slug}
             />
           </TabsContent>
         )}

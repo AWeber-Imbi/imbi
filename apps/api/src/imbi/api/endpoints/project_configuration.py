@@ -189,6 +189,38 @@ async def get_configuration(
     return result
 
 
+@project_configuration_router.get('/prefix')
+async def get_configuration_prefix(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:configuration:read'),
+        ),
+    ],
+    source: str | None = fastapi.Query(default=None),
+    environment: str | None = fastapi.Query(default=None),
+) -> models.ConfigPrefixResponse:
+    """Resolve the key prefix the assigned plugin reads and writes under.
+
+    Keys come back with the prefix stripped and the capability options may
+    reference variables only the plugin can expand (``project_type_slug``
+    is remapped by an integration-level option), so the prefix has to be
+    resolved server-side for display.
+
+    Called without ``environment`` the placeholder is passed through as a
+    literal ``${environment}``: the segment genuinely varies per row, and
+    substituting any single environment's value would be misleading.
+    """
+    resolved, ctx, _ = await _resolve_and_prepare(
+        db, org_slug, project_id, source, environment or '${environment}'
+    )
+    handler = typing.cast(ConfigurationCapability, resolved.capability_cls())
+    return models.ConfigPrefixResponse(prefix=handler.describe_prefix(ctx))
+
+
 @project_configuration_router.post('/values:fetch')
 async def fetch_values(
     org_slug: str,

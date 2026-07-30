@@ -308,6 +308,9 @@ class SSMConfiguration(ConfigurationCapability):
         except _ParameterMissing:
             return
 
+    def describe_prefix(self, ctx: PluginContext) -> str | None:
+        return self._prefix(ctx)
+
     @staticmethod
     def _prefix(ctx: PluginContext) -> str:
         raw = ctx.capability_options.get('path_prefix')

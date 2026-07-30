@@ -21,6 +21,7 @@ import type {
   ClientCredentialCreated,
   ConfigKeyResponse,
   ConfigKeyValueResponse,
+  ConfigPrefixResponse,
   CurrentReleaseEnvironment,
   DashboardMetrics,
   DashboardStatus,
@@ -2357,6 +2358,18 @@ export const listConfigurationKeys = (
 ) =>
   apiClient.get<ConfigKeyResponse[]>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/`,
+    params,
+    signal,
+  )
+
+export const getConfigurationPrefix = (
+  orgSlug: string,
+  projectId: string,
+  params?: { source?: string },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ConfigPrefixResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/configuration/prefix`,
     params,
     signal,
   )

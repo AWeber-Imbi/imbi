@@ -553,6 +553,10 @@ export interface ConfigKeyValueResponse extends ConfigKeyResponse {
   value: unknown
 }
 
+export interface ConfigPrefixResponse {
+  prefix: null | string
+}
+
 export interface CurrentReleaseEnvironment {
   ci_status: DeploymentCommitCiStatus | null
   current_status: DeploymentStatus | null
