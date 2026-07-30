@@ -634,7 +634,11 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_annotated_tag_metadata(self) -> None:
+        # A tag-push delivery's ``after`` is the tag object for an
+        # annotated tag, so the recorded sha must be the commit it peels
+        # to -- not ``after``.
         sha = 't' * 40
+        commit_sha = 'c' * 40
         respx.get(
             'https://api.github.com/repos/octo/demo/releases/tags/v1.2.3'
         ).mock(return_value=httpx.Response(404))
@@ -645,6 +649,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 200,
                 json={
                     'message': 'Release 1.2.3',
+                    'object': {'sha': commit_sha, 'type': 'commit'},
                     'tagger': {
                         'name': 'Rel Bot',
                         'email': 'rel@example.com',
@@ -665,6 +670,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('Release 1.2.3', records[0].message)
         self.assertEqual('Rel Bot', records[0].tagger_name)
         self.assertIsNotNone(records[0].tagged_at)
+        self.assertEqual(commit_sha, records[0].sha)
 
     @respx.mock
     async def test_reconcile_all_adds_full_list(self) -> None:
@@ -1383,6 +1389,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=httpx.Response(200, json=[])
         )
         tag_sha = 'a' * 40
+        commit_sha = 'c' * 40
         respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
             return_value=httpx.Response(
                 200,
@@ -1399,6 +1406,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
                 200,
                 json={
                     'message': 'Release 2.0.0',
+                    'object': {'sha': commit_sha, 'type': 'commit'},
                     'tagger': {
                         'name': 'Rel Bot',
                         'email': 'rel@example.com',
@@ -1421,6 +1429,46 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             'https://github.com/octo/demo/releases/tag/v2.0.0', record.url
         )
+        # The ref points at the tag object; the row must carry the commit
+        # it peels to, which is what ``commits`` and the deployment
+        # committishes are keyed by.
+        self.assertEqual(commit_sha, record.sha)
+
+    @respx.mock
+    async def test_annotated_tag_falls_back_when_unpeelable(self) -> None:
+        # A tag object payload without ``object`` (a provider quirk, or a
+        # 200 with an unexpected shape) must still produce a usable row
+        # rather than an empty sha.
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        respx.get(f'{self._REPO}/releases').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        tag_sha = 'a' * 40
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'ref': 'refs/tags/v2.0.0',
+                        'object': {'sha': tag_sha, 'type': 'tag'},
+                    }
+                ],
+            )
+        )
+        respx.get(f'{self._REPO}/git/tags/{tag_sha}').mock(
+            return_value=httpx.Response(200, json={'message': 'no object'})
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.GitHubCommitSync().sync_all_history(
+                ctx=self._ctx(), credentials=_CREDS
+            )
+        tag_call = next(
+            c for c in insert.await_args_list if c.args[0] == 'tags'
+        )
+        self.assertEqual(tag_sha, tag_call.args[1][0].sha)
 
 
 class WebBaseTestCase(unittest.TestCase):

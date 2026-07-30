@@ -998,6 +998,14 @@ def _tag_record(
 ) -> TagRecord:
     """Build the ClickHouse row for one tag.
 
+    ``sha`` records the *commit* the tag resolves to, never the hash of an
+    annotated tag object. Callers pass whatever the ref points at, which
+    for an annotated tag is the tag object; the peeled commit is read back
+    off *annotated* (``object.sha``). Storing the tag object hash instead
+    breaks every downstream consumer, all of which key on commit SHAs --
+    the ``commits`` join that supplies a release's CI status and
+    authorship, and the Deployments tab's release-to-commit matching.
+
     ``tagged_at`` preference: the GitHub release's published date
     (*published_at*), then the annotated tag's tagger date, then the
     target commit's committer date (*fallback_tagged_at*, lightweight
@@ -1012,10 +1020,11 @@ def _tag_record(
             tagged_at=published_at or fallback_tagged_at,
         )
     tagger: dict[str, typing.Any] = annotated.get('tagger') or {}
+    target: dict[str, typing.Any] = annotated.get('object') or {}
     return TagRecord(
         project_id=project_id,
         name=name,
-        sha=sha,
+        sha=str(target.get('sha') or sha),
         url=url,
         message=str(annotated.get('message') or ''),
         tagger_name=str(tagger.get('name') or ''),
@@ -1032,6 +1041,8 @@ async def _reconcile_tags(
     ``/git/matching-refs/tags`` yields each tag's object sha + type;
     annotated tags (``type == 'tag'``) are enriched with tagger/message/
     date from the tag object, lightweight tags carry name/sha/url only.
+    An annotated tag's ref points at the tag object rather than a commit,
+    so ``_tag_record`` peels it back to the commit before recording it.
     ``ReplacingMergeTree`` dedupes against rows recorded from pushes.
     """
     out: list[TagRecord] = []
