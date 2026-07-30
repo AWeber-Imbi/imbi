@@ -42,6 +42,7 @@ import { Sk } from '@/components/ui/skeleton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { deriveChipColors } from '@/lib/chip-colors'
+import { resolvePrefixPlaceholders } from '@/lib/configPrefix'
 import { parseServerTs } from '@/lib/formatDate'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { ConfigKeyResponse, Environment } from '@/types'
@@ -205,11 +206,12 @@ export function ConfigurationTab({
     // concrete prefix instead of `${...}`.
     // ${environment} stays unexpanded — it varies per row, and rendering
     // any single env's value would be misleading at the panel level.
-    // ${project_type_slug} also stays unexpanded: a plugin may remap it
-    // (e.g. the AWS integration's project_type_path_map: apis -> api) via
-    // an integration-level option the client doesn't have, so the raw
-    // project-type slug would be wrong wherever a mapping exists. The
-    // backend applies the mapping when it resolves real keys.
+    // ${project_type_slug} isn't expanded from the project type either: a
+    // plugin may remap it (e.g. the AWS integration's
+    // project_type_path_map: apis -> api) via an integration-level option
+    // the client doesn't have, so the raw project-type slug would be wrong
+    // wherever a mapping exists. Anything left over is recovered from the
+    // resolved keys below instead.
     const vars: Record<string, string> = {
       org_slug: orgSlug,
       project_id: projectId,
@@ -344,7 +346,16 @@ export function ConfigurationTab({
   // For list-row truncation we still need a prefix that actually matches the
   // keys, so use the derived value there.
   const prefix = derivedPrefix
-  const displayPrefix = configuredPrefix || derivedPrefix
+  // Variables the client can't expand (${project_type_slug} and, when it
+  // resolves the same everywhere, ${environment}) are recovered from the
+  // resolved keys so the panel shows a concrete path.
+  const displayPrefix = useMemo(() => {
+    if (!configuredPrefix) return derivedPrefix
+    return resolvePrefixPlaceholders(
+      configuredPrefix,
+      aggregated.map((a) => a.key),
+    )
+  }, [configuredPrefix, derivedPrefix, aggregated])
 
   const selected = useMemo(
     () => aggregated.find((a) => a.key === selectedKey) ?? null,
