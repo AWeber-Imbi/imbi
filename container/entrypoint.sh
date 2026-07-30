@@ -61,6 +61,10 @@ require_scheduler_vars() {
     # prefix from IMBI_API_URL; unset, every api target requests a path
     # without it and 404s, turning every run into a failure.
     require_var IMBI_API_URL "imbi-api's public URL, whose path is its route prefix"
+    # And the origin the prefix is joined onto. Its default (localhost:8000) is
+    # only ever right in 'all' mode, where imbi-api shares the container; in
+    # scheduler mode there is nothing on localhost to reach.
+    require_var IMBI_INTERNAL_API_URL "In-cluster origin of imbi-api (e.g. http://imbi-api:8000)"
 }
 
 check_errors() {
