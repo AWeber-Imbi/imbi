@@ -659,7 +659,13 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_normalizes_a_full_length_committish(self) -> None:
         db = self._db(
-            [_release_row('r1', '2.21.0', '287d2912fb7ae2086a9a25dd56a8369a')]
+            [
+                _release_row(
+                    'r1',
+                    '2.21.0',
+                    '287d2912fb7ae2086a9a25dd56a8369a1b2c3d4e',
+                )
+            ]
         )
         outcome = await operations.execute_release_repair(
             db, mock.AsyncMock(), 'p1'
@@ -700,6 +706,27 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
         # ...and the now-redundant edge-less node is removed.
         self.assertIn('DETACH DELETE', queries[1])
         self.assertEqual('tagged', db.execute.await_args_list[2].args[1]['id'])
+
+    async def test_salvages_notes_from_the_deleted_duplicate(self) -> None:
+        # The target already carries the tag but no notes, while the
+        # edge-less duplicate about to be deleted holds them.
+        db = self._db(
+            [
+                _release_row('kept', '2.21.0', '287d291', edges=1),
+                _release_row('dupe', '2.21.0', '287d291', description='notes'),
+            ]
+        )
+        outcome = await operations.execute_release_repair(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        queries = self._queries(db)
+        self.assertIn('SET r.tag', queries[0])
+        salvage = db.execute.await_args_list[1].args[1]
+        self.assertEqual('kept', salvage['id'])
+        self.assertEqual('notes', salvage['description'])
+        self.assertIn('DETACH DELETE', queries[1])
+        self.assertEqual('dupe', db.execute.await_args_list[2].args[1]['id'])
 
     async def test_keeps_a_duplicate_that_carries_history(self) -> None:
         db = self._db(

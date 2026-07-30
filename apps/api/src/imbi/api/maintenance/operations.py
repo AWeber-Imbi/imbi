@@ -569,6 +569,11 @@ class _ReleaseNode(typing.NamedTuple):
     edges: int
 
 
+def _has_notes(node: _ReleaseNode) -> bool:
+    """Whether the node carries release notes worth salvaging."""
+    return bool(node.description or (node.links and node.links != '[]'))
+
+
 def _release_nodes(rows: list[dict[str, typing.Any]]) -> list[_ReleaseNode]:
     """Parse the repair query's rows, dropping any without an id/committish."""
     out: list[_ReleaseNode] = []
@@ -658,6 +663,7 @@ async def execute_release_repair(
         groups.setdefault(node.committish, []).append(node)
 
     retagged = 0
+    salvaged = 0
     removed = 0
     for committish, group in groups.items():
         tags = {node.tag for node in group if node.tag}
@@ -671,8 +677,17 @@ async def execute_release_repair(
         # *tag* onto the node that already owns the history preserves it.
         # Ties break on the oldest node so repeated runs pick the same one.
         target = min(group, key=lambda n: (-n.edges, n.created_at, n.id))
-        if target.tag is None:
-            donor = next(n for n in group if n.tag == tag)
+        # Notes live on whichever sibling the writer happened to fill in, so
+        # salvage them before the edge-less duplicates are deleted. The tag
+        # carrier is preferred, and _SET_RELEASE_TAG's COALESCE guards leave
+        # anything the target already holds alone.
+        siblings = [n for n in group if n.id != target.id]
+        donor = next(
+            (n for n in siblings if n.tag == tag and _has_notes(n)),
+            next((n for n in siblings if _has_notes(n)), None),
+        )
+        if target.tag is None or donor is not None:
+            source = donor or next(n for n in group if n.tag == tag)
             await db.execute(
                 _SET_RELEASE_TAG,
                 {
@@ -680,12 +695,15 @@ async def execute_release_repair(
                     'id': target.id,
                     'tag': tag,
                     'title': tag,
-                    'description': donor.description or '',
-                    'links': donor.links or '[]',
+                    'description': source.description or '',
+                    'links': source.links or '[]',
                 },
                 ['id'],
             )
-            retagged += 1
+            if target.tag is None:
+                retagged += 1
+            else:
+                salvaged += 1
         for node in group:
             if node.id == target.id:
                 continue
@@ -707,13 +725,15 @@ async def execute_release_repair(
             )
             removed += 1
 
-    if not normalized and not retagged and not removed:
+    if not normalized and not retagged and not salvaged and not removed:
         return 'skipped'
     LOGGER.info(
-        'release-repair: project %s normalized=%d retagged=%d removed=%d',
+        'release-repair: project %s normalized=%d retagged=%d salvaged=%d '
+        'removed=%d',
         project_id,
         normalized,
         retagged,
+        salvaged,
         removed,
     )
     return 'succeeded'

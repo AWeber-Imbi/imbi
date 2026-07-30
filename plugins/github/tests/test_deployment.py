@@ -1584,7 +1584,10 @@ class GetReleaseNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             'https://github.com/octo/demo/releases/3.23.4', release.html_url
         )
-        self.assertIsNotNone(release.published_at)
+        self.assertEqual(
+            datetime.datetime(2026, 7, 29, 12, 0, tzinfo=datetime.UTC),
+            release.published_at,
+        )
 
     @respx.mock
     async def test_get_release_returns_none_when_no_release(self) -> None:

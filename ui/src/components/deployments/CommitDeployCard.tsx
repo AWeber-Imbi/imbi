@@ -265,13 +265,13 @@ function CommitRow({
         <span className="min-w-0">
           {commit.url ? (
             <a
-              className="text-tertiary hover:text-primary inline-flex items-center gap-1 text-xs"
+              className="text-tertiary hover:text-primary inline-flex min-w-0 items-center gap-1 text-xs"
               href={commit.url}
               rel="noopener noreferrer"
               target="_blank"
             >
               <ExternalLink className="size-3.5 shrink-0" />
-              View commit
+              <span className="truncate">View commit</span>
             </a>
           ) : null}
         </span>
