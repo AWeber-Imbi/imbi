@@ -69,7 +69,10 @@ export function DocumentsIndexPage() {
         className="px-6 pt-20 pb-12"
         style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
       >
-        <div className="mx-auto max-w-7xl">
+        {/* The reader lays out its own rail / content / margin columns and
+            wants the whole viewport for them, so the content column can grow;
+            every other view stays measured. */}
+        <div className="mx-auto max-w-7xl has-[[data-documents-reader]]:max-w-none">
           {!orgSlug && <DocumentsIndexSkeleton />}
           {orgSlug && (
             <DocumentsIndexBody
