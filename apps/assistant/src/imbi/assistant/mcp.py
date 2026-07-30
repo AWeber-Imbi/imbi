@@ -16,7 +16,7 @@ import fastmcp
 import httpx
 
 from imbi.assistant import settings
-from imbi.common.mcp import EXCLUDED_ROUTE_MAPS, exclude_non_ai_tools
+from imbi.common.mcp import exclude_non_ai_tools, excluded_route_maps
 
 LOGGER = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class MCPManager:
             openapi_spec=spec,
             client=self._http_client,
             name='Imbi',
-            route_maps=list(EXCLUDED_ROUTE_MAPS),
+            route_maps=excluded_route_maps(spec),
             route_map_fn=exclude_non_ai_tools,
         )
 
