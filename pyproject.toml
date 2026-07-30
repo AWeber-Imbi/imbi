@@ -288,6 +288,31 @@ reportUnknownVariableType = "none"
 reportUnusedFunction = "none"
 
 [[tool.pyright.executionEnvironments]]
+root = "apps/scheduler/tests"
+extraPaths = ["."]
+reportUnnecessaryIsInstance = "none"
+reportTypedDictNotRequiredAccess = "none"
+reportGeneralTypeIssues = "none"
+reportUnusedVariable = "none"
+reportUnusedClass = "none"
+reportIncompatibleMethodOverride = "none"
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportMissingParameterType = "none"
+reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportPrivateUsage = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnusedFunction = "none"
+
+[[tool.pyright.executionEnvironments]]
 root = "apps/slackbot/tests"
 extraPaths = ["."]
 reportUnnecessaryIsInstance = "none"
