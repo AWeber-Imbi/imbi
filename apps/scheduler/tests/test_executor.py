@@ -603,6 +603,21 @@ class ServiceAccountTokenTests(ExecutorTestCase):
         with self.assertRaises(identity.IdentityError):
             await self.resolver.service_account.token()
 
+    async def test_a_non_string_access_token_is_an_identity_error(
+        self,
+    ) -> None:
+        # Truthy but not a credential. Without a type check this is cached and
+        # handed to httpx as a bearer token.
+        for value in (12345, {'jwt': 'x'}, ['x']):
+            with self.subTest(access_token=value):
+                self.token_route.mock(
+                    return_value=httpx.Response(
+                        200, json={'access_token': value, 'expires_in': 900}
+                    )
+                )
+                with self.assertRaises(identity.IdentityError):
+                    await self.resolver.service_account.token()
+
     async def test_a_non_json_body_is_an_identity_error(self) -> None:
         self.token_route.mock(
             return_value=httpx.Response(200, content=b'not json')

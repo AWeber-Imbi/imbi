@@ -713,7 +713,10 @@ class CancelEnforcementTests(test_engine.EngineTestCase):
         holder = await self.tasks.create(helpers.build_task(slug='holder'))
         queued = await self.tasks.create(helpers.build_task(slug='queued'))
         first = asyncio.create_task(queue_engine.run_now(holder))
-        await self._wait_for_lease(holder.id)
+        # The slot, not just the lease: the lease is taken before the semaphore
+        # is requested, so waiting on it alone leaves the ceiling up for grabs
+        # and `queued` could win it and fire.
+        await self._wait_for_slot('holder')
         second = asyncio.create_task(queue_engine.run_now(queued))
         await self._wait_for_lease(queued.id)
         queued_run_id = await self._lease_run_id(queued.id)
@@ -768,6 +771,19 @@ class CancelEnforcementTests(test_engine.EngineTestCase):
                 return
             await asyncio.sleep(0.01)
         self.fail('no lease was taken')
+
+    async def _wait_for_slot(self, slug: str) -> None:
+        """Block until `slug` has entered the semaphore and begun executing.
+
+        A lease is taken *before* the slot is requested, so `_wait_for_lease`
+        alone does not establish who holds the ceiling. The stub records the
+        slug on entry to `execute`, which is past the semaphore.
+        """
+        for _ in range(500):
+            if slug in self.executor.fired:
+                return
+            await asyncio.sleep(0.01)
+        self.fail(f'{slug} never entered the executor')
 
     async def _lease_run_id(self, task_id: uuid.UUID) -> uuid.UUID:
         leases = await self._lease_rows(task_id)

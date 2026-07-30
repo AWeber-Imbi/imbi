@@ -150,8 +150,11 @@ class ServiceAccountToken:
         if not isinstance(decoded, dict):
             raise IdentityError('token response was not a JSON object')
         payload = typing.cast('dict[str, typing.Any]', decoded)
-        token: str | None = payload.get('access_token')
-        if not token:
+        # `isinstance`, not just truthiness: a JSON number or object under
+        # `access_token` is truthy, and would be cached and then handed to
+        # httpx as a bearer credential rather than raising here.
+        token = payload.get('access_token')
+        if not isinstance(token, str) or not token:
             raise IdentityError('token response carried no access_token')
         self._token = token
         try:
