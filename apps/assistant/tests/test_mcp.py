@@ -100,7 +100,14 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             mock_response = mock.MagicMock()
             mock_response.json.return_value = {
                 'openapi': '3.1.0',
-                'paths': {},
+                'paths': {
+                    '/users/me': {
+                        'get': {
+                            'operationId': 'profile',
+                            'responses': {'200': {'description': 'OK'}},
+                        }
+                    }
+                },
             }
             mock_tmp.get.return_value = mock_response
             mock_tmp.__aenter__ = mock.AsyncMock(
@@ -163,7 +170,14 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             mock_response = mock.MagicMock()
             mock_response.json.return_value = {
                 'openapi': '3.1.0',
-                'paths': {},
+                'paths': {
+                    '/users/me': {
+                        'get': {
+                            'operationId': 'profile',
+                            'responses': {'200': {'description': 'OK'}},
+                        }
+                    }
+                },
             }
             mock_tmp.get.return_value = mock_response
             mock_tmp.__aenter__ = mock.AsyncMock(return_value=mock_tmp)
@@ -208,7 +222,14 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             mock_response = mock.MagicMock()
             mock_response.json.return_value = {
                 'openapi': '3.1.0',
-                'paths': {},
+                'paths': {
+                    '/users/me': {
+                        'get': {
+                            'operationId': 'profile',
+                            'responses': {'200': {'description': 'OK'}},
+                        }
+                    }
+                },
             }
             mock_tmp.get.return_value = mock_response
             mock_tmp.__aenter__ = mock.AsyncMock(
@@ -275,7 +296,14 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             mock_response = mock.MagicMock()
             mock_response.json.return_value = {
                 'openapi': '3.1.0',
-                'paths': {},
+                'paths': {
+                    '/users/me': {
+                        'get': {
+                            'operationId': 'profile',
+                            'responses': {'200': {'description': 'OK'}},
+                        }
+                    }
+                },
             }
             mock_tmp.get.return_value = mock_response
             mock_tmp.__aenter__ = mock.AsyncMock(
@@ -339,7 +367,14 @@ class MCPManagerTestCase(unittest.IsolatedAsyncioTestCase):
             mock_response = mock.MagicMock()
             mock_response.json.return_value = {
                 'openapi': '3.1.0',
-                'paths': {},
+                'paths': {
+                    '/users/me': {
+                        'get': {
+                            'operationId': 'profile',
+                            'responses': {'200': {'description': 'OK'}},
+                        }
+                    }
+                },
             }
             mock_tmp.get.return_value = mock_response
             mock_tmp.__aenter__ = mock.AsyncMock(return_value=mock_tmp)

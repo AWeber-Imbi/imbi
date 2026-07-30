@@ -15,7 +15,13 @@ _SPEC = {
                 'operationId': 'list_projects',
                 'responses': {'200': {'description': 'ok'}},
             }
-        }
+        },
+        '/users/me': {
+            'get': {
+                'operationId': 'profile',
+                'responses': {'200': {'description': 'ok'}},
+            }
+        },
     },
 }
 

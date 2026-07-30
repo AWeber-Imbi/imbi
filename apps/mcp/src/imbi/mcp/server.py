@@ -31,10 +31,10 @@ from starlette.responses import JSONResponse
 import imbi.mcp
 from imbi.common.auth import core
 from imbi.common.mcp import (
-    EXCLUDED_ROUTE_MAPS,
     PermissionFilterMiddleware,
     copy_permissions_to_meta,
     exclude_non_ai_tools,
+    excluded_route_maps,
 )
 
 if typing.TYPE_CHECKING:
@@ -139,15 +139,16 @@ def create_server(
         name='Imbi',
         version=imbi.mcp.version,
         auth=_build_auth(public_url, auth_server_url),
-        route_maps=list(EXCLUDED_ROUTE_MAPS),
+        route_maps=excluded_route_maps(spec),
         route_map_fn=exclude_non_ai_tools,
         mcp_component_fn=copy_permissions_to_meta,
     )
 
     # ``client`` forwards the caller's Authorization header via
     # ``_inject_auth``, so the middleware resolves permissions for the
-    # principal making the request rather than a fixed identity.
-    mcp.add_middleware(PermissionFilterMiddleware(client))
+    # principal making the request rather than a fixed identity. The
+    # spec supplies the API's mount prefix, which ``base_url`` lacks.
+    mcp.add_middleware(PermissionFilterMiddleware(client, spec))
 
     @mcp.custom_route('/status', methods=['GET'])
     async def status(_request: Request) -> JSONResponse:

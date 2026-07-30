@@ -47,16 +47,18 @@ class ExcludeNonAiToolsTestCase(unittest.TestCase):
 
 
 class ExcludedRouteMapsTestCase(unittest.TestCase):
-    """Unit tests for :data:`imbi.common.mcp.EXCLUDED_ROUTE_MAPS`."""
+    """Unit tests for :func:`imbi.common.mcp.excluded_route_maps`."""
 
     def test_all_maps_exclude(self) -> None:
-        """Every static map removes the matched route."""
-        for route_map in mcp.EXCLUDED_ROUTE_MAPS:
+        """Every map removes the matched route."""
+        for route_map in mcp.excluded_route_maps(_spec()):
             self.assertEqual(MCPType.EXCLUDE, route_map.mcp_type)
 
     def test_covers_sensitive_prefixes(self) -> None:
         """Auth, MFA, status, and thumbnail paths are all covered."""
-        patterns = {route_map.pattern for route_map in mcp.EXCLUDED_ROUTE_MAPS}
+        patterns = {
+            route_map.pattern for route_map in mcp.excluded_route_maps(_spec())
+        }
         self.assertEqual(
             {
                 r'^/auth/',
@@ -66,6 +68,56 @@ class ExcludedRouteMapsTestCase(unittest.TestCase):
             },
             patterns,
         )
+
+    def test_patterns_anchor_at_the_mount_prefix(self) -> None:
+        """A prefixed deployment gets prefixed patterns."""
+        patterns = {
+            route_map.pattern
+            for route_map in mcp.excluded_route_maps(_spec(prefix='/api'))
+        }
+        self.assertEqual(
+            {
+                r'^/api/auth/',
+                r'^/api/mfa/',
+                r'^/api/status/?$',
+                r'.*/thumbnail/?$',
+            },
+            patterns,
+        )
+
+
+class MountPrefixTestCase(unittest.TestCase):
+    """Unit tests for :func:`imbi.common.mcp.mount_prefix`."""
+
+    def test_root_mounted_spec(self) -> None:
+        """An unprefixed spec yields an empty prefix."""
+        self.assertEqual('', mcp.mount_prefix(_spec()))
+
+    def test_prefixed_spec(self) -> None:
+        """The prefix comes from the profile path's spec entry."""
+        self.assertEqual('/api', mcp.mount_prefix(_spec(prefix='/api')))
+
+    def test_multi_segment_prefix(self) -> None:
+        """Multi-segment prefixes are returned whole."""
+        self.assertEqual(
+            '/imbi/api', mcp.mount_prefix(_spec(prefix='/imbi/api'))
+        )
+
+    def test_missing_profile_path_raises(self) -> None:
+        """Without the anchor path the prefix cannot be resolved."""
+        with self.assertRaises(ValueError):
+            mcp.mount_prefix(_openapi_spec({}))
+
+    def test_ambiguous_profile_path_raises(self) -> None:
+        """Two candidate anchors are ambiguous, so resolution fails."""
+        spec = _openapi_spec(
+            {
+                f'/api{mcp.PROFILE_PATH}': {'get': OK},
+                f'/v2{mcp.PROFILE_PATH}': {'get': OK},
+            }
+        )
+        with self.assertRaises(ValueError):
+            mcp.mount_prefix(spec)
 
 
 #: Boilerplate ``responses`` block every test operation needs.
@@ -81,13 +133,23 @@ def _openapi_spec(paths: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _spec() -> dict[str, object]:
-    """Minimal OpenAPI spec exercising each exclusion path."""
+def _spec(prefix: str = '') -> dict[str, object]:
+    """Minimal OpenAPI spec exercising each exclusion path.
+
+    ``prefix`` mimics the path the API is mounted under (the path
+    component of ``IMBI_API_URL``), which every generated spec path
+    carries.
+    """
     return _openapi_spec(
         {
-            '/projects/': {'get': {'operationId': 'list_projects', **OK}},
-            '/auth/login': {'post': {'operationId': 'login', **OK}},
-            '/configuration/{key}': {
+            f'{prefix}/projects/': {
+                'get': {'operationId': 'list_projects', **OK}
+            },
+            f'{prefix}/users/me': {
+                'get': {'operationId': 'get_current_user_profile', **OK}
+            },
+            f'{prefix}/auth/login': {'post': {'operationId': 'login', **OK}},
+            f'{prefix}/configuration/{{key}}': {
                 'put': {
                     'operationId': 'set_configuration_value',
                     'x-imbi-ai-tool': False,
@@ -101,21 +163,34 @@ def _spec() -> dict[str, object]:
 class FromOpenapiExclusionTests(unittest.IsolatedAsyncioTestCase):
     """End-to-end: the policy excludes the right tools via fastmcp."""
 
-    async def test_policy_excludes_expected_tools(self) -> None:
-        """A real server build drops auth and AI-flagged operations."""
+    async def _tool_names(self, prefix: str = '') -> set[str]:
+        """Build a server from the policy and list its tools."""
+        spec = _spec(prefix)
         client = httpx.AsyncClient(base_url='http://localhost:8000')
         try:
             server = fastmcp.FastMCP.from_openapi(
-                openapi_spec=_spec(),
+                openapi_spec=spec,
                 client=client,
                 name='Imbi',
-                route_maps=list(mcp.EXCLUDED_ROUTE_MAPS),
+                route_maps=mcp.excluded_route_maps(spec),
                 route_map_fn=mcp.exclude_non_ai_tools,
             )
             async with fastmcp.Client(server) as connected:
-                names = {tool.name for tool in await connected.list_tools()}
+                return {tool.name for tool in await connected.list_tools()}
         finally:
             await client.aclose()
+
+    async def test_policy_excludes_expected_tools(self) -> None:
+        """A real server build drops auth and AI-flagged operations."""
+        names = await self._tool_names()
+
+        self.assertIn('list_projects', names)
+        self.assertNotIn('login', names)
+        self.assertNotIn('set_configuration_value', names)
+
+    async def test_policy_excludes_expected_tools_when_prefixed(self) -> None:
+        """The same holds when the API is mounted under a prefix."""
+        names = await self._tool_names('/api')
 
         self.assertIn('list_projects', names)
         self.assertNotIn('login', names)
@@ -126,11 +201,25 @@ class FromOpenapiExclusionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('x-imbi-ai-tool', json.dumps(_spec()))
 
 
-def _permission_spec() -> dict[str, object]:
-    """Spec whose operations carry ``x-imbi-permission``."""
+def _permission_spec(prefix: str = '') -> dict[str, object]:
+    """Spec whose operations carry ``x-imbi-permission``.
+
+    ``prefix`` mounts every path under a deployment prefix, as imbi-api
+    does when ``IMBI_API_URL`` carries a path. The profile operation is
+    flagged off-limits for AI so it never joins the toolset -- it is
+    here only because it is what :func:`imbi.common.mcp.mount_prefix`
+    reads the prefix from.
+    """
     return _openapi_spec(
         {
-            '/projects/': {
+            f'{prefix}/users/me': {
+                'get': {
+                    'operationId': 'get_current_user_profile',
+                    'x-imbi-ai-tool': False,
+                    **OK,
+                }
+            },
+            f'{prefix}/projects/': {
                 'get': {
                     'operationId': 'list_projects',
                     'x-imbi-permission': ['project:read'],
@@ -142,14 +231,14 @@ def _permission_spec() -> dict[str, object]:
                     **OK,
                 },
             },
-            '/graph/query': {
+            f'{prefix}/graph/query': {
                 'post': {
                     'operationId': 'graph_query',
                     'x-imbi-permission': ['admin'],
                     **OK,
                 }
             },
-            '/ungated': {'get': {'operationId': 'ungated_op', **OK}},
+            f'{prefix}/ungated': {'get': {'operationId': 'ungated_op', **OK}},
         }
     )
 
@@ -158,27 +247,31 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
     """Per-caller filtering of ``tools/list``."""
 
     async def _tool_names(
-        self, handler: typing.Callable[[httpx.Request], httpx.Response]
+        self,
+        handler: typing.Callable[[httpx.Request], httpx.Response],
+        prefix: str = '',
     ) -> set[str]:
         """Build a filtered server and list its tools.
 
         ``handler`` stands in for the API, answering the middleware's
-        ``/users/me`` lookup.
+        profile lookup. ``prefix`` mounts the spec under a deployment
+        path prefix.
         """
+        spec = _permission_spec(prefix)
         client = httpx.AsyncClient(
             base_url='http://localhost:8000',
             transport=httpx.MockTransport(handler),
         )
         try:
             server = fastmcp.FastMCP.from_openapi(
-                openapi_spec=_permission_spec(),
+                openapi_spec=spec,
                 client=client,
                 name='Imbi',
-                route_maps=list(mcp.EXCLUDED_ROUTE_MAPS),
+                route_maps=mcp.excluded_route_maps(spec),
                 route_map_fn=mcp.exclude_non_ai_tools,
                 mcp_component_fn=mcp.copy_permissions_to_meta,
             )
-            server.add_middleware(mcp.PermissionFilterMiddleware(client))
+            server.add_middleware(mcp.PermissionFilterMiddleware(client, spec))
             async with fastmcp.Client(server) as connected:
                 return {tool.name for tool in await connected.list_tools()}
         finally:
@@ -201,6 +294,26 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         names = await self._tool_names(
             self._profile(is_admin=False, permissions=['project:read'])
         )
+        self.assertEqual({'list_projects', 'ungated_op'}, names)
+
+    async def test_profile_lookup_uses_the_mount_prefix(self) -> None:
+        """The lookup targets the spec's path, not a bare ``/users/me``.
+
+        imbi-api mounts its routers under the path of ``IMBI_API_URL``
+        while the client's ``base_url`` has no path, so a hard-coded
+        ``/users/me`` 404s and filtering silently fails open.
+        """
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(request.url.path)
+            return httpx.Response(
+                200, json={'is_admin': False, 'permissions': ['project:read']}
+            )
+
+        names = await self._tool_names(handler, prefix='/api')
+
+        self.assertEqual(['/api/users/me'], requested)
         self.assertEqual({'list_projects', 'ungated_op'}, names)
 
     async def test_admin_sees_every_tool(self) -> None:
@@ -270,7 +383,9 @@ class PermissionCacheTests(unittest.IsolatedAsyncioTestCase):
             base_url='http://localhost:8000',
             transport=httpx.MockTransport(handler),
         )
-        self.middleware = mcp.PermissionFilterMiddleware(self.client)
+        self.middleware = mcp.PermissionFilterMiddleware(
+            self.client, _permission_spec()
+        )
 
     async def asyncTearDown(self) -> None:
         await self.client.aclose()

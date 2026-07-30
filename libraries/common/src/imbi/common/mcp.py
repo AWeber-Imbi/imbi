@@ -6,7 +6,7 @@ their toolsets by turning the Imbi API's ``/openapi.json`` into tools via
 operations are kept out of those toolsets so the policy lives in one place
 rather than being copied into each consumer:
 
-* :data:`EXCLUDED_ROUTE_MAPS` -- a static path/method denylist (auth, MFA,
+* :func:`excluded_route_maps` -- a path/method denylist (auth, MFA,
   status, thumbnails) passed as ``route_maps``.
 * :func:`exclude_non_ai_tools` -- a ``route_map_fn`` that honours the
   ``x-imbi-ai-tool: false`` extension imbi-api stamps on sensitive
@@ -15,8 +15,14 @@ rather than being copied into each consumer:
   ``tools/list`` per caller, dropping operations whose required
   permissions (``x-imbi-permission``) the caller does not hold.
 
-These compose. Pass ``EXCLUDED_ROUTE_MAPS`` (optionally alongside a
-consumer's own maps) as ``route_maps`` and :func:`exclude_non_ai_tools`
+The API mounts its routers under a deployment-specific path prefix (the
+path component of ``IMBI_API_URL``, e.g. ``/api``), which the spec's
+paths carry but a client's ``base_url`` does not. Everything here that
+names a path therefore derives that prefix from the spec via
+:func:`mount_prefix`.
+
+These compose. Pass ``excluded_route_maps(spec)`` (optionally alongside
+a consumer's own maps) as ``route_maps`` and :func:`exclude_non_ai_tools`
 as ``route_map_fn``. :class:`PermissionFilterMiddleware` additionally
 requires :func:`copy_permissions_to_meta` as ``mcp_component_fn`` --
 that is what records each operation's permissions on the tool, so
@@ -29,11 +35,11 @@ returned::
     server = fastmcp.FastMCP.from_openapi(
         openapi_spec=spec,
         client=client,
-        route_maps=list(mcp.EXCLUDED_ROUTE_MAPS),
+        route_maps=mcp.excluded_route_maps(spec),
         route_map_fn=mcp.exclude_non_ai_tools,
         mcp_component_fn=mcp.copy_permissions_to_meta,
     )
-    server.add_middleware(mcp.PermissionFilterMiddleware(client))
+    server.add_middleware(mcp.PermissionFilterMiddleware(client, spec))
 
 Requires the ``mcp`` extra (``imbi-common[mcp]``).
 
@@ -44,6 +50,7 @@ from __future__ import annotations
 import collections
 import hashlib
 import logging
+import re
 import time
 import typing
 
@@ -75,14 +82,67 @@ AI_TOOL_EXTENSION = 'x-imbi-ai-tool'
 #: toolset down to what that caller can actually invoke.
 PERMISSION_EXTENSION = 'x-imbi-permission'
 
-#: Endpoints that should never become AI tools regardless of tagging --
-#: authentication, MFA, the status probe, and image thumbnails.
-EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
-    RouteMap(pattern=r'^/auth/', mcp_type=MCPType.EXCLUDE),
-    RouteMap(pattern=r'^/mfa/', mcp_type=MCPType.EXCLUDE),
-    RouteMap(pattern=r'^/status/?$', mcp_type=MCPType.EXCLUDE),
-    RouteMap(pattern=r'.*/thumbnail/?$', mcp_type=MCPType.EXCLUDE),
-]
+#: Spec path whose presence reveals the API's mount prefix. Every
+#: domain router is mounted under the prefix, so any known-prefixed
+#: operation works; this one is used because
+#: :class:`PermissionFilterMiddleware` has to call it anyway.
+PROFILE_PATH = '/users/me'
+
+
+def mount_prefix(spec: collections.abc.Mapping[str, typing.Any]) -> str:
+    """Return the path prefix the API's routers are mounted under.
+
+    imbi-api mounts every domain router under the path component of
+    ``IMBI_API_URL`` (e.g. ``/api``), so the spec describes
+    ``/api/users/me`` while an internal client's ``base_url`` is just
+    ``http://imbi-api:8000``. Anything that names a path by hand has to
+    add the prefix back, and the spec is the only place it appears.
+
+    Returns:
+        The prefix (``''`` when the API is mounted at the root),
+        derived from the spec path ending in :data:`PROFILE_PATH`.
+
+    Raises:
+        ValueError: When the spec does not contain exactly one path
+            ending in :data:`PROFILE_PATH`. This fails *closed*:
+            assuming the root would unanchor
+            :func:`excluded_route_maps`, re-exposing auth and MFA
+            operations as tools, and would point
+            :class:`PermissionFilterMiddleware` at a profile URL that
+            does not exist.
+
+    """
+    paths: collections.abc.Iterable[str] = spec.get('paths') or {}
+    matches = [path for path in paths if path.endswith(PROFILE_PATH)]
+    if len(matches) != 1:
+        raise ValueError(
+            f'Cannot determine the API mount prefix: expected exactly '
+            f'one spec path ending in {PROFILE_PATH}, found '
+            f'{len(matches)}'
+        )
+    return matches[0].removesuffix(PROFILE_PATH)
+
+
+def excluded_route_maps(
+    spec: collections.abc.Mapping[str, typing.Any],
+) -> list[RouteMap]:
+    """Endpoints that must never become AI tools regardless of tagging.
+
+    Covers authentication, MFA, the status probe, and image thumbnails.
+    The patterns are anchored at the spec's mount prefix so they still
+    match on a deployment served under one (e.g. ``/api/auth/login``).
+
+    Args:
+        spec: The OpenAPI spec the toolset is built from.
+
+    """
+    prefix = re.escape(mount_prefix(spec))
+    return [
+        RouteMap(pattern=rf'^{prefix}/auth/', mcp_type=MCPType.EXCLUDE),
+        RouteMap(pattern=rf'^{prefix}/mfa/', mcp_type=MCPType.EXCLUDE),
+        RouteMap(pattern=rf'^{prefix}/status/?$', mcp_type=MCPType.EXCLUDE),
+        RouteMap(pattern=r'.*/thumbnail/?$', mcp_type=MCPType.EXCLUDE),
+    ]
 
 
 def exclude_non_ai_tools(
@@ -157,9 +217,11 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
     permissions (see :data:`PERMISSION_EXTENSION`) the caller actually
     holds, so an agent is not offered hundreds of tools that can only
     ever return ``403``. The caller's effective permissions come from
-    the API's ``/users/me``, which reports ``is_admin`` and the
+    the API's :data:`PROFILE_PATH`, which reports ``is_admin`` and the
     ``permissions`` list; admins are never filtered, matching the
-    API's own admin bypass.
+    API's own admin bypass. That path is resolved against the spec's
+    :func:`mount_prefix`, since the client's ``base_url`` does not
+    carry the prefix the API is mounted under.
 
     Requires the server to have been built with
     :func:`copy_permissions_to_meta` as its ``mcp_component_fn``.
@@ -192,7 +254,11 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
     #: Upper bound on cached profiles, evicted least-recently-used.
     CACHE_MAX_ENTRIES = 1024
 
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        spec: collections.abc.Mapping[str, typing.Any],
+    ) -> None:
         """Store the API client used to resolve the caller's profile.
 
         Args:
@@ -200,8 +266,11 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
                 calling principal's credentials -- the same client used
                 to build the toolset. Its auth must be per-caller, or
                 every caller would be filtered against one identity.
+            spec: The OpenAPI spec the toolset was built from, used to
+                resolve the profile path against the API's mount prefix.
         """
         self._client = client
+        self._profile_path = f'{mount_prefix(spec)}{PROFILE_PATH}'
         self._cache: collections.OrderedDict[
             str, tuple[float, tuple[bool, set[str]]]
         ] = collections.OrderedDict()
@@ -247,7 +316,7 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
             if cached is not None:
                 return cached
         try:
-            response = await self._client.get('/users/me')
+            response = await self._client.get(self._profile_path)
             response.raise_for_status()
             profile = response.json()
         except (httpx.HTTPError, ValueError):
