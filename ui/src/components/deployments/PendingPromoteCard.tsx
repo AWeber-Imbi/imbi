@@ -38,7 +38,8 @@ interface PendingPromoteCardProps {
  * Always-on inline promote form: the upstream environment runs untagged
  * commits, so moving them here cuts a new tag and rolls it out. Pick the
  * newest commit to include, set the tag + notes (AI-drafted), promote.
- * The commit range comes from imbi's synced history (stage.pendingCommits).
+ * The commit range comes from imbi's synced history
+ * (stage.promotableCommits).
  */
 // fallow-ignore-next-line complexity
 export function PendingPromoteCard({
@@ -51,9 +52,17 @@ export function PendingPromoteCard({
 }: PendingPromoteCardProps) {
   const upstreamName = stage.upstream?.name ?? 'upstream'
   const lastTag = stage.current?.release?.tag ?? null
+  // What the new tag is bumped from. Not ``lastTag``: a release cut out of
+  // band (or one this env never took) leaves the newest tag ahead of what is
+  // deployed here, and bumping from the deployed tag would suggest a version
+  // that already exists or ranks below one that does.
+  const bumpFrom = stage.latestTag ?? lastTag
   const fromTipSha = stage.upstreamCurrent?.release?.committish ?? null
-  // Already newest-first from the synced ClickHouse history.
-  const commits = stage.pendingCommits
+  // Already newest-first from the synced ClickHouse history. Commits at or
+  // below a release already cut inside the range are excluded — that release
+  // deploys as it stands (the card above this one) rather than being tagged
+  // a second time.
+  const commits = stage.promotableCommits
 
   const [selectedSha, setSelectedSha] = useState<null | string>(null)
   useEffect(() => {
@@ -69,14 +78,14 @@ export function PendingPromoteCard({
   const draftMutation = useMutation({
     mutationFn: ({ headSha }: { headSha: string }) =>
       draftReleaseNotes(orgSlug, projectId, {
-        base_sha: lastTag ?? '',
+        base_sha: bumpFrom ?? '',
         head_sha: headSha,
-        last_tag: lastTag,
+        last_tag: bumpFrom,
       }),
   })
 
   // Auto-draft once when there is a non-empty diff to summarize.
-  const hasDiff = !!lastTag && !!selectedSha && commits.length > 0
+  const hasDiff = !!bumpFrom && !!selectedSha && commits.length > 0
   useEffect(() => {
     if (draft || !hasDiff) return
     draftMutation.mutate(
@@ -144,7 +153,7 @@ export function PendingPromoteCard({
           <div className="text-tertiary flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs">
             <span>{commits.length} commits</span>
             <span className="ml-auto">
-              {lastTag ?? '—'} … {fromTipSha.slice(0, 7)}
+              {bumpFrom ?? '—'} … {fromTipSha.slice(0, 7)}
             </span>
           </div>
         ) : null}
@@ -175,16 +184,24 @@ export function PendingPromoteCard({
         </section>
 
         <section className="border-tertiary flex flex-col gap-2 border-t pt-4">
-          <p className="text-tertiary text-xs tracking-wider uppercase">
-            Tag & release notes
-          </p>
+          <div className="flex items-center gap-2.5">
+            <p className="text-tertiary text-xs tracking-wider uppercase">
+              Tag & release notes
+            </p>
+            {isDrafting ? (
+              <span className="border-amber-border bg-amber-bg text-amber-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide">
+                <RefreshCw className="size-3 animate-spin" />
+                Generating…
+              </span>
+            ) : null}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Label className="text-tertiary flex flex-col gap-1 text-xs">
-              Current
+              Bumping from
               <Input
                 className="bg-tertiary font-mono"
                 disabled
-                value={lastTag ?? '—'}
+                value={bumpFrom ?? '—'}
               />
             </Label>
             <Label className="text-tertiary flex flex-col gap-1 text-xs">
@@ -201,6 +218,14 @@ export function PendingPromoteCard({
               />
             </Label>
           </div>
+          {bumpFrom !== lastTag ? (
+            <span className="text-tertiary text-xs">
+              <span className="font-mono">{bumpFrom}</span> is the newest tag in
+              this project; {stage.env.name.toLowerCase()} runs{' '}
+              <span className="font-mono">{lastTag ?? '—'}</span>. Deploying
+              that release and cutting this tag are separate moves.
+            </span>
+          ) : null}
           {!tagValid && tag.length > 0 ? (
             <span className="text-danger text-xs">
               Use a semver tag, e.g. v6.5.2

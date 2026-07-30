@@ -152,9 +152,7 @@ export function PendingReleasesCard({
                 Release notes ·{' '}
                 <span className="font-mono normal-case">{active.tag}</span>
               </p>
-              <div className="border-tertiary rounded-md border px-3.5 py-3">
-                <ReleaseNotesMarkdown notes={active.notes_markdown} />
-              </div>
+              <ReleaseNotesMarkdown notes={active.notes_markdown} />
             </section>
           </>
         )}

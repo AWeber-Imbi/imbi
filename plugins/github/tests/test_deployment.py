@@ -1555,6 +1555,63 @@ class GetReleaseNotesTestCase(unittest.IsolatedAsyncioTestCase):
         notes = await plugin.get_release_notes(_ctx(), _CREDS, '9.9.9')
         self.assertIsNone(notes)
 
+    @respx.mock
+    async def test_get_release_carries_the_remote_author(self) -> None:
+        # Attribution comes from GitHub: the login it credits with the
+        # release, plus the numeric id the host resolves to an Imbi user.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/3.23.4'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'tag_name': '3.23.4',
+                    'name': 'Release 3.23.4',
+                    'body': '## Fixed\n- the thing',
+                    'html_url': 'https://github.com/octo/demo/releases/3.23.4',
+                    'published_at': '2026-07-29T12:00:00Z',
+                    'author': {'login': 'octocat', 'id': 583231},
+                },
+            )
+        )
+        plugin = GitHubDeployment()
+        release = await plugin.get_release(_ctx(), _CREDS, '3.23.4')
+        assert release is not None
+        self.assertEqual('octocat', release.author)
+        self.assertEqual('583231', release.author_subject)
+        self.assertEqual('Release 3.23.4', release.name)
+        self.assertEqual('## Fixed\n- the thing', release.body_markdown)
+        self.assertEqual(
+            'https://github.com/octo/demo/releases/3.23.4', release.html_url
+        )
+        self.assertIsNotNone(release.published_at)
+
+    @respx.mock
+    async def test_get_release_returns_none_when_no_release(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/9.9.9'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        self.assertIsNone(await plugin.get_release(_ctx(), _CREDS, '9.9.9'))
+
+    @respx.mock
+    async def test_get_release_tolerates_a_missing_author(self) -> None:
+        # A release with no author (a tag-only release, or a deleted
+        # account) still yields its body rather than failing the lookup.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/1.0.0'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'tag_name': '1.0.0', 'body': 'notes'}
+            )
+        )
+        plugin = GitHubDeployment()
+        release = await plugin.get_release(_ctx(), _CREDS, '1.0.0')
+        assert release is not None
+        self.assertIsNone(release.author)
+        self.assertIsNone(release.author_subject)
+        self.assertEqual('notes', release.body_markdown)
+
 
 class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock

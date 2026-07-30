@@ -25,6 +25,7 @@ MaintenanceSlug = typing.Literal[
     'rescore',
     'deployment-resync',
     'opslog-backfill',
+    'release-repair',
     'commit-sync',
     'pr-sync',
 ]
@@ -110,6 +111,23 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_opslog_backfill,
+        ),
+        OperationDefinition(
+            slug='release-repair',
+            label='Repair Release Identity',
+            description=(
+                'Fix releases the Deployments tab cannot recognize: '
+                'normalize every release committish to the short form the '
+                'deploy path looks up, move a tag onto the release that '
+                'owns the deployment history for that commit, and drop the '
+                'duplicates left behind. Only duplicates with no '
+                'deployment history at all are removed; nothing else is '
+                'deleted and no history, block state, or attribution is '
+                'lost. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_release_repair,
         ),
         OperationDefinition(
             slug='commit-sync',

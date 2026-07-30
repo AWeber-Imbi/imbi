@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { CommitSubject } from '@/components/ui/commit-subject'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import type { ChipColors } from '@/lib/chip-colors'
 import type { RecentCommit } from '@/types'
 
@@ -52,6 +53,12 @@ export function CommitDeployCard({
     commit: RecentCommit
     rollback: boolean
   }>(null)
+  // Git author names vary per commit (a squash-merge records the source
+  // host's display name, a local commit whatever git config holds), so rows
+  // resolve through the Imbi user by email and only fall back to the raw
+  // name — otherwise the same person renders under two names and two
+  // avatar tints in one list.
+  const { displayNames } = useUserDisplayNames()
 
   const currentSha = stage.current?.release?.committish ?? null
   const matchesCurrent = (c: RecentCommit) =>
@@ -139,6 +146,7 @@ export function CommitDeployCard({
                   actionPending={actions.deployPendingSha === c.sha}
                   canTrigger={canTrigger && !actions.deployPending}
                   commit={c}
+                  displayNames={displayNames}
                   isCurrent={idx === deployedIdx}
                   isHead={idx === 0}
                   onAction={(rollback) =>
@@ -199,6 +207,7 @@ function CommitRow({
   actionPending,
   canTrigger,
   commit,
+  displayNames,
   isCurrent,
   isHead,
   onAction,
@@ -208,11 +217,15 @@ function CommitRow({
   actionPending: boolean
   canTrigger: boolean
   commit: RecentCommit
+  displayNames: Map<string, string>
   isCurrent: boolean
   isHead: boolean
   onAction: (rollback: boolean) => void
   rollback: boolean
 }) {
+  const author = commit.author_email
+    ? (displayNames.get(commit.author_email) ?? commit.author)
+    : commit.author
   return (
     <li
       className="border-tertiary flex min-w-0 items-center gap-3 border-b px-3 py-1.5 last:border-b-0"
@@ -225,57 +238,66 @@ function CommitRow({
         commitUrl={commit.url}
         message={commit.message}
       />
-      {commit.ci_status !== 'unknown' ? (
-        <CiStatusDot status={commit.ci_status} />
-      ) : null}
-      {commit.authored_at ? (
-        <RelativeTime
-          className="text-tertiary hidden shrink-0 text-xs sm:inline"
-          value={commit.authored_at}
-          variant="narrow"
-        />
-      ) : null}
-      {commit.author ? (
-        <span className="hidden shrink-0 sm:inline">
-          <UserIdentity
-            actor={commit.author}
-            displayName={commit.author}
-            email={commit.author_email}
-            size="small"
-          />
+      {/* Fixed-width columns, each rendered even when empty, so status /
+          age / author / link / action line up down the list — including the
+          HEAD row, whose action is a badge rather than a button. */}
+      <div className="grid shrink-0 grid-cols-[1.25rem_2.5rem_9rem_6.5rem_6.5rem] items-center gap-3">
+        <span className="flex justify-center">
+          {commit.ci_status !== 'unknown' ? (
+            <CiStatusDot status={commit.ci_status} />
+          ) : null}
         </span>
-      ) : null}
-      {commit.url ? (
-        <a
-          aria-label="View commit"
-          className="text-tertiary hover:text-primary"
-          href={commit.url}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <ExternalLink className="size-3.5" />
-        </a>
-      ) : null}
-      {isCurrent ? (
-        <Badge variant="neutral">deployed</Badge>
-      ) : (
-        <Button
-          disabled={!canTrigger}
-          onClick={() => onAction(rollback)}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          {actionPending ? (
-            <Loader2 className="mr-1 size-3.5 animate-spin" />
-          ) : rollback ? (
-            <RotateCcw className="mr-1 size-3.5" />
+        <span className="text-tertiary truncate text-right text-xs">
+          {commit.authored_at ? (
+            <RelativeTime value={commit.authored_at} variant="narrow" />
+          ) : null}
+        </span>
+        <span className="min-w-0 truncate">
+          {author ? (
+            <UserIdentity
+              actor={commit.author}
+              displayName={author}
+              email={commit.author_email}
+              size="small"
+            />
+          ) : null}
+        </span>
+        <span className="min-w-0">
+          {commit.url ? (
+            <a
+              className="text-tertiary hover:text-primary inline-flex items-center gap-1 text-xs"
+              href={commit.url}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <ExternalLink className="size-3.5 shrink-0" />
+              View commit
+            </a>
+          ) : null}
+        </span>
+        <span className="flex justify-end">
+          {isCurrent ? (
+            <Badge variant="neutral">deployed</Badge>
           ) : (
-            <Upload className="mr-1 size-3.5" />
+            <Button
+              disabled={!canTrigger}
+              onClick={() => onAction(rollback)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {actionPending ? (
+                <Loader2 className="mr-1 size-3.5 animate-spin" />
+              ) : rollback ? (
+                <RotateCcw className="mr-1 size-3.5" />
+              ) : (
+                <Upload className="mr-1 size-3.5" />
+              )}
+              {rollback ? 'Roll back' : 'Deploy'}
+            </Button>
           )}
-          {rollback ? 'Roll back' : 'Deploy'}
-        </Button>
-      )}
+        </span>
+      </div>
     </li>
   )
 }

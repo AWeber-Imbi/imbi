@@ -17,7 +17,6 @@ endpoints package at import time.
 
 from __future__ import annotations
 
-import functools
 import json
 import logging
 import typing
@@ -25,21 +24,20 @@ import typing
 import fastapi
 from valkey import asyncio as valkey
 
-from imbi.api import models
-from imbi.api.auth import permissions
+from imbi.api.auth import permissions, principals
 from imbi.api.scoring import queue as score_queue
-from imbi.common import clickhouse, graph
+from imbi.common import clickhouse, graph, versioning
 from imbi.common import models as common_models
 from imbi.common.plugins.errors import PluginRateLimited
 
 LOGGER = logging.getLogger(__name__)
 
 #: ``requested_by`` / ``principal_name`` recorded on work this runs.
-REQUESTED_BY = 'maintenance'
+REQUESTED_BY = principals.MAINTENANCE
 
 #: ``recorded_by`` stamped on ops-log rows the backfill writes, so they
 #: are distinguishable from rows the in-product deploy/promote flows write.
-OPSLOG_BACKFILL_RECORDED_BY = 'maintenance-opslog-backfill'
+OPSLOG_BACKFILL_RECORDED_BY = principals.OPSLOG_BACKFILL
 
 ExecuteOutcome = typing.Literal['succeeded', 'skipped']
 
@@ -53,19 +51,9 @@ class MaintenanceItemFailed(Exception):
     """One project's operation failed; the message is user-safe."""
 
 
-@functools.cache
 def _system_auth() -> permissions.AuthContext:
-    """Synthetic principal for background maintenance work.
-
-    Never persisted; exists so service functions that record
-    ``principal_name`` attribute the work to ``'maintenance'``.
-    """
-    return permissions.AuthContext(
-        auth_method='client_credentials',
-        service_account=models.ServiceAccount(
-            slug=REQUESTED_BY, display_name='Imbi Maintenance'
-        ),
-    )
+    """Synthetic principal background maintenance work runs under."""
+    return principals.system_auth(REQUESTED_BY, 'Imbi Maintenance')
 
 
 async def enumerate_all_projects(db: graph.Graph) -> list[str]:
@@ -527,4 +515,205 @@ async def execute_opslog_backfill(
             ],
             repair_columns,
         )
+    return 'succeeded'
+
+
+_RELEASE_NODES_QUERY: typing.LiteralString = """
+MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+OPTIONAL MATCH (r)-[d:DEPLOYED_TO]->(:Environment)
+RETURN r.id AS id,
+       r.tag AS tag,
+       r.committish AS committish,
+       r.description AS description,
+       r.links AS links,
+       r.created_at AS created_at,
+       count(d) AS edges
+"""
+
+_SET_RELEASE_COMMITTISH: typing.LiteralString = """
+MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release {{id: {id}}})
+SET r.committish = {committish}
+RETURN r.id AS id
+"""
+
+_SET_RELEASE_TAG: typing.LiteralString = """
+MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release {{id: {id}}})
+SET r.tag = {tag},
+    r.title = CASE WHEN COALESCE(r.title, '') = ''
+        THEN {title} ELSE r.title END,
+    r.description = CASE WHEN COALESCE(r.description, '') = ''
+        THEN {description} ELSE r.description END,
+    r.links = CASE WHEN COALESCE(r.links, '[]') = '[]'
+        THEN {links} ELSE r.links END
+RETURN r.id AS id
+"""
+
+_DELETE_RELEASE: typing.LiteralString = """
+MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release {{id: {id}}})
+OPTIONAL MATCH (r)-[d:DEPLOYED_TO]->(:Environment)
+WITH r, count(d) AS edges
+WHERE edges = 0
+DETACH DELETE r
+"""
+
+
+class _ReleaseNode(typing.NamedTuple):
+    """One ``Release`` node as the repair pass sees it."""
+
+    id: str
+    tag: str | None
+    committish: str
+    description: str | None
+    links: str | None
+    created_at: str
+    edges: int
+
+
+def _release_nodes(rows: list[dict[str, typing.Any]]) -> list[_ReleaseNode]:
+    """Parse the repair query's rows, dropping any without an id/committish."""
+    out: list[_ReleaseNode] = []
+    for row in rows:
+        node_id = graph.parse_agtype(row.get('id'))
+        committish = graph.parse_agtype(row.get('committish'))
+        if not node_id or not committish:
+            continue
+        tag = graph.parse_agtype(row.get('tag'))
+        description = graph.parse_agtype(row.get('description'))
+        links = graph.parse_agtype(row.get('links'))
+        created_at = graph.parse_agtype(row.get('created_at'))
+        edges = graph.parse_agtype(row.get('edges'))
+        out.append(
+            _ReleaseNode(
+                id=str(node_id),
+                tag=str(tag) if tag else None,
+                committish=str(committish),
+                description=str(description) if description else None,
+                links=str(links) if links else None,
+                created_at=str(created_at) if created_at else '',
+                edges=int(edges) if isinstance(edges, int) else 0,
+            )
+        )
+    return out
+
+
+async def execute_release_repair(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Repair ``Release`` node identity for one project.
+
+    Three defects, all of which leave a deployed release unrecognizable to
+    the Deployments tab (it falls back to showing a bare SHA, and its
+    release list empties out):
+
+    1. A ``committish`` stored at full SHA length. Every writer is supposed
+       to record ``sha[:7].lower()`` (see ``_resync_release_identity``), and
+       the deploy path looks releases up by that short form -- so a
+       long-form node can never be matched, and a deploy of it attaches to
+       some other node for the same commit instead.
+    2. An untagged node that owns the deployment history for a commit while
+       a *sibling* node holds the tag. The tag moves onto the node with the
+       history, along with the title/notes/links it was missing, rather than
+       moving edges between nodes (which would rewrite deploy history).
+    3. The now-redundant siblings. Deleted only when they carry no
+       deployment edges at all, so no history is ever discarded; a
+       duplicate that does carry edges is left in place and logged.
+
+    Skipped when nothing needed repair. Idempotent: a second run over
+    repaired data finds nothing and skips.
+    """
+    rows = await db.execute(
+        _RELEASE_NODES_QUERY,
+        {'project_id': project_id},
+        [
+            'id',
+            'tag',
+            'committish',
+            'description',
+            'links',
+            'created_at',
+            'edges',
+        ],
+    )
+    nodes = _release_nodes(rows)
+    if not nodes:
+        return 'skipped'
+
+    normalized = 0
+    shortened: list[_ReleaseNode] = []
+    for node in nodes:
+        short = versioning.short_committish(node.committish)
+        if short == node.committish:
+            shortened.append(node)
+            continue
+        await db.execute(
+            _SET_RELEASE_COMMITTISH,
+            {'project_id': project_id, 'id': node.id, 'committish': short},
+            ['id'],
+        )
+        normalized += 1
+        shortened.append(node._replace(committish=short))
+
+    groups: dict[str, list[_ReleaseNode]] = {}
+    for node in shortened:
+        groups.setdefault(node.committish, []).append(node)
+
+    retagged = 0
+    removed = 0
+    for committish, group in groups.items():
+        tags = {node.tag for node in group if node.tag}
+        if len(group) < 2 or len(tags) != 1:
+            # Nothing to fold: a lone node, or siblings disagreeing on the
+            # tag (a retagged commit is ambiguous -- leave it alone).
+            continue
+        tag = tags.pop()
+        # Whichever node carries the deployment history wins: moving edges
+        # between nodes would rewrite deploy history, whereas moving the
+        # *tag* onto the node that already owns the history preserves it.
+        # Ties break on the oldest node so repeated runs pick the same one.
+        target = min(group, key=lambda n: (-n.edges, n.created_at, n.id))
+        if target.tag is None:
+            donor = next(n for n in group if n.tag == tag)
+            await db.execute(
+                _SET_RELEASE_TAG,
+                {
+                    'project_id': project_id,
+                    'id': target.id,
+                    'tag': tag,
+                    'title': tag,
+                    'description': donor.description or '',
+                    'links': donor.links or '[]',
+                },
+                ['id'],
+            )
+            retagged += 1
+        for node in group:
+            if node.id == target.id:
+                continue
+            if node.edges:
+                LOGGER.warning(
+                    'release-repair: project %s commit %s has a duplicate '
+                    'release %s carrying %d deployment edge(s); left in '
+                    'place for review',
+                    project_id,
+                    committish,
+                    node.id,
+                    node.edges,
+                )
+                continue
+            await db.execute(
+                _DELETE_RELEASE,
+                {'project_id': project_id, 'id': node.id},
+                [],
+            )
+            removed += 1
+
+    if not normalized and not retagged and not removed:
+        return 'skipped'
+    LOGGER.info(
+        'release-repair: project %s normalized=%d retagged=%d removed=%d',
+        project_id,
+        normalized,
+        retagged,
+        removed,
+    )
     return 'succeeded'

@@ -21,8 +21,7 @@ import typing
 import fastapi
 import pydantic
 
-from imbi.api import models
-from imbi.api.auth import permissions
+from imbi.api.auth import permissions, principals
 from imbi.common import graph
 
 if typing.TYPE_CHECKING:
@@ -37,7 +36,7 @@ _STATUS_RETRY_BACKOFF = 0.05
 SyncState = typing.Literal['idle', 'queued', 'running', 'success', 'failed']
 
 #: ``principal_name`` stamped on work the background resync performs.
-REQUESTED_BY = 'deployment-sync'
+REQUESTED_BY = principals.DEPLOYMENT_SYNC
 
 
 class DeploymentSyncUnavailable(Exception):
@@ -59,18 +58,8 @@ class DeploymentSyncStatus(pydantic.BaseModel):
 
 
 def _system_auth() -> permissions.AuthContext:
-    """Synthetic principal for the background resync worker.
-
-    Never persisted; exists so ``resync_for_project`` has an
-    ``AuthContext`` (its identity attach is best-effort and falls back
-    to the Integration's service credentials for a userless principal).
-    """
-    return permissions.AuthContext(
-        auth_method='client_credentials',
-        service_account=models.ServiceAccount(
-            slug=REQUESTED_BY, display_name='Imbi Deployment Sync'
-        ),
-    )
+    """Synthetic principal ``resync_for_project`` runs under."""
+    return principals.system_auth(REQUESTED_BY, 'Imbi Deployment Sync')
 
 
 async def run_resync(

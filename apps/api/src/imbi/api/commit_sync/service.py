@@ -22,6 +22,7 @@ import typing
 import fastapi
 import pydantic
 
+from imbi.api.auth import permissions, principals
 from imbi.api.identity import attribution
 from imbi.api.plugins.resolution import (
     ResolvedCapability,
@@ -33,6 +34,9 @@ from imbi.common.plugins import decrypt_integration_credentials
 from imbi.common.plugins.base import CommitSyncCapability, PluginContext
 
 LOGGER = logging.getLogger(__name__)
+
+#: ``principal_name`` stamped on work this worker performs.
+REQUESTED_BY = principals.COMMIT_SYNC
 
 _CAPABILITY_KIND = 'commit-sync'
 # Persisted error strings are truncated so a noisy upstream message can't
@@ -126,6 +130,11 @@ async def check_available(
         )
 
 
+def _system_auth() -> permissions.AuthContext:
+    """Synthetic principal the release-notes backfill resolves under."""
+    return principals.system_auth(REQUESTED_BY, 'Imbi Commit Sync')
+
+
 async def run_sync(
     db: graph.Graph, org_slug: str, project_id: str
 ) -> tuple[int, int]:
@@ -134,6 +143,11 @@ async def run_sync(
     Returns ``(commits_recorded, tags_recorded)``.  Raises
     :class:`CommitSyncUnavailable` when no integration provides the
     capability; other failures propagate so the caller can record them.
+
+    Once the tags are in, enriches any that carry no release notes -- a tag
+    cut outside imbi has no ``Release`` node, so this is what gives it a
+    title and body to show.  Best-effort: a failure there is logged and
+    leaves the sync itself successful.
     """
     try:
         resolved = await resolve_capability(
@@ -146,7 +160,36 @@ async def run_sync(
         resolved.encrypted_credentials
     )
     handler = typing.cast('CommitSyncCapability', resolved.capability_cls())
-    return await handler.sync_all_history(ctx=ctx, credentials=credentials)
+    counts = await handler.sync_all_history(ctx=ctx, credentials=credentials)
+    await _backfill_release_notes(db, org_slug, project_id)
+    return counts
+
+
+async def _backfill_release_notes(
+    db: graph.Graph, org_slug: str, project_id: str
+) -> None:
+    """Fill in notes for synced tags that have none (best-effort)."""
+    # Imported here (not at module load) so the worker/service module
+    # never pulls the endpoints package at import time.
+    from imbi.api.endpoints import project_deployments
+
+    try:
+        enriched = await project_deployments.backfill_release_notes(
+            db, org_slug=org_slug, project_id=project_id, auth=_system_auth()
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'release-notes backfill failed for project %s',
+            project_id,
+            exc_info=True,
+        )
+        return
+    if enriched:
+        LOGGER.info(
+            'commit-sync enriched %d release(s) with notes for project %s',
+            enriched,
+            project_id,
+        )
 
 
 def _now_iso() -> str:

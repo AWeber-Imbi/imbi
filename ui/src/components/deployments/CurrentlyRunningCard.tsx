@@ -64,6 +64,10 @@ export function CurrentlyRunningCard({
     projectId,
   })
   const release = stage.current?.release ?? null
+  // The tag the env is running. Prefer the history entry: when the deploy was
+  // recorded against an untagged release, the entry is the one resolved by
+  // committish, and it knows the tag that commit actually shipped under.
+  const runningTag = stage.currentHistoryEntry?.tag ?? release?.tag ?? null
   const envUrl = sanitizeHttpUrl(stage.env.url ?? null)
   const upstreamName = stage.upstream?.name ?? 'upstream'
   // Why a release above the running one isn't offered — only sayable when
@@ -124,9 +128,9 @@ export function CurrentlyRunningCard({
           {release ? (
             <>
               <span className="font-mono text-base">
-                {release.tag ?? release.committish.slice(0, 7)}
+                {runningTag ?? release.committish.slice(0, 7)}
               </span>
-              {release.tag ? (
+              {runningTag ? (
                 <span className="text-tertiary font-mono text-xs font-normal">
                   {release.committish.slice(0, 7)}
                 </span>
@@ -153,11 +157,9 @@ export function CurrentlyRunningCard({
                 {stage.currentHistoryEntry.tag}
               </span>
             </p>
-            <div className="border-tertiary rounded-md border px-3.5 py-3">
-              <ReleaseNotesMarkdown
-                notes={stage.currentHistoryEntry.notes_markdown}
-              />
-            </div>
+            <ReleaseNotesMarkdown
+              notes={stage.currentHistoryEntry.notes_markdown}
+            />
           </section>
         ) : null}
 

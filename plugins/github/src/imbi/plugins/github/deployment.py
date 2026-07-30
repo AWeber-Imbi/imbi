@@ -46,6 +46,7 @@ from imbi.common.plugins.base import (
     RefInfo,
     ReleaseInfo,
     RemoteDeployment,
+    RemoteRelease,
     WorkflowFile,
 )
 from imbi.common.plugins.errors import PluginAuthenticationFailed
@@ -1196,19 +1197,19 @@ class GitHubDeployment(DeploymentCapability):
         run_cache[run_id] = result
         return result
 
-    async def _release_notes_for_ref(
+    async def _release_for_ref(
         self, client: httpx.AsyncClient, ref: str
-    ) -> str | None:
-        """Return the GitHub release notes body for a deployed ref.
+    ) -> RemoteRelease | None:
+        """Return the GitHub release for ``ref``, metadata included.
 
-        A deployment created against a semver tag has a matching GitHub
-        release whose ``body`` is the "What's Changed" markdown the host
-        persists on the ``Release`` node.  Refs that aren't a release tag
-        (branches, raw SHAs) 404 here and yield ``None`` -- resync is
-        never blocked by a missing or unreadable release.  A ``403``
-        (token lacks scope to read releases) is cached process-wide so a
-        forbidden token short-circuits instead of re-issuing the request
-        for every deployment on every resync sweep.
+        The single release lookup every caller degrades through: a 404 /
+        non-200 / parse failure yields ``None``, and a ``403`` (token lacks
+        scope to read releases) is cached process-wide so a forbidden token
+        short-circuits instead of re-issuing the request for every
+        deployment on every resync sweep.  ``author`` is the login GitHub
+        credits with the release and ``author_subject`` its numeric user id,
+        which the host resolves to an Imbi user through the identity plugins
+        on the same service.
         """
         if _releases_forbidden(client):
             return None
@@ -1227,8 +1228,46 @@ class GitHubDeployment(DeploymentCapability):
             data = typing.cast(dict[str, typing.Any], resp.json())
         except ValueError:
             return None
+        author: dict[str, typing.Any] = data.get('author') or {}
+        login = author.get('login')
+        subject = author.get('id')
         body = data.get('body')
-        return str(body) if body else None
+        name = data.get('name')
+        html_url = data.get('html_url')
+        return RemoteRelease(
+            tag=ref,
+            name=str(name) if name else None,
+            body_markdown=str(body) if body else None,
+            author=str(login) if login else None,
+            author_subject=str(subject) if subject is not None else None,
+            html_url=str(html_url) if html_url else None,
+            published_at=_parse_iso(data.get('published_at')),
+        )
+
+    async def get_release(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        tag: str,
+    ) -> RemoteRelease | None:
+        """Return the GitHub release for ``tag`` with its author."""
+        async with self._client(ctx, credentials) as client:
+            return await self._release_for_ref(client, tag)
+
+    async def _release_notes_for_ref(
+        self, client: httpx.AsyncClient, ref: str
+    ) -> str | None:
+        """Return the GitHub release notes body for a deployed ref.
+
+        A deployment created against a semver tag has a matching GitHub
+        release whose ``body`` is the "What's Changed" markdown the host
+        persists on the ``Release`` node.  Refs that aren't a release tag
+        (branches, raw SHAs) 404 in :meth:`_release_for_ref` and yield
+        ``None`` -- resync is never blocked by a missing or unreadable
+        release.
+        """
+        release = await self._release_for_ref(client, ref)
+        return release.body_markdown if release else None
 
     async def _latest_status(
         self, client: httpx.AsyncClient, deployment_id: str

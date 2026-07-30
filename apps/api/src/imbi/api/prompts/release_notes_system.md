@@ -41,8 +41,16 @@ Exclude by content (regardless of message):
   updates)
 - Code style or formatting changes
 
-If every commit in the range would be excluded, emit an empty
-`notes_markdown` and select "patch".
+Operational and configuration changes that alter how the deployed system
+behaves — ingress rules, allowlists, resource limits, feature flags,
+scaling, decommissioned infrastructure — are consumer-facing, not
+internal: include them.
+
+Never emit an empty `notes_markdown`: the body is what ships on the
+release, and a blank one leaves the release undocumented. If every commit
+in the range would be excluded, select "patch" and emit one `### Changed`
+bullet summarizing the range concretely (e.g. "Internal maintenance:
+dependency bumps and CI updates") rather than nothing at all.
 
 ## notes_markdown Format
 

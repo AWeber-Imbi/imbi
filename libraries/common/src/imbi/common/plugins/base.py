@@ -762,6 +762,26 @@ class ReleaseInfo(pydantic.BaseModel):
     prerelease: bool = False
 
 
+class RemoteRelease(pydantic.BaseModel):
+    """A release observed on the remote, keyed by tag.
+
+    Returned by :meth:`DeploymentCapability.get_release` so the host can
+    attribute a release to whoever cut it *on the remote* rather than to
+    whichever Imbi process happened to record the node.  ``author`` is the
+    remote's own handle (a GitHub login); ``author_subject`` is the
+    identity-plugin subject (GitHub's numeric user id) the host resolves
+    through its identity connections to reach an Imbi user.
+    """
+
+    tag: str
+    name: str | None = None
+    body_markdown: str | None = None
+    author: str | None = None
+    author_subject: str | None = None
+    html_url: str | None = None
+    published_at: datetime.datetime | None = None
+
+
 class WorkflowFile(pydantic.BaseModel):
     """A CI workflow file discoverable in the project's remote repo.
 
@@ -1300,6 +1320,26 @@ class DeploymentCapability(CapabilityHandler):
         Best-effort: capabilities without a release concept, or that
         cannot resolve one for ``tag``, return ``None`` (the default) so
         the host never fails a write on a missing or unreadable release.
+        """
+        del ctx, credentials, tag
+        return None
+
+    async def get_release(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        tag: str,
+    ) -> RemoteRelease | None:
+        """Return the remote release for ``tag``, metadata included.
+
+        The richer counterpart to :meth:`get_release_notes`: same lookup,
+        but it also carries who cut the release on the remote, its title,
+        and its URL, so the host can attribute a release it only observed
+        to a person instead of to the process that recorded it.
+
+        Optional. Capabilities without a release concept, or that cannot
+        resolve one for ``tag``, return ``None`` (the default); hosts fall
+        back to :meth:`get_release_notes` for the body alone.
         """
         del ctx, credentials, tag
         return None

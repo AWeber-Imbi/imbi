@@ -2831,3 +2831,106 @@ class ExistingTagForCommittishTestCase(unittest.IsolatedAsyncioTestCase):
             await project_deployments._existing_tag_for_committish(
                 db, project_id='pid', committish='deadbeef'
             )
+
+
+class ReleaseAuthorTestCase(unittest.TestCase):
+    """Who a release-history entry is attributed to."""
+
+    @staticmethod
+    def _author(
+        tagger: str | None,
+        created_by: str | None,
+        commit: tuple[str | None, str | None] = (None, None),
+    ) -> tuple[str | None, str | None]:
+        from imbi.api.endpoints.project_deployments import (
+            _CommitFacts,
+            _release_author,
+        )
+
+        facts = _CommitFacts(
+            ci_status='unknown', author=commit[0], author_email=commit[1]
+        )
+        return _release_author(tagger, created_by, facts)
+
+    def test_annotated_tagger_wins(self) -> None:
+        self.assertEqual(
+            ('Gavin M. Roy', None), self._author('Gavin M. Roy', None)
+        )
+
+    def test_recorded_person_is_used_with_their_email(self) -> None:
+        self.assertEqual(
+            ('gavinr@aweber.com', 'gavinr@aweber.com'),
+            self._author(None, 'gavinr@aweber.com'),
+        )
+
+    def test_worker_principal_is_never_the_author(self) -> None:
+        # The reported break: a release the resync observed read as
+        # "released by deployment-sync" -- a process, not a person.
+        self.assertEqual(
+            ('Gavin M. Roy', 'gavinr@aweber.com'),
+            self._author(
+                None, 'deployment-sync', ('Gavin M. Roy', 'gavinr@aweber.com')
+            ),
+        )
+        for principal in ('commit-sync', 'maintenance', 'pr-sync', 'system'):
+            self.assertEqual((None, None), self._author(None, principal))
+
+    def test_falls_back_to_the_tagged_commits_author(self) -> None:
+        self.assertEqual(
+            ('Gavin M. Roy', 'gavinr@aweber.com'),
+            self._author(None, None, ('Gavin M. Roy', 'gavinr@aweber.com')),
+        )
+
+    def test_nothing_known_is_none(self) -> None:
+        self.assertEqual((None, None), self._author(None, None))
+
+
+class ReleaseAuthorPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
+    """What ``created_by`` a remote release is stored under."""
+
+    @staticmethod
+    async def _principal(
+        release: typing.Any, resolver: object = None
+    ) -> str | None:
+        from imbi.api.endpoints.project_deployments import _remote_principal
+
+        if release is None:
+            return None
+        return await _remote_principal(
+            release.author,
+            release.author_subject,
+            resolver,  # type: ignore[arg-type]
+        )
+
+    async def test_resolves_the_remote_subject_to_an_imbi_user(self) -> None:
+        from imbi.common.plugins.base import RemoteRelease
+
+        release = RemoteRelease(
+            tag='2.21.0', author='gavinr', author_subject='175531'
+        )
+        resolver = mock.AsyncMock(return_value='gavinr@aweber.com')
+        self.assertEqual(
+            'gavinr@aweber.com', await self._principal(release, resolver)
+        )
+        resolver.assert_awaited_once_with('175531')
+
+    async def test_falls_back_to_the_remote_login(self) -> None:
+        from imbi.common.plugins.base import RemoteRelease
+
+        release = RemoteRelease(
+            tag='2.21.0', author='gavinr', author_subject='175531'
+        )
+        resolver = mock.AsyncMock(return_value=None)
+        self.assertEqual('gavinr', await self._principal(release, resolver))
+
+    async def test_resolver_failure_still_yields_the_login(self) -> None:
+        from imbi.common.plugins.base import RemoteRelease
+
+        release = RemoteRelease(
+            tag='2.21.0', author='gavinr', author_subject='175531'
+        )
+        resolver = mock.AsyncMock(side_effect=RuntimeError('boom'))
+        self.assertEqual('gavinr', await self._principal(release, resolver))
+
+    async def test_no_release_is_none(self) -> None:
+        self.assertIsNone(await self._principal(None))
