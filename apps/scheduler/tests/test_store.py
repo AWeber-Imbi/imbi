@@ -321,6 +321,33 @@ class CrudTests(StoreTestCase):
         self.assertEqual([], await self._lease_rows(doomed.id))
         self.assertEqual(1, len(await self._lease_rows(keeper.id)))
 
+    async def test_a_deleted_task_cannot_be_leased(self) -> None:
+        # Deleting the rows atomically is not enough: a firing that acquires
+        # its lease after the delete commits would insert a row for a task
+        # that is gone, and `acquire_lease`'s expired-lease prune is scoped to
+        # one task_id, so nothing would ever revisit it. `acquire_lease`
+        # therefore re-checks existence under the same advisory lock that
+        # `delete` takes, which is what orders the two.
+        task = await self.tasks.create(helpers.build_task())
+        await self.tasks.delete(task.slug)
+        lease = await self.tasks.acquire_lease(
+            task.id,
+            run_id=uuid.uuid4(),
+            limit=5,
+            ttl=datetime.timedelta(minutes=5),
+        )
+        self.assertIsNone(lease)
+        self.assertEqual([], await self._lease_rows(task.id))
+
+    async def test_an_unknown_task_cannot_be_leased(self) -> None:
+        lease = await self.tasks.acquire_lease(
+            uuid.uuid4(),
+            run_id=uuid.uuid4(),
+            limit=5,
+            ttl=datetime.timedelta(minutes=5),
+        )
+        self.assertIsNone(lease)
+
     async def test_set_enabled(self) -> None:
         task = await self.tasks.create(helpers.build_task())
         paused = await self.tasks.set_enabled(task.slug, enabled=False)

@@ -217,24 +217,50 @@ class Tasks:
         The task's leases go with it. There is no foreign key to cascade —
         the tables are created `IF NOT EXISTS`, so adding one would not reach
         an environment that already has them — and a lease outlives its task
-        otherwise, since nothing else ever deletes by `task_id`. Both
-        statements share one transaction so a task is never removed while its
-        leases survive.
+        otherwise, since nothing else ever deletes by `task_id`.
+
+        Under :meth:`acquire_lease`'s advisory lock, not merely in one
+        transaction. Deleting the rows atomically is not enough on its own: a
+        firing that acquires a lease *after* the delete commits would insert a
+        row for a task that no longer exists, and because the expired-lease
+        prune in `acquire_lease` is scoped to one `task_id`, nothing would ever
+        revisit it. Taking the same lock orders the two against each other, and
+        `acquire_lease` re-checks that the task exists while holding it, so
+        whichever runs second sees the other's outcome.
         """
-        statement = sql.SQL('DELETE FROM {table} WHERE slug = %s').format(
-            table=self._table
-        )
-        leases = sql.SQL(
-            'DELETE FROM {leases} WHERE task_id IN'
-            ' (SELECT id FROM {table} WHERE slug = %s)'
-        ).format(leases=self._leases, table=self._table)
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(leases, (slug,))
-                await cursor.execute(statement, (slug,))
-                deleted = cursor.rowcount
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor() as cursor,
+        ):
+            await cursor.execute(
+                sql.SQL('SELECT id FROM {table} WHERE slug = %s').format(
+                    table=self._table
+                ),
+                (slug,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return False
+            task_id = row[0]
+            await cursor.execute(
+                'SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))',
+                (task_id,),
+            )
+            await cursor.execute(
+                sql.SQL('DELETE FROM {leases} WHERE task_id = %s').format(
+                    leases=self._leases
+                ),
+                (task_id,),
+            )
+            await cursor.execute(
+                sql.SQL('DELETE FROM {table} WHERE id = %s').format(
+                    table=self._table
+                ),
+                (task_id,),
+            )
             await self._notify(conn)
-        return deleted > 0
+        return True
 
     async def claim_due(
         self,
@@ -365,6 +391,22 @@ class Tasks:
                 'SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))',
                 (task_id,),
             )
+            # Checked under the lock, because `delete()` takes the same one:
+            # without this a firing that reached here after a delete committed
+            # would insert a lease for a task that is gone, and the prune below
+            # is scoped to one `task_id`, so nothing would ever clear it.
+            await cursor.execute(
+                sql.SQL('SELECT 1 FROM {table} WHERE id = %s').format(
+                    table=self._table
+                ),
+                (task_id,),
+            )
+            if await cursor.fetchone() is None:
+                LOGGER.warning(
+                    'Refusing a lease for task %s, which no longer exists',
+                    task_id,
+                )
+                return None
             await cursor.execute(
                 sql.SQL(
                     'DELETE FROM {leases}'
