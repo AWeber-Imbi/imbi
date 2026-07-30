@@ -419,6 +419,16 @@ class ApiPrefixTests(ExecutorTestCase):
     def test_base_url_carries_the_prefix(self) -> None:
         self.assertEqual(f'{API_URL}/api', self.settings.api_base_url)
 
+    def test_a_schemeless_public_url_fails_at_startup(self) -> None:
+        # `urlparse` reads a schemeless value as all path, so this would
+        # otherwise build `http://api.test` + `imbi.test/api` and skip every
+        # run on a 404 that names nothing.
+        with self.assertRaises(pydantic.ValidationError):
+            config(IMBI_API_URL='imbi.test/api')
+
+    def test_an_unset_public_url_still_means_no_prefix(self) -> None:
+        self.assertEqual(API_URL, config(IMBI_API_URL='').api_base_url)
+
     async def test_the_token_request_is_prefixed(self) -> None:
         self.mock.post(f'{API_URL}/api/scoring/recompute-all').mock(
             return_value=httpx.Response(202)

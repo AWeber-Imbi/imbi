@@ -115,6 +115,26 @@ class Scheduler(pydantic_settings.BaseSettings):
             )
         return trimmed
 
+    @pydantic.field_validator('api_public_url')
+    @classmethod
+    def _validate_api_public_url(cls, value: str) -> str:
+        """Require an absolute URL, or nothing at all.
+
+        Only the path is used, and :func:`urllib.parse.urlparse` reads a
+        schemeless value as one: ``imbi.example.com/api`` parses to that whole
+        string as the path, so :attr:`api_base_url` would concatenate to
+        ``http://imbi-api:8000imbi.example.com/api`` and turn every firing
+        into a skip. Same reasoning as :meth:`_validate_api_prefix` -- a
+        startup failure names the misconfigured variable, while a 404 on every
+        run does not.
+        """
+        if value and not urllib.parse.urlparse(value).scheme:
+            raise ValueError(
+                'must be an absolute URL (e.g. https://imbi.example.com/api);'
+                f' got {value!r}'
+            )
+        return value
+
     @property
     def api_base_url(self) -> str:
         """Return the in-cluster imbi-api base URL, prefix included.
