@@ -260,7 +260,7 @@ provision_internal_credentials() {
     # overwrite a secret the operator did set, and `setup-service-accounts`
     # seeds what the environment holds -- so the value they meant to be in
     # use would be replaced by a generated one without anything saying so.
-    if [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] &&
+    if [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] && \
        [ -z "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
         # A fixed client_id so a restart re-points the same credential
         # instead of accumulating one node per boot.
@@ -268,7 +268,7 @@ provision_internal_credentials() {
         IMBI_SCHEDULER_SA_CLIENT_SECRET="$(random_token)"
         export IMBI_SCHEDULER_SA_CLIENT_SECRET
         minted_scheduler=1
-    elif [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] ||
+    elif [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] || \
          [ -z "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
         echo "ERROR: set IMBI_SCHEDULER_SA_CLIENT_ID and IMBI_SCHEDULER_SA_CLIENT_SECRET together, or neither" >&2
         return 1
