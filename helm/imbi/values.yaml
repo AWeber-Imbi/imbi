@@ -13,13 +13,14 @@ replicaCount: 1
 # Use the matching .service.<name>.replicas value to scale that service.
 service:
   mode: all
-  # Internal upstream URL imbi-mcp, imbi-assistant, and imbi-scheduler use
-  # to reach imbi-api. The default works for "all" and "api" modes; override
-  # when running "mcp", "assistant", or "scheduler" as separate pods (e.g.
-  # http://imbi-api.<namespace>.svc.cluster.local:8000). In "scheduler" mode
-  # the chart fails to render if this is left at the loopback default: there
-  # it resolves to the scheduler's own pod, and the resulting pod reports
-  # healthy while every api-target firing fails.
+  # Internal upstream URL imbi-mcp, imbi-assistant, imbi-scheduler, and
+  # imbi-gateway use to reach imbi-api. The default works for "all" and "api"
+  # modes; override when running "mcp", "assistant", "scheduler", or "gateway"
+  # as separate pods (e.g.
+  # http://imbi-api.<namespace>.svc.cluster.local:8000). In "scheduler" and
+  # "gateway" modes the chart fails to render if this is left at the loopback
+  # default: there it resolves to that pod itself, and the pod reports healthy
+  # while every api-target firing (or gateway action) fails.
   internalApiUrl: "http://localhost:8000"
   # imbi-api's *public* URL, whose path component is the prefix it mounts
   # its routes under. imbi-scheduler re-derives that prefix to build the

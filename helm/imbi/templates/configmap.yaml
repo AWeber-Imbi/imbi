@@ -15,6 +15,11 @@ data:
   # imbi-gateway reads its own upstream setting rather than the one above.
   # Pointed at the same place: its default (http://imbi-api:8000) is a service
   # name this chart does not create, so every action would fail to connect.
+  {{- if eq .Values.service.mode "gateway" }}
+  {{- if eq .Values.service.internalApiUrl "http://localhost:8000" }}
+  {{- fail "service.internalApiUrl must point at imbi-api when service.mode is 'gateway' (e.g. http://imbi-api.<namespace>.svc.cluster.local:8000) -- the default is an in-pod loopback, which in a standalone gateway pod resolves to the gateway itself, so every action it takes fails to connect while the pod reports healthy" }}
+  {{- end }}
+  {{- end }}
   ACTIONS_IMBI_URL: {{ .Values.service.internalApiUrl | quote }}
   {{- if eq .Values.service.mode "scheduler" }}
   {{- if eq .Values.service.internalApiUrl "http://localhost:8000" }}
