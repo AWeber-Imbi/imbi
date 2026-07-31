@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.common import graph
+from imbi.common import models as common_models
 
 _BASE = '/organizations/engineering/projects/proj-abc/documents/doc-1/comments'
 
@@ -900,6 +901,62 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.return_value = []
         response = self.client.delete(f'{_BASE}/thread-1/comments/ghost')
         self.assertEqual(response.status_code, 404)
+
+    # -- Search index --------------------------------------------------
+
+    def test_create_thread_indexes_the_root_comment(self) -> None:
+        """Comment writes are raw Cypher, so they must index themselves."""
+        self.mock_db.execute.side_effect = [
+            [{'id': 'doc-1'}],
+            [{'id': 'thread-1'}],
+            [self._thread_row()],
+        ]
+        # The index task re-reads the comment rather than embedding the
+        # body the request supplied.
+        persisted = common_models.Comment.model_construct(
+            id='c1', body='First!'
+        )
+        self.mock_db.match.return_value = [persisted]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(_BASE, json={'body': 'First!'})
+        self.assertEqual(response.status_code, 201)
+        self.assertIs(persisted, self.mock_db.embed_node.await_args.args[0])
+
+    def test_create_reply_indexes_the_comment(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'c': self._comment(id='c2', body='reply')}
+        ]
+        persisted = common_models.Comment.model_construct(
+            id='c2', body='reply'
+        )
+        self.mock_db.match.return_value = [persisted]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                f'{_BASE}/thread-1/comments', json={'body': 'reply'}
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertIs(persisted, self.mock_db.embed_node.await_args.args[0])
+
+    def test_delete_comment_removes_its_embeddings(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'c': self._comment(id='comment-1')}],
+            [self._thread_row()],
+            [{'deleted': 1}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.delete(
+                f'{_BASE}/thread-1/comments/comment-1'
+            )
+        self.assertEqual(response.status_code, 204)
+        self.mock_db.delete_node_embeddings.assert_awaited_once_with(
+            'Comment', 'comment-1'
+        )
 
     # -- Permission failures -------------------------------------------
 

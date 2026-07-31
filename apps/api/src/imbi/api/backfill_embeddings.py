@@ -4,8 +4,12 @@ Run with::
 
     uv run python -m imbi.api.backfill_embeddings
 
-Iterates every embeddable node type and calls ``_auto_embed`` for each
-instance.  By default skips any node that already has an embedding row
+Iterates every embeddable node type and re-embeds each instance.  The
+Maintenance admin page offers the same job as the ``search-reindex``
+operation, which is the better route for a running deployment; this
+script stays for offline/CLI runs against a database with no API up.
+
+By default it skips any node that already has an embedding row
 in ``public.embeddings`` so the script is safely resumable -- pass
 ``--force`` to re-embed everything.  Per-type batches fan out
 concurrently up to ``--concurrency`` so a backfill against a remote
@@ -21,39 +25,12 @@ import typing
 import psycopg
 
 from imbi.common import graph, models
-from imbi.common.graph.client import (
-    _embeddable_fields,  # type: ignore[attr-defined]
-)
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)-8s %(name)s: %(message)s',
 )
 LOGGER = logging.getLogger('backfill_embeddings')
-
-# Node subclasses — _auto_embed is called normally.
-_NODE_TYPES: list[type[models.Node]] = [
-    models.Organization,
-    models.Blueprint,
-    models.Team,
-    models.Environment,
-    models.ProjectType,
-    models.Integration,
-    models.Tag,
-    models.LinkDefinition,
-    models.DocumentTemplate,
-    models.Project,
-]
-
-# GraphModel types that have Embeddable fields but are not Node subclasses.
-# match() still works via model_construct fallback; _auto_embed embeds any
-# GraphModel that declares Embeddable fields.
-_GRAPH_MODEL_TYPES: list[type[models.GraphModel]] = [
-    models.Document,
-    models.Release,
-    models.Comment,
-    models.Component,
-]
 
 _DEFAULT_CONCURRENCY = 4
 
@@ -91,13 +68,11 @@ async def _embed_type(
     )
 
     async def _embed_one(node: models.GraphModel) -> int:
-        if not _embeddable_fields(node):  # type: ignore[arg-type]
-            return 0
         if node.id in skip_ids:
             return 0
         async with semaphore:
             try:
-                await db._auto_embed(node)  # type: ignore[arg-type]
+                await db.embed_node(node, raise_on_error=True)
             except psycopg.Error:
                 LOGGER.exception('Failed to embed %s id=%s', label, node.id)
                 return 0
@@ -113,7 +88,7 @@ async def run(*, concurrency: int, force: bool) -> None:
     semaphore = asyncio.Semaphore(concurrency)
     try:
         total = 0
-        for node_type in [*_NODE_TYPES, *_GRAPH_MODEL_TYPES]:
+        for node_type in graph.embeddable_node_types():
             label = node_type.__name__
             LOGGER.info(
                 'Embedding %s nodes (concurrency=%d, force=%s)...',

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.common import graph
+from imbi.common import models as common_models
 
 
 class DocumentEndpointsTestCase(support.SharedAppTestCase):
@@ -877,6 +878,10 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             '/organizations/engineering/projects/proj-abc/documents/document-1'
         )
         self.assertEqual(response.status_code, 204)
+        # A deleted document must not linger in search results.
+        self.mock_db.delete_node_embeddings.assert_awaited_once_with(
+            'Document', 'document-1'
+        )
 
     def test_delete_not_found(self) -> None:
         self.mock_db.execute.return_value = []
@@ -884,6 +889,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             '/organizations/engineering/projects/proj-abc/documents/ghost'
         )
         self.assertEqual(response.status_code, 404)
+        self.mock_db.delete_node_embeddings.assert_not_awaited()
 
     def test_delete_org_document(self) -> None:
         self.mock_db.execute.return_value = [{'deleted': 1}]
@@ -891,6 +897,118 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             '/organizations/engineering/documents/document-1'
         )
         self.assertEqual(response.status_code, 204)
+
+    # -- Search embeddings ---------------------------------------------
+
+    def _embedded_document(self) -> typing.Any:
+        """The node passed to the single expected ``embed_node`` call."""
+        self.mock_db.embed_node.assert_awaited_once()
+        return self.mock_db.embed_node.await_args.args[0]
+
+    def _persisted_document(self, **fields: typing.Any) -> typing.Any:
+        """Stub the re-read the background index task performs."""
+        node = common_models.Document.model_construct(**fields)
+        self.mock_db.match.return_value = [node]
+        return node
+
+    def test_create_embeds_document(self) -> None:
+        """Creation is raw Cypher, so it must embed the document itself."""
+        self.mock_db.execute.side_effect = [
+            [{'id': 'document-1', 'version': 2}],
+            [self._project_row()],
+        ]
+        persisted = self._persisted_document(
+            id='document-1',
+            title='DB lock runbook',
+            content='Watch out for DB locks',
+        )
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/projects/proj-abc/documents/',
+                json={
+                    'title': 'DB lock runbook',
+                    'content': 'Watch out for DB locks',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        # The task re-reads the node instead of embedding the queued
+        # payload, so assert it looked up the id the CREATE wrote.
+        create_call = self.mock_db.execute.await_args_list[0]
+        self.mock_db.match.assert_awaited_once_with(
+            common_models.Document, {'id': create_call.args[1]['id']}
+        )
+        self.assertIs(persisted, self._embedded_document())
+
+    def test_patch_content_re_embeds_document(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1', 'version': 2}],
+            [self._project_row(n=self._document_data(content='New content'))],
+        ]
+        persisted = self._persisted_document(
+            id='document-1', content='New content'
+        )
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/content',
+                        'value': 'New content',
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.match.assert_awaited_once_with(
+            common_models.Document, {'id': 'document-1'}
+        )
+        self.assertIs(persisted, self._embedded_document())
+
+    def test_patch_skips_embedding_when_the_document_is_gone(self) -> None:
+        """A document deleted before the task runs is skipped quietly."""
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1', 'version': 2}],
+            [self._project_row(n=self._document_data(content='New content'))],
+        ]
+        self.mock_db.match.return_value = []
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/content',
+                        'value': 'New content',
+                    }
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.embed_node.assert_not_awaited()
+
+    def test_patch_is_pinned_does_not_re_embed(self) -> None:
+        """A pin toggle leaves title/content alone, so nothing to re-embed."""
+        self.mock_db.execute.side_effect = [
+            [self._project_row()],
+            [{'id': 'document-1', 'version': 2}],
+            [self._project_row(n=self._document_data(is_pinned=True))],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/projects/proj-abc/documents/document-1',
+                json=[{'op': 'replace', 'path': '/is_pinned', 'value': True}],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.embed_node.assert_not_awaited()
 
     # -- Pagination + cursor edge cases --------------------------------
 

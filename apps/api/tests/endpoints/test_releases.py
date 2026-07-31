@@ -73,6 +73,14 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        # The background search-index task re-reads the release it just
+        # wrote, so give every test a node for that lookup to return.
+        self.persisted_release = models.Release.model_construct(
+            id=RELEASE_ID,
+            title='Initial release',
+            description='First cut',
+        )
+        self.mock_db.match.return_value = [self.persisted_release]
         # The create path enriches a tagged, note-less release from the
         # remote release body; that resolves the deployment capability and
         # makes its own DB/HTTP calls. Neutralize it here so create-logic
@@ -136,6 +144,14 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(body['project_id'], PROJECT_ID)
         self.assertEqual(body['id'], RELEASE_ID)
         self.assertEqual(body['created_by'], 'alice@example.com')
+        # Releases are written as raw Cypher, so the endpoint owns
+        # keeping them searchable. The task re-reads the release.
+        self.mock_db.match.assert_awaited_once_with(
+            models.Release, {'id': RELEASE_ID}
+        )
+        self.assertIs(
+            self.persisted_release, self.mock_db.embed_node.await_args.args[0]
+        )
 
     def test_create_with_explicit_created_by(self) -> None:
         self.mock_db.execute.side_effect = [
@@ -545,6 +561,64 @@ class PatchReleaseTestCase(_ReleasesTestBase):
         body = response.json()
         self.assertEqual(body['description'], 'New desc')
         self.assertEqual(len(body['links']), 1)
+
+    def test_patch_title_reindexes(self) -> None:
+        """A changed embeddable field re-embeds the release."""
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],  # _conflict_query — no collision
+            [{'release': _release_row(title='Updated')}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                self._url(f'/{RELEASE_ID}'),
+                json=[
+                    {'op': 'replace', 'path': '/title', 'value': 'Updated'},
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.match.assert_awaited_once_with(
+            models.Release, {'id': RELEASE_ID}
+        )
+        self.assertIs(
+            self.persisted_release, self.mock_db.embed_node.await_args.args[0]
+        )
+
+    def test_patch_links_only_skips_reindex(self) -> None:
+        """Embedding is skipped when no embeddable field changed.
+
+        Chunking and running the embedding model is not free, so a
+        tag- or links-only patch must not pay for it.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],  # _conflict_query — no collision
+            [{'release': _release_row()}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                self._url(f'/{RELEASE_ID}'),
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/links',
+                        'value': [
+                            {
+                                'type': 'github_release',
+                                'url': 'https://example.com/',
+                            }
+                        ],
+                    },
+                ],
+            )
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.embed_node.assert_not_awaited()
 
     def test_patch_title_to_empty_string(self) -> None:
         """Explicit empty-string patches of ``title`` must persist."""

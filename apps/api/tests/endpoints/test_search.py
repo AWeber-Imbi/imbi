@@ -76,28 +76,37 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
             distance=distance,
         )
 
+    def _scope_rows(
+        self,
+        **rows_by_position: list[dict[str, str]],
+    ) -> list[list[dict[str, str]]]:
+        """One result list per scope query, empty unless named.
+
+        Positions are named ``q0``, ``q1``, ... matching the order of
+        ``search._ORG_SCOPE_QUERIES``, so adding a traversal to the
+        endpoint does not mean renumbering every test.
+        """
+        rows: list[list[dict[str, str]]] = [
+            [] for _ in search_endpoint._ORG_SCOPE_QUERIES
+        ]
+        for name, value in rows_by_position.items():
+            rows[int(name.removeprefix('q'))] = value
+        return rows
+
     def _setup_org(self, node_ids: list[str] | None = None) -> None:
         """Configure mock_db.execute for the org-membership queries.
 
-        The search handler calls db.execute in this order:
-          1. org lookup -> [{org_id: ...}] or []
-          2. direct BELONGS_TO children -> [{nid: ...}, ...]
-          3. Project nodes -> [{nid: ...}, ...]
-          4. Document nodes -> []
-          5. Release nodes -> []
-          6. Comment nodes -> []
-          7. Component nodes -> []
+        The org lookup runs first, then one query per entry in
+        ``search._ORG_SCOPE_QUERIES``. Only the Project query (q1)
+        returns anything here.
         """
         if node_ids is None:
             node_ids = ['proj-1']
         self.mock_db.execute.side_effect = [
             [{'org_id': '"org-abc"'}],
-            [],
-            [{'nid': f'"{nid}"'} for nid in node_ids],
-            [],
-            [],
-            [],
-            [],
+            *self._scope_rows(
+                q1=[{'nid': f'"{nid}"'} for nid in node_ids],
+            ),
         ]
 
     def _setup_org_not_found(self) -> None:
@@ -120,22 +129,20 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
     def test_archived_projects_excluded_from_scope(self) -> None:
         """Each project-traversing scope query filters out archived projects.
 
-        The org lookup and the direct BELONGS_TO query do not traverse a
-        Project, so they must not carry the filter; the Project, Document,
-        Release, Comment, and Component queries must.
+        Queries that never bind a Project (the org lookup, the direct
+        BELONGS_TO children, and the ProjectType/User document queries)
+        must not carry the filter; every query that does bind ``p`` must.
         """
         self._setup_org()
         self.mock_db.search.return_value = []
         self.client.get(f'{_BASE_URL}?q=test')
         queries = [c.args[0] for c in self.mock_db.execute.call_args_list]
         archived_clause = 'coalesce(p.archived, false) = false'
-        # The org lookup and the direct BELONGS_TO query do not traverse a
-        # Project, so they must not carry the filter.
-        self.assertNotIn(archived_clause, queries[0])
-        self.assertNotIn(archived_clause, queries[1])
-        # Every subsequent project-traversing query must carry the filter.
-        for query in queries[2:]:
-            self.assertIn(archived_clause, query)
+        for query in queries:
+            if '(p:Project)' in query:
+                self.assertIn(archived_clause, query)
+            else:
+                self.assertNotIn(archived_clause, query)
 
     def test_org_not_found_returns_404(self) -> None:
         self._setup_org_not_found()
@@ -334,16 +341,15 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
     def test_falsy_org_id_and_nids_skipped(self) -> None:
         """parse_agtype returning falsy for org_id or any nid skips it."""
         # org_id is falsy ('') so org node is not added to the set,
-        # but the org IS found (non-empty list returned).
-        # BELONGS_TO and Document/Release return falsy nids; Projects is valid.
+        # but the org IS found (non-empty list returned). Every scope
+        # query but the Project one yields a falsy nid, which is skipped.
+        scope_rows = [
+            [{'nid': '""'}] for _ in search_endpoint._ORG_SCOPE_QUERIES
+        ]
+        scope_rows[1] = [{'nid': '"proj-1"'}]
         self.mock_db.execute.side_effect = [
             [{'org_id': '""'}],  # org found but parse_agtype -> ''
-            [{'nid': '""'}],  # BELONGS_TO: falsy nid skipped
-            [{'nid': '"proj-1"'}],  # Project: valid nid included
-            [{'nid': '""'}],  # Document: falsy nid skipped
-            [{'nid': '""'}],  # Release: falsy nid skipped
-            [{'nid': '""'}],  # Comment: falsy nid skipped
-            [{'nid': '""'}],  # Component: falsy nid skipped
+            *scope_rows,
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='proj-1'),
@@ -358,12 +364,8 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         """Nodes returned by the BELONGS_TO query are included in org scope."""
         self.mock_db.execute.side_effect = [
             [{'org_id': '"org-abc"'}],
-            [{'nid': '"team-1"'}],  # BELONGS_TO child (e.g. Team)
-            [],  # Projects
-            [],  # Documents
-            [],  # Releases
-            [],  # Comments
-            [],  # Components
+            # q0 is the direct BELONGS_TO child query (e.g. Team).
+            *self._scope_rows(q0=[{'nid': '"team-1"'}]),
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='team-1', node_label='Team'),
@@ -375,35 +377,39 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(data[0]['node_id'], 'team-1')
 
     def test_document_node_ids_included(self) -> None:
-        """Document ATTACHED_TO query nodes are included in org scope."""
-        self.mock_db.execute.side_effect = [
-            [{'org_id': '"org-abc"'}],
-            [],  # BELONGS_TO
-            [],  # Projects
-            [{'nid': '"doc-1"'}],  # Documents
-            [],  # Releases
-            [],  # Comments
-            [],  # Components
-        ]
-        self.mock_db.search.return_value = [
-            self._make_result(node_id='doc-1', node_label='Document'),
-        ]
-        response = self.client.get(f'{_BASE_URL}?q=test')
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['node_id'], 'doc-1')
+        """Documents are in scope through all three attachment kinds.
+
+        A document hangs off a Project, a ProjectType, or a User, and
+        the org's document index lists all three, so search scope has
+        to enumerate all three as well.
+        """
+        # q2/q3/q4 are the Project-, ProjectType-, and User-attached
+        # document traversals.
+        for position, doc_id in enumerate(
+            ('project-doc', 'project-type-doc', 'user-doc'),
+            start=2,
+        ):
+            with self.subTest(document=doc_id):
+                self.mock_db.execute.side_effect = [
+                    [{'org_id': '"org-abc"'}],
+                    *self._scope_rows(
+                        **{f'q{position}': [{'nid': f'"{doc_id}"'}]},
+                    ),
+                ]
+                self.mock_db.search.return_value = [
+                    self._make_result(node_id=doc_id, node_label='Document'),
+                ]
+                response = self.client.get(f'{_BASE_URL}?q=test')
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertEqual(len(data), 1)
+                self.assertEqual(data[0]['node_id'], doc_id)
 
     def test_release_node_ids_included(self) -> None:
         """Nodes returned by the Release HAS_RELEASE query are in org scope."""
         self.mock_db.execute.side_effect = [
             [{'org_id': '"org-abc"'}],
-            [],  # BELONGS_TO
-            [],  # Projects
-            [],  # Documents
-            [{'nid': '"rel-1"'}],  # Releases
-            [],  # Comments
-            [],  # Components
+            *self._scope_rows(q5=[{'nid': '"rel-1"'}]),  # q5: Releases
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='rel-1', node_label='Release'),
@@ -415,39 +421,44 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(data[0]['node_id'], 'rel-1')
 
     def test_comment_node_ids_included(self) -> None:
-        """Comment IN_THREAD query nodes are included in org scope."""
-        self.mock_db.execute.side_effect = [
-            [{'org_id': '"org-abc"'}],
-            [],  # BELONGS_TO
-            [],  # Projects
-            [],  # Documents
-            [],  # Releases
-            [{'nid': '"comment-1"'}],  # Comments
-            [],  # Components
-        ]
-        self.mock_db.search.return_value = [
-            self._make_result(
-                node_id='comment-1',
-                node_label='Comment',
-                attribute='body',
-            ),
-        ]
-        response = self.client.get(f'{_BASE_URL}?q=test')
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['node_id'], 'comment-1')
+        """Comments follow the same three attachment kinds as Documents.
+
+        A comment is only reachable through its parent document, so the
+        comment traversals have to cover Project-, ProjectType-, and
+        User-attached documents too — otherwise a document in scope
+        would surface without its comments.
+        """
+        # q6/q7/q8 are the Project-, ProjectType-, and User-attached
+        # comment traversals.
+        for position, comment_id in enumerate(
+            ('project-comment', 'project-type-comment', 'user-comment'),
+            start=6,
+        ):
+            with self.subTest(comment=comment_id):
+                self.mock_db.execute.side_effect = [
+                    [{'org_id': '"org-abc"'}],
+                    *self._scope_rows(
+                        **{f'q{position}': [{'nid': f'"{comment_id}"'}]},
+                    ),
+                ]
+                self.mock_db.search.return_value = [
+                    self._make_result(
+                        node_id=comment_id,
+                        node_label='Comment',
+                        attribute='body',
+                    ),
+                ]
+                response = self.client.get(f'{_BASE_URL}?q=test')
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertEqual(len(data), 1)
+                self.assertEqual(data[0]['node_id'], comment_id)
 
     def test_component_node_ids_included(self) -> None:
         """Component dependency-graph query nodes are in org scope."""
         self.mock_db.execute.side_effect = [
             [{'org_id': '"org-abc"'}],
-            [],  # BELONGS_TO
-            [],  # Projects
-            [],  # Documents
-            [],  # Releases
-            [],  # Comments
-            [{'nid': '"comp-1"'}],  # Components
+            *self._scope_rows(q9=[{'nid': '"comp-1"'}]),  # q9: Components
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='comp-1', node_label='Component'),
@@ -507,12 +518,7 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         """A falsy nid from the Project query is skipped."""
         self.mock_db.execute.side_effect = [
             [{'org_id': '"org-abc"'}],
-            [],  # BELONGS_TO
-            [{'nid': '""'}],  # Project: falsy nid skipped
-            [],  # Documents
-            [],  # Releases
-            [],  # Comments
-            [],  # Components
+            *self._scope_rows(q1=[{'nid': '""'}]),  # q1: Projects
         ]
         self.mock_db.search.return_value = []
         response = self.client.get(f'{_BASE_URL}?q=test')

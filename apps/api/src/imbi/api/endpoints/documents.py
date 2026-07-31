@@ -23,14 +23,14 @@ import nanoid
 import pydantic
 
 from imbi.api.auth import permissions
-from imbi.api.endpoints import _document_history
+from imbi.api.endpoints import _document_history, _search_index
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.endpoints._pagination import (
     build_link_header,
     decode_cursor,
     encode_cursor,
 )
-from imbi.common import graph
+from imbi.common import graph, models
 from imbi.common import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
@@ -386,6 +386,14 @@ async def _create_document_impl(
         tags=tag_slugs,
         created_by=auth.principal_name,
         created_at=now,
+    )
+    # Embedding a long markdown document costs a chunked model run,
+    # so it runs after the response for the same reason.
+    background_tasks.add_task(
+        _search_index.index,
+        db,
+        models.Document,
+        document_id,
     )
 
     document = await fetch_document(db, org_slug, document_id)
@@ -944,6 +952,12 @@ async def apply_document_update(
     content_changed = _document_history.has_changed(
         existing, title, content, tags
     )
+    # Tags are not embedded, so a tag-only edit -- which still cuts a new
+    # version -- must not re-chunk and re-embed the whole document.
+    text_changed = (
+        title != str(existing.get('title') or '')
+        or content != existing['content']
+    )
 
     scope, scope_params = _scope_filter(project_id)
     now = datetime.datetime.now(datetime.UTC)
@@ -1003,6 +1017,14 @@ async def apply_document_update(
             change_kind=change_kind,
             updated_by=auth.principal_name,
             updated_at=now,
+        )
+
+    if text_changed:
+        background_tasks.add_task(
+            _search_index.index,
+            db,
+            models.Document,
+            document_id,
         )
 
     document = await fetch_document(db, org_slug, document_id, project_id)
@@ -1088,6 +1110,7 @@ async def _delete_document_impl(
         raise fastapi.HTTPException(
             status_code=404, detail=f'Document {document_id!r} not found'
         )
+    await _search_index.drop(db, models.Document, document_id)
 
 
 @documents_router.delete('/{document_id}', status_code=204)

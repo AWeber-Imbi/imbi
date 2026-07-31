@@ -24,7 +24,8 @@ import nanoid
 import pydantic
 
 from imbi.api.auth import permissions
-from imbi.common import graph
+from imbi.api.endpoints import _search_index
+from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.clickhouse import client as ch_client
 
@@ -423,6 +424,7 @@ async def create_comment_thread(
     document_id: str,
     data: CommentThreadCreate,
     db: graph.Pool,
+    background_tasks: fastapi.BackgroundTasks,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:create')),
@@ -519,6 +521,12 @@ async def create_comment_thread(
         principal=auth.principal_name,
         body=data.body,
     )
+    background_tasks.add_task(
+        _search_index.index,
+        db,
+        models.Comment,
+        comment_id,
+    )
     return thread
 
 
@@ -533,6 +541,7 @@ async def create_reply(
     thread_id: str,
     data: CommentBodyCreate,
     db: graph.Pool,
+    background_tasks: fastapi.BackgroundTasks,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:create')),
@@ -593,6 +602,12 @@ async def create_reply(
         action='replied',
         principal=auth.principal_name,
         body=data.body,
+    )
+    background_tasks.add_task(
+        _search_index.index,
+        db,
+        models.Comment,
+        comment_id,
     )
     return _parse_comment(records[0]['c'])
 
@@ -682,6 +697,7 @@ async def patch_comment(
     comment_id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
+    background_tasks: fastapi.BackgroundTasks,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('comment:write')),
@@ -755,6 +771,13 @@ async def patch_comment(
     if not records:
         raise fastapi.HTTPException(
             status_code=404, detail=f'Comment {comment_id!r} not found'
+        )
+    if update.body != existing['body']:
+        background_tasks.add_task(
+            _search_index.index,
+            db,
+            models.Comment,
+            comment_id,
         )
     return _parse_comment(records[0]['c'])
 
@@ -903,3 +926,4 @@ async def delete_comment(
         raise fastapi.HTTPException(
             status_code=404, detail=f'Comment {comment_id!r} not found'
         )
+    await _search_index.drop(db, models.Comment, comment_id)

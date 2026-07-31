@@ -37,6 +37,52 @@ class SearchResult(pydantic.BaseModel):
     project_id: str | None = None
 
 
+#: Every membership traversal that puts a node in an org's search scope,
+#: each returning the node id as ``nid`` and taking ``org_slug``.
+_ORG_SCOPE_QUERIES: tuple[str, ...] = (
+    # Direct BELONGS_TO children (Team, Environment, ProjectType, ...).
+    'MATCH (n)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
+    ' RETURN n.id AS nid',
+    'MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' WHERE coalesce(p.archived, false) = false'
+    ' RETURN p.id AS nid',
+    'MATCH (d:Document)-[:ATTACHED_TO]->(p:Project)-[:OWNED_BY]->'
+    '(:Team)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
+    ' WHERE coalesce(p.archived, false) = false'
+    ' RETURN d.id AS nid',
+    'MATCH (d:Document)-[:ATTACHED_TO]->(:ProjectType)-[:BELONGS_TO]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' RETURN d.id AS nid',
+    'MATCH (d:Document)-[:ATTACHED_TO]->(:User)-[:MEMBER_OF]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' RETURN d.id AS nid',
+    'MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-'
+    '(:Team)<-[:OWNED_BY]-(p:Project)-[:HAS_RELEASE]->(r:Release)'
+    ' WHERE coalesce(p.archived, false) = false'
+    ' RETURN r.id AS nid',
+    'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
+    '(:Document)-[:ATTACHED_TO]->(p:Project)-[:OWNED_BY]->(:Team)'
+    '-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
+    ' WHERE coalesce(p.archived, false) = false'
+    ' RETURN c.id AS nid',
+    'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
+    '(:Document)-[:ATTACHED_TO]->(:ProjectType)-[:BELONGS_TO]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' RETURN c.id AS nid',
+    'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
+    '(:Document)-[:ATTACHED_TO]->(:User)-[:MEMBER_OF]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' RETURN c.id AS nid',
+    'MATCH (comp:Component)-[:HAS_RELEASE]->(:ComponentRelease)'
+    '<-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)'
+    '-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
+    '(:Organization {{slug: {org_slug}}})'
+    ' WHERE coalesce(p.archived, false) = false'
+    ' RETURN comp.id AS nid',
+)
+
+
 async def _get_org_node_ids(
     db: graph.Graph,
     org_slug: str,
@@ -49,6 +95,11 @@ async def _get_org_node_ids(
     through the org's release dependency graph. Components are shared,
     cross-org identities, so they are scoped to those an org actually
     depends on rather than enumerated globally.
+
+    Documents are reached through all three attachment kinds — Project,
+    ProjectType, and User — so an org-scoped search sees every document
+    the org's document index lists.  Comments follow the same three
+    kinds, so a document in scope always has its comments in scope too.
 
     Archived projects are excluded, along with the Documents, Releases,
     Comments, and Components reached through them, so search never
@@ -67,78 +118,15 @@ async def _get_org_node_ids(
     if org_id:
         node_ids.add(org_id)
 
-    for row in await db.execute(
-        'MATCH (n)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
-        ' RETURN n.id AS nid',
-        {'org_slug': org_slug},
-        columns=['nid'],
-    ):
-        nid = graph.parse_agtype(row['nid'])
-        if nid:
-            node_ids.add(nid)
-
-    for row in await db.execute(
-        'MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
-        '(:Organization {{slug: {org_slug}}})'
-        ' WHERE coalesce(p.archived, false) = false'
-        ' RETURN p.id AS nid',
-        {'org_slug': org_slug},
-        columns=['nid'],
-    ):
-        nid = graph.parse_agtype(row['nid'])
-        if nid:
-            node_ids.add(nid)
-
-    for row in await db.execute(
-        'MATCH (d:Document)-[:ATTACHED_TO]->(p:Project)-[:OWNED_BY]->'
-        '(:Team)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
-        ' WHERE coalesce(p.archived, false) = false'
-        ' RETURN d.id AS nid',
-        {'org_slug': org_slug},
-        columns=['nid'],
-    ):
-        nid = graph.parse_agtype(row['nid'])
-        if nid:
-            node_ids.add(nid)
-
-    for row in await db.execute(
-        'MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-'
-        '(:Team)<-[:OWNED_BY]-(p:Project)-[:HAS_RELEASE]->(r:Release)'
-        ' WHERE coalesce(p.archived, false) = false'
-        ' RETURN r.id AS nid',
-        {'org_slug': org_slug},
-        columns=['nid'],
-    ):
-        nid = graph.parse_agtype(row['nid'])
-        if nid:
-            node_ids.add(nid)
-
-    for row in await db.execute(
-        'MATCH (c:Comment)-[:IN_THREAD]->(:CommentThread)-[:ON_DOCUMENT]->'
-        '(:Document)-[:ATTACHED_TO]->(p:Project)-[:OWNED_BY]->(:Team)'
-        '-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})'
-        ' WHERE coalesce(p.archived, false) = false'
-        ' RETURN c.id AS nid',
-        {'org_slug': org_slug},
-        columns=['nid'],
-    ):
-        nid = graph.parse_agtype(row['nid'])
-        if nid:
-            node_ids.add(nid)
-
-    for row in await db.execute(
-        'MATCH (comp:Component)-[:HAS_RELEASE]->(:ComponentRelease)'
-        '<-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)'
-        '-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
-        '(:Organization {{slug: {org_slug}}})'
-        ' WHERE coalesce(p.archived, false) = false'
-        ' RETURN comp.id AS nid',
-        {'org_slug': org_slug},
-        columns=['nid'],
-    ):
-        nid = graph.parse_agtype(row['nid'])
-        if nid:
-            node_ids.add(nid)
+    for query in _ORG_SCOPE_QUERIES:
+        for row in await db.execute(
+            query,
+            {'org_slug': org_slug},
+            columns=['nid'],
+        ):
+            nid = graph.parse_agtype(row['nid'])
+            if nid:
+                node_ids.add(nid)
 
     return node_ids
 

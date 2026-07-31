@@ -18,7 +18,7 @@ from pgvector.psycopg import register_vector_async
 from psycopg import rows, sql
 
 from imbi.common import models, settings
-from imbi.common.graph import cypher
+from imbi.common.graph import chunk, cypher, embeddings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +70,32 @@ def _embeddable_descriptors(
                 result.append((name, md))
                 break
     return tuple(result)
+
+
+@functools.cache
+def embeddable_node_types() -> tuple[type[models.GraphModel], ...]:
+    """Every graph model that declares at least one ``Embeddable`` field.
+
+    Derived from the model definitions rather than hand-listed, so a
+    model that gains an ``Embeddable`` field is picked up by the
+    reindex paths without a second place to update.  ``Node`` is
+    excluded: it declares the shared ``name``/``description`` fields
+    its subclasses inherit but is never itself a vertex label.
+    Ordered by label for stable enumeration.
+
+    """
+    seen: dict[str, type[models.GraphModel]] = {}
+    queue: list[type[models.GraphModel]] = [models.GraphModel]
+    while queue:
+        for subclass in queue.pop().__subclasses__():
+            if subclass.__name__ in seen:
+                continue
+            queue.append(subclass)
+            if subclass is models.Node:
+                continue
+            if _embeddable_descriptors(subclass):
+                seen[subclass.__name__] = subclass
+    return tuple(seen[label] for label in sorted(seen))
 
 
 def _embeddable_fields(
@@ -225,11 +251,21 @@ class Graph:
 
     async def close(self) -> None:
         """Close the connection pool and release models."""
-        from imbi.common.graph import embeddings
-
         await self.pool.close()
         embeddings.close()
         self.opened = False
+
+    def _require_open(self) -> None:
+        """Raise unless the pool has been opened.
+
+        The pool is built with ``open=False``, so acquiring a
+        connection from an unopened one blocks until ``PoolTimeout``
+        rather than failing.  Every entry point that reaches the pool
+        checks this first so the misuse surfaces immediately.
+
+        """
+        if not self.opened:
+            raise RuntimeError('Graph pool is not open')
 
     # ----------------------------------------------------------
     # Graph CRUD
@@ -252,8 +288,7 @@ class Graph:
         then embeddings are cleaned up on the same connection.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
         stmt = cypher.delete(node)
         async with self.pool.connection() as conn:
             await self._execute_on(
@@ -371,10 +406,7 @@ class Graph:
         nothing.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
-        from imbi.common.graph import embeddings
-
+        self._require_open()
         vector = await embeddings.aembed_one(
             query,
             model_name,
@@ -500,6 +532,49 @@ class Graph:
     # Auto-embedding
     # ----------------------------------------------------------
 
+    async def embed_node(
+        self,
+        node: models.GraphModel,
+        *,
+        raise_on_error: bool = False,
+    ) -> None:
+        """(Re)generate the embeddings for *node*.
+
+        ``create``/``merge``/``delete`` keep embeddings in sync on
+        their own, but ``execute`` takes raw Cypher and has no model
+        to inspect, so callers that write nodes that way must call
+        this after the write.
+
+        Failures are logged and swallowed like the automatic path,
+        which suits a best-effort call alongside a graph write. Pass
+        ``raise_on_error`` when the embedding *is* the job (a reindex)
+        and a silent failure would be reported as success.
+
+        """
+        if raise_on_error:
+            await self._embed_fields(node)
+        else:
+            await self._auto_embed(node)
+
+    async def delete_node_embeddings(
+        self,
+        node_label: str,
+        node_id: str,
+    ) -> None:
+        """Delete every embedding row for a node.
+
+        The counterpart to ``embed_node`` for callers that delete
+        nodes with raw Cypher instead of ``delete``.
+
+        """
+        self._require_open()
+        async with self.pool.connection() as conn:
+            await self._delete_embeddings_where(
+                conn,
+                node_label=node_label,
+                node_id=node_id,
+            )
+
     async def _auto_embed(self, node: models.GraphModel) -> None:
         """Generate and store embeddings for embeddable fields.
 
@@ -507,56 +582,8 @@ class Graph:
         write is the critical path.
 
         """
-        embed_settings = settings.Embeddings()
-        if not embed_settings.enabled:
-            return
-        fields = _embeddable_fields(node)
-        if not fields:
-            return
         try:
-            from imbi.common.graph import chunk, embeddings
-
-            node_label = type(node).__name__
-            async with self.pool.connection() as conn:
-                for attr, text, spec in fields:
-                    if text is None:
-                        await self._delete_embeddings_where(
-                            conn,
-                            node_label=node_label,
-                            node_id=node.id,
-                            attribute=attr,
-                        )
-                        continue
-                    if spec.chunk:
-                        chunks = list(
-                            chunk.content(
-                                spec.mimetype,
-                                text,
-                            ),
-                        )
-                    else:
-                        chunks = [text]
-                    vectors = await embeddings.aembed(
-                        chunks,
-                        spec.model_name,
-                    )
-                    await self._upsert_embeddings(
-                        conn,
-                        node_label,
-                        node.id,
-                        attr,
-                        spec.model_name,
-                        chunks,
-                        vectors,
-                    )
-                    await self._delete_embeddings_where(
-                        conn,
-                        node_label=node_label,
-                        node_id=node.id,
-                        attribute=attr,
-                        model_name=spec.model_name,
-                        min_chunk_index=len(chunks),
-                    )
+            await self._embed_fields(node)
         except Exception:  # noqa: BLE001
             LOGGER.warning(
                 'Failed to auto-embed node %s (id=%s)',
@@ -564,6 +591,68 @@ class Graph:
                 node.id,
                 exc_info=True,
             )
+
+    async def _embed_fields(self, node: models.GraphModel) -> None:
+        """Write the embedding rows for a node's embeddable fields.
+
+        A no-op when embedding is disabled or the model declares no
+        embeddable fields.  Errors propagate; ``_auto_embed`` is the
+        swallowing wrapper.
+
+        Checks the pool the way ``search`` and ``delete_node_embeddings``
+        do: the pool is built with ``open=False``, so acquiring a
+        connection from an unopened one blocks until ``PoolTimeout``
+        rather than failing.
+
+        """
+        self._require_open()
+        embed_settings = settings.Embeddings()
+        if not embed_settings.enabled:
+            return
+        fields = _embeddable_fields(node)
+        if not fields:
+            return
+        node_label = type(node).__name__
+        async with self.pool.connection() as conn:
+            for attr, text, spec in fields:
+                if text is None:
+                    await self._delete_embeddings_where(
+                        conn,
+                        node_label=node_label,
+                        node_id=node.id,
+                        attribute=attr,
+                    )
+                    continue
+                if spec.chunk:
+                    chunks = list(
+                        chunk.content(
+                            spec.mimetype,
+                            text,
+                        ),
+                    )
+                else:
+                    chunks = [text]
+                vectors = await embeddings.aembed(
+                    chunks,
+                    spec.model_name,
+                )
+                await self._upsert_embeddings(
+                    conn,
+                    node_label,
+                    node.id,
+                    attr,
+                    spec.model_name,
+                    chunks,
+                    vectors,
+                )
+                await self._delete_embeddings_where(
+                    conn,
+                    node_label=node_label,
+                    node_id=node.id,
+                    attribute=attr,
+                    model_name=spec.model_name,
+                    min_chunk_index=len(chunks),
+                )
 
     @staticmethod
     async def _upsert_embeddings(
@@ -689,8 +778,7 @@ class Graph:
         a manual ``try/except`` calling ``rollback()`` would.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
         async with self.pool.connection() as conn:
             async with conn.transaction():
                 for stmt in statements:
@@ -840,8 +928,7 @@ class Graph:
         returns.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
 
         async with self.pool.connection() as conn:
             return await self._execute_on(
