@@ -54,9 +54,9 @@ Run all services in a single pod (default) or scale individually:
 service:
   mode: all
 
-# Scaled-out mode
+# Scaled-out mode — one service per release
 service:
-  mode: individual
+  mode: api        # or assistant, gateway, mcp, scheduler, slackbot
   api:
     replicas: 3
   assistant:
@@ -65,7 +65,48 @@ service:
     replicas: 2
   mcp:
     replicas: 1
+  scheduler:
+    replicas: 1
+  slackbot:
+    replicas: 1
 ```
+
+### Scheduler
+
+The scheduler runs every task as its own service account, so give it a
+credential. The account is not seeded: create a service account in the UI,
+grant it the `scheduled_task:*` permissions plus whatever its tasks need, and
+issue it a client credential.
+
+```yaml
+scheduler:
+  serviceAccount:
+    clientId: "imbi-scheduler-client-id"
+    clientSecret: "imbi-scheduler-client-secret"
+```
+
+Without them the pod still starts and still schedules, but resolves no
+principal for an `api` target, so every such firing is recorded as `skipped`.
+
+When the scheduler runs as its own pod, it also needs to know where imbi-api
+is — both where to *connect* and what path imbi-api mounts its routes under:
+
+```yaml
+service:
+  mode: scheduler
+  internalApiUrl: http://imbi-api.imbi.svc.cluster.local:8000
+  publicApiUrl: https://imbi.example.com/api
+```
+
+The chart refuses to render in `scheduler` mode if `internalApiUrl` is left at
+the loopback default — there it resolves to the scheduler's own pod, which
+reports healthy while every `api`-target firing fails. More than one replica is
+safe: due firings are claimed with `FOR UPDATE SKIP LOCKED`, so replicas take
+disjoint claims. See
+[Scheduler configuration](../scheduler/configuration.md).
+
+Using `existingSecret`, the scheduler reads the optional
+`scheduler-sa-client-id` and `scheduler-sa-client-secret` keys from it.
 
 ### Database Configuration
 

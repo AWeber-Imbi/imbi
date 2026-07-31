@@ -26,3 +26,12 @@ helm install imbi helm/imbi \
 ```
 
 See `values.yaml` for all configuration options.
+
+## Scheduler
+
+`imbi-scheduler` needs a service-account credential
+(`scheduler.serviceAccount.clientId` / `clientSecret`) to run `api`-target
+tasks. Running it as its own release (`service.mode: scheduler`) additionally
+requires `service.internalApiUrl` and `service.publicApiUrl`; the chart fails
+to render without them. See
+[the scheduler configuration guide](../../docs/scheduler/configuration.md).

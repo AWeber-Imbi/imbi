@@ -26,11 +26,18 @@ This starts:
 | 8001 | imbi-mcp (internal) |
 | 8002 | imbi-assistant (internal) |
 | 8003 | imbi-gateway (internal) |
+| 8004 | imbi-slackbot (internal, started only when the Slack tokens and `ANTHROPIC_API_KEY` are set) |
+| 8005 | imbi-scheduler (internal, started only when `IMBI_SCHEDULER_SA_CLIENT_ID` and `IMBI_SCHEDULER_SA_CLIENT_SECRET` are set) |
+
+Caddy serves imbi-scheduler under `/scheduler`, stripping that prefix before
+the request reaches it — so `/scheduler/api/tasks` hits `/api/tasks` on the
+service and `/scheduler/status` reaches its unprefixed health endpoint.
 
 ## Individual Services
 
 For production deployments where you want to scale services independently,
-set `IMBI_SERVICE` to run a single service:
+set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
+`scheduler`, or `slackbot`:
 
 ```bash
 # Run only the API
@@ -44,6 +51,27 @@ docker run -p 8000:8000 \
 
 When running individual services, Caddy is not started. You are
 responsible for providing your own reverse proxy or load balancer.
+
+Running the scheduler on its own needs the service-account credentials and
+both API URLs; the entrypoint refuses to start without them:
+
+```bash
+docker run -p 8005:8005 \
+  -e IMBI_SERVICE=scheduler \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
+  -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
+  -e IMBI_AUTH_JWT_SECRET=your-secret \
+  -e IMBI_SCHEDULER_SA_CLIENT_ID=... \
+  -e IMBI_SCHEDULER_SA_CLIENT_SECRET=... \
+  -e IMBI_INTERNAL_API_URL=http://imbi-api:8000 \
+  -e IMBI_API_URL=https://imbi.example.com/api \
+  ghcr.io/aweber-imbi/imbi:latest
+```
+
+If the reverse proxy in front of it passes `/scheduler` through instead of
+stripping it, set `IMBI_SCHEDULER_API_PREFIX=/scheduler/api`. More than one
+replica is safe — see
+[Scheduler configuration](../scheduler/configuration.md).
 
 ## Running Setup
 

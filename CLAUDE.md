@@ -20,6 +20,7 @@ PostgreSQL + Apache AGE graph, ClickHouse analytics, React UI).
 | `apps/assistant/` | `imbi-assistant` (:8002) | `imbi.assistant` |
 | `apps/gateway/` | `imbi-gateway` (:8003) | `imbi.gateway` |
 | `apps/mcp/` | `imbi-mcp` (:8001) | `imbi.mcp` |
+| `apps/scheduler/` | `imbi-scheduler` (:8005) | `imbi.scheduler` |
 | `apps/slackbot/` | `imbi-slackbot` (:8004) | `imbi.slackbot` |
 | `ui/` | npm package (Vite :5173) | — |
 | `plugins/<name>/` | `imbi-plugin-<name>` | `imbi.plugins.<name>` |

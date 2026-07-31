@@ -14,6 +14,8 @@ and AI-powered features.
 - **AI Assistant**: Conversational AI powered by Claude for service queries
 - **MCP Server**: Model Context Protocol server for AI agent access
 - **Webhook Gateway**: Inbound event processing from GitHub, PagerDuty, etc.
+- **Scheduled Tasks**: Cron, interval, and one-shot triggers that call the API
+  or the gateway as a service account, with run history in ClickHouse
 - **Analytics**: Operations logs and time-series data via ClickHouse
 - **Authentication**: OAuth2/OIDC (Google, GitHub, Keycloak) + local auth
 
@@ -23,24 +25,26 @@ and AI-powered features.
                           +--------------------+
                           |       Caddy        |
                           |   reverse proxy    |
-                          +----+--+--+--+--+---+
-                               |  |  |  |  |
-        +----------------------+  |  |  |  +---------------------+
-        |            +------------+  |  +-----------+            |
-        |            |               |              |            |
-    imbi-api   imbi-assistant    imbi-ui      imbi-gateway   imbi-mcp
-    (FastAPI)    (FastAPI)     (React/Vite)    (FastAPI)      (FastMCP)
-        |            |                              |            |
-        +------------+--------------+---------------+------------+
-                                    |
-                              imbi-common
-                       (shared Python library)
-                                    |
-                          +---------+---------+
-                          |                   |
-                 PostgreSQL + AGE        ClickHouse
-                  (graph database)       (analytics)
+                          +--------------------+
+                                     |
+   +---------+-------------+---------+----+-----------+-------------+
+   |         |             |              |           |             |
+imbi-ui   imbi-api  imbi-assistant  imbi-gateway   imbi-mcp  imbi-scheduler
+(React)  (FastAPI)    (FastAPI)      (FastAPI)    (FastMCP)    (FastAPI)
+   |         |             |              |           |             |
+   +---------+-------------+---------+----+-----------+-------------+
+                                     |
+                                imbi-common
+                          (shared Python library)
+                                     |
+                         +-----------------------+
+                         |                       |
+                 PostgreSQL + AGE           ClickHouse
+                 (graph database)           (analytics)
 ```
+
+`imbi-slackbot` runs alongside these, connecting out to Slack over socket
+mode rather than being proxied.
 
 All services run behind [Caddy](https://caddyserver.com/), a powerful and
 extensible reverse proxy with automatic HTTPS. The Docker image packages
@@ -171,6 +175,7 @@ docker run -e IMBI_SERVICE=assistant ...
 docker run -e IMBI_SERVICE=gateway ...
 docker run -e IMBI_SERVICE=mcp ...
 docker run -e IMBI_SERVICE=slackbot ...
+docker run -e IMBI_SERVICE=scheduler ...   # also needs the vars below
 
 # Run initial setup (create admin user, seed permissions)
 docker run -it \
@@ -213,13 +218,23 @@ moon run root:image
 | `CLICKHOUSE_URL` | ClickHouse connection URL | api, all |
 | `IMBI_AUTH_JWT_SECRET` | JWT signing secret | api, assistant, all |
 | `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key | api, all |
-| `POSTGRES_URL` | PostgreSQL connection URL | gateway, slackbot, all |
+| `POSTGRES_URL` | PostgreSQL connection URL | gateway, scheduler, slackbot, all |
+| `IMBI_SCHEDULER_SA_CLIENT_ID` | Client id of the scheduler's service account | scheduler |
+| `IMBI_SCHEDULER_SA_CLIENT_SECRET` | Client secret of the scheduler's service account | scheduler |
+| `IMBI_INTERNAL_API_URL` | Bare origin the scheduler connects to imbi-api on (e.g. `http://imbi-api:8000`) | scheduler |
+
+In `all` mode the scheduler is optional: without the service-account
+credentials it is simply not started. In `scheduler` mode they are required —
+the account is not seeded, so create a service account in the UI, grant it the
+`scheduled_task:*` permissions plus whatever its tasks need, and issue it a
+client credential. See
+[Scheduler configuration](docs/scheduler/configuration.md).
 
 ### Optional
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `IMBI_SERVICE` | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `slackbot`) | `all` |
+| `IMBI_SERVICE` | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`) | `all` |
 | `IMBI_API_URL` | Public URL of the API, including the path prefix it is mounted under (e.g. `http://localhost:8080/api`); needed when serving behind the bundled Caddy | - |
 | `VITE_API_URL` | Same value as `IMBI_API_URL`; injected into the UI at serve time | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key for assistant | - |
@@ -229,6 +244,14 @@ moon run root:image
 | `IMBI_EMAIL_SMTP_PORT` | SMTP server port | `587` |
 | `IMBI_EMAIL_SMTP_USE_TLS` | Use TLS for SMTP | `true` |
 | `IMBI_ENVIRONMENT` | Runtime environment | `development` |
+| `IMBI_SCHEDULER_API_PREFIX` | Path the scheduler mounts its routes under (`/status` is never prefixed) | `/api` |
+| `IMBI_SCHEDULER_SCHEMA` | Postgres schema holding task definitions | `scheduler` |
+| `IMBI_SCHEDULER_GATEWAY_URL` | imbi-gateway base URL for `gateway` targets | `http://localhost:8003` |
+| `IMBI_SCHEDULER_MAX_CONCURRENT_RUNS` | Per-process ceiling on runs in flight | `20` |
+| `IMBI_SCHEDULER_POLL_INTERVAL` | Upper bound in seconds on the trigger loop's sleep | `30` |
+
+The scheduler has more settings than these; see
+[Scheduler configuration](docs/scheduler/configuration.md) for the full set.
 
 ## Project Structure
 
@@ -246,6 +269,8 @@ imbi/
 │   ├── assistant/     # imbi-assistant — AI assistant (imbi.assistant)
 │   ├── gateway/       # imbi-gateway — webhook gateway (imbi.gateway)
 │   ├── mcp/           # imbi-mcp — MCP server (imbi.mcp)
+│   ├── scheduler/     # imbi-scheduler — scheduled task triggering
+│   │                  #   (imbi.scheduler)
 │   └── slackbot/      # imbi-slackbot — Slack bot (imbi.slackbot)
 ├── plugins/           # imbi-plugin-* — first-party plugins (imbi.plugins.*)
 │   ├── aws/  github/  google/  logzio/  oidc/  pagerduty/  sonarqube/

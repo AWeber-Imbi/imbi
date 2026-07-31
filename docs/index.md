@@ -19,6 +19,8 @@ Imbi provides a centralized service catalog that tracks:
 - **Webhook Gateway** - Receive events from GitHub, PagerDuty, and other tools
 - **MCP Server** - Expose service data to AI agents via the Model Context Protocol
 - **Graph Visualization** - Explore service dependencies visually
+- **Scheduled Tasks** - Cron, interval, and one-shot triggers that call the API
+  or the gateway on a schedule
 
 ## Architecture
 
@@ -30,9 +32,12 @@ Imbi is composed of several services packaged into a single Docker image:
 | **imbi-assistant** | AI assistant powered by Claude for conversational queries |
 | **imbi-gateway** | Inbound webhook gateway for external event processing |
 | **imbi-mcp** | MCP server for AI agent integration |
+| **imbi-scheduler** | Triggers scheduled tasks against imbi-api and imbi-gateway |
+| **imbi-slackbot** | Slack bot for querying and updating the catalog from Slack |
 | **imbi-ui** | React-based web interface |
 
-All services run behind [Caddy](https://caddyserver.com/) as a reverse proxy.
+All services run behind [Caddy](https://caddyserver.com/) as a reverse proxy,
+except imbi-slackbot, which connects out to Slack over socket mode.
 
 ## Data Stores
 

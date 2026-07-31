@@ -28,6 +28,27 @@ all service-specific variables are required.
 |----------|-------------|
 | `POSTGRES_URL` | PostgreSQL connection URL (e.g. `postgresql://user:pass@host/db`) |
 
+### Scheduler
+
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_URL` | Task definitions, trigger state, and run leases |
+| `CLICKHOUSE_URL` | Run history (`imbi.scheduler_runs`) |
+| `IMBI_SCHEDULER_SA_CLIENT_ID` | The scheduler's own service-account client id |
+| `IMBI_SCHEDULER_SA_CLIENT_SECRET` | Its client secret |
+| `IMBI_INTERNAL_API_URL` | Bare origin where the scheduler *connects* to imbi-api (e.g. `http://imbi-api:8000`) |
+| `IMBI_API_URL` | imbi-api's *public* URL, whose path is the prefix it mounts its routes under |
+
+The service account is not seeded. Create one in the UI, grant it the
+`scheduled_task:*` permissions plus whatever the tasks it runs will need, and
+issue it a client credential. Without the credentials the scheduler is left out
+of `IMBI_SERVICE=all` and refuses to start in `IMBI_SERVICE=scheduler` mode.
+
+See [Scheduler configuration](../scheduler/configuration.md) for the optional
+settings (`IMBI_SCHEDULER_API_PREFIX`, `IMBI_SCHEDULER_SCHEMA`,
+`IMBI_SCHEDULER_GATEWAY_URL`, concurrency and poll-interval limits) and for why
+the internal and public API URLs are two separate variables.
+
 ## ClickHouse
 
 | Variable | Description | Default |
@@ -110,4 +131,4 @@ When running the Docker image, you can select which service to run:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `IMBI_SERVICE` | Service to run: `all`, `api`, `assistant`, `gateway`, `mcp`, `ui` | `all` |
+| `IMBI_SERVICE` | Service to run: `all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot` | `all` |
