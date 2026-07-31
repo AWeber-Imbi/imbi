@@ -14,26 +14,31 @@ import unittest
 
 from imbi.api.endpoints import _document_reads
 from imbi.common import clickhouse
+from imbi.common.clickhouse import client
 
 
 class ReadAnalyticsSqlTestCase(unittest.IsolatedAsyncioTestCase):
     """Executes the finalizer and reaper SQL for real."""
 
     async def asyncSetUp(self) -> None:
+        # ``Clickhouse`` is a process-wide singleton and its client binds to
+        # the loop that opened it, while IsolatedAsyncioTestCase gives each
+        # test method its own loop. An earlier test in the same session may
+        # have left the singleton connected, in which case ``initialize()``
+        # is a no-op and the first request here dies on that dead loop. Take
+        # a private instance instead, and hand the old one back afterwards.
+        self._previous = client.Clickhouse._instance
+        client.Clickhouse._instance = None
+        self.addAsyncCleanup(self._restore_singleton)
         await clickhouse.initialize()
         await clickhouse.setup_schema()
 
-    async def asyncTearDown(self) -> None:
-        # The client singleton binds to the loop that created it, and
-        # IsolatedAsyncioTestCase gives each test method its own. Left open,
-        # the next test to touch it fails with "Event loop is closed".
+    async def _restore_singleton(self) -> None:
         await clickhouse.aclose()
+        client.Clickhouse._instance = self._previous
 
     async def test_analytics_sql_is_valid(self) -> None:
-        """The finalizer and reaper queries both analyze and run.
-
-        One test rather than two: see ``asyncTearDown``.
-        """
+        """The finalizer and reaper queries both analyze and run."""
         aggregates = await clickhouse.query(
             _document_reads._SESSION_AGGREGATE_SQL,
             {'session_ids': ['no-such-session']},
