@@ -89,7 +89,7 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.pg_size_patch = mock.patch.object(
             dashboard, '_postgres_size', mock.AsyncMock(return_value=4096)
         )
-        # All four sibling services configured.
+        # All five sibling services configured.
         self.services_patch = mock.patch.object(
             dashboard.settings,
             'get_internal_services',
@@ -97,6 +97,7 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
                 assistant_url='http://assistant:8002',
                 gateway_url='http://gateway:8003',
                 mcp_url='http://mcp:8001',
+                scheduler_url='http://scheduler:8005',
                 slackbot_url='http://slackbot:8004',
             ),
         )
@@ -131,7 +132,8 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
 
         services = {s['name']: s for s in body['services']}
         self.assertEqual(
-            {'API', 'Assistant', 'Gateway', 'MCP', 'Slackbot'}, set(services)
+            {'API', 'Assistant', 'Gateway', 'MCP', 'Scheduler', 'Slackbot'},
+            set(services),
         )
         for entry in services.values():
             self.assertEqual('up', entry['status'])
@@ -180,6 +182,8 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         services = {s['name']: s for s in response.json()['services']}
         self.assertEqual('down', services['Slackbot']['status'])
         self.assertEqual('not configured', services['Slackbot']['detail'])
+        self.assertEqual('down', services['Scheduler']['status'])
+        self.assertEqual('not configured', services['Scheduler']['detail'])
 
     def test_requires_permission(self) -> None:
         """A non-admin without admin:dashboard:read is forbidden."""

@@ -258,6 +258,9 @@ async def get_dashboard_status(
                 ),
                 _check_service(http_client, 'Gateway', internal.gateway_url),
                 _check_service(http_client, 'MCP', internal.mcp_url),
+                _check_service(
+                    http_client, 'Scheduler', internal.scheduler_url
+                ),
                 _check_service(http_client, 'Slackbot', internal.slackbot_url),
             ),
         )

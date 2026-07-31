@@ -15,6 +15,7 @@ import {
   ArrowUpRight,
   BookOpen,
   Box,
+  CalendarClock,
   Database,
   GitFork,
   GitPullRequest,
@@ -55,6 +56,7 @@ const SERVICE_ICONS: Record<string, LucideIcon> = {
   Assistant: Sparkles,
   Gateway: ArrowLeftRight,
   MCP: Plug,
+  Scheduler: CalendarClock,
   Slackbot: Hash,
 }
 
