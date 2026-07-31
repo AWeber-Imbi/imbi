@@ -30,6 +30,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.deployment_sync_worker_hook,
             lifespans.maintenance_worker_hook,
             lifespans.identity_refresh_hook,
+            lifespans.document_read_sweeper_hook,
         ),
         version=version,
         redoc_url=None,

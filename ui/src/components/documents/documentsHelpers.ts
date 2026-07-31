@@ -85,7 +85,10 @@ export function formatUpdated(document: Document): string {
   return relativeShort(iso)
 }
 
-function relativeShort(iso: null | string | undefined): string {
+// Exported for callers that hold a bare timestamp rather than a
+// Document (read analytics reports "last read at", which belongs to no
+// single document field).
+export function relativeShort(iso: null | string | undefined): string {
   if (!iso) return ''
   const then = parseServerTs(iso).getTime()
   if (!Number.isFinite(then)) return ''

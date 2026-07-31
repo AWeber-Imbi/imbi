@@ -2,9 +2,11 @@ import { useEffect } from 'react'
 
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
   BarChart3,
+  BookOpen,
   GitCommitHorizontal,
   GitPullRequest,
   Network,
@@ -13,6 +15,7 @@ import {
 
 import { CommandBar } from '@/components/CommandBar'
 import { Navigation } from '@/components/Navigation'
+import { DocumentReadershipReport } from '@/components/reports/DocumentReadershipReport'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
 import { OpenPullRequestsReport } from '@/components/reports/OpenPullRequestsReport'
 import { PRActivityReport } from '@/components/reports/PRActivityReport'
@@ -23,6 +26,9 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 interface Report {
   description: string
+  // Owned by the report definition so adding a report is a single
+  // entry here rather than an entry plus a branch in the sidebar.
+  icon: LucideIcon
   id: string
   label: string
   subtitle: string
@@ -31,36 +37,49 @@ interface Report {
 const REPORTS: Report[] = [
   {
     description: 'Month-over-month score delta',
+    icon: TrendingUp,
     id: 'monthly-improvement',
     label: 'Monthly Improvement',
     subtitle: 'Score improvement by team for a selected month',
   },
   {
     description: 'Open pull requests across the org',
+    icon: GitPullRequest,
     id: 'open-pull-requests',
     label: 'Open Pull Requests',
     subtitle: 'Open pull requests, filterable by team and project type',
   },
   {
     description: 'PRs created and merged per member',
+    icon: Activity,
     id: 'pr-activity',
     label: 'PR Activity',
     subtitle: 'PRs created and merged per team member, since a chosen date',
   },
   {
     description: 'Service dependency graph',
+    icon: Network,
     id: 'projects-graph',
     label: 'Projects Graph',
     subtitle: 'Project relationships across the org',
   },
   {
     description: 'Score trends over time per team',
+    icon: GitCommitHorizontal,
     id: 'score-history',
     label: 'Score History',
     subtitle: 'Avg score trend per team over time',
   },
   {
+    description: 'Which documents get read, and which do not',
+    icon: BookOpen,
+    id: 'document-readership',
+    label: 'Document Readership',
+    subtitle: 'Most-read, stale, and never-read documents across the org',
+  },
+  {
     description: 'Avg quality score per team',
+    icon: BarChart3,
     id: 'team-kpi',
     label: 'Team KPI',
     subtitle: 'Quality score rollup by team',
@@ -117,19 +136,7 @@ export function ReportsPage() {
                       key={r.id}
                       to={`/reports/${r.id}`}
                     >
-                      {r.id === 'team-kpi' ? (
-                        <BarChart3 className="mt-0.5 size-3.5 shrink-0" />
-                      ) : r.id === 'score-history' ? (
-                        <GitCommitHorizontal className="mt-0.5 size-3.5 shrink-0" />
-                      ) : r.id === 'projects-graph' ? (
-                        <Network className="mt-0.5 size-3.5 shrink-0" />
-                      ) : r.id === 'open-pull-requests' ? (
-                        <GitPullRequest className="mt-0.5 size-3.5 shrink-0" />
-                      ) : r.id === 'pr-activity' ? (
-                        <Activity className="mt-0.5 size-3.5 shrink-0" />
-                      ) : (
-                        <TrendingUp className="mt-0.5 size-3.5 shrink-0" />
-                      )}
+                      <r.icon className="mt-0.5 size-3.5 shrink-0" />
                       <div>
                         <div className="text-[13px] font-medium">{r.label}</div>
                         <div className="mt-0.5 text-[11px] opacity-70">
@@ -157,6 +164,7 @@ export function ReportsPage() {
             {activeId === 'pr-activity' && <PRActivityReport />}
             {activeId === 'score-history' && <ScoreHistoryReport />}
             {activeId === 'projects-graph' && <ProjectsGraphReport />}
+            {activeId === 'document-readership' && <DocumentReadershipReport />}
           </div>
         </div>
       </main>

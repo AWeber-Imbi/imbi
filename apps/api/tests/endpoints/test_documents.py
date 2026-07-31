@@ -98,6 +98,8 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         ptype_names: list[str] | None = None,
         tags: list[dict] | None = None,
         comment_count: int = 0,
+        like_count: int = 0,
+        liked_by_me: bool = False,
         author: dict | None = None,
     ) -> dict[str, typing.Any]:
         """A full document row as returned by the enriched queries."""
@@ -110,6 +112,8 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             'ptype_names': ptype_names or [],
             'tags': tags or [],
             'comment_count': comment_count,
+            'like_count': like_count,
+            'liked_by_me': liked_by_me,
             'author': author,
         }
 

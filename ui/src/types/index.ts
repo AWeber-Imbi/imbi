@@ -728,12 +728,35 @@ export interface Document {
   created_by_name?: null | string
   id: string
   is_pinned: boolean
+  like_count?: number
+  liked_by_me?: boolean
   project_id: null | string
   tags: TagRef[]
   title: string
   updated_at?: null | string
   updated_by?: null | string
   version?: number
+}
+
+// Aggregate read analytics for one document. Headline counts cover
+// human (`web`) reads only unless the request asked for another
+// surface; `by_surface` always reports every surface so agent traffic
+// stays visible without being mixed into the human numbers.
+export interface DocumentAnalytics {
+  by_surface: DocumentSurfaceCount[]
+  completion_rate: number
+  estimated_read_seconds: number
+  // Whether the caller may load the per-reader list. Driven by the
+  // `document:analytics:read_identities` permission and the org's
+  // `document_analytics_identities` setting.
+  identities_visible: boolean
+  last_read_at?: null | string
+  median_engaged_seconds: number
+  p90_engaged_seconds: number
+  readers: number
+  reads: number
+  trend: DocumentTrendPoint[]
+  views: number
 }
 
 // The vertex a document is attached to. `id` is the project id, the
@@ -759,7 +782,60 @@ export interface DocumentEditorsResponse {
   ttl_seconds: number
 }
 
+export interface DocumentLiker {
+  display_name?: null | string
+  liked_at: string
+  principal: string
+}
+
+export type DocumentLikerListResponse = CollectionResponse<DocumentLiker>
+
+export interface DocumentLikeState {
+  like_count: number
+  liked_by_me: boolean
+}
+
 export type DocumentListResponse = CollectionResponse<Document>
+
+export interface DocumentReader {
+  engaged_seconds: number
+  last_read_at?: null | string
+  principal: string
+  reads: number
+  views: number
+}
+
+export type DocumentReaderListResponse = CollectionResponse<DocumentReader>
+
+// One heartbeat from a reading client. `engaged_ms` is the delta since
+// the previous beat, not a running total: deltas keep every beat
+// independent, so a dropped beat costs one interval instead of
+// corrupting the session total.
+export interface DocumentReadEvent {
+  engaged_ms: number
+  is_final?: boolean
+  max_scroll_pct?: number
+  seq: number
+  session_id: string
+  session_started_at: string
+  surface?: 'api' | 'assistant' | 'mcp' | 'slackbot' | 'web'
+}
+
+export interface DocumentReadSummary {
+  document_id: string
+  last_read_at?: null | string
+  readers: number
+  title: string
+  views: number
+}
+
+export type DocumentReadSummaryResponse =
+  CollectionResponse<DocumentReadSummary>
+
+export interface DocumentSurfaceCount {
+  surface: string
+  views: number
+}
 
 export interface DocumentTemplate {
   content: string
@@ -802,6 +878,12 @@ export type DocumentTemplateType =
   | 'project'
   | 'project_type'
   | 'user'
+
+export interface DocumentTrendPoint {
+  day: string
+  readers: number
+  views: number
+}
 
 // Full snapshot of a single document version.
 export interface DocumentVersion extends DocumentVersionInfo {

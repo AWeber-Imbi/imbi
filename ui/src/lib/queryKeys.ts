@@ -15,8 +15,14 @@ export const queryKeys = {
     anchorSlug: string,
     relType: string,
   ) => ['anchor-edges', kind, orgSlug, anchorSlug, relType] as const,
+  documentAnalytics: (orgSlug: string, documentId: string) =>
+    ['documentAnalytics', orgSlug, documentId] as const,
   documentEditors: (orgSlug: string, documentId: string) =>
     ['documentEditors', orgSlug, documentId] as const,
+  documentLikers: (orgSlug: string, documentId: string) =>
+    ['documentLikers', orgSlug, documentId] as const,
+  documentReaders: (orgSlug: string, documentId: string) =>
+    ['documentReaders', orgSlug, documentId] as const,
   documentVersion: (orgSlug: string, documentId: string, version: number) =>
     ['documentVersion', orgSlug, documentId, version] as const,
   documentVersions: (orgSlug: string, documentId: string) =>

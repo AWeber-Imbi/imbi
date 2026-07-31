@@ -245,3 +245,67 @@ ORDER BY (task_id, run_id)
 TTL fired_at + INTERVAL 90 DAY;
 """
 enabled = true
+
+[document_read_events]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.document_read_events {on_cluster}(
+  org_slug           LowCardinality(String),
+  document_id        String,
+  session_id         String,
+  seq                UInt32,
+  principal          String,
+  surface            LowCardinality(String) DEFAULT 'web',
+  project_id         LowCardinality(String) DEFAULT '',
+  document_version   UInt32 DEFAULT 0,
+  estimated_read_ms  UInt32 DEFAULT 0,
+  session_started_at DateTime64(3, 'UTC'),
+  recorded_at        DateTime64(3, 'UTC'),
+  engaged_ms         UInt32 DEFAULT 0,
+  max_scroll_pct     UInt8  DEFAULT 0,
+  clamped            UInt8  DEFAULT 0,
+  is_final           UInt8  DEFAULT 0
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+PARTITION BY toYYYYMM(session_started_at)
+ORDER BY (org_slug, document_id, session_id, seq)
+-- `(session_id, seq)` in the key makes a retried or double-delivered
+-- heartbeat dedup to one row, so the `sendBeacon` flush racing the interval
+-- heartbeat cannot double-count engaged time.
+--
+-- TTL is on `session_started_at`, which every row of a session shares, rather
+-- than on the per-row `recorded_at`. TTL is evaluated per row at merge time,
+-- so keying on `recorded_at` would expire a session's early heartbeats while
+-- its later ones survive, leaving a truncated session whose engaged total is
+-- silently short. Sessions expire whole instead.
+TTL toDateTime(session_started_at) + INTERVAL 90 DAY;
+"""
+enabled = true
+
+[document_read_sessions]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.document_read_sessions {on_cluster}(
+  org_slug          LowCardinality(String),
+  document_id       String,
+  session_id        String,
+  principal         String,
+  surface           LowCardinality(String) DEFAULT 'web',
+  project_id        LowCardinality(String) DEFAULT '',
+  document_version  UInt32 DEFAULT 0,
+  started_at        DateTime64(3, 'UTC'),
+  ended_at          DateTime64(3, 'UTC'),
+  engaged_ms        UInt32 DEFAULT 0,
+  max_scroll_pct    UInt8  DEFAULT 0,
+  is_view           UInt8  DEFAULT 0,
+  is_read           UInt8  DEFAULT 0,
+  finalized_at      DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(finalized_at)
+PARTITION BY toYYYYMM(started_at)
+ORDER BY (org_slug, document_id, session_id)
+-- One row per finalized session, written by the finalizer once a session's
+-- engaged total and scroll depth are both known. Every reported number
+-- (last read, readers, views, engaged-time distribution, trends) comes from
+-- this table, so it outlives the raw heartbeats it was derived from. Keyed on
+-- `session_id` alone within a document so a reaper finalizing a session the
+-- client also finalized dedups to one row rather than double-counting it.
+TTL toDateTime(started_at) + INTERVAL 2 YEAR;
+"""
+enabled = true

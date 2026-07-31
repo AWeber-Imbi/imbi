@@ -33,9 +33,18 @@ import type {
   DeploymentTriggerRequest,
   DeploymentTriggerResponse,
   Document,
+  DocumentAnalytics,
   DocumentCreate,
   DocumentEditorsResponse,
+  DocumentLiker,
+  DocumentLikerListResponse,
+  DocumentLikeState,
   DocumentListResponse,
+  DocumentReader,
+  DocumentReaderListResponse,
+  DocumentReadEvent,
+  DocumentReadSummary,
+  DocumentReadSummaryResponse,
   DocumentTemplate,
   DocumentTemplateCreate,
   DocumentVersion,
@@ -1781,11 +1790,87 @@ export const deleteOrgDocument = (orgSlug: string, documentId: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}`,
   )
 
+// Thumbs-up likes. PUT/DELETE are idempotent and both return the
+// document's current like state, so an optimistic toggle can reconcile
+// against the response without a follow-up read.
+const documentPath = (orgSlug: string, documentId: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}`
+
+export const likeDocument = (orgSlug: string, documentId: string) =>
+  apiClient.put<DocumentLikeState>(`${documentPath(orgSlug, documentId)}/like`)
+
+export const unlikeDocument = (orgSlug: string, documentId: string) =>
+  apiClient.delete<DocumentLikeState>(
+    `${documentPath(orgSlug, documentId)}/like`,
+  )
+
+export const listDocumentLikers = async (
+  orgSlug: string,
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DocumentLiker[]> => {
+  const response = await apiClient.get<DocumentLikerListResponse>(
+    `${documentPath(orgSlug, documentId)}/likes`,
+    undefined,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+// Read tracking. The server answers 202 and swallows storage failures,
+// so callers never need to handle an error here — a lost heartbeat costs
+// at most one interval of engaged time.
+export const postDocumentReadEvents = (
+  orgSlug: string,
+  documentId: string,
+  events: DocumentReadEvent[],
+) =>
+  apiClient.post<void>(`${documentPath(orgSlug, documentId)}/read-events`, {
+    events,
+  })
+
+export const getDocumentAnalytics = (
+  orgSlug: string,
+  documentId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<DocumentAnalytics>(
+    `${documentPath(orgSlug, documentId)}/analytics`,
+    undefined,
+    signal,
+  )
+
+export const listDocumentReaders = async (
+  orgSlug: string,
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DocumentReader[]> => {
+  const response = await apiClient.get<DocumentReaderListResponse>(
+    `${documentPath(orgSlug, documentId)}/analytics/readers`,
+    undefined,
+    signal,
+  )
+  return response?.data ?? []
+}
+
+export const getOrgDocumentAnalytics = async (
+  orgSlug: string,
+  params: { limit?: number; mode?: string; stale_days?: number },
+  signal?: AbortSignal,
+): Promise<DocumentReadSummary[]> => {
+  const response = await apiClient.get<DocumentReadSummaryResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/document-analytics`,
+    params as Record<string, unknown>,
+    signal,
+  )
+  return response?.data ?? []
+}
+
 // Document version history (attachment-agnostic). Full snapshots are
 // recorded server-side on every content-affecting change; restore
 // applies an old snapshot as a normal update (a new version).
 const documentVersionsPath = (orgSlug: string, documentId: string) =>
-  `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}/versions`
+  `${documentPath(orgSlug, documentId)}/versions`
 
 export const listDocumentVersions = async (
   orgSlug: string,
@@ -1826,7 +1911,7 @@ export const restoreDocumentVersion = (
 // registers/refreshes the caller and returns every active editor;
 // markers expire server-side after `ttl_seconds` without a heartbeat.
 const documentEditingPath = (orgSlug: string, documentId: string) =>
-  `/organizations/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(documentId)}/editing`
+  `${documentPath(orgSlug, documentId)}/editing`
 
 export const getDocumentEditors = (
   orgSlug: string,

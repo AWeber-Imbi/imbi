@@ -14,6 +14,11 @@ from imbi.common import graph, models
 from imbi.common import patch as json_patch
 
 from .comments import comments_router
+from .document_analytics import (
+    document_analytics_org_router,
+    document_analytics_router,
+)
+from .document_likes import document_likes_router
 from .document_presence import document_presence_router
 from .document_templates import document_templates_router
 from .document_versions import document_versions_router
@@ -103,6 +108,13 @@ organizations_router.include_router(
     documents_router,
     prefix='/{org_slug}/documents',
 )
+# A sibling of ``/documents`` rather than a path under it: nested, its
+# literal ``/analytics`` segment competes with ``GET /documents/{document_id}``
+# and only wins while it is registered first. Mirrors ``document-templates``.
+organizations_router.include_router(
+    document_analytics_org_router,
+    prefix='/{org_slug}/document-analytics',
+)
 organizations_router.include_router(
     document_versions_router,
     prefix='/{org_slug}/documents/{document_id}/versions',
@@ -110,6 +122,14 @@ organizations_router.include_router(
 organizations_router.include_router(
     document_presence_router,
     prefix='/{org_slug}/documents/{document_id}/editing',
+)
+organizations_router.include_router(
+    document_likes_router,
+    prefix='/{org_slug}/documents/{document_id}',
+)
+organizations_router.include_router(
+    document_analytics_router,
+    prefix='/{org_slug}/documents/{document_id}',
 )
 organizations_router.include_router(
     documents_project_router,
