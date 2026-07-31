@@ -241,10 +241,6 @@ random_token() {
     tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "${1:-43}"
 }
 
-random_hex() {
-    tr -dc 'a-f0-9' < /dev/urandom | head -c 32
-}
-
 # 'all' mode only. imbi-scheduler and imbi-gateway authenticate to imbi-api
 # as their own service accounts, so both need a credential before they can
 # do anything: without one every api-target firing is skipped, and every
@@ -274,7 +270,13 @@ provision_internal_credentials() {
         return 1
     fi
     if [ -z "${ACTIONS_IMBI_TOKEN:-}" ]; then
-        ACTIONS_IMBI_TOKEN="ik_$(random_hex)_$(random_token)"
+        # A fixed key_id for the same reason as the client_id above: with a
+        # random one, `_write_api_key` matches nothing on the next boot and
+        # creates another APIKey node, leaving a live unrevoked credential
+        # behind per restart. No underscore past the `ik_` prefix -- the
+        # token is split on the first two, so one here would land inside
+        # the key_id and change where the secret starts.
+        ACTIONS_IMBI_TOKEN="ik_imbigatewayallmode_$(random_token)"
         export ACTIONS_IMBI_TOKEN
         minted_gateway=1
     fi

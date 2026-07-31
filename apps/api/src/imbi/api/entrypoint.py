@@ -282,6 +282,7 @@ def setup() -> None:
     2. Creating the initial admin user with interactive prompts
     3. Seeding the service accounts imbi-scheduler and imbi-gateway
        authenticate to imbi-api as
+    4. Applying the ClickHouse schema
 
     Run this command once when setting up a new Imbi instance.
     """

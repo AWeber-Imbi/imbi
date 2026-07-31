@@ -16,7 +16,7 @@ Credentials come from the environment when it supplies them, so a
 deployment whose secret already lives in a Helm values file or an
 ``.env`` gets an account matching the value it already hands the
 service. Otherwise one is generated and returned for the caller to
-print once -- it cannot be read back afterwards.
+print once -- it cannot be read back afterward.
 """
 
 import asyncio

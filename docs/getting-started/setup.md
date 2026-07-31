@@ -62,7 +62,7 @@ token. Setup handles both:
   already live in a values file or `.env`.
 - **Setup supplies them.** Leave them unset and setup generates a credential
   per service and prints it once, as assignments to paste into your
-  environment. They cannot be read back afterwards.
+  environment. They cannot be read back afterward.
 
 Re-running setup never rotates a working credential, and never narrows a role
 you have since widened. In `all` mode the container entrypoint provisions both
