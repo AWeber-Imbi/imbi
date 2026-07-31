@@ -28,9 +28,15 @@ either adopts the credential these two variables name or generates one and
 prints it once. Set them before running setup and they are what the account
 authenticates with; leave them unset and setup tells you what to set them to.
 
-In `all` mode the entrypoint provisions the pair itself when the environment does
-not supply it, so a single-container deployment runs the scheduler with no
-credential setup at all.
+Set both or neither. A client id without its secret cannot be verified and a
+secret without its id names nothing to verify it against, so half a pair is
+refused rather than quietly replaced by a generated credential the service does
+not hold.
+
+In `all` mode the entrypoint provisions the pair itself when neither variable is
+set, so a single-container deployment runs the scheduler with no credential setup
+at all. Setting only one there is the same error, and the entrypoint reports it
+and leaves the scheduler out.
 
 The seeded role grants `scheduled_task:*` plus every `:read` — enough to manage
 the schedule and to inspect what a task reads, and deliberately not enough to

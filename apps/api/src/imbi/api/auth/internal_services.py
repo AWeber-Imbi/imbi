@@ -275,6 +275,9 @@ async def _write_client_credential(
     stored hash is what has to follow it.
     """
     secret_hash = await asyncio.to_thread(password.hash_password, secret)
+    await _reject_foreign_owner(
+        db, 'ClientCredential', 'client_id', client_id, service.slug
+    )
     updated = await db.execute(
         'MATCH (c:ClientCredential {{client_id: {client_id}}})'
         '-[:OWNED_BY]->(s:ServiceAccount {{slug: {slug}}})'
@@ -350,6 +353,7 @@ async def _write_api_key(
 ) -> None:
     """Create the API key, or point an existing one at *secret*."""
     key_hash = await asyncio.to_thread(password.hash_password, secret)
+    await _reject_foreign_owner(db, 'APIKey', 'key_id', key_id, service.slug)
     updated = await db.execute(
         'MATCH (k:APIKey {{key_id: {key_id}}})'
         '-[:OWNED_BY]->(s:ServiceAccount {{slug: {slug}}})'
@@ -376,6 +380,48 @@ async def _write_api_key(
     props = api_key.model_dump(mode='json')
     props.pop('user', None)
     await _create_owned_node(db, 'APIKey', props, service.slug)
+
+
+async def _reject_foreign_owner(
+    db: graph.Graph,
+    label: typing.Literal['ClientCredential', 'APIKey'],
+    id_field: typing.Literal['client_id', 'key_id'],
+    identifier: str,
+    slug: str,
+) -> None:
+    """Fail when *identifier* already belongs to a different account.
+
+    The write helpers re-point an existing credential through an
+    owner-scoped ``MATCH``, which does not bind when the credential
+    belongs to someone else -- so without this they would fall through
+    and ``CREATE`` a second node carrying the same identifier. Nothing in
+    the graph enforces uniqueness, and the token grant in
+    ``endpoints/auth.py`` matches a ``client_id`` with no owner
+    constraint and takes the first row, so a duplicate makes *which*
+    account authenticates a matter of row order.
+
+    Reachable because both identifiers can be operator-supplied: naming
+    one that a human-created service account already holds would
+    otherwise be silently accepted.
+    """
+    records = await db.execute(
+        f'MATCH (c:{label} {{{{{id_field}: {{identifier}}}}}})'
+        '-[:OWNED_BY]->(s:ServiceAccount)'
+        ' WHERE s.slug <> {slug}'
+        ' RETURN s.slug AS owner',
+        {'identifier': identifier, 'slug': slug},
+        ['owner'],
+    )
+    if not records:
+        return
+    owner = graph.parse_agtype(records[0].get('owner'))
+    raise SeedError(
+        f'{label} {identifier!r} already belongs to service account '
+        f'{str(owner)!r}, not {slug!r}. Seeding it would create a second '
+        f'credential with the same identifier, and authentication does '
+        f'not distinguish them. Use a different value or remove the '
+        f'existing credential.'
+    )
 
 
 async def _has_credential(

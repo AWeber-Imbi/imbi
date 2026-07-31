@@ -329,10 +329,15 @@ case "$IMBI_SERVICE" in
         # one where seeding itself failed. Starting then would leave the
         # scheduler skipping every api-target firing for want of a
         # principal, so it stays out.
+        #
+        # Seeding is one call for both services, so a bad ACTIONS_IMBI_TOKEN
+        # holds the scheduler back even when its own credential was fine.
+        # Hence the wording: the error above names which one to fix, and
+        # claiming the scheduler's credential failed would be wrong.
         if [ "$scheduler_configured" = 1 ]; then
             start_scheduler
         else
-            echo "imbi-scheduler disabled (no service-account credential could be seeded)"
+            echo "imbi-scheduler disabled (internal service account seeding failed; see the error above)"
         fi
         start_caddy
         ;;

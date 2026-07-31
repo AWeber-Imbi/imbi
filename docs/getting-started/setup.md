@@ -64,9 +64,17 @@ token. Setup handles both:
   per service and prints it once, as assignments to paste into your
   environment. They cannot be read back afterward.
 
+  That output contains live secrets. Treat it as you would a password: do not
+  pipe it anywhere that ships logs off the host.
+
+The scheduler's two variables go together — set both or neither. Half a pair
+fails rather than being ignored, because seeding a generated credential instead
+would leave the scheduler holding a value that authenticates nobody.
+
 Re-running setup never rotates a working credential, and never narrows a role
 you have since widened. In `all` mode the container entrypoint provisions both
-credentials itself when the environment does not supply them.
+credentials itself when the environment does not supply them — for the
+scheduler, only when both of its variables are absent.
 
 ## Applying Upgrades
 

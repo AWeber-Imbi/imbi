@@ -62,6 +62,12 @@ scheduler:
   # `imbi-api setup` seeds the account to match whatever is set here, so these
   # are values to invent, not ones to copy back out of Imbi. Left empty, setup
   # generates a pair and prints it once for you to paste in.
+  #
+  # Both or neither: one alone is refused rather than ignored, since seeding a
+  # generated credential instead would leave the scheduler holding a value that
+  # authenticates nobody. In "all" mode that also stops the entrypoint from
+  # provisioning, so a half-filled pair here (or a `existingSecret` carrying
+  # only one of the two keys) leaves the scheduler out entirely.
   serviceAccount:
     clientId: ""
     clientSecret: ""

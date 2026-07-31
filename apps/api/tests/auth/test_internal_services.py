@@ -186,6 +186,32 @@ class ClientCredentialTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outcome, 'supplied')
         self.assertEqual(db.issued('CREATE (n:ClientCredential'), [])
 
+    async def test_client_id_owned_by_another_account_raises(self) -> None:
+        """A supplied client id another account holds is not duplicated.
+
+        The owner-scoped re-point MATCH would not bind, so seeding would
+        CREATE a second node with the same client_id. Nothing enforces
+        uniqueness and the token grant matches client_id without an owner
+        constraint, so which account authenticates would come down to row
+        order.
+        """
+        db = FakeGraph({'RETURN s.slug AS owner': [{'owner': 'someone-else'}]})
+
+        with self.assertRaises(internal_services.SeedError) as ctx:
+            await internal_services._ensure_client_credential(
+                db,
+                SCHEDULER,
+                {
+                    'IMBI_SCHEDULER_SA_CLIENT_ID': 'cc_taken',
+                    'IMBI_SCHEDULER_SA_CLIENT_SECRET': 'shhh',
+                },
+            )
+
+        self.assertIn('someone-else', str(ctx.exception))
+        self.assertIn('cc_taken', str(ctx.exception))
+        self.assertEqual(db.issued('CREATE (n:ClientCredential'), [])
+        self.assertEqual(db.issued('SET c.client_secret_hash'), [])
+
     async def test_existing_credential_is_not_rotated(self) -> None:
         """Re-seeding leaves a live credential exactly as it was."""
         db = FakeGraph({'RETURN count(c) AS live': [{'live': 1}]})
@@ -309,6 +335,20 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(emit, {})
         created = db.issued('CREATE (n:APIKey')
         self.assertEqual(len(created), 1)
+
+    async def test_key_id_owned_by_another_account_raises(self) -> None:
+        """A supplied key id another account holds is not duplicated."""
+        db = FakeGraph({'RETURN s.slug AS owner': [{'owner': 'someone-else'}]})
+
+        with self.assertRaises(internal_services.SeedError) as ctx:
+            await internal_services._ensure_api_key(
+                db, GATEWAY, {'ACTIONS_IMBI_TOKEN': 'ik_taken_s3cret'}
+            )
+
+        self.assertIn('someone-else', str(ctx.exception))
+        self.assertIn('ik_taken', str(ctx.exception))
+        self.assertEqual(db.issued('CREATE (n:APIKey'), [])
+        self.assertEqual(db.issued('SET k.key_hash'), [])
 
     async def test_malformed_key_raises(self) -> None:
         """A token no request could authenticate is refused at seed time."""
