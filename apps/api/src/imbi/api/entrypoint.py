@@ -7,8 +7,8 @@ import nanoid
 import typer
 
 from imbi.api import models
+from imbi.api.auth import internal_services, seed
 from imbi.api.auth import password as password_auth
-from imbi.api.auth import seed
 from imbi.api.graph_sql import set_clause
 from imbi.common import clickhouse, graph, server
 
@@ -82,7 +82,7 @@ def setup_clickhouse() -> None:
     """Apply the ClickHouse schema without running the full setup.
 
     Executes the enabled DDL from the packaged ``schemata.toml`` — the
-    same work as step 3 of ``setup`` — so a deployment that adds tables
+    same work as the last step of ``setup`` — so a deployment that adds tables
     or materialized views can roll them out without re-seeding auth or
     re-prompting for an admin user. Idempotent.
     """
@@ -162,6 +162,116 @@ async def _setup_permissions_async() -> None:
     typer.echo('\n✓ Permissions and roles are up to date')
 
 
+@main.command('setup-service-accounts')
+def setup_service_accounts(
+    organization: typing.Annotated[
+        str | None,
+        typer.Option(
+            help=(
+                'Organization the service accounts join. Defaults to the '
+                'only organization when there is exactly one.'
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Seed the service accounts imbi-scheduler and imbi-gateway use.
+
+    The credential-seeding half of ``setup``, for an install that was
+    set up before it existed. Requires ``setup-permissions`` to have run
+    first: each account is granted a seeded role by name. Idempotent —
+    an existing credential is never rotated.
+    """
+    asyncio.run(_setup_service_accounts_async(organization))
+
+
+async def _setup_service_accounts_async(org_slug: str | None) -> None:
+    """Async body of ``setup-service-accounts``."""
+    db = graph.Graph()
+    try:
+        await db.open()
+    except Exception as e:
+        typer.echo(f'✗ Failed to connect to PostgreSQL: {e}', err=True)
+        raise typer.Exit(code=1) from e
+
+    try:
+        if org_slug is None:
+            org_slug = await _sole_organization_slug(db)
+        results = await internal_services.seed_internal_services(db, org_slug)
+    except internal_services.SeedError as e:
+        typer.echo(f'✗ {e}', err=True)
+        raise typer.Exit(code=1) from e
+    except typer.Exit:
+        # `_sole_organization_slug` has already reported the problem;
+        # `typer.Exit` is a `RuntimeError`, so without this the generic
+        # handler below would bury that message under its own.
+        raise
+    except Exception as e:
+        typer.echo(f'✗ Failed to seed service accounts: {e}', err=True)
+        raise typer.Exit(code=1) from e
+    finally:
+        await db.close()
+
+    _report_service_accounts(results)
+
+
+async def _sole_organization_slug(db: graph.Graph) -> str:
+    """Return the only organization's slug.
+
+    Raises ``typer.Exit`` when there is not exactly one: guessing which
+    organization owns the internal service accounts would put them in a
+    tenant whose projects they were never meant to touch.
+    """
+    records = await db.execute(
+        'MATCH (o:Organization) RETURN o.slug AS slug ORDER BY o.slug',
+        columns=['slug'],
+    )
+    slugs = [graph.parse_agtype(record['slug']) for record in records]
+    if len(slugs) == 1:
+        return str(slugs[0])
+    if not slugs:
+        typer.echo(
+            '✗ No organization exists yet. Run `imbi-api setup` first.',
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    typer.echo(
+        '✗ Multiple organizations exist; pass --organization with one of: '
+        + ', '.join(str(slug) for slug in slugs),
+        err=True,
+    )
+    raise typer.Exit(code=1)
+
+
+def _report_service_accounts(
+    results: list[internal_services.SeededService],
+) -> None:
+    """Print what was seeded, emitting generated credentials once.
+
+    A generated secret is unrecoverable after this, so it is printed as
+    an assignment a deployment can paste straight into its environment
+    rather than described in prose.
+    """
+    emit: dict[str, str] = {}
+    for result in results:
+        account = 'created' if result.account_created else 'already exists'
+        if result.outcome == 'supplied':
+            detail = f'credential matches ${result.service.secret_var}'
+        elif result.outcome == 'unchanged':
+            detail = 'existing credential left in place'
+        else:
+            detail = 'credential generated (shown once below)'
+            emit.update(result.env)
+        typer.echo(f'  ✓ {result.service.slug}: {account}, {detail}')
+    if not emit:
+        return
+    typer.echo(
+        '\n  Set these before starting the services — the secrets cannot '
+        'be read back:'
+    )
+    for name, value in emit.items():
+        typer.echo(f'    {name}={value}')
+
+
 @main.command()
 def setup() -> None:
     """
@@ -170,6 +280,8 @@ def setup() -> None:
     This command sets up a new Imbi instance by:
     1. Seeding permissions and default roles (admin, developer, readonly)
     2. Creating the initial admin user with interactive prompts
+    3. Seeding the service accounts imbi-scheduler and imbi-gateway
+       authenticate to imbi-api as
 
     Run this command once when setting up a new Imbi instance.
     """
@@ -285,8 +397,19 @@ async def _setup_async() -> None:
             typer.echo(f'✗ Failed to create admin user: {e}', err=True)
             raise typer.Exit(code=1) from e
 
-        # Step 3: Set up ClickHouse schema
-        typer.echo('\nStep 3: Setting up ClickHouse schema...')
+        # Step 3: Seed the service accounts Imbi's own services use
+        typer.echo('\nStep 3: Seeding internal service accounts...')
+        try:
+            seeded = await internal_services.seed_internal_services(
+                db, org_slug
+            )
+        except internal_services.SeedError as e:
+            typer.echo(f'✗ {e}', err=True)
+            raise typer.Exit(code=1) from e
+        _report_service_accounts(seeded)
+
+        # Step 4: Set up ClickHouse schema
+        typer.echo('\nStep 4: Setting up ClickHouse schema...')
         await _apply_clickhouse_schema()
 
         # Success message

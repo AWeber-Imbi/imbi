@@ -40,27 +40,51 @@ The setup command performs the following:
    roles with appropriate permissions
 3. **Creates the admin user** - Interactively prompts for email, display
    name, and password
-4. **Creates the ClickHouse schema** - Executes the DDL for the analytics
+4. **Creates the internal service accounts** - `imbi-scheduler` and
+   `imbi-gateway`, each with a least-privilege role and a credential
+5. **Creates the ClickHouse schema** - Executes the DDL for the analytics
    tables and materialized views
 
 The setup command is idempotent: it checks whether the system has already
 been seeded before making changes, so it is safe to run multiple times.
 
+### Internal Service Credentials
+
+imbi-scheduler and imbi-gateway call imbi-api as themselves, so each needs a
+credential of its own — the scheduler a client credential (it has no other way
+to run a task; see ADR 0002), the gateway an API key it sends as a bearer
+token. Setup handles both:
+
+- **You supply them.** Set `IMBI_SCHEDULER_SA_CLIENT_ID`,
+  `IMBI_SCHEDULER_SA_CLIENT_SECRET`, and `ACTIONS_IMBI_TOKEN` (an
+  `ik_<id>_<secret>` API key) before running setup, and the accounts are
+  seeded to match. This is the path for Helm and Compose, where the values
+  already live in a values file or `.env`.
+- **Setup supplies them.** Leave them unset and setup generates a credential
+  per service and prints it once, as assignments to paste into your
+  environment. They cannot be read back afterwards.
+
+Re-running setup never rotates a working credential, and never narrows a role
+you have since widened. In `all` mode the container entrypoint provisions both
+credentials itself when the environment does not supply them.
+
 ## Applying Upgrades
 
 `setup` is interactive and covers everything, which is more than an
 existing instance needs when a release only adds ClickHouse tables or new
-permissions. Two commands run those steps on their own, without prompting
+permissions. Three commands run those steps on their own, without prompting
 or touching the admin user:
 
 ```bash
-imbi-api setup-clickhouse    # apply the ClickHouse schema only
-imbi-api setup-permissions   # seed permissions and default roles only
+imbi-api setup-clickhouse        # apply the ClickHouse schema only
+imbi-api setup-permissions       # seed permissions and default roles only
+imbi-api setup-service-accounts  # seed the internal service accounts only
 ```
 
-Both are idempotent and safe to re-run. `setup-permissions` also refreshes
+All three are idempotent and safe to re-run. `setup-permissions` also refreshes
 each default role's permission grants and prunes permissions retired by a
-previous release.
+previous release; run it before `setup-service-accounts`, which grants each
+account a role by name.
 
 ## Post-Setup
 

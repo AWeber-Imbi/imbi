@@ -106,6 +106,27 @@ class SetupTestCase(unittest.TestCase):
         )
         self.mock_create_admin.return_value = self.admin_user
 
+        # Internal service accounts
+        self.seeded_services = [
+            entrypoint.internal_services.SeededService(
+                service=service,
+                account_created=True,
+                outcome='unchanged',
+                env={},
+            )
+            for service in entrypoint.internal_services.INTERNAL_SERVICES
+        ]
+        self.mock_seed_services = self.enterContext(
+            mock.patch.object(
+                entrypoint.internal_services,
+                'seed_internal_services',
+                new_callable=mock.AsyncMock,
+            )
+        )
+        self.mock_seed_services.side_effect = lambda *_a, **_kw: list(
+            self.seeded_services
+        )
+
         # Password input (getpass reads /dev/tty, not stdin)
         self.mock_getpass = self.enterContext(
             mock.patch.object(
@@ -273,6 +294,202 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('Failed to set up ClickHouse schema', result.output)
         self.mock_graph.close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()
+
+    def test_setup_seeds_service_accounts_in_the_new_org(self) -> None:
+        """Service accounts join the organization setup just created."""
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.mock_seed_services.assert_awaited_once_with(mock.ANY, 'aweber')
+        self.assertIn('imbi-scheduler: created', result.output)
+        self.assertIn('imbi-gateway: created', result.output)
+
+    def test_setup_emits_generated_credentials_once(self) -> None:
+        """A generated secret is printed as a pasteable assignment."""
+        scheduler = entrypoint.internal_services.INTERNAL_SERVICES[0]
+        self.seeded_services[0] = entrypoint.internal_services.SeededService(
+            service=scheduler,
+            account_created=True,
+            outcome='generated',
+            env={
+                'IMBI_SCHEDULER_SA_CLIENT_ID': 'cc_generated',
+                'IMBI_SCHEDULER_SA_CLIENT_SECRET': 'sup3rs3cret',
+            },
+        )
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('cannot be read back', result.output)
+        self.assertIn(
+            'IMBI_SCHEDULER_SA_CLIENT_ID=cc_generated', result.output
+        )
+        self.assertIn(
+            'IMBI_SCHEDULER_SA_CLIENT_SECRET=sup3rs3cret', result.output
+        )
+
+    def test_setup_reports_supplied_credentials(self) -> None:
+        """An environment-supplied credential is not printed back."""
+        gateway = entrypoint.internal_services.INTERNAL_SERVICES[1]
+        self.seeded_services[1] = entrypoint.internal_services.SeededService(
+            service=gateway,
+            account_created=False,
+            outcome='supplied',
+            env={},
+        )
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn(
+            'imbi-gateway: already exists, credential matches '
+            '$ACTIONS_IMBI_TOKEN',
+            result.output,
+        )
+        self.assertNotIn('cannot be read back', result.output)
+
+    def test_setup_service_account_seed_failure(self) -> None:
+        """A seed error stops setup before the ClickHouse schema runs."""
+        self.mock_seed_services.side_effect = (
+            entrypoint.internal_services.SeedError('role not found')
+        )
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('role not found', result.output)
+        self.mock_ch_schema.assert_not_awaited()
+
+
+class SetupServiceAccountsTestCase(unittest.TestCase):
+    """Test cases for the ``setup-service-accounts`` command.
+
+    Uses regular TestCase because the command calls asyncio.run() which
+    creates its own event loop.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.runner = typer.testing.CliRunner()
+        self.mock_graph = mock.MagicMock()
+        self.mock_graph.open = mock.AsyncMock()
+        self.mock_graph.close = mock.AsyncMock()
+        self.mock_graph.execute = mock.AsyncMock(
+            return_value=[{'slug': 'aweber'}]
+        )
+        self.enterContext(
+            mock.patch.object(
+                entrypoint.graph, 'Graph', return_value=self.mock_graph
+            )
+        )
+        self.enterContext(
+            mock.patch.object(
+                entrypoint.graph, 'parse_agtype', side_effect=lambda x: x
+            )
+        )
+        self.mock_seed_services = self.enterContext(
+            mock.patch.object(
+                entrypoint.internal_services,
+                'seed_internal_services',
+                new_callable=mock.AsyncMock,
+                return_value=[
+                    entrypoint.internal_services.SeededService(
+                        service=service,
+                        account_created=False,
+                        outcome='unchanged',
+                        env={},
+                    )
+                    for service in (
+                        entrypoint.internal_services.INTERNAL_SERVICES
+                    )
+                ],
+            )
+        )
+
+    def test_defaults_to_the_sole_organization(self) -> None:
+        """One organization needs no --organization."""
+        result = self.runner.invoke(
+            entrypoint.main, ['setup-service-accounts']
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.mock_seed_services.assert_awaited_once_with(mock.ANY, 'aweber')
+        self.assertIn('existing credential left in place', result.output)
+        self.mock_graph.close.assert_awaited_once()
+
+    def test_explicit_organization_skips_the_lookup(self) -> None:
+        """--organization is used as given."""
+        result = self.runner.invoke(
+            entrypoint.main,
+            ['setup-service-accounts', '--organization', 'other'],
+        )
+
+        self.assertEqual(result.exit_code, 0)
+        self.mock_seed_services.assert_awaited_once_with(mock.ANY, 'other')
+        self.mock_graph.execute.assert_not_awaited()
+
+    def test_multiple_organizations_require_a_choice(self) -> None:
+        """Guessing the tenant would put the accounts in the wrong one."""
+        self.mock_graph.execute.return_value = [
+            {'slug': 'aweber'},
+            {'slug': 'other'},
+        ]
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup-service-accounts']
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Multiple organizations exist', result.output)
+        self.assertIn('aweber, other', result.output)
+        self.assertNotIn('Failed to seed service accounts', result.output)
+        self.mock_seed_services.assert_not_awaited()
+
+    def test_no_organization_points_at_setup(self) -> None:
+        """An un-set-up install is told what to run."""
+        self.mock_graph.execute.return_value = []
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup-service-accounts']
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('No organization exists yet', result.output)
+        self.mock_seed_services.assert_not_awaited()
+
+    def test_seed_error_exits_non_zero(self) -> None:
+        """A missing role is reported, not swallowed."""
+        self.mock_seed_services.side_effect = (
+            entrypoint.internal_services.SeedError('role not found')
+        )
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup-service-accounts']
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('role not found', result.output)
+        self.mock_graph.close.assert_awaited_once()
+
+    def test_graph_connection_failure(self) -> None:
+        """A connection failure is reported before anything is seeded."""
+        self.mock_graph.open.side_effect = ConnectionError('refused')
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup-service-accounts']
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to connect to PostgreSQL', result.output)
+        self.mock_seed_services.assert_not_awaited()
 
 
 class SetupClickhouseTestCase(unittest.TestCase):

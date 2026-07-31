@@ -675,6 +675,64 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         ],
         False,
     ),
+    # Roles for the service accounts Imbi's own services authenticate as
+    # (see :mod:`imbi.api.auth.internal_services`). Each grants only what
+    # its service calls, so a compromised internal credential is not a
+    # general-purpose one. Priority sits above `developer` because these
+    # are infrastructure principals, not people, and neither is
+    # `is_default` -- they are attached by the seed, never on first login.
+    (
+        'imbi-scheduler',
+        'Imbi Scheduler',
+        'Service role for imbi-scheduler: manage and fire scheduled '
+        'tasks, and read the entities a task inspects',
+        900,
+        [
+            'scheduled_task:read',
+            'scheduled_task:create',
+            'scheduled_task:write',
+            'scheduled_task:delete',
+            'scheduled_task:run',
+            # `system` tasks belong to no user, so firing and managing
+            # them is an :admin operation by definition.
+            'scheduled_task:admin',
+            'blueprint:read',
+            'document:read',
+            'document_template:read',
+            'environment:read',
+            'link_definition:read',
+            'operations_log:read',
+            'organization:read',
+            'project:read',
+            'project_type:read',
+            'role:read',
+            'search:read',
+            'tag:read',
+            'team:read',
+            'integration:read',
+            'upload:read',
+            'user:read',
+            'webhook:read',
+        ],
+        False,
+    ),
+    (
+        'imbi-gateway',
+        'Imbi Gateway',
+        'Service role for imbi-gateway: patch projects, record '
+        'releases, and attribute events to users',
+        900,
+        [
+            # `project:write` covers releases and SBOMs too -- every
+            # write endpoint imbi-gateway calls guards on it.
+            'project:read',
+            'project:write',
+            # /users/by-identity, used to attribute an inbound event to
+            # the Imbi user behind an external identity.
+            'user:read',
+        ],
+        False,
+    ),
 ]
 
 # Invariant: exactly one seeded role is the auto-assignment target so
@@ -759,12 +817,20 @@ async def seed_permissions(db: graph.Graph) -> int:
 
 
 async def seed_default_roles(db: graph.Graph) -> int:
-    """Seed default roles and GRANTS edges in a single batched query.
+    """Seed default roles, then their GRANTS edges.
 
-    Must run after ``seed_permissions``: the second UNWIND below does a
+    Must run after ``seed_permissions``: the grant query below does a
     ``MATCH (gp:Permission {{name: grant.perm}})`` that will silently
     produce no GRANTS edges if any referenced permission is missing.
     ``bootstrap_auth_system`` enforces this ordering.
+
+    The grants are a *second* statement, not a trailing ``UNWIND`` on the
+    role query. Appending ``RETURN created LIMIT 1`` to that pipeline made
+    AGE stop pulling rows after the first one, so exactly one GRANTS edge
+    was ever written -- every seeded role came up with no permissions at
+    all, and every principal holding one resolved an empty permission set.
+    The count aggregate in the grant query forces the whole UNWIND to be
+    consumed instead.
     """
     role_maps: list[str] = []
     grant_maps: list[str] = []
@@ -803,20 +869,32 @@ async def seed_default_roles(db: graph.Graph) -> int:
         'r.priority = role.priority, '
         'r.is_default = role.is_default, '
         'r.is_system = true '
-        'WITH sum(CASE WHEN existing IS NULL THEN 1 ELSE 0 END) '
-        'AS created '
-        'UNWIND [' + ', '.join(grant_maps) + '] AS grant '
-        'MATCH (gr:Role {{slug: grant.slug}}), '
-        '(gp:Permission {{name: grant.perm}}) '
-        'MERGE (gr)-[:GRANTS]->(gp) '
-        'RETURN created LIMIT 1'
+        'RETURN sum(CASE WHEN existing IS NULL THEN 1 ELSE 0 END) '
+        'AS created'
     )
     records = await db.execute(query, params, columns=['created'])
     created_count = 0
     if records:
         raw = graph.parse_agtype(records[0].get('created'))
         created_count = int(raw or 0)
-    LOGGER.info('Seeded %d default roles', created_count)
+
+    grant_query: str = (
+        'UNWIND [' + ', '.join(grant_maps) + '] AS grant '
+        'MATCH (gr:Role {{slug: grant.slug}}) '
+        'MATCH (gp:Permission {{name: grant.perm}}) '
+        'MERGE (gr)-[:GRANTS]->(gp) '
+        'RETURN count(gp) AS granted'
+    )
+    grant_records = await db.execute(grant_query, params, columns=['granted'])
+    granted = 0
+    if grant_records:
+        raw = graph.parse_agtype(grant_records[0].get('granted'))
+        granted = int(raw or 0)
+    LOGGER.info(
+        'Seeded %d default roles with %d permission grants',
+        created_count,
+        granted,
+    )
     return created_count
 
 

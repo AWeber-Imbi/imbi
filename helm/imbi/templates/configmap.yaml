@@ -12,6 +12,10 @@ data:
   # service.internalApiUrl when running imbi-mcp or imbi-assistant
   # as separate pods.
   IMBI_INTERNAL_API_URL: {{ .Values.service.internalApiUrl | quote }}
+  # imbi-gateway reads its own upstream setting rather than the one above.
+  # Pointed at the same place: its default (http://imbi-api:8000) is a service
+  # name this chart does not create, so every action would fail to connect.
+  ACTIONS_IMBI_URL: {{ .Values.service.internalApiUrl | quote }}
   {{- if eq .Values.service.mode "scheduler" }}
   {{- if eq .Values.service.internalApiUrl "http://localhost:8000" }}
   {{- fail "service.internalApiUrl must point at imbi-api when service.mode is 'scheduler' (e.g. http://imbi-api.<namespace>.svc.cluster.local:8000) -- the default is an in-pod loopback, which in a standalone scheduler pod resolves to the scheduler itself, so every api-target firing fails while the pod reports healthy" }}
