@@ -277,6 +277,22 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete project documents',
     ),
+    (
+        'document:analytics:read',
+        'document',
+        'analytics:read',
+        'View aggregate document read analytics',
+    ),
+    # Deliberately separate from the aggregate above: a named list of who
+    # read what and for how long is a different kind of data from a count,
+    # and is additionally gated by the organization's
+    # ``document_analytics_identities`` setting.
+    (
+        'document:analytics:read_identities',
+        'document',
+        'analytics:read_identities',
+        'View which people read a document',
+    ),
     # Comment management
     (
         'comment:create',
@@ -607,6 +623,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'tag:write',
             'document:create',
             'document:read',
+            'document:analytics:read',
             'document:write',
             'document:delete',
             'comment:create',
@@ -626,6 +643,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'blueprint:read',
             'document:read',
+            'document:analytics:read',
             'document_template:read',
             'environment:read',
             'link_definition:read',
@@ -670,6 +688,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'webhook:read',
             'tag:read',
             'document:read',
+            'document:analytics:read',
             'document_template:read',
             'me:identities:manage',
         ],

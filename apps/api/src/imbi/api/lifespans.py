@@ -13,6 +13,7 @@ from collections import abc
 from imbi.api import openapi
 from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.deployment_sync import queue as deployment_sync_queue
+from imbi.api.documents import read_sweeper as document_read_sweeper
 from imbi.api.email.client import EmailClient
 from imbi.api.email.templates import TemplateManager
 from imbi.api.identity import sweeper as identity_sweeper
@@ -132,6 +133,40 @@ async def identity_refresh_hook() -> abc.AsyncGenerator[None]:
             pass
         except Exception:  # noqa: BLE001
             LOGGER.warning('Identity sweeper exited with error', exc_info=True)
+
+
+@contextlib.asynccontextmanager
+async def document_read_sweeper_hook() -> abc.AsyncGenerator[None]:
+    """Finalize abandoned document read sessions.
+
+    A reading session normally closes itself with a final `sendBeacon`
+    flush, but that is best-effort -- a killed tab or a dropped network
+    leaves the session open. This sweeper closes anything idle past
+    :data:`_document_reads.SESSION_IDLE_TIMEOUT_SECONDS` so its engaged
+    time still reaches the document's numbers.
+    """
+    try:
+        client = valkey.get_client()
+    except RuntimeError:
+        LOGGER.warning('Valkey unavailable; read sweeper not started')
+        yield None
+        return
+    stop = asyncio.Event()
+    LOGGER.info('Document read-session sweeper starting')
+    task = asyncio.create_task(
+        document_read_sweeper.run_sweeper(client, stop=stop)
+    )
+    try:
+        yield None
+    finally:
+        stop.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            LOGGER.warning('Read sweeper exited with error', exc_info=True)
 
 
 @contextlib.asynccontextmanager

@@ -84,6 +84,8 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
             'ptype_names': [],
             'tags': kwargs.get('tags', []),
             'comment_count': 0,
+            'like_count': 0,
+            'liked_by_me': False,
             'author': None,
         }
 

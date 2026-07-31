@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/segmented-control'
 import { IconTooltip } from '@/components/ui/tooltip'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useDocumentReadTracking } from '@/hooks/useDocumentReadTracking'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 import type { CommentAnchor, CommentThread } from '@/types/comments'
@@ -37,7 +38,9 @@ import { RightCommentBar } from './comments/RightCommentBar'
 import { SelectionToolbar } from './comments/SelectionToolbar'
 import { useCommentLastVisit } from './comments/useCommentLastVisit'
 import { useInlineComments } from './comments/useInlineComments'
+import { DocumentAnalyticsStrip } from './DocumentAnalyticsStrip'
 import { DocumentAttachmentBadge } from './DocumentAttachmentBadge'
+import { DocumentLikeButton } from './DocumentLikeButton'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
   documentTitle,
@@ -164,6 +167,9 @@ export function DocumentsPinboardReader({
   )
 
   const lastVisit = useCommentLastVisit(orgSlug, projectId, document.id)
+  // Engagement is only measured while this reader is mounted, so opening
+  // the document is what starts a session and leaving it ends one.
+  useDocumentReadTracking(orgSlug, document.id)
 
   // Deep-link: ?thread=<id> (e.g. from the activity feed) scrolls to and
   // flashes a page thread; for an inline one it shows + focuses the reader
@@ -329,6 +335,12 @@ export function DocumentsPinboardReader({
                 </Button>
                 <span className="bg-tertiary mx-1 h-5 w-px" />
               </div>
+              <DocumentLikeButton
+                documentId={document.id}
+                initialCount={document.like_count ?? 0}
+                initialLiked={document.liked_by_me ?? false}
+                orgSlug={orgSlug}
+              />
               <Button
                 className="gap-1.5"
                 onClick={() => setShowHistory(true)}
@@ -453,6 +465,11 @@ export function DocumentsPinboardReader({
                 </>
               )}
             </div>
+
+            <DocumentAnalyticsStrip
+              documentId={document.id}
+              orgSlug={orgSlug}
+            />
           </article>
 
           <div className="flex flex-col gap-4 lg:sticky lg:top-5">

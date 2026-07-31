@@ -49,6 +49,8 @@ _DOCUMENT_READONLY_PATHS: frozenset[str] = frozenset(
         '/project_id',
         '/attached_to',
         '/comment_count',
+        '/like_count',
+        '/liked_by_me',
         '/created_by',
         '/created_by_name',
         '/created_at',
@@ -92,6 +94,8 @@ class DocumentResponse(pydantic.BaseModel):
     attached_to: AttachmentRef | None = None
     is_pinned: bool = False
     comment_count: int = 0
+    like_count: int = 0
+    liked_by_me: bool = False
     tags: list[TagRef] = []
     version: int = 1
 
@@ -169,6 +173,8 @@ def _parse_document_row(
     document['comment_count'] = int(
         graph.parse_agtype(record['comment_count']) or 0
     )
+    document['like_count'] = int(graph.parse_agtype(record['like_count']) or 0)
+    document['liked_by_me'] = bool(graph.parse_agtype(record['liked_by_me']))
     document['created_by_name'] = (
         str(author.get('display_name', '')) or None if author else None
     )
@@ -195,7 +201,8 @@ _ATTACHMENT_MATCH: typing.LiteralString = """
 # Enrichment tail used by every query that returns a document. Runs
 # with ``n, p, team, pt, u`` in scope and emits the full column set.
 # Aggregates run stepwise so each OPTIONAL MATCH cannot multiply the
-# rows of the next.
+# rows of the next. Callers must bind ``principal`` (the caller's
+# email, or '' for an unattributed read) so ``liked_by_me`` resolves.
 _ENRICH_TAIL: typing.LiteralString = """
     OPTIONAL MATCH (p)-[:TYPE]->(ptype:ProjectType)
     WITH n, p, team, pt, u,
@@ -214,8 +221,15 @@ _ENRICH_TAIL: typing.LiteralString = """
           -[:ON_DOCUMENT]->(n)
     WITH n, p, team, pt, u, ptype_names, tags,
          count(c) AS comment_count
+    OPTIONAL MATCH (liker:User)-[:LIKED]->(n)
+    WITH n, p, team, pt, u, ptype_names, tags, comment_count,
+         count(DISTINCT liker) AS like_count
+    OPTIONAL MATCH (me:User {{email: {principal}}})-[:LIKED]->(n)
+    WITH n, p, team, pt, u, ptype_names, tags, comment_count, like_count,
+         count(me) > 0 AS liked_by_me
     OPTIONAL MATCH (author:User {{email: n.created_by}})
-    RETURN n, p, team, pt, u, ptype_names, tags, comment_count, author
+    RETURN n, p, team, pt, u, ptype_names, tags, comment_count,
+           like_count, liked_by_me, author
 """
 
 _DOCUMENT_COLUMNS: list[str] = [
@@ -227,6 +241,8 @@ _DOCUMENT_COLUMNS: list[str] = [
     'ptype_names',
     'tags',
     'comment_count',
+    'like_count',
+    'liked_by_me',
     'author',
 ]
 
@@ -510,6 +526,7 @@ async def _list_documents_impl(
     tag_slug: str | None = None,
     limit: int,
     cursor: str | None,
+    principal: str = '',
 ) -> fastapi.Response:
     if limit < 1 or limit > MAX_LIMIT:
         raise fastapi.HTTPException(
@@ -531,6 +548,7 @@ async def _list_documents_impl(
     params: dict[str, typing.Any] = {
         'org_slug': org_slug,
         'row_limit': limit + 1,
+        'principal': principal,
     }
     filters = ''
     if project_id is not None:
@@ -612,7 +630,7 @@ async def list_documents(
     request: fastapi.Request,
     org_slug: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
@@ -632,6 +650,7 @@ async def list_documents(
         request=request,
         db=db,
         org_slug=org_slug,
+        principal=auth.principal_name,
         project_id=project_id,
         project_type_slug=project_type,
         user_email=user,
@@ -647,7 +666,7 @@ async def list_project_documents(
     org_slug: str,
     project_id: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
@@ -660,6 +679,7 @@ async def list_project_documents(
         request=request,
         db=db,
         org_slug=org_slug,
+        principal=auth.principal_name,
         project_id=project_id,
         tag_slug=tag,
         limit=limit,
@@ -673,7 +693,7 @@ async def list_project_type_documents(
     org_slug: str,
     type_slug: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
@@ -686,6 +706,7 @@ async def list_project_type_documents(
         request=request,
         db=db,
         org_slug=org_slug,
+        principal=auth.principal_name,
         project_type_slug=type_slug,
         tag_slug=tag,
         limit=limit,
@@ -699,7 +720,7 @@ async def list_user_documents(
     org_slug: str,
     email: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
@@ -712,6 +733,7 @@ async def list_user_documents(
         request=request,
         db=db,
         org_slug=org_slug,
+        principal=auth.principal_name,
         user_email=email,
         tag_slug=tag,
         limit=limit,
@@ -733,6 +755,7 @@ async def fetch_document(
     org_slug: str,
     document_id: str,
     project_id: str | None = None,
+    principal: str = '',
 ) -> dict[str, typing.Any] | None:
     scope, scope_params = _scope_filter(project_id)
     query: str = (
@@ -751,6 +774,7 @@ async def fetch_document(
         {
             'document_id': document_id,
             'org_slug': org_slug,
+            'principal': principal,
             **scope_params,
         },
         columns=_DOCUMENT_COLUMNS,
@@ -765,7 +789,7 @@ async def get_org_document(
     org_slug: str,
     document_id: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
@@ -776,6 +800,7 @@ async def get_org_document(
         db,
         org_slug,
         document_id,
+        principal=auth.principal_name,
         detail=f'Document {document_id!r} not found',
     )
 
@@ -788,7 +813,7 @@ async def get_document(
     project_id: str,
     document_id: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('document:read')),
     ],
@@ -800,6 +825,7 @@ async def get_document(
         org_slug,
         document_id,
         project_id,
+        principal=auth.principal_name,
         detail=f'Document {document_id!r} not found',
     )
 

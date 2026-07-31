@@ -319,8 +319,22 @@ SEMVER_TAG_FORMAT: typing.Final[TagFormat] = TagFormat(
 )
 
 
+#: Who may see *which people* read a document, as opposed to how many.
+#: Aggregate readership is an operational signal; a named list of who
+#: read what and for how long is surveillance-shaped, so it is gated
+#: separately from the aggregate and defaults to the narrowest setting
+#: that still lets an author learn who reads their own work.
+DocumentAnalyticsIdentities = typing.Literal[
+    'enabled',  # anyone holding document:analytics:read_identities
+    'authors_only',  # that, plus the document's own author
+    'disabled',  # nobody; aggregate counts only
+]
+
+
 class Organization(Node):
     tag_formats: list[TagFormat] = []
+
+    document_analytics_identities: DocumentAnalyticsIdentities = 'authors_only'
 
 
 BelongsToOrganization = typing.Annotated[
