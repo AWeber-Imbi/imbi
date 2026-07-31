@@ -255,6 +255,18 @@ class Graph:
         embeddings.close()
         self.opened = False
 
+    def _require_open(self) -> None:
+        """Raise unless the pool has been opened.
+
+        The pool is built with ``open=False``, so acquiring a
+        connection from an unopened one blocks until ``PoolTimeout``
+        rather than failing.  Every entry point that reaches the pool
+        checks this first so the misuse surfaces immediately.
+
+        """
+        if not self.opened:
+            raise RuntimeError('Graph pool is not open')
+
     # ----------------------------------------------------------
     # Graph CRUD
     # ----------------------------------------------------------
@@ -276,8 +288,7 @@ class Graph:
         then embeddings are cleaned up on the same connection.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
         stmt = cypher.delete(node)
         async with self.pool.connection() as conn:
             await self._execute_on(
@@ -395,8 +406,7 @@ class Graph:
         nothing.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
         vector = await embeddings.aembed_one(
             query,
             model_name,
@@ -557,8 +567,7 @@ class Graph:
         nodes with raw Cypher instead of ``delete``.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
         async with self.pool.connection() as conn:
             await self._delete_embeddings_where(
                 conn,
@@ -596,8 +605,7 @@ class Graph:
         rather than failing.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
         embed_settings = settings.Embeddings()
         if not embed_settings.enabled:
             return
@@ -770,8 +778,7 @@ class Graph:
         a manual ``try/except`` calling ``rollback()`` would.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
         async with self.pool.connection() as conn:
             async with conn.transaction():
                 for stmt in statements:
@@ -921,8 +928,7 @@ class Graph:
         returns.
 
         """
-        if not self.opened:
-            raise RuntimeError('Graph pool is not open')
+        self._require_open()
 
         async with self.pool.connection() as conn:
             return await self._execute_on(

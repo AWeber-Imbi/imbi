@@ -47,8 +47,23 @@ async def index(
     Failures are logged and swallowed, which suits a best-effort call
     alongside a graph write; pass ``raise_on_error`` when indexing *is*
     the job (a reindex) and silent failure would look like success.
+    That covers the re-read as well as the embedding: a lookup that
+    raises out of a background task would abort the tasks queued behind
+    it, which is too much collateral for an index refresh.
     """
-    nodes = await db.match(node_type, {'id': node_id})
+    try:
+        nodes = await db.match(node_type, {'id': node_id})
+    except Exception:
+        if raise_on_error:
+            raise
+        LOGGER.warning(
+            'Failed to look up %s id=%s to index; a search-reindex '
+            'will pick it up',
+            node_type.__name__,
+            node_id,
+            exc_info=True,
+        )
+        return False
     if not nodes:
         LOGGER.debug(
             'Skipping index of %s id=%s; the node is gone',

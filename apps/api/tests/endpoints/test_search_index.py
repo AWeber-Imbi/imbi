@@ -62,6 +62,37 @@ class IndexTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(mock_db.embed_node.await_args.kwargs['raise_on_error'])
 
+    async def test_index_swallows_a_failed_lookup(self) -> None:
+        """A failed re-read is best-effort like a failed embedding.
+
+        Background tasks run in sequence, so raising here would abort
+        whatever is queued behind an index refresh.
+        """
+        mock_db = mock.AsyncMock()
+        mock_db.match.side_effect = RuntimeError('boom')
+
+        with self.assertLogs(_search_index.LOGGER, level='WARNING') as logs:
+            embedded = await _search_index.index(
+                mock_db, models.Document, 'doc-1'
+            )
+
+        self.assertFalse(embedded)
+        mock_db.embed_node.assert_not_awaited()
+        self.assertIn('search-reindex', logs.output[0])
+
+    async def test_index_raises_a_failed_lookup_when_strict(self) -> None:
+        """A reindex must not count an unreadable node as indexed."""
+        mock_db = mock.AsyncMock()
+        mock_db.match.side_effect = RuntimeError('boom')
+
+        with self.assertRaises(RuntimeError):
+            await _search_index.index(
+                mock_db,
+                models.Document,
+                'doc-1',
+                raise_on_error=True,
+            )
+
 
 class DropTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_drop_deletes_by_label_and_id(self) -> None:
