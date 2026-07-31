@@ -241,8 +241,11 @@ ORDER BY (task_id, run_id)
 -- server, both ways. Keying on `fired_at`, which every row of a run shares,
 -- expires the pair together instead. The cost is that a run stranded in
 -- `running` by a replica that died mid-flight also ages out at 90 days rather
--- than being kept as evidence.
-TTL fired_at + INTERVAL 90 DAY;
+-- than being kept as evidence. `toDateTime` is required rather than cosmetic:
+-- a TTL expression must yield Date or DateTime, and `DateTime64 + INTERVAL`
+-- yields DateTime64, which the server rejects with BAD_TTL_EXPRESSION at
+-- CREATE time. Matches the document analytics tables below.
+TTL toDateTime(fired_at) + INTERVAL 90 DAY;
 """
 enabled = true
 
