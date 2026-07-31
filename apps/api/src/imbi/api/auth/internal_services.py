@@ -25,6 +25,8 @@ import os
 import secrets
 import typing
 
+import psycopg
+
 from imbi.api import models
 from imbi.api.auth import password
 from imbi.common import graph
@@ -275,22 +277,21 @@ async def _write_client_credential(
     stored hash is what has to follow it.
     """
     secret_hash = await asyncio.to_thread(password.hash_password, secret)
-    await _reject_foreign_owner(
-        db, 'ClientCredential', 'client_id', client_id, service.slug
-    )
-    updated = await db.execute(
+    repoint: typing.LiteralString = (
         'MATCH (c:ClientCredential {{client_id: {client_id}}})'
         '-[:OWNED_BY]->(s:ServiceAccount {{slug: {slug}}})'
         ' SET c.client_secret_hash = {secret_hash}, c.revoked = false'
-        ' RETURN c',
-        {
-            'client_id': client_id,
-            'slug': service.slug,
-            'secret_hash': secret_hash,
-        },
-        ['c'],
+        ' RETURN c'
     )
-    if updated:
+    params = {
+        'client_id': client_id,
+        'slug': service.slug,
+        'secret_hash': secret_hash,
+    }
+    await _reject_foreign_owner(
+        db, 'ClientCredential', 'client_id', client_id, service.slug
+    )
+    if await db.execute(repoint, params, ['c']):
         return
     credential = models.ClientCredential(
         client_id=client_id,
@@ -303,7 +304,20 @@ async def _write_client_credential(
     )
     props = credential.model_dump(mode='json')
     props.pop('service_account', None)
-    await _create_owned_node(db, 'ClientCredential', props, service.slug)
+    try:
+        await _create_owned_node(db, 'ClientCredential', props, service.slug)
+    except psycopg.errors.UniqueViolation:
+        # ``client_id`` carries a unique index (see schemata.toml), so
+        # losing this race means a concurrent setup created the node
+        # first -- two `all`-mode replicas booting together both run
+        # `setup-service-accounts`. Re-point what they created instead
+        # of failing: concurrent runs have to end up as idempotent as
+        # sequential ones.
+        await _reject_foreign_owner(
+            db, 'ClientCredential', 'client_id', client_id, service.slug
+        )
+        if not await db.execute(repoint, params, ['c']):
+            raise
 
 
 async def _ensure_api_key(
@@ -353,20 +367,19 @@ async def _write_api_key(
 ) -> None:
     """Create the API key, or point an existing one at *secret*."""
     key_hash = await asyncio.to_thread(password.hash_password, secret)
-    await _reject_foreign_owner(db, 'APIKey', 'key_id', key_id, service.slug)
-    updated = await db.execute(
+    repoint: typing.LiteralString = (
         'MATCH (k:APIKey {{key_id: {key_id}}})'
         '-[:OWNED_BY]->(s:ServiceAccount {{slug: {slug}}})'
         ' SET k.key_hash = {key_hash}, k.revoked = false'
-        ' RETURN k',
-        {
-            'key_id': key_id,
-            'slug': service.slug,
-            'key_hash': key_hash,
-        },
-        ['k'],
+        ' RETURN k'
     )
-    if updated:
+    params = {
+        'key_id': key_id,
+        'slug': service.slug,
+        'key_hash': key_hash,
+    }
+    await _reject_foreign_owner(db, 'APIKey', 'key_id', key_id, service.slug)
+    if await db.execute(repoint, params, ['k']):
         return
     api_key = models.APIKey(
         key_id=key_id,
@@ -379,7 +392,16 @@ async def _write_api_key(
     )
     props = api_key.model_dump(mode='json')
     props.pop('user', None)
-    await _create_owned_node(db, 'APIKey', props, service.slug)
+    try:
+        await _create_owned_node(db, 'APIKey', props, service.slug)
+    except psycopg.errors.UniqueViolation:
+        # ``key_id`` is uniquely indexed too -- same race, same handling
+        # as the client credential above.
+        await _reject_foreign_owner(
+            db, 'APIKey', 'key_id', key_id, service.slug
+        )
+        if not await db.execute(repoint, params, ['k']):
+            raise
 
 
 async def _reject_foreign_owner(

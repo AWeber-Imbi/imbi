@@ -4,6 +4,8 @@ import typing
 import unittest
 from unittest import mock
 
+import psycopg
+
 from imbi.api.auth import internal_services
 
 SCHEDULER = internal_services.INTERNAL_SERVICES[0]
@@ -60,6 +62,38 @@ class FakeGraph:
     def issued(self, fragment: str) -> list[str]:
         """Return the recorded queries containing *fragment*."""
         return [query for query in self.queries if fragment in query]
+
+
+class RacingGraph(FakeGraph):
+    """A graph where a concurrent writer wins the ``CREATE``.
+
+    Two ``all``-mode replicas booting together both run
+    ``setup-service-accounts``, so both can pass the foreign-owner check
+    before either writes. The identifier is uniquely indexed, so the
+    loser's ``CREATE`` raises rather than duplicating: the re-point finds
+    nothing on the first pass, the ``CREATE`` raises the way a lost race
+    does, and the re-point then finds what the winner created.
+    """
+
+    def __init__(self, repoint: str, create: str) -> None:
+        super().__init__({})
+        self._repoint = repoint
+        self._create = create
+        self.lost_race = False
+
+    async def execute(
+        self,
+        query: str,
+        params: dict[str, typing.Any] | None = None,
+        columns: list[str] | None = None,
+    ) -> list[dict[str, object]]:
+        self.queries.append(query)
+        if self._create in query:
+            self.lost_race = True
+            raise psycopg.errors.UniqueViolation('duplicate key value')
+        if self._repoint in query:
+            return [{'c': 'credential'}] if self.lost_race else []
+        return []
 
 
 class InternalServiceSeedTestCase(unittest.IsolatedAsyncioTestCase):
@@ -212,6 +246,28 @@ class ClientCredentialTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(db.issued('CREATE (n:ClientCredential'), [])
         self.assertEqual(db.issued('SET c.client_secret_hash'), [])
 
+    async def test_concurrent_create_repoints_instead_of_failing(
+        self,
+    ) -> None:
+        """Losing the CREATE race re-points the winner's node.
+
+        ``client_id`` is uniquely indexed, so a concurrent seed cannot
+        duplicate it -- but without handling, the loser surfaced a raw
+        UniqueViolation and setup exited non-zero for a credential that
+        by then existed and was correct.
+        """
+        db = RacingGraph(
+            'SET c.client_secret_hash', 'CREATE (n:ClientCredential'
+        )
+
+        await internal_services._write_client_credential(
+            db, SCHEDULER, 'cc_supplied', 'shhh'
+        )
+
+        self.assertTrue(db.lost_race)
+        # Once before the CREATE, once after losing the race to it.
+        self.assertEqual(len(db.issued('SET c.client_secret_hash')), 2)
+
     async def test_existing_credential_is_not_rotated(self) -> None:
         """Re-seeding leaves a live credential exactly as it was."""
         db = FakeGraph({'RETURN count(c) AS live': [{'live': 1}]})
@@ -349,6 +405,19 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('ik_taken', str(ctx.exception))
         self.assertEqual(db.issued('CREATE (n:APIKey'), [])
         self.assertEqual(db.issued('SET k.key_hash'), [])
+
+    async def test_concurrent_create_repoints_instead_of_failing(
+        self,
+    ) -> None:
+        """Same lost-race handling as the client credential path."""
+        db = RacingGraph('SET k.key_hash', 'CREATE (n:APIKey')
+
+        await internal_services._write_api_key(
+            db, GATEWAY, 'ik_abc123', 's3cret'
+        )
+
+        self.assertTrue(db.lost_race)
+        self.assertEqual(len(db.issued('SET k.key_hash')), 2)
 
     async def test_malformed_key_raises(self) -> None:
         """A token no request could authenticate is refused at seed time."""
