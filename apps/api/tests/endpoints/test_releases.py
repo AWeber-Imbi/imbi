@@ -73,6 +73,14 @@ class _ReleasesTestBase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        # The background search-index task re-reads the release it just
+        # wrote, so give every test a node for that lookup to return.
+        self.persisted_release = models.Release.model_construct(
+            id=RELEASE_ID,
+            title='Initial release',
+            description='First cut',
+        )
+        self.mock_db.match.return_value = [self.persisted_release]
         # The create path enriches a tagged, note-less release from the
         # remote release body; that resolves the deployment capability and
         # makes its own DB/HTTP calls. Neutralize it here so create-logic
@@ -137,11 +145,13 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(body['id'], RELEASE_ID)
         self.assertEqual(body['created_by'], 'alice@example.com')
         # Releases are written as raw Cypher, so the endpoint owns
-        # keeping them searchable.
-        node = self.mock_db.embed_node.await_args.args[0]
-        self.assertEqual(RELEASE_ID, node.id)
-        self.assertEqual('Initial release', node.title)
-        self.assertEqual('First cut', node.description)
+        # keeping them searchable. The task re-reads the release.
+        self.mock_db.match.assert_awaited_once_with(
+            models.Release, {'id': RELEASE_ID}
+        )
+        self.assertIs(
+            self.persisted_release, self.mock_db.embed_node.await_args.args[0]
+        )
 
     def test_create_with_explicit_created_by(self) -> None:
         self.mock_db.execute.side_effect = [
@@ -570,8 +580,12 @@ class PatchReleaseTestCase(_ReleasesTestBase):
                 ],
             )
         self.assertEqual(response.status_code, 200)
-        node = self.mock_db.embed_node.await_args.args[0]
-        self.assertEqual('Updated', node.title)
+        self.mock_db.match.assert_awaited_once_with(
+            models.Release, {'id': RELEASE_ID}
+        )
+        self.assertIs(
+            self.persisted_release, self.mock_db.embed_node.await_args.args[0]
+        )
 
     def test_patch_links_only_skips_reindex(self) -> None:
         """Embedding is skipped when no embeddable field changed.

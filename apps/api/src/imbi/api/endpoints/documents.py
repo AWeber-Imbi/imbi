@@ -394,8 +394,6 @@ async def _create_document_impl(
         db,
         models.Document,
         document_id,
-        title=data.title,
-        content=data.content,
     )
 
     document = await fetch_document(db, org_slug, document_id)
@@ -1027,8 +1025,6 @@ async def apply_document_update(
             db,
             models.Document,
             document_id,
-            title=title,
-            content=content,
         )
 
     document = await fetch_document(db, org_slug, document_id, project_id)

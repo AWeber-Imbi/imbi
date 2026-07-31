@@ -589,8 +589,6 @@ async def create_release(
         db,
         models.Release,
         props['id'],
-        title=props['title'],
-        description=description,
     )
     return _release_to_response(release_data, project_id)
 
@@ -1014,8 +1012,6 @@ async def patch_release(
             db,
             models.Release,
             release_id,
-            title=merged_title,
-            description=merged_description,
         )
     return _release_to_response(release_data, project_id)
 

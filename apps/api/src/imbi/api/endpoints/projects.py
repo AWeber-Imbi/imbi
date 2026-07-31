@@ -1437,8 +1437,6 @@ async def create_project(
         db,
         models.Project,
         project_id,
-        name=props['name'],
-        description=props.get('description'),
     )
     return ProjectMutationResponse(
         **ProjectResponse.model_validate(project_data).model_dump(),
@@ -2913,8 +2911,6 @@ async def patch_project(
             db,
             models.Project,
             project_id,
-            name=response.name,
-            description=response.description,
         )
     await score_queue.enqueue_recompute(
         valkey_client, project_id, 'attribute_change'

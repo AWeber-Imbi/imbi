@@ -8,31 +8,57 @@ from imbi.common import models
 
 
 class IndexTestCase(unittest.IsolatedAsyncioTestCase):
-    async def test_index_builds_the_node_from_fields(self) -> None:
-        mock_db = mock.AsyncMock()
-        await _search_index.index(
-            mock_db,
-            models.Document,
-            'doc-1',
-            title='Runbook',
-            content='Restart the thing.',
+    async def test_index_embeds_the_re_read_node(self) -> None:
+        """The node is re-read at task time, not taken from the caller.
+
+        Two concurrent edits schedule two background tasks in no
+        particular order, so embedding whatever the caller wrote lets
+        the older task run last and leave the index holding stale text.
+        Re-reading makes last-writer-wins correct either way round.
+        """
+        persisted = models.Document.model_construct(
+            id='doc-1',
+            title='Runbook (v2)',
+            content='The newer content.',
         )
-        node = mock_db.embed_node.await_args.args[0]
-        self.assertEqual('doc-1', node.id)
-        self.assertEqual('Runbook', node.title)
-        self.assertEqual('Restart the thing.', node.content)
+        mock_db = mock.AsyncMock()
+        mock_db.match.return_value = [persisted]
+
+        embedded = await _search_index.index(mock_db, models.Document, 'doc-1')
+
+        self.assertTrue(embedded)
+        mock_db.match.assert_awaited_once_with(
+            models.Document, {'id': 'doc-1'}
+        )
+        self.assertIs(persisted, mock_db.embed_node.await_args.args[0])
         self.assertFalse(
             mock_db.embed_node.await_args.kwargs['raise_on_error']
         )
 
+    async def test_index_skips_a_node_that_is_gone(self) -> None:
+        """A node deleted before the task runs is skipped, not an error.
+
+        ``drop`` has already cleared its embedding rows, so there is
+        nothing to do and nothing to report.
+        """
+        mock_db = mock.AsyncMock()
+        mock_db.match.return_value = []
+
+        embedded = await _search_index.index(mock_db, models.Document, 'doc-1')
+
+        self.assertFalse(embedded)
+        mock_db.embed_node.assert_not_awaited()
+
     async def test_index_forwards_raise_on_error(self) -> None:
         mock_db = mock.AsyncMock()
+        mock_db.match.return_value = [
+            models.Document.model_construct(id='doc-1', title='Runbook')
+        ]
         await _search_index.index(
             mock_db,
             models.Document,
             'doc-1',
             raise_on_error=True,
-            title='Runbook',
         )
         self.assertTrue(mock_db.embed_node.await_args.kwargs['raise_on_error'])
 

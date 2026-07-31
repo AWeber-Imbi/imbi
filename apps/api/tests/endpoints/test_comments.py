@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from apps.api.tests import support
 from imbi.api import models
 from imbi.common import graph
+from imbi.common import models as common_models
 
 _BASE = '/organizations/engineering/projects/proj-abc/documents/doc-1/comments'
 
@@ -910,18 +911,27 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             [{'id': 'thread-1'}],
             [self._thread_row()],
         ]
+        # The index task re-reads the comment rather than embedding the
+        # body the request supplied.
+        persisted = common_models.Comment.model_construct(
+            id='c1', body='First!'
+        )
+        self.mock_db.match.return_value = [persisted]
         with mock.patch(
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
             response = self.client.post(_BASE, json={'body': 'First!'})
         self.assertEqual(response.status_code, 201)
-        node = self.mock_db.embed_node.await_args.args[0]
-        self.assertEqual('First!', node.body)
+        self.assertIs(persisted, self.mock_db.embed_node.await_args.args[0])
 
     def test_create_reply_indexes_the_comment(self) -> None:
         self.mock_db.execute.return_value = [
             {'c': self._comment(id='c2', body='reply')}
         ]
+        persisted = common_models.Comment.model_construct(
+            id='c2', body='reply'
+        )
+        self.mock_db.match.return_value = [persisted]
         with mock.patch(
             'imbi.common.graph.parse_agtype', side_effect=lambda x: x
         ):
@@ -929,8 +939,7 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
                 f'{_BASE}/thread-1/comments', json={'body': 'reply'}
             )
         self.assertEqual(response.status_code, 201)
-        node = self.mock_db.embed_node.await_args.args[0]
-        self.assertEqual('reply', node.body)
+        self.assertIs(persisted, self.mock_db.embed_node.await_args.args[0])
 
     def test_delete_comment_removes_its_embeddings(self) -> None:
         self.mock_db.execute.side_effect = [

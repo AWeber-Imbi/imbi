@@ -526,7 +526,6 @@ async def create_comment_thread(
         db,
         models.Comment,
         comment_id,
-        body=data.body,
     )
     return thread
 
@@ -609,7 +608,6 @@ async def create_reply(
         db,
         models.Comment,
         comment_id,
-        body=data.body,
     )
     return _parse_comment(records[0]['c'])
 
@@ -780,7 +778,6 @@ async def patch_comment(
             db,
             models.Comment,
             comment_id,
-            body=update.body,
         )
     return _parse_comment(records[0]['c'])
 

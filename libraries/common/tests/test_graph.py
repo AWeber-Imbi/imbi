@@ -610,6 +610,25 @@ class EmbedNodeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await graph.Graph().delete_node_embeddings('Document', 'doc-1')
 
+    async def test_embed_node_requires_open_pool(self) -> None:
+        """An unopened pool fails fast instead of blocking on checkout.
+
+        ``Graph`` builds its pool with ``open=False``, so acquiring a
+        connection from one waits out ``PoolTimeout`` rather than
+        raising -- the same guard ``search`` and
+        ``delete_node_embeddings`` already carry.
+        """
+        with self.assertRaises(RuntimeError):
+            await graph.Graph().embed_node(
+                self._node(),
+                raise_on_error=True,
+            )
+
+    async def test_embed_node_unopened_pool_is_swallowed(self) -> None:
+        """The best-effort path degrades to a log line, and still no hang."""
+        with self.assertLogs('imbi.common.graph', level='WARNING'):
+            await graph.Graph().embed_node(self._node())
+
     async def test_delete_node_embeddings_deletes_every_row(self) -> None:
         g = graph.Graph()
         g.opened = True

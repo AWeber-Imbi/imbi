@@ -590,7 +590,14 @@ class Graph:
         embeddable fields.  Errors propagate; ``_auto_embed`` is the
         swallowing wrapper.
 
+        Checks the pool the way ``search`` and ``delete_node_embeddings``
+        do: the pool is built with ``open=False``, so acquiring a
+        connection from an unopened one blocks until ``PoolTimeout``
+        rather than failing.
+
         """
+        if not self.opened:
+            raise RuntimeError('Graph pool is not open')
         embed_settings = settings.Embeddings()
         if not embed_settings.enabled:
             return
