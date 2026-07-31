@@ -19,12 +19,29 @@ shared with the rest of the platform and keep their platform-wide names.
 Without the service-account credentials the service still starts and still
 schedules, but no `api` target can resolve a principal, so every such firing is
 recorded as `skipped`. The container entrypoint therefore refuses to start in
-`scheduler` mode without them, and leaves the scheduler out of `all` mode until
-they are set.
+`scheduler` mode without them.
 
-The account is not seeded. Create a service account in the UI, grant it the
-`scheduled_task:*` permissions plus whatever the tasks it runs will need, and
-issue it a client credential.
+The account itself is seeded. `imbi-api setup` — or `imbi-api
+setup-service-accounts` on an install that predates it — creates the
+`imbi-scheduler` service account, gives it the seeded `imbi-scheduler` role, and
+either adopts the credential these two variables name or generates one and
+prints it once. Set them before running setup and they are what the account
+authenticates with; leave them unset and setup tells you what to set them to.
+
+Set both or neither. A client id without its secret cannot be verified and a
+secret without its id names nothing to verify it against, so half a pair is
+refused rather than quietly replaced by a generated credential the service does
+not hold.
+
+In `all` mode the entrypoint provisions the pair itself when neither variable is
+set, so a single-container deployment runs the scheduler with no credential setup
+at all. Setting only one there is the same error, and the entrypoint reports it
+and leaves the scheduler out.
+
+The seeded role grants `scheduled_task:*` plus every `:read` — enough to manage
+the schedule and to inspect what a task reads, and deliberately not enough to
+write anything else. A task whose `api` target *writes* needs that permission
+added to the `imbi-scheduler` role first; until then it gets a 403.
 
 ## Reaching imbi-api
 

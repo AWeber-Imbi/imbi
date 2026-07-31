@@ -107,9 +107,10 @@ case "$IMBI_SERVICE" in
         require_gateway_vars
         # Slack bot is optional in 'all' mode: it auto-enables only when
         # ANTHROPIC_API_KEY and the SLACK_* tokens are present, so its vars
-        # are not required here. The scheduler is optional on the same terms:
-        # it needs its own service-account credentials to run anything, so
-        # without them it would only skip.
+        # are not required here. The scheduler's service-account credentials
+        # are not required either, but for the opposite reason: this mode
+        # seeds them itself when the environment does not supply them (see
+        # `provision_internal_credentials`).
         ;;
     api)
         require_api_vars
@@ -236,8 +237,78 @@ start_caddy() {
     caddy run --config /etc/caddy/Caddyfile &
 }
 
+random_token() {
+    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "${1:-43}"
+}
+
+# 'all' mode only. imbi-scheduler and imbi-gateway authenticate to imbi-api
+# as their own service accounts, so both need a credential before they can
+# do anything: without one every api-target firing is skipped, and every
+# gateway action gets a 401. `setup-service-accounts` seeds whatever the
+# environment supplies, so a deployment that already holds these secrets
+# keeps them. One that does not gets a pair minted here -- in a single
+# container nothing outside it ever needs to know the values, so generating
+# them per boot is cheaper than asking an operator to invent them.
+provision_internal_credentials() {
+    minted_scheduler=0
+    minted_gateway=0
+    # Both halves or neither. Minting on an empty client id alone would
+    # overwrite a secret the operator did set, and `setup-service-accounts`
+    # seeds what the environment holds -- so the value they meant to be in
+    # use would be replaced by a generated one without anything saying so.
+    if [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] && \
+       [ -z "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
+        # A fixed client_id so a restart re-points the same credential
+        # instead of accumulating one node per boot.
+        export IMBI_SCHEDULER_SA_CLIENT_ID="cc_imbi_scheduler_all_mode"
+        IMBI_SCHEDULER_SA_CLIENT_SECRET="$(random_token)"
+        export IMBI_SCHEDULER_SA_CLIENT_SECRET
+        minted_scheduler=1
+    elif [ -z "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] || \
+         [ -z "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
+        echo "ERROR: set IMBI_SCHEDULER_SA_CLIENT_ID and IMBI_SCHEDULER_SA_CLIENT_SECRET together, or neither" >&2
+        return 1
+    fi
+    if [ -z "${ACTIONS_IMBI_TOKEN:-}" ]; then
+        # A fixed key_id for the same reason as the client_id above: with a
+        # random one, `_write_api_key` matches nothing on the next boot and
+        # creates another APIKey node, leaving a live unrevoked credential
+        # behind per restart. No underscore past the `ik_` prefix -- the
+        # token is split on the first two, so one here would land inside
+        # the key_id and change where the secret starts.
+        ACTIONS_IMBI_TOKEN="ik_imbigatewayallmode_$(random_token)"
+        export ACTIONS_IMBI_TOKEN
+        minted_gateway=1
+    fi
+    if imbi-api setup-service-accounts; then
+        return 0
+    fi
+    # Seeding failed, so anything minted above authenticates nobody. Drop
+    # it rather than hand a service a credential the database has never
+    # heard of: "not configured" names the real problem, a 401 does not.
+    if [ "$minted_scheduler" = 1 ]; then
+        unset IMBI_SCHEDULER_SA_CLIENT_ID IMBI_SCHEDULER_SA_CLIENT_SECRET
+    fi
+    if [ "$minted_gateway" = 1 ]; then
+        unset ACTIONS_IMBI_TOKEN
+    fi
+    return 1
+}
+
 case "$IMBI_SERVICE" in
     all)
+        # imbi-gateway's default upstream is the service name imbi-api, which
+        # in a single container resolves to nothing; imbi-api is right here.
+        export ACTIONS_IMBI_URL="${ACTIONS_IMBI_URL:-http://localhost:8000}"
+        # Before any service starts: imbi-gateway reads ACTIONS_IMBI_TOKEN
+        # when it handles its first action, and imbi-scheduler its client
+        # credential at every firing.
+        if provision_internal_credentials; then
+            scheduler_configured=1
+        else
+            scheduler_configured=0
+            echo "WARNING: could not seed internal service accounts; run 'imbi-api setup' first" >&2
+        fi
         start_api
         start_assistant
         start_gateway
@@ -253,15 +324,20 @@ case "$IMBI_SERVICE" in
         else
             echo "imbi-slackbot disabled (needs SLACK_APP_TOKEN, SLACK_BOT_TOKEN, ANTHROPIC_API_KEY)"
         fi
-        # Optional on the same terms as the slack bot: without its own
-        # service-account credentials every api-target firing would resolve no
-        # principal and be skipped, so a scheduler that cannot run anything is
-        # not started rather than left logging skips forever.
-        if [ -n "${IMBI_SCHEDULER_SA_CLIENT_ID:-}" ] && \
-           [ -n "${IMBI_SCHEDULER_SA_CLIENT_SECRET:-}" ]; then
+        # `provision_internal_credentials` above seeds or adopts the
+        # scheduler's service-account credential, so the only case left is
+        # one where seeding itself failed. Starting then would leave the
+        # scheduler skipping every api-target firing for want of a
+        # principal, so it stays out.
+        #
+        # Seeding is one call for both services, so a bad ACTIONS_IMBI_TOKEN
+        # holds the scheduler back even when its own credential was fine.
+        # Hence the wording: the error above names which one to fix, and
+        # claiming the scheduler's credential failed would be wrong.
+        if [ "$scheduler_configured" = 1 ]; then
             start_scheduler
         else
-            echo "imbi-scheduler disabled (needs IMBI_SCHEDULER_SA_CLIENT_ID, IMBI_SCHEDULER_SA_CLIENT_SECRET)"
+            echo "imbi-scheduler disabled (internal service account seeding failed; see the error above)"
         fi
         start_caddy
         ;;

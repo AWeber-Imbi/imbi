@@ -78,6 +78,19 @@ spec:
                   key: scheduler-sa-client-secret
                   optional: true
             {{- end }}
+            {{- if or .Values.gateway.serviceAccount.token .Values.existingSecret }}
+            {{- /* Optional for the same reason as the scheduler keys above: a
+                   deployment that does not run the gateway has no reason to
+                   define it, and a required missing key blocks the pod. In
+                   'all' mode the entrypoint seeds one itself when this is
+                   absent. */}}
+            - name: ACTIONS_IMBI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: gateway-sa-token
+                  optional: true
+            {{- end }}
             {{- if and .Values.storage.accessKey .Values.storage.secretKey }}
             - name: S3_ACCESS_KEY
               valueFrom:

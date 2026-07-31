@@ -13,13 +13,14 @@ replicaCount: 1
 # Use the matching .service.<name>.replicas value to scale that service.
 service:
   mode: all
-  # Internal upstream URL imbi-mcp, imbi-assistant, and imbi-scheduler use
-  # to reach imbi-api. The default works for "all" and "api" modes; override
-  # when running "mcp", "assistant", or "scheduler" as separate pods (e.g.
-  # http://imbi-api.<namespace>.svc.cluster.local:8000). In "scheduler" mode
-  # the chart fails to render if this is left at the loopback default: there
-  # it resolves to the scheduler's own pod, and the resulting pod reports
-  # healthy while every api-target firing fails.
+  # Internal upstream URL imbi-mcp, imbi-assistant, imbi-scheduler, and
+  # imbi-gateway use to reach imbi-api. The default works for "all" and "api"
+  # modes; override when running "mcp", "assistant", "scheduler", or "gateway"
+  # as separate pods (e.g.
+  # http://imbi-api.<namespace>.svc.cluster.local:8000). In "scheduler" and
+  # "gateway" modes the chart fails to render if this is left at the loopback
+  # default: there it resolves to that pod itself, and the pod reports healthy
+  # while every api-target firing (or gateway action) fails.
   internalApiUrl: "http://localhost:8000"
   # imbi-api's *public* URL, whose path component is the prefix it mounts
   # its routes under. imbi-scheduler re-derives that prefix to build the
@@ -57,9 +58,30 @@ scheduler:
   # The scheduler runs every task as its own service account (ADR 0002 removed
   # the per-task credential store). Without these it starts and schedules, but
   # resolves no principal for an api target, so every such firing is skipped.
+  #
+  # `imbi-api setup` seeds the account to match whatever is set here, so these
+  # are values to invent, not ones to copy back out of Imbi. Left empty, setup
+  # generates a pair and prints it once for you to paste in.
+  #
+  # Both or neither: one alone is refused rather than ignored, since seeding a
+  # generated credential instead would leave the scheduler holding a value that
+  # authenticates nobody. In "all" mode that also stops the entrypoint from
+  # provisioning, so a half-filled pair here (or a `existingSecret` carrying
+  # only one of the two keys) leaves the scheduler out entirely.
   serviceAccount:
     clientId: ""
     clientSecret: ""
+
+# Gateway configuration
+gateway:
+  # The gateway calls back into imbi-api to patch projects and record releases,
+  # authenticating with this API key (the `ik_<id>_<secret>` form); patch
+  # attribution is this key's identity. Unset, the gateway starts and serves
+  # webhooks but every action it takes gets a 401.
+  #
+  # Seeded by `imbi-api setup` exactly like the scheduler credential above.
+  serviceAccount:
+    token: ""
 
 # Optional: reference an existing secret instead of specifying values above.
 # The secret must contain keys: jwt-secret, encryption-key, clickhouse-url,
@@ -71,9 +93,16 @@ scheduler:
 #   - s3-access-key, s3-secret-key when storage.accessKey is set
 # Those two refs are not optional, so a secret missing a key the deployment
 # asks for will fail the pod. The scheduler's scheduler-sa-client-id and
-# scheduler-sa-client-secret are read whenever existingSecret is set, but are
-# marked optional, so omitting them only leaves the scheduler unable to
-# resolve a principal for api targets.
+# scheduler-sa-client-secret are read whenever existingSecret is set, as is the
+# gateway's gateway-sa-token, and all three are marked optional -- so what a
+# missing one costs depends on the mode:
+#   - service.mode "scheduler": require_scheduler_vars() demands both scheduler
+#     keys, so the container exits at startup and the pod CrashLoopBackOffs.
+#   - service.mode "all": neither is required. The entrypoint seeds a credential
+#     for each service itself when the environment does not supply one.
+#   - any other mode: nothing reads them, and nothing is affected.
+# gateway-sa-token is never required: without it the gateway serves webhooks and
+# every action it takes gets a 401.
 existingSecret: ""
 
 ingress:

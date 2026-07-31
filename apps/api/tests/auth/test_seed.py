@@ -88,7 +88,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
     """Test default role seeding functionality."""
 
     async def test_seed_default_roles_creates_all(self) -> None:
-        """Verify all 3 default roles are created."""
+        """Verify every default role is created."""
         mock_db = mock.AsyncMock()
         mock_db.execute.return_value = [{'created': len(seed.DEFAULT_ROLES)}]
 
@@ -99,7 +99,8 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             count = await seed.seed_default_roles(mock_db)
 
         self.assertEqual(count, len(seed.DEFAULT_ROLES))
-        mock_db.execute.assert_awaited_once()
+        # One statement for the roles, a second for their GRANTS edges.
+        self.assertEqual(mock_db.execute.await_count, 2)
 
     async def test_seed_default_roles_idempotent(self) -> None:
         """Second run creates no duplicate roles."""
@@ -113,14 +114,50 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             count = await seed.seed_default_roles(mock_db)
 
         self.assertEqual(count, 0)
-        mock_db.execute.assert_awaited_once()
+        self.assertEqual(mock_db.execute.await_count, 2)
+
+    async def test_grants_are_a_separate_unlimited_statement(self) -> None:
+        """Every GRANTS row must be consumed, not just the first.
+
+        Regression: the grants used to be a trailing ``UNWIND`` on the
+        role query ending in ``RETURN created LIMIT 1``. AGE stopped
+        pulling rows at the limit, so exactly one GRANTS edge was ever
+        written and every seeded role came up granting nothing. The
+        grant statement must stand alone and end in an aggregate, which
+        forces the whole UNWIND to be evaluated.
+        """
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [{'created': 0, 'granted': 0}]
+
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            await seed.seed_default_roles(mock_db)
+
+        role_query = mock_db.execute.await_args_list[0].args[0]
+        grant_query = mock_db.execute.await_args_list[1].args[0]
+        self.assertNotIn('GRANTS', role_query)
+        self.assertNotIn('LIMIT', grant_query)
+        self.assertIn('MERGE (gr)-[:GRANTS]->(gp)', grant_query)
+        self.assertIn('count(gp) AS granted', grant_query)
+        # One grant row per (role, permission) pair in the table.
+        expected = sum(len(role[4]) for role in seed.DEFAULT_ROLES)
+        self.assertEqual(grant_query.count('perm:'), expected)
 
     def test_default_roles_structure(self) -> None:
         """Verify default role definitions are well-formed."""
         role_slugs = {role[0] for role in seed.DEFAULT_ROLES}
         self.assertEqual(
             role_slugs,
-            {'admin', 'developer', 'default', 'readonly'},
+            {
+                'admin',
+                'developer',
+                'default',
+                'readonly',
+                'imbi-scheduler',
+                'imbi-gateway',
+            },
         )
 
         # Verify admin has all permissions
@@ -179,6 +216,48 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             with self.subTest(role=slug):
                 role = next(r for r in seed.DEFAULT_ROLES if r[0] == slug)
                 self.assertIn('scheduled_task:read', role[4])
+
+    def test_internal_service_roles_grant_seeded_permissions(self) -> None:
+        """The service roles reference permissions that actually exist.
+
+        ``seed_default_roles`` MATCHes each permission by name, so a typo
+        here costs the service that grant silently rather than failing.
+        """
+        perm_names = {p[0] for p in seed.STANDARD_PERMISSIONS}
+        for slug in ('imbi-scheduler', 'imbi-gateway'):
+            with self.subTest(role=slug):
+                role = next(r for r in seed.DEFAULT_ROLES if r[0] == slug)
+                self.assertLessEqual(set(role[4]), perm_names)
+
+    def test_internal_service_roles_are_least_privilege(self) -> None:
+        """Neither service role can write outside what it calls.
+
+        The scheduler manages the schedule and reads everything else; the
+        gateway writes only projects (which covers releases and SBOMs).
+        Widening either is a deliberate decision, not a drive-by edit.
+        """
+        scheduler = next(
+            r for r in seed.DEFAULT_ROLES if r[0] == 'imbi-scheduler'
+        )
+        non_read = {
+            perm
+            for perm in scheduler[4]
+            if ':read' not in perm and not perm.startswith('scheduled_task:')
+        }
+        self.assertEqual(non_read, set())
+
+        gateway = next(r for r in seed.DEFAULT_ROLES if r[0] == 'imbi-gateway')
+        self.assertEqual(
+            {perm for perm in gateway[4] if ':read' not in perm},
+            {'project:write'},
+        )
+
+    def test_internal_service_roles_are_not_auto_assigned(self) -> None:
+        """A person logging in never lands in a service role."""
+        for slug in ('imbi-scheduler', 'imbi-gateway'):
+            with self.subTest(role=slug):
+                role = next(r for r in seed.DEFAULT_ROLES if r[0] == slug)
+                self.assertFalse(role[5])
 
     def test_no_group_permissions(self) -> None:
         """Verify no group permissions exist."""
