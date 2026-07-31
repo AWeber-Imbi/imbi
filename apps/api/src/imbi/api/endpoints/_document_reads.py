@@ -269,8 +269,8 @@ SELECT org_slug,
        any(project_id)         AS project_id,
        max(document_version)   AS document_version,
        max(estimated_read_ms)  AS estimated_read_ms,
-       min(session_started_at) AS started_at,
-       max(recorded_at)        AS ended_at,
+       min(seq_started_at)     AS started_at,
+       max(seq_recorded_at)    AS ended_at,
        sum(engaged_ms)         AS engaged_ms,
        max(max_scroll_pct)     AS max_scroll_pct
 FROM (
@@ -283,8 +283,13 @@ FROM (
            argMax(project_id, recorded_at)         AS project_id,
            argMax(document_version, recorded_at)   AS document_version,
            argMax(estimated_read_ms, recorded_at)  AS estimated_read_ms,
-           min(session_started_at)                 AS session_started_at,
-           max(recorded_at)                        AS recorded_at,
+           -- Deliberately *not* aliased back to the source column names:
+           -- `recorded_at` is the ordering argument of every `argMax` in
+           -- this select list, and an alias shadowing it makes each one
+           -- read as `argMax(x, max(recorded_at))` -- nested aggregation,
+           -- which the server rejects outright (ILLEGAL_AGGREGATION).
+           min(session_started_at)                 AS seq_started_at,
+           max(recorded_at)                        AS seq_recorded_at,
            argMax(engaged_ms, recorded_at)         AS engaged_ms,
            argMax(max_scroll_pct, recorded_at)     AS max_scroll_pct
     FROM imbi.document_read_events
