@@ -174,7 +174,7 @@ class ClientCredentialTestCase(unittest.IsolatedAsyncioTestCase):
         """A credential the environment names has its hash rewritten."""
         db = FakeGraph({'SET c.client_secret_hash': [{'c': 'credential'}]})
 
-        outcome, emit = await internal_services._ensure_client_credential(
+        outcome, _emit = await internal_services._ensure_client_credential(
             db,
             SCHEDULER,
             {
@@ -209,6 +209,24 @@ class ClientCredentialTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(outcome, 'generated')
 
+    async def test_live_check_tolerates_a_missing_revoked_property(
+        self,
+    ) -> None:
+        """The liveness filter coalesces rather than comparing to null.
+
+        ``c.revoked = false`` is null on a node predating the property,
+        so a live credential would read as missing and every run would
+        mint another one and print another secret.
+        """
+        db = FakeGraph({'RETURN count(c) AS live': [{'live': 1}]})
+
+        await internal_services._ensure_client_credential(db, SCHEDULER, {})
+
+        self.assertIn(
+            'coalesce(c.revoked, false) = false',
+            db.issued('RETURN count(c) AS live')[0],
+        )
+
     async def test_generated_credential_is_emitted(self) -> None:
         """Nothing supplied and nothing stored mints a printable pair."""
         db = FakeGraph({})
@@ -229,6 +247,35 @@ class ClientCredentialTestCase(unittest.IsolatedAsyncioTestCase):
             emit['IMBI_SCHEDULER_SA_CLIENT_ID'].startswith('cc_'),
         )
         self.assertEqual(len(db.issued('CREATE (n:ClientCredential')), 1)
+
+    async def test_client_id_without_secret_raises(self) -> None:
+        """Half a supplied credential fails loudly, seeding nothing.
+
+        Generating a different pair instead would leave the deployment
+        holding a client id whose secret the database has never seen, so
+        the service starts and authenticates nobody.
+        """
+        db = FakeGraph({})
+
+        with self.assertRaises(internal_services.SeedError) as ctx:
+            await internal_services._ensure_client_credential(
+                db, SCHEDULER, {'IMBI_SCHEDULER_SA_CLIENT_ID': 'cc_supplied'}
+            )
+
+        self.assertIn('IMBI_SCHEDULER_SA_CLIENT_SECRET', str(ctx.exception))
+        self.assertEqual(db.issued('CREATE (n:ClientCredential'), [])
+
+    async def test_secret_without_client_id_raises(self) -> None:
+        """The mirror case: a secret naming nothing to verify it."""
+        db = FakeGraph({})
+
+        with self.assertRaises(internal_services.SeedError) as ctx:
+            await internal_services._ensure_client_credential(
+                db, SCHEDULER, {'IMBI_SCHEDULER_SA_CLIENT_SECRET': 'shhh'}
+            )
+
+        self.assertIn('IMBI_SCHEDULER_SA_CLIENT_ID', str(ctx.exception))
+        self.assertEqual(db.issued('CREATE (n:ClientCredential'), [])
 
 
 class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):

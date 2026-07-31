@@ -368,6 +368,19 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('role not found', result.output)
         self.mock_ch_schema.assert_not_awaited()
 
+    def test_setup_service_account_unexpected_failure(self) -> None:
+        """A non-SeedError reports like every other step, not a traceback."""
+        self.mock_seed_services.side_effect = RuntimeError('connection reset')
+
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to seed service accounts', result.output)
+        self.assertIn('connection reset', result.output)
+        self.mock_ch_schema.assert_not_awaited()
+
 
 class SetupServiceAccountsTestCase(unittest.TestCase):
     """Test cases for the ``setup-service-accounts`` command.

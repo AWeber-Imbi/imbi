@@ -88,9 +88,15 @@ gateway:
 # Those two refs are not optional, so a secret missing a key the deployment
 # asks for will fail the pod. The scheduler's scheduler-sa-client-id and
 # scheduler-sa-client-secret are read whenever existingSecret is set, as is the
-# gateway's gateway-sa-token, but all three are marked optional -- omitting them
-# only leaves the scheduler unable to resolve a principal for api targets and
-# the gateway unable to authenticate its own calls.
+# gateway's gateway-sa-token, and all three are marked optional -- so what a
+# missing one costs depends on the mode:
+#   - service.mode "scheduler": require_scheduler_vars() demands both scheduler
+#     keys, so the container exits at startup and the pod CrashLoopBackOffs.
+#   - service.mode "all": neither is required. The entrypoint seeds a credential
+#     for each service itself when the environment does not supply one.
+#   - any other mode: nothing reads them, and nothing is affected.
+# gateway-sa-token is never required: without it the gateway serves webhooks and
+# every action it takes gets a 401.
 existingSecret: ""
 
 ingress:

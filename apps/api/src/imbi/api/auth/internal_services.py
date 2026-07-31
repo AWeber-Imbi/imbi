@@ -228,7 +228,11 @@ async def _ensure_client_credential(
 
     Both halves are required to adopt an environment-supplied
     credential: a client id without its secret cannot be verified, and a
-    secret without its id names nothing to verify it against.
+    secret without its id names nothing to verify it against. Half of one
+    raises rather than falling through to generation -- the deployment
+    holds a value it means to be in use, and quietly seeding a different
+    credential instead would start the service with one that
+    authenticates nobody.
     """
     id_var = service.client_id_var
     client_id = env.get(id_var) if id_var else None
@@ -236,6 +240,17 @@ async def _ensure_client_credential(
     if client_id and secret:
         await _write_client_credential(db, service, client_id, secret)
         return 'supplied', {}
+    if client_id or secret:
+        present, missing = (
+            (id_var, service.secret_var)
+            if client_id
+            else (service.secret_var, id_var)
+        )
+        raise SeedError(
+            f'{present} is set but {missing} is not: a client credential '
+            f'for {service.slug!r} needs both halves. Set {missing}, or '
+            f'unset {present} to have one generated.'
+        )
     if await _has_credential(db, service.slug, 'ClientCredential'):
         return 'unchanged', {}
     client_id = f'cc_{secrets.token_urlsafe(16)}'
@@ -373,11 +388,17 @@ async def _has_credential(
     Revoked credentials do not count: one left behind by an operator
     would otherwise suppress seeding forever, leaving the service with
     nothing it can authenticate with.
+
+    ``coalesce`` because a bare ``c.revoked = false`` is null, not true,
+    on a node predating the property -- and this is the query that
+    decides whether to mint. Reading a live credential as missing would
+    make every run add another and print another secret while the one in
+    use stays active, which is the opposite of idempotent.
     """
     records = await db.execute(
         f'MATCH (c:{label})-[:OWNED_BY]->'
         '(s:ServiceAccount {{slug: {slug}}})'
-        ' WHERE c.revoked = false'
+        ' WHERE coalesce(c.revoked, false) = false'
         ' RETURN count(c) AS live',
         {'slug': slug},
         ['live'],

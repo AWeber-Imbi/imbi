@@ -406,6 +406,9 @@ async def _setup_async() -> None:
         except internal_services.SeedError as e:
             typer.echo(f'✗ {e}', err=True)
             raise typer.Exit(code=1) from e
+        except Exception as e:
+            typer.echo(f'✗ Failed to seed service accounts: {e}', err=True)
+            raise typer.Exit(code=1) from e
         _report_service_accounts(seeded)
 
         # Step 4: Set up ClickHouse schema
