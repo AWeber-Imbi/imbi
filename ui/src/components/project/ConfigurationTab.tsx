@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query'
 import {
   Check,
+  CopyPlus,
   Eye,
   EyeOff,
   Lock,
@@ -88,6 +89,7 @@ interface DetailPaneProps {
   onCreate?: () => void
   onDelete?: () => void
   onDraftChange?: (next: CreateDraft) => void
+  onDuplicate?: () => void
   onToggleReveal?: (envSlug: string, key: string) => void
   prefix: string
   revealed?: Record<string, boolean>
@@ -344,16 +346,33 @@ export function ConfigurationTab({
     }
   }, [aggregated, mode, selected])
 
-  // Reset draft entering create mode.
-  useEffect(() => {
-    if (mode === 'create') {
-      setDraft({
-        data_type: 'string',
-        key: prefix,
-        values: Object.fromEntries(envSlugs.map((s) => [s, ''])),
-      })
-    }
-  }, [mode, prefix, envSlugs])
+  // Enters create mode with an empty draft.
+  const startCreate = () => {
+    setDraft({
+      data_type: 'string',
+      key: prefix,
+      values: Object.fromEntries(envSlugs.map((s) => [s, ''])),
+    })
+    setMode('create')
+  }
+
+  // Enters create mode with `source`'s data_type and per-environment
+  // values; the name is empty.
+  const startDuplicate = (source: AggregatedKey) => {
+    setDraft({
+      data_type: source.secret ? 'secret' : source.data_type,
+      key: prefix,
+      values: Object.fromEntries(
+        envSlugs.map((s) => [
+          s,
+          source.envs[s]
+            ? ((valuesByEnv[s]?.[source.key] as string | undefined) ?? '')
+            : '',
+        ]),
+      ),
+    })
+    setMode('create')
+  }
 
   const setMutation = useMutation({
     mutationFn: ({
@@ -652,10 +671,11 @@ export function ConfigurationTab({
           ) : selected ? (
             <DetailPane
               environments={sortedEnvironments}
-              onAdd={() => setMode('create')}
+              onAdd={startCreate}
               onCommitType={handleCommitType}
               onCommitValue={handleCommitValue}
               onDelete={() => setConfirmDelete(selected.key)}
+              onDuplicate={() => startDuplicate(selected)}
               onToggleReveal={toggleReveal}
               prefix={prefix}
               revealed={revealed}
@@ -670,7 +690,7 @@ export function ConfigurationTab({
               valuesByEnv={valuesByEnv}
             />
           ) : (
-            <EmptyState onAdd={() => setMode('create')} />
+            <EmptyState onAdd={startCreate} />
           )}
         </Panel>
       </Group>
@@ -828,6 +848,7 @@ function DetailPane({
   onCreate,
   onDelete,
   onDraftChange,
+  onDuplicate,
   onToggleReveal,
   prefix,
   revealed,
@@ -884,6 +905,11 @@ function DetailPane({
           <span className="text-success inline-flex items-center gap-1 text-xs">
             <Check className="size-3" /> Saved
           </span>
+        )}
+        {!isCreate && onDuplicate && (
+          <Button onClick={onDuplicate} size="sm" variant="outline">
+            <CopyPlus className="size-3" /> Duplicate
+          </Button>
         )}
         {!isCreate && onAdd && (
           <Button onClick={onAdd} size="sm">
