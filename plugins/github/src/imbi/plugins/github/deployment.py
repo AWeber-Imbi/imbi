@@ -969,9 +969,12 @@ class GitHubDeployment(DeploymentCapability):
         unknown.  That is deliberately not an error; the build is running
         and the caller resolves the id another way if it needs to watch.
         """
+        # Both options are operator-entered through the Integration form,
+        # so strip them: a trailing space would otherwise reach the URL as
+        # %20 and 404, or name a workflow input that does not exist.
         workflow_id = str(
             ctx.capability_options.get('artifact_workflow') or ''
-        )
+        ).strip()
         if not workflow_id:
             raise ValueError(
                 'create_deployment_artifact requires the '
@@ -979,7 +982,9 @@ class GitHubDeployment(DeploymentCapability):
                 'to dispatch (a workflow file name or numeric id)'
             )
         version_key = (
-            str(ctx.capability_options.get('artifact_version_input') or '')
+            str(
+                ctx.capability_options.get('artifact_version_input') or ''
+            ).strip()
             or 'version'
         )
         merged_inputs: dict[str, str] = {version_key: version}

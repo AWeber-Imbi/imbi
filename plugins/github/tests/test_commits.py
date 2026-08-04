@@ -1736,6 +1736,16 @@ class SyncTagTestCase(unittest.IsolatedAsyncioTestCase):
         await self._sync()
         self.assertFalse(listing.called)
         self.assertFalse(sweep.called)
+        # Hold the total, not just the absence of the two expensive
+        # routes: ref -> release lookup -> commit date, and nothing else.
+        self.assertEqual(
+            [
+                '/repos/octo/demo/git/ref/tags/2.23.0',
+                '/repos/octo/demo/releases/tags/2.23.0',
+                f'/repos/octo/demo/git/commits/{"c" * 40}',
+            ],
+            [call.request.url.path for call in respx.calls],
+        )
 
     @respx.mock
     async def test_missing_ref_records_nothing(self) -> None:

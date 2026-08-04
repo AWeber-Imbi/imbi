@@ -90,6 +90,10 @@ _MAX_SINCE_PAGES = 10
 # most-recent commits (the only ones whose CI is still meaningful and
 # unexpired); older commits keep the ``'unknown'`` default.
 _BACKFILL_CI_LIMIT = 25
+# Page size for ``sync_new_commits``' last-resort walk, used when nothing
+# is stored *and* no ``since`` was supplied. Sized to cover a release
+# build's handful of pushed commits, not to approximate a backfill.
+_RECENT_FALLBACK_COMMITS = 25
 
 # Per-context ceilings on how long a *single* rate-limit pause may block
 # before the sync gives up best-effort (logged).  The webhook actions
@@ -1681,6 +1685,6 @@ class GitHubCommitSync(CommitSyncCapability):
         return await _fetch_recent_commits(
             client,
             branch,
-            _BACKFILL_CI_LIMIT,
+            _RECENT_FALLBACK_COMMITS,
             max_wait=_BACKFILL_MAX_WAIT_SECONDS,
         )
