@@ -82,10 +82,12 @@ _MAX_REF_PAGES = 10
 # deployment call would be a far wider behavioural change than the one
 # response body we're after.
 _DISPATCH_API_VERSION = '2026-03-10'
-# GitHub rejects a ``workflow_dispatch`` carrying more than 10 inputs.
-# Checked client-side so an over-long payload names itself instead of
-# coming back as an opaque 422.
-_MAX_DISPATCH_INPUTS = 10
+# Raised from 10 to 25 by GitHub in December 2025. Checked client-side so
+# an over-long payload names itself instead of coming back as an opaque
+# 422 -- but the remote stays the authority: a GHES release predating the
+# increase still caps at 10, and that 422 propagates rather than being
+# second-guessed here.
+_MAX_DISPATCH_INPUTS = 25
 
 # Process-wide cache of (token, host, repo) tuples for which the
 # GitHub ``/check-runs`` endpoint has already returned 403 (insufficient
@@ -211,13 +213,19 @@ def _artifact_status(
 ]:
     """Map an Actions run's ``status``/``conclusion`` pair onto our set.
 
-    A run is only terminal once ``status == 'completed'``; every other
-    state is still in flight, so an unrecognised one is reported as
-    ``queued`` rather than ``unknown`` -- the host polls on, which is the
-    safe reading for a run that hasn't finished.
+    A run is only terminal once ``status == 'completed'`` *and* it carries
+    a conclusion; every other state is still in flight, so an unrecognised
+    one is reported as ``queued`` rather than ``unknown`` -- the host polls
+    on, which is the safe reading for a run that hasn't finished.
     """
     if state != 'completed':
         return 'in_progress' if state == 'in_progress' else 'queued'
+    if not conclusion:
+        # GitHub briefly reports ``completed`` before populating
+        # ``conclusion``. Reporting that as ``unknown`` would let a host
+        # that stops on any terminal-ish status settle on a run whose
+        # outcome lands a moment later, so keep it in flight instead.
+        return 'in_progress'
     if conclusion == 'success':
         return 'success'
     # ``action_required`` and ``startup_failure`` are completed runs that

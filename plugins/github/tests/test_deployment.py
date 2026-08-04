@@ -1869,7 +1869,9 @@ class CreateDeploymentArtifactTestCase(unittest.IsolatedAsyncioTestCase):
                         'https://api.github.com/repos/octo/demo/'
                         'actions/runs/4242'
                     ),
-                    'html_url': 'https://github.com/octo/demo/actions/runs/4242',
+                    'html_url': (
+                        'https://github.com/octo/demo/actions/runs/4242'
+                    ),
                 },
             )
         )
@@ -2015,10 +2017,29 @@ class CreateDeploymentArtifactTestCase(unittest.IsolatedAsyncioTestCase):
                 _CREDS,
                 ref='main',
                 version='2.23.0',
-                inputs={f'k{i}': str(i) for i in range(10)},
+                # 25 here plus the injected version key is 26.
+                inputs={f'k{i}': str(i) for i in range(25)},
             )
-        self.assertIn('at most 10', str(ctx.exception))
+        self.assertIn('at most 25', str(ctx.exception))
         self.assertFalse(dispatch.called)
+
+    @respx.mock
+    async def test_twenty_five_inputs_are_accepted(self) -> None:
+        # GitHub raised the cap from 10 to 25 in December 2025; rejecting
+        # at the old limit would refuse valid dispatches.
+        dispatch = respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(204)
+        )
+        plugin = GitHubDeployment()
+        await plugin.create_deployment_artifact(
+            _artifact_ctx(),
+            _CREDS,
+            ref='main',
+            version='2.23.0',
+            inputs={f'k{i}': str(i) for i in range(24)},
+        )
+        body = json.loads(dispatch.calls.last.request.read())
+        self.assertEqual(25, len(body['inputs']))
 
     @respx.mock
     async def test_http_error_propagates(self) -> None:
@@ -2122,16 +2143,18 @@ class ArtifactStatusMappingTestCase(unittest.TestCase):
             # Terminal, but says nothing about whether the artifact exists.
             'neutral': 'unknown',
             'something_new': 'unknown',
-            # ``completed`` with no conclusion yet is a brief race in
-            # GitHub's API; reporting it non-terminal keeps the host
-            # polling until the conclusion lands.
-            '': 'unknown',
         }
         for conclusion, expected in cases.items():
             with self.subTest(conclusion=conclusion):
                 self.assertEqual(
                     _artifact_status('completed', conclusion), expected
                 )
+
+    def test_completed_without_conclusion_stays_in_flight(self) -> None:
+        # GitHub briefly reports ``completed`` before the conclusion is
+        # populated. Classifying that as terminal would let a host settle
+        # on a run whose real outcome lands moments later.
+        self.assertEqual(_artifact_status('completed', ''), 'in_progress')
 
 
 class RepoRootFromRedirectTestCase(unittest.TestCase):
