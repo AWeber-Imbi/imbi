@@ -1707,6 +1707,49 @@ class CommitSyncCapability(CapabilityHandler):
         and dedupe against rows the webhook already recorded.
         """
 
+    async def sync_tag(
+        self,
+        *,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        tag: str,
+    ) -> int:
+        """Record the single tag named *tag*. Returns rows written (0/1).
+
+        The bounded counterpart to :meth:`sync_all_history`, for the case
+        where the host already knows which tag appeared -- it supplied the
+        version to the build that created it.  Cost is constant in the
+        repo's age, where a full resync grows with it, so this is what a
+        per-release sync should call.
+
+        Returns ``0`` rather than raising when the tag does not exist on
+        the remote: a build that failed before tagging is an expected
+        outcome, not an error.  Re-running is safe (``ReplacingMergeTree``).
+        """
+        del ctx, credentials, tag
+        raise NotImplementedError
+
+    async def sync_new_commits(
+        self,
+        *,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        since: datetime.datetime | None = None,
+    ) -> int:
+        """Record commits not yet stored. Returns rows written.
+
+        The bounded counterpart to :meth:`sync_all_history` for commits --
+        for picking up, say, the version-bump commits a release build
+        pushed.  Implementations should bound the walk by what they
+        already hold (the newest stored commit) and fall back to *since*
+        only when they hold nothing, so cost tracks new commits rather
+        than total history.
+
+        Re-running is safe (``ReplacingMergeTree``).
+        """
+        del ctx, credentials, since
+        raise NotImplementedError
+
     async def check_available(
         self,
         *,

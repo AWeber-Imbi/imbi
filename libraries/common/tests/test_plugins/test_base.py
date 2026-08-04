@@ -774,6 +774,18 @@ class SyncDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
             (0, 0),
         )
 
+    async def test_commit_sync_tag_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await StubCommitSync().sync_tag(
+                ctx=self.ctx, credentials={}, tag='1.0.0'
+            )
+
+    async def test_commit_sync_new_commits_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await StubCommitSync().sync_new_commits(
+                ctx=self.ctx, credentials={}
+            )
+
     async def test_pr_sync_check_available_default(self) -> None:
         self.assertTrue(
             await StubPRSync().check_available(ctx=self.ctx, credentials={})

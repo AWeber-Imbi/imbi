@@ -1619,6 +1619,286 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('d' * 40, recorded[0].sha)
 
 
+class SyncTagTestCase(unittest.IsolatedAsyncioTestCase):
+    """The bounded per-release tag sync (``sync_tag``)."""
+
+    _REPO = 'https://api.github.com/repos/octo/demo'
+
+    def _ctx(self) -> PluginContext:
+        return _ctx(connection=_connection('github'))
+
+    def _mock_ref(
+        self, name: str = '2.23.0', **obj: typing.Any
+    ) -> respx.Route:
+        target: dict[str, typing.Any] = {'sha': 'c' * 40, 'type': 'commit'}
+        target.update(obj)
+        return respx.get(f'{self._REPO}/git/ref/tags/{name}').mock(
+            return_value=httpx.Response(
+                200, json={'ref': f'refs/tags/{name}', 'object': target}
+            )
+        )
+
+    def _mock_release(self, published: str | None = None) -> respx.Route:
+        if published is None:
+            return respx.get(f'{self._REPO}/releases/tags/2.23.0').mock(
+                return_value=httpx.Response(404, json={})
+            )
+        return respx.get(f'{self._REPO}/releases/tags/2.23.0').mock(
+            return_value=httpx.Response(200, json={'published_at': published})
+        )
+
+    async def _sync(self, tag: str = '2.23.0') -> tuple[int, mock.AsyncMock]:
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            written = await commits.GitHubCommitSync().sync_tag(
+                ctx=self._ctx(), credentials=_CREDS, tag=tag
+            )
+        return written, insert
+
+    @respx.mock
+    async def test_lightweight_tag_recorded(self) -> None:
+        self._mock_ref()
+        self._mock_release()
+        commit_date = respx.get(f'{self._REPO}/git/commits/{"c" * 40}').mock(
+            return_value=httpx.Response(
+                200, json={'committer': {'date': '2026-08-04T12:00:00Z'}}
+            )
+        )
+        written, insert = await self._sync()
+        self.assertEqual(1, written)
+        record = insert.await_args_list[0].args[1][0]
+        self.assertEqual('2.23.0', record.name)
+        self.assertEqual('c' * 40, record.sha)
+        self.assertEqual(
+            'https://github.com/octo/demo/releases/tag/2.23.0', record.url
+        )
+        # No tagger date and no release, so the target commit's date
+        # stands in rather than falling back to "recorded just now".
+        self.assertEqual(
+            datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC),
+            record.tagged_at,
+        )
+        self.assertTrue(commit_date.called)
+
+    @respx.mock
+    async def test_annotated_tag_is_peeled_to_its_commit(self) -> None:
+        # The ref points at the tag *object*; recording that sha would be
+        # unjoinable against the commits table.
+        self._mock_ref(sha='t' * 40, type='tag')
+        self._mock_release()
+        respx.get(f'{self._REPO}/git/tags/{"t" * 40}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'message': 'Release 2.23.0',
+                    'tagger': {
+                        'name': 'Alice',
+                        'email': 'alice@example.com',
+                        'date': '2026-08-04T11:00:00Z',
+                    },
+                    'object': {'sha': 'c' * 40, 'type': 'commit'},
+                },
+            )
+        )
+        written, insert = await self._sync()
+        self.assertEqual(1, written)
+        record = insert.await_args_list[0].args[1][0]
+        self.assertEqual('c' * 40, record.sha)
+        self.assertEqual('Release 2.23.0', record.message)
+        self.assertEqual('Alice', record.tagger_name)
+
+    @respx.mock
+    async def test_release_published_at_wins(self) -> None:
+        self._mock_ref()
+        self._mock_release('2026-08-04T13:00:00Z')
+        written, insert = await self._sync()
+        self.assertEqual(1, written)
+        record = insert.await_args_list[0].args[1][0]
+        self.assertEqual(
+            datetime.datetime(2026, 8, 4, 13, 0, tzinfo=datetime.UTC),
+            record.tagged_at,
+        )
+
+    @respx.mock
+    async def test_costs_three_calls_regardless_of_repo_size(self) -> None:
+        # The whole point of this path: it must never walk the repo's tag
+        # list or sweep /releases the way a full reconcile does.
+        self._mock_ref()
+        self._mock_release()
+        respx.get(f'{self._REPO}/git/commits/{"c" * 40}').mock(
+            return_value=httpx.Response(200, json={'committer': {}})
+        )
+        listing = respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        sweep = respx.get(f'{self._REPO}/releases').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        await self._sync()
+        self.assertFalse(listing.called)
+        self.assertFalse(sweep.called)
+
+    @respx.mock
+    async def test_missing_ref_records_nothing(self) -> None:
+        # A build that failed before tagging is an expected outcome.
+        respx.get(f'{self._REPO}/git/ref/tags/2.23.0').mock(
+            return_value=httpx.Response(404, json={})
+        )
+        with self.assertLogs(commits.LOGGER, level='WARNING'):
+            written, insert = await self._sync()
+        self.assertEqual(0, written)
+        insert.assert_not_awaited()
+
+    @respx.mock
+    async def test_unpeelable_annotated_tag_records_nothing(self) -> None:
+        self._mock_ref(sha='t' * 40, type='tag')
+        respx.get(f'{self._REPO}/git/tags/{"t" * 40}').mock(
+            return_value=httpx.Response(500, json={})
+        )
+        with self.assertLogs(commits.LOGGER, level='WARNING'):
+            written, insert = await self._sync()
+        self.assertEqual(0, written)
+        insert.assert_not_awaited()
+
+    @respx.mock
+    async def test_hierarchical_tag_name_keeps_its_slash(self) -> None:
+        # ``tags/release/1.0`` is a ref path, not an escaped segment.
+        route = self._mock_ref(name='release/1.0')
+        respx.get(f'{self._REPO}/releases/tags/release%2F1.0').mock(
+            return_value=httpx.Response(404, json={})
+        )
+        respx.get(f'{self._REPO}/git/commits/{"c" * 40}').mock(
+            return_value=httpx.Response(200, json={'committer': {}})
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()):
+            await commits.GitHubCommitSync().sync_tag(
+                ctx=self._ctx(), credentials=_CREDS, tag='release/1.0'
+            )
+        self.assertTrue(route.called)
+        self.assertIn(
+            '/git/ref/tags/release/1.0', str(route.calls.last.request.url)
+        )
+
+
+class SyncNewCommitsTestCase(unittest.IsolatedAsyncioTestCase):
+    """The bounded per-release commit sync (``sync_new_commits``)."""
+
+    _REPO = 'https://api.github.com/repos/octo/demo'
+
+    def _ctx(self) -> PluginContext:
+        return _ctx(connection=_connection('github'))
+
+    def _mock_default_branch(self, branch: str = 'main') -> respx.Route:
+        return respx.get(self._REPO).mock(
+            return_value=httpx.Response(200, json={'default_branch': branch})
+        )
+
+    async def _sync(
+        self, since: datetime.datetime | None = None
+    ) -> tuple[int, mock.AsyncMock]:
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            written = await commits.GitHubCommitSync().sync_new_commits(
+                ctx=self._ctx(), credentials=_CREDS, since=since
+            )
+        return written, insert
+
+    @respx.mock
+    async def test_compares_against_last_known_sha(self) -> None:
+        self._mock_default_branch()
+        compare = respx.get(url__regex=r'.*/compare/.+\.\.\..+').mock(
+            return_value=httpx.Response(
+                200, json={'commits': [_commit('c' * 40)]}
+            )
+        )
+        history = respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        with mock.patch(
+            _QUERY, new=mock.AsyncMock(return_value=[{'sha': 'a' * 40}])
+        ):
+            written, insert = await self._sync()
+        self.assertEqual(1, written)
+        self.assertTrue(compare.called)
+        # Bounded by what we hold: no full-history walk.
+        self.assertFalse(history.called)
+        self.assertIn(
+            f'{"a" * 40}...main', str(compare.calls.last.request.url)
+        )
+        record = insert.await_args_list[0].args[1][0]
+        self.assertEqual('main', record.ref)
+
+    @respx.mock
+    async def test_since_window_when_nothing_stored(self) -> None:
+        self._mock_default_branch()
+        history = respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        since = datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC)
+        with mock.patch(_QUERY, new=mock.AsyncMock(return_value=[])):
+            written, _ = await self._sync(since=since)
+        self.assertEqual(1, written)
+        params = history.calls.last.request.url.params
+        self.assertEqual(since.isoformat(), params['since'])
+        self.assertEqual('main', params['sha'])
+
+    @respx.mock
+    async def test_recent_page_when_no_sha_and_no_since(self) -> None:
+        self._mock_default_branch()
+        history = respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        with mock.patch(_QUERY, new=mock.AsyncMock(return_value=[])):
+            written, _ = await self._sync()
+        self.assertEqual(1, written)
+        params = history.calls.last.request.url.params
+        self.assertNotIn('since', params)
+        self.assertEqual(str(commits._BACKFILL_CI_LIMIT), params['per_page'])
+
+    @respx.mock
+    async def test_uncomparable_stored_sha_falls_back(self) -> None:
+        # A force-push leaves a stored sha that no longer shares history
+        # with the branch; compare 404s and the walk must still happen.
+        self._mock_default_branch()
+        respx.get(url__regex=r'.*/compare/.+\.\.\..+').mock(
+            return_value=httpx.Response(404, json={})
+        )
+        history = respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(200, json=[_commit('c' * 40)])
+        )
+        since = datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC)
+        with mock.patch(
+            _QUERY, new=mock.AsyncMock(return_value=[{'sha': 'a' * 40}])
+        ):
+            with self.assertLogs(commits.LOGGER, level='WARNING'):
+                written, _ = await self._sync(since=since)
+        self.assertEqual(1, written)
+        self.assertTrue(history.called)
+
+    @respx.mock
+    async def test_compare_error_other_than_404_propagates(self) -> None:
+        self._mock_default_branch()
+        respx.get(url__regex=r'.*/compare/.+\.\.\..+').mock(
+            return_value=httpx.Response(500, json={})
+        )
+        with mock.patch(
+            _QUERY, new=mock.AsyncMock(return_value=[{'sha': 'a' * 40}])
+        ):
+            with self.assertRaises(httpx.HTTPStatusError):
+                await self._sync()
+
+    @respx.mock
+    async def test_no_new_commits_writes_nothing(self) -> None:
+        self._mock_default_branch()
+        respx.get(url__regex=r'.*/compare/.+\.\.\..+').mock(
+            return_value=httpx.Response(200, json={'commits': []})
+        )
+        with mock.patch(
+            _QUERY, new=mock.AsyncMock(return_value=[{'sha': 'a' * 40}])
+        ):
+            written, insert = await self._sync()
+        self.assertEqual(0, written)
+        insert.assert_not_awaited()
+
+
 class WebBaseTestCase(unittest.TestCase):
     def test_web_base_flavors(self) -> None:
         self.assertEqual(
