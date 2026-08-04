@@ -80,11 +80,20 @@ _MAX_COMPARE_PAGES = 20
 # backfill so a very deep repo can't pin the worker indefinitely; the
 # walk logs a truncation warning when it hits the cap.
 _MAX_HISTORY_PAGES = 100
+# Bound on the ``?since=`` walk that ``sync_new_commits`` falls back to
+# when nothing is stored yet. Deliberately far smaller than
+# ``_MAX_HISTORY_PAGES``: this path exists to pick up the handful of
+# commits a release build pushed, not to stand in for a full backfill.
+_MAX_SINCE_PAGES = 10
 # CI status is hydrated with one ``/check-runs`` call per commit, which is
 # prohibitively expensive across a full-history backfill.  Bound it to the
 # most-recent commits (the only ones whose CI is still meaningful and
 # unexpired); older commits keep the ``'unknown'`` default.
 _BACKFILL_CI_LIMIT = 25
+# Page size for ``sync_new_commits``' last-resort walk, used when nothing
+# is stored *and* no ``since`` was supplied. Sized to cover a release
+# build's handful of pushed commits, not to approximate a backfill.
+_RECENT_FALLBACK_COMMITS = 25
 
 # Per-context ceilings on how long a *single* rate-limit pause may block
 # before the sync gives up best-effort (logged).  The webhook actions
@@ -708,6 +717,80 @@ async def _fetch_all_commits(
                 'github-commit-sync truncated history at %d pages (%d '
                 'commits); older commits will not be recorded',
                 _MAX_HISTORY_PAGES,
+                len(out),
+            )
+    return out
+
+
+async def _fetch_tag_ref(
+    client: httpx.AsyncClient, name: str, *, max_wait: float
+) -> tuple[str, str] | None:
+    """Resolve ``refs/tags/{name}`` to ``(sha, object_type)``.
+
+    ``None`` when the ref does not exist (404) or can't be read.  Unlike a
+    push payload, the ref response states the object's ``type``, so the
+    caller knows up front whether it must peel an annotated tag rather
+    than having to infer it from a probe.
+
+    Slashes stay unescaped: the ref path is hierarchical, so a tag named
+    ``release/1.0`` addresses as ``tags/release/1.0``.
+    """
+    quoted = urllib.parse.quote(name, safe='/')
+    resp = await _request(
+        client, 'GET', f'/git/ref/tags/{quoted}', max_wait=max_wait
+    )
+    if resp.status_code != 200:
+        return None
+    payload = typing.cast('dict[str, typing.Any]', resp.json())
+    obj: dict[str, typing.Any] = payload.get('object') or {}
+    sha = str(obj.get('sha') or '')
+    if not sha:
+        return None
+    # GitHub sends both fields together; defaulting a present sha to
+    # 'commit' matches ``_tag_record``'s handling of the same gap.
+    return sha, str(obj.get('type') or 'commit')
+
+
+async def _fetch_commits_since(
+    client: httpx.AsyncClient,
+    branch: str,
+    since: datetime.datetime,
+    *,
+    max_wait: float,
+) -> list[dict[str, typing.Any]]:
+    """Walk ``GET /commits?since=`` from *branch*, newest first.
+
+    ``since`` is a server-side filter on committer date -- the one time
+    bound GitHub's commit list actually offers -- so the walk costs pages
+    proportional to the window, not to the repo's history.  Bounded by
+    :data:`_MAX_SINCE_PAGES` for the pathological case of a window wide
+    enough to cover thousands of commits.
+    """
+    params: dict[str, str] = {
+        'sha': branch,
+        'since': since.isoformat(),
+        'per_page': '100',
+    }
+    out: list[dict[str, typing.Any]] = []
+    for page in range(1, _MAX_SINCE_PAGES + 1):
+        resp = await _request(
+            client, 'GET', '/commits', params=params, max_wait=max_wait
+        )
+        resp.raise_for_status()
+        out.extend(typing.cast('list[dict[str, typing.Any]]', resp.json()))
+        next_url = _next_page_url(resp.headers.get('link'))
+        if next_url is None:
+            return out
+        next_page = _query_param(next_url, 'page')
+        if next_page is None:
+            return out
+        params['page'] = next_page
+        if page == _MAX_SINCE_PAGES:
+            LOGGER.warning(
+                'github-commit-sync truncated the since-window walk at %d '
+                'pages (%d commits); widen the stored history with a full '
+                'sync instead',
+                _MAX_SINCE_PAGES,
                 len(out),
             )
     return out
@@ -1349,14 +1432,7 @@ class GitHubCommitSync(CommitSyncCapability):
         ``_BACKFILL_MAX_WAIT_SECONDS`` so the host can pause the worker and
         keep the job queued until GitHub resumes rather than fail it.
         """
-        host = _resolve_host_for_context(ctx)
-        if host is None:
-            raise ValueError(
-                'github-commit-sync could not resolve a GitHub host for an '
-                'on-demand sync: set the Integration flavor/host'
-            )
-        base = host_to_api_base(host)
-        owner, repo = resolve_owner_repo(ctx, host, 'github-commit-sync')
+        base, owner, repo = self._resolve_target(ctx)
         pushed_at = datetime.datetime.now(datetime.UTC)
         try:
             token = await _resolve_bearer(credentials, base, owner, repo)
@@ -1415,3 +1491,200 @@ class GitHubCommitSync(CommitSyncCapability):
             'tags', list(tags), ctx.project_id
         )
         return commits_recorded, tags_recorded
+
+    def _resolve_target(self, ctx: PluginContext) -> tuple[str, str, str]:
+        """Return ``(api_base, owner, repo)`` for a host-invoked sync."""
+        host = _resolve_host_for_context(ctx)
+        if host is None:
+            raise ValueError(
+                'github-commit-sync could not resolve a GitHub host for an '
+                'on-demand sync: set the Integration flavor/host'
+            )
+        owner, repo = resolve_owner_repo(ctx, host, 'github-commit-sync')
+        return host_to_api_base(host), owner, repo
+
+    async def sync_tag(
+        self,
+        *,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        tag: str,
+    ) -> int:
+        """Record the one tag named *tag* -- three calls, not a resync.
+
+        Resolves ``refs/tags/{tag}`` directly instead of walking the
+        repo's tag list, so cost is flat in the number of tags the repo
+        already carries.  That matters because the caller is a per-release
+        hook: ``_reconcile_tags`` re-peels every existing tag on every
+        run, which on a long-lived repo is hundreds of calls to learn one
+        new row.
+
+        Returns ``0`` (logged) rather than raising when the ref is absent
+        or an annotated tag can't be peeled -- a build that failed before
+        tagging, or a transient read failure, must not fail the caller.
+        """
+        base, owner, repo = self._resolve_target(ctx)
+        try:
+            token = await _resolve_bearer(credentials, base, owner, repo)
+        except _app_auth.AppNotInstalledError as exc:
+            LOGGER.warning(
+                'github-commit-sync: %s; skipping tag sync for project %s',
+                exc,
+                ctx.project_id,
+            )
+            return 0
+        async with _client(base, owner, repo, token) as client:
+            resolved = await _fetch_tag_ref(
+                client, tag, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+            )
+            if resolved is None:
+                LOGGER.warning(
+                    'github-commit-sync: tag %s does not resolve on the '
+                    'remote for project %s; nothing recorded',
+                    tag,
+                    ctx.project_id,
+                )
+                return 0
+            sha, object_type = resolved
+            # The ref states the object type, so an annotated tag is known
+            # up front -- no need for the push path's inconclusive probe.
+            annotated: dict[str, typing.Any] | None = None
+            if object_type == 'tag':
+                annotated, conclusive = await _annotated_tag(
+                    client, sha, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+                )
+                if annotated is None:
+                    LOGGER.warning(
+                        'github-commit-sync: skipping tag %s for project '
+                        '%s; its tag object %s could not be %s',
+                        tag,
+                        ctx.project_id,
+                        sha,
+                        'read' if conclusive else 'fetched',
+                    )
+                    return 0
+            published = await _release_published_for_tag(
+                client, tag, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+            )
+            record = _tag_record(
+                project_id=ctx.project_id,
+                name=tag,
+                sha=sha,
+                annotated=annotated,
+                url=_tag_web_url(client, tag),
+                published_at=published,
+                fallback_tagged_at=(
+                    await _commit_date(
+                        client, sha, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+                    )
+                    if annotated is None and published is None
+                    else None
+                ),
+            )
+        if record is None:
+            return 0  # unpeelable (warned by _tag_record)
+        return await _insert_best_effort('tags', [record], ctx.project_id)
+
+    async def sync_new_commits(
+        self,
+        *,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        since: datetime.datetime | None = None,
+    ) -> int:
+        """Record default-branch commits newer than what we already hold.
+
+        Bounded by the newest stored commit: ``GET /compare/{stored}...
+        {branch}`` returns only what arrived since, which for a release
+        build's version bump is a page at most.  Falls back to a
+        ``?since=`` window when nothing is stored yet (or when the stored
+        sha is no longer comparable -- a force-push or a rewritten
+        branch), and to a small recent-history page when neither applies.
+        """
+        base, owner, repo = self._resolve_target(ctx)
+        pushed_at = datetime.datetime.now(datetime.UTC)
+        try:
+            token = await _resolve_bearer(credentials, base, owner, repo)
+        except _app_auth.AppNotInstalledError as exc:
+            LOGGER.warning(
+                'github-commit-sync: %s; skipping commit sync for project %s',
+                exc,
+                ctx.project_id,
+            )
+            return 0
+        async with _client(base, owner, repo, token) as client:
+            branch = await _fetch_default_branch(
+                client, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+            )
+            raw = await self._fetch_new_commits(
+                client, ctx.project_id, branch, since
+            )
+            ci_by_sha = await _hydrate_ci(
+                client,
+                [
+                    str(i['sha'])
+                    for i in raw[:_BACKFILL_CI_LIMIT]
+                    if i.get('sha')
+                ],
+                credentials=credentials,
+                base=base,
+                owner=owner,
+                repo=repo,
+                max_wait=_BACKFILL_MAX_WAIT_SECONDS,
+            )
+        user_map = await _resolve_author_users(
+            raw, ctx.resolve_user_by_identity, base
+        )
+        records: list[pydantic.BaseModel] = [
+            _commit_record(
+                item,
+                project_id=ctx.project_id,
+                ref=branch,
+                pushed_at=pushed_at,
+                author_user=_author_user(item, user_map),
+                ci_status=ci_by_sha.get(str(item['sha']), 'unknown'),
+            )
+            for item in raw
+            if item.get('sha')
+        ]
+        return await _insert_best_effort('commits', records, ctx.project_id)
+
+    async def _fetch_new_commits(
+        self,
+        client: httpx.AsyncClient,
+        project_id: str,
+        branch: str,
+        since: datetime.datetime | None,
+    ) -> list[dict[str, typing.Any]]:
+        """Pick the cheapest walk that covers what we don't already hold."""
+        last = await _last_known_sha(project_id)
+        if last:
+            try:
+                return await _fetch_compare_commits(
+                    client, last, branch, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+                )
+            except httpx.HTTPStatusError as exc:
+                # A stored sha that no longer shares history with the
+                # branch (force-push, rewritten history) compares 404 /
+                # 422.  Fall through rather than fail: the window walk
+                # below still records what the caller was after.
+                if exc.response.status_code not in {404, 422}:
+                    raise
+                LOGGER.warning(
+                    'github-commit-sync: %s...%s is not comparable for '
+                    'project %s (HTTP %s); falling back to a bounded walk',
+                    last,
+                    branch,
+                    project_id,
+                    exc.response.status_code,
+                )
+        if since is not None:
+            return await _fetch_commits_since(
+                client, branch, since, max_wait=_BACKFILL_MAX_WAIT_SECONDS
+            )
+        return await _fetch_recent_commits(
+            client,
+            branch,
+            _RECENT_FALLBACK_COMMITS,
+            max_wait=_BACKFILL_MAX_WAIT_SECONDS,
+        )

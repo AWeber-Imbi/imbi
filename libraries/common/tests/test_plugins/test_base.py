@@ -13,6 +13,7 @@ from imbi.common.plugins.base import (
     ActionDescriptor,
     AnalysisCapability,
     AnalysisResultItem,
+    ArtifactRun,
     AuthorizationRequest,
     Capability,
     Commit,
@@ -667,6 +668,26 @@ class DeploymentDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
         result = await self.plugin.get_release_notes(self.ctx, {}, '1.0.0')
         self.assertIsNone(result)
 
+    async def test_create_deployment_artifact_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.create_deployment_artifact(
+                self.ctx, {}, 'main', '1.0.0'
+            )
+
+    async def test_get_artifact_run_status_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.get_artifact_run_status(self.ctx, {}, '42')
+
+
+class ArtifactRunTestCase(unittest.TestCase):
+    def test_run_id_defaults_to_none(self) -> None:
+        # A dispatch that GitHub answered 204 to is a *started* build with
+        # an unknown id, so the id must be optional rather than ''.
+        run = ArtifactRun()
+        self.assertIsNone(run.run_id)
+        self.assertIsNone(run.run_url)
+        self.assertEqual(run.status, 'queued')
+
 
 class LifecycleDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -752,6 +773,18 @@ class SyncDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
             ),
             (0, 0),
         )
+
+    async def test_commit_sync_tag_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await StubCommitSync().sync_tag(
+                ctx=self.ctx, credentials={}, tag='1.0.0'
+            )
+
+    async def test_commit_sync_new_commits_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await StubCommitSync().sync_new_commits(
+                ctx=self.ctx, credentials={}
+            )
 
     async def test_pr_sync_check_available_default(self) -> None:
         self.assertTrue(
