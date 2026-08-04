@@ -141,6 +141,40 @@ _CREDENTIALS: list[CredentialField] = [
     ),
 ]
 
+# Capability-scoped options for deployments. Only the artifact-creation
+# stage is configured here -- the deploy stage takes its per-environment
+# payload from the USES edge's ``env_payloads``, not from these.
+_DEPLOYMENT_OPTIONS: list[PluginOption] = [
+    PluginOption(
+        name='artifact_workflow',
+        label='Release workflow',
+        description=(
+            'Workflow dispatched to build the release artifact before a '
+            'deployment is triggered -- a workflow file name '
+            '(``release.yml``) or its numeric id.  The workflow must '
+            'declare ``on: workflow_dispatch`` and exist on the default '
+            "branch, or GitHub can't resolve it.  Leave blank for "
+            'projects whose artifacts are built outside Imbi; promotes '
+            'then deploy an artifact that must already exist.'
+        ),
+        type='string',
+        required=False,
+    ),
+    PluginOption(
+        name='artifact_version_input',
+        label='Version input name',
+        description=(
+            'Name of the ``workflow_dispatch`` input the release version '
+            'is passed under.  Defaults to ``version``.  Set this when '
+            'the workflow names it something else (e.g. ``tag``).  Note '
+            'GitHub accepts at most 10 inputs per dispatch.'
+        ),
+        type='string',
+        required=False,
+        default='version',
+    ),
+]
+
 # Capability-scoped options for repository lifecycle. Values live in
 # ``Integration.capabilities['lifecycle'].options`` (layered with any
 # per-project-type / per-project USES-edge overrides) and arrive on
@@ -287,8 +321,11 @@ class GitHubPlugin(Plugin):
                 label='Deployments',
                 description=(
                     'Drive GitHub Deployments and record GitHub Releases '
-                    'so environment protection rules apply server-side.'
+                    'so environment protection rules apply server-side, '
+                    'and dispatch the release workflow that builds the '
+                    'artifact a deployment needs.'
                 ),
+                options=_DEPLOYMENT_OPTIONS,
                 hints={'supports_deployment_sync': True},
                 handler=GitHubDeployment,
             ),

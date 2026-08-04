@@ -816,6 +816,38 @@ class DeploymentRun(pydantic.BaseModel):
     completed_at: datetime.datetime | None = None
 
 
+class ArtifactRun(pydantic.BaseModel):
+    """A build/release run started by ``create_deployment_artifact``.
+
+    Deliberately *not* a :class:`DeploymentRun`: the two carry different
+    identifier spaces on the same remote (a GitHub *workflow run* id here
+    versus a GitHub *Deployment* id there), resolved through different
+    endpoints.  Keeping them apart is what lets the host poll each with
+    the right call instead of guessing from the id alone.
+
+    ``run_id`` is ``None`` when the remote accepted the request but did
+    not report which run it started -- GitHub's
+    ``workflow_dispatch`` answers ``204 No Content`` on API versions
+    before ``2026-03-10``.  That is a success, not an error: the artifact
+    build *is* running.  Hosts that need to watch it must resolve the id
+    separately (e.g. by listing recent runs filtered on the dispatch
+    time) rather than treating the dispatch as failed.
+    """
+
+    run_id: str | None = None
+    run_url: str | None = None
+    status: typing.Literal[
+        'queued',
+        'in_progress',
+        'success',
+        'failure',
+        'cancelled',
+        'unknown',
+    ] = 'queued'
+    started_at: datetime.datetime | None = None
+    completed_at: datetime.datetime | None = None
+
+
 #: Status values used on persisted ``DeploymentEvent`` rows.  This is
 #: the host's canonical vocabulary -- capabilities normalize their
 #: remote's native states to one of these before returning a
@@ -1212,6 +1244,53 @@ class DeploymentCapability(CapabilityHandler):
         ref_or_sha: str,
         inputs: dict[str, str] | None = None,
     ) -> DeploymentRun: ...
+
+    async def create_deployment_artifact(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        ref: str,
+        version: str,
+        inputs: dict[str, str] | None = None,
+    ) -> ArtifactRun:
+        """Start the build that *produces* the deployable artifact.
+
+        The step :meth:`trigger_deployment` currently assumes has already
+        happened.  ``ref`` is the committish to build from and ``version``
+        the release identity the build is expected to publish under -- the
+        remote build is what cuts the tag and pushes any version-bump
+        commits, so neither exists yet when this returns.
+
+        Optional and deliberately separate from
+        :meth:`trigger_deployment`: the two are distinct stages with host
+        handling between them, not two halves of one call.  Returns as
+        soon as the build is *accepted*; the host observes completion via
+        :meth:`get_artifact_run_status` (or a webhook) and only then
+        proceeds to deploy.
+
+        Capabilities whose remote has no build concept raise
+        :class:`NotImplementedError`.
+        """
+        del ctx, credentials, ref, version, inputs
+        raise NotImplementedError
+
+    async def get_artifact_run_status(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        run_id: str,
+    ) -> ArtifactRun:
+        """Report a build run's status.
+
+        The :class:`ArtifactRun` counterpart to
+        :meth:`get_deployment_status`; ``run_id`` is what
+        :meth:`create_deployment_artifact` returned, resolved against the
+        remote's *build* endpoint rather than its deployment one.
+
+        Optional -- paired with :meth:`create_deployment_artifact`.
+        """
+        del ctx, credentials, run_id
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_deployment_status(

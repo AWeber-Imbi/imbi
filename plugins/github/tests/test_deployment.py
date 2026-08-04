@@ -16,6 +16,7 @@ from imbi.common.plugins.base import (
 from imbi.common.plugins.errors import PluginAuthenticationFailed
 from imbi.plugins.github.deployment import (
     GitHubDeployment,
+    _artifact_status,
     _repo_root_from_redirect,
 )
 from imbi.plugins.github.plugin import GitHubPlugin
@@ -72,12 +73,23 @@ class ManifestTestCase(unittest.TestCase):
             'deployment capability must opt in to deployment sync',
         )
 
-    def test_no_capability_options_declared(self) -> None:
+    def test_no_host_capability_option_declared(self) -> None:
         # The host now comes from the Integration's flavor/host options,
-        # never from a per-capability ``host`` option.
+        # never from a per-capability ``host`` option.  Other capability
+        # options (artifact creation) are fine.
         cap = GitHubPlugin.manifest.get_capability('deployment')
         assert cap is not None
-        self.assertEqual(cap.options, [])
+        self.assertNotIn('host', {opt.name for opt in cap.options})
+
+    def test_declares_artifact_workflow_options(self) -> None:
+        cap = GitHubPlugin.manifest.get_capability('deployment')
+        assert cap is not None
+        options = {opt.name: opt for opt in cap.options}
+        self.assertIn('artifact_workflow', options)
+        # Optional: projects that build artifacts outside Imbi promote
+        # against an artifact that already exists.
+        self.assertFalse(options['artifact_workflow'].required)
+        self.assertEqual(options['artifact_version_input'].default, 'version')
 
     def test_no_legacy_deploys_via_edge_declared(self) -> None:
         # Promote behaviour is inferred from the ref shape and per-env
@@ -1829,6 +1841,297 @@ class ListWorkflowsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         plugin = GitHubDeployment()
         self.assertEqual(await plugin.list_workflows(_ctx(), _CREDS), [])
+
+
+_DISPATCH_URL = (
+    'https://api.github.com/repos/octo/demo/actions/workflows/'
+    'release.yml/dispatches'
+)
+
+
+def _artifact_ctx(
+    options: dict[str, object] | None = None,
+) -> PluginContext:
+    return _ctx(
+        options={'artifact_workflow': 'release.yml', **(options or {})}
+    )
+
+
+class CreateDeploymentArtifactTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_dispatch_returns_run_id_on_200(self) -> None:
+        dispatch = respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'workflow_run_id': 4242,
+                    'run_url': (
+                        'https://api.github.com/repos/octo/demo/'
+                        'actions/runs/4242'
+                    ),
+                    'html_url': 'https://github.com/octo/demo/actions/runs/4242',
+                },
+            )
+        )
+        plugin = GitHubDeployment()
+        run = await plugin.create_deployment_artifact(
+            _artifact_ctx(), _CREDS, ref='main', version='2.23.0'
+        )
+        self.assertEqual(run.run_id, '4242')
+        # ``html_url`` is the human-facing page; the response's sibling
+        # ``run_url`` is the API URL and must not leak into the UI.
+        self.assertEqual(
+            run.run_url, 'https://github.com/octo/demo/actions/runs/4242'
+        )
+        self.assertEqual(run.status, 'queued')
+        body = json.loads(dispatch.calls.last.request.read())
+        self.assertEqual(body['ref'], 'main')
+        self.assertEqual(body['inputs'], {'version': '2.23.0'})
+
+    @respx.mock
+    async def test_dispatch_pins_api_version_per_call(self) -> None:
+        dispatch = respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(204)
+        )
+        plugin = GitHubDeployment()
+        await plugin.create_deployment_artifact(
+            _artifact_ctx(), _CREDS, ref='main', version='2.23.0'
+        )
+        self.assertEqual(
+            dispatch.calls.last.request.headers['x-github-api-version'],
+            '2026-03-10',
+        )
+
+    @respx.mock
+    async def test_other_calls_do_not_pin_api_version(self) -> None:
+        # Pinning belongs on the dispatch alone -- putting it on the
+        # shared client would change every deployment call's behaviour.
+        deploy = respx.post(
+            'https://api.github.com/repos/octo/demo/deployments'
+        ).mock(return_value=httpx.Response(201, json={'id': 1, 'url': ''}))
+        plugin = GitHubDeployment()
+        await plugin.trigger_deployment(
+            _ctx(environment='testing'), _CREDS, ref_or_sha='main'
+        )
+        self.assertNotIn(
+            'x-github-api-version', deploy.calls.last.request.headers
+        )
+
+    @respx.mock
+    async def test_204_is_dispatched_with_unknown_run_id(self) -> None:
+        # The tenant default API version answers bodiless; the build IS
+        # running, so this must not read as a failure.
+        respx.post(_DISPATCH_URL).mock(return_value=httpx.Response(204))
+        plugin = GitHubDeployment()
+        run = await plugin.create_deployment_artifact(
+            _artifact_ctx(), _CREDS, ref='main', version='2.23.0'
+        )
+        self.assertIsNone(run.run_id)
+        self.assertIsNone(run.run_url)
+        self.assertEqual(run.status, 'queued')
+
+    @respx.mock
+    async def test_200_with_unparseable_body_degrades(self) -> None:
+        respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(
+                200,
+                content=b'not json',
+                headers={'content-type': 'text/plain'},
+            )
+        )
+        plugin = GitHubDeployment()
+        run = await plugin.create_deployment_artifact(
+            _artifact_ctx(), _CREDS, ref='main', version='2.23.0'
+        )
+        self.assertIsNone(run.run_id)
+        self.assertEqual(run.status, 'queued')
+
+    @respx.mock
+    async def test_version_input_name_is_configurable(self) -> None:
+        dispatch = respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(204)
+        )
+        plugin = GitHubDeployment()
+        await plugin.create_deployment_artifact(
+            _artifact_ctx({'artifact_version_input': 'tag'}),
+            _CREDS,
+            ref='main',
+            version='2.23.0',
+        )
+        body = json.loads(dispatch.calls.last.request.read())
+        self.assertEqual(body['inputs'], {'tag': '2.23.0'})
+
+    @respx.mock
+    async def test_caller_inputs_layer_over_version(self) -> None:
+        dispatch = respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(204)
+        )
+        plugin = GitHubDeployment()
+        await plugin.create_deployment_artifact(
+            _artifact_ctx(),
+            _CREDS,
+            ref='main',
+            version='2.23.0',
+            inputs={'version': 'override', 'dry_run': 'false'},
+        )
+        body = json.loads(dispatch.calls.last.request.read())
+        self.assertEqual(
+            body['inputs'], {'version': 'override', 'dry_run': 'false'}
+        )
+
+    @respx.mock
+    async def test_numeric_workflow_id_accepted(self) -> None:
+        dispatch = respx.post(
+            'https://api.github.com/repos/octo/demo/actions/workflows/'
+            '161335/dispatches'
+        ).mock(return_value=httpx.Response(204))
+        plugin = GitHubDeployment()
+        await plugin.create_deployment_artifact(
+            _ctx(options={'artifact_workflow': 161335}),
+            _CREDS,
+            ref='main',
+            version='2.23.0',
+        )
+        self.assertTrue(dispatch.called)
+
+    @respx.mock
+    async def test_missing_workflow_option_raises(self) -> None:
+        plugin = GitHubDeployment()
+        with self.assertRaises(ValueError) as ctx:
+            await plugin.create_deployment_artifact(
+                _ctx(), _CREDS, ref='main', version='2.23.0'
+            )
+        self.assertIn('artifact_workflow', str(ctx.exception))
+
+    @respx.mock
+    async def test_too_many_inputs_raises_before_dispatch(self) -> None:
+        dispatch = respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(204)
+        )
+        plugin = GitHubDeployment()
+        with self.assertRaises(ValueError) as ctx:
+            await plugin.create_deployment_artifact(
+                _artifact_ctx(),
+                _CREDS,
+                ref='main',
+                version='2.23.0',
+                inputs={f'k{i}': str(i) for i in range(10)},
+            )
+        self.assertIn('at most 10', str(ctx.exception))
+        self.assertFalse(dispatch.called)
+
+    @respx.mock
+    async def test_http_error_propagates(self) -> None:
+        # A 422 (no workflow_dispatch trigger, or unknown ref) must reach
+        # the host so the promote records a warning rather than silently
+        # reporting a build that never started.
+        respx.post(_DISPATCH_URL).mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    'message': 'Workflow does not have '
+                    'workflow_dispatch trigger'
+                },
+            )
+        )
+        plugin = GitHubDeployment()
+        with self.assertRaises(httpx.HTTPStatusError):
+            await plugin.create_deployment_artifact(
+                _artifact_ctx(), _CREDS, ref='main', version='2.23.0'
+            )
+
+
+class GetArtifactRunStatusTestCase(unittest.IsolatedAsyncioTestCase):
+    def _mock_run(self, **fields: object) -> None:
+        payload: dict[str, object] = {
+            'id': 4242,
+            'status': 'completed',
+            'conclusion': 'success',
+            'html_url': 'https://github.com/octo/demo/actions/runs/4242',
+            'run_started_at': '2026-08-04T12:00:00Z',
+            'created_at': '2026-08-04T11:59:00Z',
+            'updated_at': '2026-08-04T12:05:00Z',
+        }
+        payload.update(fields)
+        respx.get(
+            'https://api.github.com/repos/octo/demo/actions/runs/4242'
+        ).mock(return_value=httpx.Response(200, json=payload))
+
+    @respx.mock
+    async def test_completed_success(self) -> None:
+        self._mock_run()
+        plugin = GitHubDeployment()
+        run = await plugin.get_artifact_run_status(_ctx(), _CREDS, '4242')
+        self.assertEqual(run.run_id, '4242')
+        self.assertEqual(run.status, 'success')
+        self.assertEqual(
+            run.run_url, 'https://github.com/octo/demo/actions/runs/4242'
+        )
+        self.assertEqual(
+            run.started_at,
+            datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC),
+        )
+        self.assertEqual(
+            run.completed_at,
+            datetime.datetime(2026, 8, 4, 12, 5, tzinfo=datetime.UTC),
+        )
+
+    @respx.mock
+    async def test_in_progress_has_no_completed_at(self) -> None:
+        self._mock_run(status='in_progress', conclusion=None)
+        plugin = GitHubDeployment()
+        run = await plugin.get_artifact_run_status(_ctx(), _CREDS, '4242')
+        self.assertEqual(run.status, 'in_progress')
+        self.assertIsNone(run.completed_at)
+
+    @respx.mock
+    async def test_falls_back_to_created_at_when_unstarted(self) -> None:
+        self._mock_run(status='queued', conclusion=None, run_started_at=None)
+        plugin = GitHubDeployment()
+        run = await plugin.get_artifact_run_status(_ctx(), _CREDS, '4242')
+        self.assertEqual(
+            run.started_at,
+            datetime.datetime(2026, 8, 4, 11, 59, tzinfo=datetime.UTC),
+        )
+
+
+class ArtifactStatusMappingTestCase(unittest.TestCase):
+    def test_in_flight_states(self) -> None:
+        self.assertEqual(_artifact_status('in_progress', ''), 'in_progress')
+        for state in ('queued', 'requested', 'waiting', 'pending'):
+            with self.subTest(state=state):
+                self.assertEqual(_artifact_status(state, ''), 'queued')
+
+    def test_unrecognised_in_flight_state_stays_queued(self) -> None:
+        # Not terminal, so the host keeps polling rather than treating an
+        # unfamiliar state as a dead run.
+        self.assertEqual(_artifact_status('something_new', ''), 'queued')
+
+    def test_terminal_conclusions(self) -> None:
+        cases = {
+            'success': 'success',
+            'failure': 'failure',
+            'timed_out': 'failure',
+            # Completed but produced no artifact -- a failure to the host
+            # whatever GitHub calls it.
+            'action_required': 'failure',
+            'startup_failure': 'failure',
+            'cancelled': 'cancelled',
+            'skipped': 'cancelled',
+            'stale': 'cancelled',
+            # Terminal, but says nothing about whether the artifact exists.
+            'neutral': 'unknown',
+            'something_new': 'unknown',
+            # ``completed`` with no conclusion yet is a brief race in
+            # GitHub's API; reporting it non-terminal keeps the host
+            # polling until the conclusion lands.
+            '': 'unknown',
+        }
+        for conclusion, expected in cases.items():
+            with self.subTest(conclusion=conclusion):
+                self.assertEqual(
+                    _artifact_status('completed', conclusion), expected
+                )
 
 
 class RepoRootFromRedirectTestCase(unittest.TestCase):

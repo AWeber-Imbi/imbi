@@ -4,7 +4,7 @@
 ``flavor`` + ``host`` options on ``ctx.integration_options`` (github.com,
 a ``*.ghe.com`` GHEC tenant, or an operator-managed GHES appliance).
 
-It drives the GitHub Deployments API
+*Deploying* drives the GitHub Deployments API
 (``POST /repos/{owner}/{repo}/deployments``) rather than
 ``workflow_dispatch`` — Imbi's ``Environment`` maps 1:1 to GitHub's
 ``environment`` field, deployment protection rules apply server-side,
@@ -12,6 +12,14 @@ and ``GET /deployments/{id}/statuses`` gives a clean status loop.
 Tag/release creation is handled separately by ``create_tag`` and
 ``create_release`` and continues to feed projects whose deploys are
 triggered by ``on: release: [published]`` instead of ``on: deployment``.
+
+*Building the artifact that a deployment deploys* is the separate,
+earlier stage: ``create_deployment_artifact`` dispatches a release
+workflow, and ``get_artifact_run_status`` reports it. These deliberately
+do not share :class:`~imbi.common.plugins.base.DeploymentRun` or its
+status endpoint with the deploy stage — a workflow run id and a
+Deployment id are different identifier spaces on the same remote, and
+resolving one through the other's endpoint 404s.
 
 The handler runs as the acting user: the host passes the materialized
 access token through the Integration credential blob's
@@ -34,6 +42,7 @@ import urllib.parse
 import httpx
 
 from imbi.common.plugins.base import (
+    ArtifactRun,
     CheckStatus,
     Commit,
     CompareResult,
@@ -64,6 +73,19 @@ _HTTP_TIMEOUT_SECONDS = 10.0
 # us indefinitely.  100 per page * 10 pages = 1000 refs is plenty for
 # the deployment-plugin UI's purposes.
 _MAX_REF_PAGES = 10
+
+# Pinned *per call* on the workflow-dispatch request only -- never on the
+# shared client.  From this version GitHub answers a dispatch with 200 +
+# a body naming the run it started, instead of a bodiless 204; older
+# appliances ignore the header and keep returning 204 (see
+# ``create_deployment_artifact``).  Raising the version for every
+# deployment call would be a far wider behavioural change than the one
+# response body we're after.
+_DISPATCH_API_VERSION = '2026-03-10'
+# GitHub rejects a ``workflow_dispatch`` carrying more than 10 inputs.
+# Checked client-side so an over-long payload names itself instead of
+# coming back as an opaque 422.
+_MAX_DISPATCH_INPUTS = 10
 
 # Process-wide cache of (token, host, repo) tuples for which the
 # GitHub ``/check-runs`` endpoint has already returned 403 (insufficient
@@ -153,6 +175,66 @@ def _parse_iso(value: str | None) -> datetime.datetime | None:
         return datetime.datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _dispatch_payload(
+    response: httpx.Response,
+) -> dict[str, typing.Any] | None:
+    """Return a dispatch response's JSON body, or ``None`` when bodiless.
+
+    A ``204`` (any appliance that doesn't know
+    :data:`_DISPATCH_API_VERSION`) is the expected bodiless case.  A
+    ``200`` carrying an empty or non-object body is treated the same way
+    rather than raised on: the dispatch already succeeded, so failing here
+    would report a started build as a failed one.
+    """
+    if response.status_code == 204 or not response.content:
+        return None
+    try:
+        payload: object = response.json()
+    except ValueError:
+        LOGGER.warning(
+            'github-deployment: workflow dispatch returned HTTP %s with an '
+            'unparseable body; treating the run id as unknown',
+            response.status_code,
+        )
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return typing.cast('dict[str, typing.Any]', payload)
+
+
+def _artifact_status(
+    state: str, conclusion: str
+) -> typing.Literal[
+    'queued', 'in_progress', 'success', 'failure', 'cancelled', 'unknown'
+]:
+    """Map an Actions run's ``status``/``conclusion`` pair onto our set.
+
+    A run is only terminal once ``status == 'completed'``; every other
+    state is still in flight, so an unrecognised one is reported as
+    ``queued`` rather than ``unknown`` -- the host polls on, which is the
+    safe reading for a run that hasn't finished.
+    """
+    if state != 'completed':
+        return 'in_progress' if state == 'in_progress' else 'queued'
+    if conclusion == 'success':
+        return 'success'
+    # ``action_required`` and ``startup_failure`` are completed runs that
+    # did not produce an artifact -- a failure from the host's point of
+    # view, whatever the remote calls it.
+    if conclusion in {
+        'failure',
+        'timed_out',
+        'action_required',
+        'startup_failure',
+    }:
+        return 'failure'
+    if conclusion in {'cancelled', 'skipped', 'stale'}:
+        return 'cancelled'
+    # ``neutral``, or a conclusion GitHub added since: terminal, but we
+    # can't say whether the artifact exists.
+    return 'unknown'
 
 
 def _repo_root_from_redirect(location: str) -> str | None:
@@ -850,6 +932,124 @@ class GitHubDeployment(DeploymentCapability):
                 run_url=None,
                 status='queued',
             )
+
+    async def create_deployment_artifact(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        ref: str,
+        version: str,
+        inputs: dict[str, str] | None = None,
+    ) -> ArtifactRun:
+        """Dispatch the release workflow that builds ``version``.
+
+        ``POST /actions/workflows/{id}/dispatches`` against the workflow
+        named by the ``artifact_workflow`` capability option.  The
+        dispatched workflow is what cuts the tag and pushes any
+        version-bump commits, so neither exists on the remote when this
+        returns -- the host waits on
+        :meth:`get_artifact_run_status` before syncing them or deploying.
+
+        ``version`` is passed as a workflow input under the key named by
+        the ``artifact_version_input`` option (default ``version``);
+        caller-supplied ``inputs`` layer on top, so an explicit override
+        wins on a shared key.
+
+        Degrades on appliances predating :data:`_DISPATCH_API_VERSION`:
+        those answer ``204 No Content``, which yields an
+        :class:`ArtifactRun` with ``run_id=None`` -- dispatched, run id
+        unknown.  That is deliberately not an error; the build is running
+        and the caller resolves the id another way if it needs to watch.
+        """
+        workflow_id = str(
+            ctx.capability_options.get('artifact_workflow') or ''
+        )
+        if not workflow_id:
+            raise ValueError(
+                'create_deployment_artifact requires the '
+                "'artifact_workflow' capability option naming the workflow "
+                'to dispatch (a workflow file name or numeric id)'
+            )
+        version_key = (
+            str(ctx.capability_options.get('artifact_version_input') or '')
+            or 'version'
+        )
+        merged_inputs: dict[str, str] = {version_key: version}
+        if inputs:
+            merged_inputs.update(inputs)
+        if len(merged_inputs) > _MAX_DISPATCH_INPUTS:
+            raise ValueError(
+                f'create_deployment_artifact was given '
+                f'{len(merged_inputs)} workflow inputs; GitHub accepts at '
+                f'most {_MAX_DISPATCH_INPUTS} per workflow_dispatch'
+            )
+        async with self._client(ctx, credentials) as client:
+            resp = await client.post(
+                f'/actions/workflows/'
+                f'{urllib.parse.quote(workflow_id, safe="")}/dispatches',
+                json={'ref': ref, 'inputs': merged_inputs},
+                headers={'X-GitHub-Api-Version': _DISPATCH_API_VERSION},
+            )
+            resp.raise_for_status()
+            payload = _dispatch_payload(resp)
+            if payload is None:
+                # 204, or a 200 whose body we can't read: the dispatch
+                # was accepted, we just don't know which run it started.
+                LOGGER.info(
+                    'github-deployment: dispatched %s@%s for project %s; '
+                    'remote reported no run id (HTTP %s)',
+                    workflow_id,
+                    ref,
+                    ctx.project_id,
+                    resp.status_code,
+                )
+                return ArtifactRun(status='queued')
+            run_id = payload.get('workflow_run_id')
+            html_url = payload.get('html_url')
+            return ArtifactRun(
+                run_id=str(run_id) if run_id else None,
+                # ``html_url`` is the human-facing run page; the sibling
+                # ``run_url`` in the response is the API URL, which is no
+                # use to the UI.
+                run_url=str(html_url) if html_url else None,
+                status='queued',
+            )
+
+    async def get_artifact_run_status(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        run_id: str,
+    ) -> ArtifactRun:
+        """Report an Actions run's status via ``GET /actions/runs/{id}``.
+
+        Distinct from :meth:`get_deployment_status`, which resolves a
+        GitHub *Deployment* id through ``/deployments/{id}/statuses``.
+        Passing a workflow run id to that one would 404, which is why the
+        two ids never share a method.
+        """
+        async with self._client(ctx, credentials) as client:
+            resp = await client.get(
+                f'/actions/runs/{urllib.parse.quote(str(run_id), safe="")}'
+            )
+            resp.raise_for_status()
+            payload = typing.cast('dict[str, typing.Any]', resp.json())
+        state = str(payload.get('status') or '').lower()
+        conclusion = str(payload.get('conclusion') or '').lower()
+        status = _artifact_status(state, conclusion)
+        completed = status in {'success', 'failure', 'cancelled'}
+        html_url = payload.get('html_url')
+        return ArtifactRun(
+            run_id=str(payload.get('id') or run_id),
+            run_url=str(html_url) if html_url else None,
+            status=status,
+            started_at=_parse_iso(
+                payload.get('run_started_at') or payload.get('created_at')
+            ),
+            completed_at=(
+                _parse_iso(payload.get('updated_at')) if completed else None
+            ),
+        )
 
     async def list_workflows(
         self,
