@@ -246,6 +246,14 @@ async def process_notification(  # noqa: PLR0911, PLR0915 - linear webhook pipel
             extra={'webhook_id': webhook_id, 'rules_count': len(parsed_rules)},
         )
         return
+    # Dispatch order is load-bearing, not cosmetic: ``add_deployment_event``
+    # looks its release up and drops the event when it is missing, so it
+    # has to run after ``create_release``; ``publish_release`` has to run
+    # after both. The query orders by ``ordinal`` before collecting, but
+    # that leans on AGE preserving row order through ``collect()`` -- sort
+    # here so the guarantee is the dispatcher's own rather than the
+    # storage engine's.
+    rules.sort(key=lambda rule: rule.ordinal)
 
     LOGGER.debug('webhook: %r', webhook)
     LOGGER.debug('org: %r', org)

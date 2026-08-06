@@ -54,6 +54,25 @@ identical to a rule's `filter_expression`. For example, a body field is
 `payload.deployment.sha` in both a filter and a `committish_expression`, and a
 selector reads `/payload/deployment/ref`.
 
+## Rule ordering
+
+Matching rules run in ascending `ordinal` order, and for the release actions
+that order is load-bearing rather than cosmetic:
+
+1. `create_release` — creates the Imbi `Release` the rest key off.
+2. `add_deployment_event` — looks the release up and **drops the event** when
+   it is missing, so it must run after `create_release`.
+3. `publish_release` / `block_release` — ratify or block that release once the
+   deployment reports its outcome.
+
+Rules that key off a deployment state should enumerate the states they act on
+rather than negating one. `state != "success"` sweeps in `inactive`, which
+means the deployment was superseded by a newer one — the normal end of every
+deployment's life, not a failure. The `publish_release` and `block_release`
+actions enforce this themselves (they fire only on states mapping to `success`
+and `failed` respectively), so a filter can be as broad as
+`type == "deployment_status"`.
+
 ## Redacted headers
 
 Headers that may carry credentials or webhook signatures are replaced with
