@@ -78,6 +78,54 @@ PATH_MODEL_MAPPING: dict[str, str] = {
 }
 
 
+def blueprint_schema_name(model_name: str, kind: str) -> str:
+    """Component-schema name for a blueprint-composed model.
+
+    Deliberately *not* ``f'{model_name}{kind}'``. Blueprint models are
+    named after their graph node, and several nodes share a name with a
+    distinct endpoint response model -- ``Integration``, ``Project``,
+    ``MCPServer``, ``Tag``, ``DocumentTemplate``, ``LinkDefinition``. The
+    unnamespaced form collided with the schema FastAPI had already
+    derived from the endpoint's own annotations, and because the write
+    below is a plain assignment the node shape silently replaced it.
+    ``IntegrationResponse`` and ``ProjectResponse`` were both published
+    describing something no endpoint returns.
+
+    Args:
+        model_name: Graph-node name the blueprint model was built from.
+        kind: ``'Request'`` or ``'Response'``.
+
+    """
+    return f'{model_name}Blueprint{kind}'
+
+
+def _claim_schema_name(
+    schemas: dict[str, typing.Any],
+    name: str,
+    model_name: str,
+) -> bool:
+    """Log and refuse when a blueprint schema would replace another.
+
+    Nothing should reach a name already in ``schemas``: FastAPI writes
+    endpoint-derived schemas first, and :func:`blueprint_schema_name`
+    keeps blueprint output in its own namespace. A hit means the two
+    namespaces have converged again, which is worth an error rather
+    than a silently wrong document.
+
+    Returns ``True`` when the caller may write ``name``.
+
+    """
+    if name in schemas:
+        LOGGER.error(
+            'refusing to overwrite component schema %r with the blueprint '
+            'model for %r; the endpoint-derived schema is kept',
+            name,
+            model_name,
+        )
+        return False
+    return True
+
+
 async def generate_blueprint_models(
     db: graph.Graph,
 ) -> tuple[
@@ -293,30 +341,32 @@ def _build_schema(
             resp_model = _response_models[model_name]
 
             # Write schema (for request bodies)
-            write_name = f'{model_name}Request'
-            try:
-                schemas[write_name] = write_model.model_json_schema(
-                    ref_template=('#/components/schemas/{model}')
-                )
-            except Exception:
-                LOGGER.exception(
-                    'Failed to generate write schema for %s',
-                    model_name,
-                )
-                had_failure = True
+            write_name = blueprint_schema_name(model_name, 'Request')
+            if _claim_schema_name(schemas, write_name, model_name):
+                try:
+                    schemas[write_name] = write_model.model_json_schema(
+                        ref_template=('#/components/schemas/{model}')
+                    )
+                except Exception:
+                    LOGGER.exception(
+                        'Failed to generate write schema for %s',
+                        model_name,
+                    )
+                    had_failure = True
 
             # Response schema (with relationships)
-            resp_name = f'{model_name}Response'
-            try:
-                schemas[resp_name] = resp_model.model_json_schema(
-                    ref_template=('#/components/schemas/{model}')
-                )
-            except Exception:
-                LOGGER.exception(
-                    'Failed to generate response schema for %s',
-                    model_name,
-                )
-                had_failure = True
+            resp_name = blueprint_schema_name(model_name, 'Response')
+            if _claim_schema_name(schemas, resp_name, model_name):
+                try:
+                    schemas[resp_name] = resp_model.model_json_schema(
+                        ref_template=('#/components/schemas/{model}')
+                    )
+                except Exception:
+                    LOGGER.exception(
+                        'Failed to generate response schema for %s',
+                        model_name,
+                    )
+                    had_failure = True
 
         _hoist_defs_to_components(schemas)
         _rewrite_path_schemas(openapi_schema)
@@ -473,10 +523,16 @@ def _rewrite_path_schemas(
             continue
 
         request_ref = {
-            '$ref': (f'#/components/schemas/{model_type}Request'),
+            '$ref': (
+                '#/components/schemas/'
+                + blueprint_schema_name(model_type, 'Request')
+            ),
         }
         response_ref = {
-            '$ref': (f'#/components/schemas/{model_type}Response'),
+            '$ref': (
+                '#/components/schemas/'
+                + blueprint_schema_name(model_type, 'Response')
+            ),
         }
         array_ref: dict[str, typing.Any] = {
             'type': 'array',

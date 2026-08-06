@@ -257,17 +257,17 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         schemas = schema['components']['schemas']
 
         # Request schemas
-        self.assertIn('TeamRequest', schemas)
+        self.assertIn('TeamBlueprintRequest', schemas)
         self.assertIn(
             'custom_field',
-            schemas['TeamRequest']['properties'],
+            schemas['TeamBlueprintRequest']['properties'],
         )
 
         # Response schemas
-        self.assertIn('TeamResponse', schemas)
+        self.assertIn('TeamBlueprintResponse', schemas)
         self.assertIn(
             'custom_field',
-            schemas['TeamResponse']['properties'],
+            schemas['TeamBlueprintResponse']['properties'],
         )
 
     def test_custom_openapi_caches_result(self) -> None:
@@ -361,16 +361,20 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
 
         app = fastapi.FastAPI(title='Test', version='1.0.0')
 
-        @app.get('/teams/')
-        async def list_teams() -> list[dict]:
+        # Must be a path in PATH_MODEL_MAPPING, or the rewriter skips it
+        # and the assertions below only see FastAPI's own output.
+        mapped = '/organizations/{org_slug}/teams/'
+
+        @app.get(mapped)
+        async def list_teams(org_slug: str) -> list[dict]:  # pyright: ignore[reportUnusedFunction]
             return []
 
         custom_openapi_fn = openapi.create_custom_openapi(app)
         schema = custom_openapi_fn()
 
         paths = schema.get('paths', {})
-        self.assertIn('/teams/', paths)
-        get_op = paths['/teams/'].get('get', {})
+        self.assertIn(mapped, paths)
+        get_op = paths[mapped].get('get', {})
         responses = get_op.get('responses', {})
         self.assertIn('200', responses)
         content = responses['200'].get('content', {})
@@ -380,6 +384,92 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         ).get('schema', {})
         self.assertEqual(json_schema.get('type'), 'array')
         self.assertIn('items', json_schema)
+        # The rewritten $ref must name the blueprint schema that was
+        # actually written, not the endpoint-derived `TeamResponse`.
+        self.assertEqual(
+            json_schema['items'].get('$ref'),
+            '#/components/schemas/TeamBlueprintResponse',
+        )
+
+
+class BlueprintSchemaNamespaceTestCase(unittest.TestCase):
+    """Blueprint schemas must not displace endpoint-derived ones.
+
+    ``make_response_model`` names its output after the graph node, and
+    several nodes share a name with a distinct endpoint response model.
+    Writing those unnamespaced replaced the schema FastAPI derived from
+    the endpoint, so ``IntegrationResponse`` and ``ProjectResponse`` were
+    published describing a shape no endpoint returns.
+    """
+
+    def setUp(self) -> None:
+        _reset_openapi_module_state()
+
+    def tearDown(self) -> None:
+        _reset_openapi_module_state()
+
+    def test_blueprint_names_are_namespaced(self) -> None:
+        self.assertEqual(
+            'ProjectBlueprintResponse',
+            openapi.blueprint_schema_name('Project', 'Response'),
+        )
+        self.assertEqual(
+            'ProjectBlueprintRequest',
+            openapi.blueprint_schema_name('Project', 'Request'),
+        )
+
+    def test_endpoint_schema_survives_a_same_named_node(self) -> None:
+        """A node named like an endpoint model no longer clobbers it."""
+        import fastapi
+
+        openapi._blueprint_models = {
+            'Project': imbi.common.models.Project,
+        }
+        openapi._response_models = {
+            'Project': imbi.common.blueprints.make_response_model(
+                imbi.common.models.Project,
+            ),
+        }
+
+        class ProjectResponse(pydantic.BaseModel):
+            """Stands in for an endpoint's own response model."""
+
+            only_the_endpoint_has_this: str
+
+        app = fastapi.FastAPI(title='Test', version='1.0.0')
+
+        @app.get('/projects/')
+        async def list_projects() -> ProjectResponse:  # pyright: ignore[reportUnusedFunction]
+            return ProjectResponse(only_the_endpoint_has_this='x')
+
+        schema = openapi.create_custom_openapi(app)()
+        schemas = schema['components']['schemas']
+
+        self.assertIn(
+            'only_the_endpoint_has_this',
+            schemas['ProjectResponse']['properties'],
+        )
+        self.assertIn('ProjectBlueprintResponse', schemas)
+        self.assertNotIn(
+            'only_the_endpoint_has_this',
+            schemas['ProjectBlueprintResponse']['properties'],
+        )
+
+    def test_collision_is_refused_and_logged(self) -> None:
+        """A converged namespace keeps the existing schema and logs."""
+        schemas: dict[str, typing.Any] = {'TeamBlueprintResponse': {'x': 1}}
+        with self.assertLogs(openapi.LOGGER, level='ERROR') as captured:
+            allowed = openapi._claim_schema_name(
+                schemas, 'TeamBlueprintResponse', 'Team'
+            )
+        self.assertFalse(allowed)
+        self.assertIn('refusing to overwrite', captured.output[0])
+        self.assertEqual({'x': 1}, schemas['TeamBlueprintResponse'])
+
+    def test_free_name_is_claimable(self) -> None:
+        self.assertTrue(
+            openapi._claim_schema_name({}, 'TeamBlueprint', 'Team')
+        )
 
 
 class MarkAiExcludedOperationsTestCase(unittest.TestCase):
