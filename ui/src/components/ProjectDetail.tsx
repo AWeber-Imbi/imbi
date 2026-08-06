@@ -46,9 +46,11 @@ import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
 import { ConnectIdentityPrompt } from '@/components/deploy/ConnectIdentityPrompt'
 import {
   type DeploymentRunStarted,
+  type ReleaseBuildStarted,
   ReleaseModal,
 } from '@/components/deploy/DeploymentModal'
 import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
+import { ReleaseBuildWatcher } from '@/components/deploy/ReleaseBuildWatcher'
 import { DeploymentsTab } from '@/components/deployments/DeploymentsTab'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
@@ -424,6 +426,40 @@ export function ProjectDetail({
           })
         }
         return prev.filter((r) => r.runId !== runId)
+      })
+    },
+    [queryClient],
+  )
+  // In-flight dispatch-driven promotes (one ReleaseBuildWatcher each).
+  // Keyed on the toast id rather than a run id: the build phase has no
+  // Deployment, and the workflow run id can be absent on appliances
+  // whose dispatch answers without one.
+  const [activeBuilds, setActiveBuilds] = useState<ReleaseBuildStarted[]>([])
+  const handleBuildStarted = useCallback((build: ReleaseBuildStarted) => {
+    setActiveBuilds((prev) =>
+      prev.some((b) => b.toastId === build.toastId) ? prev : [...prev, build],
+    )
+  }, [])
+  const handleBuildTerminal = useCallback(
+    (toastId: number | string) => {
+      setActiveBuilds((prev) => {
+        const settled = prev.find((b) => b.toastId === toastId)
+        if (settled) {
+          // A finished promote moved the release *and* the deployment,
+          // so refresh both the release train and the project's own
+          // views for whichever project triggered it.
+          void queryClient.invalidateQueries({
+            queryKey: [
+              'currentReleases',
+              settled.originOrgSlug,
+              settled.originProjectId,
+            ],
+          })
+          void queryClient.invalidateQueries({
+            predicate: (q) => q.queryKey.includes(settled.originProjectId),
+          })
+        }
+        return prev.filter((b) => b.toastId !== toastId)
       })
     },
     [queryClient],
@@ -1309,7 +1345,11 @@ export function ProjectDetail({
                   />
                 </div>
               )}
-            <ReleasesTab orgSlug={orgSlug} project={project} />
+            <ReleasesTab
+              onBuildStarted={handleBuildStarted}
+              orgSlug={orgSlug}
+              project={project}
+            />
           </TabsContent>
         )}
         {hasDeploymentsTab && (
@@ -1334,6 +1374,7 @@ export function ProjectDetail({
               canTrigger={canTriggerDeployments}
               connectLabel={deploymentConnectLabel}
               environments={sortedEnvironments}
+              onBuildStarted={handleBuildStarted}
               onRunStarted={handleRunStarted}
               orgSlug={orgSlug}
               projectId={project.id}
@@ -1393,6 +1434,7 @@ export function ProjectDetail({
               fromEnvironment={fromSlug}
               initialAction={isPromoteModal ? 'promote' : 'deploy'}
               initialEnvSlug={initialSubId}
+              onBuildStarted={handleBuildStarted}
               onOpenChange={(open) => {
                 if (!open) closeModal()
               }}
@@ -1421,6 +1463,20 @@ export function ProjectDetail({
           runId={run.runId}
           runUrl={run.runUrl}
           toastId={run.toastId}
+        />
+      ))}
+      {activeBuilds.map((build) => (
+        // Bound to the org/project that dispatched the build, for the
+        // same reason as the run watchers above.
+        <ReleaseBuildWatcher
+          envName={build.envName}
+          key={build.toastId}
+          onTerminal={() => handleBuildTerminal(build.toastId)}
+          orgSlug={build.originOrgSlug}
+          projectId={build.originProjectId}
+          runUrl={build.runUrl}
+          tag={build.tag}
+          toastId={build.toastId}
         />
       ))}
       <RelocatePreviewDialog

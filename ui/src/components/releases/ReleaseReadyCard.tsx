@@ -21,6 +21,10 @@ import { useCutReleaseMutation } from './useCutReleaseMutation'
 
 interface ReleaseReadyCardProps {
   drift: ReleaseDrift
+  /** Forwarded when the cut dispatched a build rather than tagging. */
+  onBuildStarted?: (
+    build: import('@/components/deploy/DeploymentModal').ReleaseBuildStarted,
+  ) => void
   onCut: () => void
   orgSlug: string
   projectId: string
@@ -36,6 +40,7 @@ interface TagFieldsProps {
 // fallow-ignore-next-line complexity
 export function ReleaseReadyCard({
   drift,
+  onBuildStarted,
   onCut,
   orgSlug,
   projectId,
@@ -81,6 +86,7 @@ export function ReleaseReadyCard({
   }, [])
 
   const { cut, isPending } = useCutReleaseMutation({
+    onBuildStarted,
     onSuccess: onCut,
     orgSlug,
     projectId,

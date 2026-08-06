@@ -40,6 +40,28 @@ export interface DeploymentRunStarted {
   toastId: number | string
 }
 
+/**
+ * A dispatched release build being followed by `ReleaseBuildWatcher`.
+ *
+ * The build-phase counterpart to {@link DeploymentRunStarted}. It
+ * carries no run id because there is no Deployment yet — and won't be
+ * one the browser ever sees, since the promote watcher creates it
+ * server-side. The watcher polls `/deployments/promote-status` keyed on
+ * the project instead.
+ */
+export interface ReleaseBuildStarted {
+  /** Target env, or `null` for a release-only cut. */
+  envName: null | string
+  /** Org slug the promote was triggered from. */
+  originOrgSlug: string
+  /** Project id the promote was triggered from. */
+  originProjectId: string
+  /** Workflow run URL, when the remote reported one. */
+  runUrl?: null | string
+  tag: string
+  toastId: number | string
+}
+
 interface ReleaseModalProps {
   canDeploy: boolean
   canPromote: boolean
@@ -51,6 +73,7 @@ interface ReleaseModalProps {
   fromEnvironment?: string
   initialAction: 'deploy' | 'promote'
   initialEnvSlug: string
+  onBuildStarted?: (build: ReleaseBuildStarted) => void
   onOpenChange: (open: boolean) => void
   onRunStarted?: (run: DeploymentRunStarted) => void
   open: boolean
@@ -68,6 +91,7 @@ export function ReleaseModal({
   fromEnvironment,
   initialAction,
   initialEnvSlug,
+  onBuildStarted,
   onOpenChange,
   onRunStarted,
   open,
@@ -136,6 +160,7 @@ export function ReleaseModal({
                   environments={environments}
                   fromCommittish={fromCommittish}
                   fromEnvironment={fromEnvironment as string}
+                  onBuildStarted={onBuildStarted}
                   onClose={() => onOpenChange(false)}
                   onRunStarted={onRunStarted}
                   open={open && tab === 'promote'}

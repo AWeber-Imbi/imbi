@@ -2370,6 +2370,46 @@ export const getProjectDeploymentSyncStatus = (
     signal,
   )
 
+// Dispatch-driven promote
+
+// `building` — the Release workflow is running; it creates the tag and
+// the remote Release. `deploying` — the build was green and Imbi has
+// created the Deployment. `build_failed` — the build failed or timed
+// out, and the release is blocked. `failed` — the build outcome is
+// unknown, or Imbi could not finish the promote; the tag is still
+// shippable.
+export type PromoteState =
+  | 'build_failed'
+  | 'building'
+  | 'deploying'
+  | 'failed'
+  | 'idle'
+  | 'success'
+
+export interface PromoteStatus {
+  artifact_run_id: null | string
+  artifact_run_url: null | string
+  committish: null | string
+  environment: null | string
+  error: null | string
+  from_environment: null | string
+  requested_by: null | string
+  status: PromoteState
+  tag: null | string
+  updated_at: null | string
+}
+
+export const getPromoteStatus = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<PromoteStatus> =>
+  apiClient.get<PromoteStatus>(
+    `${deploymentsBase(orgSlug, projectId)}/promote-status`,
+    undefined,
+    signal,
+  )
+
 // Lifecycle push-sync
 
 export interface LifecycleSyncError {

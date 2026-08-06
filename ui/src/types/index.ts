@@ -582,11 +582,18 @@ export interface CutReleaseRequest {
 }
 
 export interface CutReleaseResponse {
+  artifact_run_id?: null | string
+  artifact_run_url?: null | string
   committish: string
+  // Set when the project has a Release workflow configured: the tag and
+  // the remote Release do not exist yet — the dispatched build creates
+  // them — so `release_url` is null and the cut is *not* synchronous.
+  phase?: 'building' | null
   recorded: boolean
   release_url: null | string
   tag: string
   warning?: null | string
+  watched?: boolean
 }
 
 // Dashboard types are hand-written: the /admin/dashboard/* endpoints are
@@ -704,6 +711,14 @@ export interface DeploymentTriggerRequest {
 }
 
 export interface DeploymentTriggerResponse {
+  artifact_run_id?: null | string
+  artifact_run_url?: null | string
+  // Set only when the project has a Release workflow configured. On
+  // that path the dispatched build owns the tag and the remote
+  // Release, so `run` is not a live rollout and there is nothing to
+  // poll at /runs/{id} yet — follow /deployments/promote-status
+  // instead until it reports `deploying`.
+  phase?: 'building' | null
   plugin_id: string
   plugin_slug: string
   recorded: boolean
@@ -717,6 +732,9 @@ export interface DeploymentTriggerResponse {
   // itself still records a DeploymentEvent; the UI surfaces this as
   // an amber inline note.
   warning?: null | string
+  // False when the build was dispatched but no watcher could be
+  // queued — the build runs, but Imbi will not finish the promote.
+  watched?: boolean
 }
 
 export interface Document {
