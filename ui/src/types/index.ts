@@ -719,94 +719,38 @@ export interface DeploymentTriggerResponse {
   warning?: null | string
 }
 
-export interface Document {
-  attached_to?: DocumentAttachment | null
-  comment_count?: number
-  content: string
-  created_at: string
-  created_by: string
-  created_by_name?: null | string
-  id: string
-  is_pinned: boolean
-  like_count?: number
-  liked_by_me?: boolean
-  project_id: null | string
-  tags: TagRef[]
-  title: string
-  updated_at?: null | string
-  updated_by?: null | string
-  version?: number
-}
+export type Document = Schemas['DocumentResponse']
 
 // Aggregate read analytics for one document. Headline counts cover
 // human (`web`) reads only unless the request asked for another
 // surface; `by_surface` always reports every surface so agent traffic
 // stays visible without being mixed into the human numbers.
-export interface DocumentAnalytics {
-  by_surface: DocumentSurfaceCount[]
-  completion_rate: number
-  estimated_read_seconds: number
-  // Whether the caller may load the per-reader list. Driven by the
-  // `document:analytics:read_identities` permission and the org's
-  // `document_analytics_identities` setting.
-  identities_visible: boolean
-  last_read_at?: null | string
-  median_engaged_seconds: number
-  p90_engaged_seconds: number
-  readers: number
-  reads: number
-  trend: DocumentTrendPoint[]
-  views: number
-}
+// `identities_visible` governs whether the caller may load the per-reader
+// list; it is driven by the `document:analytics:read_identities` permission
+// and the org's `document_analytics_identities` setting.
+export type DocumentAnalytics = Schemas['DocumentAnalyticsResponse']
 
 // The vertex a document is attached to. `id` is the project id, the
 // project-type slug, or the user email depending on `kind`; `team` and
 // `project_types` are only populated for projects.
-export interface DocumentAttachment {
-  id: string
-  kind: 'project' | 'project_type' | 'user'
-  name: string
-  project_types?: string[]
-  team?: null | string
-}
+export type DocumentAttachment = Schemas['AttachmentRef']
 
-export interface DocumentCreate {
-  content: string
-  tags?: string[]
-  title: string
-}
+export type DocumentCreate = Schemas['DocumentCreate']
 
 // Who currently holds an advisory editing marker on a document.
-export interface DocumentEditorsResponse {
-  editors: string[]
-  ttl_seconds: number
-}
+export type DocumentEditorsResponse = Schemas['DocumentEditorsResponse']
 
-export interface DocumentLiker {
-  display_name?: null | string
-  liked_at: string
-  principal: string
-}
+export type DocumentLiker = Schemas['LikerRef']
 
 export type DocumentLikerListResponse = CollectionResponse<DocumentLiker>
 
-export interface DocumentLikeState {
-  like_count: number
-  liked_by_me: boolean
-}
+export type DocumentLikeState = Schemas['LikeStateResponse']
 
 export type DocumentListResponse = CollectionResponse<Document>
 
-export interface DocumentReader {
-  engaged_seconds: number
-  last_read_at?: null | string
-  // Deepest point this reader reached across their sessions. With
-  // `engaged_seconds` it separates a skim from a finished read.
-  max_scroll_pct: number
-  principal: string
-  reads: number
-  views: number
-}
+// `max_scroll_pct` is the deepest point this reader reached across their
+// sessions. With `engaged_seconds` it separates a skim from a finished read.
+export type DocumentReader = Schemas['ReaderRef']
 
 export type DocumentReaderListResponse = CollectionResponse<DocumentReader>
 
@@ -814,49 +758,21 @@ export type DocumentReaderListResponse = CollectionResponse<DocumentReader>
 // the previous beat, not a running total: deltas keep every beat
 // independent, so a dropped beat costs one interval instead of
 // corrupting the session total.
-export interface DocumentReadEvent {
-  engaged_ms: number
-  is_final?: boolean
-  max_scroll_pct?: number
-  seq: number
-  session_id: string
-  session_started_at: string
-  surface?: 'api' | 'assistant' | 'mcp' | 'slackbot' | 'web'
-}
+export type DocumentReadEvent = Schemas['ReadEvent']
 
-export interface DocumentReadSummary {
-  document_id: string
-  last_read_at?: null | string
-  readers: number
-  title: string
-  views: number
-}
+export type DocumentReadSummary = Schemas['DocumentReadSummary']
 
 export type DocumentReadSummaryResponse =
   CollectionResponse<DocumentReadSummary>
 
-export interface DocumentSurfaceCount {
-  surface: string
-  views: number
-}
+export type DocumentSurfaceCount = Schemas['SurfaceCount']
 
-export interface DocumentTemplate {
-  content: string
-  created_at: string
-  description?: null | string
-  icon?: null | string
-  id: string
-  name: string
-  organization: { name: string; slug: string }
-  project_type_slugs: string[]
-  slug: string
-  sort_order: number
-  tags: TagRef[]
-  title?: null | string
-  type?: DocumentTemplateType
-  updated_at?: null | string
-}
+export type DocumentTemplate = Schemas['DocumentTemplateResponse']
 
+// `DocumentTemplateCreate` stays hand-written: openapi-typescript treats a
+// schema default as a guarantee the field is present, which holds for a
+// response but not for a request body -- `type` defaults to 'project'
+// server-side and the form deliberately never sends it.
 export interface DocumentTemplateCreate {
   content?: string
   description?: null | string
@@ -870,38 +786,18 @@ export interface DocumentTemplateCreate {
   type?: DocumentTemplateType
 }
 
-// Document Templates. Inlined for the same reason as Document/Tag — the
-// committed openapi.json snapshot predates these endpoints. Switch to
-// `Schemas['DocumentTemplateResponse']` etc. once the snapshot is refreshed.
 // Which attachment contexts may use a template: 'project', 'user', and
 // 'project_type' restrict the template to documents attached to that
 // vertex kind; 'global' applies everywhere.
-export type DocumentTemplateType =
-  | 'global'
-  | 'project'
-  | 'project_type'
-  | 'user'
+export type DocumentTemplateType = Schemas['DocumentTemplateResponse']['type']
 
-export interface DocumentTrendPoint {
-  day: string
-  readers: number
-  views: number
-}
+export type DocumentTrendPoint = Schemas['TrendPoint']
 
 // Full snapshot of a single document version.
-export interface DocumentVersion extends DocumentVersionInfo {
-  content: string
-  tags: string[]
-}
+export type DocumentVersion = Schemas['DocumentVersionResponse']
 
 // One entry in a document's version history (metadata only).
-export interface DocumentVersionInfo {
-  change_kind: 'baseline' | 'create' | 'restore' | 'update'
-  title: string
-  updated_at: string
-  updated_by: string
-  version: number
-}
+export type DocumentVersionInfo = Schemas['DocumentVersionInfo']
 
 export type DocumentVersionListResponse =
   CollectionResponse<DocumentVersionInfo>
@@ -1510,31 +1406,13 @@ export interface ServiceStatus {
   version?: null | string
 }
 
-export interface Tag {
-  created_at?: null | string
-  description?: null | string
-  id: string
-  name: string
-  organization: { name: string; slug: string }
-  slug: string
-  updated_at?: null | string
-}
+export type Tag = Schemas['TagResponse']
 
 // A named release/deploy tag-format policy. Mirrors `imbi_common.models.
 // TagFormat`; carried as a list on both organizations and project types.
-export interface TagFormat {
-  label: string
-  pattern: string
-}
+export type TagFormat = Schemas['TagFormat']
 
-// Documents & tags. Inlined here (not from api-generated.ts) because the
-// committed openapi.json snapshot predates the documents endpoints.
-// Regenerate with `npm run codegen:fetch` once the snapshot is refreshed
-// and switch these to `Schemas['DocumentResponse']` etc.
-export interface TagRef {
-  name: string
-  slug: string
-}
+export type TagRef = Schemas['TagRef']
 
 // Team types
 export type Team = Schemas['TeamResponse']
