@@ -160,6 +160,54 @@ describe('ConfigurationTab Duplicate action', () => {
     )
   })
 
+  it('preserves an explicitly empty source value when duplicating', async () => {
+    stubValues({
+      production: async () => [value(PASSWORD_KEY, '')],
+      staging: async () => [value(PASSWORD_KEY, 'pw-staging')],
+    })
+    renderTab()
+    const button = await duplicateButton()
+    await waitFor(() => expect(button).toBeEnabled())
+
+    const user = userEvent.setup()
+    await user.click(button)
+    await user.click(await screen.findByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(setConfigurationValue).toHaveBeenCalledTimes(2))
+    expect(setConfigurationValue).toHaveBeenLastCalledWith(
+      'acme',
+      'proj-1',
+      'imbi/acme/db/',
+      { data_type: 'string', secret: false, value: '' },
+      { environment: 'production', source: 'aws' },
+    )
+  })
+
+  it('duplicates a key whose source values are all empty', async () => {
+    stubValues({
+      production: async () => [value(PASSWORD_KEY, '')],
+      staging: async () => [value(PASSWORD_KEY, '')],
+    })
+    renderTab()
+    const button = await duplicateButton()
+    await waitFor(() => expect(button).toBeEnabled())
+
+    const user = userEvent.setup()
+    await user.click(button)
+    await user.click(await screen.findByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(setConfigurationValue).toHaveBeenCalledTimes(2))
+    for (const env of ['staging', 'production']) {
+      expect(setConfigurationValue).toHaveBeenCalledWith(
+        'acme',
+        'proj-1',
+        'imbi/acme/db/',
+        { data_type: 'string', secret: false, value: '' },
+        { environment: env, source: 'aws' },
+      )
+    }
+  })
+
   it('uses the pending type override when duplicating', async () => {
     stubValues({
       production: async () => [value(PASSWORD_KEY, 'pw-prod')],
