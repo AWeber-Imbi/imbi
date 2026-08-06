@@ -75,6 +75,7 @@ interface ConfigurationTabProps {
 interface CreateDraft {
   data_type: DataType
   key: string
+  targets?: string[]
   values: Record<string, string>
 }
 
@@ -398,6 +399,7 @@ export function ConfigurationTab({
     setDraft({
       data_type: effectiveSelectedType,
       key: prefix,
+      targets: envSlugs.filter((s) => Boolean(selected.envs[s])),
       values: Object.fromEntries(
         envSlugs.map((s) => [
           s,
@@ -555,7 +557,11 @@ export function ConfigurationTab({
       toast.error('Key is required')
       return
     }
-    const targets = envSlugs.filter((slug) => draft.values[slug]?.trim())
+    // Duplicate drafts carry the source's environments so explicitly
+    // empty values still save; hand-typed drafts derive them from text.
+    const targets = envSlugs.filter(
+      (slug) => draft.targets?.includes(slug) || draft.values[slug]?.trim(),
+    )
     if (targets.length === 0) {
       toast.error('Set a value for at least one environment')
       return
