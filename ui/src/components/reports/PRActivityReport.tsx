@@ -9,6 +9,33 @@ import { Sk } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
+interface CountColumn {
+  key: string
+  label: string
+  pick: (row: PRActivityRow) => number
+  tone: CountTone
+}
+
+type CountTone = 'danger' | 'info' | 'warning'
+
+/**
+ * The numeric columns, in PR lifecycle order. `open` and `closed` are
+ * current-state breakdowns of the PRs created in-window; `closed` counts
+ * only PRs closed without merging.
+ */
+const COUNT_COLUMNS: CountColumn[] = [
+  { key: 'created', label: 'Created', pick: (r) => r.created, tone: 'warning' },
+  { key: 'open', label: 'Open', pick: (r) => r.open, tone: 'info' },
+  { key: 'closed', label: 'Closed', pick: (r) => r.closed, tone: 'danger' },
+  { key: 'merged', label: 'Merged ↓', pick: (r) => r.merged, tone: 'warning' },
+]
+
+const TONE_BACKGROUNDS: Record<CountTone, string> = {
+  danger: 'var(--background-color-danger)',
+  info: 'var(--background-color-info)',
+  warning: 'var(--background-color-warning)',
+}
+
 export function PRActivityReport() {
   const orgSlug = useOrgSlug()
   const [since, setSince] = useState(defaultSince)
@@ -59,16 +86,13 @@ function ActivityRowsSkeleton() {
                 <Sk line w={120} />
               </div>
             </td>
-            <td className="px-4 py-2.5">
-              <div className="flex justify-end">
-                <Sk h={16} r={3} w="70%" />
-              </div>
-            </td>
-            <td className="px-[18px] py-2.5">
-              <div className="flex justify-end">
-                <Sk h={16} r={3} w="70%" />
-              </div>
-            </td>
+            {COUNT_COLUMNS.map((col, c) => (
+              <td className={`${countCellX(c)} py-2.5`} key={col.key}>
+                <div className="flex justify-end">
+                  <Sk h={16} r={3} w="70%" />
+                </div>
+              </td>
+            ))}
           </tr>
         ))}
       </tbody>
@@ -77,10 +101,12 @@ function ActivityRowsSkeleton() {
 }
 
 function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
-  const maxCreated = rows.reduce((m, r) => Math.max(m, r.created), 0)
-  const maxMerged = rows.reduce((m, r) => Math.max(m, r.merged), 0)
-  const totalCreated = rows.reduce((s, r) => s + r.created, 0)
-  const totalMerged = rows.reduce((s, r) => s + r.merged, 0)
+  const maxes = COUNT_COLUMNS.map((col) =>
+    rows.reduce((m, r) => Math.max(m, col.pick(r)), 0),
+  )
+  const totals = COUNT_COLUMNS.map((col) =>
+    rows.reduce((s, r) => s + col.pick(r), 0),
+  )
   return (
     <table className="w-full text-sm">
       <thead>
@@ -88,12 +114,14 @@ function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
           <th className="text-overline text-tertiary px-[18px] py-2.5 text-left font-normal tracking-wide uppercase">
             Member
           </th>
-          <th className="text-overline text-tertiary w-48 px-4 py-2.5 text-right font-normal tracking-wide uppercase">
-            Created
-          </th>
-          <th className="text-overline text-tertiary w-48 px-[18px] py-2.5 text-right font-normal tracking-wide uppercase">
-            Merged ↓
-          </th>
+          {COUNT_COLUMNS.map((col, c) => (
+            <th
+              className={`text-overline text-tertiary w-32 ${countCellX(c)} py-2.5 text-right font-normal tracking-wide uppercase`}
+              key={col.key}
+            >
+              {col.label}
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
@@ -112,12 +140,15 @@ function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
                 size="small"
               />
             </td>
-            <td className="px-4 py-2.5">
-              <CountCell max={maxCreated} value={row.created} />
-            </td>
-            <td className="px-[18px] py-2.5">
-              <CountCell max={maxMerged} value={row.merged} />
-            </td>
+            {COUNT_COLUMNS.map((col, c) => (
+              <td className={`${countCellX(c)} py-2.5`} key={col.key}>
+                <CountCell
+                  max={maxes[c]}
+                  tone={col.tone}
+                  value={col.pick(row)}
+                />
+              </td>
+            ))}
           </tr>
         ))}
       </tbody>
@@ -126,12 +157,14 @@ function ActivityTable({ rows }: { rows: PRActivityRow[] }) {
           <td className="text-secondary px-[18px] py-3 text-xs font-medium tracking-wide uppercase">
             Total ({rows.length})
           </td>
-          <td className="text-primary px-4 py-3 text-right font-mono text-xs tabular-nums">
-            {totalCreated}
-          </td>
-          <td className="text-primary px-[18px] py-3 text-right font-mono text-xs tabular-nums">
-            {totalMerged}
-          </td>
+          {COUNT_COLUMNS.map((col, c) => (
+            <td
+              className={`text-primary ${countCellX(c)} py-3 text-right font-mono text-xs tabular-nums`}
+              key={col.key}
+            >
+              {totals[c]}
+            </td>
+          ))}
         </tr>
       </tfoot>
     </table>
@@ -186,8 +219,16 @@ function applySince(
   }
 }
 
-/** Number with an amber bar sized to its share of the column max. */
-function CountCell({ max, value }: { max: number; value: number }) {
+/** Number with a tinted bar sized to its share of the column max. */
+function CountCell({
+  max,
+  tone,
+  value,
+}: {
+  max: number
+  tone: CountTone
+  value: number
+}) {
   const pct = max > 0 ? (value / max) * 100 : 0
   return (
     <div className="relative flex h-6 items-center justify-end">
@@ -195,7 +236,7 @@ function CountCell({ max, value }: { max: number; value: number }) {
         <div
           className="absolute inset-y-0 left-0 rounded-sm"
           style={{
-            background: 'var(--background-color-warning)',
+            background: TONE_BACKGROUNDS[tone],
             width: `${pct}%`,
           }}
         />
@@ -215,15 +256,30 @@ function CountCell({ max, value }: { max: number; value: number }) {
   )
 }
 
+/** Horizontal padding for a count column; the last one hugs the edge. */
+function countCellX(index: number): string {
+  return index === COUNT_COLUMNS.length - 1 ? 'px-[18px]' : 'px-4'
+}
+
 /** Default report window: 30 days back from today. */
 function defaultSince(): string {
   return isoDaysAgo(30)
 }
 
 function downloadCsv(rows: PRActivityRow[], appliedSince: string) {
-  const header = ['Member', 'Login', 'Email', 'Created', 'Merged']
+  const header = [
+    'Member',
+    'Login',
+    'Email',
+    ...COUNT_COLUMNS.map((c) => c.label.replace(' ↓', '')),
+  ]
   const lines = rows.map((r) =>
-    [r.display_name ?? r.login, r.login, r.email ?? '', r.created, r.merged]
+    [
+      r.display_name ?? r.login,
+      r.login,
+      r.email ?? '',
+      ...COUNT_COLUMNS.map((c) => c.pick(r)),
+    ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(','),
   )
