@@ -26,6 +26,7 @@ from imbi.common import graph
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
 from imbi.common.plugins.base import (
+    ArtifactRun,
     Capability,
     Commit,
     CompareResult,
@@ -115,6 +116,34 @@ class _FakeDeploymentPlugin(DeploymentCapability):
         return getattr(self, '_recent', [])
 
 
+class _DispatchingDeploymentPlugin(_FakeDeploymentPlugin):
+    """Implements the artifact-dispatch half of the capability.
+
+    Records every dispatch on the class so a test driving the endpoint
+    through ``TestClient`` can assert what reached the remote.
+    """
+
+    dispatches: typing.ClassVar[list[dict[str, typing.Any]]] = []
+    run_id: typing.ClassVar[str | None] = '4242'
+
+    async def create_deployment_artifact(  # type: ignore[override]
+        self, ctx, credentials, ref, version, inputs=None
+    ):
+        type(self).dispatches.append(
+            {'ref': ref, 'version': version, 'inputs': dict(inputs or {})}
+        )
+        return ArtifactRun(
+            run_id=type(self).run_id,
+            run_url='https://ghe/run/4242' if type(self).run_id else None,
+            status='queued',
+        )
+
+    async def get_artifact_run_status(  # type: ignore[override]
+        self, ctx, credentials, run_id
+    ):
+        return ArtifactRun(run_id=run_id, status='in_progress')
+
+
 class _FakeNoSyncDeploymentPlugin(_FakeDeploymentPlugin):
     """Deployment plugin that opts *out* of resync."""
 
@@ -198,6 +227,7 @@ def _make_resolved(
     name: str = 'GitHub Deployment',
     sync: bool = True,
     options: dict[str, typing.Any] | None = None,
+    capability_options: dict[str, typing.Any] | None = None,
     env_payloads: dict[str, dict[str, typing.Any]] | None = None,
 ) -> ResolvedCapability:
     entry = _entry(handler, slug=slug, name=name, sync=sync)
@@ -210,7 +240,7 @@ def _make_resolved(
         capability_cls=entry.manifest.get_capability('deployment').handler,
         integration={'id': 'p-1', 'slug': f'{slug}-prod', 'plugin': slug},
         integration_options=options or {},
-        capability_options={},
+        capability_options=capability_options or {},
         encrypted_credentials={},
         env_payloads=env_payloads,
     )
@@ -1850,6 +1880,251 @@ class DeployedOperationLogTestCase(unittest.TestCase):
     def test_commit_sha_defaults_to_none(self) -> None:
         description = self._build(version='1.29.0')
         self.assertIsNone(description['commit_sha'])
+
+
+class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
+    """Promote dispatches the Release workflow when one is configured.
+
+    The workflow owns the tag and the remote Release, so the endpoint
+    creates neither -- it records the ``Release`` node, dispatches, and
+    hands off to the watcher.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _PROMOTE: typing.ClassVar[dict[str, typing.Any]] = {
+        'action': 'promote',
+        'from_environment': 'testing',
+        'to_environment': 'staging',
+        'from_committish': 'e6a13a0d6cf93cd5af4eef2a0ca13035aea64192',
+        'tag': '0.1.5',
+        'release_name': 'Release 0.1.5',
+        'release_notes_markdown': '## What changed',
+    }
+
+    def _enable_dispatch(self, *, workflow: str = 'release.yml') -> None:
+        """Opt this test into the dispatch path.
+
+        Deliberately *not* in ``setUp``: this class inherits every test on
+        ``ProjectDeploymentsTestCase``, and configuring a Release workflow
+        for all of them would silently reroute the inherited promote tests
+        onto the dispatch branch.
+        """
+        _DispatchingDeploymentPlugin.dispatches.clear()
+        _DispatchingDeploymentPlugin.run_id = '4242'
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _DispatchingDeploymentPlugin,
+            options={'owner': 'octo', 'repo': 'demo'},
+            capability_options=(
+                {'artifact_workflow': workflow} if workflow else {}
+            ),
+        )
+        self.upsert = self._start(
+            mock.patch(f'{_MODULE}._upsert_release_node', return_value='rel1')
+        )
+        self.deployable = self._start(
+            mock.patch(f'{_MODULE}._project_is_deployable', return_value=True)
+        )
+        self.enqueue = self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_queue.enqueue_release_promote',
+                return_value=True,
+            )
+        )
+        self.set_status = self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_service.set_status',
+                return_value=None,
+            )
+        )
+        self.create_tag = self._start(
+            mock.patch(f'{_MODULE}._promote_cut_tag', return_value=None)
+        )
+
+    def _promote(self, **overrides: typing.Any) -> httpx.Response:
+        body = {**self._PROMOTE, **overrides}
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(self._BASE, json=body)
+
+    def test_dispatches_instead_of_cutting_the_tag(self) -> None:
+        self._enable_dispatch()
+        response = self._promote()
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertEqual('building', data['phase'])
+        self.assertEqual('4242', data['artifact_run_id'])
+        self.assertEqual('0.1.5', data['tag'])
+        self.assertTrue(data['watched'])
+        self.assertIsNone(data['warning'])
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+        # The endpoint must not cut the tag itself any more.
+        self.create_tag.assert_not_called()
+
+    def test_always_sends_the_commit_input(self) -> None:
+        """release-tag.yaml tags the tip of main when ``commit`` is empty.
+
+        Omitting it would silently release a different tree than the one
+        being promoted, and the run would still go green -- so this is a
+        correctness guard, not a nicety.
+        """
+        self._enable_dispatch()
+        self._promote()
+        inputs = _DispatchingDeploymentPlugin.dispatches[0]['inputs']
+        self.assertEqual('e6a13a0', inputs['commit'])
+        self.assertTrue(inputs['commit'])
+
+    def test_dispatch_input_mapping(self) -> None:
+        self._enable_dispatch()
+        self._promote()
+        dispatch = _DispatchingDeploymentPlugin.dispatches[0]
+        # Dispatched from the default branch: workflow_dispatch resolves
+        # the workflow file on the ref, and the tag does not exist yet.
+        self.assertEqual('main', dispatch['ref'])
+        self.assertEqual('0.1.5', dispatch['version'])
+        inputs = dispatch['inputs']
+        self.assertEqual('Release 0.1.5', inputs['description'])
+        self.assertEqual('## What changed', inputs['release_notes'])
+        self.assertEqual('staging', inputs['environment'])
+        # The D6 seam: Imbi owns Deployment creation now.
+        self.assertEqual('false', inputs['create_deployment'])
+
+    def test_description_falls_back_to_the_tag(self) -> None:
+        """``description`` is required by release.yml, so never send empty."""
+        self._enable_dispatch()
+        self._promote(release_name=None)
+        inputs = _DispatchingDeploymentPlugin.dispatches[0]['inputs']
+        self.assertEqual('0.1.5', inputs['description'])
+
+    def test_records_the_release_node_before_dispatching(self) -> None:
+        """A failed build needs a node to block."""
+        self._enable_dispatch()
+        self._promote()
+        self.upsert.assert_awaited_once()
+        kwargs = self.upsert.await_args.kwargs
+        self.assertEqual('0.1.5', kwargs['tag'])
+        self.assertEqual('e6a13a0', kwargs['committish'])
+        # No release URL yet -- the build has not created one.
+        self.assertIsNone(kwargs['release_url'])
+
+    def test_enqueues_a_watch_job_carrying_the_promoter(self) -> None:
+        self._enable_dispatch()
+        self._promote()
+        self.enqueue.assert_awaited_once()
+        job = self.enqueue.await_args.args[1]
+        self.assertEqual('0.1.5', job.tag)
+        self.assertEqual('e6a13a0', job.committish)
+        self.assertEqual('staging', job.to_environment)
+        self.assertEqual('testing', job.from_environment)
+        self.assertEqual('4242', job.run_id)
+        self.assertEqual('rel1', job.release_id)
+        self.assertTrue(job.deploy)
+        self.assertEqual('admin@example.com', job.requested_by)
+
+    def test_releasable_only_project_queues_a_build_only_job(self) -> None:
+        self._enable_dispatch()
+        self.deployable.return_value = False
+        self._promote()
+        self.assertFalse(self.enqueue.await_args.args[1].deploy)
+
+    def test_unqueueable_watch_warns_and_is_not_watched(self) -> None:
+        self._enable_dispatch()
+        self.enqueue.return_value = False
+        data = self._promote().json()
+        self.assertFalse(data['watched'])
+        self.assertIn('could not queue a watcher', data['warning'])
+
+    def test_missing_run_id_warns_and_skips_the_watch(self) -> None:
+        self._enable_dispatch()
+        _DispatchingDeploymentPlugin.run_id = None
+        data = self._promote().json()
+        self.assertFalse(data['watched'])
+        self.assertIn('did not report a run id', data['warning'])
+        self.enqueue.assert_not_awaited()
+
+    def test_blocked_release_is_refused_before_dispatching(self) -> None:
+        self._enable_dispatch()
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '0.1.5',
+                            'committish': 'e6a13a0',
+                            'blocked_reason': 'Bad build',
+                        }
+                    )
+                }
+            ]
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
+
+    def test_legacy_path_when_no_release_workflow_configured(self) -> None:
+        """A blank Release workflow keeps cutting the tag inline."""
+        self._enable_dispatch(workflow='')
+        response = self._promote()
+        self.assertEqual(response.status_code, 202)
+        self.assertIsNone(response.json()['phase'])
+        self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
+        self.create_tag.assert_awaited_once()
+
+
+class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):
+    """A failed build blocks the version, not the commit."""
+
+    async def test_fail_promote_build_scopes_the_block_to_the_tag(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'rid': 'r1'}])
+        await project_deployments.fail_promote_build(
+            db,
+            org_slug='octo',
+            project_id='p1',
+            tag='0.1.5',
+            reason='Release build reported failure',
+            requested_by='daves@aweber.com',
+        )
+        params = db.execute.await_args.args[1]
+        self.assertEqual('tag', params['scope'])
+        self.assertEqual('0.1.5', params['tag'])
+        self.assertEqual('daves@aweber.com', params['blocked_by'])
+        self.assertIn('failure', params['reason'])
+
+    async def test_missing_release_node_is_survivable(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        # Deleted mid-build: warn, don't raise into the watcher.
+        await project_deployments.fail_promote_build(
+            db, org_slug='octo', project_id='p1', tag='0.1.5', reason='boom'
+        )
+
+
+class ProjectIsDeployableTestCase(unittest.IsolatedAsyncioTestCase):
+    """``deployable`` is per project *type*, and a project can have several."""
+
+    async def _ask(self, flags: typing.Any) -> bool:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(
+            return_value=[{'flags': json.dumps(flags)}]
+        )
+        return await project_deployments._project_is_deployable(db, 'p1')
+
+    async def test_true_when_any_type_is_deployable(self) -> None:
+        self.assertTrue(await self._ask([False, True]))
+
+    async def test_false_when_no_type_is_deployable(self) -> None:
+        self.assertFalse(await self._ask([False, False]))
+
+    async def test_false_when_the_project_has_no_type(self) -> None:
+        self.assertFalse(await self._ask([]))
+
+    async def test_false_when_the_project_is_missing(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        self.assertFalse(
+            await project_deployments._project_is_deployable(db, 'nope')
+        )
 
 
 def _relocating_resolved() -> ResolvedCapability:
