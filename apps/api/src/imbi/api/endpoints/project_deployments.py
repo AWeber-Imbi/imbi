@@ -109,8 +109,11 @@ class PromoteActionRequest(pydantic.BaseModel):
     """Body for ``POST /deployments`` with ``action='promote'``.
 
     Cuts a new tag at ``from_committish`` (the build being promoted),
-    creates a release on the remote, then dispatches the workflow with
-    the tag as the ref.
+    then dispatches the workflow with the tag as the ref.  The GitHub
+    Release is *not* created here -- it is the ratification of a
+    successful rollout, published later through
+    ``POST /deployments/releases/{tag}/publish`` (see
+    :func:`publish_release`).
     """
 
     action: typing.Literal['promote']
@@ -317,6 +320,29 @@ class ReleaseBlockResponse(pydantic.BaseModel):
     blocked_reason: str | None = None
     blocked_by: str | None = None
     blocked_at: datetime.datetime | None = None
+
+
+class ReleasePublishRequest(pydantic.BaseModel):
+    """Body for ``POST /deployments/releases/{tag}/publish``.
+
+    Every field is optional: the release title and notes come from the
+    ``Release`` node being ratified, so a caller that knows only the tag
+    (the gateway, reacting to a successful deployment) posts an empty
+    body.
+    """
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    prerelease: bool = False
+
+
+class ReleasePublishResponse(pydantic.BaseModel):
+    """Result of ratifying a ``Release`` on the remote."""
+
+    tag: str
+    published: bool
+    release_url: str | None = None
+    warning: str | None = None
 
 
 class ReleaseCutRequest(pydantic.BaseModel):
@@ -1836,7 +1862,7 @@ async def _handle_deploy(
     )
 
 
-async def _cut_tag_and_release(
+async def _cut_tag(
     db: graph.Graph,
     *,
     ctx: PluginContext,
@@ -1846,24 +1872,21 @@ async def _cut_tag_and_release(
     auth: permissions.AuthContext,
     from_committish: str,
     tag: str,
-    release_name: str | None,
-    release_notes_markdown: str,
-    prerelease: bool,
+    tag_message: str,
     warnings: list[str],
     project_id: str,
     log_context: str = '',
-) -> typing.Any:
-    """Cut a git tag + create a release at ``from_committish``.
+) -> None:
+    """Cut a git tag at ``from_committish`` on the remote.
 
-    The shared core behind both ``promote`` (which then deploys) and the
-    library ``releases/cut`` action (which does not).  Failures degrade
-    to a warning appended to ``warnings`` rather than raising -- a flaky
-    GitHub API shouldn't bury the audit trail.  Returns the
-    plugin-returned ReleaseInfo on success (or ``None`` when the plugin
-    has no ``create_release``).  ``log_context`` is an opaque label
-    (e.g. the target env, or ``'release-cut'``) used only in log lines.
+    The first half of cutting a release.  A plugin with no ``create_tag``
+    is a 400 -- the action is simply unavailable -- but a remote failure
+    degrades to a warning appended to ``warnings`` rather than raising,
+    so a flaky GitHub API doesn't bury the audit trail.  A 422
+    "already exists" is the idempotent re-run and is not a warning.
+    ``log_context`` is an opaque label (e.g. the target env, or
+    ``'release-cut'``) used only in log lines.
     """
-    tag_message = release_name or tag
 
     async def _create_tag(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
@@ -1903,6 +1926,32 @@ async def _cut_tag_and_release(
                 tag,
             )
             warnings.append(_promote_warning('create_tag', exc))
+
+
+async def _create_remote_release(
+    db: graph.Graph,
+    *,
+    ctx: PluginContext,
+    resolved: ResolvedCapability,
+    handler: DeploymentCapability,
+    credentials: dict[str, str],
+    auth: permissions.AuthContext,
+    tag: str,
+    release_name: str | None,
+    release_notes_markdown: str,
+    prerelease: bool,
+    warnings: list[str],
+    project_id: str,
+    log_context: str = '',
+) -> typing.Any:
+    """Create the release on the remote for an already-cut ``tag``.
+
+    The second half of cutting a release, split out so a promote can
+    defer it until the rollout succeeds (see :func:`publish_release`).
+    Returns the plugin-returned ``ReleaseInfo`` on success, or ``None``
+    when the plugin has no ``create_release``, the release already
+    exists, or the call failed (in which case a warning is appended).
+    """
 
     async def _create_release(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
@@ -1944,7 +1993,62 @@ async def _cut_tag_and_release(
         return None
 
 
-async def _promote_cut_release(
+async def _cut_tag_and_release(
+    db: graph.Graph,
+    *,
+    ctx: PluginContext,
+    resolved: ResolvedCapability,
+    handler: DeploymentCapability,
+    credentials: dict[str, str],
+    auth: permissions.AuthContext,
+    from_committish: str,
+    tag: str,
+    release_name: str | None,
+    release_notes_markdown: str,
+    prerelease: bool,
+    warnings: list[str],
+    project_id: str,
+    log_context: str = '',
+) -> typing.Any:
+    """Cut a git tag *and* create its release at ``from_committish``.
+
+    Backs the library ``releases/cut`` action, where there is no
+    deployment to gate the release on so both halves run in one step.
+    ``promote`` deliberately does *not* use this: it cuts the tag now
+    (:func:`_cut_tag`) and defers the release to :func:`publish_release`.
+    """
+    await _cut_tag(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        from_committish=from_committish,
+        tag=tag,
+        tag_message=release_name or tag,
+        warnings=warnings,
+        project_id=project_id,
+        log_context=log_context,
+    )
+    return await _create_remote_release(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        tag=tag,
+        release_name=release_name,
+        release_notes_markdown=release_notes_markdown,
+        prerelease=prerelease,
+        warnings=warnings,
+        project_id=project_id,
+        log_context=log_context,
+    )
+
+
+async def _promote_cut_tag(
     db: graph.Graph,
     *,
     ctx: PluginContext,
@@ -1955,14 +2059,16 @@ async def _promote_cut_release(
     body: PromoteActionRequest,
     warnings: list[str],
     project_id: str,
-) -> typing.Any:
-    """Cut a tag + create a release for a promote (then the caller deploys).
+) -> None:
+    """Cut the promote's tag; the release is published after the rollout.
 
-    Thin wrapper over :func:`_cut_tag_and_release` so ``_handle_promote``
-    is unchanged; the repo's ``on: release: [published]`` workflow handles
-    the deploy.
+    Promote creates the git tag and stops there.  The GitHub Release is
+    the *ratification* of a release that actually shipped, so it is
+    published from the ``deployment_status`` webhook once the deploy
+    reports success -- and a failed rollout leaves a blocked release
+    rather than a ratified one.
     """
-    return await _cut_tag_and_release(
+    await _cut_tag(
         db,
         ctx=ctx,
         resolved=resolved,
@@ -1971,9 +2077,7 @@ async def _promote_cut_release(
         auth=auth,
         from_committish=body.from_committish,
         tag=body.tag,
-        release_name=body.release_name,
-        release_notes_markdown=body.release_notes_markdown,
-        prerelease=body.prerelease,
+        tag_message=body.release_name or body.tag,
         warnings=warnings,
         project_id=project_id,
         log_context=body.to_environment,
@@ -2029,10 +2133,10 @@ async def _handle_promote(
     #   ``create_release``; call ``trigger_deployment`` so the repo's
     #   ``on: deployment`` workflow fires.  This is the "promote to prod
     #   from a stage release tag" path.
-    # * Git short/full SHA                       -> cut a tag at the SHA,
-    #   create a GitHub Release; the repo's ``on: release`` workflow
-    #   handles the deploy server-side.  This is the "first promote off
-    #   a build commit" path.
+    # * Git short/full SHA                       -> cut a tag at the SHA
+    #   and dispatch against it.  This is the "first promote off a build
+    #   commit" path.  No GitHub Release is created here; publishing it
+    #   is deferred until the rollout succeeds.
     # * A ref that fails a configured tag format  -> 400.  We refuse to
     #   silently cut a tag that violates the org/project-type policy; a
     #   typo at the API boundary should fail loudly.
@@ -2063,10 +2167,11 @@ async def _handle_promote(
 
     warnings: list[str] = []
     run = DeploymentRun(run_id='', status='queued')
-    release_info = None
+    # The GitHub Release is published by ``publish_release`` once the
+    # rollout reports success, so a promote never returns a release URL.
     release_url: str | None = None
 
-    release_info = await _promote_cut_release(
+    await _promote_cut_tag(
         db,
         ctx=ctx,
         resolved=resolved,
@@ -2076,9 +2181,6 @@ async def _handle_promote(
         body=body,
         warnings=warnings,
         project_id=project_id,
-    )
-    release_url = (release_info.html_url if release_info else None) or (
-        release_info.url if release_info else None
     )
 
     promote_inputs: dict[str, str] | None
@@ -3194,6 +3296,187 @@ async def cut_release(
         release_url=release_url,
         committish=committish,
         recorded=True,
+        warning='; '.join(warnings) if warnings else None,
+    )
+
+
+async def _release_for_tag(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+) -> dict[str, typing.Any] | None:
+    """Return the ``Release`` node for ``tag``, or ``None``.
+
+    Scoped through the project's owning organization so a tag from
+    another org can never be ratified against this one.  A tag carried
+    by more than one ``Release`` (a retag) is ambiguous about *which*
+    notes to publish, so the newest by ``created_at`` wins and the
+    collision is logged.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
+    RETURN r{{.id, .tag, .committish, .title, .description,
+              .created_at}} AS release
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'org_slug': org_slug, 'tag': tag},
+        ['release'],
+    )
+    if not rows:
+        return None
+    nodes = [
+        typing.cast(
+            'dict[str, typing.Any]', graph.parse_agtype(row['release'])
+        )
+        for row in rows
+    ]
+    if len(nodes) > 1:
+        LOGGER.warning(
+            'Multiple Release nodes for project=%s tag=%s; publishing the '
+            'most recently created one',
+            project_id,
+            tag,
+        )
+        nodes.sort(key=lambda node: str(node.get('created_at') or ''))
+    return nodes[-1]
+
+
+@project_deployments_router.post('/releases/{tag}/publish')
+async def publish_release(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    background: fastapi.BackgroundTasks,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+    body: ReleasePublishRequest | None = None,
+    source: str | None = None,
+) -> ReleasePublishResponse:
+    """Ratify an existing ``Release`` by creating it on the remote.
+
+    ``promote`` cuts the tag and records the ``Release`` node -- the
+    *intent* to ship.  This publishes the GitHub Release for it, which
+    is the *ratification*: the gateway calls it from the
+    ``deployment_status`` webhook once the rollout reports success, so a
+    failed rollout leaves a blocked release rather than a ratified one.
+
+    Title and notes come from the ``Release`` node, so the ratification
+    can't drift from what Imbi recorded at promote time.  Idempotent: a
+    release the remote already has is not an error, and the node's
+    ``github_release`` link is refreshed either way.  Blocked releases
+    are refused with a 409.
+    """
+    release = await _release_for_tag(
+        db, org_slug=org_slug, project_id=project_id, tag=tag
+    )
+    if release is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'No release found for tag {tag!r}',
+        )
+    # A block and a success webhook can race; the block wins.  Match on
+    # the tag alone -- the committish gate belongs to the deploy paths,
+    # and a sibling release cut from the same commit must not veto this
+    # one's ratification.
+    await _assert_not_blocked(db, project_id, tag=tag)
+
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        auth,
+        source=source,
+        # The caller is normally the gateway's service principal, which
+        # has no per-user identity connection; fall back to the
+        # Integration's own credentials rather than 503ing.
+        best_effort_identity=True,
+    )
+    handler = _handler(resolved)
+
+    warnings: list[str] = []
+    release_info = await _create_remote_release(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        tag=tag,
+        release_name=str(release.get('title') or tag),
+        release_notes_markdown=str(release.get('description') or ''),
+        prerelease=(body or ReleasePublishRequest()).prerelease,
+        warnings=warnings,
+        project_id=project_id,
+        log_context='publish',
+    )
+    release_url = (release_info.html_url if release_info else None) or (
+        release_info.url if release_info else None
+    )
+    if release_url is None and not warnings:
+        # The plugin returned nothing -- either it has no
+        # ``create_release`` or the remote already had one.  Ask for the
+        # existing release so the node still gets its link.
+        remote = await _get_release(
+            handler, ctx, _resolve_credentials(ctx, credentials), tag
+        )
+        release_url = remote.html_url if remote else None
+
+    await persist_link_writeback(db, ctx)
+
+    committish = str(release.get('committish') or '')
+    # Guard on the committish: it is the node's identity, and upserting
+    # against an empty one would spawn a second, unmatchable Release.
+    if release_url and committish:
+        await _upsert_release_node(
+            db,
+            project_id=project_id,
+            tag=tag,
+            committish=committish,
+            title=str(release.get('title') or tag),
+            # Empty preserves whatever the node already holds; this call
+            # is only here to write the ``github_release`` link.
+            notes_markdown='',
+            release_url=release_url,
+            created_by=auth.principal_name,
+        )
+
+    published = not warnings
+    LOGGER.info(
+        'Release publish: project=%s tag=%s published=%s plugin=%s actor=%s',
+        project_id,
+        tag,
+        published,
+        resolved.plugin_slug,
+        ctx.actor_user_id,
+    )
+    background.add_task(
+        _record_deployment_audit,
+        project_id=project_id,
+        project_slug=ctx.project_slug,
+        environment_slug='',
+        recorded_by=auth.principal_name,
+        action='publish',
+        tag=tag,
+        committish=committish,
+        plugin_slug=resolved.plugin_slug,
+        run_url=None,
+        release_url=release_url,
+    )
+    return ReleasePublishResponse(
+        tag=tag,
+        published=published,
+        release_url=release_url,
         warning='; '.join(warnings) if warnings else None,
     )
 

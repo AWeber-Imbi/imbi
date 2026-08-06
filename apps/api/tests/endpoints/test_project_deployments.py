@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import fastapi
+import httpx
 from fastapi import testclient
 
 from apps.api.tests import support
@@ -37,6 +38,7 @@ from imbi.common.plugins.base import (
     RefInfo,
     ReleaseInfo,
     RemoteDeployment,
+    RemoteRelease,
 )
 from imbi.common.plugins.registry import RegistryEntry
 
@@ -651,10 +653,32 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # last_tag bumped major: 6.3.0 → 7.0.0
         self.assertEqual(data['version'], 'v7.0.0')
 
-    def test_promote_sha_ref_cuts_tag_and_release(self) -> None:
-        # Promote target is a git SHA -- the handler cuts a tag, creates
-        # a release, AND dispatches trigger_deployment so the run is
-        # tracked in the deployment event.
+    def test_promote_sha_ref_cuts_tag_only(self) -> None:
+        # Promote target is a git SHA -- the handler cuts a tag AND
+        # dispatches trigger_deployment so the run is tracked in the
+        # deployment event.  The GitHub Release is *not* created: it
+        # ratifies a successful rollout, so it waits for the
+        # deployment_status webhook to drive ``releases/{tag}/publish``.
+        created: dict[str, bool] = {'release': False}
+
+        class _WatchRelease(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                created['release'] = True
+                return await super().create_release(
+                    ctx, credentials, tag, name, body_markdown, prerelease
+                )
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _WatchRelease
+        )
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -673,9 +697,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 202)
         data = response.json()
         self.assertEqual(data['tag'], '1a9c610abcdef')
-        self.assertEqual(
-            data['release_url'], 'https://gh/releases/1a9c610abcdef'
-        )
+        self.assertIsNone(data['release_url'])
+        self.assertFalse(created['release'])
         self.assertTrue(data['recorded'])
         self.assertIsNone(data['warning'])
         call = self.mocks['append_deployment_event'].call_args
@@ -684,11 +707,11 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(call.kwargs['external_run_id'], '42')
         self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
 
-    def test_promote_semver_tag_dispatches_and_recreates_release(self) -> None:
+    def test_promote_semver_tag_dispatches_without_publishing(self) -> None:
         # Promote target is a semver tag -- the handler attempts create_tag
-        # and create_release (idempotently) AND dispatches trigger_deployment.
-        # A real GitHub 422 "already exists" for the tag/release is silently
-        # ignored; the fake plugin succeeds so we get a release URL.
+        # (idempotently; a real GitHub 422 "already exists" is silently
+        # ignored) AND dispatches trigger_deployment.  No release URL comes
+        # back because no GitHub Release is created at promote time.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -704,8 +727,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 202)
         data = response.json()
         self.assertEqual(data['tag'], 'v6.4.0')
-        # The fake plugin returned a release URL.
-        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertIsNone(data['release_url'])
         self.assertIsNone(data['warning'])
         # The dispatched run surfaced on the event.
         call = self.mocks['append_deployment_event'].call_args
@@ -2486,6 +2508,217 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         data = response.json()
         self.assertIsNotNone(data['warning'])
         self.assertIn('create_release', data['warning'])
+
+
+class ReleasePublishTestCase(ProjectDeploymentsTestCase):
+    """Ratifying a Release: ``POST /deployments/releases/{tag}/publish``."""
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _PUBLISH = f'{_BASE}/releases/v6.4.0/publish'
+
+    def _patch_execute(
+        self,
+        *,
+        found: bool = True,
+        blocked: bool = False,
+    ) -> dict[str, list[dict[str, typing.Any]]]:
+        """Route the endpoint's graph reads by query text.
+
+        Returns a dict the test can inspect for the parameters of the
+        ``Release``-node link upsert (empty when it never ran).
+        """
+        node = self._release_node() if found else None
+        seen: dict[str, list[dict[str, typing.Any]]] = {'upsert': []}
+
+        def _execute(
+            query: str, params: dict[str, typing.Any], columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if 'r.blocked_at IS NOT NULL' in query:
+                return (
+                    [
+                        {
+                            'release': json.dumps(
+                                {
+                                    'tag': 'v6.4.0',
+                                    'blocked_reason': 'Regression',
+                                }
+                            )
+                        }
+                    ]
+                    if blocked
+                    else []
+                )
+            if 'RETURN r{{.id, .tag' in query:
+                return [] if node is None else [{'release': json.dumps(node)}]
+            if 'SET r.description' in query:
+                seen['upsert'].append(params)
+                return [{'rid': 'rel-1'}]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        return seen
+
+    @staticmethod
+    def _release_node(**overrides: typing.Any) -> dict[str, typing.Any]:
+        return {
+            'id': 'rel-1',
+            'tag': 'v6.4.0',
+            'committish': '1a9c610',
+            'title': 'Release 6.4.0',
+            'description': '## Highlights\n- foo',
+            'created_at': '2026-01-01T00:00:00+00:00',
+            **overrides,
+        }
+
+    def test_publish_creates_the_remote_release(self) -> None:
+        seen = self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['tag'], 'v6.4.0')
+        self.assertTrue(data['published'])
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertIsNone(data['warning'])
+        # The github_release link was written back onto the node.
+        self.assertEqual(len(seen['upsert']), 1)
+        self.assertIn('https://gh/releases/v6.4.0', seen['upsert'][0]['links'])
+        # ...without clobbering the notes already recorded there.
+        self.assertEqual(seen['upsert'][0]['description'], '')
+
+    def test_publish_uses_the_nodes_title_and_notes(self) -> None:
+        # The ratification must not drift from what Imbi recorded at
+        # promote time, so title/body come from the Release node rather
+        # than from the caller.
+        captured: dict[str, typing.Any] = {}
+
+        class _Capturing(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                captured.update(
+                    tag=tag,
+                    name=name,
+                    body_markdown=body_markdown,
+                    prerelease=prerelease,
+                )
+                return await super().create_release(
+                    ctx, credentials, tag, name, body_markdown, prerelease
+                )
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _Capturing
+        )
+        self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH, json={'prerelease': True})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured['tag'], 'v6.4.0')
+        self.assertEqual(captured['name'], 'Release 6.4.0')
+        self.assertEqual(captured['body_markdown'], '## Highlights\n- foo')
+        self.assertTrue(captured['prerelease'])
+
+    def test_publish_unknown_tag_is_404(self) -> None:
+        self._patch_execute(found=False)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('No release found', response.json()['detail'])
+
+    def test_publish_of_a_blocked_release_is_409(self) -> None:
+        self._patch_execute(blocked=True)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('is blocked', response.json()['detail'])
+
+    def test_publish_degrades_a_plugin_failure_to_a_warning(self) -> None:
+        class _Boom(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                raise RuntimeError('boom')
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(_Boom)
+        seen = self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['published'])
+        self.assertIsNone(data['release_url'])
+        self.assertIn('create_release', data['warning'])
+        # Nothing was written back -- there is no URL to record.
+        self.assertEqual(seen['upsert'], [])
+
+    def test_publish_is_idempotent_for_an_existing_remote_release(
+        self,
+    ) -> None:
+        # A 422 "already exists" is the second delivery of the same
+        # deployment_status webhook, not a failure: the endpoint reports
+        # published and recovers the URL via ``get_release``.
+        class _AlreadyThere(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                raise httpx.HTTPStatusError(
+                    'already exists',
+                    request=httpx.Request('POST', 'https://api.gh/releases'),
+                    response=httpx.Response(
+                        422, json={'message': 'Reference already exists'}
+                    ),
+                )
+
+            async def get_release(  # type: ignore[override]
+                self, ctx, credentials, tag
+            ):
+                return RemoteRelease(
+                    tag=tag, html_url=f'https://gh/releases/{tag}'
+                )
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _AlreadyThere
+        )
+        seen = self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['published'])
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertIsNone(data['warning'])
+        self.assertEqual(len(seen['upsert']), 1)
+
+    def test_publish_writes_an_operations_log_audit(self) -> None:
+        self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        insert = self.mocks['clickhouse'].return_value.insert
+        insert.assert_awaited()
+        columns = insert.await_args.args[2]
+        row = dict(zip(columns, insert.await_args.args[1][0], strict=True))
+        self.assertEqual(row['version'], 'v6.4.0')
+        self.assertEqual(json.loads(row['description'])['action'], 'publish')
 
 
 class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
