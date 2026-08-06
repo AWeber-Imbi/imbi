@@ -81,6 +81,8 @@ class PRActivityRow(pydantic.BaseModel):
     display_name: str | None = None
     avatar_url: str | None = None
     created: int
+    open: int
+    closed: int
     merged: int
 
 
@@ -359,12 +361,18 @@ async def _fetch_pr_activity(
     project_ids: list[str],
     since: datetime.datetime,
 ) -> list[dict[str, typing.Any]]:
-    """Aggregate created/merged PR counts per author since *since*.
+    """Aggregate created/open/closed/merged counts per author.
 
     A PR counts toward ``created`` when created on/after ``since`` and
     toward ``merged`` when merged on/after ``since`` -- the two use
     different anchors, so a PR opened earlier but merged in-window still
     contributes to ``merged``.
+
+    ``open`` and ``closed`` are current-state breakdowns of the PRs
+    created in-window: ``open`` is still open, ``closed`` was closed
+    without merging.  Both anchor on ``created_at`` because the table
+    carries no close timestamp -- only ``merged_at`` -- so a PR closed
+    in-window but opened earlier cannot be attributed to the window.
     """
     if not project_ids:
         return []
@@ -374,6 +382,10 @@ async def _fetch_pr_activity(
     sql = (
         'SELECT author,'
         ' countIf(created_at >= {since:DateTime64(3)}) AS created_count,'
+        " countIf(state = 'open' AND created_at >= {since:DateTime64(3)})"
+        ' AS open_count,'
+        " countIf(state != 'open' AND NOT merged"
+        ' AND created_at >= {since:DateTime64(3)}) AS closed_count,'
         ' countIf(merged AND merged_at >= {since:DateTime64(3)})'
         ' AS merged_count'
         ' FROM pull_requests FINAL'
@@ -399,7 +411,7 @@ async def pull_request_activity(
     ],
     since: str | None = None,
 ) -> PRActivityResponse:
-    """Per-team-member PR activity (created/merged) across the org.
+    """Per-member PR activity (created/open/closed/merged) for the org.
 
     ``since`` is an inclusive lower bound (``YYYY-MM-DD`` or ISO
     timestamp); it defaults to 30 days ago.  Authors are resolved to
@@ -426,6 +438,8 @@ async def pull_request_activity(
                 display_name=user['display_name'] if user else None,
                 avatar_url=user['avatar_url'] if user else None,
                 created=created,
+                open=int(row.get('open_count') or 0),
+                closed=int(row.get('closed_count') or 0),
                 merged=merged,
             )
         )

@@ -213,16 +213,22 @@ class PullRequestActivityTestCase(_PullRequestsTestBase):
                         {
                             'author': 'alice',
                             'created_count': 5,
+                            'open_count': 1,
+                            'closed_count': 2,
                             'merged_count': 3,
                         },
                         {
                             'author': 'ghost',
                             'created_count': 2,
+                            'open_count': 0,
+                            'closed_count': 1,
                             'merged_count': 1,
                         },
                         {
                             'author': 'idle',
                             'created_count': 0,
+                            'open_count': 0,
+                            'closed_count': 0,
                             'merged_count': 0,
                         },
                     ]
@@ -241,6 +247,8 @@ class PullRequestActivityTestCase(_PullRequestsTestBase):
         self.assertEqual(rows[0]['display_name'], 'Alice')
         self.assertEqual(rows[0]['email'], 'alice@example.com')
         self.assertEqual(rows[0]['merged'], 3)
+        self.assertEqual(rows[0]['open'], 1)
+        self.assertEqual(rows[0]['closed'], 2)
         # Unresolved login: raw login, no user fields.
         self.assertEqual(rows[1]['login'], 'ghost')
         self.assertIsNone(rows[1]['display_name'])

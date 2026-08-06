@@ -50,11 +50,12 @@ const REPORTS: Report[] = [
     subtitle: 'Open pull requests, filterable by team and project type',
   },
   {
-    description: 'PRs created and merged per member',
+    description: 'PR outcomes per member',
     icon: Activity,
     id: 'pr-activity',
     label: 'PR Activity',
-    subtitle: 'PRs created and merged per team member, since a chosen date',
+    subtitle:
+      'PRs created, open, closed, and merged per team member, since a chosen date',
   },
   {
     description: 'Service dependency graph',

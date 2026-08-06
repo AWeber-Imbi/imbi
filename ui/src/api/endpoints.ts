@@ -2985,11 +2985,13 @@ export interface PRActivityResponse {
 
 export interface PRActivityRow {
   avatar_url: null | string
+  closed: number
   created: number
   display_name: null | string
   email: null | string
   login: string
   merged: number
+  open: number
 }
 
 export const getPRActivity = (
