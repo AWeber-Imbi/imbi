@@ -8,11 +8,19 @@ empty -- with the failure swallowed by the finalizer's own except/log. These
 run each statement with a session id that matches nothing: both errors are
 raised at analysis time, so an invalid query still fails while a valid one
 writes nothing.
+
+The same class of bug then shipped a second time, in
+``document_analytics._DEDUPED_SESSIONS``: every ``argMax(x, finalized_at) AS
+x`` shadowed the source column ``x``, and the filters constraining four of
+them sat in the same scope, so the server read them as aggregates in WHERE.
+Every analytics endpoint answered 503 and the readership UI, which hides
+itself when the request fails, showed nothing at all. So the analytics
+statements are executed here too, against filters that match no document.
 """
 
 import unittest
 
-from imbi.api.endpoints import _document_reads
+from imbi.api.endpoints import _document_reads, document_analytics
 from imbi.common import clickhouse
 from imbi.common.clickhouse import client
 
@@ -53,3 +61,92 @@ class ReadAnalyticsSqlTestCase(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertIsInstance(stale, list)
+
+    async def test_document_analytics_sql_is_valid(self) -> None:
+        """Every per-document analytics statement analyzes and runs.
+
+        Built through the same helpers the endpoints use, so a filter that
+        collides with a dedup alias fails here the way it fails in
+        production rather than passing against a mock.
+        """
+        params = {
+            'org_slug': 'no-such-org',
+            'document_id': 'no-such-document',
+            'surface': 'web',
+            'author': 'nobody@example.com',
+        }
+        source = document_analytics._session_source(
+            document_analytics._document_filters('web', include_self=False)
+        )
+        # ``surface='all'`` drops the surface filter, the one shape the
+        # default arguments never exercise.
+        all_surfaces = document_analytics._session_source(
+            document_analytics._document_filters('all', include_self=False)
+        )
+        trend_source = document_analytics._session_source(
+            document_analytics._document_filters('web', include_self=False)
+            + ' AND started_at > now() - INTERVAL {trend_days:UInt32} DAY'
+        )
+
+        summary = await clickhouse.query(
+            document_analytics._SUMMARY_SQL.format(source=source), params
+        )
+        # An unfiltered aggregate returns its one all-zero row.
+        self.assertEqual(1, len(summary))
+        self.assertEqual(
+            [],
+            await clickhouse.query(
+                document_analytics._SURFACE_SQL.format(source=all_surfaces),
+                params,
+            ),
+        )
+        self.assertEqual(
+            [],
+            await clickhouse.query(
+                document_analytics._TREND_SQL.format(source=trend_source),
+                {**params, 'trend_days': 90},
+            ),
+        )
+        self.assertEqual(
+            [],
+            await clickhouse.query(
+                document_analytics._READERS_SQL.format(
+                    source=source, having=''
+                ),
+                {**params, 'row_limit': 26},
+            ),
+        )
+
+    async def test_org_analytics_sql_is_valid(self) -> None:
+        """The org report's statements analyze and run, every mode."""
+        params = {
+            'org_slug': 'no-such-org',
+            'surface': 'web',
+            'row_limit': 25,
+            'stale_days': 90,
+        }
+        source = document_analytics._session_source(
+            'org_slug = {org_slug:String}'
+            + document_analytics._surface_filter('web')
+        )
+        stale_having = (
+            'HAVING last_read_at < now() - INTERVAL {stale_days:UInt32} DAY'
+        )
+        for mode, order in document_analytics._ORG_ORDER.items():
+            with self.subTest(mode=mode):
+                sql = document_analytics._ORG_SQL.format(
+                    source=source,
+                    having=stale_having if mode == 'stale' else '',
+                    order=order,
+                )
+                self.assertEqual([], await clickhouse.query(sql, params))
+        # ``never-read`` takes a different path entirely.
+        self.assertEqual(
+            [],
+            await clickhouse.query(
+                document_analytics._READ_DOCUMENT_IDS_SQL.format(
+                    surface_filter=document_analytics._surface_filter('web')
+                ),
+                params,
+            ),
+        )

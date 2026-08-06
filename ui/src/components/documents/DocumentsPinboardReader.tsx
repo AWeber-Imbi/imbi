@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 
 import {
   ArrowLeft,
+  BookOpen,
   CheckCircle2,
   CircleDot,
   Clock,
@@ -38,9 +39,9 @@ import { RightCommentBar } from './comments/RightCommentBar'
 import { SelectionToolbar } from './comments/SelectionToolbar'
 import { useCommentLastVisit } from './comments/useCommentLastVisit'
 import { useInlineComments } from './comments/useInlineComments'
-import { DocumentAnalyticsStrip } from './DocumentAnalyticsStrip'
 import { DocumentAttachmentBadge } from './DocumentAttachmentBadge'
 import { DocumentLikeButton } from './DocumentLikeButton'
+import { DocumentReadershipPopover } from './DocumentReadershipPopover'
 import { DocumentsFilterRail } from './DocumentsFilterRail'
 import {
   documentTitle,
@@ -52,6 +53,8 @@ import {
 } from './documentsHelpers'
 import { DocumentTagChip } from './DocumentTagChip'
 import { DocumentVersionHistory } from './DocumentVersionHistory'
+import { estimatedReadSeconds, formatReadTime } from './readershipHelpers'
+import { useDocumentLike } from './useDocumentLike'
 
 interface Heading {
   level: 2 | 3
@@ -171,6 +174,14 @@ export function DocumentsPinboardReader({
   // the document is what starts a session and leaving it ends one.
   useDocumentReadTracking(orgSlug, document.id)
 
+  // One like state for all three controls (toolbar, byline, discussion).
+  const like = useDocumentLike(
+    orgSlug,
+    document.id,
+    document.like_count ?? 0,
+    document.liked_by_me ?? false,
+  )
+
   // Deep-link: ?thread=<id> (e.g. from the activity feed) scrolls to and
   // flashes a page thread; for an inline one it shows + focuses the reader
   // and scrolls to the highlight (which only renders once the overlay is on,
@@ -245,6 +256,10 @@ export function DocumentsPinboardReader({
 
   const headings = useMemo(
     () => extractHeadings(document.content),
+    [document.content],
+  )
+  const readTime = useMemo(
+    () => formatReadTime(estimatedReadSeconds(document.content)),
     [document.content],
   )
   const headingSlugs = useMemo(() => headings.map((h) => h.slug), [headings])
@@ -337,8 +352,7 @@ export function DocumentsPinboardReader({
               </div>
               <DocumentLikeButton
                 documentId={document.id}
-                initialCount={document.like_count ?? 0}
-                initialLiked={document.liked_by_me ?? false}
+                like={like}
                 orgSlug={orgSlug}
               />
               <Button
@@ -409,7 +423,7 @@ export function DocumentsPinboardReader({
               {title}
             </h1>
 
-            <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
+            <div className="border-tertiary mt-3.5 flex flex-wrap items-center gap-2.5 border-b pb-3.5">
               <div className="text-tertiary inline-flex items-center gap-2 text-[12.5px]">
                 <UserIdentity
                   displayNames={displayNames}
@@ -419,11 +433,31 @@ export function DocumentsPinboardReader({
                 <span className="text-tertiary">·</span>
                 <span>Updated {formatUpdated(document)}</span>
               </div>
-              <div className="bg-tertiary h-3.5 w-px" />
               <div className="flex flex-wrap gap-1">
                 {document.tags.map((t) => (
                   <DocumentTagChip key={t.slug} tag={t} />
                 ))}
+              </div>
+
+              <div className="ml-auto flex flex-wrap items-center gap-2.5">
+                <div className="bg-tertiary hidden h-3.5 w-px sm:block" />
+                {readTime && (
+                  <span className="text-secondary inline-flex items-center gap-1.5 text-[12.5px]">
+                    <BookOpen className="size-3.5" />
+                    {readTime}
+                  </span>
+                )}
+                <DocumentReadershipPopover
+                  displayNames={displayNames}
+                  documentId={document.id}
+                  orgSlug={orgSlug}
+                />
+                <DocumentLikeButton
+                  documentId={document.id}
+                  like={like}
+                  orgSlug={orgSlug}
+                  variant="pill"
+                />
               </div>
             </div>
 
@@ -465,11 +499,6 @@ export function DocumentsPinboardReader({
                 </>
               )}
             </div>
-
-            <DocumentAnalyticsStrip
-              documentId={document.id}
-              orgSlug={orgSlug}
-            />
           </article>
 
           <div className="flex flex-col gap-4 lg:sticky lg:top-5">
@@ -573,6 +602,14 @@ export function DocumentsPinboardReader({
             busy={commentsBusy}
             currentUserEmail={currentUserEmail}
             displayNames={displayNames}
+            headerAction={
+              <DocumentLikeButton
+                documentId={document.id}
+                like={like}
+                orgSlug={orgSlug}
+                variant="pill"
+              />
+            }
             lastVisit={lastVisit}
             onAcknowledge={onAcknowledgeComment}
             onCreateThread={onCreateThread}

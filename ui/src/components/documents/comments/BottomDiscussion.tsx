@@ -14,6 +14,8 @@ interface Props extends CommentThreadHandlers {
   busy?: boolean
   currentUserEmail: string
   displayNames?: Map<string, string>
+  /** Trailing control in the heading row — the reader puts its like pill here. */
+  headerAction?: React.ReactNode
   lastVisit?: number
   threads: CommentThread[]
 }
@@ -28,6 +30,7 @@ export function BottomDiscussion({
   busy = false,
   currentUserEmail,
   displayNames,
+  headerAction,
   lastVisit,
   onAcknowledge,
   onCreateThread,
@@ -47,6 +50,7 @@ export function BottomDiscussion({
         <span className="bg-secondary text-tertiary rounded px-1.5 text-[12px] tabular-nums">
           {threads.length}
         </span>
+        {headerAction && <span className="ml-auto">{headerAction}</span>}
       </h2>
 
       {composing ? (

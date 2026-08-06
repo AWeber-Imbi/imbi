@@ -800,6 +800,9 @@ export type DocumentListResponse = CollectionResponse<Document>
 export interface DocumentReader {
   engaged_seconds: number
   last_read_at?: null | string
+  // Deepest point this reader reached across their sessions. With
+  // `engaged_seconds` it separates a skim from a finished read.
+  max_scroll_pct: number
   principal: string
   reads: number
   views: number

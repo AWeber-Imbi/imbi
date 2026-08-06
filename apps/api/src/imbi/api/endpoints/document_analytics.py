@@ -99,6 +99,10 @@ class ReaderRef(pydantic.BaseModel):
     views: int = 0
     reads: int = 0
     engaged_seconds: int = 0
+    #: Deepest point this reader reached, across all their sessions.
+    #: Paired with ``engaged_seconds`` it separates a skim from a read:
+    #: dwell alone cannot tell a long pause from a finished document.
+    max_scroll_pct: int = 0
 
 
 class ReaderListResponse(pydantic.BaseModel):
@@ -122,18 +126,30 @@ class OrgAnalyticsResponse(pydantic.BaseModel):
 # final flush and a reaper sweep that raced it can both be live until a
 # background merge runs. Counting them directly would double the session.
 # Deduping explicitly makes every number independent of merge state.
+#
+# The filters sit in a nested SELECT rather than beside the aggregates.
+# Every ``argMax(x, finalized_at) AS x`` shadows the source column ``x``,
+# and ``{filters}`` constrains four of them (document_id, principal,
+# surface, started_at); in one scope ClickHouse resolves those to the
+# aggregates and rejects the statement at analysis time with
+# ILLEGAL_AGGREGATION. Nesting keeps the WHERE bound to real columns, so
+# no future filter can collide either. Semantics are unchanged: a WHERE
+# beside GROUP BY already ran before aggregation.
 _DEDUPED_SESSIONS = """
     SELECT session_id,
            argMax(principal, finalized_at)        AS principal,
            argMax(surface, finalized_at)          AS surface,
            argMax(document_id, finalized_at)      AS document_id,
            argMax(engaged_ms, finalized_at)       AS engaged_ms,
+           argMax(max_scroll_pct, finalized_at)   AS max_scroll_pct,
            argMax(is_view, finalized_at)          AS is_view,
            argMax(is_read, finalized_at)          AS is_read,
            argMax(started_at, finalized_at)       AS started_at,
            argMax(ended_at, finalized_at)         AS ended_at
-    FROM imbi.document_read_sessions
-    WHERE {filters}
+    FROM (
+        SELECT * FROM imbi.document_read_sessions
+        WHERE {filters}
+    )
     GROUP BY session_id
 """
 
@@ -411,7 +427,8 @@ SELECT principal,
        max(ended_at)      AS last_read_at,
        countIf(is_view)   AS views,
        countIf(is_read)   AS reads,
-       sum(engaged_ms)    AS engaged_ms
+       sum(engaged_ms)    AS engaged_ms,
+       max(max_scroll_pct) AS max_scroll_pct
 FROM ({source})
 GROUP BY principal
 {having}
@@ -507,6 +524,7 @@ async def list_document_readers(
             views=int(row.get('views') or 0),
             reads=int(row.get('reads') or 0),
             engaged_seconds=int(int(row.get('engaged_ms') or 0) / 1000),
+            max_scroll_pct=int(row.get('max_scroll_pct') or 0),
         )
         for row in rows
     ]

@@ -95,6 +95,23 @@ class IdentityGateTestCase(unittest.TestCase):
         )
 
 
+class ScrollDepthTestCase(unittest.TestCase):
+    """Per-reader depth has to survive the session dedup to be reported."""
+
+    def test_dedup_carries_scroll_depth_through(self) -> None:
+        """Dropping it here makes the readers query fail at ClickHouse."""
+        self.assertIn(
+            'argMax(max_scroll_pct, finalized_at)',
+            document_analytics._DEDUPED_SESSIONS,
+        )
+
+    def test_readers_report_their_deepest_session(self) -> None:
+        self.assertIn(
+            'max(max_scroll_pct) AS max_scroll_pct',
+            document_analytics._READERS_SQL,
+        )
+
+
 class SurfaceFilterTestCase(unittest.TestCase):
     """Human reads are the default answer; agents are opt-in."""
 
