@@ -589,33 +589,13 @@ export interface CutReleaseResponse {
   warning?: null | string
 }
 
-// Dashboard types are hand-written: the /admin/dashboard/* endpoints are
-// not in the committed OpenAPI snapshot yet. (DatastoreStatus /
-// ServiceStatus live in their own alphabetical slots for module sort.)
-export interface DashboardMetrics {
-  events: { daily: number[]; total: number }
-  ops_log: { daily: number[]; total: number }
-  pull_requests: { daily: number[]; total: number }
-  releases: { daily: number[]; total: number }
-  releases_by_environment: { count: number; slug: string }[]
-  since: string
-}
+// Dashboard system-health types. DatastoreStatus / ServiceStatus live in
+// their own alphabetical slots for module sort.
+export type DashboardMetrics = Schemas['DashboardMetrics']
 
-export interface DashboardStatus {
-  checked_at: string
-  datastores: DatastoreStatus[]
-  services: ServiceStatus[]
-}
+export type DashboardStatus = Schemas['DashboardStatus']
 
-export interface DatastoreStatus {
-  detail?: null | string
-  latency_ms?: null | number
-  name: string
-  role: string
-  size_bytes?: null | number
-  status: 'error' | 'ok'
-  total_bytes?: null | number
-}
+export type DatastoreStatus = Schemas['DatastoreStatus']
 
 export type DeploymentAction = 'deploy' | 'redeploy'
 
@@ -981,13 +961,7 @@ export interface IncidentView {
 }
 
 // Admin local-auth (password login) toggle.
-// Hand-written: the admin endpoints aren't in the committed openapi.json
-// snapshot yet. Mirrors `LocalAuthRead` in
-// imbi_api/endpoints/local_auth.py.
-export interface LocalAuthConfig {
-  enabled: boolean
-  updated_at: string
-}
+export type LocalAuthConfig = Schemas['LocalAuthRead']
 
 export interface LogEntryResponse {
   level: null | string
@@ -1013,40 +987,22 @@ export interface LogResultResponse {
   total: null | number
 }
 
-export interface MCPServer {
-  auth_type: MCPServerAuthType
-  created_at?: null | string
-  description?: null | string
-  enabled: boolean
-  has_oauth_client_secret: boolean
-  has_static_value: boolean
-  icon?: null | string
-  id: string
+// `ignored_tools` is restored to required: the API declares it with
+// `default_factory=list`, which Pydantic does not emit as a schema `default`,
+// so the generated type calls it optional even though every response carries
+// it.
+export type MCPServer = Schemas['MCPServerResponse'] & {
   ignored_tools: string[]
-  last_error?: null | string
-  last_tested_at?: null | string
-  last_tested_latency_ms?: null | number
-  name: string
-  oauth_client_id?: null | string
-  oauth_scope?: null | string
-  oauth_token_url?: null | string
-  slug: string
-  static_header?: null | string
-  status: MCPServerStatus
-  timeout: number
-  tool_prefix?: null | string
-  tools_discovered?: null | number
-  updated_at?: null | string
-  url: string
-  verify_ssl: boolean
 }
 
-// MCP server admin types — mirror imbi_api/endpoints/mcp_servers.py. These
-// are hand-written because the codegen snapshot predates the endpoints;
-// regenerate via `npm run codegen:fetch` once the backend snapshot includes
-// /mcp-servers, then collapse these onto `Schemas['MCPServerResponse']`.
-export type MCPServerAuthType = 'none' | 'oauth_client_credentials' | 'static'
+export type MCPServerAuthType = Schemas['MCPServerResponse']['auth_type']
 
+// `MCPServerCreate` and `MCPServerTestConfig` stay hand-written for the same
+// reason as `DocumentTemplateCreate`: openapi-typescript reads a schema
+// default as a guarantee the field is present, so the generated request
+// bodies demand auth_type / enabled / timeout / verify_ssl (and, for the
+// test config, name and slug) that the server defaults and the admin forms
+// do not send.
 export interface MCPServerCreate {
   auth_type?: MCPServerAuthType
   description?: null | string
@@ -1067,7 +1023,7 @@ export interface MCPServerCreate {
   verify_ssl?: boolean
 }
 
-export type MCPServerStatus = 'degraded' | 'healthy' | 'unknown' | 'unreachable'
+export type MCPServerStatus = Schemas['MCPServerResponse']['status']
 
 // Body for POST /mcp-servers/test (test an unsaved config). name/slug are
 // optional server-side; the URL and auth fields are what matter.
@@ -1076,17 +1032,9 @@ export type MCPServerTestConfig = Omit<MCPServerCreate, 'name' | 'slug'> & {
   slug?: string
 }
 
-export interface MCPServerTestResult {
-  error?: null | string
-  latency_ms: number
-  ok: boolean
-  status: 'degraded' | 'healthy' | 'unreachable'
-  tested_at: string
-  tools: string[]
-  tools_discovered: number
-}
+export type MCPServerTestResult = Schemas['MCPServerTestResult']
 
-export type MCPServerUpdate = Partial<MCPServerCreate>
+export type MCPServerUpdate = Schemas['MCPServerUpdate']
 
 export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 
@@ -1214,14 +1162,8 @@ export interface PluginVertexLabel {
   }
 }
 // `deprecated` is surfaced on the neighbour summary by the relationships
-// endpoint so the UI can flag deprecated dependencies. Kept optional until
-// the generated schema snapshot is refreshed.
-export type ProjectRelationship = Omit<
-  Schemas['ProjectRelationship'],
-  'project'
-> & {
-  project: Schemas['ProjectRelationshipSummary'] & { deprecated?: boolean }
-}
+// endpoint so the UI can flag deprecated dependencies.
+export type ProjectRelationship = Schemas['ProjectRelationship']
 
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
@@ -1396,15 +1338,8 @@ export type ServiceAccount = Schemas['ServiceAccountResponse']
 
 export type ServiceAccountCreate = Schemas['ServiceAccountCreate']
 
-// Part of the hand-written dashboard system-health types; see
-// DashboardStatus for context.
-export interface ServiceStatus {
-  detail?: null | string
-  latency_ms?: null | number
-  name: string
-  status: 'down' | 'up'
-  version?: null | string
-}
+// Part of the dashboard system-health types; see DashboardStatus.
+export type ServiceStatus = Schemas['ServiceStatus']
 
 export type Tag = Schemas['TagResponse']
 

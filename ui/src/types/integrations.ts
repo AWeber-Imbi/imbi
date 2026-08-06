@@ -1,9 +1,23 @@
 // Plugin Architecture v3 — Integrations, plugins, and capabilities.
 //
 // Hand-authored to mirror the imbi-api v3 Pydantic models
-// (`imbi_api.domain.models` and `imbi_common.plugins.base`). The committed
-// OpenAPI snapshot predates v3, so these are not generated. Keep field names
+// (`imbi_api.domain.models` and `imbi_common.plugins.base`). Keep field names
 // and shapes in sync with the backend contract.
+//
+// These cannot be generated, for two separate reasons:
+//
+//   - The manifest side (PluginManifest, PluginCapability, PluginOption,
+//     PluginPackage, CredentialField, ProjectServiceEdge) has no OpenAPI
+//     schema at all -- those are internal plugin models, not API surface.
+//   - `Integration` has a schema, but the wrong one. Two classes compete for
+//     the name `IntegrationResponse`: the graph node
+//     (`imbi.common.models.Integration`) and the API response
+//     (`imbi.api.domain.models.IntegrationResponse`). The node won, so the
+//     published schema carries created_at / updated_at /
+//     encrypted_credentials / relationships and omits credential_fields,
+//     credential_values, and used_as_login -- three fields the admin UI
+//     reads. Generating from it would type these endpoints as something they
+//     do not return.
 //
 // Three nouns:
 //   - Plugin       — an installed Python package (read-only from the UI).
