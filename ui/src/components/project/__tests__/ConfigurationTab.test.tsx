@@ -174,7 +174,14 @@ describe('ConfigurationTab Duplicate action', () => {
     await user.click(await screen.findByRole('button', { name: /save/i }))
 
     await waitFor(() => expect(setConfigurationValue).toHaveBeenCalledTimes(2))
-    expect(setConfigurationValue).toHaveBeenLastCalledWith(
+    expect(setConfigurationValue).toHaveBeenCalledWith(
+      'acme',
+      'proj-1',
+      'imbi/acme/db/',
+      { data_type: 'string', secret: false, value: 'pw-staging' },
+      { environment: 'staging', source: 'aws' },
+    )
+    expect(setConfigurationValue).toHaveBeenCalledWith(
       'acme',
       'proj-1',
       'imbi/acme/db/',
