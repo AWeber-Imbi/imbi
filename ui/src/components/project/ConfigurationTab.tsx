@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query'
 import {
   Check,
+  CopyPlus,
   Eye,
   EyeOff,
   Lock,
@@ -74,11 +75,13 @@ interface ConfigurationTabProps {
 interface CreateDraft {
   data_type: DataType
   key: string
+  targets?: string[]
   values: Record<string, string>
 }
 
 interface DetailPaneProps {
   draft?: CreateDraft
+  duplicateBlockedReason?: null | string
   environments: Environment[]
   isCreate?: boolean
   onAdd?: () => void
@@ -88,6 +91,7 @@ interface DetailPaneProps {
   onCreate?: () => void
   onDelete?: () => void
   onDraftChange?: (next: CreateDraft) => void
+  onDuplicate?: () => void
   onToggleReveal?: (envSlug: string, key: string) => void
   prefix: string
   revealed?: Record<string, boolean>
@@ -96,6 +100,14 @@ interface DetailPaneProps {
   typeOverride?: DataType | null
   valueLoadingByEnv?: Record<string, boolean>
   valuesByEnv?: Record<string, Record<string, unknown>>
+}
+
+interface DuplicateGateInput {
+  environments: Environment[]
+  key: AggregatedKey
+  valueErrorByEnv: Record<string, boolean>
+  valueLoadingByEnv: Record<string, boolean>
+  valuesByEnv: Record<string, Record<string, unknown>>
 }
 
 interface EnvRowProps {
@@ -313,6 +325,11 @@ export function ConfigurationTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedEnvironments, ...valueLoadingFlags])
 
+  const valueErrorByEnv: Record<string, boolean> = {}
+  sortedEnvironments.forEach((env, idx) => {
+    valueErrorByEnv[env.slug] = Boolean(valueQueries[idx]?.isError)
+  })
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase()
     if (!q) return aggregated
@@ -344,16 +361,54 @@ export function ConfigurationTab({
     }
   }, [aggregated, mode, selected])
 
-  // Reset draft entering create mode.
-  useEffect(() => {
-    if (mode === 'create') {
-      setDraft({
-        data_type: 'string',
-        key: prefix,
-        values: Object.fromEntries(envSlugs.map((s) => [s, ''])),
+  const selectedTypeOverride: DataType | null =
+    typeOverride && selected && typeOverride.key === selected.key
+      ? typeOverride.type
+      : null
+
+  const effectiveSelectedType: DataType =
+    selectedTypeOverride ??
+    (selected?.secret ? 'secret' : (selected?.data_type ?? 'string'))
+
+  const duplicateBlocked = selected
+    ? duplicateBlockedReason({
+        environments: sortedEnvironments,
+        key: selected,
+        valueErrorByEnv,
+        valueLoadingByEnv,
+        valuesByEnv,
       })
+    : null
+
+  // Enters create mode with an empty draft.
+  const startCreate = () => {
+    setDraft({
+      data_type: 'string',
+      key: prefix,
+      values: Object.fromEntries(envSlugs.map((s) => [s, ''])),
+    })
+    setMode('create')
+  }
+
+  const startDuplicate = () => {
+    if (!selected) return
+    if (duplicateBlocked) {
+      toast.error(duplicateBlocked)
+      return
     }
-  }, [mode, prefix, envSlugs])
+    setDraft({
+      data_type: effectiveSelectedType,
+      key: prefix,
+      targets: envSlugs.filter((s) => Boolean(selected.envs[s])),
+      values: Object.fromEntries(
+        envSlugs.map((s) => [
+          s,
+          selected.envs[s] ? (valuesByEnv[s]?.[selected.key] as string) : '',
+        ]),
+      ),
+    })
+    setMode('create')
+  }
 
   const setMutation = useMutation({
     mutationFn: ({
@@ -502,7 +557,11 @@ export function ConfigurationTab({
       toast.error('Key is required')
       return
     }
-    const targets = envSlugs.filter((slug) => draft.values[slug]?.trim())
+    // Duplicate drafts carry the source's environments so explicitly
+    // empty values still save; hand-typed drafts derive them from text.
+    const targets = envSlugs.filter(
+      (slug) => draft.targets?.includes(slug) || draft.values[slug]?.trim(),
+    )
     if (targets.length === 0) {
       toast.error('Set a value for at least one environment')
       return
@@ -651,26 +710,24 @@ export function ConfigurationTab({
             />
           ) : selected ? (
             <DetailPane
+              duplicateBlockedReason={duplicateBlocked}
               environments={sortedEnvironments}
-              onAdd={() => setMode('create')}
+              onAdd={startCreate}
               onCommitType={handleCommitType}
               onCommitValue={handleCommitValue}
               onDelete={() => setConfirmDelete(selected.key)}
+              onDuplicate={startDuplicate}
               onToggleReveal={toggleReveal}
               prefix={prefix}
               revealed={revealed}
               savedFlash={savedFlash}
               selected={selected}
-              typeOverride={
-                typeOverride && typeOverride.key === selected.key
-                  ? typeOverride.type
-                  : null
-              }
+              typeOverride={selectedTypeOverride}
               valueLoadingByEnv={valueLoadingByEnv}
               valuesByEnv={valuesByEnv}
             />
           ) : (
-            <EmptyState onAdd={() => setMode('create')} />
+            <EmptyState onAdd={startCreate} />
           )}
         </Panel>
       </Group>
@@ -819,6 +876,7 @@ function containsCredentials(value: string): boolean {
 
 function DetailPane({
   draft,
+  duplicateBlockedReason,
   environments,
   isCreate,
   onAdd,
@@ -828,6 +886,7 @@ function DetailPane({
   onCreate,
   onDelete,
   onDraftChange,
+  onDuplicate,
   onToggleReveal,
   prefix,
   revealed,
@@ -884,6 +943,20 @@ function DetailPane({
           <span className="text-success inline-flex items-center gap-1 text-xs">
             <Check className="size-3" /> Saved
           </span>
+        )}
+        {!isCreate && onDuplicate && (
+          <Button
+            disabled={Boolean(duplicateBlockedReason)}
+            onClick={onDuplicate}
+            size="sm"
+            title={
+              duplicateBlockedReason ??
+              "Copy this parameter's type and values into a new key"
+            }
+            variant="outline"
+          >
+            <CopyPlus className="size-3" /> Duplicate
+          </Button>
         )}
         {!isCreate && onAdd && (
           <Button onClick={onAdd} size="sm">
@@ -1009,6 +1082,34 @@ function DetailPane({
       </div>
     </div>
   )
+}
+
+function duplicateBlockedReason({
+  environments,
+  key,
+  valueErrorByEnv,
+  valueLoadingByEnv,
+  valuesByEnv,
+}: DuplicateGateInput): null | string {
+  const targets = environments.filter((env) => key.envs[env.slug])
+  if (targets.length === 0) return 'This parameter has no values to copy'
+  const names = (envs: Environment[]) => envs.map((e) => e.name).join(', ')
+  if (targets.some((env) => valueLoadingByEnv[env.slug])) {
+    return 'Values are still loading'
+  }
+  const failed = targets.filter((env) => valueErrorByEnv[env.slug])
+  if (failed.length > 0) {
+    return `Values failed to load for ${names(failed)}`
+  }
+  const unreadable = targets.filter(
+    (env) => typeof valuesByEnv[env.slug]?.[key.key] !== 'string',
+  )
+  if (unreadable.length > 0) {
+    return key.secret
+      ? `Secret values are not readable for ${names(unreadable)}`
+      : `Values are unavailable for ${names(unreadable)}`
+  }
+  return null
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
