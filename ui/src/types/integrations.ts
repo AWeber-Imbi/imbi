@@ -1,28 +1,25 @@
 // Plugin Architecture v3 — Integrations, plugins, and capabilities.
 //
-// Hand-authored to mirror the imbi-api v3 Pydantic models
-// (`imbi_api.domain.models` and `imbi_common.plugins.base`). Keep field names
-// and shapes in sync with the backend contract.
+// The API-surface types resolve through the generated schemas. The manifest
+// side stays hand-authored, mirroring `imbi_common.plugins.base`: plugin
+// manifests, capabilities, options, packages, credential fields, and the
+// project-service edge are internal plugin models with no OpenAPI schema at
+// all, so there is nothing to generate from. Keep those in sync with the
+// backend by hand.
 //
-// These cannot be generated, for two separate reasons:
-//
-//   - The manifest side (PluginManifest, PluginCapability, PluginOption,
-//     PluginPackage, CredentialField, ProjectServiceEdge) has no OpenAPI
-//     schema at all -- those are internal plugin models, not API surface.
-//   - `Integration` has a schema, but the wrong one. Two classes compete for
-//     the name `IntegrationResponse`: the graph node
-//     (`imbi.common.models.Integration`) and the API response
-//     (`imbi.api.domain.models.IntegrationResponse`). The node won, so the
-//     published schema carries created_at / updated_at /
-//     encrypted_credentials / relationships and omits credential_fields,
-//     credential_values, and used_as_login -- three fields the admin UI
-//     reads. Generating from it would type these endpoints as something they
-//     do not return.
+// `Integration` was hand-written for a different reason until recently: the
+// blueprint schema writer emitted the graph node under the name
+// `IntegrationResponse`, displacing the endpoint's own response model, so the
+// published schema described a shape no endpoint returned. That is fixed --
+// blueprint output is namespaced now -- and `Integration` resolves through
+// the schema again.
 //
 // Three nouns:
 //   - Plugin       — an installed Python package (read-only from the UI).
 //   - Integration  — an org-owned, named, configured instance of a plugin.
 //   - Capability   — a toggleable behavior of an Integration.
+
+import type { components } from './api-generated'
 
 // ---------------------------------------------------------------------------
 // Capabilities
@@ -30,15 +27,17 @@
 
 // A capability's project-type assignment. Zero assignments for an enabled,
 // project-scoped capability means "all project types" (default_all).
-export interface CapabilityAssignment {
-  default: boolean
+//
+// `options` / `env_payloads` are restored to required. The API declares both
+// with `default_factory=dict`, which Pydantic does not emit as a schema
+// `default`, so the generated type calls them optional even though every
+// response carries them. Same artifact as `MCPServer.ignored_tools`.
+export type CapabilityAssignment = Schemas['CapabilityAssignment'] & {
   env_payloads: Record<string, Record<string, unknown>>
-  identity_integration_slug: null | string
   options: Record<string, unknown>
-  project_type_slug: string
 }
 
-export interface CapabilityAssignmentsUpdate {
+export type CapabilityAssignmentsUpdate = {
   assignments: CapabilityAssignment[]
 }
 
@@ -60,10 +59,7 @@ export type CapabilitySurface = 'api' | 'tools' | 'ui' | 'webhook'
 
 // Per-capability enabled state + options on an Integration. Keyed by
 // CapabilityKind in `Integration.capabilities`.
-export interface CapabilityToggle {
-  enabled: boolean
-  options: Record<string, unknown>
-}
+export type CapabilityToggle = Schemas['CapabilityToggle']
 
 // ---------------------------------------------------------------------------
 // Integrations (leads with the plugin credential field they configure)
@@ -83,30 +79,11 @@ export interface CredentialField {
   secret?: boolean
 }
 
-// GET /organizations/{org}/integrations → IntegrationResponse.
-export interface Integration {
-  capabilities: Record<string, CapabilityToggle>
-  category?: null | string
-  credential_fields: string[]
-  // Values of populated, non-secret credential fields (for display).
-  credential_values?: Record<string, string>
-  description?: null | string
-  icon?: null | string
-  // Stable node id; null only for legacy integrations created before ids
-  // were persisted. The identity connect flow targets this.
-  id?: null | string
-  identifiers: Record<string, unknown>
-  links: Record<string, unknown>
-  name: string
-  options: Record<string, unknown>
-  organization?: null | Record<string, unknown>
-  plugin: string
-  service_url?: null | string
-  slug: string
-  status: string
-  used_as_login?: boolean
-  vendor?: null | string
-}
+// GET /organizations/{org}/integrations → IntegrationResponse. `id` is null
+// only for legacy integrations created before ids were persisted; the identity
+// connect flow targets it. `credential_values` holds populated, non-secret
+// credential values for display -- secrets never leave the server.
+export type Integration = Schemas['IntegrationResponse']
 
 export interface IntegrationCreate {
   capabilities?: Record<string, CapabilityToggle>
@@ -213,16 +190,15 @@ export interface PluginPackage extends PluginManifest {
 // Project-level integration assignments (per-capability USES override)
 // ---------------------------------------------------------------------------
 
-export interface ProjectIntegrationAssignment {
-  capability: string
-  default: boolean
-  env_payloads: Record<string, Record<string, unknown>>
-  identity_integration_slug: null | string
-  integration_slug: string
-  options: Record<string, unknown>
-}
+// `options` / `env_payloads` restored to required for the same reason as on
+// CapabilityAssignment.
+export type ProjectIntegrationAssignment =
+  Schemas['ProjectIntegrationAssignment'] & {
+    env_payloads: Record<string, Record<string, unknown>>
+    options: Record<string, unknown>
+  }
 
-export interface ProjectIntegrationsUpdate {
+export type ProjectIntegrationsUpdate = {
   assignments: ProjectIntegrationAssignment[]
 }
 
@@ -246,3 +222,5 @@ export interface ProjectServiceEdgeCreate {
   identifier: string
   integration_slug: string
 }
+
+type Schemas = components['schemas']
