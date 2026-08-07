@@ -165,6 +165,40 @@ async def run_sync(
     return counts
 
 
+async def run_tag_sync(
+    db: graph.Graph, org_slug: str, project_id: str, tag: str
+) -> int:
+    """Resolve the commit-sync capability and record the one tag *tag*.
+
+    The bounded counterpart to :func:`run_sync`, for the caller that
+    already knows which tag appeared -- a promote whose release build just
+    created it.  Cost is flat in the repo's age where a full backfill
+    grows with it, so this is what a per-release sync should call.
+
+    Returns rows written (0 or 1).  Raises
+    :class:`CommitSyncUnavailable` when no integration provides the
+    capability and ``NotImplementedError`` when the resolved one syncs
+    only full history; both leave the caller free to fall back to the
+    queued backfill.
+
+    Deliberately writes no last-sync status and runs no release-notes
+    backfill: this is a side effect of a promote, not the project-wide
+    sync the UI polls, and the promote wrote the notes itself.
+    """
+    try:
+        resolved = await resolve_capability(
+            db, project_id, _CAPABILITY_KIND, None
+        )
+    except fastapi.HTTPException as exc:
+        raise CommitSyncUnavailable(str(exc.detail)) from exc
+    ctx = await _build_context(db, org_slug, project_id, resolved)
+    credentials = decrypt_integration_credentials(
+        resolved.encrypted_credentials
+    )
+    handler = typing.cast('CommitSyncCapability', resolved.capability_cls())
+    return await handler.sync_tag(ctx=ctx, credentials=credentials, tag=tag)
+
+
 async def _backfill_release_notes(
     db: graph.Graph, org_slug: str, project_id: str
 ) -> None:

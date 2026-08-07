@@ -2119,6 +2119,89 @@ class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class PromotedTagSyncTestCase(unittest.IsolatedAsyncioTestCase):
+    """The tag a release build created is fed to ClickHouse.
+
+    An API-created tag fires no ``push`` event, so nothing else records
+    it.  The completion path syncs that one tag and only falls back to the
+    queued full backfill when the bounded call cannot run.
+    """
+
+    def setUp(self) -> None:
+        for target, replacement in (
+            ('_resolve_and_context', mock.AsyncMock()),
+            (
+                '_handler',
+                mock.Mock(
+                    return_value=mock.Mock(
+                        resolve_committish=mock.AsyncMock(return_value=None)
+                    )
+                ),
+            ),
+            ('_resolve_credentials', mock.Mock(return_value={})),
+            ('_get_release', mock.AsyncMock(return_value=None)),
+            ('persist_link_writeback', mock.AsyncMock()),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        project_deployments._resolve_and_context.return_value = (
+            mock.Mock(plugin_slug='github'),
+            mock.Mock(environment_config=None),
+            {},
+        )
+        self.sync_tag = self._patch(
+            'commit_sync_service.run_tag_sync', return_value=1
+        )
+        self.enqueue = self._patch(
+            'commit_sync_queue.enqueue_commit_sync', return_value=True
+        )
+
+    def _patch(self, target: str, **kwargs: typing.Any) -> mock.AsyncMock:
+        patcher = mock.patch(f'{_MODULE}.{target}', mock.AsyncMock(**kwargs))
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    async def _complete(self) -> None:
+        await project_deployments.complete_promote_build(
+            mock.AsyncMock(),
+            org_slug='octo',
+            project_id='p1',
+            release_id='rel1',
+            tag='0.1.5',
+            committish='e6a13a0',
+            to_environment='',
+            deploy=False,
+        )
+
+    async def test_records_the_one_tag_without_a_backfill(self) -> None:
+        await self._complete()
+        self.sync_tag.assert_awaited_once_with(mock.ANY, 'octo', 'p1', '0.1.5')
+        self.enqueue.assert_not_awaited()
+
+    async def test_falls_back_when_the_plugin_lacks_the_bounded_sync(
+        self,
+    ) -> None:
+        self.sync_tag.side_effect = NotImplementedError
+        await self._complete()
+        self.enqueue.assert_awaited_once()
+        self.assertEqual('0.1.5', self.sync_tag.await_args.args[3])
+
+    async def test_falls_back_when_the_bounded_sync_fails(self) -> None:
+        self.sync_tag.side_effect = RuntimeError('clickhouse is down')
+        await self._complete()
+        self.enqueue.assert_awaited_once()
+
+    async def test_a_tag_that_does_not_resolve_is_not_a_fallback(
+        self,
+    ) -> None:
+        """Zero rows means the tag is absent remotely; a backfill can't
+        find it either, so re-walking every tag buys nothing."""
+        self.sync_tag.return_value = 0
+        await self._complete()
+        self.enqueue.assert_not_awaited()
+
+
 class ProjectIsDeployableTestCase(unittest.IsolatedAsyncioTestCase):
     """``deployable`` is per project *type*, and a project can have several."""
 

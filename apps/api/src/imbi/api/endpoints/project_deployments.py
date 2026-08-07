@@ -27,6 +27,7 @@ import pydantic
 
 from imbi.api.auth import permissions, principals
 from imbi.api.commit_sync import queue as commit_sync_queue
+from imbi.api.commit_sync import service as commit_sync_service
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.deployment_sync import service as deployment_sync_service
 from imbi.api.endpoints._helpers import (
@@ -2962,6 +2963,51 @@ async def _set_release_artifact_run(
     )
 
 
+async def _sync_promoted_tag(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    valkey_client: typing.Any,
+) -> None:
+    """Feed the tag the release build created to ClickHouse.
+
+    ENG-100 F6: an API-created tag fires no ``push`` event, so
+    ``github#sync_tags`` never runs and the tag is missing from the
+    ``tags`` table -- and therefore from release history and the Releases
+    tab -- until something asks for it.
+
+    Records that one tag directly, because the caller knows which tag
+    appeared: three remote calls, where the queued backfill re-peels every
+    tag the repo already carries.  Falls back to that backfill when the
+    bounded path can't run (no commit-sync capability, or one that syncs
+    only full history) -- and, either way, degrades quietly: a tag that
+    lands late delays the Releases tab, it does not fail the promote.
+    """
+    written = await _best_effort(
+        commit_sync_service.run_tag_sync(db, org_slug, project_id, tag),
+        f'sync tag {tag} for project {project_id}',
+    )
+    if written is not None:
+        LOGGER.info(
+            'release-promote recorded %d tag row(s) for project %s tag %s',
+            written,
+            project_id,
+            tag,
+        )
+        return
+    if not await commit_sync_queue.enqueue_commit_sync(
+        valkey_client, org_slug, project_id, principals.RELEASE_PROMOTE
+    ):
+        LOGGER.info(
+            'release-promote could not enqueue a tag resync for project %s; '
+            'tag %s stays absent from ClickHouse until the next sync',
+            project_id,
+            tag,
+        )
+
+
 async def complete_promote_build(
     db: graph.Graph,
     *,
@@ -2986,10 +3032,10 @@ async def complete_promote_build(
     1. Resolve what the tag actually points at, and warn on disagreement.
     2. Refresh the ``Release`` node with the remote release link and the
        run that built it.
-    3. Enqueue a commit/tag resync -- an API-created tag fires no ``push``
-       event, so ``github#sync_tags`` never runs and the tag is missing
-       from the ClickHouse ``tags`` table (and therefore from
-       release-history and the Releases tab) until something asks for one.
+    3. Record the new tag in ClickHouse -- an API-created tag fires no
+       ``push`` event, so ``github#sync_tags`` never runs and the tag is
+       missing from the ``tags`` table (and therefore from release-history
+       and the Releases tab) until something asks for it.
     4. For a deployable project, create the Deployment and record the
        event.  A releasable-only project stops after step 3: there is
        nothing to deploy into.
@@ -3060,19 +3106,13 @@ async def complete_promote_build(
         )
     await persist_link_writeback(db, ctx)
 
-    # ENG-100 F6: the tag exists on the remote but produced no push
-    # event, so nothing has fed it to ClickHouse.  Best-effort -- a
-    # missing resync delays the Releases tab, it does not fail the
-    # promote.
-    if not await commit_sync_queue.enqueue_commit_sync(
-        valkey_client, org_slug, project_id, principals.RELEASE_PROMOTE
-    ):
-        LOGGER.info(
-            'release-promote could not enqueue a tag resync for project %s; '
-            'tag %s stays absent from ClickHouse until the next sync',
-            project_id,
-            tag,
-        )
+    await _sync_promoted_tag(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        valkey_client=valkey_client,
+    )
 
     if not deploy:
         LOGGER.info(

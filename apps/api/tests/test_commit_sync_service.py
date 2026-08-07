@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import typing
 import unittest
 from unittest import mock
 
@@ -17,6 +18,19 @@ class _FakeCommitSync(CommitSyncCapability):
 
     async def sync_all_history(self, *, ctx, credentials):  # type: ignore[no-untyped-def]
         return (5, 1)
+
+
+class _TagCommitSync(CommitSyncCapability):
+    """Implements the bounded per-tag sync and records what it got."""
+
+    calls: typing.ClassVar[list[str]] = []
+
+    async def sync_all_history(self, *, ctx, credentials):  # type: ignore[no-untyped-def]
+        raise AssertionError('the bounded path must not backfill everything')
+
+    async def sync_tag(self, *, ctx, credentials, tag):  # type: ignore[no-untyped-def]
+        self.calls.append(tag)
+        return 1
 
 
 class _UnavailableCommitSync(CommitSyncCapability):
@@ -62,6 +76,54 @@ class RunSyncTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(service.CommitSyncUnavailable):
                 await service.run_sync(db, 'octo', 'p1')
+
+
+class RunTagSyncTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        _TagCommitSync.calls.clear()
+
+    def _patch(self, handler_cls: type) -> typing.Any:
+        return (
+            mock.patch.object(
+                service,
+                'resolve_capability',
+                mock.AsyncMock(return_value=_resolved(handler_cls)),
+            ),
+            mock.patch.object(
+                service,
+                '_build_context',
+                mock.AsyncMock(return_value=mock.Mock()),
+            ),
+        )
+
+    async def test_invokes_handler_sync_tag(self) -> None:
+        db = mock.AsyncMock()
+        resolve, context = self._patch(_TagCommitSync)
+        with resolve, context:
+            written = await service.run_tag_sync(db, 'octo', 'p1', '1.2.3')
+        self.assertEqual(1, written)
+        self.assertEqual(['1.2.3'], _TagCommitSync.calls)
+
+    async def test_unimplemented_propagates(self) -> None:
+        """The default raises so the caller can fall back to a backfill."""
+        db = mock.AsyncMock()
+        resolve, context = self._patch(_FakeCommitSync)
+        with resolve, context, self.assertRaises(NotImplementedError):
+            await service.run_tag_sync(db, 'octo', 'p1', '1.2.3')
+
+    async def test_unresolved_raises_unavailable(self) -> None:
+        db = mock.AsyncMock()
+        with mock.patch.object(
+            service,
+            'resolve_capability',
+            mock.AsyncMock(
+                side_effect=fastapi.HTTPException(
+                    status_code=404, detail='no capability'
+                )
+            ),
+        ):
+            with self.assertRaises(service.CommitSyncUnavailable):
+                await service.run_tag_sync(db, 'octo', 'p1', '1.2.3')
 
 
 class CheckAvailableTests(unittest.IsolatedAsyncioTestCase):
