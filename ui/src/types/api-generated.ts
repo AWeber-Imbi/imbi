@@ -8343,40 +8343,34 @@ export interface components {
                 [key: string]: string | null;
             };
         };
-        /** IntegrationResponse */
+        /**
+         * IntegrationResponse
+         * @description Response model for an Integration (no credential values).
+         */
         IntegrationResponse: {
             /** Id */
-            id?: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at?: string;
-            /**
-             * Updated At
-             * @default null
-             */
-            updated_at: string | null;
+            id?: string | null;
+            /** Plugin */
+            plugin: string;
             /** Name */
             name: string;
             /** Slug */
             slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Service Url */
+            service_url?: string | null;
+            /** Category */
+            category?: string | null;
             /**
-             * Description
-             * @default null
+             * Status
+             * @default active
              */
-            description: string | null;
-            /**
-             * Icon
-             * @default null
-             */
-            icon: string | null;
-            /** @default null */
-            organization: components["schemas"]["Organization"] | null;
-            /** @default null */
-            team: components["schemas"]["Team"] | null;
-            /** Plugin */
-            plugin: string;
+            status: string;
             /**
              * Options
              * @default {}
@@ -8385,63 +8379,51 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
-             * Encrypted Credentials
-             * @default {}
-             */
-            encrypted_credentials: {
-                [key: string]: string;
-            };
-            /**
              * Capabilities
              * @default {}
              */
             capabilities: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
+                [key: string]: components["schemas"]["CapabilityToggle"];
             };
             /**
-             * Vendor
-             * @default null
+             * Credential Fields
+             * @default []
              */
-            vendor: string | null;
+            credential_fields: string[];
             /**
-             * Service Url
-             * @default null
+             * Credential Values
+             * @default {}
              */
-            service_url: string | null;
-            /**
-             * Category
-             * @default null
-             */
-            category: string | null;
-            /**
-             * Status
-             * @default active
-             * @enum {string}
-             */
-            status: "active" | "deprecated" | "evaluating" | "inactive";
+            credential_values: {
+                [key: string]: string;
+            };
             /**
              * Links
              * @default {}
              */
             links: {
-                [key: string]: string;
+                [key: string]: unknown;
             };
             /**
              * Identifiers
              * @default {}
              */
             identifiers: {
-                [key: string]: number | string;
+                [key: string]: unknown;
             };
-            /**
-             * Relationships
-             * @default null
-             */
-            relationships: {
-                [key: string]: components["schemas"]["RelationshipLink"];
+            /** Organization */
+            organization?: {
+                [key: string]: unknown;
             } | null;
+            /** Team */
+            team?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Used As Login
+             * @default false
+             */
+            used_as_login: boolean;
         };
         /**
          * IntegrationUpdate
@@ -10236,34 +10218,32 @@ export interface components {
             /** Relationships */
             relationships: components["schemas"]["ProjectRelationship"][];
         };
-        /** ProjectResponse */
+        /**
+         * ProjectResponse
+         * @description Response body for a project.
+         */
         ProjectResponse: {
             /** Id */
-            id?: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at?: string;
-            /**
-             * Updated At
-             * @default null
-             */
-            updated_at: string | null;
+            id?: string | null;
             /** Name */
             name: string;
             /** Slug */
             slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
             /**
-             * Description
-             * @default null
+             * Archived
+             * @default false
              */
-            description: string | null;
-            /**
-             * Icon
-             * @default null
-             */
-            icon: string | null;
+            archived: boolean;
+            /** Archived At */
+            archived_at?: string | null;
             team: components["schemas"]["Team"];
             /**
              * Project Types
@@ -10274,7 +10254,7 @@ export interface components {
              * Environments
              * @default []
              */
-            environments: components["schemas"]["Environment"][];
+            environments: components["schemas"]["EnvironmentRef"][];
             /**
              * Links
              * @default {}
@@ -10290,24 +10270,40 @@ export interface components {
                 [key: string]: number | string;
             };
             /**
-             * Score
-             * @default null
+             * Services
+             * @default []
              */
-            score: number | null;
-            /** @default null */
-            relationships: components["schemas"]["ProjectRelationships"] | null;
+            services: components["schemas"]["ExistsInResponse"][];
+            /** Score */
+            score?: number | null;
+            breakdown?: components["schemas"]["ScoreBreakdown"] | null;
+            relationships?: components["schemas"]["ProjectRelationships"] | null;
             /**
-             * Deprecated
-             * @description Indicates that the project should not be used
-             * @default false
+             * Open Pr Count
+             * @default 0
              */
-            deprecated: boolean;
+            open_pr_count: number;
             /**
-             * Deprecation Reason
-             * @description Specify why the project is deprecated and what should be used instead.
-             * @default null
+             * Closed Pr Count
+             * @default 0
              */
-            deprecation_reason: string | null;
+            closed_pr_count: number;
+            /**
+             * Viewer Open Pr Count
+             * @default 0
+             */
+            viewer_open_pr_count: number;
+            /**
+             * Viewer Closed Pr Count
+             * @default 0
+             */
+            viewer_closed_pr_count: number;
+            /** Current Releases */
+            current_releases?: {
+                [key: string]: components["schemas"]["ReleaseInfo"];
+            };
+        } & {
+            [key: string]: unknown;
         };
         /**
          * ProjectSchemaResponse
@@ -12079,7 +12075,7 @@ export interface components {
             } | unknown[];
         };
         /** Environment */
-        EnvironmentRequest: {
+        EnvironmentBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12130,7 +12126,7 @@ export interface components {
             organization: components["schemas"]["Organization"];
         };
         /** EnvironmentResponse */
-        EnvironmentResponse: {
+        EnvironmentBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -12188,7 +12184,7 @@ export interface components {
             } | null;
         };
         /** LinkDefinition */
-        LinkDefinitionRequest: {
+        LinkDefinitionBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12223,7 +12219,7 @@ export interface components {
             organization: components["schemas"]["Organization"];
         };
         /** LinkDefinitionResponse */
-        LinkDefinitionResponse: {
+        LinkDefinitionBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -12265,7 +12261,7 @@ export interface components {
             } | null;
         };
         /** Integration */
-        IntegrationRequest: {
+        IntegrationBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12357,8 +12353,108 @@ export interface components {
                 [key: string]: number | string;
             };
         };
+        /** IntegrationResponse */
+        IntegrationBlueprintResponse: {
+            /** Id */
+            id?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
+            /** @default null */
+            organization: components["schemas"]["Organization"] | null;
+            /** @default null */
+            team: components["schemas"]["Team"] | null;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Options
+             * @default {}
+             */
+            options: {
+                [key: string]: unknown;
+            };
+            /**
+             * Encrypted Credentials
+             * @default {}
+             */
+            encrypted_credentials: {
+                [key: string]: string;
+            };
+            /**
+             * Capabilities
+             * @default {}
+             */
+            capabilities: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Vendor
+             * @default null
+             */
+            vendor: string | null;
+            /**
+             * Service Url
+             * @default null
+             */
+            service_url: string | null;
+            /**
+             * Category
+             * @default null
+             */
+            category: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "deprecated" | "evaluating" | "inactive";
+            /**
+             * Links
+             * @default {}
+             */
+            links: {
+                [key: string]: string;
+            };
+            /**
+             * Identifiers
+             * @default {}
+             */
+            identifiers: {
+                [key: string]: number | string;
+            };
+            /**
+             * Relationships
+             * @default null
+             */
+            relationships: {
+                [key: string]: components["schemas"]["RelationshipLink"];
+            } | null;
+        };
         /** Organization */
-        OrganizationRequest: {
+        OrganizationBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12398,7 +12494,7 @@ export interface components {
             document_analytics_identities: "enabled" | "authors_only" | "disabled";
         };
         /** OrganizationResponse */
-        OrganizationResponse: {
+        OrganizationBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -12445,7 +12541,80 @@ export interface components {
             } | null;
         };
         /** Project */
-        ProjectRequest: {
+        ProjectBlueprintRequest: {
+            /** Id */
+            id?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
+            team: components["schemas"]["Team"];
+            /**
+             * Project Types
+             * @default []
+             */
+            project_types: components["schemas"]["ProjectType"][];
+            /**
+             * Environments
+             * @default []
+             */
+            environments: components["schemas"]["Environment"][];
+            /**
+             * Links
+             * @default {}
+             */
+            links: {
+                [key: string]: string;
+            };
+            /**
+             * Identifiers
+             * @default {}
+             */
+            identifiers: {
+                [key: string]: number | string;
+            };
+            /**
+             * Score
+             * @default null
+             */
+            score: number | null;
+            /** @default null */
+            relationships: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Deprecated
+             * @description Indicates that the project should not be used
+             * @default false
+             */
+            deprecated: boolean;
+            /**
+             * Deprecation Reason
+             * @description Specify why the project is deprecated and what should be used instead.
+             * @default null
+             */
+            deprecation_reason: string | null;
+        };
+        /** ProjectResponse */
+        ProjectBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -12518,7 +12687,7 @@ export interface components {
             deprecation_reason: string | null;
         };
         /** ProjectType */
-        ProjectTypeRequest: {
+        ProjectTypeBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12563,7 +12732,7 @@ export interface components {
             tag_formats: components["schemas"]["TagFormat"][];
         };
         /** ProjectTypeResponse */
-        ProjectTypeResponse: {
+        ProjectTypeBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -12615,7 +12784,7 @@ export interface components {
             } | null;
         };
         /** Team */
-        TeamRequest: {
+        TeamBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12645,7 +12814,7 @@ export interface components {
             organization: components["schemas"]["Organization"];
         };
         /** TeamResponse */
-        TeamResponse: {
+        TeamBlueprintResponse: {
             /** Id */
             id?: string;
             /**

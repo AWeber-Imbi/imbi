@@ -103,19 +103,14 @@ export interface ConditionScoringPolicyCreate extends ScoringPolicyCreateBase {
   true_score: number
 }
 
-// `Environment` tracks the full response shape (with relationships).
-// Add a UI-only `url` passthrough — it's surfaced in ProjectEnvironmentsCard
-// but not part of the Environment schema itself.
-// `can_deploy` / `can_promote` are sourced from the backend env model
-// (defaults: true / false respectively). Kept optional here so older
-// snapshots still type-check until the generated schema is refreshed.
-export type Environment = Schemas['EnvironmentResponse'] & {
-  can_deploy?: boolean
-  can_promote?: boolean
+// `Environment` tracks the blueprint-composed response shape (with
+// relationships and any operator-defined fields). `url` is a UI-only
+// passthrough surfaced in ProjectEnvironmentsCard, not part of the schema.
+export type Environment = Schemas['EnvironmentBlueprintResponse'] & {
   url?: null | string
 }
 
-// `EnvironmentCreate` stays hand-written: the generated `EnvironmentRequest`
+// `EnvironmentCreate` stays hand-written: the generated `EnvironmentBlueprintRequest`
 // requires updated_at/description/icon/label_color be explicitly set to
 // `string|null`, which the UI create form doesn't do.
 export interface EnvironmentCreate {
@@ -161,7 +156,7 @@ export interface LifecyclePreviewResponse {
   previews: LifecyclePreviewEntry[]
 }
 
-export type LinkDefinition = Schemas['LinkDefinitionResponse']
+export type LinkDefinition = Schemas['LinkDefinitionBlueprintResponse']
 
 export type LinkDefinitionCreate = Schemas['LinkDefinitionCreate']
 
@@ -338,7 +333,7 @@ export interface ProjectMutationResponse extends Project {
   lifecycle_results?: LifecycleInvocation[]
 }
 
-export type ProjectType = Schemas['ProjectTypeResponse']
+export type ProjectType = Schemas['ProjectTypeBlueprintResponse']
 
 // `ProjectTypeCreate` stays hand-written: no generated counterpart — the API
 // mounts project-type creation via the generic org scoped endpoint.
@@ -1057,7 +1052,7 @@ export type OperationsLogRecord = Schemas['OperationLogResponse'] & {
 }
 
 // Organization types
-export type Organization = Schemas['OrganizationResponse']
+export type Organization = Schemas['OrganizationBlueprintResponse']
 
 // `OrganizationCreate` stays hand-written: the generated
 // `OrganizationRequest` requires `updated_at`/`description`/`icon` be
@@ -1350,7 +1345,7 @@ export type TagFormat = Schemas['TagFormat']
 export type TagRef = Schemas['TagRef']
 
 // Team types
-export type Team = Schemas['TeamResponse']
+export type Team = Schemas['TeamBlueprintResponse']
 
 // `TeamCreate` stays hand-written (same reason as `OrganizationCreate`).
 export interface TeamCreate {
