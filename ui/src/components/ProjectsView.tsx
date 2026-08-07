@@ -1,5 +1,12 @@
 import * as React from 'react'
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -57,6 +64,9 @@ interface DriftPair {
   toSlug: string
 }
 
+// The dropdown filters, each backed by its own URL search param.
+type FacetKey = 'drifts' | 'scores' | 'teams' | 'types'
+
 interface FilterHeaderProps {
   activeFilters: Set<string>
   centerFilter?: FilterPopoverProps & { title: string }
@@ -66,17 +76,25 @@ interface FilterHeaderProps {
   label: string
   onSort: () => void
   onToggle: (slug: string) => void
-  options: { label: string; slug: string }[]
+  options: FilterOption[]
   rightFilter?: FilterPopoverProps & { title: string }
   sortDir: SortDir
   sorted: boolean
+}
+
+interface FilterOption {
+  // Projects this option would match given the other active filters.
+  count?: number
+  dotClass?: string
+  label: string
+  slug: string
 }
 
 interface FilterPopoverProps {
   activeFilters: Set<string>
   label: string
   onToggle: (slug: string) => void
-  options: { dotClass?: string; label: string; slug: string }[]
+  options: FilterOption[]
 }
 
 interface ProjectListRowProps {
@@ -338,108 +356,115 @@ export function ProjectsView() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [projects])
 
+  // One definition of "drifted" for the badge, the ``has_drift``
+  // toggle, and the drift facet: a project drifts when it exhibits at
+  // least one drift pair.
   const driftedProjectIds = useMemo(() => {
     const ids = new Set<string>()
     for (const p of projects ?? []) {
-      if (projectHasDrift(p) || projectReleaseDrifted(p)) ids.add(p.id)
+      if (driftSlugsFor(p).length > 0) ids.add(p.id)
     }
     return ids
   }, [projects])
   const totalDriftProjects = driftedProjectIds.size
 
-  // fallow-ignore-next-line complexity
   const driftPairOptions = useMemo(() => {
-    const seen = new Map<string, string>()
+    const seen = new Set<string>()
     for (const p of projects ?? []) {
-      if (isProjectDeployable(p) && (p.environments ?? []).length >= 2) {
-        const pairs = computeDriftPairs(
-          p.environments ?? [],
-          p.current_releases ?? {},
-        )
-        for (const pair of pairs) {
-          if (pair.drifted) {
-            const slug = `${pair.from}->${pair.to}`
-            if (!seen.has(slug))
-              seen.set(
-                slug,
-                `${abbreviateEnvName(pair.from)} → ${abbreviateEnvName(pair.to)}`,
-              )
-          }
-        }
-      }
-      if (isProjectReleasable(p) && projectReleaseDrifted(p)) {
-        if (!seen.has('C->R')) seen.set('C->R', 'C → R (commit → release)')
-      }
+      for (const slug of driftSlugsFor(p)) seen.add(slug)
     }
-    return Array.from(seen.entries())
-      .map(([slug, label]) => ({ label, slug }))
+    return Array.from(seen)
+      .map((slug) => ({ label: driftPairLabel(slug), slug }))
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [projects])
 
-  // fallow-ignore-next-line complexity
-  const filteredProjects = useMemo(() => {
-    const teamSet = new Set(teamsParam.split(',').filter(Boolean))
-    const typeSet = new Set(typesParam.split(',').filter(Boolean))
-    const driftSet = new Set(driftsParam.split(',').filter(Boolean))
-    const scoreSet = new Set(scoresParam.split(',').filter(Boolean))
-    let all = projects ?? []
+  const teamSet = useMemo(
+    () => new Set(teamsParam.split(',').filter(Boolean)),
+    [teamsParam],
+  )
+  const typeSet = useMemo(
+    () => new Set(typesParam.split(',').filter(Boolean)),
+    [typesParam],
+  )
+  const driftSet = useMemo(
+    () => new Set(driftsParam.split(',').filter(Boolean)),
+    [driftsParam],
+  )
+  const scoreSet = useMemo(
+    () => new Set(scoresParam.split(',').filter(Boolean)),
+    [scoresParam],
+  )
 
-    if (teamSet.size > 0) {
-      all = all.filter((p) => teamSet.has(p.team.slug))
-    }
-    if (typeSet.size > 0) {
-      all = all.filter((p) =>
-        (p.project_types ?? []).some((pt) => typeSet.has(pt.slug)),
-      )
-    }
-    if (driftSet.size > 0) {
-      all = all.filter((p) => {
-        if (
-          driftSet.has('C->R') &&
-          isProjectReleasable(p) &&
-          projectReleaseDrifted(p)
+  // Search runs before the facet filters so both the visible list and
+  // the dropdown counts are scoped to the query. matchSorter orders by
+  // relevance and ``Array.filter`` is stable, so that order survives.
+  const searchedProjects = useMemo(() => {
+    const all = projects ?? []
+    if (!deferredQuery) return all
+    return matchSorter(all, deferredQuery, {
+      keys: [
+        'name',
+        'description',
+        'team.name',
+        { key: (p) => (p.project_types || []).map((pt) => pt.name) },
+      ],
+    })
+  }, [projects, deferredQuery])
+
+  // Applies every active filter, optionally holding one facet out. The
+  // dropdown counts hold their own facet out so that selecting one
+  // option doesn't drop its siblings to zero — each count answers "how
+  // many projects would this option give me", not "how many match now".
+  // fallow-ignore-next-line complexity
+  const applyFilters = useCallback(
+    (list: ProjectListItem[], skip?: FacetKey) => {
+      let all = list
+      if (skip !== 'teams' && teamSet.size > 0) {
+        all = all.filter((p) => teamSet.has(p.team.slug))
+      }
+      if (skip !== 'types' && typeSet.size > 0) {
+        all = all.filter((p) =>
+          (p.project_types ?? []).some((pt) => typeSet.has(pt.slug)),
         )
-          return true
-        const pairs = isProjectDeployable(p)
-          ? computeDriftPairs(p.environments ?? [], p.current_releases ?? {})
-          : []
-        return pairs.some(
-          (pair) => pair.drifted && driftSet.has(`${pair.from}->${pair.to}`),
-        )
-      })
-    }
-    if (hasOpenPRs) {
-      all = all.filter((p) => (p.open_pr_count ?? 0) > 0)
-    }
-    if (hasMyOpenPRs) {
-      all = all.filter((p) => (p.viewer_open_pr_count ?? 0) > 0)
-    }
-    if (hasMyTeams) {
-      all = all.filter((p) => myTeamSlugs.has(p.team.slug))
-    }
-    if (hasDrift) {
-      all = all.filter((p) => driftedProjectIds.has(p.id))
-    }
-    if (scoreSet.size > 0) {
-      all = all.filter((p) => {
-        const s = p.score
-        if (s == null) return scoreSet.has('unscored')
-        if (s >= 85) return scoreSet.has('healthy')
-        if (s >= 75) return scoreSet.has('fair')
-        if (s >= 50) return scoreSet.has('at-risk')
-        return scoreSet.has('unhealthy')
-      })
-    }
-    if (deferredQuery) {
-      return matchSorter(all, deferredQuery, {
-        keys: [
-          'name',
-          'description',
-          'team.name',
-          { key: (p) => (p.project_types || []).map((pt) => pt.name) },
-        ],
-      })
-    }
+      }
+      if (skip !== 'drifts' && driftSet.size > 0) {
+        all = all.filter((p) => driftSlugsFor(p).some((s) => driftSet.has(s)))
+      }
+      if (hasOpenPRs) {
+        all = all.filter((p) => (p.open_pr_count ?? 0) > 0)
+      }
+      if (hasMyOpenPRs) {
+        all = all.filter((p) => (p.viewer_open_pr_count ?? 0) > 0)
+      }
+      if (hasMyTeams) {
+        all = all.filter((p) => myTeamSlugs.has(p.team.slug))
+      }
+      if (hasDrift) {
+        all = all.filter((p) => driftedProjectIds.has(p.id))
+      }
+      if (skip !== 'scores' && scoreSet.size > 0) {
+        all = all.filter((p) => scoreSet.has(scoreBucket(p.score)))
+      }
+      return all
+    },
+    [
+      teamSet,
+      typeSet,
+      driftSet,
+      scoreSet,
+      hasDrift,
+      hasOpenPRs,
+      hasMyOpenPRs,
+      hasMyTeams,
+      myTeamSlugs,
+      driftedProjectIds,
+    ],
+  )
+
+  const filteredProjects = useMemo(() => {
+    const all = applyFilters(searchedProjects)
+    // A query already ordered the list by relevance; don't re-sort it.
+    if (deferredQuery) return all
     // Case-insensitive collation so "AWeber" and "aws-foo" don't end up
     // ordered before "Account" via JS's default locale-strength tiebreak.
     // Names get trimmed because some legacy data carries leading
@@ -462,22 +487,31 @@ export function ProjectsView() {
       else if (sortKey === 'score') cmp = (a.score ?? 0) - (b.score ?? 0)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [
-    projects,
-    driftedProjectIds,
-    deferredQuery,
-    sortKey,
-    sortDir,
-    teamsParam,
-    typesParam,
-    driftsParam,
-    scoresParam,
-    hasDrift,
-    hasOpenPRs,
-    hasMyOpenPRs,
-    hasMyTeams,
-    myTeamSlugs,
-  ])
+  }, [applyFilters, searchedProjects, deferredQuery, sortKey, sortDir])
+
+  // Per-option match totals, one map per facet, keyed by option slug.
+  const facetCounts = useMemo(() => {
+    const tally = (
+      facet: FacetKey,
+      slugsFor: (p: ProjectListItem) => string[],
+    ) => {
+      const counts = new Map<string, number>()
+      for (const p of applyFilters(searchedProjects, facet)) {
+        for (const slug of slugsFor(p)) {
+          counts.set(slug, (counts.get(slug) ?? 0) + 1)
+        }
+      }
+      return counts
+    }
+    return {
+      drifts: tally('drifts', driftSlugsFor),
+      scores: tally('scores', (p) => [scoreBucket(p.score)]),
+      teams: tally('teams', (p) => [p.team.slug]),
+      types: tally('types', (p) =>
+        (p.project_types ?? []).map((pt) => pt.slug),
+      ),
+    }
+  }, [applyFilters, searchedProjects])
 
   const totalOpenPRs = useMemo(
     () => (projects ?? []).reduce((sum, p) => sum + (p.open_pr_count ?? 0), 0),
@@ -496,12 +530,7 @@ export function ProjectsView() {
     [projects, myTeamSlugs],
   )
 
-  const activeTeamSet = new Set(teamsParam.split(',').filter(Boolean))
-  const activeTypeSet = new Set(typesParam.split(',').filter(Boolean))
-  const activeDriftSet = new Set(driftsParam.split(',').filter(Boolean))
-  const activeScoreSet = new Set(scoresParam.split(',').filter(Boolean))
-  const driftOptions = driftPairOptions
-  const scoreOptions: { dotClass: string; label: string; slug: string }[] = [
+  const scoreOptions: FilterOption[] = [
     { dotClass: 'bg-success', label: 'Healthy 85–100', slug: 'healthy' },
     { dotClass: 'bg-warning', label: 'Fair 75–84', slug: 'fair' },
     { dotClass: 'bg-danger', label: 'At risk 50–74', slug: 'at-risk' },
@@ -510,7 +539,12 @@ export function ProjectsView() {
       label: 'Unhealthy < 50',
       slug: 'unhealthy',
     },
+    { dotClass: 'bg-muted-foreground', label: 'Unscored', slug: 'unscored' },
   ]
+  const teamFilterOptions = withCounts(teamOptions, facetCounts.teams)
+  const typeFilterOptions = withCounts(typeOptions, facetCounts.types)
+  const driftFilterOptions = withCounts(driftPairOptions, facetCounts.drifts)
+  const scoreFilterOptions = withCounts(scoreOptions, facetCounts.scores)
 
   return (
     <div className="mx-auto max-w-screen-2xl px-6 py-8">
@@ -713,12 +747,12 @@ export function ProjectsView() {
         <Card className="overflow-hidden">
           <div className="border-tertiary bg-secondary text-secondary flex items-stretch border-b text-sm font-medium">
             <FilterHeader
-              activeFilters={activeTeamSet}
+              activeFilters={teamSet}
               centerFilter={{
-                activeFilters: activeTeamSet,
+                activeFilters: teamSet,
                 label: 'team',
                 onToggle: (s) => toggleFilter('teams', s),
-                options: teamOptions,
+                options: teamFilterOptions,
                 title: 'Team',
               }}
               className="w-65 shrink-0"
@@ -726,12 +760,12 @@ export function ProjectsView() {
               label="team"
               onSort={() => setSort('name')}
               onToggle={(s) => toggleFilter('teams', s)}
-              options={teamOptions}
+              options={teamFilterOptions}
               rightFilter={{
-                activeFilters: activeTypeSet,
+                activeFilters: typeSet,
                 label: 'type',
                 onToggle: (s) => toggleFilter('types', s),
-                options: typeOptions,
+                options: typeFilterOptions,
                 title: 'Type',
               }}
               sortDir={sortDir}
@@ -751,10 +785,10 @@ export function ProjectsView() {
               <div className="flex items-center justify-center gap-1 text-center">
                 Drift
                 <FilterPopover
-                  activeFilters={activeDriftSet}
+                  activeFilters={driftSet}
                   label="drift"
                   onToggle={(s) => toggleFilter('drifts', s)}
-                  options={driftOptions}
+                  options={driftFilterOptions}
                 />
               </div>
             </div>
@@ -778,10 +812,10 @@ export function ProjectsView() {
                 )}
                 <span onClick={(e) => e.stopPropagation()}>
                   <FilterPopover
-                    activeFilters={activeScoreSet}
+                    activeFilters={scoreSet}
                     label="health score"
                     onToggle={(s) => toggleFilter('scores', s)}
-                    options={scoreOptions}
+                    options={scoreFilterOptions}
                   />
                 </span>
               </span>
@@ -1044,6 +1078,34 @@ function DriftCell({
   )
 }
 
+// Human-readable name for a slug produced by ``driftSlugsFor``.
+function driftPairLabel(slug: string): string {
+  if (slug === 'C->R') return 'C → R (commit → release)'
+  const [from, to] = slug.split('->')
+  return `${abbreviateEnvName(from)} → ${abbreviateEnvName(to)}`
+}
+
+// Every drift-pair slug a project currently exhibits: ``from->to`` for
+// each drifted adjacent environment pair, plus the pseudo-pair ``C->R``
+// when a releasable project has commits past its latest tag. Backs both
+// the drift filter and the per-option counts in its popover.
+function driftSlugsFor(project: ProjectListItem): string[] {
+  const slugs: string[] = []
+  if (isProjectDeployable(project)) {
+    const pairs = computeDriftPairs(
+      project.environments ?? [],
+      project.current_releases ?? {},
+    )
+    for (const pair of pairs) {
+      if (pair.drifted) slugs.push(`${pair.from}->${pair.to}`)
+    }
+  }
+  if (isProjectReleasable(project) && projectReleaseDrifted(project)) {
+    slugs.push('C->R')
+  }
+  return slugs
+}
+
 // fallow-ignore-next-line complexity
 function EnvDeploymentHover({
   env,
@@ -1182,6 +1244,7 @@ function FilterPopover({
     <Popover>
       <PopoverTrigger asChild>
         <button
+          aria-label={`Filter by ${label}`}
           className={`flex items-center gap-0.5 rounded px-0.5 py-0.5 ${
             activeFilters.size > 0
               ? 'text-action'
@@ -1214,7 +1277,21 @@ function FilterPopover({
                   className={`size-2 shrink-0 rounded-full ${opt.dotClass}`}
                 />
               )}
-              <span className="text-primary text-sm">{opt.label}</span>
+              <span
+                className={`text-primary min-w-0 flex-1 truncate text-sm${
+                  opt.count === 0 ? ' opacity-50' : ''
+                }`}
+              >
+                {opt.label}
+              </span>
+              {opt.count !== undefined && (
+                <span
+                  className="text-tertiary shrink-0 font-mono text-xs tabular-nums"
+                  data-testid="filter-option-count"
+                >
+                  {opt.count}
+                </span>
+              )}
             </Label>
           ))}
         </div>
@@ -1256,29 +1333,6 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
   next.set('sort', key)
   next.set('dir', nextDir)
   return next
-}
-
-// fallow-ignore-next-line complexity
-function projectHasDrift(project: {
-  current_releases?: null | Record<
-    string,
-    { committish?: null | string; tag?: null | string }
-  >
-  environments?:
-    | null
-    | {
-        label_color?: null | string
-        name: string
-        slug: string
-        sort_order?: null | number
-      }[]
-  project_types?: null | object[]
-}): boolean {
-  if (!isProjectDeployable(project)) return false
-  const envs = project.environments ?? []
-  if (envs.length < 2) return false
-  const pairs = computeDriftPairs(envs, project.current_releases ?? {})
-  return pairs.some((p) => p.drifted)
 }
 
 function projectReleaseDrifted(project: {
@@ -1452,6 +1506,15 @@ function resolveViewMode(
   if (raw === 'grid' || raw === 'list') return raw
   if (stored === 'grid' || stored === 'list') return stored
   return 'list'
+}
+
+// Health-score bucket slug, matching the ``scoreOptions`` slugs.
+function scoreBucket(score: null | number | undefined): string {
+  if (score == null) return 'unscored'
+  if (score >= 85) return 'healthy'
+  if (score >= 75) return 'fair'
+  if (score >= 50) return 'at-risk'
+  return 'unhealthy'
 }
 
 function ScrollableDeployments({
@@ -1633,6 +1696,15 @@ function StatBadge({
     )
   }
   return <span className={cls}>{content}</span>
+}
+
+// Attaches each option's match total; slugs missing from the tally have
+// no matching projects left under the other active filters.
+function withCounts(
+  options: FilterOption[],
+  counts: Map<string, number>,
+): FilterOption[] {
+  return options.map((opt) => ({ ...opt, count: counts.get(opt.slug) ?? 0 }))
 }
 
 // Memoized list-mode row so a parent re-render (e.g. an ``inputQuery``
