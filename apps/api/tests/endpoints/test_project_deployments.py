@@ -1987,6 +1987,25 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
         # The D6 seam: Imbi owns Deployment creation now.
         self.assertEqual('false', inputs['create_deployment'])
 
+    def test_deployment_inputs_omitted_for_a_releasable_project(self) -> None:
+        """A releasable project's workflow declares neither input.
+
+        Publishing *is* the release for a library, so its variant of
+        release.yml drops ``environment`` and ``create_deployment``
+        entirely -- and workflow_dispatch 422s the whole call when it is
+        handed an input the workflow does not declare, so sending them
+        anyway fails the release outright.
+        """
+        self._enable_dispatch()
+        self.deployable.return_value = False
+        self._promote()
+        inputs = _DispatchingDeploymentPlugin.dispatches[0]['inputs']
+        self.assertNotIn('create_deployment', inputs)
+        self.assertNotIn('environment', inputs)
+        # The universal inputs are unaffected.
+        self.assertEqual('Release 0.1.5', inputs['description'])
+        self.assertEqual('e6a13a0', inputs['commit'])
+
     def test_description_falls_back_to_the_tag(self) -> None:
         """``description`` is required by release.yml, so never send empty."""
         self._enable_dispatch()

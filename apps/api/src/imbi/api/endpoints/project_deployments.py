@@ -2146,12 +2146,18 @@ async def _promote_cut_tag(
     )
 
 
-#: Inputs ``release.yml`` declares.  Imbi fills every one of them: the
-#: shared ``release-tag.yaml`` treats an empty ``commit`` as "release the
-#: tip of the default branch", so omitting it would silently tag something
-#: other than the build being promoted -- a green release of the wrong
-#: tree.  ``create_deployment`` is the D6 seam from ENG-101: the workflow
-#: stops creating the Deployment once Imbi does.
+#: Inputs ``release.yml`` declares.  The shared ``release-tag.yaml``
+#: treats an empty ``commit`` as "release the tip of the default branch",
+#: so omitting it would silently tag something other than the build being
+#: promoted -- a green release of the wrong tree.  ``create_deployment``
+#: is the D6 seam from ENG-101: the workflow stops creating the
+#: Deployment once Imbi does.
+#:
+#: Only the first three are universal.  ``environment`` and
+#: ``create_deployment`` are declared by the workflow a *deployable*
+#: project dispatches; the releasable (library / image) variant drops
+#: both, so :func:`_dispatch_release_build` gates them on the project
+#: type's ``deployable`` flag.
 _RELEASE_WORKFLOW_DESCRIPTION_INPUT = 'description'
 _RELEASE_WORKFLOW_NOTES_INPUT = 'release_notes'
 _RELEASE_WORKFLOW_COMMIT_INPUT = 'commit'
@@ -2254,10 +2260,16 @@ async def _dispatch_release_build(
         # Never omitted: release-tag.yaml reads an empty ``commit`` as
         # "release the tip of the default branch".
         _RELEASE_WORKFLOW_COMMIT_INPUT: committish,
-        _RELEASE_WORKFLOW_CREATE_DEPLOYMENT_INPUT: 'false',
     }
-    if to_environment:
-        inputs[_RELEASE_WORKFLOW_ENVIRONMENT_INPUT] = to_environment
+    # The deployment inputs exist only in the workflow a deployable
+    # project dispatches.  A releasable project's workflow declares
+    # neither -- publishing *is* its release, so it has no deployment
+    # seam to close -- and workflow_dispatch rejects the whole call with
+    # a 422 when it is handed an input the workflow does not declare.
+    if await _project_is_deployable(db, project_id):
+        inputs[_RELEASE_WORKFLOW_CREATE_DEPLOYMENT_INPUT] = 'false'
+        if to_environment:
+            inputs[_RELEASE_WORKFLOW_ENVIRONMENT_INPUT] = to_environment
 
     async def _dispatch(c: PluginContext) -> plugin_base.ArtifactRun:
         return await call_with_timeout(
