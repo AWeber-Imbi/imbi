@@ -115,7 +115,14 @@ def _parse_job(fields: dict[str, str]) -> WatchJob | None:
     try:
         return WatchJob.model_validate_json(raw)
     except (pydantic.ValidationError, json.JSONDecodeError):
-        LOGGER.exception('release-promote job payload is unusable: %r', raw)
+        # Deliberately not the payload itself: a ``WatchJob`` carries
+        # ``requested_by``, which is the promoting user's identity, and
+        # this fires on every malformed message.  The exception already
+        # says which field failed; the length is enough to tell a
+        # truncated write from a schema mismatch.
+        LOGGER.exception(
+            'release-promote job payload is unusable (%d bytes)', len(raw)
+        )
         return None
 
 
@@ -293,7 +300,17 @@ async def _run_job(
     except Exception:
         # Leave it pending for a reclaim; ``_maybe_dead_letter`` retires
         # it once the delivery count is exhausted.
-        LOGGER.exception('release-promote job failed for %s', fields)
+        #
+        # Identify the job by project and tag rather than dumping
+        # ``fields``: its ``job`` entry is a serialized ``WatchJob``,
+        # which carries the promoting user's identity in
+        # ``requested_by``.  Those two are enough to find the run.
+        job = _parse_job(fields)
+        LOGGER.exception(
+            'release-promote job failed for project=%s tag=%s',
+            job.project_id if job else '<unparseable>',
+            job.tag if job else '<unparseable>',
+        )
         return
     finally:
         renewer.cancel()

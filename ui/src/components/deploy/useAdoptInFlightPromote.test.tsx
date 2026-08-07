@@ -141,6 +141,31 @@ describe('useAdoptInFlightPromote', () => {
     expect(toast.loading).not.toHaveBeenCalled()
   })
 
+  it('drops a run URL with an unsafe scheme', async () => {
+    // `artifact_run_url` is whatever the deployment plugin reported, and
+    // it lands in `window.open` — a `javascript:` URL would run in this
+    // origin. Falling back to no action is the safe degradation.
+    getPromoteStatus.mockResolvedValue(
+      status({ artifact_run_url: 'javascript:alert(1)' }),
+    )
+    const { onBuildStarted } = renderHook()
+    await waitFor(() => {
+      expect(onBuildStarted).toHaveBeenCalled()
+    })
+    expect(toast.loading.mock.calls[0][1].action).toBeUndefined()
+    expect(onBuildStarted.mock.calls[0][0].runUrl).toBeNull()
+  })
+
+  it('keeps an https run URL', async () => {
+    getPromoteStatus.mockResolvedValue(status())
+    const { onBuildStarted } = renderHook()
+    await waitFor(() => {
+      expect(onBuildStarted).toHaveBeenCalled()
+    })
+    expect(toast.loading.mock.calls[0][1].action.label).toBe('View build')
+    expect(onBuildStarted.mock.calls[0][0].runUrl).toBe('https://ghe/run/4242')
+  })
+
   it('does not write into the watcher’s cache entry', async () => {
     // Regression guard: when both shared the ``promote-status`` key,
     // this fetch seeded that entry at page load, and a watcher mounting

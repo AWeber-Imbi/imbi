@@ -1,6 +1,8 @@
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { sanitizeHttpUrl } from '@/lib/utils'
+
 import type { ReleaseBuildStarted } from './DeploymentModal'
 
 /**
@@ -50,7 +52,9 @@ export function handleDispatchedBuild(
   if (data.phase !== 'building') return false
   const { envName, onBuildStarted, orgSlug, projectId, tagFallback } = options
   const tagLabel = data.tag ?? tagFallback
-  const buildUrl = data.artifact_run_url ?? null
+  // Plugin-reported, so it is untrusted input on its way to
+  // `window.open`; a `javascript:` URL there runs in this origin.
+  const buildUrl = sanitizeHttpUrl(data.artifact_run_url)
   const toastId = toast.loading(`Building release ${tagLabel}…`, {
     action: buildUrl
       ? {

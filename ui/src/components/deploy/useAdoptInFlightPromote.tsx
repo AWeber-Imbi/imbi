@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { getPromoteStatus, type PromoteStatus } from '@/api/endpoints'
+import { sanitizeHttpUrl } from '@/lib/utils'
 
 import type { ReleaseBuildStarted } from './DeploymentModal'
 
@@ -87,7 +88,10 @@ export function useAdoptInFlightPromote({
     if (hasActiveBuild) return
 
     const tag = data.tag ?? 'release'
-    const runUrl = data.artifact_run_url ?? null
+    // The run URL is whatever the deployment plugin reported, so it is
+    // untrusted input on its way into `window.open` — a `javascript:`
+    // or `data:` URL there would execute in this origin.
+    const runUrl = sanitizeHttpUrl(data.artifact_run_url)
     const target = envName(data.environment)
     const action = runUrl
       ? {

@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner'
 
 import { getPromoteStatus, type PromoteStatus } from '@/api/endpoints'
+import { sanitizeHttpUrl } from '@/lib/utils'
 
 /** States the watcher stops polling on. */
 const TERMINAL_STATES: ReadonlySet<PromoteStatus['status']> = new Set([
@@ -83,7 +84,10 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
     // Keep the loading toast up and keep polling until the status is
     // actually about this promote.
     if (isForAnotherPromote(data, tag)) return
-    const url = data.artifact_run_url ?? runUrl
+    // Both sides are plugin-reported, so neither is trusted to reach
+    // `window.open` unchecked.
+    const url =
+      sanitizeHttpUrl(data.artifact_run_url) ?? sanitizeHttpUrl(runUrl)
     const action = url
       ? {
           label: 'View build',
@@ -175,7 +179,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
   useEffect(() => {
     if (!query.isError || settledRef.current) return
     settledRef.current = true
-    const url = runUrl
+    const url = sanitizeHttpUrl(runUrl)
     toast.message(`Lost track of the release build for ${tag}`, {
       action: url
         ? {

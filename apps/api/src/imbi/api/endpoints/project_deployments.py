@@ -2222,7 +2222,22 @@ async def _dispatch_release_build(
     ``(tag, committish)`` is that something.  So a node can exist for a
     tag the remote never carries; the block and its reason are what
     distinguish that from a shipped release.
+
+    That reasoning only covers failures *after* the dispatch, though, so
+    everything that can fail before it runs first.  A 502 here used to
+    leave a node behind that no dispatch, no block, and no promote status
+    explained -- and one that still matched the ``(tag, committish)``
+    gates in :func:`_blocked_release`.
     """
+    ref = await _default_branch(handler, ctx, credentials)
+    if ref is None:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=(
+                "Could not resolve the repository's default branch, which "
+                'is the ref the Release workflow must be dispatched from.'
+            ),
+        )
     release_id = await _upsert_release_node(
         db,
         project_id=project_id,
@@ -2233,15 +2248,6 @@ async def _dispatch_release_build(
         release_url=None,
         created_by=auth.principal_name,
     )
-    ref = await _default_branch(handler, ctx, credentials)
-    if ref is None:
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail=(
-                "Could not resolve the repository's default branch, which "
-                'is the ref the Release workflow must be dispatched from.'
-            ),
-        )
     inputs = {
         _RELEASE_WORKFLOW_DESCRIPTION_INPUT: title,
         _RELEASE_WORKFLOW_NOTES_INPUT: notes_markdown,
