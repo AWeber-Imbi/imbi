@@ -356,10 +356,13 @@ export function ProjectsView() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [projects])
 
+  // One definition of "drifted" for the badge, the ``has_drift``
+  // toggle, and the drift facet: a project drifts when it exhibits at
+  // least one drift pair.
   const driftedProjectIds = useMemo(() => {
     const ids = new Set<string>()
     for (const p of projects ?? []) {
-      if (projectHasDrift(p) || projectReleaseDrifted(p)) ids.add(p.id)
+      if (driftSlugsFor(p).length > 0) ids.add(p.id)
     }
     return ids
   }, [projects])
@@ -536,6 +539,7 @@ export function ProjectsView() {
       label: 'Unhealthy < 50',
       slug: 'unhealthy',
     },
+    { dotClass: 'bg-muted-foreground', label: 'Unscored', slug: 'unscored' },
   ]
   const teamFilterOptions = withCounts(teamOptions, facetCounts.teams)
   const typeFilterOptions = withCounts(typeOptions, facetCounts.types)
@@ -1281,7 +1285,10 @@ function FilterPopover({
                 {opt.label}
               </span>
               {opt.count !== undefined && (
-                <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
+                <span
+                  className="text-tertiary shrink-0 font-mono text-xs tabular-nums"
+                  data-testid="filter-option-count"
+                >
                   {opt.count}
                 </span>
               )}
@@ -1326,29 +1333,6 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
   next.set('sort', key)
   next.set('dir', nextDir)
   return next
-}
-
-// fallow-ignore-next-line complexity
-function projectHasDrift(project: {
-  current_releases?: null | Record<
-    string,
-    { committish?: null | string; tag?: null | string }
-  >
-  environments?:
-    | null
-    | {
-        label_color?: null | string
-        name: string
-        slug: string
-        sort_order?: null | number
-      }[]
-  project_types?: null | object[]
-}): boolean {
-  if (!isProjectDeployable(project)) return false
-  const envs = project.environments ?? []
-  if (envs.length < 2) return false
-  const pairs = computeDriftPairs(envs, project.current_releases ?? {})
-  return pairs.some((p) => p.drifted)
 }
 
 function projectReleaseDrifted(project: {

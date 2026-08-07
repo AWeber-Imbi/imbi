@@ -37,9 +37,9 @@ vi.mock('@/contexts/ThemeContext', () => ({
 
 // The count sits alongside its option label inside the same <label>.
 function countFor(panel: ReturnType<typeof within>, label: RegExp | string) {
-  const row = panel.getByText(label).closest('label') as HTMLElement
-  const spans = row.querySelectorAll(':scope > span')
-  return spans[spans.length - 1]?.textContent
+  const row = panel.getByText(label).closest('label')
+  if (!row) throw new Error(`No filter option row for ${String(label)}`)
+  return within(row).getByTestId('filter-option-count').textContent
 }
 
 // Opens the popover behind the given filter button. Scoping to the
@@ -80,6 +80,27 @@ const PROJECTS: ProjectListItem[] = [
     name: 'Charlie',
     score: 90,
     team: { name: 'Payments', slug: 'payments' },
+  }),
+  // Drifts on both axes (staging behind production, commits past the
+  // latest tag) and carries no score, so it exercises the drift facet
+  // and the unscored bucket.
+  project({
+    current_releases: {
+      production: { committish: 'bbb', tag: 'v2' },
+      staging: { committish: 'aaa', tag: 'v1' },
+    },
+    environments: [
+      { name: 'Staging', slug: 'staging', sort_order: 1 },
+      { name: 'Production', slug: 'production', sort_order: 2 },
+    ],
+    id: 'p4',
+    name: 'Delta',
+    project_types: [
+      { deployable: true, name: 'Service', releasable: true, slug: 'service' },
+    ],
+    release_summary: { commits_since_tag: 2, head_sha: 'ccc' },
+    score: null,
+    team: { name: 'Delivery', slug: 'delivery' },
   }),
 ]
 
@@ -130,5 +151,20 @@ describe('ProjectsView filter counts', () => {
     const teamsAgain = await openFilter(user, /filter by team/i)
     expect(countFor(teamsAgain, 'Platform')).toBe('2')
     expect(countFor(teamsAgain, 'Payments')).toBe('1')
+  })
+
+  it('counts drift pairs, including commit-to-release drift', async () => {
+    renderView()
+    await waitFor(() => expect(screen.getByText('Delta')).toBeInTheDocument())
+    const panel = await openFilter(userEvent.setup(), /filter by drift/i)
+    expect(countFor(panel, /S → P/)).toBe('1')
+    expect(countFor(panel, /C → R/)).toBe('1')
+  })
+
+  it('offers an unscored option for projects with no score', async () => {
+    renderView()
+    await waitFor(() => expect(screen.getByText('Delta')).toBeInTheDocument())
+    const panel = await openFilter(userEvent.setup(), /filter by health score/i)
+    expect(countFor(panel, 'Unscored')).toBe('1')
   })
 })
