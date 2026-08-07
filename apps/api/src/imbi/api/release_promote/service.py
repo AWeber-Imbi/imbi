@@ -1,10 +1,16 @@
 """Poll a dispatched release build and act on its outcome.
 
 The promote endpoint dispatches the project's Release workflow and hands
-off here.  This module owns the wait: it polls the workflow run until it
-reaches a terminal state, then either finishes the promote (resync tags,
-refresh the ``Release`` node, create the Deployment) or blocks the
-release.
+off here.  This module owns the wait, in two phases: it polls the build
+until it reaches a terminal state, then either blocks the release or
+finishes the promote (resync tags, refresh the ``Release`` node, create
+the Deployment) -- and then polls that Deployment's rollout to its own
+terminal state.
+
+Both phases matter to the caller.  Creating the Deployment takes about a
+second; the rollout it starts takes minutes, and *that* is what "did my
+promote ship?" means.  Reporting ``success`` at the handover would tell
+the UI the promote was done while the rollout had not yet started.
 
 Progress is persisted as ``promote_*`` properties on the ``Project``
 node, mirroring :mod:`imbi.api.deployment_sync.service` -- the UI polls
@@ -53,7 +59,19 @@ POLL_BACKOFF = 1.5
 #: another release for the whole of one before its own first job starts.
 TIMEOUT_SECONDS = 45 * 60
 
-#: States a workflow run stops moving in.
+#: First gap between rollout polls.  Tighter than the build's: by this
+#: point the user has already waited out a build, and a rollout is the
+#: part they are watching for.
+DEPLOY_POLL_INITIAL_SECONDS = 6.0
+#: Ceiling the rollout interval backs off to.
+DEPLOY_POLL_MAX_SECONDS = 30.0
+#: How long to wait before giving up on a rollout.  Shorter than the
+#: build timeout: a Deployment is not serialized behind other releases,
+#: so a rollout that has not finished by now is stuck, not queued.
+DEPLOY_TIMEOUT_SECONDS = 30 * 60
+
+#: States a workflow run stops moving in.  ``DeploymentRun`` and
+#: ``ArtifactRun`` share these, so both poll loops test against it.
 TERMINAL_STATUSES = frozenset({'success', 'failure', 'cancelled'})
 
 PromoteState = typing.Literal[
@@ -62,6 +80,7 @@ PromoteState = typing.Literal[
     'deploying',
     'success',
     'build_failed',
+    'deploy_failed',
     'failed',
 ]
 
@@ -279,16 +298,17 @@ async def run_watch(
     *,
     valkey_client: object = None,
     timeout_seconds: float = TIMEOUT_SECONDS,
-    sleep: collections.abc.Callable[
-        [float], collections.abc.Awaitable[None]
-    ]
+    deploy_timeout_seconds: float = DEPLOY_TIMEOUT_SECONDS,
+    sleep: collections.abc.Callable[[float], collections.abc.Awaitable[None]]
     | None = None,
 ) -> PromoteState:
-    """Poll ``job``'s release build to a terminal state and act on it.
+    """Poll ``job``'s release build and rollout, and act on the outcome.
 
     Returns the state persisted on the way out.  *sleep* is injectable so
     tests can drive the loop without real time passing; *valkey_client*
     is passed through to the tag resync the success path enqueues.
+    *timeout_seconds* bounds the build, *deploy_timeout_seconds* the
+    rollout that follows it.
 
     A run id we never learned (``run_id=''`` -- the bodiless-204 dispatch
     on appliances without the ``2026-03-10`` API version) cannot be
@@ -415,7 +435,7 @@ async def run_watch(
 
     await mark('deploying' if job.deploy else 'success', run_url=run_url or '')
     try:
-        await project_deployments.complete_promote_build(
+        deployment = await project_deployments.complete_promote_build(
             db,
             org_slug=job.org_slug,
             project_id=job.project_id,
@@ -448,5 +468,132 @@ async def run_watch(
         )
         return 'failed'
 
-    await mark('success', run_url=run_url or '')
+    if deployment is None or not deployment.run_id:
+        # Releasable-only (no Deployment to watch), or a plugin that
+        # created one without telling us which.  Neither is a failure,
+        # and neither leaves anything to poll.
+        if job.deploy and deployment is not None:
+            LOGGER.warning(
+                'release-promote for project %s tag %s created a deployment '
+                'with no run id; cannot watch the rollout',
+                job.project_id,
+                job.tag,
+            )
+        await mark('success', run_url=run_url or '')
+        return 'success'
+
+    try:
+        return await _watch_rollout(
+            db,
+            job,
+            run_id=deployment.run_id,
+            initial_status=deployment.status,
+            build_run_url=run_url or '',
+            mark=mark,
+            napper=napper,
+            timeout_seconds=deploy_timeout_seconds,
+        )
+    except Exception as exc:
+        LOGGER.exception(
+            'release-promote rollout watch failed for project %s tag %s',
+            job.project_id,
+            job.tag,
+        )
+        # Same reasoning as the completion failure above: the tag and the
+        # Deployment both exist, so leave the release shippable.  Without
+        # this the status would stay ``deploying`` forever and the UI
+        # would poll a promote that nothing is driving.
+        await mark(
+            'failed',
+            error=(f'Deployment started, but Imbi lost track of it: {exc}'),
+            run_url=run_url or '',
+        )
+        return 'failed'
+
+
+async def _watch_rollout(
+    db: graph.Graph,
+    job: WatchJob,
+    *,
+    run_id: str,
+    initial_status: str,
+    build_run_url: str,
+    mark: collections.abc.Callable[..., collections.abc.Awaitable[None]],
+    napper: collections.abc.Callable[[float], collections.abc.Awaitable[None]],
+    timeout_seconds: float,
+) -> PromoteState:
+    """Poll the promote's Deployment until the rollout settles.
+
+    A failed rollout does *not* block the release: the build was green
+    and the tag is real, so the ordinary fix is to redeploy the same tag
+    once the cause is fixed, which a block would refuse.  That is the
+    difference between ``deploy_failed`` here and ``build_failed`` in the
+    build phase.
+
+    *build_run_url* is carried onto every write so the status keeps
+    pointing at the run that built the artifact.  The Deployment's own
+    URL is deliberately not swapped in: ``artifact_run_id`` names the
+    build run, and pairing it with a rollout URL would describe two
+    different runs as one.
+    """
+    from imbi.api.endpoints import project_deployments
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    interval = DEPLOY_POLL_INITIAL_SECONDS
+    status = initial_status
+    target = job.to_environment or 'its environment'
+
+    while status not in TERMINAL_STATUSES:
+        if loop.time() >= deadline:
+            minutes = int(timeout_seconds // 60)
+            LOGGER.warning(
+                'release-promote rollout for project %s tag %s timed out '
+                'after %.0fs with the deployment still %s',
+                job.project_id,
+                job.tag,
+                timeout_seconds,
+                status,
+            )
+            await mark(
+                'deploy_failed',
+                error=(
+                    f'The deployment to {target} did not finish within '
+                    f'{minutes} minutes (last seen {status}). The release is '
+                    f'not blocked -- redeploy {job.tag} once the cause is '
+                    f'fixed.'
+                ),
+                run_url=build_run_url,
+            )
+            return 'deploy_failed'
+        await mark('deploying', run_url=build_run_url)
+        await napper(interval)
+        interval = min(interval * POLL_BACKOFF, DEPLOY_POLL_MAX_SECONDS)
+        run = await project_deployments.poll_promote_rollout(
+            db,
+            org_slug=job.org_slug,
+            project_id=job.project_id,
+            run_id=run_id,
+        )
+        status = run.status
+
+    if status != 'success':
+        LOGGER.info(
+            'release-promote rollout for project %s tag %s reported %s',
+            job.project_id,
+            job.tag,
+            status,
+        )
+        await mark(
+            'deploy_failed',
+            error=(
+                f'The deployment of {job.tag} to {target} {status}. The '
+                f'release is not blocked -- redeploy it once the cause is '
+                f'fixed.'
+            ),
+            run_url=build_run_url,
+        )
+        return 'deploy_failed'
+
+    await mark('success', run_url=build_run_url)
     return 'success'

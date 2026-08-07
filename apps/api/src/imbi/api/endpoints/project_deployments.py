@@ -1708,10 +1708,15 @@ async def get_promote_status(
 
     The dispatch-driven promote returns as soon as the Release workflow is
     dispatched, so this is how the UI follows the rest: ``building`` while
-    the artifact builds, ``deploying`` once Imbi has created the
-    Deployment, then ``success``.  ``build_failed`` means the release is
-    blocked; ``failed`` means the build outcome is unknown or Imbi could
-    not finish, and the tag is still shippable.
+    the artifact builds, ``deploying`` while the Deployment Imbi created
+    rolls out, then ``success`` once that rollout reports success.
+
+    Three ways it can end short of that, differing in what the operator
+    has to do next: ``build_failed`` blocks the release (fix the build and
+    promote a bumped version, or unblock to retry); ``deploy_failed``
+    leaves the tag shippable (redeploy it once the cause is fixed);
+    ``failed`` means Imbi lost track of the build or the rollout, so the
+    outcome is unknown and the tag is likewise left shippable.
     """
     del org_slug
     return await release_promote_service.read_status(db, project_id)
@@ -2821,6 +2826,44 @@ async def poll_artifact_run(
     )
 
 
+async def poll_promote_rollout(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    run_id: str,
+) -> DeploymentRun:
+    """Report the current state of a promote's rollout.
+
+    The counterpart to :func:`poll_artifact_run` for the second half of a
+    dispatch-driven promote: once the build is green and
+    :func:`complete_promote_build` has created the Deployment, this is
+    what tells the watcher whether the rollout actually shipped.
+
+    Resolves a *Deployment* id, so it goes through
+    ``get_deployment_status`` -- the same split
+    :func:`poll_artifact_run` documents, in the other direction.
+    Distinct from :func:`get_deployment_run` because that one runs under
+    the caller's identity and raises ``HTTPException``; the watcher has
+    no per-user identity, so it resolves the Integration's own service
+    credential instead.
+    """
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        _watcher_auth(),
+        source=None,
+        best_effort_identity=True,
+    )
+    handler = _handler(resolved)
+    return await call_with_timeout(
+        handler.get_deployment_status(
+            ctx, _resolve_credentials(ctx, credentials), run_id=run_id
+        )
+    )
+
+
 async def fail_promote_build(
     db: graph.Graph,
     *,
@@ -2916,7 +2959,7 @@ async def complete_promote_build(
     run_url: str | None = None,
     deploy: bool = True,
     valkey_client: typing.Any = None,
-) -> None:
+) -> DeploymentRun | None:
     """Finish a promote whose release build succeeded.
 
     The build created the annotated tag and the remote Release, so this
@@ -2932,6 +2975,12 @@ async def complete_promote_build(
     4. For a deployable project, create the Deployment and record the
        event.  A releasable-only project stops after step 3: there is
        nothing to deploy into.
+
+    Returns the Deployment it created so the caller can watch the
+    rollout, or ``None`` for a releasable-only project.  Creating the
+    Deployment is *not* the end of the promote -- the rollout it starts
+    is what the user is waiting on -- so this deliberately hands the run
+    back rather than reporting success on its own behalf.
     """
     resolved, ctx, credentials = await _resolve_and_context(
         db,
@@ -3013,7 +3062,7 @@ async def complete_promote_build(
             tag,
             project_id,
         )
-        return
+        return None
 
     inputs: dict[str, str] | None = None
     if ctx.environment_config:
@@ -3068,6 +3117,7 @@ async def complete_promote_build(
         release_url=release_url,
         from_environment=from_environment or None,
     )
+    return run
 
 
 # ---------------------------------------------------------------------------

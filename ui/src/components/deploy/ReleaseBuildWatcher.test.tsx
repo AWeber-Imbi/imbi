@@ -124,6 +124,36 @@ describe('ReleaseBuildWatcher', () => {
     expect(onTerminal).not.toHaveBeenCalled()
   })
 
+  it('ignores a terminal status left over from an earlier promote', async () => {
+    // `promote-status` is project-scoped, so a warm cache (or a read
+    // that beats the dispatch's own status write) can hand this watcher
+    // the *previous* promote's `success`. Settling on it would report
+    // that outcome against this tag and kill the toast on click.
+    getPromoteStatus.mockResolvedValue(
+      status({ status: 'success', tag: '0.1.9' }),
+    )
+    const { onTerminal } = renderWatcher({ tag: '0.1.10' })
+    await waitFor(() => {
+      expect(getPromoteStatus).toHaveBeenCalled()
+    })
+    expect(onTerminal).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('settles once the status catches up to its own tag', async () => {
+    getPromoteStatus
+      .mockResolvedValueOnce(status({ status: 'success', tag: '0.1.9' }))
+      .mockResolvedValue(status({ status: 'success', tag: '0.1.10' }))
+    const { onTerminal } = renderWatcher({ tag: '0.1.10' })
+    await waitFor(
+      () => {
+        expect(onTerminal).toHaveBeenCalled()
+      },
+      { timeout: 10_000 },
+    )
+    expect(toast.success.mock.calls[0][0]).toMatch(/Released 0\.1\.10/)
+  }, 15_000)
+
   it('reports success', async () => {
     getPromoteStatus.mockResolvedValue(status({ status: 'success' }))
     const { onTerminal } = renderWatcher()
@@ -149,6 +179,25 @@ describe('ReleaseBuildWatcher', () => {
     })
     expect(toast.error.mock.calls[0][0]).toMatch(/Release build for 0\.1\.5/)
     expect(toast.error.mock.calls[0][1].description).toMatch(/blocked/)
+  })
+
+  it('reports a failed rollout and says the release is not blocked', async () => {
+    // The mirror of ``build_failed``: the build was green, so the tag is
+    // real and redeployable — telling the user it is blocked would send
+    // them to unblock something that was never blocked.
+    getPromoteStatus.mockResolvedValue(
+      status({
+        error: 'The deployment of 0.1.5 to staging failure.',
+        status: 'deploy_failed',
+      }),
+    )
+    const { onTerminal } = renderWatcher()
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+      expect(onTerminal).toHaveBeenCalled()
+    })
+    expect(toast.error.mock.calls[0][0]).toMatch(/Deploying 0\.1\.5 to staging/)
+    expect(toast.error.mock.calls[0][1].description).not.toMatch(/blocked;/)
   })
 
   it('distinguishes a lost build from a failed one', async () => {

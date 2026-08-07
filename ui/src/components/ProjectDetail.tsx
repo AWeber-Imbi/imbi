@@ -51,6 +51,7 @@ import {
 } from '@/components/deploy/DeploymentModal'
 import { DeploymentRunWatcher } from '@/components/deploy/DeploymentRunWatcher'
 import { ReleaseBuildWatcher } from '@/components/deploy/ReleaseBuildWatcher'
+import { useAdoptInFlightPromote } from '@/components/deploy/useAdoptInFlightPromote'
 import { DeploymentsTab } from '@/components/deployments/DeploymentsTab'
 import { ProjectDocumentsTab } from '@/components/documents/ProjectDocumentsTab'
 import { OperationsLog } from '@/components/OperationsLog'
@@ -464,6 +465,27 @@ export function ProjectDetail({
     },
     [queryClient],
   )
+  // `promote-status` reports the environment as a slug; the toast wants
+  // the name the rest of the UI shows.
+  const envNameForSlug = useCallback(
+    (slug: null | string) =>
+      slug
+        ? (sortedEnvironments.find((env) => env.slug === slug)?.name ?? slug)
+        : null,
+    [sortedEnvironments],
+  )
+  // A promote outlives the page that started it, so ask on mount whether
+  // one is already running rather than only learning about it from the
+  // click that dispatched it. Without this a reload mid-promote loses
+  // the watcher for good.
+  useAdoptInFlightPromote({
+    enabled: !!orgSlug && !!project.id,
+    envName: envNameForSlug,
+    hasActiveBuild: activeBuilds.some((b) => b.originProjectId === project.id),
+    onBuildStarted: handleBuildStarted,
+    orgSlug,
+    projectId: project.id,
+  })
 
   // Overview-only: feeds ProjectAttributesSection inside <TabsContent
   // value="overview">. The other tabs render their own components.
