@@ -677,18 +677,22 @@ export function ProjectsView() {
 
                 <div className="border-tertiary mt-auto border-t pt-[18px]">
                   <div className="flex min-h-8 flex-wrap items-center gap-2">
-                    <span
-                      className={`border-accent bg-accent text-accent inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.open_pr_count ?? 0) > 0 ? '' : 'invisible'}`}
+                    <Link
+                      aria-label={`View pull requests for ${project.name}`}
+                      className={`border-accent bg-accent text-accent relative z-10 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.open_pr_count ?? 0) > 0 ? '' : 'pointer-events-none invisible'}`}
+                      to={`/projects/${project.id}/pull-requests`}
                     >
                       <GitPullRequest className="size-3.5" />
                       <span>{project.open_pr_count ?? 0}</span>
-                    </span>
-                    <span
-                      className={`border-info bg-info text-info inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.viewer_open_pr_count ?? 0) > 0 ? '' : 'invisible'}`}
+                    </Link>
+                    <Link
+                      aria-label={`View your pull requests for ${project.name}`}
+                      className={`border-info bg-info text-info relative z-10 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.viewer_open_pr_count ?? 0) > 0 ? '' : 'pointer-events-none invisible'}`}
+                      to={`/projects/${project.id}/pull-requests`}
                     >
                       <User className="size-3.5" />
                       <span>{project.viewer_open_pr_count ?? 0}</span>
-                    </span>
+                    </Link>
                     <div className="ml-auto flex flex-wrap items-center gap-2">
                       <DriftCell inline project={project} />
                     </div>
@@ -1663,16 +1667,24 @@ const ProjectListRow = React.memo(function ProjectListRow({
       <div className="w-40 shrink-0 px-6 py-4 whitespace-nowrap">
         <div className="flex items-center justify-center gap-1.5">
           {(project.open_pr_count ?? 0) > 0 && (
-            <span className="border-accent bg-accent text-accent inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs">
+            <Link
+              aria-label={`View pull requests for ${project.name}`}
+              className="border-accent bg-accent text-accent relative z-10 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs"
+              to={`/projects/${project.id}/pull-requests`}
+            >
               <GitPullRequest className="size-3.5" />
               <span>{project.open_pr_count}</span>
-            </span>
+            </Link>
           )}
           {(project.viewer_open_pr_count ?? 0) > 0 && (
-            <span className="border-info bg-info text-info inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs">
+            <Link
+              aria-label={`View your pull requests for ${project.name}`}
+              className="border-info bg-info text-info relative z-10 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs"
+              to={`/projects/${project.id}/pull-requests`}
+            >
               <User className="size-3.5" />
               <span>{project.viewer_open_pr_count}</span>
-            </span>
+            </Link>
           )}
         </div>
       </div>
