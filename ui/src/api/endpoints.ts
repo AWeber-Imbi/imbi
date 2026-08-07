@@ -1833,10 +1833,11 @@ export const getDocumentAnalytics = (
   orgSlug: string,
   documentId: string,
   signal?: AbortSignal,
+  trendDays?: number,
 ) =>
   apiClient.get<DocumentAnalytics>(
     `${documentPath(orgSlug, documentId)}/analytics`,
-    undefined,
+    trendDays ? { trend_days: trendDays } : undefined,
     signal,
   )
 

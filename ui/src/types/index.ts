@@ -103,19 +103,14 @@ export interface ConditionScoringPolicyCreate extends ScoringPolicyCreateBase {
   true_score: number
 }
 
-// `Environment` tracks the full response shape (with relationships).
-// Add a UI-only `url` passthrough — it's surfaced in ProjectEnvironmentsCard
-// but not part of the Environment schema itself.
-// `can_deploy` / `can_promote` are sourced from the backend env model
-// (defaults: true / false respectively). Kept optional here so older
-// snapshots still type-check until the generated schema is refreshed.
-export type Environment = Schemas['EnvironmentResponse'] & {
-  can_deploy?: boolean
-  can_promote?: boolean
+// `Environment` tracks the blueprint-composed response shape (with
+// relationships and any operator-defined fields). `url` is a UI-only
+// passthrough surfaced in ProjectEnvironmentsCard, not part of the schema.
+export type Environment = Schemas['EnvironmentBlueprintResponse'] & {
   url?: null | string
 }
 
-// `EnvironmentCreate` stays hand-written: the generated `EnvironmentRequest`
+// `EnvironmentCreate` stays hand-written: the generated `EnvironmentBlueprintRequest`
 // requires updated_at/description/icon/label_color be explicitly set to
 // `string|null`, which the UI create form doesn't do.
 export interface EnvironmentCreate {
@@ -161,7 +156,7 @@ export interface LifecyclePreviewResponse {
   previews: LifecyclePreviewEntry[]
 }
 
-export type LinkDefinition = Schemas['LinkDefinitionResponse']
+export type LinkDefinition = Schemas['LinkDefinitionBlueprintResponse']
 
 export type LinkDefinitionCreate = Schemas['LinkDefinitionCreate']
 
@@ -338,7 +333,7 @@ export interface ProjectMutationResponse extends Project {
   lifecycle_results?: LifecycleInvocation[]
 }
 
-export type ProjectType = Schemas['ProjectTypeResponse']
+export type ProjectType = Schemas['ProjectTypeBlueprintResponse']
 
 // `ProjectTypeCreate` stays hand-written: no generated counterpart — the API
 // mounts project-type creation via the generic org scoped endpoint.
@@ -589,33 +584,13 @@ export interface CutReleaseResponse {
   warning?: null | string
 }
 
-// Dashboard types are hand-written: the /admin/dashboard/* endpoints are
-// not in the committed OpenAPI snapshot yet. (DatastoreStatus /
-// ServiceStatus live in their own alphabetical slots for module sort.)
-export interface DashboardMetrics {
-  events: { daily: number[]; total: number }
-  ops_log: { daily: number[]; total: number }
-  pull_requests: { daily: number[]; total: number }
-  releases: { daily: number[]; total: number }
-  releases_by_environment: { count: number; slug: string }[]
-  since: string
-}
+// Dashboard system-health types. DatastoreStatus / ServiceStatus live in
+// their own alphabetical slots for module sort.
+export type DashboardMetrics = Schemas['DashboardMetrics']
 
-export interface DashboardStatus {
-  checked_at: string
-  datastores: DatastoreStatus[]
-  services: ServiceStatus[]
-}
+export type DashboardStatus = Schemas['DashboardStatus']
 
-export interface DatastoreStatus {
-  detail?: null | string
-  latency_ms?: null | number
-  name: string
-  role: string
-  size_bytes?: null | number
-  status: 'error' | 'ok'
-  total_bytes?: null | number
-}
+export type DatastoreStatus = Schemas['DatastoreStatus']
 
 export type DeploymentAction = 'deploy' | 'redeploy'
 
@@ -719,91 +694,38 @@ export interface DeploymentTriggerResponse {
   warning?: null | string
 }
 
-export interface Document {
-  attached_to?: DocumentAttachment | null
-  comment_count?: number
-  content: string
-  created_at: string
-  created_by: string
-  created_by_name?: null | string
-  id: string
-  is_pinned: boolean
-  like_count?: number
-  liked_by_me?: boolean
-  project_id: null | string
-  tags: TagRef[]
-  title: string
-  updated_at?: null | string
-  updated_by?: null | string
-  version?: number
-}
+export type Document = Schemas['DocumentResponse']
 
 // Aggregate read analytics for one document. Headline counts cover
 // human (`web`) reads only unless the request asked for another
 // surface; `by_surface` always reports every surface so agent traffic
 // stays visible without being mixed into the human numbers.
-export interface DocumentAnalytics {
-  by_surface: DocumentSurfaceCount[]
-  completion_rate: number
-  estimated_read_seconds: number
-  // Whether the caller may load the per-reader list. Driven by the
-  // `document:analytics:read_identities` permission and the org's
-  // `document_analytics_identities` setting.
-  identities_visible: boolean
-  last_read_at?: null | string
-  median_engaged_seconds: number
-  p90_engaged_seconds: number
-  readers: number
-  reads: number
-  trend: DocumentTrendPoint[]
-  views: number
-}
+// `identities_visible` governs whether the caller may load the per-reader
+// list; it is driven by the `document:analytics:read_identities` permission
+// and the org's `document_analytics_identities` setting.
+export type DocumentAnalytics = Schemas['DocumentAnalyticsResponse']
 
 // The vertex a document is attached to. `id` is the project id, the
 // project-type slug, or the user email depending on `kind`; `team` and
 // `project_types` are only populated for projects.
-export interface DocumentAttachment {
-  id: string
-  kind: 'project' | 'project_type' | 'user'
-  name: string
-  project_types?: string[]
-  team?: null | string
-}
+export type DocumentAttachment = Schemas['AttachmentRef']
 
-export interface DocumentCreate {
-  content: string
-  tags?: string[]
-  title: string
-}
+export type DocumentCreate = Schemas['DocumentCreate']
 
 // Who currently holds an advisory editing marker on a document.
-export interface DocumentEditorsResponse {
-  editors: string[]
-  ttl_seconds: number
-}
+export type DocumentEditorsResponse = Schemas['DocumentEditorsResponse']
 
-export interface DocumentLiker {
-  display_name?: null | string
-  liked_at: string
-  principal: string
-}
+export type DocumentLiker = Schemas['LikerRef']
 
 export type DocumentLikerListResponse = CollectionResponse<DocumentLiker>
 
-export interface DocumentLikeState {
-  like_count: number
-  liked_by_me: boolean
-}
+export type DocumentLikeState = Schemas['LikeStateResponse']
 
 export type DocumentListResponse = CollectionResponse<Document>
 
-export interface DocumentReader {
-  engaged_seconds: number
-  last_read_at?: null | string
-  principal: string
-  reads: number
-  views: number
-}
+// `max_scroll_pct` is the deepest point this reader reached across their
+// sessions. With `engaged_seconds` it separates a skim from a finished read.
+export type DocumentReader = Schemas['ReaderRef']
 
 export type DocumentReaderListResponse = CollectionResponse<DocumentReader>
 
@@ -811,49 +733,21 @@ export type DocumentReaderListResponse = CollectionResponse<DocumentReader>
 // the previous beat, not a running total: deltas keep every beat
 // independent, so a dropped beat costs one interval instead of
 // corrupting the session total.
-export interface DocumentReadEvent {
-  engaged_ms: number
-  is_final?: boolean
-  max_scroll_pct?: number
-  seq: number
-  session_id: string
-  session_started_at: string
-  surface?: 'api' | 'assistant' | 'mcp' | 'slackbot' | 'web'
-}
+export type DocumentReadEvent = Schemas['ReadEvent']
 
-export interface DocumentReadSummary {
-  document_id: string
-  last_read_at?: null | string
-  readers: number
-  title: string
-  views: number
-}
+export type DocumentReadSummary = Schemas['DocumentReadSummary']
 
 export type DocumentReadSummaryResponse =
   CollectionResponse<DocumentReadSummary>
 
-export interface DocumentSurfaceCount {
-  surface: string
-  views: number
-}
+export type DocumentSurfaceCount = Schemas['SurfaceCount']
 
-export interface DocumentTemplate {
-  content: string
-  created_at: string
-  description?: null | string
-  icon?: null | string
-  id: string
-  name: string
-  organization: { name: string; slug: string }
-  project_type_slugs: string[]
-  slug: string
-  sort_order: number
-  tags: TagRef[]
-  title?: null | string
-  type?: DocumentTemplateType
-  updated_at?: null | string
-}
+export type DocumentTemplate = Schemas['DocumentTemplateResponse']
 
+// `DocumentTemplateCreate` stays hand-written: openapi-typescript treats a
+// schema default as a guarantee the field is present, which holds for a
+// response but not for a request body -- `type` defaults to 'project'
+// server-side and the form deliberately never sends it.
 export interface DocumentTemplateCreate {
   content?: string
   description?: null | string
@@ -867,38 +761,18 @@ export interface DocumentTemplateCreate {
   type?: DocumentTemplateType
 }
 
-// Document Templates. Inlined for the same reason as Document/Tag — the
-// committed openapi.json snapshot predates these endpoints. Switch to
-// `Schemas['DocumentTemplateResponse']` etc. once the snapshot is refreshed.
 // Which attachment contexts may use a template: 'project', 'user', and
 // 'project_type' restrict the template to documents attached to that
 // vertex kind; 'global' applies everywhere.
-export type DocumentTemplateType =
-  | 'global'
-  | 'project'
-  | 'project_type'
-  | 'user'
+export type DocumentTemplateType = Schemas['DocumentTemplateResponse']['type']
 
-export interface DocumentTrendPoint {
-  day: string
-  readers: number
-  views: number
-}
+export type DocumentTrendPoint = Schemas['TrendPoint']
 
 // Full snapshot of a single document version.
-export interface DocumentVersion extends DocumentVersionInfo {
-  content: string
-  tags: string[]
-}
+export type DocumentVersion = Schemas['DocumentVersionResponse']
 
 // One entry in a document's version history (metadata only).
-export interface DocumentVersionInfo {
-  change_kind: 'baseline' | 'create' | 'restore' | 'update'
-  title: string
-  updated_at: string
-  updated_by: string
-  version: number
-}
+export type DocumentVersionInfo = Schemas['DocumentVersionInfo']
 
 export type DocumentVersionListResponse =
   CollectionResponse<DocumentVersionInfo>
@@ -1082,13 +956,7 @@ export interface IncidentView {
 }
 
 // Admin local-auth (password login) toggle.
-// Hand-written: the admin endpoints aren't in the committed openapi.json
-// snapshot yet. Mirrors `LocalAuthRead` in
-// imbi_api/endpoints/local_auth.py.
-export interface LocalAuthConfig {
-  enabled: boolean
-  updated_at: string
-}
+export type LocalAuthConfig = Schemas['LocalAuthRead']
 
 export interface LogEntryResponse {
   level: null | string
@@ -1114,40 +982,22 @@ export interface LogResultResponse {
   total: null | number
 }
 
-export interface MCPServer {
-  auth_type: MCPServerAuthType
-  created_at?: null | string
-  description?: null | string
-  enabled: boolean
-  has_oauth_client_secret: boolean
-  has_static_value: boolean
-  icon?: null | string
-  id: string
+// `ignored_tools` is restored to required: the API declares it with
+// `default_factory=list`, which Pydantic does not emit as a schema `default`,
+// so the generated type calls it optional even though every response carries
+// it.
+export type MCPServer = Schemas['MCPServerResponse'] & {
   ignored_tools: string[]
-  last_error?: null | string
-  last_tested_at?: null | string
-  last_tested_latency_ms?: null | number
-  name: string
-  oauth_client_id?: null | string
-  oauth_scope?: null | string
-  oauth_token_url?: null | string
-  slug: string
-  static_header?: null | string
-  status: MCPServerStatus
-  timeout: number
-  tool_prefix?: null | string
-  tools_discovered?: null | number
-  updated_at?: null | string
-  url: string
-  verify_ssl: boolean
 }
 
-// MCP server admin types — mirror imbi_api/endpoints/mcp_servers.py. These
-// are hand-written because the codegen snapshot predates the endpoints;
-// regenerate via `npm run codegen:fetch` once the backend snapshot includes
-// /mcp-servers, then collapse these onto `Schemas['MCPServerResponse']`.
-export type MCPServerAuthType = 'none' | 'oauth_client_credentials' | 'static'
+export type MCPServerAuthType = Schemas['MCPServerResponse']['auth_type']
 
+// `MCPServerCreate` and `MCPServerTestConfig` stay hand-written for the same
+// reason as `DocumentTemplateCreate`: openapi-typescript reads a schema
+// default as a guarantee the field is present, so the generated request
+// bodies demand auth_type / enabled / timeout / verify_ssl (and, for the
+// test config, name and slug) that the server defaults and the admin forms
+// do not send.
 export interface MCPServerCreate {
   auth_type?: MCPServerAuthType
   description?: null | string
@@ -1168,7 +1018,7 @@ export interface MCPServerCreate {
   verify_ssl?: boolean
 }
 
-export type MCPServerStatus = 'degraded' | 'healthy' | 'unknown' | 'unreachable'
+export type MCPServerStatus = Schemas['MCPServerResponse']['status']
 
 // Body for POST /mcp-servers/test (test an unsaved config). name/slug are
 // optional server-side; the URL and auth fields are what matter.
@@ -1177,17 +1027,9 @@ export type MCPServerTestConfig = Omit<MCPServerCreate, 'name' | 'slug'> & {
   slug?: string
 }
 
-export interface MCPServerTestResult {
-  error?: null | string
-  latency_ms: number
-  ok: boolean
-  status: 'degraded' | 'healthy' | 'unreachable'
-  tested_at: string
-  tools: string[]
-  tools_discovered: number
-}
+export type MCPServerTestResult = Schemas['MCPServerTestResult']
 
-export type MCPServerUpdate = Partial<MCPServerCreate>
+export type MCPServerUpdate = Schemas['MCPServerUpdate']
 
 export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
 
@@ -1210,7 +1052,7 @@ export type OperationsLogRecord = Schemas['OperationLogResponse'] & {
 }
 
 // Organization types
-export type Organization = Schemas['OrganizationResponse']
+export type Organization = Schemas['OrganizationBlueprintResponse']
 
 // `OrganizationCreate` stays hand-written: the generated
 // `OrganizationRequest` requires `updated_at`/`description`/`icon` be
@@ -1315,14 +1157,8 @@ export interface PluginVertexLabel {
   }
 }
 // `deprecated` is surfaced on the neighbour summary by the relationships
-// endpoint so the UI can flag deprecated dependencies. Kept optional until
-// the generated schema snapshot is refreshed.
-export type ProjectRelationship = Omit<
-  Schemas['ProjectRelationship'],
-  'project'
-> & {
-  project: Schemas['ProjectRelationshipSummary'] & { deprecated?: boolean }
-}
+// endpoint so the UI can flag deprecated dependencies.
+export type ProjectRelationship = Schemas['ProjectRelationship']
 
 export type ProjectRelationshipsResponse =
   Schemas['ProjectRelationshipsResponse']
@@ -1497,44 +1333,19 @@ export type ServiceAccount = Schemas['ServiceAccountResponse']
 
 export type ServiceAccountCreate = Schemas['ServiceAccountCreate']
 
-// Part of the hand-written dashboard system-health types; see
-// DashboardStatus for context.
-export interface ServiceStatus {
-  detail?: null | string
-  latency_ms?: null | number
-  name: string
-  status: 'down' | 'up'
-  version?: null | string
-}
+// Part of the dashboard system-health types; see DashboardStatus.
+export type ServiceStatus = Schemas['ServiceStatus']
 
-export interface Tag {
-  created_at?: null | string
-  description?: null | string
-  id: string
-  name: string
-  organization: { name: string; slug: string }
-  slug: string
-  updated_at?: null | string
-}
+export type Tag = Schemas['TagResponse']
 
 // A named release/deploy tag-format policy. Mirrors `imbi_common.models.
 // TagFormat`; carried as a list on both organizations and project types.
-export interface TagFormat {
-  label: string
-  pattern: string
-}
+export type TagFormat = Schemas['TagFormat']
 
-// Documents & tags. Inlined here (not from api-generated.ts) because the
-// committed openapi.json snapshot predates the documents endpoints.
-// Regenerate with `npm run codegen:fetch` once the snapshot is refreshed
-// and switch these to `Schemas['DocumentResponse']` etc.
-export interface TagRef {
-  name: string
-  slug: string
-}
+export type TagRef = Schemas['TagRef']
 
 // Team types
-export type Team = Schemas['TeamResponse']
+export type Team = Schemas['TeamBlueprintResponse']
 
 // `TeamCreate` stays hand-written (same reason as `OrganizationCreate`).
 export interface TeamCreate {

@@ -78,6 +78,54 @@ PATH_MODEL_MAPPING: dict[str, str] = {
 }
 
 
+def blueprint_schema_name(model_name: str, kind: str) -> str:
+    """Component-schema name for a blueprint-composed model.
+
+    Deliberately *not* ``f'{model_name}{kind}'``. Blueprint models are
+    named after their graph node, and several nodes share a name with a
+    distinct endpoint response model -- ``Integration``, ``Project``,
+    ``MCPServer``, ``Tag``, ``DocumentTemplate``, ``LinkDefinition``. The
+    unnamespaced form collided with the schema FastAPI had already
+    derived from the endpoint's own annotations, and because the write
+    below is a plain assignment the node shape silently replaced it.
+    ``IntegrationResponse`` and ``ProjectResponse`` were both published
+    describing something no endpoint returns.
+
+    Args:
+        model_name: Graph-node name the blueprint model was built from.
+        kind: ``'Request'`` or ``'Response'``.
+
+    """
+    return f'{model_name}Blueprint{kind}'
+
+
+def _claim_schema_name(
+    schemas: dict[str, typing.Any],
+    name: str,
+    model_name: str,
+) -> bool:
+    """Log and refuse when a blueprint schema would replace another.
+
+    Nothing should reach a name already in ``schemas``: FastAPI writes
+    endpoint-derived schemas first, and :func:`blueprint_schema_name`
+    keeps blueprint output in its own namespace. A hit means the two
+    namespaces have converged again, which is worth an error rather
+    than a silently wrong document.
+
+    Returns ``True`` when the caller may write ``name``.
+
+    """
+    if name in schemas:
+        LOGGER.error(
+            'refusing to overwrite component schema %r with the blueprint '
+            'model for %r; the endpoint-derived schema is kept',
+            name,
+            model_name,
+        )
+        return False
+    return True
+
+
 async def generate_blueprint_models(
     db: graph.Graph,
 ) -> tuple[
@@ -258,8 +306,9 @@ def _build_schema(
     nested closure straddling the lock.
 
     Returns ``(schema, had_failure)``. The flag is ``True`` when any
-    per-model ``model_json_schema`` call raised; the caller uses it
-    to decide whether the result is safe to cache.
+    per-model ``model_json_schema`` call raised, or when a blueprint
+    schema name was already taken; the caller uses it to decide whether
+    the result is safe to cache.
     """
     openapi_schema = fastapi.openapi.utils.get_openapi(
         title=app.title,
@@ -286,6 +335,11 @@ def _build_schema(
     )
 
     had_failure = False
+    # Names a blueprint model wanted but did not get. An operation must
+    # not be pointed at one of these: the component still holds the
+    # endpoint-derived shape, so the $ref would resolve to something
+    # unrelated.
+    unwritten: set[str] = set()
 
     if _blueprint_models:
         for model_name in _blueprint_models:
@@ -293,33 +347,43 @@ def _build_schema(
             resp_model = _response_models[model_name]
 
             # Write schema (for request bodies)
-            write_name = f'{model_name}Request'
-            try:
-                schemas[write_name] = write_model.model_json_schema(
-                    ref_template=('#/components/schemas/{model}')
-                )
-            except Exception:
-                LOGGER.exception(
-                    'Failed to generate write schema for %s',
-                    model_name,
-                )
+            write_name = blueprint_schema_name(model_name, 'Request')
+            if _claim_schema_name(schemas, write_name, model_name):
+                try:
+                    schemas[write_name] = write_model.model_json_schema(
+                        ref_template=('#/components/schemas/{model}')
+                    )
+                except Exception:
+                    LOGGER.exception(
+                        'Failed to generate write schema for %s',
+                        model_name,
+                    )
+                    had_failure = True
+                    unwritten.add(write_name)
+            else:
                 had_failure = True
+                unwritten.add(write_name)
 
             # Response schema (with relationships)
-            resp_name = f'{model_name}Response'
-            try:
-                schemas[resp_name] = resp_model.model_json_schema(
-                    ref_template=('#/components/schemas/{model}')
-                )
-            except Exception:
-                LOGGER.exception(
-                    'Failed to generate response schema for %s',
-                    model_name,
-                )
+            resp_name = blueprint_schema_name(model_name, 'Response')
+            if _claim_schema_name(schemas, resp_name, model_name):
+                try:
+                    schemas[resp_name] = resp_model.model_json_schema(
+                        ref_template=('#/components/schemas/{model}')
+                    )
+                except Exception:
+                    LOGGER.exception(
+                        'Failed to generate response schema for %s',
+                        model_name,
+                    )
+                    had_failure = True
+                    unwritten.add(resp_name)
+            else:
                 had_failure = True
+                unwritten.add(resp_name)
 
         _hoist_defs_to_components(schemas)
-        _rewrite_path_schemas(openapi_schema)
+        _rewrite_path_schemas(openapi_schema, unwritten)
 
     for edge_name, edge_model in _edge_models.items():
         schema_name = f'{edge_name}EdgeProperties'
@@ -456,13 +520,22 @@ def _hoist_defs_to_components(
 
 def _rewrite_path_schemas(
     openapi_schema: dict[str, typing.Any],
+    unwritten: set[str] | None = None,
 ) -> None:
     """Rewrite path schemas for request and response.
 
     Request bodies use write schemas (writable fields only).
     Response bodies use response schemas (with relationships).
 
+    Args:
+        openapi_schema: Document to rewrite in place.
+        unwritten: Blueprint schema names that were not written to
+            ``components.schemas``. Operations needing one are left as
+            FastAPI produced them; a ``$ref`` to a name the blueprint
+            pass did not write would resolve to an unrelated schema.
+
     """
+    absent = unwritten or set()
     paths: dict[str, typing.Any] = openapi_schema.get(
         'paths',
         {},
@@ -472,12 +545,10 @@ def _rewrite_path_schemas(
         if path not in paths:
             continue
 
-        request_ref = {
-            '$ref': (f'#/components/schemas/{model_type}Request'),
-        }
-        response_ref = {
-            '$ref': (f'#/components/schemas/{model_type}Response'),
-        }
+        request_name = blueprint_schema_name(model_type, 'Request')
+        response_name = blueprint_schema_name(model_type, 'Response')
+        request_ref = {'$ref': f'#/components/schemas/{request_name}'}
+        response_ref = {'$ref': f'#/components/schemas/{response_name}'}
         array_ref: dict[str, typing.Any] = {
             'type': 'array',
             'items': response_ref,
@@ -491,15 +562,17 @@ def _rewrite_path_schemas(
             op = typing.cast(dict[str, typing.Any], operation)
 
             if method in ('post', 'put', 'patch'):
-                _rewrite_request_body(op, request_ref)
+                if request_name not in absent:
+                    _rewrite_request_body(op, request_ref)
 
-            _rewrite_response_schemas(
-                op,
-                path,
-                method,
-                response_ref,
-                array_ref,
-            )
+            if response_name not in absent:
+                _rewrite_response_schemas(
+                    op,
+                    path,
+                    method,
+                    response_ref,
+                    array_ref,
+                )
 
 
 def _rewrite_request_body(

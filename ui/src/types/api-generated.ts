@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/admin/plugins": {
+    "/api/admin/plugins": {
         parameters: {
             query?: never;
             header?: never;
@@ -15,7 +15,7 @@ export interface paths {
          * List Installed Plugins
          * @description List installed plugin packages with their enabled state.
          */
-        get: operations["list_installed_plugins_admin_plugins_get"];
+        get: operations["list_installed_plugins_api_admin_plugins_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -24,7 +24,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/plugins/{slug}": {
+    "/api/admin/plugins/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -35,7 +35,7 @@ export interface paths {
          * Get Installed Plugin
          * @description Get details for a single installed plugin package.
          */
-        get: operations["get_installed_plugin_admin_plugins__slug__get"];
+        get: operations["get_installed_plugin_api_admin_plugins__slug__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -44,7 +44,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/plugins/{slug}/registration": {
+    "/api/admin/plugins/{slug}/registration": {
         parameters: {
             query?: never;
             header?: never;
@@ -56,7 +56,7 @@ export interface paths {
          * Update Plugin Registration
          * @description Enable or disable an installed plugin package.
          */
-        put: operations["update_plugin_registration_admin_plugins__slug__registration_put"];
+        put: operations["update_plugin_registration_api_admin_plugins__slug__registration_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -64,7 +64,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/plugins/{slug}/edges": {
+    "/api/admin/plugins/{slug}/edges": {
         parameters: {
             query?: never;
             header?: never;
@@ -80,7 +80,7 @@ export interface paths {
          *     the plugin admin UI to render the per-org edge mapping table without
          *     one HTTP request per environment.
          */
-        get: operations["list_plugin_edges_admin_plugins__slug__edges_get"];
+        get: operations["list_plugin_edges_api_admin_plugins__slug__edges_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -89,7 +89,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/settings": {
+    "/api/admin/settings": {
         parameters: {
             query?: never;
             header?: never;
@@ -104,7 +104,7 @@ export interface paths {
          *     authentication method metadata. Requires authentication but no
          *     specific permission since this is read-only metadata.
          */
-        get: operations["get_admin_settings_admin_settings_get"];
+        get: operations["get_admin_settings_api_admin_settings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -113,7 +113,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api-keys": {
+    "/api/api-keys": {
         parameters: {
             query?: never;
             header?: never;
@@ -133,7 +133,7 @@ export interface paths {
          *     Returns:
          *         List of API key metadata
          */
-        get: operations["list_api_keys_api_keys_get"];
+        get: operations["list_api_keys_api_api_keys_get"];
         put?: never;
         /**
          * Create Api Key
@@ -153,14 +153,14 @@ export interface paths {
          *     Raises:
          *         HTTPException: 400 if expiration exceeds maximum allowed
          */
-        post: operations["create_api_key_api_keys_post"];
+        post: operations["create_api_key_api_api_keys_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api-keys/{key_id}": {
+    "/api/api-keys/{key_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -184,13 +184,13 @@ export interface paths {
          *     Raises:
          *         HTTPException: 404 if key not found or not owned by user
          */
-        delete: operations["revoke_api_key_api_keys__key_id__delete"];
+        delete: operations["revoke_api_key_api_api_keys__key_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api-keys/{key_id}/rotate": {
+    "/api/api-keys/{key_id}/rotate": {
         parameters: {
             query?: never;
             header?: never;
@@ -219,14 +219,14 @@ export interface paths {
          *         HTTPException: 404 if key not found or not owned by user
          *         HTTPException: 400 if key is already revoked
          */
-        post: operations["rotate_api_key_api_keys__key_id__rotate_post"];
+        post: operations["rotate_api_key_api_api_keys__key_id__rotate_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/login-providers/": {
+    "/api/login-providers/": {
         parameters: {
             query?: never;
             header?: never;
@@ -237,7 +237,7 @@ export interface paths {
          * List Login Providers
          * @description List every global (org-less) login-provider Integration.
          */
-        get: operations["list_login_providers_login_providers__get"];
+        get: operations["list_login_providers_api_login_providers__get"];
         put?: never;
         /**
          * Create Login Provider
@@ -248,14 +248,14 @@ export interface paths {
          *             login-capable identity capability.
          *         409: An Integration with this slug already exists.
          */
-        post: operations["create_login_provider_login_providers__post"];
+        post: operations["create_login_provider_api_login_providers__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/login-providers/{slug}": {
+    "/api/login-providers/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -269,7 +269,7 @@ export interface paths {
          *     Raises:
          *         404: No org-less Integration with this slug exists.
          */
-        get: operations["get_login_provider_login_providers__slug__get"];
+        get: operations["get_login_provider_api_login_providers__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -279,7 +279,7 @@ export interface paths {
          *     Raises:
          *         404: Login provider not found.
          */
-        delete: operations["delete_login_provider_login_providers__slug__delete"];
+        delete: operations["delete_login_provider_api_login_providers__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -289,10 +289,10 @@ export interface paths {
          *     Raises:
          *         404: No org-less Integration with this slug exists.
          */
-        patch: operations["update_login_provider_login_providers__slug__patch"];
+        patch: operations["update_login_provider_api_login_providers__slug__patch"];
         trace?: never;
     };
-    "/login-providers/{slug}/credentials": {
+    "/api/login-providers/{slug}/credentials": {
         parameters: {
             query?: never;
             header?: never;
@@ -308,7 +308,7 @@ export interface paths {
          *         404: Login provider not found.
          *         409: Concurrent modification; retry.
          */
-        put: operations["update_login_provider_credentials_login_providers__slug__credentials_put"];
+        put: operations["update_login_provider_credentials_api_login_providers__slug__credentials_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -316,7 +316,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/login-providers/{slug}/used-as-login": {
+    "/api/login-providers/{slug}/used-as-login": {
         parameters: {
             query?: never;
             header?: never;
@@ -335,7 +335,7 @@ export interface paths {
          *     Raises:
          *         404: Login provider not found.
          */
-        put: operations["set_used_as_login_login_providers__slug__used_as_login_put"];
+        put: operations["set_used_as_login_api_login_providers__slug__used_as_login_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -343,7 +343,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/providers": {
+    "/api/auth/providers": {
         parameters: {
             query?: never;
             header?: never;
@@ -360,7 +360,7 @@ export interface paths {
          *     Returns:
          *         AuthProvidersResponse: List of providers with configuration
          */
-        get: operations["get_auth_providers_auth_providers_get"];
+        get: operations["get_auth_providers_api_auth_providers_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -369,7 +369,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/token": {
+    "/api/auth/token": {
         parameters: {
             query?: never;
             header?: never;
@@ -395,14 +395,14 @@ export interface paths {
          *         OAuth2TokenResponse with access and (for code/refresh) refresh
          *         tokens.
          */
-        post: operations["token_auth_token_post"];
+        post: operations["token_api_auth_token_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/authorize": {
+    "/api/auth/authorize": {
         parameters: {
             query?: never;
             header?: never;
@@ -419,7 +419,7 @@ export interface paths {
          *     user. The Imbi login may itself delegate to an upstream IdP — that
          *     is transparent here; only the resulting Imbi session matters.
          */
-        get: operations["authorize_auth_authorize_get"];
+        get: operations["authorize_api_auth_authorize_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -428,7 +428,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/register": {
+    "/api/auth/register": {
         parameters: {
             query?: never;
             header?: never;
@@ -441,14 +441,14 @@ export interface paths {
          * Register Oauth Client
          * @description Dynamic Client Registration (RFC 7591) for public OAuth clients.
          */
-        post: operations["register_oauth_client_auth_register_post"];
+        post: operations["register_oauth_client_api_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/login": {
+    "/api/auth/login": {
         parameters: {
             query?: never;
             header?: never;
@@ -477,14 +477,14 @@ export interface paths {
          *             required. Returns X-MFA-Required: true header if MFA
          *             is required.
          */
-        post: operations["login_auth_login_post"];
+        post: operations["login_api_auth_login_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/token/refresh": {
+    "/api/auth/token/refresh": {
         parameters: {
             query?: never;
             header?: never;
@@ -511,14 +511,14 @@ export interface paths {
          *     Raises:
          *         HTTPException: 401 if refresh token is invalid or revoked
          */
-        post: operations["refresh_token_auth_token_refresh_post"];
+        post: operations["refresh_token_api_auth_token_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/logout": {
+    "/api/auth/logout": {
         parameters: {
             query?: never;
             header?: never;
@@ -537,14 +537,14 @@ export interface paths {
          *             delete all sessions. If False, revoke only current
          *             token and associated refresh token.
          */
-        post: operations["logout_auth_logout_post"];
+        post: operations["logout_api_auth_logout_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/oauth/{provider}": {
+    "/api/auth/oauth/{provider}": {
         parameters: {
             query?: never;
             header?: never;
@@ -571,7 +571,7 @@ export interface paths {
          *         HTTPException: 404 if provider not enabled or invalid, 503 if
          *             its plugin isn't loaded
          */
-        get: operations["oauth_login_auth_oauth__provider__get"];
+        get: operations["oauth_login_api_auth_oauth__provider__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -580,7 +580,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/oauth/{provider}/callback": {
+    "/api/auth/oauth/{provider}/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -605,7 +605,7 @@ export interface paths {
          *     Returns:
          *         Redirect to frontend with token or error
          */
-        get: operations["oauth_callback_auth_oauth__provider__callback_get"];
+        get: operations["oauth_callback_api_auth_oauth__provider__callback_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -614,7 +614,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/blueprints/": {
+    "/api/blueprints/": {
         parameters: {
             query?: never;
             header?: never;
@@ -625,20 +625,20 @@ export interface paths {
          * List Blueprints
          * @description Retrieve all blueprints, optionally filtered.
          */
-        get: operations["list_blueprints_blueprints__get"];
+        get: operations["list_blueprints_api_blueprints__get"];
         put?: never;
         /**
          * Create Blueprint
          * @description Create a new blueprint node in the graph database.
          */
-        post: operations["create_blueprint_blueprints__post"];
+        post: operations["create_blueprint_api_blueprints__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/blueprints/{type}": {
+    "/api/blueprints/{type}": {
         parameters: {
             query?: never;
             header?: never;
@@ -649,7 +649,7 @@ export interface paths {
          * List Blueprints By Type
          * @description Retrieve blueprints filtered by node type or relationship.
          */
-        get: operations["list_blueprints_by_type_blueprints__type__get"];
+        get: operations["list_blueprints_by_type_api_blueprints__type__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -658,7 +658,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/blueprints/{type}/{slug}": {
+    "/api/blueprints/{type}/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -669,14 +669,14 @@ export interface paths {
          * Get Blueprint
          * @description Retrieve a blueprint by type (or 'relationship') and slug.
          */
-        get: operations["get_blueprint_blueprints__type___slug__get"];
+        get: operations["get_blueprint_api_blueprints__type___slug__get"];
         put?: never;
         post?: never;
         /**
          * Delete Blueprint
          * @description Delete a blueprint by type (or 'relationship') and slug.
          */
-        delete: operations["delete_blueprint_blueprints__type___slug__delete"];
+        delete: operations["delete_blueprint_api_blueprints__type___slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -696,10 +696,10 @@ export interface paths {
          *         404: Blueprint not found.
          *         422: Patch test failed or validation error.
          */
-        patch: operations["patch_blueprint_blueprints__type___slug__patch"];
+        patch: operations["patch_blueprint_api_blueprints__type___slug__patch"];
         trace?: never;
     };
-    "/service-accounts/{slug}/client-credentials": {
+    "/api/service-accounts/{slug}/client-credentials": {
         parameters: {
             query?: never;
             header?: never;
@@ -720,7 +720,7 @@ export interface paths {
          *     Returns:
          *         List of client credential metadata
          */
-        get: operations["list_client_credentials_service_accounts__slug__client_credentials_get"];
+        get: operations["list_client_credentials_api_service_accounts__slug__client_credentials_get"];
         put?: never;
         /**
          * Create Client Credential
@@ -742,14 +742,14 @@ export interface paths {
          *         HTTPException: 404 if service account not found
          *         HTTPException: 400 if expiration exceeds maximum allowed
          */
-        post: operations["create_client_credential_service_accounts__slug__client_credentials_post"];
+        post: operations["create_client_credential_api_service_accounts__slug__client_credentials_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/{slug}/client-credentials/{client_id}": {
+    "/api/service-accounts/{slug}/client-credentials/{client_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -775,13 +775,13 @@ export interface paths {
          *         HTTPException: 404 if credential not found or not owned
          *             by the service account
          */
-        delete: operations["revoke_client_credential_service_accounts__slug__client_credentials__client_id__delete"];
+        delete: operations["revoke_client_credential_api_service_accounts__slug__client_credentials__client_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/{slug}/client-credentials/{client_id}/rotate": {
+    "/api/service-accounts/{slug}/client-credentials/{client_id}/rotate": {
         parameters: {
             query?: never;
             header?: never;
@@ -811,14 +811,14 @@ export interface paths {
          *             by the service account
          *         HTTPException: 400 if credential is already revoked
          */
-        post: operations["rotate_client_credential_service_accounts__slug__client_credentials__client_id__rotate_post"];
+        post: operations["rotate_client_credential_api_service_accounts__slug__client_credentials__client_id__rotate_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/admin/dashboard/status": {
+    "/api/admin/dashboard/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -829,7 +829,7 @@ export interface paths {
          * Get Dashboard Status
          * @description Return a system-health snapshot of datastores and services.
          */
-        get: operations["get_dashboard_status_admin_dashboard_status_get"];
+        get: operations["get_dashboard_status_api_admin_dashboard_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -838,7 +838,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/dashboard/metrics": {
+    "/api/admin/dashboard/metrics": {
         parameters: {
             query?: never;
             header?: never;
@@ -849,7 +849,7 @@ export interface paths {
          * Get Dashboard Metrics
          * @description Return 7-day activity metrics with per-day counts for the tiles.
          */
-        get: operations["get_dashboard_metrics_admin_dashboard_metrics_get"];
+        get: operations["get_dashboard_metrics_api_admin_dashboard_metrics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -858,7 +858,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/events/": {
+    "/api/events/": {
         parameters: {
             query?: never;
             header?: never;
@@ -878,7 +878,7 @@ export interface paths {
          *     cursor would otherwise expose events for projects the caller has
          *     no permission on.
          */
-        get: operations["list_events_events__get"];
+        get: operations["list_events_api_events__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -887,7 +887,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/events/{event_id}": {
+    "/api/events/{event_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -902,7 +902,7 @@ export interface paths {
          *     visiting a shared event URL must work even when the event has
          *     aged past the default cursor page.
          */
-        get: operations["get_event_events__event_id__get"];
+        get: operations["get_event_api_events__event_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -911,7 +911,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/graph/query": {
+    "/api/admin/graph/query": {
         parameters: {
             query?: never;
             header?: never;
@@ -924,14 +924,14 @@ export interface paths {
          * Run Graph Query
          * @description Execute an ad-hoc Cypher query against the graph.
          */
-        post: operations["run_graph_query_admin_graph_query_post"];
+        post: operations["run_graph_query_api_admin_graph_query_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/admin/graph/schema": {
+    "/api/admin/graph/schema": {
         parameters: {
             query?: never;
             header?: never;
@@ -942,7 +942,7 @@ export interface paths {
          * Get Graph Schema
          * @description Return labels, edge types, and sampled property keys.
          */
-        get: operations["get_graph_schema_admin_graph_schema_get"];
+        get: operations["get_graph_schema_api_admin_graph_schema_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -951,7 +951,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/local-auth": {
+    "/api/admin/local-auth": {
         parameters: {
             query?: never;
             header?: never;
@@ -962,12 +962,12 @@ export interface paths {
          * Get Local Auth
          * @description Return the current local-auth config (defaults to enabled).
          */
-        get: operations["get_local_auth_admin_local_auth_get"];
+        get: operations["get_local_auth_api_admin_local_auth_get"];
         /**
          * Set Local Auth
          * @description Persist the local-auth toggle.
          */
-        put: operations["set_local_auth_admin_local_auth_put"];
+        put: operations["set_local_auth_api_admin_local_auth_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -975,7 +975,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/maintenance/operations": {
+    "/api/maintenance/operations": {
         parameters: {
             query?: never;
             header?: never;
@@ -986,7 +986,7 @@ export interface paths {
          * List Maintenance Operations
          * @description The operation registry merged with each operation's run state.
          */
-        get: operations["list_maintenance_operations_maintenance_operations_get"];
+        get: operations["list_maintenance_operations_api_maintenance_operations_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -995,7 +995,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/maintenance/operations/{slug}": {
+    "/api/maintenance/operations/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1006,7 +1006,7 @@ export interface paths {
          * Get Maintenance Operation
          * @description One operation's run state, including per-project failures.
          */
-        get: operations["get_maintenance_operation_maintenance_operations__slug__get"];
+        get: operations["get_maintenance_operation_api_maintenance_operations__slug__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1015,7 +1015,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/maintenance/operations/{slug}/run": {
+    "/api/maintenance/operations/{slug}/run": {
         parameters: {
             query?: never;
             header?: never;
@@ -1028,14 +1028,14 @@ export interface paths {
          * Run Maintenance Operation
          * @description Start a global run of the operation across all projects.
          */
-        post: operations["run_maintenance_operation_maintenance_operations__slug__run_post"];
+        post: operations["run_maintenance_operation_api_maintenance_operations__slug__run_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/maintenance/operations/{slug}/cancel": {
+    "/api/maintenance/operations/{slug}/cancel": {
         parameters: {
             query?: never;
             header?: never;
@@ -1048,14 +1048,14 @@ export interface paths {
          * Cancel Maintenance Operation
          * @description Cancel the operation's in-progress run.
          */
-        post: operations["cancel_maintenance_operation_maintenance_operations__slug__cancel_post"];
+        post: operations["cancel_maintenance_operation_api_maintenance_operations__slug__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/mcp-servers/": {
+    "/api/mcp-servers/": {
         parameters: {
             query?: never;
             header?: never;
@@ -1069,7 +1069,7 @@ export interface paths {
          *     Returns:
          *         Every MCP server, without any secret values.
          */
-        get: operations["list_mcp_servers_mcp_servers__get"];
+        get: operations["list_mcp_servers_api_mcp_servers__get"];
         put?: never;
         /**
          * Create Mcp Server
@@ -1086,14 +1086,14 @@ export interface paths {
          *     Raises:
          *         409: If an MCP server with the same slug already exists.
          */
-        post: operations["create_mcp_server_mcp_servers__post"];
+        post: operations["create_mcp_server_api_mcp_servers__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/mcp-servers/{id}": {
+    "/api/mcp-servers/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1113,7 +1113,7 @@ export interface paths {
          *     Raises:
          *         404: If no MCP server with the given id exists.
          */
-        get: operations["get_mcp_server_mcp_servers__id__get"];
+        get: operations["get_mcp_server_api_mcp_servers__id__get"];
         put?: never;
         post?: never;
         /**
@@ -1126,7 +1126,7 @@ export interface paths {
          *     Raises:
          *         404: If no MCP server with the given id exists.
          */
-        delete: operations["delete_mcp_server_mcp_servers__id__delete"];
+        delete: operations["delete_mcp_server_api_mcp_servers__id__delete"];
         options?: never;
         head?: never;
         /**
@@ -1149,10 +1149,10 @@ export interface paths {
          *         404: If no MCP server with the given id exists.
          *         409: If the new slug collides with another MCP server.
          */
-        patch: operations["update_mcp_server_mcp_servers__id__patch"];
+        patch: operations["update_mcp_server_api_mcp_servers__id__patch"];
         trace?: never;
     };
-    "/mcp-servers/{id}/test": {
+    "/api/mcp-servers/{id}/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -1179,14 +1179,14 @@ export interface paths {
          *     Raises:
          *         404: If no MCP server with the given id exists.
          */
-        post: operations["test_mcp_server_mcp_servers__id__test_post"];
+        post: operations["test_mcp_server_api_mcp_servers__id__test_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/mcp-servers/test": {
+    "/api/mcp-servers/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -1211,14 +1211,14 @@ export interface paths {
          *     Raises:
          *         400: If the configuration is invalid for its ``auth_type``.
          */
-        post: operations["test_mcp_server_config_mcp_servers_test_post"];
+        post: operations["test_mcp_server_config_api_mcp_servers_test_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/mcp-servers/{id}/status": {
+    "/api/mcp-servers/{id}/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -1246,14 +1246,14 @@ export interface paths {
          *     Raises:
          *         404: If no MCP server with the given id exists.
          */
-        post: operations["report_mcp_server_status_mcp_servers__id__status_post"];
+        post: operations["report_mcp_server_status_api_mcp_servers__id__status_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/me/identities": {
+    "/api/me/identities": {
         parameters: {
             query?: never;
             header?: never;
@@ -1264,7 +1264,7 @@ export interface paths {
          * List My Identities
          * @description List the caller's identity connections.
          */
-        get: operations["list_my_identities_me_identities_get"];
+        get: operations["list_my_identities_api_me_identities_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1273,7 +1273,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me/identities/{integration_id}/start": {
+    "/api/me/identities/{integration_id}/start": {
         parameters: {
             query?: never;
             header?: never;
@@ -1290,14 +1290,14 @@ export interface paths {
          *     device-flow plugins).  The browser then either redirects to the
          *     URL (redirect flows) or polls ``/poll`` (device flows).
          */
-        post: operations["start_connect_me_identities__integration_id__start_post"];
+        post: operations["start_connect_api_me_identities__integration_id__start_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/me/identities/{integration_id}/poll": {
+    "/api/me/identities/{integration_id}/poll": {
         parameters: {
             query?: never;
             header?: never;
@@ -1318,14 +1318,14 @@ export interface paths {
          *     the value the caller provided to ``/start`` so the UI can land
          *     the user back where they came from.
          */
-        post: operations["poll_connect_me_identities__integration_id__poll_post"];
+        post: operations["poll_connect_api_me_identities__integration_id__poll_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/me/identities/{integration_id}/callback": {
+    "/api/me/identities/{integration_id}/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -1339,7 +1339,7 @@ export interface paths {
          *     not have a session yet during a login flow) and its nonce is
          *     enforced single-use via Valkey to prevent replay.
          */
-        get: operations["callback_me_identities__integration_id__callback_get"];
+        get: operations["callback_api_me_identities__integration_id__callback_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1348,7 +1348,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me/identities/{integration_id}/refresh": {
+    "/api/me/identities/{integration_id}/refresh": {
         parameters: {
             query?: never;
             header?: never;
@@ -1361,14 +1361,14 @@ export interface paths {
          * Refresh
          * @description Force-refresh the actor's connection.
          */
-        post: operations["refresh_me_identities__integration_id__refresh_post"];
+        post: operations["refresh_api_me_identities__integration_id__refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/me/identities/{integration_id}": {
+    "/api/me/identities/{integration_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1389,13 +1389,13 @@ export interface paths {
          *     partial state — the user needs to know the IdP still has live
          *     credentials and may need manual cleanup.
          */
-        delete: operations["disconnect_me_identities__integration_id__delete"];
+        delete: operations["disconnect_api_me_identities__integration_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/mfa/status": {
+    "/api/mfa/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -1412,7 +1412,7 @@ export interface paths {
          *     Returns:
          *         MFA status including enabled flag and backup codes remaining
          */
-        get: operations["get_mfa_status_mfa_status_get"];
+        get: operations["get_mfa_status_api_mfa_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1421,7 +1421,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/mfa/setup": {
+    "/api/mfa/setup": {
         parameters: {
             query?: never;
             header?: never;
@@ -1446,14 +1446,14 @@ export interface paths {
          *         MFA setup data including secret, QR code, and backup codes
          *         (shown only once)
          */
-        post: operations["setup_mfa_mfa_setup_post"];
+        post: operations["setup_mfa_api_mfa_setup_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/mfa/verify": {
+    "/api/mfa/verify": {
         parameters: {
             query?: never;
             header?: never;
@@ -1477,14 +1477,14 @@ export interface paths {
          *     Raises:
          *         HTTPException: 404 if MFA not setup, 401 if code is invalid
          */
-        post: operations["verify_and_enable_mfa_mfa_verify_post"];
+        post: operations["verify_and_enable_mfa_api_mfa_verify_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/mfa/disable": {
+    "/api/mfa/disable": {
         parameters: {
             query?: never;
             header?: never;
@@ -1514,13 +1514,13 @@ export interface paths {
          *         HTTPException: 401 if verification fails or neither
          *             credential provided
          */
-        delete: operations["disable_mfa_mfa_disable_delete"];
+        delete: operations["disable_mfa_api_mfa_disable_delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/operations-log/": {
+    "/api/operations-log/": {
         parameters: {
             query?: never;
             header?: never;
@@ -1531,20 +1531,20 @@ export interface paths {
          * List Operation Logs
          * @description List operations log entries (newest first, keyset paginated).
          */
-        get: operations["list_operation_logs_operations_log__get"];
+        get: operations["list_operation_logs_api_operations_log__get"];
         put?: never;
         /**
          * Create Operation Log
          * @description Create a new operations log entry.
          */
-        post: operations["create_operation_log_operations_log__post"];
+        post: operations["create_operation_log_api_operations_log__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/operations-log/plugin-templates": {
+    "/api/operations-log/plugin-templates": {
         parameters: {
             query?: never;
             header?: never;
@@ -1560,7 +1560,7 @@ export interface paths {
          *     and recent-activity views.  Plugins without ``ops_log_templates``
          *     declared simply emit an empty ``templates`` dict.
          */
-        get: operations["list_plugin_ops_log_templates_operations_log_plugin_templates_get"];
+        get: operations["list_plugin_ops_log_templates_api_operations_log_plugin_templates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1569,7 +1569,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/operations-log/{entry_id}": {
+    "/api/operations-log/{entry_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1580,24 +1580,24 @@ export interface paths {
          * Get Operation Log
          * @description Get a single operations log entry.
          */
-        get: operations["get_operation_log_operations_log__entry_id__get"];
+        get: operations["get_operation_log_api_operations_log__entry_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Operation Log
          * @description Soft-delete an operations log entry (tombstone insert).
          */
-        delete: operations["delete_operation_log_operations_log__entry_id__delete"];
+        delete: operations["delete_operation_log_api_operations_log__entry_id__delete"];
         options?: never;
         head?: never;
         /**
          * Patch Operation Log
          * @description Apply a JSON Patch to an operations log entry.
          */
-        patch: operations["patch_operation_log_operations_log__entry_id__patch"];
+        patch: operations["patch_operation_log_api_operations_log__entry_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/teams/": {
+    "/api/organizations/{org_slug}/teams/": {
         parameters: {
             query?: never;
             header?: never;
@@ -1615,7 +1615,7 @@ export interface paths {
          *         Teams ordered by name, each including their
          *         organization and relationships.
          */
-        get: operations["list_teams_organizations__org_slug__teams__get"];
+        get: operations["list_teams_api_organizations__org_slug__teams__get"];
         put?: never;
         /**
          * Create Team
@@ -1633,14 +1633,14 @@ export interface paths {
          *         404: Organization not found
          *         409: Team with slug already exists
          */
-        post: operations["create_team_organizations__org_slug__teams__post"];
+        post: operations["create_team_api_organizations__org_slug__teams__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/teams/{slug}": {
+    "/api/organizations/{org_slug}/teams/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1661,7 +1661,7 @@ export interface paths {
          *     Raises:
          *         404: Team not found
          */
-        get: operations["get_team_organizations__org_slug__teams__slug__get"];
+        get: operations["get_team_api_organizations__org_slug__teams__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -1675,7 +1675,7 @@ export interface paths {
          *     Raises:
          *         404: Team not found
          */
-        delete: operations["delete_team_organizations__org_slug__teams__slug__delete"];
+        delete: operations["delete_team_api_organizations__org_slug__teams__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -1696,10 +1696,10 @@ export interface paths {
          *         409: Slug conflict.
          *         422: Patch test operation failed.
          */
-        patch: operations["patch_team_organizations__org_slug__teams__slug__patch"];
+        patch: operations["patch_team_api_organizations__org_slug__teams__slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/teams/{slug}/members": {
+    "/api/organizations/{org_slug}/teams/{slug}/members": {
         parameters: {
             query?: never;
             header?: never;
@@ -1720,7 +1720,7 @@ export interface paths {
          *     Raises:
          *         404: Team not found
          */
-        get: operations["list_team_members_organizations__org_slug__teams__slug__members_get"];
+        get: operations["list_team_members_api_organizations__org_slug__teams__slug__members_get"];
         put?: never;
         /**
          * Add Team Member
@@ -1738,14 +1738,14 @@ export interface paths {
          *         400: Missing email
          *         404: User or team not found
          */
-        post: operations["add_team_member_organizations__org_slug__teams__slug__members_post"];
+        post: operations["add_team_member_api_organizations__org_slug__teams__slug__members_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/teams/{slug}/members/{email}": {
+    "/api/organizations/{org_slug}/teams/{slug}/members/{email}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1767,13 +1767,13 @@ export interface paths {
          *     Raises:
          *         404: Membership not found
          */
-        delete: operations["remove_team_member_organizations__org_slug__teams__slug__members__email__delete"];
+        delete: operations["remove_team_member_api_organizations__org_slug__teams__slug__members__email__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/environments/": {
+    "/api/organizations/{org_slug}/environments/": {
         parameters: {
             query?: never;
             header?: never;
@@ -1791,7 +1791,7 @@ export interface paths {
          *         Environments ordered by sort_order then name, each including
          *         their organization and relationships.
          */
-        get: operations["list_environments_organizations__org_slug__environments__get"];
+        get: operations["list_environments_api_organizations__org_slug__environments__get"];
         put?: never;
         /**
          * Create Environment
@@ -1809,14 +1809,14 @@ export interface paths {
          *         404: Organization not found
          *         409: Environment with slug already exists
          */
-        post: operations["create_environment_organizations__org_slug__environments__post"];
+        post: operations["create_environment_api_organizations__org_slug__environments__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/environments/{slug}": {
+    "/api/organizations/{org_slug}/environments/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1837,7 +1837,7 @@ export interface paths {
          *     Raises:
          *         404: Environment not found
          */
-        get: operations["get_environment_organizations__org_slug__environments__slug__get"];
+        get: operations["get_environment_api_organizations__org_slug__environments__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -1851,7 +1851,7 @@ export interface paths {
          *     Raises:
          *         404: Environment not found
          */
-        delete: operations["delete_environment_organizations__org_slug__environments__slug__delete"];
+        delete: operations["delete_environment_api_organizations__org_slug__environments__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -1872,10 +1872,10 @@ export interface paths {
          *         409: Slug conflict.
          *         422: Patch test operation failed.
          */
-        patch: operations["patch_environment_organizations__org_slug__environments__slug__patch"];
+        patch: operations["patch_environment_api_organizations__org_slug__environments__slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/environments/{slug}/edges/{rel_type}": {
+    "/api/organizations/{org_slug}/environments/{slug}/edges/{rel_type}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1886,24 +1886,24 @@ export interface paths {
          * List Environment Edges
          * @description List edges of ``rel_type`` from this environment.
          */
-        get: operations["list_environment_edges_organizations__org_slug__environments__slug__edges__rel_type__get"];
+        get: operations["list_environment_edges_api_organizations__org_slug__environments__slug__edges__rel_type__get"];
         /**
          * Set Environment Edge
          * @description Replace this environment's edge of ``rel_type``.
          */
-        put: operations["set_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__put"];
+        put: operations["set_environment_edge_api_organizations__org_slug__environments__slug__edges__rel_type__put"];
         post?: never;
         /**
          * Delete Environment Edge
          * @description Remove every edge of ``rel_type`` from this environment.
          */
-        delete: operations["delete_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__delete"];
+        delete: operations["delete_environment_edge_api_organizations__org_slug__environments__slug__edges__rel_type__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/link-definitions/": {
+    "/api/organizations/{org_slug}/link-definitions/": {
         parameters: {
             query?: never;
             header?: never;
@@ -1921,7 +1921,7 @@ export interface paths {
          *         Link definitions ordered by name, each including
          *         their organization.
          */
-        get: operations["list_link_definitions_organizations__org_slug__link_definitions__get"];
+        get: operations["list_link_definitions_api_organizations__org_slug__link_definitions__get"];
         put?: never;
         /**
          * Create Link Definition
@@ -1939,14 +1939,14 @@ export interface paths {
          *         404: Organization not found
          *         409: Link definition with slug already exists
          */
-        post: operations["create_link_definition_organizations__org_slug__link_definitions__post"];
+        post: operations["create_link_definition_api_organizations__org_slug__link_definitions__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/link-definitions/{slug}": {
+    "/api/organizations/{org_slug}/link-definitions/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1967,7 +1967,7 @@ export interface paths {
          *     Raises:
          *         404: Link definition not found
          */
-        get: operations["get_link_definition_organizations__org_slug__link_definitions__slug__get"];
+        get: operations["get_link_definition_api_organizations__org_slug__link_definitions__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -1981,7 +1981,7 @@ export interface paths {
          *     Raises:
          *         404: Link definition not found
          */
-        delete: operations["delete_link_definition_organizations__org_slug__link_definitions__slug__delete"];
+        delete: operations["delete_link_definition_api_organizations__org_slug__link_definitions__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -2002,10 +2002,10 @@ export interface paths {
          *         409: Slug conflict.
          *         422: Patch test operation failed.
          */
-        patch: operations["patch_link_definition_organizations__org_slug__link_definitions__slug__patch"];
+        patch: operations["patch_link_definition_api_organizations__org_slug__link_definitions__slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/project-types/": {
+    "/api/organizations/{org_slug}/project-types/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2028,7 +2028,7 @@ export interface paths {
          *         Project types ordered by name, each including their
          *         organization and relationships.
          */
-        get: operations["list_project_types_organizations__org_slug__project_types__get"];
+        get: operations["list_project_types_api_organizations__org_slug__project_types__get"];
         put?: never;
         /**
          * Create Project Type
@@ -2046,14 +2046,14 @@ export interface paths {
          *         404: Organization not found
          *         409: Project type with slug already exists
          */
-        post: operations["create_project_type_organizations__org_slug__project_types__post"];
+        post: operations["create_project_type_api_organizations__org_slug__project_types__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/project-types/{slug}": {
+    "/api/organizations/{org_slug}/project-types/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2074,7 +2074,7 @@ export interface paths {
          *     Raises:
          *         404: Project type not found
          */
-        get: operations["get_project_type_organizations__org_slug__project_types__slug__get"];
+        get: operations["get_project_type_api_organizations__org_slug__project_types__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -2088,7 +2088,7 @@ export interface paths {
          *     Raises:
          *         404: Project type not found
          */
-        delete: operations["delete_project_type_organizations__org_slug__project_types__slug__delete"];
+        delete: operations["delete_project_type_api_organizations__org_slug__project_types__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -2109,10 +2109,10 @@ export interface paths {
          *         409: Slug conflict.
          *         422: Patch test operation failed.
          */
-        patch: operations["patch_project_type_organizations__org_slug__project_types__slug__patch"];
+        patch: operations["patch_project_type_api_organizations__org_slug__project_types__slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/": {
+    "/api/organizations/{org_slug}/projects/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2147,20 +2147,20 @@ export interface paths {
          *     ``relationships`` block. Cuts the response from megabytes to
          *     kilobytes for large orgs.
          */
-        get: operations["list_projects_organizations__org_slug__projects__get"];
+        get: operations["list_projects_api_organizations__org_slug__projects__get"];
         put?: never;
         /**
          * Create Project
          * @description Create a new project in an organization.
          */
-        post: operations["create_project_organizations__org_slug__projects__post"];
+        post: operations["create_project_api_organizations__org_slug__projects__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/schema": {
+    "/api/organizations/{org_slug}/projects/{project_id}/schema": {
         parameters: {
             query?: never;
             header?: never;
@@ -2175,7 +2175,7 @@ export interface paths {
          *     applicable blueprint, and returns the properties grouped by
          *     blueprint so the UI can render labelled sections.
          */
-        get: operations["get_project_schema_organizations__org_slug__projects__project_id__schema_get"];
+        get: operations["get_project_schema_api_organizations__org_slug__projects__project_id__schema_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2184,7 +2184,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/environments/{env_slug}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/environments/{env_slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2207,10 +2207,10 @@ export interface paths {
          *     (both of which behave unreliably on some Apache AGE builds). Protected
          *     structural keys are rejected. Returns the updated edge properties.
          */
-        patch: operations["patch_project_environment_organizations__org_slug__projects__project_id__environments__env_slug__patch"];
+        patch: operations["patch_project_environment_api_organizations__org_slug__projects__project_id__environments__env_slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}": {
+    "/api/organizations/{org_slug}/projects/{project_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2221,7 +2221,7 @@ export interface paths {
          * Get Project
          * @description Get a project by ID.
          */
-        get: operations["get_project_organizations__org_slug__projects__project_id__get"];
+        get: operations["get_project_api_organizations__org_slug__projects__project_id__get"];
         put?: never;
         post?: never;
         /**
@@ -2241,7 +2241,7 @@ export interface paths {
          *     were assigned, or ``delete_repository=false`` short-circuited the
          *     dispatch.
          */
-        delete: operations["delete_project_organizations__org_slug__projects__project_id__delete"];
+        delete: operations["delete_project_api_organizations__org_slug__projects__project_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -2269,10 +2269,10 @@ export interface paths {
          *         409: Slug conflict.
          *         422: Patch test failed or environment validation failed.
          */
-        patch: operations["patch_project_organizations__org_slug__projects__project_id__patch"];
+        patch: operations["patch_project_api_organizations__org_slug__projects__project_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/relationships": {
+    "/api/organizations/{org_slug}/projects/{project_id}/relationships": {
         parameters: {
             query?: never;
             header?: never;
@@ -2287,7 +2287,7 @@ export interface paths {
          *     ``direction`` field. Rows are sorted inbound first, then by
          *     the related project's name.
          */
-        get: operations["get_project_relationships_organizations__org_slug__projects__project_id__relationships_get"];
+        get: operations["get_project_relationships_api_organizations__org_slug__projects__project_id__relationships_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2296,7 +2296,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/relationships/{target_id}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/relationships/{target_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2315,7 +2315,7 @@ export interface paths {
          *         400: ``project_id`` equals ``target_id`` (self-reference).
          *         404: Source or target project does not exist within ``org_slug``.
          */
-        post: operations["create_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__post"];
+        post: operations["create_project_relationship_api_organizations__org_slug__projects__project_id__relationships__target_id__post"];
         /**
          * Delete Project Relationship
          * @description Remove a ``DEPENDS_ON`` edge from source to target project.
@@ -2324,13 +2324,13 @@ export interface paths {
          *         404: The edge does not exist (source, target, or the edge
          *             itself may be missing).
          */
-        delete: operations["delete_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__delete"];
+        delete: operations["delete_project_relationship_api_organizations__org_slug__projects__project_id__relationships__target_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/lifecycle/preview": {
+    "/api/organizations/{org_slug}/projects/{project_id}/lifecycle/preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -2354,7 +2354,7 @@ export interface paths {
          *     every selection change.  Per-plugin exceptions are swallowed -- a
          *     broken plugin must not block the rest of the preview.
          */
-        get: operations["preview_lifecycle_organizations__org_slug__projects__project_id__lifecycle_preview_get"];
+        get: operations["preview_lifecycle_api_organizations__org_slug__projects__project_id__lifecycle_preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2363,7 +2363,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/archive": {
+    "/api/organizations/{org_slug}/projects/{project_id}/archive": {
         parameters: {
             query?: never;
             header?: never;
@@ -2376,14 +2376,14 @@ export interface paths {
          * Archive Project
          * @description Archive a project (soft-hide from default listings).
          */
-        post: operations["archive_project_organizations__org_slug__projects__project_id__archive_post"];
+        post: operations["archive_project_api_organizations__org_slug__projects__project_id__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/unarchive": {
+    "/api/organizations/{org_slug}/projects/{project_id}/unarchive": {
         parameters: {
             query?: never;
             header?: never;
@@ -2396,14 +2396,14 @@ export interface paths {
          * Unarchive Project
          * @description Restore an archived project to the active state.
          */
-        post: operations["unarchive_project_organizations__org_slug__projects__project_id__unarchive_post"];
+        post: operations["unarchive_project_api_organizations__org_slug__projects__project_id__unarchive_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/integrations/": {
+    "/api/organizations/{org_slug}/integrations/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2414,7 +2414,7 @@ export interface paths {
          * List Integrations
          * @description List integrations configured in an organization.
          */
-        get: operations["list_integrations_organizations__org_slug__integrations__get"];
+        get: operations["list_integrations_api_organizations__org_slug__integrations__get"];
         put?: never;
         /**
          * Create Integration
@@ -2425,14 +2425,14 @@ export interface paths {
          *         404: Organization or team not found.
          *         409: An integration with this slug already exists.
          */
-        post: operations["create_integration_organizations__org_slug__integrations__post"];
+        post: operations["create_integration_api_organizations__org_slug__integrations__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/integrations/{slug}": {
+    "/api/organizations/{org_slug}/integrations/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2446,7 +2446,7 @@ export interface paths {
          *     Raises:
          *         404: Integration not found.
          */
-        get: operations["get_integration_organizations__org_slug__integrations__slug__get"];
+        get: operations["get_integration_api_organizations__org_slug__integrations__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -2456,7 +2456,7 @@ export interface paths {
          *     Raises:
          *         404: Integration not found.
          */
-        delete: operations["delete_integration_organizations__org_slug__integrations__slug__delete"];
+        delete: operations["delete_integration_api_organizations__org_slug__integrations__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -2472,10 +2472,10 @@ export interface paths {
          *         409: Slug conflict (name/team rename collisions are not possible
          *             here since slug is immutable via this endpoint).
          */
-        patch: operations["update_integration_organizations__org_slug__integrations__slug__patch"];
+        patch: operations["update_integration_api_organizations__org_slug__integrations__slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/integrations/{slug}/credentials": {
+    "/api/organizations/{org_slug}/integrations/{slug}/credentials": {
         parameters: {
             query?: never;
             header?: never;
@@ -2491,7 +2491,7 @@ export interface paths {
          *         404: Integration not found.
          *         409: Concurrent modification; retry.
          */
-        put: operations["update_integration_credentials_organizations__org_slug__integrations__slug__credentials_put"];
+        put: operations["update_integration_credentials_api_organizations__org_slug__integrations__slug__credentials_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2499,7 +2499,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/integrations/{slug}/login-provider": {
+    "/api/organizations/{org_slug}/integrations/{slug}/login-provider": {
         parameters: {
             query?: never;
             header?: never;
@@ -2522,7 +2522,7 @@ export interface paths {
          *             capability.
          *         404: Integration not found.
          */
-        put: operations["set_login_provider_organizations__org_slug__integrations__slug__login_provider_put"];
+        put: operations["set_login_provider_api_organizations__org_slug__integrations__slug__login_provider_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2530,7 +2530,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments": {
+    "/api/organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments": {
         parameters: {
             query?: never;
             header?: never;
@@ -2541,7 +2541,7 @@ export interface paths {
          * List Capability Assignments
          * @description List an Integration capability's project-type assignments.
          */
-        get: operations["list_capability_assignments_organizations__org_slug__integrations__slug__capabilities__kind__assignments_get"];
+        get: operations["list_capability_assignments_api_organizations__org_slug__integrations__slug__capabilities__kind__assignments_get"];
         /**
          * Replace Capability Assignments Endpoint
          * @description Replace a capability's project-type assignments for one Integration.
@@ -2556,7 +2556,7 @@ export interface paths {
          *         404: Integration, a referenced project type, or a referenced
          *             identity integration was not found.
          */
-        put: operations["replace_capability_assignments_endpoint_organizations__org_slug__integrations__slug__capabilities__kind__assignments_put"];
+        put: operations["replace_capability_assignments_endpoint_api_organizations__org_slug__integrations__slug__capabilities__kind__assignments_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2564,7 +2564,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/webhooks/": {
+    "/api/organizations/{org_slug}/webhooks/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2575,7 +2575,7 @@ export interface paths {
          * List Webhooks
          * @description List webhooks for an organization.
          */
-        get: operations["list_webhooks_organizations__org_slug__webhooks__get"];
+        get: operations["list_webhooks_api_organizations__org_slug__webhooks__get"];
         put?: never;
         /**
          * Create Webhook
@@ -2586,14 +2586,14 @@ export interface paths {
          *     - id: nanoid (21-char URL-safe string, stable surrogate key)
          *     - notification_path: ``/{id}``
          */
-        post: operations["create_webhook_organizations__org_slug__webhooks__post"];
+        post: operations["create_webhook_api_organizations__org_slug__webhooks__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/webhooks/{webhook}": {
+    "/api/organizations/{org_slug}/webhooks/{webhook}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2604,14 +2604,14 @@ export interface paths {
          * Get Webhook
          * @description Get a webhook by slug or id.
          */
-        get: operations["get_webhook_organizations__org_slug__webhooks__webhook__get"];
+        get: operations["get_webhook_api_organizations__org_slug__webhooks__webhook__get"];
         put?: never;
         post?: never;
         /**
          * Delete Webhook
          * @description Delete a webhook and its rules.
          */
-        delete: operations["delete_webhook_organizations__org_slug__webhooks__webhook__delete"];
+        delete: operations["delete_webhook_api_organizations__org_slug__webhooks__webhook__delete"];
         options?: never;
         head?: never;
         /**
@@ -2625,10 +2625,10 @@ export interface paths {
          *     explicitly set in the same patch, the slug is auto-regenerated
          *     from the new integration slug and webhook name.
          */
-        patch: operations["patch_webhook_organizations__org_slug__webhooks__webhook__patch"];
+        patch: operations["patch_webhook_api_organizations__org_slug__webhooks__webhook__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/events/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/events/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2639,7 +2639,7 @@ export interface paths {
          * List Project Events
          * @description List events for a specific project.
          */
-        get: operations["list_project_events_organizations__org_slug__projects__project_id__events__get"];
+        get: operations["list_project_events_api_organizations__org_slug__projects__project_id__events__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2648,7 +2648,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/operations-log/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/operations-log/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2659,7 +2659,7 @@ export interface paths {
          * List Project Operation Logs
          * @description List operations log entries for a specific project.
          */
-        get: operations["list_project_operation_logs_organizations__org_slug__projects__project_id__operations_log__get"];
+        get: operations["list_project_operation_logs_api_organizations__org_slug__projects__project_id__operations_log__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2668,7 +2668,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/releases/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2684,20 +2684,20 @@ export interface paths {
          *     matched exactly. A null parameter is interpolated as Cypher ``null``
          *     and short-circuits the corresponding clause via ``null IS NULL``.
          */
-        get: operations["list_releases_organizations__org_slug__projects__project_id__releases__get"];
+        get: operations["list_releases_api_organizations__org_slug__projects__project_id__releases__get"];
         put?: never;
         /**
          * Create Release
          * @description Create a new release for a project.
          */
-        post: operations["create_release_organizations__org_slug__projects__project_id__releases__post"];
+        post: operations["create_release_api_organizations__org_slug__projects__project_id__releases__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/current": {
+    "/api/organizations/{org_slug}/projects/{project_id}/releases/current": {
         parameters: {
             query?: never;
             header?: never;
@@ -2720,7 +2720,7 @@ export interface paths {
          *     check-runs status on each env's currently-deployed version.
          *     Hydration failures are tolerated silently.
          */
-        get: operations["list_current_releases_organizations__org_slug__projects__project_id__releases_current_get"];
+        get: operations["list_current_releases_api_organizations__org_slug__projects__project_id__releases_current_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2729,7 +2729,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2740,7 +2740,7 @@ export interface paths {
          * Get Release
          * @description Get a single release by id.
          */
-        get: operations["get_release_organizations__org_slug__projects__project_id__releases__release_id__get"];
+        get: operations["get_release_api_organizations__org_slug__projects__project_id__releases__release_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2750,10 +2750,10 @@ export interface paths {
          * Patch Release
          * @description Apply a JSON Patch (RFC 6902) to a release.
          */
-        patch: operations["patch_release_organizations__org_slug__projects__project_id__releases__release_id__patch"];
+        patch: operations["patch_release_api_organizations__org_slug__projects__project_id__releases__release_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments/{env_slug}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments/{env_slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2764,20 +2764,27 @@ export interface paths {
          * Get Deployment Edge
          * @description Get a single deployment edge by environment slug.
          */
-        get: operations["get_deployment_edge_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__get"];
+        get: operations["get_deployment_edge_api_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__get"];
         put?: never;
         /**
          * Record Deployment
          * @description Record a deployment event for a release in an environment.
+         *
+         *     Delegates persistence to :func:`append_deployment_event` so a webhook
+         *     status update for a run the in-product deploy flow already recorded
+         *     deduplicates on ``external_run_id`` (refreshing the existing event in
+         *     place) instead of appending a second, anonymous event that would blank
+         *     "Deployed by". The delegate's ``'no_release'`` / ``'no_env'``
+         *     discriminants map to the endpoint's distinct 404 / 422 responses.
          */
-        post: operations["record_deployment_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__post"];
+        post: operations["record_deployment_api_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments": {
+    "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments": {
         parameters: {
             query?: never;
             header?: never;
@@ -2788,7 +2795,7 @@ export interface paths {
          * List Deployment Edges
          * @description List every environment edge for a release.
          */
-        get: operations["list_deployment_edges_organizations__org_slug__projects__project_id__releases__release_id__environments_get"];
+        get: operations["list_deployment_edges_api_organizations__org_slug__projects__project_id__releases__release_id__environments_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2797,7 +2804,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/sbom": {
+    "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/sbom": {
         parameters: {
             query?: never;
             header?: never;
@@ -2815,7 +2822,7 @@ export interface paths {
          *     ``Component`` / ``ComponentRelease`` / ``ComponentIdentifier``
          *     nodes are MERGE-ed so other projects keep their references.
          */
-        put: operations["put_release_sbom_organizations__org_slug__projects__project_id__releases__release_id__sbom_put"];
+        put: operations["put_release_sbom_api_organizations__org_slug__projects__project_id__releases__release_id__sbom_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2823,7 +2830,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/dependencies": {
+    "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/dependencies": {
         parameters: {
             query?: never;
             header?: never;
@@ -2839,7 +2846,7 @@ export interface paths {
          *     common bootstrap case, not an error. ``404`` is returned only
          *     when the release itself is unknown.
          */
-        get: operations["list_release_dependencies_organizations__org_slug__projects__project_id__releases__release_id__dependencies_get"];
+        get: operations["list_release_dependencies_api_organizations__org_slug__projects__project_id__releases__release_id__dependencies_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2848,7 +2855,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/services/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/services/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2859,20 +2866,20 @@ export interface paths {
          * List Project Services
          * @description List integrations this project exists in.
          */
-        get: operations["list_project_services_organizations__org_slug__projects__project_id__services__get"];
+        get: operations["list_project_services_api_organizations__org_slug__projects__project_id__services__get"];
         put?: never;
         /**
          * Create Project Service
          * @description Add an EXISTS_IN link between a project and a service.
          */
-        post: operations["create_project_service_organizations__org_slug__projects__project_id__services__post"];
+        post: operations["create_project_service_api_organizations__org_slug__projects__project_id__services__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/services/{service_slug}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/services/{service_slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2888,19 +2895,19 @@ export interface paths {
          *     authoritative for which link is updated. Clearing ``dashboard_url``
          *     (empty/absent) removes the mirrored ``Project.links`` entry.
          */
-        put: operations["update_project_service_organizations__org_slug__projects__project_id__services__service_slug__put"];
+        put: operations["update_project_service_api_organizations__org_slug__projects__project_id__services__service_slug__put"];
         post?: never;
         /**
          * Delete Project Service
          * @description Remove an EXISTS_IN link.
          */
-        delete: operations["delete_project_service_organizations__org_slug__projects__project_id__services__service_slug__delete"];
+        delete: operations["delete_project_service_api_organizations__org_slug__projects__project_id__services__service_slug__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/tags/": {
+    "/api/organizations/{org_slug}/tags/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2911,20 +2918,20 @@ export interface paths {
          * List Tags
          * @description List tags in an organization, each with a document count.
          */
-        get: operations["list_tags_organizations__org_slug__tags__get"];
+        get: operations["list_tags_api_organizations__org_slug__tags__get"];
         put?: never;
         /**
          * Create Tag
          * @description Create a new tag in an organization.
          */
-        post: operations["create_tag_organizations__org_slug__tags__post"];
+        post: operations["create_tag_api_organizations__org_slug__tags__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/tags/{tag_slug}": {
+    "/api/organizations/{org_slug}/tags/{tag_slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2935,24 +2942,24 @@ export interface paths {
          * Get Tag
          * @description Retrieve a single tag by slug.
          */
-        get: operations["get_tag_organizations__org_slug__tags__tag_slug__get"];
+        get: operations["get_tag_api_organizations__org_slug__tags__tag_slug__get"];
         put?: never;
         post?: never;
         /**
          * Delete Tag
          * @description Delete a tag. Any ``TAGGED_WITH`` edges are removed.
          */
-        delete: operations["delete_tag_organizations__org_slug__tags__tag_slug__delete"];
+        delete: operations["delete_tag_api_organizations__org_slug__tags__tag_slug__delete"];
         options?: never;
         head?: never;
         /**
          * Patch Tag
          * @description Update a tag via JSON Patch (name/slug/description).
          */
-        patch: operations["patch_tag_organizations__org_slug__tags__tag_slug__patch"];
+        patch: operations["patch_tag_api_organizations__org_slug__tags__tag_slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/": {
+    "/api/organizations/{org_slug}/documents/": {
         parameters: {
             query?: never;
             header?: never;
@@ -2966,7 +2973,7 @@ export interface paths {
          *     Filter by tag slug, project id, project-type slug, and/or user
          *     email.
          */
-        get: operations["list_documents_organizations__org_slug__documents__get"];
+        get: operations["list_documents_api_organizations__org_slug__documents__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2975,7 +2982,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}": {
+    "/api/organizations/{org_slug}/documents/{document_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2986,24 +2993,48 @@ export interface paths {
          * Get Org Document
          * @description Retrieve a single document regardless of attachment kind.
          */
-        get: operations["get_org_document_organizations__org_slug__documents__document_id__get"];
+        get: operations["get_org_document_api_organizations__org_slug__documents__document_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Org Document
          * @description Delete a document regardless of attachment kind.
          */
-        delete: operations["delete_org_document_organizations__org_slug__documents__document_id__delete"];
+        delete: operations["delete_org_document_api_organizations__org_slug__documents__document_id__delete"];
         options?: never;
         head?: never;
         /**
          * Patch Org Document
          * @description Update a document via JSON Patch regardless of attachment kind.
          */
-        patch: operations["patch_org_document_organizations__org_slug__documents__document_id__patch"];
+        patch: operations["patch_org_document_api_organizations__org_slug__documents__document_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/versions": {
+    "/api/organizations/{org_slug}/document-analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Org Document Analytics
+         * @description Org-wide read report.
+         *
+         *     ``never-read`` is answered from the graph rather than ClickHouse --
+         *     a document with no sessions has nothing to select -- by listing the
+         *     org's documents and subtracting the ones that have been read.
+         */
+        get: operations["get_org_document_analytics_api_organizations__org_slug__document_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/documents/{document_id}/versions": {
         parameters: {
             query?: never;
             header?: never;
@@ -3014,7 +3045,7 @@ export interface paths {
          * List Document Versions
          * @description List a document's version history, newest first.
          */
-        get: operations["list_document_versions_organizations__org_slug__documents__document_id__versions_get"];
+        get: operations["list_document_versions_api_organizations__org_slug__documents__document_id__versions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3023,7 +3054,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/versions/{version}": {
+    "/api/organizations/{org_slug}/documents/{document_id}/versions/{version}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3034,7 +3065,7 @@ export interface paths {
          * Get Document Version
          * @description Retrieve the full snapshot of a single document version.
          */
-        get: operations["get_document_version_organizations__org_slug__documents__document_id__versions__version__get"];
+        get: operations["get_document_version_api_organizations__org_slug__documents__document_id__versions__version__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3043,7 +3074,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/versions/{version}/restore": {
+    "/api/organizations/{org_slug}/documents/{document_id}/versions/{version}/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -3058,16 +3089,17 @@ export interface paths {
          *
          *     Applies the old snapshot as a normal update, producing a new
          *     version with ``change_kind='restore'`` — history is never
-         *     rewritten.
+         *     rewritten. Snapshot tags that no longer exist in the org are
+         *     dropped rather than failing the restore.
          */
-        post: operations["restore_document_version_organizations__org_slug__documents__document_id__versions__version__restore_post"];
+        post: operations["restore_document_version_api_organizations__org_slug__documents__document_id__versions__version__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/editing": {
+    "/api/organizations/{org_slug}/documents/{document_id}/editing": {
         parameters: {
             query?: never;
             header?: never;
@@ -3078,16 +3110,17 @@ export interface paths {
          * Get Document Editors
          * @description List who is currently editing the document.
          */
-        get: operations["get_document_editors_organizations__org_slug__documents__document_id__editing_get"];
+        get: operations["get_document_editors_api_organizations__org_slug__documents__document_id__editing_get"];
         /**
          * Heartbeat Document Editing
          * @description Start or refresh the caller's editing marker.
          *
          *     Idempotent; clients call this every few seconds while the editor
          *     is open. The response includes every active editor (including the
-         *     caller) so the editing client needs no separate GET poll.
+         *     caller) so the editing client needs no separate GET poll. All four
+         *     Valkey commands are batched in one pipeline (one round-trip).
          */
-        put: operations["heartbeat_document_editing_organizations__org_slug__documents__document_id__editing_put"];
+        put: operations["heartbeat_document_editing_api_organizations__org_slug__documents__document_id__editing_put"];
         post?: never;
         /**
          * Clear Document Editing
@@ -3096,13 +3129,133 @@ export interface paths {
          *     Best-effort — the marker expires on its own within
          *     ``PRESENCE_TTL_SECONDS`` regardless.
          */
-        delete: operations["clear_document_editing_organizations__org_slug__documents__document_id__editing_delete"];
+        delete: operations["clear_document_editing_api_organizations__org_slug__documents__document_id__editing_delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/documents/": {
+    "/api/organizations/{org_slug}/documents/{document_id}/like": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Like Document
+         * @description Like the document as the calling principal.
+         *
+         *     Idempotent: liking a document twice leaves one like, and the second
+         *     call does not disturb the original ``at`` timestamp, so a
+         *     double-tapped button cannot reorder the liker list.
+         */
+        put: operations["like_document_api_organizations__org_slug__documents__document_id__like_put"];
+        post?: never;
+        /**
+         * Unlike Document
+         * @description Remove the calling principal's like.
+         *
+         *     Idempotent: unliking a document the caller never liked succeeds and
+         *     reports the unchanged count.
+         */
+        delete: operations["unlike_document_api_organizations__org_slug__documents__document_id__like_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/documents/{document_id}/likes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Likers
+         * @description List who liked the document, most recent first.
+         */
+        get: operations["list_document_likers_api_organizations__org_slug__documents__document_id__likes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/documents/{document_id}/read-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Read Events
+         * @description Accept a batch of read heartbeats.
+         *
+         *     Always 202, even when the write fails: the reader has already got
+         *     what they came for and an analytics error is not their problem.
+         *     Returns 404 only when the document does not resolve within the org,
+         *     which is an authorization answer rather than an ingest one.
+         */
+        post: operations["record_read_events_api_organizations__org_slug__documents__document_id__read_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/documents/{document_id}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Analytics
+         * @description Aggregate read analytics for one document.
+         */
+        get: operations["get_document_analytics_api_organizations__org_slug__documents__document_id__analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/documents/{document_id}/analytics/readers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Readers
+         * @description Per-reader detail: who read it, when, how often, how long.
+         *
+         *     Gated by ``document:analytics:read_identities`` and the org's
+         *     ``document_analytics_identities`` setting -- a named list of who
+         *     read what is a different kind of data from an aggregate count.
+         */
+        get: operations["list_document_readers_api_organizations__org_slug__documents__document_id__analytics_readers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/documents/": {
         parameters: {
             query?: never;
             header?: never;
@@ -3113,20 +3266,20 @@ export interface paths {
          * List Project Documents
          * @description List documents attached to a specific project.
          */
-        get: operations["list_project_documents_organizations__org_slug__projects__project_id__documents__get"];
+        get: operations["list_project_documents_api_organizations__org_slug__projects__project_id__documents__get"];
         put?: never;
         /**
          * Create Document
          * @description Create a document attached to a project, optionally with tags.
          */
-        post: operations["create_document_organizations__org_slug__projects__project_id__documents__post"];
+        post: operations["create_document_api_organizations__org_slug__projects__project_id__documents__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3137,24 +3290,24 @@ export interface paths {
          * Get Document
          * @description Retrieve a single project document.
          */
-        get: operations["get_document_organizations__org_slug__projects__project_id__documents__document_id__get"];
+        get: operations["get_document_api_organizations__org_slug__projects__project_id__documents__document_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Document
          * @description Delete a project document.
          */
-        delete: operations["delete_document_organizations__org_slug__projects__project_id__documents__document_id__delete"];
+        delete: operations["delete_document_api_organizations__org_slug__projects__project_id__documents__document_id__delete"];
         options?: never;
         head?: never;
         /**
          * Patch Document
          * @description Update document content and/or tag attachments via JSON Patch.
          */
-        patch: operations["patch_document_organizations__org_slug__projects__project_id__documents__document_id__patch"];
+        patch: operations["patch_document_api_organizations__org_slug__projects__project_id__documents__document_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/project-types/{type_slug}/documents/": {
+    "/api/organizations/{org_slug}/project-types/{type_slug}/documents/": {
         parameters: {
             query?: never;
             header?: never;
@@ -3165,20 +3318,20 @@ export interface paths {
          * List Project Type Documents
          * @description List documents attached to a specific project type.
          */
-        get: operations["list_project_type_documents_organizations__org_slug__project_types__type_slug__documents__get"];
+        get: operations["list_project_type_documents_api_organizations__org_slug__project_types__type_slug__documents__get"];
         put?: never;
         /**
          * Create Project Type Document
          * @description Create a document attached to a project type.
          */
-        post: operations["create_project_type_document_organizations__org_slug__project_types__type_slug__documents__post"];
+        post: operations["create_project_type_document_api_organizations__org_slug__project_types__type_slug__documents__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/users/{email}/documents/": {
+    "/api/organizations/{org_slug}/users/{email}/documents/": {
         parameters: {
             query?: never;
             header?: never;
@@ -3189,20 +3342,20 @@ export interface paths {
          * List User Documents
          * @description List documents attached to a specific user.
          */
-        get: operations["list_user_documents_organizations__org_slug__users__email__documents__get"];
+        get: operations["list_user_documents_api_organizations__org_slug__users__email__documents__get"];
         put?: never;
         /**
          * Create User Document
          * @description Create a document attached to a user (org member).
          */
-        post: operations["create_user_document_organizations__org_slug__users__email__documents__post"];
+        post: operations["create_user_document_api_organizations__org_slug__users__email__documents__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments": {
+    "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments": {
         parameters: {
             query?: never;
             header?: never;
@@ -3213,20 +3366,20 @@ export interface paths {
          * List Comment Threads
          * @description List every comment thread on a document, comments oldest-first.
          */
-        get: operations["list_comment_threads_organizations__org_slug__projects__project_id__documents__document_id__comments_get"];
+        get: operations["list_comment_threads_api_organizations__org_slug__projects__project_id__documents__document_id__comments_get"];
         put?: never;
         /**
          * Create Comment Thread
          * @description Create a thread, its ``ON_DOCUMENT`` edge, and the root comment.
          */
-        post: operations["create_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments_post"];
+        post: operations["create_comment_thread_api_organizations__org_slug__projects__project_id__documents__document_id__comments_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments": {
+    "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments": {
         parameters: {
             query?: never;
             header?: never;
@@ -3239,14 +3392,14 @@ export interface paths {
          * Create Reply
          * @description Add a reply comment to an existing thread.
          */
-        post: operations["create_reply_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments_post"];
+        post: operations["create_reply_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3263,10 +3416,10 @@ export interface paths {
          * Patch Comment Thread
          * @description Resolve or reopen a thread via JSON Patch (only ``/resolved``).
          */
-        patch: operations["patch_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__patch"];
+        patch: operations["patch_comment_thread_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3281,7 +3434,7 @@ export interface paths {
          * @description Delete a comment. Author-only. Deletes the thread if it was the
          *     root and no other comments remain.
          */
-        delete: operations["delete_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__delete"];
+        delete: operations["delete_comment_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -3290,10 +3443,10 @@ export interface paths {
          *
          *     Author-only.
          */
-        patch: operations["patch_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__patch"];
+        patch: operations["patch_comment_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}/acknowledge": {
+    "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}/acknowledge": {
         parameters: {
             query?: never;
             header?: never;
@@ -3306,14 +3459,14 @@ export interface paths {
          * Acknowledge Comment
          * @description Toggle the principal in the comment's ``acknowledged_by`` array.
          */
-        post: operations["acknowledge_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post"];
+        post: operations["acknowledge_comment_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/comments": {
+    "/api/organizations/{org_slug}/documents/{document_id}/comments": {
         parameters: {
             query?: never;
             header?: never;
@@ -3324,20 +3477,20 @@ export interface paths {
          * List Comment Threads
          * @description List every comment thread on a document, comments oldest-first.
          */
-        get: operations["list_comment_threads_organizations__org_slug__documents__document_id__comments_get"];
+        get: operations["list_comment_threads_api_organizations__org_slug__documents__document_id__comments_get"];
         put?: never;
         /**
          * Create Comment Thread
          * @description Create a thread, its ``ON_DOCUMENT`` edge, and the root comment.
          */
-        post: operations["create_comment_thread_organizations__org_slug__documents__document_id__comments_post"];
+        post: operations["create_comment_thread_api_organizations__org_slug__documents__document_id__comments_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments": {
+    "/api/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments": {
         parameters: {
             query?: never;
             header?: never;
@@ -3350,14 +3503,14 @@ export interface paths {
          * Create Reply
          * @description Add a reply comment to an existing thread.
          */
-        post: operations["create_reply_organizations__org_slug__documents__document_id__comments__thread_id__comments_post"];
+        post: operations["create_reply_api_organizations__org_slug__documents__document_id__comments__thread_id__comments_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}": {
+    "/api/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3374,10 +3527,10 @@ export interface paths {
          * Patch Comment Thread
          * @description Resolve or reopen a thread via JSON Patch (only ``/resolved``).
          */
-        patch: operations["patch_comment_thread_organizations__org_slug__documents__document_id__comments__thread_id__patch"];
+        patch: operations["patch_comment_thread_api_organizations__org_slug__documents__document_id__comments__thread_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}": {
+    "/api/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3392,7 +3545,7 @@ export interface paths {
          * @description Delete a comment. Author-only. Deletes the thread if it was the
          *     root and no other comments remain.
          */
-        delete: operations["delete_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__delete"];
+        delete: operations["delete_comment_api_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -3401,10 +3554,10 @@ export interface paths {
          *
          *     Author-only.
          */
-        patch: operations["patch_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__patch"];
+        patch: operations["patch_comment_api_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}/acknowledge": {
+    "/api/organizations/{org_slug}/documents/{document_id}/comments/{thread_id}/comments/{comment_id}/acknowledge": {
         parameters: {
             query?: never;
             header?: never;
@@ -3417,14 +3570,14 @@ export interface paths {
          * Acknowledge Comment
          * @description Toggle the principal in the comment's ``acknowledged_by`` array.
          */
-        post: operations["acknowledge_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post"];
+        post: operations["acknowledge_comment_api_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/document-templates/": {
+    "/api/organizations/{org_slug}/document-templates/": {
         parameters: {
             query?: never;
             header?: never;
@@ -3443,20 +3596,20 @@ export interface paths {
          *     ``type`` matches the attachment context (or is ``'global'``) are
          *     returned.
          */
-        get: operations["list_document_templates_organizations__org_slug__document_templates__get"];
+        get: operations["list_document_templates_api_organizations__org_slug__document_templates__get"];
         put?: never;
         /**
          * Create Document Template
          * @description Create a document template scoped to ``org_slug``.
          */
-        post: operations["create_document_template_organizations__org_slug__document_templates__post"];
+        post: operations["create_document_template_api_organizations__org_slug__document_templates__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/document-templates/{slug}": {
+    "/api/organizations/{org_slug}/document-templates/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3467,28 +3620,28 @@ export interface paths {
          * Get Document Template
          * @description Get a document template by slug.
          */
-        get: operations["get_document_template_organizations__org_slug__document_templates__slug__get"];
+        get: operations["get_document_template_api_organizations__org_slug__document_templates__slug__get"];
         /**
          * Update Document Template
          * @description Update a document template (whole-or-partial replace).
          */
-        put: operations["update_document_template_organizations__org_slug__document_templates__slug__put"];
+        put: operations["update_document_template_api_organizations__org_slug__document_templates__slug__put"];
         post?: never;
         /**
          * Delete Document Template
          * @description Delete a document template.
          */
-        delete: operations["delete_document_template_organizations__org_slug__document_templates__slug__delete"];
+        delete: operations["delete_document_template_api_organizations__org_slug__document_templates__slug__delete"];
         options?: never;
         head?: never;
         /**
          * Patch Document Template
          * @description Partially update a document template using JSON Patch (RFC 6902).
          */
-        patch: operations["patch_document_template_organizations__org_slug__document_templates__slug__patch"];
+        patch: operations["patch_document_template_api_organizations__org_slug__document_templates__slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/configuration/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/configuration/": {
         parameters: {
             query?: never;
             header?: never;
@@ -3499,7 +3652,7 @@ export interface paths {
          * Get Configuration
          * @description List configuration keys for a project via the assigned plugin.
          */
-        get: operations["get_configuration_organizations__org_slug__projects__project_id__configuration__get"];
+        get: operations["get_configuration_api_organizations__org_slug__projects__project_id__configuration__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3508,7 +3661,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/configuration/values:fetch": {
+    "/api/organizations/{org_slug}/projects/{project_id}/configuration/prefix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Configuration Prefix
+         * @description Resolve the key prefix the assigned plugin reads and writes under.
+         *
+         *     Keys come back with the prefix stripped and the capability options may
+         *     reference variables only the plugin can expand (``project_type_slug``
+         *     is remapped by an integration-level option), so the prefix has to be
+         *     resolved server-side for display.
+         *
+         *     Called without ``environment`` the placeholder is passed through as a
+         *     literal ``${environment}``: the segment genuinely varies per row, and
+         *     substituting any single environment's value would be misleading.
+         */
+        get: operations["get_configuration_prefix_api_organizations__org_slug__projects__project_id__configuration_prefix_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/configuration/values:fetch": {
         parameters: {
             query?: never;
             header?: never;
@@ -3521,14 +3703,14 @@ export interface paths {
          * Fetch Values
          * @description Fetch values for specific configuration keys.
          */
-        post: operations["fetch_values_organizations__org_slug__projects__project_id__configuration_values_fetch_post"];
+        post: operations["fetch_values_api_organizations__org_slug__projects__project_id__configuration_values_fetch_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/configuration/{key}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/configuration/{key}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3540,19 +3722,19 @@ export interface paths {
          * Set Configuration Value
          * @description Set a configuration value via the assigned plugin.
          */
-        put: operations["set_configuration_value_organizations__org_slug__projects__project_id__configuration__key__put"];
+        put: operations["set_configuration_value_api_organizations__org_slug__projects__project_id__configuration__key__put"];
         post?: never;
         /**
          * Delete Configuration Key
          * @description Delete a configuration key via the assigned plugin.
          */
-        delete: operations["delete_configuration_key_organizations__org_slug__projects__project_id__configuration__key__delete"];
+        delete: operations["delete_configuration_key_api_organizations__org_slug__projects__project_id__configuration__key__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/logs/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/logs/": {
         parameters: {
             query?: never;
             header?: never;
@@ -3576,7 +3758,7 @@ export interface paths {
          *     query so rare levels can still be located even when total volume
          *     is high.
          */
-        get: operations["search_logs_organizations__org_slug__projects__project_id__logs__get"];
+        get: operations["search_logs_api_organizations__org_slug__projects__project_id__logs__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3585,7 +3767,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/logs/histogram": {
+    "/api/organizations/{org_slug}/projects/{project_id}/logs/histogram": {
         parameters: {
             query?: never;
             header?: never;
@@ -3602,7 +3784,7 @@ export interface paths {
          *     counts at matching timestamps; per-level counts are aggregated
          *     across envs.
          */
-        get: operations["get_log_histogram_organizations__org_slug__projects__project_id__logs_histogram_get"];
+        get: operations["get_log_histogram_api_organizations__org_slug__projects__project_id__logs_histogram_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3611,7 +3793,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/logs/schema": {
+    "/api/organizations/{org_slug}/projects/{project_id}/logs/schema": {
         parameters: {
             query?: never;
             header?: never;
@@ -3622,7 +3804,7 @@ export interface paths {
          * Get Log Schema
          * @description Get the log schema (available fields) for the assigned logs plugin.
          */
-        get: operations["get_log_schema_organizations__org_slug__projects__project_id__logs_schema_get"];
+        get: operations["get_log_schema_api_organizations__org_slug__projects__project_id__logs_schema_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3631,7 +3813,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/incidents/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/incidents/": {
         parameters: {
             query?: never;
             header?: never;
@@ -3648,7 +3830,7 @@ export interface paths {
          *     ``?status=triggered&status=acknowledged``). Read-only -- there is no
          *     local incident store; the source system stays authoritative.
          */
-        get: operations["list_incidents_organizations__org_slug__projects__project_id__incidents__get"];
+        get: operations["list_incidents_api_organizations__org_slug__projects__project_id__incidents__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3657,7 +3839,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/lifecycle/sync": {
+    "/api/organizations/{org_slug}/projects/{project_id}/lifecycle/sync": {
         parameters: {
             query?: never;
             header?: never;
@@ -3675,14 +3857,14 @@ export interface paths {
          *     existing one.  Returns aggregate per-plugin counts; a project with
          *     no lifecycle plugins returns a zeroed summary.
          */
-        post: operations["sync_project_lifecycle_organizations__org_slug__projects__project_id__lifecycle_sync_post"];
+        post: operations["sync_project_lifecycle_api_organizations__org_slug__projects__project_id__lifecycle_sync_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/refs": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/refs": {
         parameters: {
             query?: never;
             header?: never;
@@ -3693,7 +3875,7 @@ export interface paths {
          * List Refs
          * @description List branches, tags, or the default ref for the project's repo.
          */
-        get: operations["list_refs_organizations__org_slug__projects__project_id__deployments_refs_get"];
+        get: operations["list_refs_api_organizations__org_slug__projects__project_id__deployments_refs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3702,7 +3884,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/refs/{ref}/commits": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/refs/{ref}/commits": {
         parameters: {
             query?: never;
             header?: never;
@@ -3713,7 +3895,7 @@ export interface paths {
          * List Commits
          * @description List recent commits on a branch / tag / SHA.
          */
-        get: operations["list_commits_organizations__org_slug__projects__project_id__deployments_refs__ref__commits_get"];
+        get: operations["list_commits_api_organizations__org_slug__projects__project_id__deployments_refs__ref__commits_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3722,7 +3904,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/commits/{committish}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/commits/{committish}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3733,7 +3915,7 @@ export interface paths {
          * Resolve Commit
          * @description Resolve a SHA / branch / tag / ``refs/pull/N/head``.
          */
-        get: operations["resolve_commit_organizations__org_slug__projects__project_id__deployments_commits__committish__get"];
+        get: operations["resolve_commit_api_organizations__org_slug__projects__project_id__deployments_commits__committish__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3742,7 +3924,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/compare": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/compare": {
         parameters: {
             query?: never;
             header?: never;
@@ -3753,7 +3935,7 @@ export interface paths {
          * Compare Refs
          * @description Compare two refs (``base..head``).
          */
-        get: operations["compare_refs_organizations__org_slug__projects__project_id__deployments_compare_get"];
+        get: operations["compare_refs_api_organizations__org_slug__projects__project_id__deployments_compare_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3762,7 +3944,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments": {
         parameters: {
             query?: never;
             header?: never;
@@ -3785,14 +3967,14 @@ export interface paths {
          *     workflow against the tag for ``to_environment``, upserts the
          *     matching ``Release`` node, and records the deployment event.
          */
-        post: operations["trigger_deployment_organizations__org_slug__projects__project_id__deployments_post"];
+        post: operations["trigger_deployment_api_organizations__org_slug__projects__project_id__deployments_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/resync": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/resync": {
         parameters: {
             query?: never;
             header?: never;
@@ -3825,14 +4007,14 @@ export interface paths {
          *     button using the plugin manifest flag.  Returns ``enqueued=False``
          *     when the job was debounced or Valkey is unavailable.
          */
-        post: operations["resync_project_deployments_organizations__org_slug__projects__project_id__deployments_resync_post"];
+        post: operations["resync_project_deployments_api_organizations__org_slug__projects__project_id__deployments_resync_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/sync-status": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/sync-status": {
         parameters: {
             query?: never;
             header?: never;
@@ -3843,7 +4025,7 @@ export interface paths {
          * Get Deployment Sync Status
          * @description Return the project's last deployment-resync state.
          */
-        get: operations["get_deployment_sync_status_organizations__org_slug__projects__project_id__deployments_sync_status_get"];
+        get: operations["get_deployment_sync_status_api_organizations__org_slug__projects__project_id__deployments_sync_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3852,7 +4034,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/runs/{run_id}": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/runs/{run_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3867,7 +4049,7 @@ export interface paths {
          *     TanStack Query ``refetchInterval`` hook to flip
          *     ``in_progress → success / failed`` without a page reload.
          */
-        get: operations["get_deployment_run_organizations__org_slug__projects__project_id__deployments_runs__run_id__get"];
+        get: operations["get_deployment_run_api_organizations__org_slug__projects__project_id__deployments_runs__run_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3876,7 +4058,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/draft-release-notes": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/draft-release-notes": {
         parameters: {
             query?: never;
             header?: never;
@@ -3896,14 +4078,14 @@ export interface paths {
          *     grouping with ``degraded=true`` when Claude is unavailable, the
          *     response can't be parsed, or schema validation fails.
          */
-        post: operations["draft_release_notes_organizations__org_slug__projects__project_id__deployments_draft_release_notes_post"];
+        post: operations["draft_release_notes_api_organizations__org_slug__projects__project_id__deployments_draft_release_notes_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/promotion-options": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/promotion-options": {
         parameters: {
             query?: never;
             header?: never;
@@ -3921,7 +4103,7 @@ export interface paths {
          *     them via ``plugin.compare()``.  Plugin failures are tolerated:
          *     the entry returns ``commits_pending=None``.
          */
-        get: operations["list_promotion_options_organizations__org_slug__projects__project_id__deployments_promotion_options_get"];
+        get: operations["list_promotion_options_api_organizations__org_slug__projects__project_id__deployments_promotion_options_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3930,7 +4112,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/recent-commits": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/recent-commits": {
         parameters: {
             query?: never;
             header?: never;
@@ -3944,7 +4126,7 @@ export interface paths {
          *     Ordered by push then author time across all synced refs; pass ``ref``
          *     to scope to one branch.  Capped at 200.
          */
-        get: operations["list_recent_commits_organizations__org_slug__projects__project_id__deployments_recent_commits_get"];
+        get: operations["list_recent_commits_api_organizations__org_slug__projects__project_id__deployments_recent_commits_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3953,7 +4135,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/release-drift": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/release-drift": {
         parameters: {
             query?: never;
             header?: never;
@@ -3968,7 +4150,7 @@ export interface paths {
          *     the commits authored after the tag's commit.  With no prior tag the
          *     drift is the full (capped) history and the suggestion is ``v0.1.0``.
          */
-        get: operations["get_release_drift_organizations__org_slug__projects__project_id__deployments_release_drift_get"];
+        get: operations["get_release_drift_api_organizations__org_slug__projects__project_id__deployments_release_drift_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3977,7 +4159,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/release-history": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/release-history": {
         parameters: {
             query?: never;
             header?: never;
@@ -3988,7 +4170,7 @@ export interface paths {
          * Get Release History
          * @description Release history: ClickHouse tags joined to their ``Release`` nodes.
          */
-        get: operations["get_release_history_organizations__org_slug__projects__project_id__deployments_release_history_get"];
+        get: operations["get_release_history_api_organizations__org_slug__projects__project_id__deployments_release_history_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3997,7 +4179,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/deployments/releases/cut": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/cut": {
         parameters: {
             query?: never;
             header?: never;
@@ -4016,14 +4198,47 @@ export interface paths {
          *     minus the deploy step), upsert the matching ``Release`` node, and
          *     record an audit row.
          */
-        post: operations["cut_release_organizations__org_slug__projects__project_id__deployments_releases_cut_post"];
+        post: operations["cut_release_api_organizations__org_slug__projects__project_id__deployments_releases_cut_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/analysis/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/{tag}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block Release
+         * @description Block ``tag`` from being deployed or promoted, with a reason.
+         *
+         *     Blocking is idempotent and re-blocking overwrites the reason and
+         *     re-stamps the actor.  A tag that has been synced but never cut
+         *     through Imbi has no ``Release`` node yet; one is created from the
+         *     synced tag so the block still holds.  A tag Imbi has never seen is
+         *     a 404.
+         */
+        post: operations["block_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__block_post"];
+        /**
+         * Unblock Release
+         * @description Clear the block on ``tag``, letting it ship again.
+         *
+         *     Unblocking an unblocked release is a no-op, not an error; a 404 only
+         *     means no ``Release`` node exists for the tag.
+         */
+        delete: operations["unblock_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__block_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/analysis/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4031,7 +4246,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Project Analysis */
-        get: operations["get_project_analysis_organizations__org_slug__projects__project_id__analysis__get"];
+        get: operations["get_project_analysis_api_organizations__org_slug__projects__project_id__analysis__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4040,7 +4255,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/analysis/run": {
+    "/api/organizations/{org_slug}/projects/{project_id}/analysis/run": {
         parameters: {
             query?: never;
             header?: never;
@@ -4050,14 +4265,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Run Project Analysis */
-        post: operations["run_project_analysis_organizations__org_slug__projects__project_id__analysis_run_post"];
+        post: operations["run_project_analysis_api_organizations__org_slug__projects__project_id__analysis_run_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/analysis/remediate": {
+    "/api/organizations/{org_slug}/projects/{project_id}/analysis/remediate": {
         parameters: {
             query?: never;
             header?: never;
@@ -4070,14 +4285,14 @@ export interface paths {
          * Remediate Project Finding
          * @description Apply one finding's fix, then return the refreshed report.
          */
-        post: operations["remediate_project_finding_organizations__org_slug__projects__project_id__analysis_remediate_post"];
+        post: operations["remediate_project_finding_api_organizations__org_slug__projects__project_id__analysis_remediate_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/analysis/remediate-all": {
+    "/api/organizations/{org_slug}/projects/{project_id}/analysis/remediate-all": {
         parameters: {
             query?: never;
             header?: never;
@@ -4090,14 +4305,14 @@ export interface paths {
          * Remediate All Project Findings
          * @description Apply every fixable finding in the current report (best-effort).
          */
-        post: operations["remediate_all_project_findings_organizations__org_slug__projects__project_id__analysis_remediate_all_post"];
+        post: operations["remediate_all_project_findings_api_organizations__org_slug__projects__project_id__analysis_remediate_all_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/commits/sync": {
+    "/api/organizations/{org_slug}/projects/{project_id}/commits/sync": {
         parameters: {
             query?: never;
             header?: never;
@@ -4117,14 +4332,14 @@ export interface paths {
          *     ``enqueued=False`` when the job was debounced or Valkey is
          *     unavailable.
          */
-        post: operations["sync_commits_and_tags_organizations__org_slug__projects__project_id__commits_sync_post"];
+        post: operations["sync_commits_and_tags_api_organizations__org_slug__projects__project_id__commits_sync_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/commits/sync-status": {
+    "/api/organizations/{org_slug}/projects/{project_id}/commits/sync-status": {
         parameters: {
             query?: never;
             header?: never;
@@ -4135,7 +4350,7 @@ export interface paths {
          * Get Commit Sync Status
          * @description Return the project's last commit/tag sync state.
          */
-        get: operations["get_commit_sync_status_organizations__org_slug__projects__project_id__commits_sync_status_get"];
+        get: operations["get_commit_sync_status_api_organizations__org_slug__projects__project_id__commits_sync_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4144,7 +4359,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/pull-requests/sync": {
+    "/api/organizations/{org_slug}/projects/{project_id}/pull-requests/sync": {
         parameters: {
             query?: never;
             header?: never;
@@ -4164,14 +4379,14 @@ export interface paths {
          *     ``enqueued=False`` when the job was debounced or Valkey is
          *     unavailable.
          */
-        post: operations["sync_pull_requests_organizations__org_slug__projects__project_id__pull_requests_sync_post"];
+        post: operations["sync_pull_requests_api_organizations__org_slug__projects__project_id__pull_requests_sync_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/pull-requests/sync-status": {
+    "/api/organizations/{org_slug}/projects/{project_id}/pull-requests/sync-status": {
         parameters: {
             query?: never;
             header?: never;
@@ -4182,7 +4397,7 @@ export interface paths {
          * Get Pr Sync Status
          * @description Return the project's last PR sync state.
          */
-        get: operations["get_pr_sync_status_organizations__org_slug__projects__project_id__pull_requests_sync_status_get"];
+        get: operations["get_pr_sync_status_api_organizations__org_slug__projects__project_id__pull_requests_sync_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4191,7 +4406,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/pull-requests/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/pull-requests/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4206,7 +4421,7 @@ export interface paths {
          *     Optional ``author`` filter accepts a GitHub login.
          *     Results are ordered newest first.
          */
-        get: operations["list_project_pull_requests_organizations__org_slug__projects__project_id__pull_requests__get"];
+        get: operations["list_project_pull_requests_api_organizations__org_slug__projects__project_id__pull_requests__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4215,7 +4430,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/pull-requests/": {
+    "/api/organizations/{org_slug}/pull-requests/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4231,7 +4446,7 @@ export interface paths {
          *     accepts ``open`` or ``closed``.  Optional ``author`` filter
          *     accepts a GitHub login.  Results are ordered newest first.
          */
-        get: operations["list_org_pull_requests_organizations__org_slug__pull_requests__get"];
+        get: operations["list_org_pull_requests_api_organizations__org_slug__pull_requests__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4240,7 +4455,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/pull-requests/activity": {
+    "/api/organizations/{org_slug}/pull-requests/activity": {
         parameters: {
             query?: never;
             header?: never;
@@ -4249,7 +4464,7 @@ export interface paths {
         };
         /**
          * Pull Request Activity
-         * @description Per-team-member PR activity (created/merged) across the org.
+         * @description Per-member PR activity (created/open/closed/merged) for the org.
          *
          *     ``since`` is an inclusive lower bound (``YYYY-MM-DD`` or ISO
          *     timestamp); it defaults to 30 days ago.  Authors are resolved to
@@ -4257,7 +4472,7 @@ export interface paths {
          *     unresolved logins are returned as-is.  Rows are ordered by merged
          *     then created, descending.
          */
-        get: operations["pull_request_activity_organizations__org_slug__pull_requests_activity_get"];
+        get: operations["pull_request_activity_api_organizations__org_slug__pull_requests_activity_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4266,7 +4481,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/search": {
+    "/api/organizations/{org_slug}/search": {
         parameters: {
             query?: never;
             header?: never;
@@ -4281,7 +4496,7 @@ export interface paths {
          *     first). ``threshold`` is a distance ceiling: 0.0 = identical,
          *     2.0 = maximally dissimilar.
          */
-        get: operations["search_organizations__org_slug__search_get"];
+        get: operations["search_api_organizations__org_slug__search_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4290,7 +4505,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/": {
+    "/api/organizations/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4304,7 +4519,7 @@ export interface paths {
          *     Returns:
          *         List of organizations with relationships.
          */
-        get: operations["list_organizations_organizations__get"];
+        get: operations["list_organizations_api_organizations__get"];
         put?: never;
         /**
          * Create Organization
@@ -4319,14 +4534,14 @@ export interface paths {
          *     Raises:
          *         409: Organization with slug already exists.
          */
-        post: operations["create_organization_organizations__post"];
+        post: operations["create_organization_api_organizations__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/organizations/{slug}": {
+    "/api/organizations/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4346,7 +4561,7 @@ export interface paths {
          *     Raises:
          *         404: Organization not found.
          */
-        get: operations["get_organization_organizations__slug__get"];
+        get: operations["get_organization_api_organizations__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -4359,7 +4574,7 @@ export interface paths {
          *     Raises:
          *         404: Organization not found.
          */
-        delete: operations["delete_organization_organizations__slug__delete"];
+        delete: operations["delete_organization_api_organizations__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -4379,10 +4594,10 @@ export interface paths {
          *         409: Slug rename conflicts with existing organization.
          *         422: Patch test operation failed.
          */
-        patch: operations["patch_organization_organizations__slug__patch"];
+        patch: operations["patch_organization_api_organizations__slug__patch"];
         trace?: never;
     };
-    "/organizations/{slug}/members": {
+    "/api/organizations/{slug}/members": {
         parameters: {
             query?: never;
             header?: never;
@@ -4402,7 +4617,7 @@ export interface paths {
          *     Raises:
          *         404: Organization not found.
          */
-        get: operations["list_organization_members_organizations__slug__members_get"];
+        get: operations["list_organization_members_api_organizations__slug__members_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4411,7 +4626,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/plugins/{slug}/entities/{label}/_schema": {
+    "/api/admin/plugins/{slug}/entities/{label}/_schema": {
         parameters: {
             query?: never;
             header?: never;
@@ -4422,7 +4637,7 @@ export interface paths {
          * Get Entity Schema
          * @description Return the JSON schema for a plugin entity model.
          */
-        get: operations["get_entity_schema_admin_plugins__slug__entities__label___schema_get"];
+        get: operations["get_entity_schema_api_admin_plugins__slug__entities__label___schema_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4431,7 +4646,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/plugins/{slug}/entities/{label}": {
+    "/api/admin/plugins/{slug}/entities/{label}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4442,20 +4657,20 @@ export interface paths {
          * List Entities
          * @description List every node of the plugin's declared label.
          */
-        get: operations["list_entities_admin_plugins__slug__entities__label__get"];
+        get: operations["list_entities_api_admin_plugins__slug__entities__label__get"];
         put?: never;
         /**
          * Create Entity
          * @description Create a new node of the plugin's declared label.
          */
-        post: operations["create_entity_admin_plugins__slug__entities__label__post"];
+        post: operations["create_entity_api_admin_plugins__slug__entities__label__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/admin/plugins/{slug}/entities/{label}/{id}": {
+    "/api/admin/plugins/{slug}/entities/{label}/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4466,14 +4681,14 @@ export interface paths {
          * Get Entity
          * @description Read a single node by its id.
          */
-        get: operations["get_entity_admin_plugins__slug__entities__label___id__get"];
+        get: operations["get_entity_api_admin_plugins__slug__entities__label___id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Entity
          * @description Hard-delete the node and any edges touching it.
          */
-        delete: operations["delete_entity_admin_plugins__slug__entities__label___id__delete"];
+        delete: operations["delete_entity_api_admin_plugins__slug__entities__label___id__delete"];
         options?: never;
         head?: never;
         /**
@@ -4483,10 +4698,10 @@ export interface paths {
          *     Unset fields are left alone; sending ``null`` clears optional fields.
          *     Sending ``id`` is rejected (the URL param is canonical).
          */
-        patch: operations["update_entity_admin_plugins__slug__entities__label___id__patch"];
+        patch: operations["update_entity_api_admin_plugins__slug__entities__label___id__patch"];
         trace?: never;
     };
-    "/plugins/{slug}/manifest": {
+    "/api/plugins/{slug}/manifest": {
         parameters: {
             query?: never;
             header?: never;
@@ -4502,7 +4717,7 @@ export interface paths {
          *     Project editors need this to render a typed Integration options /
          *     credentials / capabilities form.
          */
-        get: operations["get_plugin_manifest_plugins__slug__manifest_get"];
+        get: operations["get_plugin_manifest_api_plugins__slug__manifest_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4511,7 +4726,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/integrations/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/integrations/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4522,7 +4737,7 @@ export interface paths {
          * List Project Integrations
          * @description List a project's ``USES`` capability overrides.
          */
-        get: operations["list_project_integrations_organizations__org_slug__projects__project_id__integrations__get"];
+        get: operations["list_project_integrations_api_organizations__org_slug__projects__project_id__integrations__get"];
         /**
          * Replace Project Integrations
          * @description Replace a project's ``USES`` capability overrides.
@@ -4539,7 +4754,7 @@ export interface paths {
          *         400: A referenced integration does not have the targeted
          *             capability enabled.
          */
-        put: operations["replace_project_integrations_organizations__org_slug__projects__project_id__integrations__put"];
+        put: operations["replace_project_integrations_api_organizations__org_slug__projects__project_id__integrations__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4547,7 +4762,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/plugins/": {
+    "/api/organizations/{org_slug}/projects/{project_id}/plugins/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4561,7 +4776,7 @@ export interface paths {
          *     Raises:
          *         404: Project not found.
          */
-        get: operations["list_project_plugins_organizations__org_slug__projects__project_id__plugins__get"];
+        get: operations["list_project_plugins_api_organizations__org_slug__projects__project_id__plugins__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4570,7 +4785,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/": {
+    "/api/roles/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4584,7 +4799,7 @@ export interface paths {
          *     Returns:
          *         Roles ordered by priority (descending) then name.
          */
-        get: operations["list_roles_roles__get"];
+        get: operations["list_roles_api_roles__get"];
         put?: never;
         /**
          * Create Role
@@ -4599,14 +4814,14 @@ export interface paths {
          *     Raises:
          *         409: If a role with the same slug already exists.
          */
-        post: operations["create_role_roles__post"];
+        post: operations["create_role_api_roles__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/roles/{slug}": {
+    "/api/roles/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4627,7 +4842,7 @@ export interface paths {
          *     Raises:
          *         404: If no role with the given slug exists.
          */
-        get: operations["get_role_roles__slug__get"];
+        get: operations["get_role_api_roles__slug__get"];
         put?: never;
         post?: never;
         /**
@@ -4643,7 +4858,7 @@ export interface paths {
          *         400: If attempting to delete a system role.
          *         404: If no role with the given slug exists.
          */
-        delete: operations["delete_role_roles__slug__delete"];
+        delete: operations["delete_role_api_roles__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -4662,10 +4877,10 @@ export interface paths {
          *         404: Role not found.
          *         422: Patch test failed.
          */
-        patch: operations["patch_role_roles__slug__patch"];
+        patch: operations["patch_role_api_roles__slug__patch"];
         trace?: never;
     };
-    "/roles/{slug}/users": {
+    "/api/roles/{slug}/users": {
         parameters: {
             query?: never;
             header?: never;
@@ -4686,7 +4901,7 @@ export interface paths {
          *     Raises:
          *         404: If role not found.
          */
-        get: operations["list_role_users_roles__slug__users_get"];
+        get: operations["list_role_users_api_roles__slug__users_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4695,7 +4910,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{slug}/service-accounts": {
+    "/api/roles/{slug}/service-accounts": {
         parameters: {
             query?: never;
             header?: never;
@@ -4716,7 +4931,7 @@ export interface paths {
          *     Raises:
          *         404: If role not found.
          */
-        get: operations["list_role_service_accounts_roles__slug__service_accounts_get"];
+        get: operations["list_role_service_accounts_api_roles__slug__service_accounts_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4725,7 +4940,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{slug}/permissions": {
+    "/api/roles/{slug}/permissions": {
         parameters: {
             query?: never;
             header?: never;
@@ -4745,14 +4960,14 @@ export interface paths {
          *     Raises:
          *         404: If the role or the permission does not exist.
          */
-        post: operations["role_permissions_roles__slug__permissions_post"];
+        post: operations["role_permissions_api_roles__slug__permissions_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/roles/{slug}/permissions/{permission_name}": {
+    "/api/roles/{slug}/permissions/{permission_name}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4774,13 +4989,13 @@ export interface paths {
          *         404: If the role does not exist or the permission is
          *             not granted to the role.
          */
-        delete: operations["revoke_permission_roles__slug__permissions__permission_name__delete"];
+        delete: operations["revoke_permission_api_roles__slug__permissions__permission_name__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/{slug}/api-keys": {
+    "/api/service-accounts/{slug}/api-keys": {
         parameters: {
             query?: never;
             header?: never;
@@ -4801,7 +5016,7 @@ export interface paths {
          *     Returns:
          *         List of API key metadata
          */
-        get: operations["list_sa_api_keys_service_accounts__slug__api_keys_get"];
+        get: operations["list_sa_api_keys_api_service_accounts__slug__api_keys_get"];
         put?: never;
         /**
          * Create Sa Api Key
@@ -4823,14 +5038,14 @@ export interface paths {
          *         HTTPException: 404 if service account not found
          *         HTTPException: 400 if expiration exceeds maximum allowed
          */
-        post: operations["create_sa_api_key_service_accounts__slug__api_keys_post"];
+        post: operations["create_sa_api_key_api_service_accounts__slug__api_keys_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/{slug}/api-keys/{key_id}": {
+    "/api/service-accounts/{slug}/api-keys/{key_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4856,13 +5071,13 @@ export interface paths {
          *         HTTPException: 404 if key not found or not owned by the
          *             service account
          */
-        delete: operations["revoke_sa_api_key_service_accounts__slug__api_keys__key_id__delete"];
+        delete: operations["revoke_sa_api_key_api_service_accounts__slug__api_keys__key_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/{slug}/api-keys/{key_id}/rotate": {
+    "/api/service-accounts/{slug}/api-keys/{key_id}/rotate": {
         parameters: {
             query?: never;
             header?: never;
@@ -4892,14 +5107,14 @@ export interface paths {
          *             service account
          *         HTTPException: 400 if key is already revoked
          */
-        post: operations["rotate_sa_api_key_service_accounts__slug__api_keys__key_id__rotate_post"];
+        post: operations["rotate_sa_api_key_api_service_accounts__slug__api_keys__key_id__rotate_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/scoring/policies/": {
+    "/api/scoring/policies/": {
         parameters: {
             query?: never;
             header?: never;
@@ -4907,17 +5122,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Policies */
-        get: operations["list_policies_scoring_policies__get"];
+        get: operations["list_policies_api_scoring_policies__get"];
         put?: never;
         /** Create Policy */
-        post: operations["create_policy_scoring_policies__post"];
+        post: operations["create_policy_api_scoring_policies__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/scoring/policies/{slug}": {
+    "/api/scoring/policies/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4925,11 +5140,11 @@ export interface paths {
             cookie?: never;
         };
         /** Get Policy */
-        get: operations["get_policy_scoring_policies__slug__get"];
+        get: operations["get_policy_api_scoring_policies__slug__get"];
         put?: never;
         post?: never;
         /** Delete Policy */
-        delete: operations["delete_policy_scoring_policies__slug__delete"];
+        delete: operations["delete_policy_api_scoring_policies__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -4940,10 +5155,10 @@ export interface paths {
          *     list of project-type slugs) may be replaced via a JSON Pointer
          *     ``/targets`` replace operation.
          */
-        patch: operations["update_policy_scoring_policies__slug__patch"];
+        patch: operations["update_policy_api_scoring_policies__slug__patch"];
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/score/history": {
+    "/api/organizations/{org_slug}/projects/{project_id}/score/history": {
         parameters: {
             query?: never;
             header?: never;
@@ -4951,7 +5166,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Score History */
-        get: operations["get_score_history_organizations__org_slug__projects__project_id__score_history_get"];
+        get: operations["get_score_history_api_organizations__org_slug__projects__project_id__score_history_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4960,7 +5175,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/{org_slug}/projects/{project_id}/score/trend": {
+    "/api/organizations/{org_slug}/projects/{project_id}/score/trend": {
         parameters: {
             query?: never;
             header?: never;
@@ -4971,7 +5186,7 @@ export interface paths {
          * Get Score Trend
          * @description Return the current score and its change over the last *days* days.
          */
-        get: operations["get_score_trend_organizations__org_slug__projects__project_id__score_trend_get"];
+        get: operations["get_score_trend_api_organizations__org_slug__projects__project_id__score_trend_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4980,7 +5195,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/scores/rollup": {
+    "/api/scores/rollup": {
         parameters: {
             query?: never;
             header?: never;
@@ -4994,7 +5209,7 @@ export interface paths {
          *     Uses ``score_latest`` (one row per project, current score only)
          *     so projects with many history entries do not skew aggregates.
          */
-        get: operations["score_rollup_scores_rollup_get"];
+        get: operations["score_rollup_api_scores_rollup_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5003,7 +5218,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/scores/monthly-improvement": {
+    "/api/scores/monthly-improvement": {
         parameters: {
             query?: never;
             header?: never;
@@ -5018,7 +5233,7 @@ export interface paths {
          *                 - avg(last project score in *previous* month).
          *     Only projects scored in the selected month are counted.
          */
-        get: operations["score_monthly_improvement_scores_monthly_improvement_get"];
+        get: operations["score_monthly_improvement_api_scores_monthly_improvement_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5027,7 +5242,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/scores/history-by-team": {
+    "/api/scores/history-by-team": {
         parameters: {
             query?: never;
             header?: never;
@@ -5038,7 +5253,7 @@ export interface paths {
          * Score History By Team
          * @description Return avg score history per team for *org*, bucketed by granularity.
          */
-        get: operations["score_history_by_team_scores_history_by_team_get"];
+        get: operations["score_history_by_team_api_scores_history_by_team_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5047,7 +5262,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/scores/history-feed": {
+    "/api/scores/history-feed": {
         parameters: {
             query?: never;
             header?: never;
@@ -5058,7 +5273,7 @@ export interface paths {
          * Score History Feed
          * @description Return recent raw score change events for *org*'s projects.
          */
-        get: operations["score_history_feed_scores_history_feed_get"];
+        get: operations["score_history_feed_api_scores_history_feed_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5067,7 +5282,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/scoring/rescore": {
+    "/api/scoring/rescore": {
         parameters: {
             query?: never;
             header?: never;
@@ -5077,14 +5292,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Rescore */
-        post: operations["rescore_scoring_rescore_post"];
+        post: operations["rescore_api_scoring_rescore_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts": {
+    "/api/service-accounts": {
         parameters: {
             query?: never;
             header?: never;
@@ -5095,20 +5310,20 @@ export interface paths {
          * List Service Accounts
          * @description List all service accounts.
          */
-        get: operations["list_service_accounts_service_accounts_get"];
+        get: operations["list_service_accounts_api_service_accounts_get"];
         put?: never;
         /**
          * Create Service Account
          * @description Create a new service account.
          */
-        post: operations["create_service_account_service_accounts_post"];
+        post: operations["create_service_account_api_service_accounts_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/{slug}": {
+    "/api/service-accounts/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -5119,14 +5334,14 @@ export interface paths {
          * Get Service Account
          * @description Get a service account by slug.
          */
-        get: operations["get_service_account_service_accounts__slug__get"];
+        get: operations["get_service_account_api_service_accounts__slug__get"];
         put?: never;
         post?: never;
         /**
          * Delete Service Account
          * @description Delete a service account and all related credentials.
          */
-        delete: operations["delete_service_account_service_accounts__slug__delete"];
+        delete: operations["delete_service_account_api_service_accounts__slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -5145,10 +5360,10 @@ export interface paths {
          *         404: Service account not found.
          *         422: Patch test failed or validation error.
          */
-        patch: operations["patch_service_account_service_accounts__slug__patch"];
+        patch: operations["patch_service_account_api_service_accounts__slug__patch"];
         trace?: never;
     };
-    "/service-accounts/{slug}/organizations": {
+    "/api/service-accounts/{slug}/organizations": {
         parameters: {
             query?: never;
             header?: never;
@@ -5161,14 +5376,14 @@ export interface paths {
          * Add To Organization
          * @description Add a service account to an organization with a role.
          */
-        post: operations["add_to_organization_service_accounts__slug__organizations_post"];
+        post: operations["add_to_organization_api_service_accounts__slug__organizations_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/service-accounts/{slug}/organizations/{org_slug}": {
+    "/api/service-accounts/{slug}/organizations/{org_slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -5182,7 +5397,7 @@ export interface paths {
          * Remove From Organization
          * @description Remove a service account from an organization.
          */
-        delete: operations["remove_from_organization_service_accounts__slug__organizations__org_slug__delete"];
+        delete: operations["remove_from_organization_api_service_accounts__slug__organizations__org_slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -5199,10 +5414,10 @@ export interface paths {
          *         fastapi.HTTPException: HTTP 400 on malformed patch, HTTP 404
          *             if membership or role not found.
          */
-        patch: operations["update_organization_role_service_accounts__slug__organizations__org_slug__patch"];
+        patch: operations["update_organization_role_api_service_accounts__slug__organizations__org_slug__patch"];
         trace?: never;
     };
-    "/status": {
+    "/api/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -5210,7 +5425,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Status */
-        get: operations["get_status_status_get"];
+        get: operations["get_status_api_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5219,7 +5434,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/uploads/": {
+    "/api/uploads/": {
         parameters: {
             query?: never;
             header?: never;
@@ -5237,7 +5452,7 @@ export interface paths {
          *     Returns:
          *         List of upload metadata records.
          */
-        get: operations["list_uploads_uploads__get"];
+        get: operations["list_uploads_api_uploads__get"];
         put?: never;
         /**
          * Create Upload
@@ -5255,14 +5470,14 @@ export interface paths {
          *         401: Not authenticated.
          *         403: Missing ``upload:create`` permission.
          */
-        post: operations["create_upload_uploads__post"];
+        post: operations["create_upload_api_uploads__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/uploads/{upload_id}": {
+    "/api/uploads/{upload_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -5281,7 +5496,7 @@ export interface paths {
          *     Raises:
          *         404: If the upload does not exist.
          */
-        get: operations["get_upload_uploads__upload_id__get"];
+        get: operations["get_upload_api_uploads__upload_id__get"];
         put?: never;
         post?: never;
         /**
@@ -5294,13 +5509,13 @@ export interface paths {
          *     Raises:
          *         404: If the upload does not exist.
          */
-        delete: operations["delete_upload_uploads__upload_id__delete"];
+        delete: operations["delete_upload_api_uploads__upload_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/uploads/{upload_id}/meta": {
+    "/api/uploads/{upload_id}/meta": {
         parameters: {
             query?: never;
             header?: never;
@@ -5314,7 +5529,7 @@ export interface paths {
          *     Raises:
          *         404: If the upload does not exist.
          */
-        get: operations["get_upload_meta_uploads__upload_id__meta_get"];
+        get: operations["get_upload_meta_api_uploads__upload_id__meta_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5323,7 +5538,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/uploads/{upload_id}/thumbnail": {
+    "/api/uploads/{upload_id}/thumbnail": {
         parameters: {
             query?: never;
             header?: never;
@@ -5342,7 +5557,7 @@ export interface paths {
          *     Raises:
          *         404: If the upload does not exist or has no thumbnail.
          */
-        get: operations["get_upload_thumbnail_uploads__upload_id__thumbnail_get"];
+        get: operations["get_upload_thumbnail_api_uploads__upload_id__thumbnail_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5351,7 +5566,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/": {
+    "/api/users/": {
         parameters: {
             query?: never;
             header?: never;
@@ -5370,7 +5585,7 @@ export interface paths {
          *         list[models.UserResponse]: Users ordered by email, without
          *             password hashes.
          */
-        get: operations["list_users_users__get"];
+        get: operations["list_users_api_users__get"];
         put?: never;
         /**
          * Create User
@@ -5387,14 +5602,14 @@ export interface paths {
          *     Raises:
          *         fastapi.HTTPException: HTTP 409 if email already exists.
          */
-        post: operations["create_user_users__post"];
+        post: operations["create_user_api_users__post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/users/by-identity": {
+    "/api/users/by-identity": {
         parameters: {
             query?: never;
             header?: never;
@@ -5409,7 +5624,7 @@ export interface paths {
          *     (e.g. a GitHub deployment) to the corresponding Imbi user.
          *     Returns 404 when no active ``IdentityConnection`` matches.
          */
-        get: operations["get_user_by_identity_users_by_identity_get"];
+        get: operations["get_user_by_identity_api_users_by_identity_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5418,7 +5633,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/me": {
+    "/api/users/me": {
         parameters: {
             query?: never;
             header?: never;
@@ -5437,7 +5652,7 @@ export interface paths {
          *         models.CurrentUserResponse: The caller's profile with loaded
          *             organization memberships and effective permissions.
          */
-        get: operations["get_current_user_profile_users_me_get"];
+        get: operations["get_current_user_profile_api_users_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5446,7 +5661,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{email}": {
+    "/api/users/{email}": {
         parameters: {
             query?: never;
             header?: never;
@@ -5467,7 +5682,7 @@ export interface paths {
          *     Raises:
          *         fastapi.HTTPException: HTTP 404 if user not found.
          */
-        get: operations["get_user_users__email__get"];
+        get: operations["get_user_api_users__email__get"];
         put?: never;
         post?: never;
         /**
@@ -5481,7 +5696,7 @@ export interface paths {
          *         fastapi.HTTPException: HTTP 400 if trying to delete yourself,
          *             or HTTP 404 if user not found.
          */
-        delete: operations["delete_user_users__email__delete"];
+        delete: operations["delete_user_api_users__email__delete"];
         options?: never;
         head?: never;
         /**
@@ -5501,10 +5716,10 @@ export interface paths {
          *             privileges. HTTP 404 if user not found. HTTP 422 if patch
          *             test failed.
          */
-        patch: operations["patch_user_users__email__patch"];
+        patch: operations["patch_user_api_users__email__patch"];
         trace?: never;
     };
-    "/users/{email}/password": {
+    "/api/users/{email}/password": {
         parameters: {
             query?: never;
             header?: never;
@@ -5527,14 +5742,14 @@ export interface paths {
          *             (non-admin), HTTP 403 if not self or admin, or HTTP 404
          *             if user not found.
          */
-        post: operations["change_password_users__email__password_post"];
+        post: operations["change_password_api_users__email__password_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/users/{email}/organizations": {
+    "/api/users/{email}/organizations": {
         parameters: {
             query?: never;
             header?: never;
@@ -5556,14 +5771,14 @@ export interface paths {
          *         fastapi.HTTPException: HTTP 400 if required fields missing,
          *             HTTP 404 if user, organization, or role not found.
          */
-        post: operations["add_to_organization_users__email__organizations_post"];
+        post: operations["add_to_organization_api_users__email__organizations_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/users/{email}/organizations/{org_slug}": {
+    "/api/users/{email}/organizations/{org_slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -5584,7 +5799,7 @@ export interface paths {
          *     Raises:
          *         fastapi.HTTPException: HTTP 404 if membership not found.
          */
-        delete: operations["remove_from_organization_users__email__organizations__org_slug__delete"];
+        delete: operations["remove_from_organization_api_users__email__organizations__org_slug__delete"];
         options?: never;
         head?: never;
         /**
@@ -5601,10 +5816,10 @@ export interface paths {
          *         fastapi.HTTPException: HTTP 400 on malformed patch, HTTP 404
          *             if membership or role not found.
          */
-        patch: operations["update_organization_role_users__email__organizations__org_slug__patch"];
+        patch: operations["update_organization_role_api_users__email__organizations__org_slug__patch"];
         trace?: never;
     };
-    "/users/{email}/contributions": {
+    "/api/users/{email}/contributions": {
         parameters: {
             query?: never;
             header?: never;
@@ -5619,7 +5834,7 @@ export interface paths {
          *     Release, Upload, Conversation) into one daily map keyed by the
          *     requested ``tz``.
          */
-        get: operations["get_user_contributions_users__email__contributions_get"];
+        get: operations["get_user_contributions_api_users__email__contributions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5628,7 +5843,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{email}/stats": {
+    "/api/users/{email}/stats": {
         parameters: {
             query?: never;
             header?: never;
@@ -5639,7 +5854,7 @@ export interface paths {
          * Get User Stats
          * @description Return summary deployment / project tiles for the profile page.
          */
-        get: operations["get_user_stats_users__email__stats_get"];
+        get: operations["get_user_stats_api_users__email__stats_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5648,7 +5863,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{email}/identities": {
+    "/api/users/{email}/identities": {
         parameters: {
             query?: never;
             header?: never;
@@ -5659,7 +5874,7 @@ export interface paths {
          * Get User Identities
          * @description Return the user's linked OAuth identities (no tokens).
          */
-        get: operations["get_user_identities_users__email__identities_get"];
+        get: operations["get_user_identities_api_users__email__identities_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5668,7 +5883,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{email}/activity": {
+    "/api/users/{email}/activity": {
         parameters: {
             query?: never;
             header?: never;
@@ -5679,7 +5894,7 @@ export interface paths {
          * Get User Activity
          * @description Cursor-paginated, mixed-source activity feed for the user.
          */
-        get: operations["get_user_activity_users__email__activity_get"];
+        get: operations["get_user_activity_api_users__email__activity_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6287,20 +6502,20 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** Body_create_upload_uploads__post */
-        Body_create_upload_uploads__post: {
+        /** Body_create_upload_api_uploads__post */
+        Body_create_upload_api_uploads__post: {
             /** File */
             file: string;
         };
-        /** Body_disable_mfa_mfa_disable_delete */
-        Body_disable_mfa_mfa_disable_delete: {
+        /** Body_disable_mfa_api_mfa_disable_delete */
+        Body_disable_mfa_api_mfa_disable_delete: {
             /** Current Password */
             current_password?: string | null;
             /** Mfa Code */
             mfa_code?: string | null;
         };
-        /** Body_login_auth_login_post */
-        Body_login_auth_login_post: {
+        /** Body_login_api_auth_login_post */
+        Body_login_api_auth_login_post: {
             /**
              * Email
              * Format: email
@@ -6311,13 +6526,13 @@ export interface components {
             /** Mfa Code */
             mfa_code?: string | null;
         };
-        /** Body_role_permissions_roles__slug__permissions_post */
-        Body_role_permissions_roles__slug__permissions_post: {
+        /** Body_role_permissions_api_roles__slug__permissions_post */
+        Body_role_permissions_api_roles__slug__permissions_post: {
             /** Permission Name */
             permission_name: string;
         };
-        /** Body_token_auth_token_post */
-        Body_token_auth_token_post: {
+        /** Body_token_api_auth_token_post */
+        Body_token_api_auth_token_post: {
             /** Grant Type */
             grant_type: string;
             /** Client Id */
@@ -6801,6 +7016,14 @@ export interface components {
             /** Value */
             value: string;
         };
+        /**
+         * ConfigPrefixResponse
+         * @description Response model for the resolved configuration key prefix.
+         */
+        ConfigPrefixResponse: {
+            /** Prefix */
+            prefix?: string | null;
+        };
         /** ConfigValue */
         ConfigValue: {
             /** Data Type */
@@ -7047,6 +7270,8 @@ export interface components {
             note?: string | null;
             /** External Run Id */
             external_run_id?: string | null;
+            /** External Run Url */
+            external_run_url?: string | null;
         };
         /**
          * DeploymentResyncEnqueueResponse
@@ -7186,6 +7411,61 @@ export interface components {
             /** Warning */
             warning?: string | null;
         };
+        /** DocumentAnalyticsResponse */
+        DocumentAnalyticsResponse: {
+            /** Last Read At */
+            last_read_at?: string | null;
+            /**
+             * Readers
+             * @default 0
+             */
+            readers: number;
+            /**
+             * Views
+             * @default 0
+             */
+            views: number;
+            /**
+             * Reads
+             * @default 0
+             */
+            reads: number;
+            /**
+             * Median Engaged Seconds
+             * @default 0
+             */
+            median_engaged_seconds: number;
+            /**
+             * P90 Engaged Seconds
+             * @default 0
+             */
+            p90_engaged_seconds: number;
+            /**
+             * Completion Rate
+             * @default 0
+             */
+            completion_rate: number;
+            /**
+             * Estimated Read Seconds
+             * @default 0
+             */
+            estimated_read_seconds: number;
+            /**
+             * By Surface
+             * @default []
+             */
+            by_surface: components["schemas"]["SurfaceCount"][];
+            /**
+             * Trend
+             * @default []
+             */
+            trend: components["schemas"]["TrendPoint"][];
+            /**
+             * Identities Visible
+             * @default false
+             */
+            identities_visible: boolean;
+        };
         /** DocumentCreate */
         DocumentCreate: {
             /** Title */
@@ -7215,6 +7495,28 @@ export interface components {
         DocumentListResponse: {
             /** Data */
             data: components["schemas"]["DocumentResponse"][];
+        };
+        /** DocumentReadSummary */
+        DocumentReadSummary: {
+            /** Document Id */
+            document_id: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Last Read At */
+            last_read_at?: string | null;
+            /**
+             * Readers
+             * @default 0
+             */
+            readers: number;
+            /**
+             * Views
+             * @default 0
+             */
+            views: number;
         };
         /** DocumentResponse */
         DocumentResponse: {
@@ -7253,6 +7555,16 @@ export interface components {
              * @default 0
              */
             comment_count: number;
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
             /**
              * Tags
              * @default []
@@ -8031,40 +8343,34 @@ export interface components {
                 [key: string]: string | null;
             };
         };
-        /** IntegrationResponse */
+        /**
+         * IntegrationResponse
+         * @description Response model for an Integration (no credential values).
+         */
         IntegrationResponse: {
             /** Id */
-            id?: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at?: string;
-            /**
-             * Updated At
-             * @default null
-             */
-            updated_at: string | null;
+            id?: string | null;
+            /** Plugin */
+            plugin: string;
             /** Name */
             name: string;
             /** Slug */
             slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Vendor */
+            vendor?: string | null;
+            /** Service Url */
+            service_url?: string | null;
+            /** Category */
+            category?: string | null;
             /**
-             * Description
-             * @default null
+             * Status
+             * @default active
              */
-            description: string | null;
-            /**
-             * Icon
-             * @default null
-             */
-            icon: string | null;
-            /** @default null */
-            organization: components["schemas"]["Organization"] | null;
-            /** @default null */
-            team: components["schemas"]["Team"] | null;
-            /** Plugin */
-            plugin: string;
+            status: string;
             /**
              * Options
              * @default {}
@@ -8073,63 +8379,51 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
-             * Encrypted Credentials
-             * @default {}
-             */
-            encrypted_credentials: {
-                [key: string]: string;
-            };
-            /**
              * Capabilities
              * @default {}
              */
             capabilities: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
+                [key: string]: components["schemas"]["CapabilityToggle"];
             };
             /**
-             * Vendor
-             * @default null
+             * Credential Fields
+             * @default []
              */
-            vendor: string | null;
+            credential_fields: string[];
             /**
-             * Service Url
-             * @default null
+             * Credential Values
+             * @default {}
              */
-            service_url: string | null;
-            /**
-             * Category
-             * @default null
-             */
-            category: string | null;
-            /**
-             * Status
-             * @default active
-             * @enum {string}
-             */
-            status: "active" | "deprecated" | "evaluating" | "inactive";
+            credential_values: {
+                [key: string]: string;
+            };
             /**
              * Links
              * @default {}
              */
             links: {
-                [key: string]: string;
+                [key: string]: unknown;
             };
             /**
              * Identifiers
              * @default {}
              */
             identifiers: {
-                [key: string]: number | string;
+                [key: string]: unknown;
             };
-            /**
-             * Relationships
-             * @default null
-             */
-            relationships: {
-                [key: string]: components["schemas"]["RelationshipLink"];
+            /** Organization */
+            organization?: {
+                [key: string]: unknown;
             } | null;
+            /** Team */
+            team?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Used As Login
+             * @default false
+             */
+            used_as_login: boolean;
         };
         /**
          * IntegrationUpdate
@@ -8295,6 +8589,39 @@ export interface components {
              * @default []
              */
             errors: components["schemas"]["LifecycleSyncError"][];
+        };
+        /**
+         * LikeStateResponse
+         * @description The document's like count and whether the caller is one of them.
+         */
+        LikeStateResponse: {
+            /**
+             * Like Count
+             * @default 0
+             */
+            like_count: number;
+            /**
+             * Liked By Me
+             * @default false
+             */
+            liked_by_me: boolean;
+        };
+        /** LikerListResponse */
+        LikerListResponse: {
+            /** Data */
+            data: components["schemas"]["LikerRef"][];
+        };
+        /** LikerRef */
+        LikerRef: {
+            /** Principal */
+            principal: string;
+            /** Display Name */
+            display_name?: string | null;
+            /**
+             * Liked At
+             * Format: date-time
+             */
+            liked_at: string;
         };
         /**
          * LinkDefinitionCreate
@@ -9069,6 +9396,11 @@ export interface components {
             /** Summary */
             summary?: string | null;
         };
+        /** OrgAnalyticsResponse */
+        OrgAnalyticsResponse: {
+            /** Data */
+            data: components["schemas"]["DocumentReadSummary"][];
+        };
         /**
          * OrgMembership
          * @description Organization membership with role for API responses.
@@ -9105,6 +9437,12 @@ export interface components {
              * @default []
              */
             tag_formats: components["schemas"]["TagFormat"][];
+            /**
+             * Document Analytics Identities
+             * @default authors_only
+             * @enum {string}
+             */
+            document_analytics_identities: "enabled" | "authors_only" | "disabled";
         };
         /** OrganizationRef */
         OrganizationRef: {
@@ -9147,6 +9485,10 @@ export interface components {
             avatar_url?: string | null;
             /** Created */
             created: number;
+            /** Open */
+            open: number;
+            /** Closed */
+            closed: number;
             /** Merged */
             merged: number;
         };
@@ -9876,34 +10218,32 @@ export interface components {
             /** Relationships */
             relationships: components["schemas"]["ProjectRelationship"][];
         };
-        /** ProjectResponse */
+        /**
+         * ProjectResponse
+         * @description Response body for a project.
+         */
         ProjectResponse: {
             /** Id */
-            id?: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at?: string;
-            /**
-             * Updated At
-             * @default null
-             */
-            updated_at: string | null;
+            id?: string | null;
             /** Name */
             name: string;
             /** Slug */
             slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
             /**
-             * Description
-             * @default null
+             * Archived
+             * @default false
              */
-            description: string | null;
-            /**
-             * Icon
-             * @default null
-             */
-            icon: string | null;
+            archived: boolean;
+            /** Archived At */
+            archived_at?: string | null;
             team: components["schemas"]["Team"];
             /**
              * Project Types
@@ -9914,7 +10254,7 @@ export interface components {
              * Environments
              * @default []
              */
-            environments: components["schemas"]["Environment"][];
+            environments: components["schemas"]["EnvironmentRef"][];
             /**
              * Links
              * @default {}
@@ -9930,12 +10270,40 @@ export interface components {
                 [key: string]: number | string;
             };
             /**
-             * Score
-             * @default null
+             * Services
+             * @default []
              */
-            score: number | null;
-            /** @default null */
-            relationships: components["schemas"]["ProjectRelationships"] | null;
+            services: components["schemas"]["ExistsInResponse"][];
+            /** Score */
+            score?: number | null;
+            breakdown?: components["schemas"]["ScoreBreakdown"] | null;
+            relationships?: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Open Pr Count
+             * @default 0
+             */
+            open_pr_count: number;
+            /**
+             * Closed Pr Count
+             * @default 0
+             */
+            closed_pr_count: number;
+            /**
+             * Viewer Open Pr Count
+             * @default 0
+             */
+            viewer_open_pr_count: number;
+            /**
+             * Viewer Closed Pr Count
+             * @default 0
+             */
+            viewer_closed_pr_count: number;
+            /** Current Releases */
+            current_releases?: {
+                [key: string]: components["schemas"]["ReleaseInfo"];
+            };
+        } & {
+            [key: string]: unknown;
         };
         /**
          * ProjectSchemaResponse
@@ -10093,6 +10461,76 @@ export interface components {
             changed_files: number;
         };
         /**
+         * ReadEvent
+         * @description One heartbeat from a reading client.
+         */
+        ReadEvent: {
+            /** Session Id */
+            session_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Session Started At
+             * Format: date-time
+             */
+            session_started_at: string;
+            /** Engaged Ms */
+            engaged_ms: number;
+            /**
+             * Max Scroll Pct
+             * @default 0
+             */
+            max_scroll_pct: number;
+            /**
+             * Is Final
+             * @default false
+             */
+            is_final: boolean;
+            /**
+             * Surface
+             * @default web
+             * @enum {string}
+             */
+            surface: "web" | "mcp" | "assistant" | "slackbot" | "api";
+        };
+        /** ReadEventBatch */
+        ReadEventBatch: {
+            /** Events */
+            events: components["schemas"]["ReadEvent"][];
+        };
+        /** ReaderListResponse */
+        ReaderListResponse: {
+            /** Data */
+            data: components["schemas"]["ReaderRef"][];
+        };
+        /** ReaderRef */
+        ReaderRef: {
+            /** Principal */
+            principal: string;
+            /** Last Read At */
+            last_read_at?: string | null;
+            /**
+             * Views
+             * @default 0
+             */
+            views: number;
+            /**
+             * Reads
+             * @default 0
+             */
+            reads: number;
+            /**
+             * Engaged Seconds
+             * @default 0
+             */
+            engaged_seconds: number;
+            /**
+             * Max Scroll Pct
+             * @default 0
+             */
+            max_scroll_pct: number;
+        };
+        /**
          * RecentCommit
          * @description A commit row read from the ClickHouse ``commits`` table.
          *
@@ -10222,6 +10660,30 @@ export interface components {
              */
             quantifier: "any" | "all" | "none";
             where: components["schemas"]["Condition-Output"];
+        };
+        /**
+         * ReleaseBlockRequest
+         * @description Body for ``POST /deployments/releases/{tag}/block``.
+         */
+        ReleaseBlockRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * ReleaseBlockResponse
+         * @description Block state for a release after a block / unblock.
+         */
+        ReleaseBlockResponse: {
+            /** Tag */
+            tag: string;
+            /** Blocked */
+            blocked: boolean;
+            /** Blocked Reason */
+            blocked_reason?: string | null;
+            /** Blocked By */
+            blocked_by?: string | null;
+            /** Blocked At */
+            blocked_at?: string | null;
         };
         /**
          * ReleaseCreate
@@ -10442,6 +10904,17 @@ export interface components {
             tag_url?: string | null;
             /** Package Url */
             package_url?: string | null;
+            /**
+             * Blocked
+             * @default false
+             */
+            blocked: boolean;
+            /** Blocked Reason */
+            blocked_reason?: string | null;
+            /** Blocked By */
+            blocked_by?: string | null;
+            /** Blocked At */
+            blocked_at?: string | null;
         };
         /**
          * ReleaseInfo
@@ -11229,6 +11702,13 @@ export interface components {
              */
             status: "ok" | "initializing" | "error";
         };
+        /** SurfaceCount */
+        SurfaceCount: {
+            /** Surface */
+            surface: string;
+            /** Views */
+            views: number;
+        };
         /** TagCreate */
         TagCreate: {
             /** Name */
@@ -11355,6 +11835,18 @@ export interface components {
             token_type: string;
             /** Expires In */
             expires_in: number;
+        };
+        /** TrendPoint */
+        TrendPoint: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Views */
+            views: number;
+            /** Readers */
+            readers: number;
         };
         /**
          * UploadResponse
@@ -11583,7 +12075,7 @@ export interface components {
             } | unknown[];
         };
         /** Environment */
-        EnvironmentRequest: {
+        EnvironmentBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -11634,7 +12126,7 @@ export interface components {
             organization: components["schemas"]["Organization"];
         };
         /** EnvironmentResponse */
-        EnvironmentResponse: {
+        EnvironmentBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -11692,7 +12184,7 @@ export interface components {
             } | null;
         };
         /** LinkDefinition */
-        LinkDefinitionRequest: {
+        LinkDefinitionBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -11727,7 +12219,7 @@ export interface components {
             organization: components["schemas"]["Organization"];
         };
         /** LinkDefinitionResponse */
-        LinkDefinitionResponse: {
+        LinkDefinitionBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -11769,7 +12261,7 @@ export interface components {
             } | null;
         };
         /** Integration */
-        IntegrationRequest: {
+        IntegrationBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -11861,8 +12353,108 @@ export interface components {
                 [key: string]: number | string;
             };
         };
+        /** IntegrationResponse */
+        IntegrationBlueprintResponse: {
+            /** Id */
+            id?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
+            /** @default null */
+            organization: components["schemas"]["Organization"] | null;
+            /** @default null */
+            team: components["schemas"]["Team"] | null;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Options
+             * @default {}
+             */
+            options: {
+                [key: string]: unknown;
+            };
+            /**
+             * Encrypted Credentials
+             * @default {}
+             */
+            encrypted_credentials: {
+                [key: string]: string;
+            };
+            /**
+             * Capabilities
+             * @default {}
+             */
+            capabilities: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Vendor
+             * @default null
+             */
+            vendor: string | null;
+            /**
+             * Service Url
+             * @default null
+             */
+            service_url: string | null;
+            /**
+             * Category
+             * @default null
+             */
+            category: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "deprecated" | "evaluating" | "inactive";
+            /**
+             * Links
+             * @default {}
+             */
+            links: {
+                [key: string]: string;
+            };
+            /**
+             * Identifiers
+             * @default {}
+             */
+            identifiers: {
+                [key: string]: number | string;
+            };
+            /**
+             * Relationships
+             * @default null
+             */
+            relationships: {
+                [key: string]: components["schemas"]["RelationshipLink"];
+            } | null;
+        };
         /** Organization */
-        OrganizationRequest: {
+        OrganizationBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -11894,9 +12486,15 @@ export interface components {
              * @default []
              */
             tag_formats: components["schemas"]["TagFormat"][];
+            /**
+             * Document Analytics Identities
+             * @default authors_only
+             * @enum {string}
+             */
+            document_analytics_identities: "enabled" | "authors_only" | "disabled";
         };
         /** OrganizationResponse */
-        OrganizationResponse: {
+        OrganizationBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -11928,6 +12526,12 @@ export interface components {
              * @default []
              */
             tag_formats: components["schemas"]["TagFormat"][];
+            /**
+             * Document Analytics Identities
+             * @default authors_only
+             * @enum {string}
+             */
+            document_analytics_identities: "enabled" | "authors_only" | "disabled";
             /**
              * Relationships
              * @default null
@@ -11937,7 +12541,7 @@ export interface components {
             } | null;
         };
         /** Project */
-        ProjectRequest: {
+        ProjectBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -11996,9 +12600,94 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Deprecated
+             * @description Indicates that the project should not be used
+             * @default false
+             */
+            deprecated: boolean;
+            /**
+             * Deprecation Reason
+             * @description Specify why the project is deprecated and what should be used instead.
+             * @default null
+             */
+            deprecation_reason: string | null;
+        };
+        /** ProjectResponse */
+        ProjectBlueprintResponse: {
+            /** Id */
+            id?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
+            team: components["schemas"]["Team"];
+            /**
+             * Project Types
+             * @default []
+             */
+            project_types: components["schemas"]["ProjectType"][];
+            /**
+             * Environments
+             * @default []
+             */
+            environments: components["schemas"]["Environment"][];
+            /**
+             * Links
+             * @default {}
+             */
+            links: {
+                [key: string]: string;
+            };
+            /**
+             * Identifiers
+             * @default {}
+             */
+            identifiers: {
+                [key: string]: number | string;
+            };
+            /**
+             * Score
+             * @default null
+             */
+            score: number | null;
+            /** @default null */
+            relationships: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Deprecated
+             * @description Indicates that the project should not be used
+             * @default false
+             */
+            deprecated: boolean;
+            /**
+             * Deprecation Reason
+             * @description Specify why the project is deprecated and what should be used instead.
+             * @default null
+             */
+            deprecation_reason: string | null;
         };
         /** ProjectType */
-        ProjectTypeRequest: {
+        ProjectTypeBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12043,7 +12732,7 @@ export interface components {
             tag_formats: components["schemas"]["TagFormat"][];
         };
         /** ProjectTypeResponse */
-        ProjectTypeResponse: {
+        ProjectTypeBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -12095,7 +12784,7 @@ export interface components {
             } | null;
         };
         /** Team */
-        TeamRequest: {
+        TeamBlueprintRequest: {
             /** Id */
             id?: string;
             /**
@@ -12125,7 +12814,7 @@ export interface components {
             organization: components["schemas"]["Organization"];
         };
         /** TeamResponse */
-        TeamResponse: {
+        TeamBlueprintResponse: {
             /** Id */
             id?: string;
             /**
@@ -12212,6 +12901,20 @@ export interface components {
             can_promote: boolean;
             organization: components["schemas"]["Organization"];
         };
+        /** ProjectDeployedInEnvironmentEdge */
+        Project_Environment_DEPLOYED_INEdgeProperties: {
+            /**
+             * Acceptance Test Status
+             * @default null
+             */
+            acceptance_test_status: ("pass" | "fail") | null;
+            /**
+             * Url
+             * @description The deployment URL for this project in this environment
+             * @default null
+             */
+            url: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -12221,7 +12924,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_installed_plugins_admin_plugins_get: {
+    list_installed_plugins_api_admin_plugins_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12241,7 +12944,7 @@ export interface operations {
             };
         };
     };
-    get_installed_plugin_admin_plugins__slug__get: {
+    get_installed_plugin_api_admin_plugins__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12272,7 +12975,7 @@ export interface operations {
             };
         };
     };
-    update_plugin_registration_admin_plugins__slug__registration_put: {
+    update_plugin_registration_api_admin_plugins__slug__registration_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -12307,7 +13010,7 @@ export interface operations {
             };
         };
     };
-    list_plugin_edges_admin_plugins__slug__edges_get: {
+    list_plugin_edges_api_admin_plugins__slug__edges_get: {
         parameters: {
             query: {
                 rel_type: string;
@@ -12343,7 +13046,7 @@ export interface operations {
             };
         };
     };
-    get_admin_settings_admin_settings_get: {
+    get_admin_settings_api_admin_settings_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12363,7 +13066,7 @@ export interface operations {
             };
         };
     };
-    list_api_keys_api_keys_get: {
+    list_api_keys_api_api_keys_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12383,7 +13086,7 @@ export interface operations {
             };
         };
     };
-    create_api_key_api_keys_post: {
+    create_api_key_api_api_keys_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12416,7 +13119,7 @@ export interface operations {
             };
         };
     };
-    revoke_api_key_api_keys__key_id__delete: {
+    revoke_api_key_api_api_keys__key_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -12445,7 +13148,7 @@ export interface operations {
             };
         };
     };
-    rotate_api_key_api_keys__key_id__rotate_post: {
+    rotate_api_key_api_api_keys__key_id__rotate_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12476,7 +13179,7 @@ export interface operations {
             };
         };
     };
-    list_login_providers_login_providers__get: {
+    list_login_providers_api_login_providers__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12496,7 +13199,7 @@ export interface operations {
             };
         };
     };
-    create_login_provider_login_providers__post: {
+    create_login_provider_api_login_providers__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12529,7 +13232,7 @@ export interface operations {
             };
         };
     };
-    get_login_provider_login_providers__slug__get: {
+    get_login_provider_api_login_providers__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12560,7 +13263,7 @@ export interface operations {
             };
         };
     };
-    delete_login_provider_login_providers__slug__delete: {
+    delete_login_provider_api_login_providers__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -12589,7 +13292,7 @@ export interface operations {
             };
         };
     };
-    update_login_provider_login_providers__slug__patch: {
+    update_login_provider_api_login_providers__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -12624,7 +13327,7 @@ export interface operations {
             };
         };
     };
-    update_login_provider_credentials_login_providers__slug__credentials_put: {
+    update_login_provider_credentials_api_login_providers__slug__credentials_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -12661,7 +13364,7 @@ export interface operations {
             };
         };
     };
-    set_used_as_login_login_providers__slug__used_as_login_put: {
+    set_used_as_login_api_login_providers__slug__used_as_login_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -12696,7 +13399,7 @@ export interface operations {
             };
         };
     };
-    get_auth_providers_auth_providers_get: {
+    get_auth_providers_api_auth_providers_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12716,7 +13419,7 @@ export interface operations {
             };
         };
     };
-    token_auth_token_post: {
+    token_api_auth_token_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12725,7 +13428,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/x-www-form-urlencoded": components["schemas"]["Body_token_auth_token_post"];
+                "application/x-www-form-urlencoded": components["schemas"]["Body_token_api_auth_token_post"];
             };
         };
         responses: {
@@ -12749,7 +13452,7 @@ export interface operations {
             };
         };
     };
-    authorize_auth_authorize_get: {
+    authorize_api_auth_authorize_get: {
         parameters: {
             query?: {
                 response_type?: string;
@@ -12786,7 +13489,7 @@ export interface operations {
             };
         };
     };
-    register_oauth_client_auth_register_post: {
+    register_oauth_client_api_auth_register_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12819,7 +13522,7 @@ export interface operations {
             };
         };
     };
-    login_auth_login_post: {
+    login_api_auth_login_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12828,7 +13531,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_login_auth_login_post"];
+                "application/json": components["schemas"]["Body_login_api_auth_login_post"];
             };
         };
         responses: {
@@ -12852,7 +13555,7 @@ export interface operations {
             };
         };
     };
-    refresh_token_auth_token_refresh_post: {
+    refresh_token_api_auth_token_refresh_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12885,7 +13588,7 @@ export interface operations {
             };
         };
     };
-    logout_auth_logout_post: {
+    logout_api_auth_logout_post: {
         parameters: {
             query?: {
                 revoke_all_sessions?: boolean;
@@ -12914,7 +13617,7 @@ export interface operations {
             };
         };
     };
-    oauth_login_auth_oauth__provider__get: {
+    oauth_login_api_auth_oauth__provider__get: {
         parameters: {
             query?: {
                 redirect_uri?: string;
@@ -12947,7 +13650,7 @@ export interface operations {
             };
         };
     };
-    oauth_callback_auth_oauth__provider__callback_get: {
+    oauth_callback_api_auth_oauth__provider__callback_get: {
         parameters: {
             query?: {
                 code?: string | null;
@@ -12983,7 +13686,7 @@ export interface operations {
             };
         };
     };
-    list_blueprints_blueprints__get: {
+    list_blueprints_api_blueprints__get: {
         parameters: {
             query?: {
                 enabled?: boolean | null;
@@ -13014,7 +13717,7 @@ export interface operations {
             };
         };
     };
-    create_blueprint_blueprints__post: {
+    create_blueprint_api_blueprints__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13047,7 +13750,7 @@ export interface operations {
             };
         };
     };
-    list_blueprints_by_type_blueprints__type__get: {
+    list_blueprints_by_type_api_blueprints__type__get: {
         parameters: {
             query?: {
                 enabled?: boolean | null;
@@ -13080,7 +13783,7 @@ export interface operations {
             };
         };
     };
-    get_blueprint_blueprints__type___slug__get: {
+    get_blueprint_api_blueprints__type___slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13112,7 +13815,7 @@ export interface operations {
             };
         };
     };
-    delete_blueprint_blueprints__type___slug__delete: {
+    delete_blueprint_api_blueprints__type___slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -13142,7 +13845,7 @@ export interface operations {
             };
         };
     };
-    patch_blueprint_blueprints__type___slug__patch: {
+    patch_blueprint_api_blueprints__type___slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -13178,7 +13881,7 @@ export interface operations {
             };
         };
     };
-    list_client_credentials_service_accounts__slug__client_credentials_get: {
+    list_client_credentials_api_service_accounts__slug__client_credentials_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13209,7 +13912,7 @@ export interface operations {
             };
         };
     };
-    create_client_credential_service_accounts__slug__client_credentials_post: {
+    create_client_credential_api_service_accounts__slug__client_credentials_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13244,7 +13947,7 @@ export interface operations {
             };
         };
     };
-    revoke_client_credential_service_accounts__slug__client_credentials__client_id__delete: {
+    revoke_client_credential_api_service_accounts__slug__client_credentials__client_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -13274,7 +13977,7 @@ export interface operations {
             };
         };
     };
-    rotate_client_credential_service_accounts__slug__client_credentials__client_id__rotate_post: {
+    rotate_client_credential_api_service_accounts__slug__client_credentials__client_id__rotate_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13306,7 +14009,7 @@ export interface operations {
             };
         };
     };
-    get_dashboard_status_admin_dashboard_status_get: {
+    get_dashboard_status_api_admin_dashboard_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13326,7 +14029,7 @@ export interface operations {
             };
         };
     };
-    get_dashboard_metrics_admin_dashboard_metrics_get: {
+    get_dashboard_metrics_api_admin_dashboard_metrics_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13346,7 +14049,7 @@ export interface operations {
             };
         };
     };
-    list_events_events__get: {
+    list_events_api_events__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -13385,7 +14088,7 @@ export interface operations {
             };
         };
     };
-    get_event_events__event_id__get: {
+    get_event_api_events__event_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13416,7 +14119,7 @@ export interface operations {
             };
         };
     };
-    run_graph_query_admin_graph_query_post: {
+    run_graph_query_api_admin_graph_query_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13449,7 +14152,7 @@ export interface operations {
             };
         };
     };
-    get_graph_schema_admin_graph_schema_get: {
+    get_graph_schema_api_admin_graph_schema_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13469,7 +14172,7 @@ export interface operations {
             };
         };
     };
-    get_local_auth_admin_local_auth_get: {
+    get_local_auth_api_admin_local_auth_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13489,7 +14192,7 @@ export interface operations {
             };
         };
     };
-    set_local_auth_admin_local_auth_put: {
+    set_local_auth_api_admin_local_auth_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -13522,7 +14225,7 @@ export interface operations {
             };
         };
     };
-    list_maintenance_operations_maintenance_operations_get: {
+    list_maintenance_operations_api_maintenance_operations_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13542,7 +14245,7 @@ export interface operations {
             };
         };
     };
-    get_maintenance_operation_maintenance_operations__slug__get: {
+    get_maintenance_operation_api_maintenance_operations__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13573,7 +14276,7 @@ export interface operations {
             };
         };
     };
-    run_maintenance_operation_maintenance_operations__slug__run_post: {
+    run_maintenance_operation_api_maintenance_operations__slug__run_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13604,7 +14307,7 @@ export interface operations {
             };
         };
     };
-    cancel_maintenance_operation_maintenance_operations__slug__cancel_post: {
+    cancel_maintenance_operation_api_maintenance_operations__slug__cancel_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13635,7 +14338,7 @@ export interface operations {
             };
         };
     };
-    list_mcp_servers_mcp_servers__get: {
+    list_mcp_servers_api_mcp_servers__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13655,7 +14358,7 @@ export interface operations {
             };
         };
     };
-    create_mcp_server_mcp_servers__post: {
+    create_mcp_server_api_mcp_servers__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13688,7 +14391,7 @@ export interface operations {
             };
         };
     };
-    get_mcp_server_mcp_servers__id__get: {
+    get_mcp_server_api_mcp_servers__id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13719,7 +14422,7 @@ export interface operations {
             };
         };
     };
-    delete_mcp_server_mcp_servers__id__delete: {
+    delete_mcp_server_api_mcp_servers__id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -13748,7 +14451,7 @@ export interface operations {
             };
         };
     };
-    update_mcp_server_mcp_servers__id__patch: {
+    update_mcp_server_api_mcp_servers__id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -13783,7 +14486,7 @@ export interface operations {
             };
         };
     };
-    test_mcp_server_mcp_servers__id__test_post: {
+    test_mcp_server_api_mcp_servers__id__test_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13814,7 +14517,7 @@ export interface operations {
             };
         };
     };
-    test_mcp_server_config_mcp_servers_test_post: {
+    test_mcp_server_config_api_mcp_servers_test_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13847,7 +14550,7 @@ export interface operations {
             };
         };
     };
-    report_mcp_server_status_mcp_servers__id__status_post: {
+    report_mcp_server_status_api_mcp_servers__id__status_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13882,7 +14585,7 @@ export interface operations {
             };
         };
     };
-    list_my_identities_me_identities_get: {
+    list_my_identities_api_me_identities_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -13902,7 +14605,7 @@ export interface operations {
             };
         };
     };
-    start_connect_me_identities__integration_id__start_post: {
+    start_connect_api_me_identities__integration_id__start_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13937,7 +14640,7 @@ export interface operations {
             };
         };
     };
-    poll_connect_me_identities__integration_id__poll_post: {
+    poll_connect_api_me_identities__integration_id__poll_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -13972,7 +14675,7 @@ export interface operations {
             };
         };
     };
-    callback_me_identities__integration_id__callback_get: {
+    callback_api_me_identities__integration_id__callback_get: {
         parameters: {
             query: {
                 code: string;
@@ -14006,7 +14709,7 @@ export interface operations {
             };
         };
     };
-    refresh_me_identities__integration_id__refresh_post: {
+    refresh_api_me_identities__integration_id__refresh_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14039,7 +14742,7 @@ export interface operations {
             };
         };
     };
-    disconnect_me_identities__integration_id__delete: {
+    disconnect_api_me_identities__integration_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -14070,7 +14773,7 @@ export interface operations {
             };
         };
     };
-    get_mfa_status_mfa_status_get: {
+    get_mfa_status_api_mfa_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14090,7 +14793,7 @@ export interface operations {
             };
         };
     };
-    setup_mfa_mfa_setup_post: {
+    setup_mfa_api_mfa_setup_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14110,7 +14813,7 @@ export interface operations {
             };
         };
     };
-    verify_and_enable_mfa_mfa_verify_post: {
+    verify_and_enable_mfa_api_mfa_verify_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14141,7 +14844,7 @@ export interface operations {
             };
         };
     };
-    disable_mfa_mfa_disable_delete: {
+    disable_mfa_api_mfa_disable_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -14150,7 +14853,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["Body_disable_mfa_mfa_disable_delete"];
+                "application/json": components["schemas"]["Body_disable_mfa_api_mfa_disable_delete"];
             };
         };
         responses: {
@@ -14172,7 +14875,7 @@ export interface operations {
             };
         };
     };
-    list_operation_logs_operations_log__get: {
+    list_operation_logs_api_operations_log__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -14212,7 +14915,7 @@ export interface operations {
             };
         };
     };
-    create_operation_log_operations_log__post: {
+    create_operation_log_api_operations_log__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14247,7 +14950,7 @@ export interface operations {
             };
         };
     };
-    list_plugin_ops_log_templates_operations_log_plugin_templates_get: {
+    list_plugin_ops_log_templates_api_operations_log_plugin_templates_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14267,7 +14970,7 @@ export interface operations {
             };
         };
     };
-    get_operation_log_operations_log__entry_id__get: {
+    get_operation_log_api_operations_log__entry_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14298,7 +15001,7 @@ export interface operations {
             };
         };
     };
-    delete_operation_log_operations_log__entry_id__delete: {
+    delete_operation_log_api_operations_log__entry_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -14327,7 +15030,7 @@ export interface operations {
             };
         };
     };
-    patch_operation_log_operations_log__entry_id__patch: {
+    patch_operation_log_api_operations_log__entry_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -14362,7 +15065,7 @@ export interface operations {
             };
         };
     };
-    list_teams_organizations__org_slug__teams__get: {
+    list_teams_api_organizations__org_slug__teams__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14379,7 +15082,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TeamResponse"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */
@@ -14393,7 +15098,7 @@ export interface operations {
             };
         };
     };
-    create_team_organizations__org_slug__teams__post: {
+    create_team_api_organizations__org_slug__teams__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14404,7 +15109,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TeamRequest"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
@@ -14414,7 +15121,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TeamResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -14428,7 +15137,7 @@ export interface operations {
             };
         };
     };
-    get_team_organizations__org_slug__teams__slug__get: {
+    get_team_api_organizations__org_slug__teams__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14446,7 +15155,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TeamResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -14460,7 +15171,7 @@ export interface operations {
             };
         };
     };
-    delete_team_organizations__org_slug__teams__slug__delete: {
+    delete_team_api_organizations__org_slug__teams__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -14490,7 +15201,7 @@ export interface operations {
             };
         };
     };
-    patch_team_organizations__org_slug__teams__slug__patch: {
+    patch_team_api_organizations__org_slug__teams__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -14502,7 +15213,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TeamRequest"];
+                "application/json": components["schemas"]["PatchOperation"][];
             };
         };
         responses: {
@@ -14512,7 +15223,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TeamResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -14526,7 +15239,7 @@ export interface operations {
             };
         };
     };
-    list_team_members_organizations__org_slug__teams__slug__members_get: {
+    list_team_members_api_organizations__org_slug__teams__slug__members_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14560,7 +15273,7 @@ export interface operations {
             };
         };
     };
-    add_team_member_organizations__org_slug__teams__slug__members_post: {
+    add_team_member_api_organizations__org_slug__teams__slug__members_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14600,7 +15313,7 @@ export interface operations {
             };
         };
     };
-    remove_team_member_organizations__org_slug__teams__slug__members__email__delete: {
+    remove_team_member_api_organizations__org_slug__teams__slug__members__email__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -14631,272 +15344,7 @@ export interface operations {
             };
         };
     };
-    list_environments_organizations__org_slug__environments__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvironmentResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_environment_organizations__org_slug__environments__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EnvironmentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvironmentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_environment_organizations__org_slug__environments__slug__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvironmentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_environment_organizations__org_slug__environments__slug__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_environment_organizations__org_slug__environments__slug__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EnvironmentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvironmentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_environment_edges_organizations__org_slug__environments__slug__edges__rel_type__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-                rel_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EdgeResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-                rel_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EdgePutBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EdgeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_environment_edge_organizations__org_slug__environments__slug__edges__rel_type__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                slug: string;
-                rel_type: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_link_definitions_organizations__org_slug__link_definitions__get: {
+    list_environments_api_organizations__org_slug__environments__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -14929,7 +15377,7 @@ export interface operations {
             };
         };
     };
-    create_link_definition_organizations__org_slug__link_definitions__post: {
+    create_environment_api_organizations__org_slug__environments__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -14940,7 +15388,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LinkDefinitionCreate"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
@@ -14966,7 +15416,7 @@ export interface operations {
             };
         };
     };
-    get_link_definition_organizations__org_slug__link_definitions__slug__get: {
+    get_environment_api_organizations__org_slug__environments__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15000,7 +15450,7 @@ export interface operations {
             };
         };
     };
-    delete_link_definition_organizations__org_slug__link_definitions__slug__delete: {
+    delete_environment_api_organizations__org_slug__environments__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -15030,7 +15480,7 @@ export interface operations {
             };
         };
     };
-    patch_link_definition_organizations__org_slug__link_definitions__slug__patch: {
+    patch_environment_api_organizations__org_slug__environments__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -15068,11 +15518,110 @@ export interface operations {
             };
         };
     };
-    list_project_types_organizations__org_slug__project_types__get: {
+    list_environment_edges_api_organizations__org_slug__environments__slug__edges__rel_type__get: {
         parameters: {
-            query?: {
-                include_schema?: boolean;
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                rel_type: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_environment_edge_api_organizations__org_slug__environments__slug__edges__rel_type__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                rel_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EdgePutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_environment_edge_api_organizations__org_slug__environments__slug__edges__rel_type__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                rel_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_link_definitions_api_organizations__org_slug__link_definitions__get: {
+        parameters: {
+            query?: never;
             header?: never;
             path: {
                 org_slug: string;
@@ -15087,7 +15636,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectTypeResponse"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */
@@ -15101,7 +15652,7 @@ export interface operations {
             };
         };
     };
-    create_project_type_organizations__org_slug__project_types__post: {
+    create_link_definition_api_organizations__org_slug__link_definitions__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -15112,7 +15663,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectTypeRequest"];
+                "application/json": components["schemas"]["LinkDefinitionCreate"];
             };
         };
         responses: {
@@ -15122,7 +15673,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectTypeResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -15136,7 +15689,7 @@ export interface operations {
             };
         };
     };
-    get_project_type_organizations__org_slug__project_types__slug__get: {
+    get_link_definition_api_organizations__org_slug__link_definitions__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15154,7 +15707,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectTypeResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -15168,7 +15723,7 @@ export interface operations {
             };
         };
     };
-    delete_project_type_organizations__org_slug__project_types__slug__delete: {
+    delete_link_definition_api_organizations__org_slug__link_definitions__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -15198,7 +15753,7 @@ export interface operations {
             };
         };
     };
-    patch_project_type_organizations__org_slug__project_types__slug__patch: {
+    patch_link_definition_api_organizations__org_slug__link_definitions__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -15210,7 +15765,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectTypeRequest"];
+                "application/json": components["schemas"]["PatchOperation"][];
             };
         };
         responses: {
@@ -15220,7 +15775,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectTypeResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -15234,7 +15791,183 @@ export interface operations {
             };
         };
     };
-    list_projects_organizations__org_slug__projects__get: {
+    list_project_types_api_organizations__org_slug__project_types__get: {
+        parameters: {
+            query?: {
+                include_schema?: boolean;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_type_api_organizations__org_slug__project_types__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_type_api_organizations__org_slug__project_types__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_type_api_organizations__org_slug__project_types__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_project_type_api_organizations__org_slug__project_types__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_projects_api_organizations__org_slug__projects__get: {
         parameters: {
             query?: {
                 project_type?: string | null;
@@ -15261,7 +15994,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectResponse"][];
+                    "application/json": components["schemas"]["ProjectListItem"][] | components["schemas"]["ProjectResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -15275,7 +16008,7 @@ export interface operations {
             };
         };
     };
-    create_project_organizations__org_slug__projects__post: {
+    create_project_api_organizations__org_slug__projects__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -15286,7 +16019,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectRequest"];
+                "application/json": components["schemas"]["ProjectCreate"];
             };
         };
         responses: {
@@ -15296,7 +16029,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectResponse"];
+                    "application/json": components["schemas"]["ProjectMutationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -15310,7 +16043,7 @@ export interface operations {
             };
         };
     };
-    get_project_schema_organizations__org_slug__projects__project_id__schema_get: {
+    get_project_schema_api_organizations__org_slug__projects__project_id__schema_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15342,7 +16075,7 @@ export interface operations {
             };
         };
     };
-    patch_project_environment_organizations__org_slug__projects__project_id__environments__env_slug__patch: {
+    patch_project_environment_api_organizations__org_slug__projects__project_id__environments__env_slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -15381,7 +16114,7 @@ export interface operations {
             };
         };
     };
-    get_project_organizations__org_slug__projects__project_id__get: {
+    get_project_api_organizations__org_slug__projects__project_id__get: {
         parameters: {
             query?: {
                 breakdown?: boolean;
@@ -15415,7 +16148,7 @@ export interface operations {
             };
         };
     };
-    delete_project_organizations__org_slug__projects__project_id__delete: {
+    delete_project_api_organizations__org_slug__projects__project_id__delete: {
         parameters: {
             query?: {
                 delete_repository?: boolean;
@@ -15449,7 +16182,7 @@ export interface operations {
             };
         };
     };
-    patch_project_organizations__org_slug__projects__project_id__patch: {
+    patch_project_api_organizations__org_slug__projects__project_id__patch: {
         parameters: {
             query?: {
                 transfer_repository?: boolean;
@@ -15487,7 +16220,7 @@ export interface operations {
             };
         };
     };
-    get_project_relationships_organizations__org_slug__projects__project_id__relationships_get: {
+    get_project_relationships_api_organizations__org_slug__projects__project_id__relationships_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15519,7 +16252,7 @@ export interface operations {
             };
         };
     };
-    create_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__post: {
+    create_project_relationship_api_organizations__org_slug__projects__project_id__relationships__target_id__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -15550,7 +16283,7 @@ export interface operations {
             };
         };
     };
-    delete_project_relationship_organizations__org_slug__projects__project_id__relationships__target_id__delete: {
+    delete_project_relationship_api_organizations__org_slug__projects__project_id__relationships__target_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -15581,7 +16314,7 @@ export interface operations {
             };
         };
     };
-    preview_lifecycle_organizations__org_slug__projects__project_id__lifecycle_preview_get: {
+    preview_lifecycle_api_organizations__org_slug__projects__project_id__lifecycle_preview_get: {
         parameters: {
             query: {
                 /** @description Hypothetical project-type slug set to evaluate. Repeatable, e.g. ``?project_type_slugs=api&project_type_slugs=consumer``. */
@@ -15616,7 +16349,7 @@ export interface operations {
             };
         };
     };
-    archive_project_organizations__org_slug__projects__project_id__archive_post: {
+    archive_project_api_organizations__org_slug__projects__project_id__archive_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -15648,7 +16381,7 @@ export interface operations {
             };
         };
     };
-    unarchive_project_organizations__org_slug__projects__project_id__unarchive_post: {
+    unarchive_project_api_organizations__org_slug__projects__project_id__unarchive_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -15680,7 +16413,7 @@ export interface operations {
             };
         };
     };
-    list_integrations_organizations__org_slug__integrations__get: {
+    list_integrations_api_organizations__org_slug__integrations__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15711,7 +16444,7 @@ export interface operations {
             };
         };
     };
-    create_integration_organizations__org_slug__integrations__post: {
+    create_integration_api_organizations__org_slug__integrations__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -15746,7 +16479,7 @@ export interface operations {
             };
         };
     };
-    get_integration_organizations__org_slug__integrations__slug__get: {
+    get_integration_api_organizations__org_slug__integrations__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15778,7 +16511,7 @@ export interface operations {
             };
         };
     };
-    delete_integration_organizations__org_slug__integrations__slug__delete: {
+    delete_integration_api_organizations__org_slug__integrations__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -15808,7 +16541,7 @@ export interface operations {
             };
         };
     };
-    update_integration_organizations__org_slug__integrations__slug__patch: {
+    update_integration_api_organizations__org_slug__integrations__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -15844,7 +16577,7 @@ export interface operations {
             };
         };
     };
-    update_integration_credentials_organizations__org_slug__integrations__slug__credentials_put: {
+    update_integration_credentials_api_organizations__org_slug__integrations__slug__credentials_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -15882,7 +16615,7 @@ export interface operations {
             };
         };
     };
-    set_login_provider_organizations__org_slug__integrations__slug__login_provider_put: {
+    set_login_provider_api_organizations__org_slug__integrations__slug__login_provider_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -15918,7 +16651,7 @@ export interface operations {
             };
         };
     };
-    list_capability_assignments_organizations__org_slug__integrations__slug__capabilities__kind__assignments_get: {
+    list_capability_assignments_api_organizations__org_slug__integrations__slug__capabilities__kind__assignments_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -15951,7 +16684,7 @@ export interface operations {
             };
         };
     };
-    replace_capability_assignments_endpoint_organizations__org_slug__integrations__slug__capabilities__kind__assignments_put: {
+    replace_capability_assignments_endpoint_api_organizations__org_slug__integrations__slug__capabilities__kind__assignments_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -15988,7 +16721,7 @@ export interface operations {
             };
         };
     };
-    list_webhooks_organizations__org_slug__webhooks__get: {
+    list_webhooks_api_organizations__org_slug__webhooks__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16019,7 +16752,7 @@ export interface operations {
             };
         };
     };
-    create_webhook_organizations__org_slug__webhooks__post: {
+    create_webhook_api_organizations__org_slug__webhooks__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -16054,7 +16787,7 @@ export interface operations {
             };
         };
     };
-    get_webhook_organizations__org_slug__webhooks__webhook__get: {
+    get_webhook_api_organizations__org_slug__webhooks__webhook__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16086,7 +16819,7 @@ export interface operations {
             };
         };
     };
-    delete_webhook_organizations__org_slug__webhooks__webhook__delete: {
+    delete_webhook_api_organizations__org_slug__webhooks__webhook__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -16116,7 +16849,7 @@ export interface operations {
             };
         };
     };
-    patch_webhook_organizations__org_slug__webhooks__webhook__patch: {
+    patch_webhook_api_organizations__org_slug__webhooks__webhook__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -16152,7 +16885,7 @@ export interface operations {
             };
         };
     };
-    list_project_events_organizations__org_slug__projects__project_id__events__get: {
+    list_project_events_api_organizations__org_slug__projects__project_id__events__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -16192,7 +16925,7 @@ export interface operations {
             };
         };
     };
-    list_project_operation_logs_organizations__org_slug__projects__project_id__operations_log__get: {
+    list_project_operation_logs_api_organizations__org_slug__projects__project_id__operations_log__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -16233,7 +16966,7 @@ export interface operations {
             };
         };
     };
-    list_releases_organizations__org_slug__projects__project_id__releases__get: {
+    list_releases_api_organizations__org_slug__projects__project_id__releases__get: {
         parameters: {
             query?: {
                 /** @description Optional 7-character committish to filter releases by. */
@@ -16270,7 +17003,7 @@ export interface operations {
             };
         };
     };
-    create_release_organizations__org_slug__projects__project_id__releases__post: {
+    create_release_api_organizations__org_slug__projects__project_id__releases__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -16306,7 +17039,7 @@ export interface operations {
             };
         };
     };
-    list_current_releases_organizations__org_slug__projects__project_id__releases_current_get: {
+    list_current_releases_api_organizations__org_slug__projects__project_id__releases_current_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16338,7 +17071,7 @@ export interface operations {
             };
         };
     };
-    get_release_organizations__org_slug__projects__project_id__releases__release_id__get: {
+    get_release_api_organizations__org_slug__projects__project_id__releases__release_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16371,7 +17104,7 @@ export interface operations {
             };
         };
     };
-    patch_release_organizations__org_slug__projects__project_id__releases__release_id__patch: {
+    patch_release_api_organizations__org_slug__projects__project_id__releases__release_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -16408,7 +17141,7 @@ export interface operations {
             };
         };
     };
-    get_deployment_edge_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__get: {
+    get_deployment_edge_api_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16442,7 +17175,7 @@ export interface operations {
             };
         };
     };
-    record_deployment_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__post: {
+    record_deployment_api_organizations__org_slug__projects__project_id__releases__release_id__environments__env_slug__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -16480,7 +17213,7 @@ export interface operations {
             };
         };
     };
-    list_deployment_edges_organizations__org_slug__projects__project_id__releases__release_id__environments_get: {
+    list_deployment_edges_api_organizations__org_slug__projects__project_id__releases__release_id__environments_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16513,7 +17246,7 @@ export interface operations {
             };
         };
     };
-    put_release_sbom_organizations__org_slug__projects__project_id__releases__release_id__sbom_put: {
+    put_release_sbom_api_organizations__org_slug__projects__project_id__releases__release_id__sbom_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -16571,7 +17304,7 @@ export interface operations {
             };
         };
     };
-    list_release_dependencies_organizations__org_slug__projects__project_id__releases__release_id__dependencies_get: {
+    list_release_dependencies_api_organizations__org_slug__projects__project_id__releases__release_id__dependencies_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16604,7 +17337,7 @@ export interface operations {
             };
         };
     };
-    list_project_services_organizations__org_slug__projects__project_id__services__get: {
+    list_project_services_api_organizations__org_slug__projects__project_id__services__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16636,7 +17369,7 @@ export interface operations {
             };
         };
     };
-    create_project_service_organizations__org_slug__projects__project_id__services__post: {
+    create_project_service_api_organizations__org_slug__projects__project_id__services__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -16672,7 +17405,7 @@ export interface operations {
             };
         };
     };
-    update_project_service_organizations__org_slug__projects__project_id__services__service_slug__put: {
+    update_project_service_api_organizations__org_slug__projects__project_id__services__service_slug__put: {
         parameters: {
             query?: never;
             header?: never;
@@ -16709,7 +17442,7 @@ export interface operations {
             };
         };
     };
-    delete_project_service_organizations__org_slug__projects__project_id__services__service_slug__delete: {
+    delete_project_service_api_organizations__org_slug__projects__project_id__services__service_slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -16740,7 +17473,7 @@ export interface operations {
             };
         };
     };
-    list_tags_organizations__org_slug__tags__get: {
+    list_tags_api_organizations__org_slug__tags__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16771,7 +17504,7 @@ export interface operations {
             };
         };
     };
-    create_tag_organizations__org_slug__tags__post: {
+    create_tag_api_organizations__org_slug__tags__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -16806,7 +17539,7 @@ export interface operations {
             };
         };
     };
-    get_tag_organizations__org_slug__tags__tag_slug__get: {
+    get_tag_api_organizations__org_slug__tags__tag_slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16838,7 +17571,7 @@ export interface operations {
             };
         };
     };
-    delete_tag_organizations__org_slug__tags__tag_slug__delete: {
+    delete_tag_api_organizations__org_slug__tags__tag_slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -16868,7 +17601,7 @@ export interface operations {
             };
         };
     };
-    patch_tag_organizations__org_slug__tags__tag_slug__patch: {
+    patch_tag_api_organizations__org_slug__tags__tag_slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -16904,7 +17637,7 @@ export interface operations {
             };
         };
     };
-    list_documents_organizations__org_slug__documents__get: {
+    list_documents_api_organizations__org_slug__documents__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -16942,7 +17675,7 @@ export interface operations {
             };
         };
     };
-    get_org_document_organizations__org_slug__documents__document_id__get: {
+    get_org_document_api_organizations__org_slug__documents__document_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16974,7 +17707,7 @@ export interface operations {
             };
         };
     };
-    delete_org_document_organizations__org_slug__documents__document_id__delete: {
+    delete_org_document_api_organizations__org_slug__documents__document_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -17004,7 +17737,7 @@ export interface operations {
             };
         };
     };
-    patch_org_document_organizations__org_slug__documents__document_id__patch: {
+    patch_org_document_api_organizations__org_slug__documents__document_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -17040,7 +17773,43 @@ export interface operations {
             };
         };
     };
-    list_document_versions_organizations__org_slug__documents__document_id__versions_get: {
+    get_org_document_analytics_api_organizations__org_slug__document_analytics_get: {
+        parameters: {
+            query?: {
+                mode?: "most-read" | "least-read" | "stale" | "never-read";
+                surface?: string;
+                stale_days?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgAnalyticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_versions_api_organizations__org_slug__documents__document_id__versions_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -17072,7 +17841,7 @@ export interface operations {
             };
         };
     };
-    get_document_version_organizations__org_slug__documents__document_id__versions__version__get: {
+    get_document_version_api_organizations__org_slug__documents__document_id__versions__version__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -17105,7 +17874,7 @@ export interface operations {
             };
         };
     };
-    restore_document_version_organizations__org_slug__documents__document_id__versions__version__restore_post: {
+    restore_document_version_api_organizations__org_slug__documents__document_id__versions__version__restore_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17138,7 +17907,7 @@ export interface operations {
             };
         };
     };
-    get_document_editors_organizations__org_slug__documents__document_id__editing_get: {
+    get_document_editors_api_organizations__org_slug__documents__document_id__editing_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -17170,7 +17939,7 @@ export interface operations {
             };
         };
     };
-    heartbeat_document_editing_organizations__org_slug__documents__document_id__editing_put: {
+    heartbeat_document_editing_api_organizations__org_slug__documents__document_id__editing_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -17202,7 +17971,7 @@ export interface operations {
             };
         };
     };
-    clear_document_editing_organizations__org_slug__documents__document_id__editing_delete: {
+    clear_document_editing_api_organizations__org_slug__documents__document_id__editing_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -17232,7 +18001,215 @@ export interface operations {
             };
         };
     };
-    list_project_documents_organizations__org_slug__projects__project_id__documents__get: {
+    like_document_api_organizations__org_slug__documents__document_id__like_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlike_document_api_organizations__org_slug__documents__document_id__like_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikeStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_likers_api_organizations__org_slug__documents__document_id__likes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikerListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_read_events_api_organizations__org_slug__documents__document_id__read_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadEventBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_analytics_api_organizations__org_slug__documents__document_id__analytics_get: {
+        parameters: {
+            query?: {
+                surface?: string;
+                include_self?: boolean;
+                trend_days?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentAnalyticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_readers_api_organizations__org_slug__documents__document_id__analytics_readers_get: {
+        parameters: {
+            query?: {
+                surface?: string;
+                include_self?: boolean;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReaderListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_documents_api_organizations__org_slug__projects__project_id__documents__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -17268,7 +18245,7 @@ export interface operations {
             };
         };
     };
-    create_document_organizations__org_slug__projects__project_id__documents__post: {
+    create_document_api_organizations__org_slug__projects__project_id__documents__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17304,7 +18281,7 @@ export interface operations {
             };
         };
     };
-    get_document_organizations__org_slug__projects__project_id__documents__document_id__get: {
+    get_document_api_organizations__org_slug__projects__project_id__documents__document_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -17337,7 +18314,7 @@ export interface operations {
             };
         };
     };
-    delete_document_organizations__org_slug__projects__project_id__documents__document_id__delete: {
+    delete_document_api_organizations__org_slug__projects__project_id__documents__document_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -17368,7 +18345,7 @@ export interface operations {
             };
         };
     };
-    patch_document_organizations__org_slug__projects__project_id__documents__document_id__patch: {
+    patch_document_api_organizations__org_slug__projects__project_id__documents__document_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -17405,7 +18382,7 @@ export interface operations {
             };
         };
     };
-    list_project_type_documents_organizations__org_slug__project_types__type_slug__documents__get: {
+    list_project_type_documents_api_organizations__org_slug__project_types__type_slug__documents__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -17441,7 +18418,7 @@ export interface operations {
             };
         };
     };
-    create_project_type_document_organizations__org_slug__project_types__type_slug__documents__post: {
+    create_project_type_document_api_organizations__org_slug__project_types__type_slug__documents__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17477,7 +18454,7 @@ export interface operations {
             };
         };
     };
-    list_user_documents_organizations__org_slug__users__email__documents__get: {
+    list_user_documents_api_organizations__org_slug__users__email__documents__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -17513,7 +18490,7 @@ export interface operations {
             };
         };
     };
-    create_user_document_organizations__org_slug__users__email__documents__post: {
+    create_user_document_api_organizations__org_slug__users__email__documents__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17549,7 +18526,7 @@ export interface operations {
             };
         };
     };
-    list_comment_threads_organizations__org_slug__projects__project_id__documents__document_id__comments_get: {
+    list_comment_threads_api_organizations__org_slug__projects__project_id__documents__document_id__comments_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -17582,7 +18559,7 @@ export interface operations {
             };
         };
     };
-    create_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments_post: {
+    create_comment_thread_api_organizations__org_slug__projects__project_id__documents__document_id__comments_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17619,7 +18596,7 @@ export interface operations {
             };
         };
     };
-    create_reply_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments_post: {
+    create_reply_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17657,7 +18634,7 @@ export interface operations {
             };
         };
     };
-    patch_comment_thread_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__patch: {
+    patch_comment_thread_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -17695,7 +18672,7 @@ export interface operations {
             };
         };
     };
-    delete_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__delete: {
+    delete_comment_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -17728,7 +18705,7 @@ export interface operations {
             };
         };
     };
-    patch_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__patch: {
+    patch_comment_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -17767,7 +18744,7 @@ export interface operations {
             };
         };
     };
-    acknowledge_comment_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post: {
+    acknowledge_comment_api_organizations__org_slug__projects__project_id__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17802,7 +18779,7 @@ export interface operations {
             };
         };
     };
-    list_comment_threads_organizations__org_slug__documents__document_id__comments_get: {
+    list_comment_threads_api_organizations__org_slug__documents__document_id__comments_get: {
         parameters: {
             query?: {
                 project_id?: string | null;
@@ -17836,7 +18813,7 @@ export interface operations {
             };
         };
     };
-    create_comment_thread_organizations__org_slug__documents__document_id__comments_post: {
+    create_comment_thread_api_organizations__org_slug__documents__document_id__comments_post: {
         parameters: {
             query?: {
                 project_id?: string | null;
@@ -17874,7 +18851,7 @@ export interface operations {
             };
         };
     };
-    create_reply_organizations__org_slug__documents__document_id__comments__thread_id__comments_post: {
+    create_reply_api_organizations__org_slug__documents__document_id__comments__thread_id__comments_post: {
         parameters: {
             query?: {
                 project_id?: string | null;
@@ -17913,7 +18890,7 @@ export interface operations {
             };
         };
     };
-    patch_comment_thread_organizations__org_slug__documents__document_id__comments__thread_id__patch: {
+    patch_comment_thread_api_organizations__org_slug__documents__document_id__comments__thread_id__patch: {
         parameters: {
             query?: {
                 project_id?: string | null;
@@ -17952,7 +18929,7 @@ export interface operations {
             };
         };
     };
-    delete_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__delete: {
+    delete_comment_api_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__delete: {
         parameters: {
             query?: {
                 project_id?: string | null;
@@ -17986,7 +18963,7 @@ export interface operations {
             };
         };
     };
-    patch_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__patch: {
+    patch_comment_api_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__patch: {
         parameters: {
             query?: {
                 project_id?: string | null;
@@ -18026,7 +19003,7 @@ export interface operations {
             };
         };
     };
-    acknowledge_comment_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post: {
+    acknowledge_comment_api_organizations__org_slug__documents__document_id__comments__thread_id__comments__comment_id__acknowledge_post: {
         parameters: {
             query?: {
                 project_id?: string | null;
@@ -18062,7 +19039,7 @@ export interface operations {
             };
         };
     };
-    list_document_templates_organizations__org_slug__document_templates__get: {
+    list_document_templates_api_organizations__org_slug__document_templates__get: {
         parameters: {
             query?: {
                 project_type?: string | null;
@@ -18096,7 +19073,7 @@ export interface operations {
             };
         };
     };
-    create_document_template_organizations__org_slug__document_templates__post: {
+    create_document_template_api_organizations__org_slug__document_templates__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -18131,7 +19108,7 @@ export interface operations {
             };
         };
     };
-    get_document_template_organizations__org_slug__document_templates__slug__get: {
+    get_document_template_api_organizations__org_slug__document_templates__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -18163,7 +19140,7 @@ export interface operations {
             };
         };
     };
-    update_document_template_organizations__org_slug__document_templates__slug__put: {
+    update_document_template_api_organizations__org_slug__document_templates__slug__put: {
         parameters: {
             query?: never;
             header?: never;
@@ -18199,7 +19176,7 @@ export interface operations {
             };
         };
     };
-    delete_document_template_organizations__org_slug__document_templates__slug__delete: {
+    delete_document_template_api_organizations__org_slug__document_templates__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -18229,7 +19206,7 @@ export interface operations {
             };
         };
     };
-    patch_document_template_organizations__org_slug__document_templates__slug__patch: {
+    patch_document_template_api_organizations__org_slug__document_templates__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -18265,7 +19242,7 @@ export interface operations {
             };
         };
     };
-    get_configuration_organizations__org_slug__projects__project_id__configuration__get: {
+    get_configuration_api_organizations__org_slug__projects__project_id__configuration__get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18300,7 +19277,42 @@ export interface operations {
             };
         };
     };
-    fetch_values_organizations__org_slug__projects__project_id__configuration_values_fetch_post: {
+    get_configuration_prefix_api_organizations__org_slug__projects__project_id__configuration_prefix_get: {
+        parameters: {
+            query?: {
+                source?: string | null;
+                environment?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigPrefixResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_values_api_organizations__org_slug__projects__project_id__configuration_values_fetch_post: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18341,7 +19353,7 @@ export interface operations {
             };
         };
     };
-    set_configuration_value_organizations__org_slug__projects__project_id__configuration__key__put: {
+    set_configuration_value_api_organizations__org_slug__projects__project_id__configuration__key__put: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18381,7 +19393,7 @@ export interface operations {
             };
         };
     };
-    delete_configuration_key_organizations__org_slug__projects__project_id__configuration__key__delete: {
+    delete_configuration_key_api_organizations__org_slug__projects__project_id__configuration__key__delete: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18415,7 +19427,7 @@ export interface operations {
             };
         };
     };
-    search_logs_organizations__org_slug__projects__project_id__logs__get: {
+    search_logs_api_organizations__org_slug__projects__project_id__logs__get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18456,7 +19468,7 @@ export interface operations {
             };
         };
     };
-    get_log_histogram_organizations__org_slug__projects__project_id__logs_histogram_get: {
+    get_log_histogram_api_organizations__org_slug__projects__project_id__logs_histogram_get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18495,7 +19507,7 @@ export interface operations {
             };
         };
     };
-    get_log_schema_organizations__org_slug__projects__project_id__logs_schema_get: {
+    get_log_schema_api_organizations__org_slug__projects__project_id__logs_schema_get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18532,7 +19544,7 @@ export interface operations {
             };
         };
     };
-    list_incidents_organizations__org_slug__projects__project_id__incidents__get: {
+    list_incidents_api_organizations__org_slug__projects__project_id__incidents__get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18571,7 +19583,7 @@ export interface operations {
             };
         };
     };
-    sync_project_lifecycle_organizations__org_slug__projects__project_id__lifecycle_sync_post: {
+    sync_project_lifecycle_api_organizations__org_slug__projects__project_id__lifecycle_sync_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -18603,7 +19615,7 @@ export interface operations {
             };
         };
     };
-    list_refs_organizations__org_slug__projects__project_id__deployments_refs_get: {
+    list_refs_api_organizations__org_slug__projects__project_id__deployments_refs_get: {
         parameters: {
             query?: {
                 kind?: "default" | "branch" | "tag" | "all";
@@ -18639,7 +19651,7 @@ export interface operations {
             };
         };
     };
-    list_commits_organizations__org_slug__projects__project_id__deployments_refs__ref__commits_get: {
+    list_commits_api_organizations__org_slug__projects__project_id__deployments_refs__ref__commits_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -18675,7 +19687,7 @@ export interface operations {
             };
         };
     };
-    resolve_commit_organizations__org_slug__projects__project_id__deployments_commits__committish__get: {
+    resolve_commit_api_organizations__org_slug__projects__project_id__deployments_commits__committish__get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18710,7 +19722,7 @@ export interface operations {
             };
         };
     };
-    compare_refs_organizations__org_slug__projects__project_id__deployments_compare_get: {
+    compare_refs_api_organizations__org_slug__projects__project_id__deployments_compare_get: {
         parameters: {
             query: {
                 base: string;
@@ -18746,7 +19758,7 @@ export interface operations {
             };
         };
     };
-    trigger_deployment_organizations__org_slug__projects__project_id__deployments_post: {
+    trigger_deployment_api_organizations__org_slug__projects__project_id__deployments_post: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18784,7 +19796,7 @@ export interface operations {
             };
         };
     };
-    resync_project_deployments_organizations__org_slug__projects__project_id__deployments_resync_post: {
+    resync_project_deployments_api_organizations__org_slug__projects__project_id__deployments_resync_post: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18819,7 +19831,7 @@ export interface operations {
             };
         };
     };
-    get_deployment_sync_status_organizations__org_slug__projects__project_id__deployments_sync_status_get: {
+    get_deployment_sync_status_api_organizations__org_slug__projects__project_id__deployments_sync_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -18851,7 +19863,7 @@ export interface operations {
             };
         };
     };
-    get_deployment_run_organizations__org_slug__projects__project_id__deployments_runs__run_id__get: {
+    get_deployment_run_api_organizations__org_slug__projects__project_id__deployments_runs__run_id__get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18886,7 +19898,7 @@ export interface operations {
             };
         };
     };
-    draft_release_notes_organizations__org_slug__projects__project_id__deployments_draft_release_notes_post: {
+    draft_release_notes_api_organizations__org_slug__projects__project_id__deployments_draft_release_notes_post: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18924,7 +19936,7 @@ export interface operations {
             };
         };
     };
-    list_promotion_options_organizations__org_slug__projects__project_id__deployments_promotion_options_get: {
+    list_promotion_options_api_organizations__org_slug__projects__project_id__deployments_promotion_options_get: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -18958,7 +19970,7 @@ export interface operations {
             };
         };
     };
-    list_recent_commits_organizations__org_slug__projects__project_id__deployments_recent_commits_get: {
+    list_recent_commits_api_organizations__org_slug__projects__project_id__deployments_recent_commits_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -18993,7 +20005,7 @@ export interface operations {
             };
         };
     };
-    get_release_drift_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
+    get_release_drift_api_organizations__org_slug__projects__project_id__deployments_release_drift_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19025,7 +20037,7 @@ export interface operations {
             };
         };
     };
-    get_release_history_organizations__org_slug__projects__project_id__deployments_release_history_get: {
+    get_release_history_api_organizations__org_slug__projects__project_id__deployments_release_history_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -19059,7 +20071,7 @@ export interface operations {
             };
         };
     };
-    cut_release_organizations__org_slug__projects__project_id__deployments_releases_cut_post: {
+    cut_release_api_organizations__org_slug__projects__project_id__deployments_releases_cut_post: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -19097,7 +20109,77 @@ export interface operations {
             };
         };
     };
-    get_project_analysis_organizations__org_slug__projects__project_id__analysis__get: {
+    block_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__block_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseBlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBlockResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unblock_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__block_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBlockResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_analysis_api_organizations__org_slug__projects__project_id__analysis__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19129,7 +20211,7 @@ export interface operations {
             };
         };
     };
-    run_project_analysis_organizations__org_slug__projects__project_id__analysis_run_post: {
+    run_project_analysis_api_organizations__org_slug__projects__project_id__analysis_run_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -19161,7 +20243,7 @@ export interface operations {
             };
         };
     };
-    remediate_project_finding_organizations__org_slug__projects__project_id__analysis_remediate_post: {
+    remediate_project_finding_api_organizations__org_slug__projects__project_id__analysis_remediate_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -19197,7 +20279,7 @@ export interface operations {
             };
         };
     };
-    remediate_all_project_findings_organizations__org_slug__projects__project_id__analysis_remediate_all_post: {
+    remediate_all_project_findings_api_organizations__org_slug__projects__project_id__analysis_remediate_all_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -19229,7 +20311,7 @@ export interface operations {
             };
         };
     };
-    sync_commits_and_tags_organizations__org_slug__projects__project_id__commits_sync_post: {
+    sync_commits_and_tags_api_organizations__org_slug__projects__project_id__commits_sync_post: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -19263,7 +20345,7 @@ export interface operations {
             };
         };
     };
-    get_commit_sync_status_organizations__org_slug__projects__project_id__commits_sync_status_get: {
+    get_commit_sync_status_api_organizations__org_slug__projects__project_id__commits_sync_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19295,7 +20377,7 @@ export interface operations {
             };
         };
     };
-    sync_pull_requests_organizations__org_slug__projects__project_id__pull_requests_sync_post: {
+    sync_pull_requests_api_organizations__org_slug__projects__project_id__pull_requests_sync_post: {
         parameters: {
             query?: {
                 source?: string | null;
@@ -19329,7 +20411,7 @@ export interface operations {
             };
         };
     };
-    get_pr_sync_status_organizations__org_slug__projects__project_id__pull_requests_sync_status_get: {
+    get_pr_sync_status_api_organizations__org_slug__projects__project_id__pull_requests_sync_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19361,7 +20443,7 @@ export interface operations {
             };
         };
     };
-    list_project_pull_requests_organizations__org_slug__projects__project_id__pull_requests__get: {
+    list_project_pull_requests_api_organizations__org_slug__projects__project_id__pull_requests__get: {
         parameters: {
             query?: {
                 state?: string | null;
@@ -19398,7 +20480,7 @@ export interface operations {
             };
         };
     };
-    list_org_pull_requests_organizations__org_slug__pull_requests__get: {
+    list_org_pull_requests_api_organizations__org_slug__pull_requests__get: {
         parameters: {
             query?: {
                 state?: string | null;
@@ -19434,7 +20516,7 @@ export interface operations {
             };
         };
     };
-    pull_request_activity_organizations__org_slug__pull_requests_activity_get: {
+    pull_request_activity_api_organizations__org_slug__pull_requests_activity_get: {
         parameters: {
             query?: {
                 since?: string | null;
@@ -19467,7 +20549,7 @@ export interface operations {
             };
         };
     };
-    search_organizations__org_slug__search_get: {
+    search_api_organizations__org_slug__search_get: {
         parameters: {
             query: {
                 q: string;
@@ -19505,7 +20587,7 @@ export interface operations {
             };
         };
     };
-    list_organizations_organizations__get: {
+    list_organizations_api_organizations__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19527,7 +20609,7 @@ export interface operations {
             };
         };
     };
-    create_organization_organizations__post: {
+    create_organization_api_organizations__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -19562,7 +20644,7 @@ export interface operations {
             };
         };
     };
-    get_organization_organizations__slug__get: {
+    get_organization_api_organizations__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19595,7 +20677,7 @@ export interface operations {
             };
         };
     };
-    delete_organization_organizations__slug__delete: {
+    delete_organization_api_organizations__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -19624,7 +20706,7 @@ export interface operations {
             };
         };
     };
-    patch_organization_organizations__slug__patch: {
+    patch_organization_api_organizations__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -19661,7 +20743,7 @@ export interface operations {
             };
         };
     };
-    list_organization_members_organizations__slug__members_get: {
+    list_organization_members_api_organizations__slug__members_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19694,7 +20776,7 @@ export interface operations {
             };
         };
     };
-    get_entity_schema_admin_plugins__slug__entities__label___schema_get: {
+    get_entity_schema_api_admin_plugins__slug__entities__label___schema_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19728,7 +20810,7 @@ export interface operations {
             };
         };
     };
-    list_entities_admin_plugins__slug__entities__label__get: {
+    list_entities_api_admin_plugins__slug__entities__label__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19762,7 +20844,7 @@ export interface operations {
             };
         };
     };
-    create_entity_admin_plugins__slug__entities__label__post: {
+    create_entity_api_admin_plugins__slug__entities__label__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -19802,7 +20884,7 @@ export interface operations {
             };
         };
     };
-    get_entity_admin_plugins__slug__entities__label___id__get: {
+    get_entity_api_admin_plugins__slug__entities__label___id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19837,7 +20919,7 @@ export interface operations {
             };
         };
     };
-    delete_entity_admin_plugins__slug__entities__label___id__delete: {
+    delete_entity_api_admin_plugins__slug__entities__label___id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -19868,7 +20950,7 @@ export interface operations {
             };
         };
     };
-    update_entity_admin_plugins__slug__entities__label___id__patch: {
+    update_entity_api_admin_plugins__slug__entities__label___id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -19909,7 +20991,7 @@ export interface operations {
             };
         };
     };
-    get_plugin_manifest_plugins__slug__manifest_get: {
+    get_plugin_manifest_api_plugins__slug__manifest_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19942,7 +21024,7 @@ export interface operations {
             };
         };
     };
-    list_project_integrations_organizations__org_slug__projects__project_id__integrations__get: {
+    list_project_integrations_api_organizations__org_slug__projects__project_id__integrations__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -19974,7 +21056,7 @@ export interface operations {
             };
         };
     };
-    replace_project_integrations_organizations__org_slug__projects__project_id__integrations__put: {
+    replace_project_integrations_api_organizations__org_slug__projects__project_id__integrations__put: {
         parameters: {
             query?: never;
             header?: never;
@@ -20010,7 +21092,7 @@ export interface operations {
             };
         };
     };
-    list_project_plugins_organizations__org_slug__projects__project_id__plugins__get: {
+    list_project_plugins_api_organizations__org_slug__projects__project_id__plugins__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20042,7 +21124,7 @@ export interface operations {
             };
         };
     };
-    list_roles_roles__get: {
+    list_roles_api_roles__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20064,7 +21146,7 @@ export interface operations {
             };
         };
     };
-    create_role_roles__post: {
+    create_role_api_roles__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20097,7 +21179,7 @@ export interface operations {
             };
         };
     };
-    get_role_roles__slug__get: {
+    get_role_api_roles__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20130,7 +21212,7 @@ export interface operations {
             };
         };
     };
-    delete_role_roles__slug__delete: {
+    delete_role_api_roles__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -20159,7 +21241,7 @@ export interface operations {
             };
         };
     };
-    patch_role_roles__slug__patch: {
+    patch_role_api_roles__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -20196,7 +21278,7 @@ export interface operations {
             };
         };
     };
-    list_role_users_roles__slug__users_get: {
+    list_role_users_api_roles__slug__users_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20227,7 +21309,7 @@ export interface operations {
             };
         };
     };
-    list_role_service_accounts_roles__slug__service_accounts_get: {
+    list_role_service_accounts_api_roles__slug__service_accounts_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20258,7 +21340,7 @@ export interface operations {
             };
         };
     };
-    role_permissions_roles__slug__permissions_post: {
+    role_permissions_api_roles__slug__permissions_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20269,7 +21351,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_role_permissions_roles__slug__permissions_post"];
+                "application/json": components["schemas"]["Body_role_permissions_api_roles__slug__permissions_post"];
             };
         };
         responses: {
@@ -20291,7 +21373,7 @@ export interface operations {
             };
         };
     };
-    revoke_permission_roles__slug__permissions__permission_name__delete: {
+    revoke_permission_api_roles__slug__permissions__permission_name__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -20321,7 +21403,7 @@ export interface operations {
             };
         };
     };
-    list_sa_api_keys_service_accounts__slug__api_keys_get: {
+    list_sa_api_keys_api_service_accounts__slug__api_keys_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20352,7 +21434,7 @@ export interface operations {
             };
         };
     };
-    create_sa_api_key_service_accounts__slug__api_keys_post: {
+    create_sa_api_key_api_service_accounts__slug__api_keys_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20387,7 +21469,7 @@ export interface operations {
             };
         };
     };
-    revoke_sa_api_key_service_accounts__slug__api_keys__key_id__delete: {
+    revoke_sa_api_key_api_service_accounts__slug__api_keys__key_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -20417,7 +21499,7 @@ export interface operations {
             };
         };
     };
-    rotate_sa_api_key_service_accounts__slug__api_keys__key_id__rotate_post: {
+    rotate_sa_api_key_api_service_accounts__slug__api_keys__key_id__rotate_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20449,7 +21531,7 @@ export interface operations {
             };
         };
     };
-    list_policies_scoring_policies__get: {
+    list_policies_api_scoring_policies__get: {
         parameters: {
             query?: {
                 category?: string | null;
@@ -20482,7 +21564,7 @@ export interface operations {
             };
         };
     };
-    create_policy_scoring_policies__post: {
+    create_policy_api_scoring_policies__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20515,7 +21597,7 @@ export interface operations {
             };
         };
     };
-    get_policy_scoring_policies__slug__get: {
+    get_policy_api_scoring_policies__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20546,7 +21628,7 @@ export interface operations {
             };
         };
     };
-    delete_policy_scoring_policies__slug__delete: {
+    delete_policy_api_scoring_policies__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -20575,7 +21657,7 @@ export interface operations {
             };
         };
     };
-    update_policy_scoring_policies__slug__patch: {
+    update_policy_api_scoring_policies__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -20610,7 +21692,7 @@ export interface operations {
             };
         };
     };
-    get_score_history_organizations__org_slug__projects__project_id__score_history_get: {
+    get_score_history_api_organizations__org_slug__projects__project_id__score_history_get: {
         parameters: {
             query?: {
                 granularity?: "raw" | "hour" | "day";
@@ -20646,7 +21728,7 @@ export interface operations {
             };
         };
     };
-    get_score_trend_organizations__org_slug__projects__project_id__score_trend_get: {
+    get_score_trend_api_organizations__org_slug__projects__project_id__score_trend_get: {
         parameters: {
             query?: {
                 days?: number;
@@ -20680,7 +21762,7 @@ export interface operations {
             };
         };
     };
-    score_rollup_scores_rollup_get: {
+    score_rollup_api_scores_rollup_get: {
         parameters: {
             query: {
                 org: string;
@@ -20712,7 +21794,7 @@ export interface operations {
             };
         };
     };
-    score_monthly_improvement_scores_monthly_improvement_get: {
+    score_monthly_improvement_api_scores_monthly_improvement_get: {
         parameters: {
             query: {
                 org: string;
@@ -20746,7 +21828,7 @@ export interface operations {
             };
         };
     };
-    score_history_by_team_scores_history_by_team_get: {
+    score_history_by_team_api_scores_history_by_team_get: {
         parameters: {
             query: {
                 org: string;
@@ -20780,7 +21862,7 @@ export interface operations {
             };
         };
     };
-    score_history_feed_scores_history_feed_get: {
+    score_history_feed_api_scores_history_feed_get: {
         parameters: {
             query: {
                 org: string;
@@ -20814,7 +21896,7 @@ export interface operations {
             };
         };
     };
-    rescore_scoring_rescore_post: {
+    rescore_api_scoring_rescore_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20847,7 +21929,7 @@ export interface operations {
             };
         };
     };
-    list_service_accounts_service_accounts_get: {
+    list_service_accounts_api_service_accounts_get: {
         parameters: {
             query?: {
                 is_active?: boolean | null;
@@ -20878,7 +21960,7 @@ export interface operations {
             };
         };
     };
-    create_service_account_service_accounts_post: {
+    create_service_account_api_service_accounts_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -20911,7 +21993,7 @@ export interface operations {
             };
         };
     };
-    get_service_account_service_accounts__slug__get: {
+    get_service_account_api_service_accounts__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20942,7 +22024,7 @@ export interface operations {
             };
         };
     };
-    delete_service_account_service_accounts__slug__delete: {
+    delete_service_account_api_service_accounts__slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -20971,7 +22053,7 @@ export interface operations {
             };
         };
     };
-    patch_service_account_service_accounts__slug__patch: {
+    patch_service_account_api_service_accounts__slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -21006,7 +22088,7 @@ export interface operations {
             };
         };
     };
-    add_to_organization_service_accounts__slug__organizations_post: {
+    add_to_organization_api_service_accounts__slug__organizations_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21041,7 +22123,7 @@ export interface operations {
             };
         };
     };
-    remove_from_organization_service_accounts__slug__organizations__org_slug__delete: {
+    remove_from_organization_api_service_accounts__slug__organizations__org_slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -21071,7 +22153,7 @@ export interface operations {
             };
         };
     };
-    update_organization_role_service_accounts__slug__organizations__org_slug__patch: {
+    update_organization_role_api_service_accounts__slug__organizations__org_slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -21105,7 +22187,7 @@ export interface operations {
             };
         };
     };
-    get_status_status_get: {
+    get_status_api_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21125,7 +22207,7 @@ export interface operations {
             };
         };
     };
-    list_uploads_uploads__get: {
+    list_uploads_api_uploads__get: {
         parameters: {
             query?: {
                 content_type?: string | null;
@@ -21157,7 +22239,7 @@ export interface operations {
             };
         };
     };
-    create_upload_uploads__post: {
+    create_upload_api_uploads__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21166,7 +22248,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_create_upload_uploads__post"];
+                "multipart/form-data": components["schemas"]["Body_create_upload_api_uploads__post"];
             };
         };
         responses: {
@@ -21190,7 +22272,7 @@ export interface operations {
             };
         };
     };
-    get_upload_uploads__upload_id__get: {
+    get_upload_api_uploads__upload_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21221,7 +22303,7 @@ export interface operations {
             };
         };
     };
-    delete_upload_uploads__upload_id__delete: {
+    delete_upload_api_uploads__upload_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -21250,7 +22332,7 @@ export interface operations {
             };
         };
     };
-    get_upload_meta_uploads__upload_id__meta_get: {
+    get_upload_meta_api_uploads__upload_id__meta_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21281,7 +22363,7 @@ export interface operations {
             };
         };
     };
-    get_upload_thumbnail_uploads__upload_id__thumbnail_get: {
+    get_upload_thumbnail_api_uploads__upload_id__thumbnail_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21312,7 +22394,7 @@ export interface operations {
             };
         };
     };
-    list_users_users__get: {
+    list_users_api_users__get: {
         parameters: {
             query?: {
                 is_active?: boolean | null;
@@ -21344,7 +22426,7 @@ export interface operations {
             };
         };
     };
-    create_user_users__post: {
+    create_user_api_users__post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21377,7 +22459,7 @@ export interface operations {
             };
         };
     };
-    get_user_by_identity_users_by_identity_get: {
+    get_user_by_identity_api_users_by_identity_get: {
         parameters: {
             query: {
                 integration_slug: string;
@@ -21409,7 +22491,7 @@ export interface operations {
             };
         };
     };
-    get_current_user_profile_users_me_get: {
+    get_current_user_profile_api_users_me_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21429,7 +22511,7 @@ export interface operations {
             };
         };
     };
-    get_user_users__email__get: {
+    get_user_api_users__email__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21460,7 +22542,7 @@ export interface operations {
             };
         };
     };
-    delete_user_users__email__delete: {
+    delete_user_api_users__email__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -21489,7 +22571,7 @@ export interface operations {
             };
         };
     };
-    patch_user_users__email__patch: {
+    patch_user_api_users__email__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -21524,7 +22606,7 @@ export interface operations {
             };
         };
     };
-    change_password_users__email__password_post: {
+    change_password_api_users__email__password_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21557,7 +22639,7 @@ export interface operations {
             };
         };
     };
-    add_to_organization_users__email__organizations_post: {
+    add_to_organization_api_users__email__organizations_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -21592,7 +22674,7 @@ export interface operations {
             };
         };
     };
-    remove_from_organization_users__email__organizations__org_slug__delete: {
+    remove_from_organization_api_users__email__organizations__org_slug__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -21622,7 +22704,7 @@ export interface operations {
             };
         };
     };
-    update_organization_role_users__email__organizations__org_slug__patch: {
+    update_organization_role_api_users__email__organizations__org_slug__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -21656,7 +22738,7 @@ export interface operations {
             };
         };
     };
-    get_user_contributions_users__email__contributions_get: {
+    get_user_contributions_api_users__email__contributions_get: {
         parameters: {
             query?: {
                 since?: string | null;
@@ -21691,7 +22773,7 @@ export interface operations {
             };
         };
     };
-    get_user_stats_users__email__stats_get: {
+    get_user_stats_api_users__email__stats_get: {
         parameters: {
             query?: {
                 since?: string | null;
@@ -21726,7 +22808,7 @@ export interface operations {
             };
         };
     };
-    get_user_identities_users__email__identities_get: {
+    get_user_identities_api_users__email__identities_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -21757,7 +22839,7 @@ export interface operations {
             };
         };
     };
-    get_user_activity_users__email__activity_get: {
+    get_user_activity_api_users__email__activity_get: {
         parameters: {
             query?: {
                 limit?: number;

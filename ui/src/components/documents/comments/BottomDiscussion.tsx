@@ -14,6 +14,8 @@ interface Props extends CommentThreadHandlers {
   busy?: boolean
   currentUserEmail: string
   displayNames?: Map<string, string>
+  /** Trailing control in the heading row — the reader puts its like pill here. */
+  headerAction?: React.ReactNode
   lastVisit?: number
   threads: CommentThread[]
 }
@@ -28,6 +30,7 @@ export function BottomDiscussion({
   busy = false,
   currentUserEmail,
   displayNames,
+  headerAction,
   lastVisit,
   onAcknowledge,
   onCreateThread,
@@ -41,13 +44,19 @@ export function BottomDiscussion({
 
   return (
     <section className="mt-8 flex flex-col gap-4">
-      <h2 className="text-primary m-0 flex items-center gap-2 text-[16px] font-medium">
-        <MessagesSquare className="text-secondary size-[18px]" />
-        Discussion
-        <span className="bg-secondary text-tertiary rounded px-1.5 text-[12px] tabular-nums">
-          {threads.length}
-        </span>
-      </h2>
+      {/* `headerAction` is a sibling of the heading, not a child: the
+          reader passes a button wrapped in a div, which is not valid
+          inside an h2. */}
+      <div className="flex items-center gap-2">
+        <h2 className="text-primary m-0 flex items-center gap-2 text-[16px] font-medium">
+          <MessagesSquare className="text-secondary size-[18px]" />
+          Discussion
+          <span className="bg-secondary text-tertiary rounded px-1.5 text-[12px] tabular-nums">
+            {threads.length}
+          </span>
+        </h2>
+        {headerAction && <div className="ml-auto">{headerAction}</div>}
+      </div>
 
       {composing ? (
         <LazyRichComposer
