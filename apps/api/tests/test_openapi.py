@@ -366,7 +366,9 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         mapped = '/organizations/{org_slug}/teams/'
 
         @app.get(mapped)
-        async def list_teams(org_slug: str) -> list[dict]:  # pyright: ignore[reportUnusedFunction]
+        async def list_teams(  # pyright: ignore[reportUnusedFunction]
+            org_slug: str,
+        ) -> list[dict]:
             return []
 
         custom_openapi_fn = openapi.create_custom_openapi(app)
@@ -439,7 +441,9 @@ class BlueprintSchemaNamespaceTestCase(unittest.TestCase):
         app = fastapi.FastAPI(title='Test', version='1.0.0')
 
         @app.get('/projects/')
-        async def list_projects() -> ProjectResponse:  # pyright: ignore[reportUnusedFunction]
+        async def list_projects() -> (  # pyright: ignore[reportUnusedFunction]
+            ProjectResponse
+        ):
             return ProjectResponse(only_the_endpoint_has_this='x')
 
         schema = openapi.create_custom_openapi(app)()
@@ -470,6 +474,72 @@ class BlueprintSchemaNamespaceTestCase(unittest.TestCase):
         self.assertTrue(
             openapi._claim_schema_name({}, 'TeamBlueprint', 'Team')
         )
+
+    def test_refused_name_is_not_referenced_by_a_path(self) -> None:
+        """A refused schema must not be pointed at by an operation.
+
+        Refusing the write keeps the endpoint-derived component, so
+        rewriting an operation to that name would resolve the ``$ref``
+        to a shape the blueprint pass never produced. The build is a
+        failure too, so the document must not be cached.
+        """
+        openapi._blueprint_models = {'Team': imbi.common.models.Team}
+        openapi._response_models = {
+            'Team': imbi.common.blueprints.make_response_model(
+                imbi.common.models.Team,
+            ),
+        }
+
+        class TeamBlueprintRequest(pydantic.BaseModel):
+            """Occupies the name the blueprint write schema wants."""
+
+            only_the_endpoint_has_this: str
+
+        class TeamCreate(pydantic.BaseModel):
+            """The body the mapped path actually accepts."""
+
+            name: str
+
+        app = fastapi.FastAPI(title='Test', version='1.0.0')
+        mapped = '/organizations/{org_slug}/teams/'
+
+        # An unmapped path is enough to make FastAPI publish the
+        # colliding component before the blueprint pass runs.
+        @app.post('/decoys/')
+        async def create_decoy(  # pyright: ignore[reportUnusedFunction]
+            body: TeamBlueprintRequest,
+        ) -> dict:
+            return {}
+
+        @app.post(mapped)
+        async def create_team(  # pyright: ignore[reportUnusedFunction]
+            org_slug: str,
+            body: TeamCreate,
+        ) -> dict:
+            return {}
+
+        with self.assertLogs(openapi.LOGGER, level='ERROR') as captured:
+            schema = openapi.create_custom_openapi(app)()
+
+        self.assertIn('refusing to overwrite', captured.output[0])
+
+        # The decoy keeps the component it was published under.
+        schemas = schema['components']['schemas']
+        self.assertIn(
+            'only_the_endpoint_has_this',
+            schemas['TeamBlueprintRequest']['properties'],
+        )
+        # The mapped operation is left alone rather than pointed at a
+        # name the blueprint pass did not write.
+        body_schema = schema['paths'][mapped]['post']['requestBody'][
+            'content'
+        ]['application/json']['schema']
+        self.assertEqual(
+            '#/components/schemas/TeamCreate',
+            body_schema.get('$ref'),
+        )
+        # A refused name is a build failure, so nothing is cached.
+        self.assertIsNone(openapi._schema_cache)
 
 
 class MarkAiExcludedOperationsTestCase(unittest.TestCase):

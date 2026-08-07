@@ -54,6 +54,10 @@ export function useDocumentLike(
         queryKey: queryKeys.documentLikers(orgSlug, documentId),
       })
     },
+    // One scope per document runs rapid toggles in series. Without it a
+    // slow PUT can settle after the DELETE that followed it and put the
+    // stale count back.
+    scope: { id: `document-like:${orgSlug}:${documentId}` },
   })
 
   return {

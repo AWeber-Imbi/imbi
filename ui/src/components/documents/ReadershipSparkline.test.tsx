@@ -46,6 +46,20 @@ describe('ReadershipSparkline', () => {
     expect(container.textContent).toContain('May 1, 2026 to May 3, 2026')
   })
 
+  it('survives a shorter trend while a later day is hovered', () => {
+    const { container, rerender } = render(
+      <ReadershipSparkline trend={TREND} />,
+    )
+    const hits = screen
+      .getByRole('img', { name: 'Views per day' })
+      .querySelectorAll('rect')
+
+    fireEvent.mouseEnter(hits[2])
+    rerender(<ReadershipSparkline trend={TREND.slice(0, 1)} />)
+
+    expect(container.textContent).toContain('May 1, 2026 to May 1, 2026')
+  })
+
   it('leaves an unparseable day as-is', () => {
     render(
       <ReadershipSparkline

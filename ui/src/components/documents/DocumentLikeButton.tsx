@@ -90,7 +90,10 @@ export function DocumentLikeButton({
       ) : (
         <LikeGhost {...trigger} />
       )}
-      {showLikers && <LikerList likers={likers} />}
+      {/* The query is disabled at a zero count, but its last result
+          stays cached — gate on the count so an unlike cannot leave the
+          previous names on screen. */}
+      {showLikers && like.like_count > 0 && <LikerList likers={likers} />}
     </div>
   )
 }

@@ -38,6 +38,9 @@ export function ReadershipSparkline({ trend }: Props) {
     .join(' ')
   const area = `${line} L${x(trend.length - 1)} ${BOTTOM} L${x(0)} ${BOTTOM} Z`
   const hitWidth = Math.max(step, 4)
+  // `hover` survives a change of `trend`, so a shorter series would
+  // otherwise index past the end.
+  const active = hover != null && hover < trend.length ? hover : null
 
   return (
     <div>
@@ -68,7 +71,9 @@ export function ReadershipSparkline({ trend }: Props) {
           strokeLinejoin="round"
           strokeWidth={2}
         />
-        {hover != null && <Crosshair x={x(hover)} y={y(trend[hover].views)} />}
+        {active != null && (
+          <Crosshair x={x(active)} y={y(trend[active].views)} />
+        )}
         {trend.map((point, index) => (
           <rect
             fill="transparent"
@@ -81,7 +86,7 @@ export function ReadershipSparkline({ trend }: Props) {
           />
         ))}
       </svg>
-      <Caption point={hover == null ? null : trend[hover]} trend={trend} />
+      <Caption point={active == null ? null : trend[active]} trend={trend} />
     </div>
   )
 }

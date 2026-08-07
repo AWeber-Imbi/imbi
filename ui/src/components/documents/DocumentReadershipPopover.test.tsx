@@ -147,6 +147,38 @@ describe('DocumentReadershipPopover', () => {
     )
   })
 
+  it('withholds the empty-state copy while the readers are in flight', async () => {
+    vi.spyOn(endpoints, 'getDocumentAnalytics').mockResolvedValue(analytics())
+    vi.spyOn(endpoints, 'listDocumentReaders').mockReturnValue(
+      new Promise(() => {}),
+    )
+    renderPopover()
+
+    await userEvent.click(await screen.findByRole('button'))
+
+    expect(screen.getByText('views (all-time)')).toBeInTheDocument()
+    expect(
+      screen.queryByText('No individual reads recorded yet.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('withholds the empty-state copy when the readers fail', async () => {
+    vi.spyOn(endpoints, 'getDocumentAnalytics').mockResolvedValue(analytics())
+    vi.spyOn(endpoints, 'listDocumentReaders').mockRejectedValue(
+      new Error('forbidden'),
+    )
+    renderPopover()
+
+    await userEvent.click(await screen.findByRole('button'))
+
+    await waitFor(() =>
+      expect(endpoints.listDocumentReaders).toHaveBeenCalled(),
+    )
+    expect(
+      screen.queryByText('No individual reads recorded yet.'),
+    ).not.toBeInTheDocument()
+  })
+
   it('links out to the org-wide report', async () => {
     stub(analytics())
     renderPopover()

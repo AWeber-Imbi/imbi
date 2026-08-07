@@ -306,8 +306,9 @@ def _build_schema(
     nested closure straddling the lock.
 
     Returns ``(schema, had_failure)``. The flag is ``True`` when any
-    per-model ``model_json_schema`` call raised; the caller uses it
-    to decide whether the result is safe to cache.
+    per-model ``model_json_schema`` call raised, or when a blueprint
+    schema name was already taken; the caller uses it to decide whether
+    the result is safe to cache.
     """
     openapi_schema = fastapi.openapi.utils.get_openapi(
         title=app.title,
@@ -334,6 +335,11 @@ def _build_schema(
     )
 
     had_failure = False
+    # Names a blueprint model wanted but did not get. An operation must
+    # not be pointed at one of these: the component still holds the
+    # endpoint-derived shape, so the $ref would resolve to something
+    # unrelated.
+    unwritten: set[str] = set()
 
     if _blueprint_models:
         for model_name in _blueprint_models:
@@ -353,6 +359,10 @@ def _build_schema(
                         model_name,
                     )
                     had_failure = True
+                    unwritten.add(write_name)
+            else:
+                had_failure = True
+                unwritten.add(write_name)
 
             # Response schema (with relationships)
             resp_name = blueprint_schema_name(model_name, 'Response')
@@ -367,9 +377,13 @@ def _build_schema(
                         model_name,
                     )
                     had_failure = True
+                    unwritten.add(resp_name)
+            else:
+                had_failure = True
+                unwritten.add(resp_name)
 
         _hoist_defs_to_components(schemas)
-        _rewrite_path_schemas(openapi_schema)
+        _rewrite_path_schemas(openapi_schema, unwritten)
 
     for edge_name, edge_model in _edge_models.items():
         schema_name = f'{edge_name}EdgeProperties'
@@ -506,13 +520,22 @@ def _hoist_defs_to_components(
 
 def _rewrite_path_schemas(
     openapi_schema: dict[str, typing.Any],
+    unwritten: set[str] | None = None,
 ) -> None:
     """Rewrite path schemas for request and response.
 
     Request bodies use write schemas (writable fields only).
     Response bodies use response schemas (with relationships).
 
+    Args:
+        openapi_schema: Document to rewrite in place.
+        unwritten: Blueprint schema names that were not written to
+            ``components.schemas``. Operations needing one are left as
+            FastAPI produced them; a ``$ref`` to a name the blueprint
+            pass did not write would resolve to an unrelated schema.
+
     """
+    absent = unwritten or set()
     paths: dict[str, typing.Any] = openapi_schema.get(
         'paths',
         {},
@@ -522,18 +545,10 @@ def _rewrite_path_schemas(
         if path not in paths:
             continue
 
-        request_ref = {
-            '$ref': (
-                '#/components/schemas/'
-                + blueprint_schema_name(model_type, 'Request')
-            ),
-        }
-        response_ref = {
-            '$ref': (
-                '#/components/schemas/'
-                + blueprint_schema_name(model_type, 'Response')
-            ),
-        }
+        request_name = blueprint_schema_name(model_type, 'Request')
+        response_name = blueprint_schema_name(model_type, 'Response')
+        request_ref = {'$ref': f'#/components/schemas/{request_name}'}
+        response_ref = {'$ref': f'#/components/schemas/{response_name}'}
         array_ref: dict[str, typing.Any] = {
             'type': 'array',
             'items': response_ref,
@@ -547,15 +562,17 @@ def _rewrite_path_schemas(
             op = typing.cast(dict[str, typing.Any], operation)
 
             if method in ('post', 'put', 'patch'):
-                _rewrite_request_body(op, request_ref)
+                if request_name not in absent:
+                    _rewrite_request_body(op, request_ref)
 
-            _rewrite_response_schemas(
-                op,
-                path,
-                method,
-                response_ref,
-                array_ref,
-            )
+            if response_name not in absent:
+                _rewrite_response_schemas(
+                    op,
+                    path,
+                    method,
+                    response_ref,
+                    array_ref,
+                )
 
 
 def _rewrite_request_body(

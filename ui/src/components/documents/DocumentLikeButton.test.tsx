@@ -86,6 +86,36 @@ describe('DocumentLikeButton', () => {
     expect(screen.getByText('and 2 more')).toBeInTheDocument()
   })
 
+  it('drops the named likers once the count reaches zero', async () => {
+    vi.spyOn(endpoints, 'listDocumentLikers').mockResolvedValue([
+      {
+        display_name: 'Gavin Roy',
+        liked_at: '2026-07-24T12:00:00Z',
+        principal: 'gavinr@example.com',
+      },
+    ])
+    const { rerender } = renderButton(
+      likeState({ like_count: 1, liked_by_me: true }),
+      'pill',
+    )
+
+    fireEvent.mouseEnter(screen.getByRole('button'))
+    await waitFor(() => expect(screen.getByText('Gavin Roy')).toBeVisible())
+
+    // The unlike disables the query, but its result stays cached.
+    rerender(
+      <DocumentLikeButton
+        documentId="doc-1"
+        like={likeState({ like_count: 0, liked_by_me: false })}
+        orgSlug="acme"
+        variant="pill"
+      />,
+    )
+
+    expect(screen.queryByText('Liked by')).not.toBeInTheDocument()
+    expect(screen.queryByText('Gavin Roy')).not.toBeInTheDocument()
+  })
+
   it('costs no request for a cursor that sweeps straight past', () => {
     vi.useFakeTimers()
     const list = vi.spyOn(endpoints, 'listDocumentLikers').mockResolvedValue([])

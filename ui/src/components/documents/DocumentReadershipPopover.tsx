@@ -42,6 +42,12 @@ interface TabProps {
   analytics: DocumentAnalytics
   displayNames?: Map<string, string>
   readers?: DocumentReader[]
+  /**
+   * The reader list came back. Until it does, `readers` is undefined
+   * for want of an answer rather than for want of readers, so the
+   * "nobody has read this" copy must stay hidden.
+   */
+  readersLoaded: boolean
 }
 
 /** Avatars shown before the overflow chip in the byline stack. */
@@ -79,7 +85,7 @@ export function DocumentReadershipPopover({
     staleTime: 60_000,
   })
 
-  const { data: readers } = useQuery({
+  const { data: readers, isSuccess: readersLoaded } = useQuery({
     enabled: !!analytics?.identities_visible,
     queryFn: ({ signal }) => listDocumentReaders(orgSlug, documentId, signal),
     queryKey: queryKeys.documentReaders(orgSlug, documentId),
@@ -134,12 +140,14 @@ export function DocumentReadershipPopover({
               analytics={analytics}
               displayNames={displayNames}
               readers={readers}
+              readersLoaded={readersLoaded}
             />
           ) : (
             <EngagementTab
               analytics={analytics}
               displayNames={displayNames}
               readers={readers}
+              readersLoaded={readersLoaded}
             />
           )}
 
@@ -217,7 +225,12 @@ function EngagementRow({
   )
 }
 
-function EngagementTab({ analytics, displayNames, readers }: TabProps) {
+function EngagementTab({
+  analytics,
+  displayNames,
+  readers,
+  readersLoaded,
+}: TabProps) {
   const counts = bandCounts(readers ?? [], analytics.estimated_read_seconds)
   return (
     <div className="px-4 pb-4">
@@ -254,7 +267,7 @@ function EngagementTab({ analytics, displayNames, readers }: TabProps) {
             ))}
           </>
         ) : (
-          <NoReaders />
+          readersLoaded && <NoReaders />
         )
       ) : (
         <IdentitiesHidden />
@@ -363,7 +376,12 @@ function Tile({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-function ViewsTab({ analytics, displayNames, readers }: TabProps) {
+function ViewsTab({
+  analytics,
+  displayNames,
+  readers,
+  readersLoaded,
+}: TabProps) {
   // Non-web surfaces are excluded from every headline number; show them
   // separately so agent traffic stays visible without inflating reads.
   const agentViews = analytics.by_surface
@@ -410,7 +428,7 @@ function ViewsTab({ analytics, displayNames, readers }: TabProps) {
             />
           ))
         ) : (
-          <NoReaders />
+          readersLoaded && <NoReaders />
         )
       ) : (
         <IdentitiesHidden />
