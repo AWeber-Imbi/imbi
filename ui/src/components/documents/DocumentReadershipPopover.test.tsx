@@ -1,8 +1,12 @@
-import { waitFor } from '@testing-library/react'
+import { BrowserRouter } from 'react-router-dom'
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render as rtlRender, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
+import { queryKeys } from '@/lib/queryKeys'
 import { render, screen } from '@/test/utils'
 import type { DocumentAnalytics, DocumentReader } from '@/types'
 
@@ -167,12 +171,27 @@ describe('DocumentReadershipPopover', () => {
     vi.spyOn(endpoints, 'listDocumentReaders').mockRejectedValue(
       new Error('forbidden'),
     )
-    renderPopover()
+    // Rendered against a client the test holds, so the assertion can
+    // wait on the rejection actually reaching the cache rather than on
+    // the request merely having been issued.
+    const client = new QueryClient({
+      defaultOptions: { queries: { gcTime: 0, retry: false } },
+    })
+    rtlRender(
+      <QueryClientProvider client={client}>
+        <BrowserRouter>
+          <DocumentReadershipPopover documentId="doc-1" orgSlug="acme" />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    )
 
     await userEvent.click(await screen.findByRole('button'))
 
     await waitFor(() =>
-      expect(endpoints.listDocumentReaders).toHaveBeenCalled(),
+      expect(
+        client.getQueryState(queryKeys.documentReaders('acme', 'doc-1'))
+          ?.status,
+      ).toBe('error'),
     )
     expect(
       screen.queryByText('No individual reads recorded yet.'),
