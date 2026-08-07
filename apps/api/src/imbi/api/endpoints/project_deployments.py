@@ -26,6 +26,8 @@ import nanoid
 import pydantic
 
 from imbi.api.auth import permissions, principals
+from imbi.api.commit_sync import queue as commit_sync_queue
+from imbi.api.commit_sync import service as commit_sync_service
 from imbi.api.deployment_sync import queue as deployment_sync_queue
 from imbi.api.deployment_sync import service as deployment_sync_service
 from imbi.api.endpoints._helpers import (
@@ -48,9 +50,12 @@ from imbi.api.identity.host_integration import (
 from imbi.api.llm.dependencies import InjectAnthropicClient
 from imbi.api.plugins import call_with_timeout
 from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
+from imbi.api.release_promote import queue as release_promote_queue
+from imbi.api.release_promote import service as release_promote_service
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.common import clickhouse, graph, versioning
 from imbi.common import models as common_models
+from imbi.common.plugins import base as plugin_base
 from imbi.common.plugins import decrypt_integration_credentials
 from imbi.common.plugins.base import (
     Commit,
@@ -109,8 +114,11 @@ class PromoteActionRequest(pydantic.BaseModel):
     """Body for ``POST /deployments`` with ``action='promote'``.
 
     Cuts a new tag at ``from_committish`` (the build being promoted),
-    creates a release on the remote, then dispatches the workflow with
-    the tag as the ref.
+    then dispatches the workflow with the tag as the ref.  The GitHub
+    Release is *not* created here -- it is the ratification of a
+    successful rollout, published later through
+    ``POST /deployments/releases/{tag}/publish`` (see
+    :func:`publish_release`).
     """
 
     action: typing.Literal['promote']
@@ -144,6 +152,21 @@ class DeploymentTriggerResponse(pydantic.BaseModel):
     # workflow isn't wired up yet).  The promote itself still records a
     # DeploymentEvent; the UI surfaces this as an amber inline note.
     warning: str | None = None
+    #: Set only on the dispatch-driven promote path (the project has a
+    #: Release workflow configured).  ``'building'`` means the response
+    #: went out while the release build was still running and the
+    #: Deployment does not exist yet -- the UI polls
+    #: ``GET /deployments/promote-status`` from here rather than treating
+    #: ``run`` as a live rollout.  ``None`` marks the legacy path, where
+    #: the Deployment was created inline and ``run`` is already real.
+    phase: typing.Literal['building'] | None = None
+    #: The dispatched workflow run, when there is one.
+    artifact_run_id: str | None = None
+    artifact_run_url: str | None = None
+    #: ``False`` when the build was dispatched but no watcher could be
+    #: enqueued (Valkey down).  The build still runs; Imbi just won't
+    #: finish the promote on its own, so the UI must say so.
+    watched: bool = True
 
 
 class DraftReleaseNotesRequest(pydantic.BaseModel):
@@ -319,6 +342,29 @@ class ReleaseBlockResponse(pydantic.BaseModel):
     blocked_at: datetime.datetime | None = None
 
 
+class ReleasePublishRequest(pydantic.BaseModel):
+    """Body for ``POST /deployments/releases/{tag}/publish``.
+
+    Every field is optional: the release title and notes come from the
+    ``Release`` node being ratified, so a caller that knows only the tag
+    (the gateway, reacting to a successful deployment) posts an empty
+    body.
+    """
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    prerelease: bool = False
+
+
+class ReleasePublishResponse(pydantic.BaseModel):
+    """Result of ratifying a ``Release`` on the remote."""
+
+    tag: str
+    published: bool
+    release_url: str | None = None
+    warning: str | None = None
+
+
 class ReleaseCutRequest(pydantic.BaseModel):
     """Body for ``POST /deployments/releases/cut``.
 
@@ -341,6 +387,17 @@ class ReleaseCutResponse(pydantic.BaseModel):
     committish: str
     recorded: bool = False
     warning: str | None = None
+    #: Set when the project has a Release workflow configured, in which
+    #: case the tag and the remote Release do not exist yet -- the
+    #: dispatched build creates them.  ``release_url`` is therefore
+    #: ``None`` here, and the UI polls
+    #: ``GET /deployments/promote-status`` instead of linking straight to
+    #: a release.  ``None`` marks the inline path, where both already
+    #: exist by the time this returns.
+    phase: typing.Literal['building'] | None = None
+    artifact_run_id: str | None = None
+    artifact_run_url: str | None = None
+    watched: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -1505,6 +1562,7 @@ async def trigger_deployment(
     body: DeploymentRequestBody,
     background: fastapi.BackgroundTasks,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -1534,6 +1592,7 @@ async def trigger_deployment(
             body,
             background=background,
             source=source,
+            valkey_client=valkey_client,
         )
     return await _handle_deploy(
         db,
@@ -1632,6 +1691,36 @@ async def get_deployment_sync_status(
     """Return the project's last deployment-resync state."""
     del org_slug
     return await deployment_sync_service.read_status(db, project_id)
+
+
+@project_deployments_router.get('/promote-status')
+async def get_promote_status(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+) -> release_promote_service.PromoteStatus:
+    """Return the project's in-flight (or last) promote state.
+
+    The dispatch-driven promote returns as soon as the Release workflow is
+    dispatched, so this is how the UI follows the rest: ``building`` while
+    the artifact builds, ``deploying`` while the Deployment Imbi created
+    rolls out, then ``success`` once that rollout reports success.
+
+    Three ways it can end short of that, differing in what the operator
+    has to do next: ``build_failed`` blocks the release (fix the build and
+    promote a bumped version, or unblock to retry); ``deploy_failed``
+    leaves the tag shippable (redeploy it once the cause is fixed);
+    ``failed`` means Imbi lost track of the build or the rollout, so the
+    outcome is unknown and the tag is likewise left shippable.
+    """
+    del org_slug
+    return await release_promote_service.read_status(db, project_id)
 
 
 @project_deployments_router.get('/runs/{run_id}')
@@ -1836,7 +1925,7 @@ async def _handle_deploy(
     )
 
 
-async def _cut_tag_and_release(
+async def _cut_tag(
     db: graph.Graph,
     *,
     ctx: PluginContext,
@@ -1846,24 +1935,21 @@ async def _cut_tag_and_release(
     auth: permissions.AuthContext,
     from_committish: str,
     tag: str,
-    release_name: str | None,
-    release_notes_markdown: str,
-    prerelease: bool,
+    tag_message: str,
     warnings: list[str],
     project_id: str,
     log_context: str = '',
-) -> typing.Any:
-    """Cut a git tag + create a release at ``from_committish``.
+) -> None:
+    """Cut a git tag at ``from_committish`` on the remote.
 
-    The shared core behind both ``promote`` (which then deploys) and the
-    library ``releases/cut`` action (which does not).  Failures degrade
-    to a warning appended to ``warnings`` rather than raising -- a flaky
-    GitHub API shouldn't bury the audit trail.  Returns the
-    plugin-returned ReleaseInfo on success (or ``None`` when the plugin
-    has no ``create_release``).  ``log_context`` is an opaque label
-    (e.g. the target env, or ``'release-cut'``) used only in log lines.
+    The first half of cutting a release.  A plugin with no ``create_tag``
+    is a 400 -- the action is simply unavailable -- but a remote failure
+    degrades to a warning appended to ``warnings`` rather than raising,
+    so a flaky GitHub API doesn't bury the audit trail.  A 422
+    "already exists" is the idempotent re-run and is not a warning.
+    ``log_context`` is an opaque label (e.g. the target env, or
+    ``'release-cut'``) used only in log lines.
     """
-    tag_message = release_name or tag
 
     async def _create_tag(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
@@ -1903,6 +1989,32 @@ async def _cut_tag_and_release(
                 tag,
             )
             warnings.append(_promote_warning('create_tag', exc))
+
+
+async def _create_remote_release(
+    db: graph.Graph,
+    *,
+    ctx: PluginContext,
+    resolved: ResolvedCapability,
+    handler: DeploymentCapability,
+    credentials: dict[str, str],
+    auth: permissions.AuthContext,
+    tag: str,
+    release_name: str | None,
+    release_notes_markdown: str,
+    prerelease: bool,
+    warnings: list[str],
+    project_id: str,
+    log_context: str = '',
+) -> typing.Any:
+    """Create the release on the remote for an already-cut ``tag``.
+
+    The second half of cutting a release, split out so a promote can
+    defer it until the rollout succeeds (see :func:`publish_release`).
+    Returns the plugin-returned ``ReleaseInfo`` on success, or ``None``
+    when the plugin has no ``create_release``, the release already
+    exists, or the call failed (in which case a warning is appended).
+    """
 
     async def _create_release(c: PluginContext) -> typing.Any:
         return await call_with_timeout(
@@ -1944,7 +2056,62 @@ async def _cut_tag_and_release(
         return None
 
 
-async def _promote_cut_release(
+async def _cut_tag_and_release(
+    db: graph.Graph,
+    *,
+    ctx: PluginContext,
+    resolved: ResolvedCapability,
+    handler: DeploymentCapability,
+    credentials: dict[str, str],
+    auth: permissions.AuthContext,
+    from_committish: str,
+    tag: str,
+    release_name: str | None,
+    release_notes_markdown: str,
+    prerelease: bool,
+    warnings: list[str],
+    project_id: str,
+    log_context: str = '',
+) -> typing.Any:
+    """Cut a git tag *and* create its release at ``from_committish``.
+
+    Backs the library ``releases/cut`` action, where there is no
+    deployment to gate the release on so both halves run in one step.
+    ``promote`` deliberately does *not* use this: it cuts the tag now
+    (:func:`_cut_tag`) and defers the release to :func:`publish_release`.
+    """
+    await _cut_tag(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        from_committish=from_committish,
+        tag=tag,
+        tag_message=release_name or tag,
+        warnings=warnings,
+        project_id=project_id,
+        log_context=log_context,
+    )
+    return await _create_remote_release(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        tag=tag,
+        release_name=release_name,
+        release_notes_markdown=release_notes_markdown,
+        prerelease=prerelease,
+        warnings=warnings,
+        project_id=project_id,
+        log_context=log_context,
+    )
+
+
+async def _promote_cut_tag(
     db: graph.Graph,
     *,
     ctx: PluginContext,
@@ -1955,14 +2122,16 @@ async def _promote_cut_release(
     body: PromoteActionRequest,
     warnings: list[str],
     project_id: str,
-) -> typing.Any:
-    """Cut a tag + create a release for a promote (then the caller deploys).
+) -> None:
+    """Cut the promote's tag; the release is published after the rollout.
 
-    Thin wrapper over :func:`_cut_tag_and_release` so ``_handle_promote``
-    is unchanged; the repo's ``on: release: [published]`` workflow handles
-    the deploy.
+    Promote creates the git tag and stops there.  The GitHub Release is
+    the *ratification* of a release that actually shipped, so it is
+    published from the ``deployment_status`` webhook once the deploy
+    reports success -- and a failed rollout leaves a blocked release
+    rather than a ratified one.
     """
-    return await _cut_tag_and_release(
+    await _cut_tag(
         db,
         ctx=ctx,
         resolved=resolved,
@@ -1971,12 +2140,269 @@ async def _promote_cut_release(
         auth=auth,
         from_committish=body.from_committish,
         tag=body.tag,
-        release_name=body.release_name,
-        release_notes_markdown=body.release_notes_markdown,
-        prerelease=body.prerelease,
+        tag_message=body.release_name or body.tag,
         warnings=warnings,
         project_id=project_id,
         log_context=body.to_environment,
+    )
+
+
+#: Inputs ``release.yml`` declares.  The shared ``release-tag.yaml``
+#: treats an empty ``commit`` as "release the tip of the default branch",
+#: so omitting it would silently tag something other than the build being
+#: promoted -- a green release of the wrong tree.  ``create_deployment``
+#: is the D6 seam from ENG-101: the workflow stops creating the
+#: Deployment once Imbi does.
+#:
+#: Only the first three are universal.  ``environment`` and
+#: ``create_deployment`` are declared by the workflow a *deployable*
+#: project dispatches; the releasable (library / image) variant drops
+#: both, so :func:`_dispatch_release_build` gates them on the project
+#: type's ``deployable`` flag.
+_RELEASE_WORKFLOW_DESCRIPTION_INPUT = 'description'
+_RELEASE_WORKFLOW_NOTES_INPUT = 'release_notes'
+_RELEASE_WORKFLOW_COMMIT_INPUT = 'commit'
+_RELEASE_WORKFLOW_ENVIRONMENT_INPUT = 'environment'
+_RELEASE_WORKFLOW_CREATE_DEPLOYMENT_INPUT = 'create_deployment'
+
+
+async def _default_branch(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+) -> str | None:
+    """The repo's default branch, for use as a dispatch ref.
+
+    ``workflow_dispatch`` resolves the workflow file on the ref it is
+    given, and a freshly-promoted tag does not exist yet -- the workflow
+    is what creates it.  So the dispatch runs from the default branch and
+    the workflow checks out the version itself.
+    """
+    refs = await _best_effort(
+        handler.list_refs(ctx, credentials, kind='default'),
+        f'list_refs kind=default for project {ctx.project_id}',
+    )
+    for ref in refs or []:
+        if ref.name:
+            return ref.name
+    return None
+
+
+class _DispatchedBuild(typing.NamedTuple):
+    """What :func:`_dispatch_release_build` leaves behind."""
+
+    release_id: str
+    artifact: plugin_base.ArtifactRun
+    #: ``True`` when a watcher was queued.  ``False`` means the build runs
+    #: but nothing will finish the promote.
+    watched: bool
+    warning: str | None
+
+
+async def _dispatch_release_build(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    *,
+    resolved: ResolvedCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    handler: DeploymentCapability,
+    valkey_client: typing.Any,
+    tag: str,
+    committish: str,
+    title: str,
+    notes_markdown: str,
+    to_environment: str = '',
+    from_environment: str = '',
+    deploy: bool,
+) -> _DispatchedBuild:
+    """Record the release, dispatch its build, and queue the watcher.
+
+    Shared by the promote and the release-cut paths -- they differ only in
+    whether a deployment follows, which the watcher reads off
+    ``deploy``.
+
+    The ``Release`` node is written *before* the dispatch on purpose: a
+    build that fails needs something to block, and the node keyed on
+    ``(tag, committish)`` is that something.  So a node can exist for a
+    tag the remote never carries; the block and its reason are what
+    distinguish that from a shipped release.
+
+    That reasoning only covers failures *after* the dispatch, though, so
+    everything that can fail before it runs first.  A 502 here used to
+    leave a node behind that no dispatch, no block, and no promote status
+    explained -- and one that still matched the ``(tag, committish)``
+    gates in :func:`_blocked_release`.
+    """
+    ref = await _default_branch(handler, ctx, credentials)
+    if ref is None:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=(
+                "Could not resolve the repository's default branch, which "
+                'is the ref the Release workflow must be dispatched from.'
+            ),
+        )
+    release_id = await _upsert_release_node(
+        db,
+        project_id=project_id,
+        tag=tag,
+        committish=committish,
+        title=title,
+        notes_markdown=notes_markdown,
+        release_url=None,
+        created_by=auth.principal_name,
+    )
+    inputs = {
+        _RELEASE_WORKFLOW_DESCRIPTION_INPUT: title,
+        _RELEASE_WORKFLOW_NOTES_INPUT: notes_markdown,
+        # Never omitted: release-tag.yaml reads an empty ``commit`` as
+        # "release the tip of the default branch".
+        _RELEASE_WORKFLOW_COMMIT_INPUT: committish,
+    }
+    # The deployment inputs exist only in the workflow a deployable
+    # project dispatches.  A releasable project's workflow declares
+    # neither -- publishing *is* its release, so it has no deployment
+    # seam to close -- and workflow_dispatch rejects the whole call with
+    # a 422 when it is handed an input the workflow does not declare.
+    if await _project_is_deployable(db, project_id):
+        inputs[_RELEASE_WORKFLOW_CREATE_DEPLOYMENT_INPUT] = 'false'
+        if to_environment:
+            inputs[_RELEASE_WORKFLOW_ENVIRONMENT_INPUT] = to_environment
+
+    async def _dispatch(c: PluginContext) -> plugin_base.ArtifactRun:
+        return await call_with_timeout(
+            handler.create_deployment_artifact(
+                c,
+                _resolve_credentials(c, credentials),
+                ref=ref,
+                version=tag,
+                inputs=inputs,
+            )
+        )
+
+    try:
+        artifact = await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_dispatch, attached=True
+        )
+    except NotImplementedError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Plugin {resolved.plugin_slug!r} cannot dispatch a release '
+                'workflow; clear the Release workflow option to fall back '
+                'to cutting the tag directly.'
+            ),
+        ) from exc
+    await persist_link_writeback(db, ctx)
+
+    job = release_promote_service.WatchJob(
+        org_slug=org_slug,
+        project_id=project_id,
+        release_id=release_id,
+        tag=tag,
+        committish=committish,
+        to_environment=to_environment,
+        from_environment=from_environment,
+        run_id=artifact.run_id or '',
+        run_url=artifact.run_url or '',
+        requested_by=auth.principal_name,
+        deploy=deploy,
+    )
+    watched = bool(artifact.run_id) and (
+        await release_promote_queue.enqueue_release_promote(valkey_client, job)
+    )
+    warning: str | None = None
+    if not artifact.run_id:
+        warning = (
+            'The release workflow was dispatched but the remote did not '
+            'report a run id, so Imbi cannot watch the build. Finish the '
+            'release from the workflow run once it is green.'
+        )
+    elif not watched:
+        warning = (
+            'The release build is running, but Imbi could not queue a '
+            'watcher for it and will not finish the release automatically.'
+        )
+    await release_promote_service.set_status(
+        db,
+        project_id,
+        status='building' if watched else 'failed',
+        tag=tag,
+        committish=committish,
+        environment=to_environment,
+        from_environment=from_environment,
+        artifact_run_id=artifact.run_id or '',
+        artifact_run_url=artifact.run_url or '',
+        requested_by=auth.principal_name,
+        error=warning or '',
+    )
+    LOGGER.info(
+        'Release workflow dispatched: project=%s %s->%s tag=%s commit=%s '
+        'plugin=%s actor=%s run_id=%s deploy=%s watched=%s',
+        project_id,
+        from_environment or '-',
+        to_environment or '-',
+        tag,
+        committish,
+        resolved.plugin_slug,
+        ctx.actor_user_id,
+        artifact.run_id,
+        deploy,
+        watched,
+    )
+    return _DispatchedBuild(release_id, artifact, watched, warning)
+
+
+async def _promote_via_dispatch(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    body: PromoteActionRequest,
+    *,
+    resolved: ResolvedCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    handler: DeploymentCapability,
+    valkey_client: typing.Any,
+) -> DeploymentTriggerResponse:
+    """Dispatch the project's Release workflow instead of cutting the tag.
+
+    The workflow creates the annotated tag and the remote Release, so Imbi
+    does neither here; the deployment follows once the build is green.
+    """
+    built = await _dispatch_release_build(
+        db,
+        org_slug,
+        project_id,
+        auth,
+        resolved=resolved,
+        ctx=ctx,
+        credentials=credentials,
+        handler=handler,
+        valkey_client=valkey_client,
+        tag=body.tag,
+        committish=versioning.short_committish(body.from_committish),
+        title=body.release_name or body.tag,
+        notes_markdown=body.release_notes_markdown,
+        to_environment=body.to_environment,
+        from_environment=body.from_environment,
+        deploy=await _project_is_deployable(db, project_id),
+    )
+    return DeploymentTriggerResponse(
+        run=DeploymentRun(run_id='', status='queued'),
+        plugin_id=resolved.integration_id,
+        plugin_slug=resolved.plugin_slug,
+        recorded=True,
+        tag=body.tag,
+        phase='building',
+        artifact_run_id=built.artifact.run_id,
+        artifact_run_url=built.artifact.run_url,
+        watched=built.watched,
+        warning=built.warning,
     )
 
 
@@ -1989,6 +2415,7 @@ async def _handle_promote(
     *,
     background: fastapi.BackgroundTasks,
     source: str | None,
+    valkey_client: typing.Any = None,
 ) -> DeploymentTriggerResponse:
     env_flags = await _load_env_flags(
         db,
@@ -2029,10 +2456,10 @@ async def _handle_promote(
     #   ``create_release``; call ``trigger_deployment`` so the repo's
     #   ``on: deployment`` workflow fires.  This is the "promote to prod
     #   from a stage release tag" path.
-    # * Git short/full SHA                       -> cut a tag at the SHA,
-    #   create a GitHub Release; the repo's ``on: release`` workflow
-    #   handles the deploy server-side.  This is the "first promote off
-    #   a build commit" path.
+    # * Git short/full SHA                       -> cut a tag at the SHA
+    #   and dispatch against it.  This is the "first promote off a build
+    #   commit" path.  No GitHub Release is created here; publishing it
+    #   is deferred until the rollout succeeds.
     # * A ref that fails a configured tag format  -> 400.  We refuse to
     #   silently cut a tag that violates the org/project-type policy; a
     #   typo at the API boundary should fail loudly.
@@ -2061,12 +2488,36 @@ async def _handle_promote(
     )
     handler = _handler(resolved)
 
+    # A project with a Release workflow configured takes the
+    # dispatch-and-watch path: the workflow builds the artifact, cuts the
+    # annotated tag and creates the remote Release, and only then does
+    # Imbi deploy.  Nothing below this point runs for those projects.
+    #
+    # With the option blank, keep cutting the tag inline and ratifying the
+    # Release from the deployment_status webhook (ENG-101).  That is the
+    # right behaviour for a project whose artifacts are built outside
+    # Imbi -- there is no build to wait on.
+    if str(resolved.capability_options.get('artifact_workflow') or '').strip():
+        return await _promote_via_dispatch(
+            db,
+            org_slug,
+            project_id,
+            auth,
+            body,
+            resolved=resolved,
+            ctx=ctx,
+            credentials=credentials,
+            handler=handler,
+            valkey_client=valkey_client,
+        )
+
     warnings: list[str] = []
     run = DeploymentRun(run_id='', status='queued')
-    release_info = None
+    # The GitHub Release is published by ``publish_release`` once the
+    # rollout reports success, so a promote never returns a release URL.
     release_url: str | None = None
 
-    release_info = await _promote_cut_release(
+    await _promote_cut_tag(
         db,
         ctx=ctx,
         resolved=resolved,
@@ -2076,9 +2527,6 @@ async def _handle_promote(
         body=body,
         warnings=warnings,
         project_id=project_id,
-    )
-    release_url = (release_info.html_url if release_info else None) or (
-        release_info.url if release_info else None
     )
 
     promote_inputs: dict[str, str] | None
@@ -2317,6 +2765,417 @@ async def _upsert_release_node(
         if rid:
             return str(rid)
     return new_id
+
+
+# ---------------------------------------------------------------------------
+# Dispatch-driven promote: completion path
+#
+# ``_handle_promote`` dispatches the project's Release workflow and returns.
+# The functions below are what ``imbi.api.release_promote.service`` calls once
+# that build reaches a terminal state -- they live here so every graph write
+# and plugin call for the promote flow stays in one module, the same way
+# ``deployment_sync.service`` defers to ``resync_for_project``.
+#
+# All of them run under the watcher's process principal, which has no per-user
+# identity connection, so they resolve context with
+# ``best_effort_identity=True`` and act with the Integration's own service
+# credential.  The promoting user is carried separately, as ``requested_by``,
+# and reaches the ``DeploymentEvent`` and the ``operations_log`` row -- a
+# promote is something a person did, and losing that would leave the activity
+# history crediting a worker.
+# ---------------------------------------------------------------------------
+
+
+def _watcher_auth() -> permissions.AuthContext:
+    """The synthetic principal the promote watcher acts under."""
+    return principals.system_auth(
+        principals.RELEASE_PROMOTE, 'Imbi Release Promote'
+    )
+
+
+async def _project_is_deployable(db: graph.Graph, project_id: str) -> bool:
+    """True when any of the project's types is ``deployable``.
+
+    A project can carry more than one ``ProjectType``, so this aggregates
+    rather than reading one: ``deployable`` XOR ``releasable`` holds per
+    type, not per project.  A project with no type at all answers
+    ``False`` -- there is nothing to deploy into.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+    OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+    RETURN collect(COALESCE(pt.deployable, false)) AS flags
+    """
+    rows = await db.execute(query, {'project_id': project_id}, ['flags'])
+    if not rows:
+        return False
+    flags = typing.cast(
+        'list[object]', graph.parse_agtype(rows[0].get('flags')) or []
+    )
+    return any(bool(flag) for flag in flags)
+
+
+async def poll_artifact_run(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    run_id: str,
+) -> plugin_base.ArtifactRun:
+    """Report the current state of a dispatched release build.
+
+    Wraps ``get_artifact_run_status``, which resolves a *workflow run*
+    id.  Deliberately not :func:`get_deployment_run` -- that one resolves
+    a GitHub *Deployment* id through a different endpoint, and handing it
+    a workflow run id would 404.
+    """
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        _watcher_auth(),
+        source=None,
+        best_effort_identity=True,
+    )
+    handler = _handler(resolved)
+    return await call_with_timeout(
+        handler.get_artifact_run_status(
+            ctx, _resolve_credentials(ctx, credentials), run_id=run_id
+        )
+    )
+
+
+async def poll_promote_rollout(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    run_id: str,
+) -> DeploymentRun:
+    """Report the current state of a promote's rollout.
+
+    The counterpart to :func:`poll_artifact_run` for the second half of a
+    dispatch-driven promote: once the build is green and
+    :func:`complete_promote_build` has created the Deployment, this is
+    what tells the watcher whether the rollout actually shipped.
+
+    Resolves a *Deployment* id, so it goes through
+    ``get_deployment_status`` -- the same split
+    :func:`poll_artifact_run` documents, in the other direction.
+    Distinct from :func:`get_deployment_run` because that one runs under
+    the caller's identity and raises ``HTTPException``; the watcher has
+    no per-user identity, so it resolves the Integration's own service
+    credential instead.
+    """
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        _watcher_auth(),
+        source=None,
+        best_effort_identity=True,
+    )
+    handler = _handler(resolved)
+    return await call_with_timeout(
+        handler.get_deployment_status(
+            ctx, _resolve_credentials(ctx, credentials), run_id=run_id
+        )
+    )
+
+
+async def fail_promote_build(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    reason: str,
+    requested_by: str = '',
+) -> None:
+    """Block ``tag`` after its release build failed.
+
+    Scoped to the tag (see :func:`_set_release_block`): the build failed
+    for this version, and the ordinary fix is to promote a bumped version
+    off the same commit, which a commit-wide block would refuse.
+    """
+    blocked = await _set_release_block(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocked_at=datetime.datetime.now(datetime.UTC).isoformat(),
+        blocked_by=requested_by or principals.RELEASE_PROMOTE,
+        reason=reason[:500],
+        scope='tag',
+    )
+    if not blocked:
+        # The promote creates the node before dispatching, so this means
+        # someone deleted it mid-build.  Nothing to block; the warning is
+        # the whole remedy.
+        LOGGER.warning(
+            'release-promote could not block tag %s on project %s: no '
+            'Release node found',
+            tag,
+            project_id,
+        )
+        return
+    LOGGER.info(
+        'release-promote blocked tag %s on project %s: %s',
+        tag,
+        project_id,
+        reason,
+    )
+
+
+async def _set_release_artifact_run(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    release_id: str,
+    run_id: str,
+    run_url: str | None,
+) -> None:
+    """Record which workflow run built a release.
+
+    Kept off :func:`_upsert_release_node` on purpose: that function is
+    also the resync's writer, and resync observes deployments rather than
+    builds, so it has no run id to contribute and should not have to pass
+    a placeholder.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    SET r.workflow_run_id = {run_id},
+        r.workflow_run_url = {run_url},
+        r.updated_at = {now}
+    RETURN r.id AS rid
+    """
+    await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'run_id': run_id,
+            'run_url': run_url,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        ['rid'],
+    )
+
+
+async def _sync_promoted_tag(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    valkey_client: typing.Any,
+) -> None:
+    """Feed the tag the release build created to ClickHouse.
+
+    ENG-100 F6: an API-created tag fires no ``push`` event, so
+    ``github#sync_tags`` never runs and the tag is missing from the
+    ``tags`` table -- and therefore from release history and the Releases
+    tab -- until something asks for it.
+
+    Records that one tag directly, because the caller knows which tag
+    appeared: three remote calls, where the queued backfill re-peels every
+    tag the repo already carries.  Falls back to that backfill when the
+    bounded path can't run (no commit-sync capability, or one that syncs
+    only full history) -- and, either way, degrades quietly: a tag that
+    lands late delays the Releases tab, it does not fail the promote.
+    """
+    written = await _best_effort(
+        commit_sync_service.run_tag_sync(db, org_slug, project_id, tag),
+        f'sync tag {tag} for project {project_id}',
+    )
+    if written is not None:
+        LOGGER.info(
+            'release-promote recorded %d tag row(s) for project %s tag %s',
+            written,
+            project_id,
+            tag,
+        )
+        return
+    if not await commit_sync_queue.enqueue_commit_sync(
+        valkey_client, org_slug, project_id, principals.RELEASE_PROMOTE
+    ):
+        LOGGER.info(
+            'release-promote could not enqueue a tag resync for project %s; '
+            'tag %s stays absent from ClickHouse until the next sync',
+            project_id,
+            tag,
+        )
+
+
+async def complete_promote_build(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    release_id: str,
+    tag: str,
+    committish: str,
+    to_environment: str,
+    from_environment: str = '',
+    requested_by: str = '',
+    run_id: str = '',
+    run_url: str | None = None,
+    deploy: bool = True,
+    valkey_client: typing.Any = None,
+) -> DeploymentRun | None:
+    """Finish a promote whose release build succeeded.
+
+    The build created the annotated tag and the remote Release, so this
+    reconciles Imbi with what now exists and then ships it:
+
+    1. Resolve what the tag actually points at, and warn on disagreement.
+    2. Refresh the ``Release`` node with the remote release link and the
+       run that built it.
+    3. Record the new tag in ClickHouse -- an API-created tag fires no
+       ``push`` event, so ``github#sync_tags`` never runs and the tag is
+       missing from the ``tags`` table (and therefore from release-history
+       and the Releases tab) until something asks for it.
+    4. For a deployable project, create the Deployment and record the
+       event.  A releasable-only project stops after step 3: there is
+       nothing to deploy into.
+
+    Returns the Deployment it created so the caller can watch the
+    rollout, or ``None`` for a releasable-only project.  Creating the
+    Deployment is *not* the end of the promote -- the rollout it starts
+    is what the user is waiting on -- so this deliberately hands the run
+    back rather than reporting success on its own behalf.
+    """
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        _watcher_auth(),
+        source=None,
+        environment=to_environment or None,
+        best_effort_identity=True,
+    )
+    handler = _handler(resolved)
+    creds = _resolve_credentials(ctx, credentials)
+
+    tagged = await _best_effort(
+        handler.resolve_committish(ctx, creds, committish=tag),
+        f'resolve tag {tag} for project {project_id}',
+    )
+    if tagged is not None:
+        actual = versioning.short_committish(tagged.sha)
+        if actual != versioning.short_committish(committish):
+            # Imbi created the Release node keyed on the commit it asked
+            # to tag.  A mismatch means the workflow tagged something
+            # else -- the likeliest cause is a dispatch that omitted the
+            # ``commit`` input, which makes release-tag.yaml tag the tip
+            # of the default branch instead.  Don't rewrite the node's
+            # identity underneath its DEPLOYED_TO edges; say so loudly.
+            LOGGER.error(
+                'release-promote: tag %s on project %s points at %s, not '
+                'the promoted commit %s; the Release node keeps the '
+                'promoted identity',
+                tag,
+                project_id,
+                actual,
+                committish,
+            )
+
+    remote = await _get_release(handler, ctx, creds, tag)
+    release_url = remote.html_url if remote else None
+    if release_url:
+        await _upsert_release_node(
+            db,
+            project_id=project_id,
+            tag=tag,
+            committish=committish,
+            title=tag,
+            # Empty preserves the notes the promote already wrote; this
+            # call exists to attach the remote release link.
+            notes_markdown='',
+            release_url=release_url,
+            created_by=principals.RELEASE_PROMOTE,
+        )
+    if run_id:
+        await _set_release_artifact_run(
+            db,
+            project_id=project_id,
+            release_id=release_id,
+            run_id=run_id,
+            run_url=run_url,
+        )
+    await persist_link_writeback(db, ctx)
+
+    await _sync_promoted_tag(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        valkey_client=valkey_client,
+    )
+
+    if not deploy:
+        LOGGER.info(
+            'release-promote finished build-only release %s for project %s',
+            tag,
+            project_id,
+        )
+        return None
+
+    inputs: dict[str, str] | None = None
+    if ctx.environment_config:
+        inputs = {
+            key: value if isinstance(value, str) else json.dumps(value)
+            for key, value in ctx.environment_config.items()
+        }
+    run = await call_with_timeout(
+        handler.trigger_deployment(ctx, creds, ref_or_sha=tag, inputs=inputs)
+    )
+    LOGGER.info(
+        'release-promote deployment triggered: project=%s env=%s tag=%s '
+        'plugin=%s run_id=%s',
+        project_id,
+        to_environment,
+        tag,
+        resolved.plugin_slug,
+        run.run_id,
+    )
+    appended = await append_deployment_event(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        release_id=release_id,
+        env_slug=to_environment,
+        status='in_progress',
+        note=f'via {resolved.plugin_slug}',
+        external_run_id=str(run.run_id) if run.run_id else None,
+        external_run_url=run.run_url,
+        # The person who pressed promote, not the worker that got here.
+        performed_by=requested_by or None,
+    )
+    if isinstance(appended, str):
+        LOGGER.warning(
+            'release-promote could not record the deployment event for '
+            'project %s release %s: %s',
+            project_id,
+            release_id,
+            appended,
+        )
+    await _record_deployment_audit(
+        project_id=project_id,
+        project_slug=ctx.project_slug,
+        environment_slug=to_environment,
+        recorded_by=requested_by or principals.RELEASE_PROMOTE,
+        action='promote',
+        tag=tag,
+        committish=committish,
+        plugin_slug=resolved.plugin_slug,
+        run_url=run.run_url,
+        external_run_id=str(run.run_id) if run.run_id else None,
+        release_url=release_url,
+        from_environment=from_environment or None,
+    )
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -3092,6 +3951,7 @@ async def cut_release(
     body: ReleaseCutRequest,
     background: fastapi.BackgroundTasks,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -3132,6 +3992,39 @@ async def cut_release(
         db, org_slug, project_id, auth, source=source
     )
     handler = _handler(resolved)
+
+    # With a Release workflow configured, the build owns the tag and the
+    # remote Release, exactly as on the promote path -- the only
+    # difference is that nothing is deployed afterwards.  See
+    # ``_handle_promote`` for why the option gates this.
+    if str(resolved.capability_options.get('artifact_workflow') or '').strip():
+        built = await _dispatch_release_build(
+            db,
+            org_slug,
+            project_id,
+            auth,
+            resolved=resolved,
+            ctx=ctx,
+            credentials=credentials,
+            handler=handler,
+            valkey_client=valkey_client,
+            tag=body.tag,
+            committish=versioning.short_committish(body.committish),
+            title=body.release_name or body.tag,
+            notes_markdown=body.release_notes_markdown,
+            deploy=False,
+        )
+        return ReleaseCutResponse(
+            tag=body.tag,
+            release_url=None,
+            committish=versioning.short_committish(body.committish),
+            recorded=True,
+            phase='building',
+            artifact_run_id=built.artifact.run_id,
+            artifact_run_url=built.artifact.run_url,
+            watched=built.watched,
+            warning=built.warning,
+        )
 
     warnings: list[str] = []
     release_info = await _cut_tag_and_release(
@@ -3198,6 +4091,187 @@ async def cut_release(
     )
 
 
+async def _release_for_tag(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+) -> dict[str, typing.Any] | None:
+    """Return the ``Release`` node for ``tag``, or ``None``.
+
+    Scoped through the project's owning organization so a tag from
+    another org can never be ratified against this one.  A tag carried
+    by more than one ``Release`` (a retag) is ambiguous about *which*
+    notes to publish, so the newest by ``created_at`` wins and the
+    collision is logged.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
+    RETURN r{{.id, .tag, .committish, .title, .description,
+              .created_at}} AS release
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'org_slug': org_slug, 'tag': tag},
+        ['release'],
+    )
+    if not rows:
+        return None
+    nodes = [
+        typing.cast(
+            'dict[str, typing.Any]', graph.parse_agtype(row['release'])
+        )
+        for row in rows
+    ]
+    if len(nodes) > 1:
+        LOGGER.warning(
+            'Multiple Release nodes for project=%s tag=%s; publishing the '
+            'most recently created one',
+            project_id,
+            tag,
+        )
+        nodes.sort(key=lambda node: str(node.get('created_at') or ''))
+    return nodes[-1]
+
+
+@project_deployments_router.post('/releases/{tag}/publish')
+async def publish_release(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    background: fastapi.BackgroundTasks,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+    body: ReleasePublishRequest | None = None,
+    source: str | None = None,
+) -> ReleasePublishResponse:
+    """Ratify an existing ``Release`` by creating it on the remote.
+
+    ``promote`` cuts the tag and records the ``Release`` node -- the
+    *intent* to ship.  This publishes the GitHub Release for it, which
+    is the *ratification*: the gateway calls it from the
+    ``deployment_status`` webhook once the rollout reports success, so a
+    failed rollout leaves a blocked release rather than a ratified one.
+
+    Title and notes come from the ``Release`` node, so the ratification
+    can't drift from what Imbi recorded at promote time.  Idempotent: a
+    release the remote already has is not an error, and the node's
+    ``github_release`` link is refreshed either way.  Blocked releases
+    are refused with a 409.
+    """
+    release = await _release_for_tag(
+        db, org_slug=org_slug, project_id=project_id, tag=tag
+    )
+    if release is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'No release found for tag {tag!r}',
+        )
+    # A block and a success webhook can race; the block wins.  Match on
+    # the tag alone -- the committish gate belongs to the deploy paths,
+    # and a sibling release cut from the same commit must not veto this
+    # one's ratification.
+    await _assert_not_blocked(db, project_id, tag=tag)
+
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        auth,
+        source=source,
+        # The caller is normally the gateway's service principal, which
+        # has no per-user identity connection; fall back to the
+        # Integration's own credentials rather than 503ing.
+        best_effort_identity=True,
+    )
+    handler = _handler(resolved)
+
+    warnings: list[str] = []
+    release_info = await _create_remote_release(
+        db,
+        ctx=ctx,
+        resolved=resolved,
+        handler=handler,
+        credentials=credentials,
+        auth=auth,
+        tag=tag,
+        release_name=str(release.get('title') or tag),
+        release_notes_markdown=str(release.get('description') or ''),
+        prerelease=(body or ReleasePublishRequest()).prerelease,
+        warnings=warnings,
+        project_id=project_id,
+        log_context='publish',
+    )
+    release_url = (release_info.html_url if release_info else None) or (
+        release_info.url if release_info else None
+    )
+    if release_url is None and not warnings:
+        # The plugin returned nothing -- either it has no
+        # ``create_release`` or the remote already had one.  Ask for the
+        # existing release so the node still gets its link.
+        remote = await _get_release(
+            handler, ctx, _resolve_credentials(ctx, credentials), tag
+        )
+        release_url = remote.html_url if remote else None
+
+    await persist_link_writeback(db, ctx)
+
+    committish = str(release.get('committish') or '')
+    # Guard on the committish: it is the node's identity, and upserting
+    # against an empty one would spawn a second, unmatchable Release.
+    if release_url and committish:
+        await _upsert_release_node(
+            db,
+            project_id=project_id,
+            tag=tag,
+            committish=committish,
+            title=str(release.get('title') or tag),
+            # Empty preserves whatever the node already holds; this call
+            # is only here to write the ``github_release`` link.
+            notes_markdown='',
+            release_url=release_url,
+            created_by=auth.principal_name,
+        )
+
+    published = not warnings
+    LOGGER.info(
+        'Release publish: project=%s tag=%s published=%s plugin=%s actor=%s',
+        project_id,
+        tag,
+        published,
+        resolved.plugin_slug,
+        ctx.actor_user_id,
+    )
+    background.add_task(
+        _record_deployment_audit,
+        project_id=project_id,
+        project_slug=ctx.project_slug,
+        environment_slug='',
+        recorded_by=auth.principal_name,
+        action='publish',
+        tag=tag,
+        committish=committish,
+        plugin_slug=resolved.plugin_slug,
+        run_url=None,
+        release_url=release_url,
+    )
+    return ReleasePublishResponse(
+        tag=tag,
+        published=published,
+        release_url=release_url,
+        warning='; '.join(warnings) if warnings else None,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Release blocks
 #
@@ -3230,13 +4304,24 @@ async def _set_release_block(
     blocked_at: str | None,
     blocked_by: str | None,
     reason: str | None,
+    scope: typing.Literal['tag'] | None = None,
 ) -> bool:
     """Write the ``blocked_*`` properties on a tagged ``Release``.
 
-    Passing ``None`` for all three clears the block (AGE stores a
-    ``null`` assignment as property removal).  Returns ``False`` when no
-    ``Release`` node for ``tag`` exists under the org, letting the caller
-    decide between creating one and returning a 404.
+    Passing ``None`` for ``blocked_at`` / ``blocked_by`` / ``reason``
+    clears the block (AGE stores a ``null`` assignment as property
+    removal).  Returns ``False`` when no ``Release`` node for ``tag``
+    exists under the org, letting the caller decide between creating one
+    and returning a 404.
+
+    ``scope='tag'`` narrows the block to this exact version, so
+    :func:`_blocked_release` stops matching it on the shared committish.
+    A failed *release build* is a property of the version, not of the
+    commit -- the usual fix is to promote a new version off the same tree,
+    which a commit-wide block would refuse.  A manual block leaves
+    ``scope`` ``None`` and keeps the broad, commit-wide semantics: an
+    operator blocking a rolled-back release means "stop shipping this
+    code", which is exactly the commit.
     """
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
@@ -3246,6 +4331,7 @@ async def _set_release_block(
     SET r.blocked_at = {blocked_at},
         r.blocked_by = {blocked_by},
         r.blocked_reason = {reason},
+        r.blocked_scope = {scope},
         r.updated_at = {now}
     RETURN r.id AS rid
     """
@@ -3258,6 +4344,7 @@ async def _set_release_block(
             'blocked_at': blocked_at,
             'blocked_by': blocked_by,
             'reason': reason,
+            'scope': scope,
             'now': datetime.datetime.now(datetime.UTC).isoformat(),
         },
         ['rid'],
@@ -3280,12 +4367,20 @@ async def _blocked_release(
     nothing blocked matches.  Empty strings stand in for the absent
     identity -- neither ever matches a stored value, and AGE has no
     NULL equality.
+
+    A release blocked with ``blocked_scope = 'tag'`` matches on its tag
+    only.  Those are build failures, recorded by the promote watcher
+    against one version; matching them on the committish too would wedge
+    the whole commit and refuse the ordinary fix of promoting a bumped
+    version off the same tree.  Manual blocks carry no scope and keep
+    matching both identities.
     """
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
     WHERE r.blocked_at IS NOT NULL
       AND (COALESCE(r.tag, '') = {tag}
-           OR COALESCE(r.committish, '') = {committish})
+           OR (COALESCE(r.committish, '') = {committish}
+               AND COALESCE(r.blocked_scope, '') <> 'tag'))
     RETURN r{{.tag, .committish, .blocked_reason}} AS release
     """
     rows = await db.execute(

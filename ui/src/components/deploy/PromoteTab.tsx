@@ -21,10 +21,20 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 import type { DraftReleaseNotesResponse, Environment } from '@/types'
 
+import { handleDispatchedBuild } from './releaseBuildHandoff'
+
 interface PromoteTabProps {
   environments: Environment[]
   fromCommittish?: null | string
   fromEnvironment: string
+  /**
+   * Called instead of `onRunStarted` when the project has a Release
+   * workflow configured: the promote dispatched a build rather than
+   * creating a Deployment, so there is a build to follow, not a run.
+   */
+  onBuildStarted?: (
+    build: import('./DeploymentModal').ReleaseBuildStarted,
+  ) => void
   onClose: () => void
   onRunStarted?: (run: import('./DeploymentModal').DeploymentRunStarted) => void
   open: boolean
@@ -39,6 +49,7 @@ export function PromoteTab({
   environments,
   fromCommittish,
   fromEnvironment,
+  onBuildStarted,
   onClose,
   onRunStarted,
   open,
@@ -173,6 +184,22 @@ export function PromoteTab({
       const releaseUrl = data.release_url
       const runUrl = data.run.run_url
       const tagLabel = data.tag ?? tag
+      // Dispatch-driven promote: the Release workflow is building, and
+      // it — not Imbi — creates the tag and the remote Release. There is
+      // no Deployment to watch yet, so follow the promote status
+      // instead. See ReleaseBuildWatcher.
+      if (
+        handleDispatchedBuild(data, {
+          envName: toEnvName,
+          onBuildStarted,
+          orgSlug,
+          projectId,
+          tagFallback: tag,
+        })
+      ) {
+        onClose()
+        return
+      }
       // Prefer the run URL when present; fall back to the release URL
       // so the watcher's recreated toast still has a useful action.
       const actionUrl = runUrl ?? releaseUrl
@@ -421,11 +448,15 @@ export function PromoteTab({
       </section>
 
       {/* Footer */}
+      {/* Deliberately path-agnostic: whether the release workflow builds
+          first depends on server-side plugin configuration this tab
+          can't see, so the copy must be true either way. */}
       <p className="text-tertiary text-xs">
-        On promote, a release{' '}
-        <span className="font-mono">{tag || 'vX.Y.Z'}</span> will be created at{' '}
+        On promote, release <span className="font-mono">{tag || 'vX.Y.Z'}</span>{' '}
+        is cut from{' '}
         <span className="font-mono">{selectedSha?.slice(0, 7) ?? '—'}</span> and
-        rolled out to {toEnvironment}.
+        rolled out to {toEnvironment}. If this project has a release workflow,
+        that build runs first and must succeed before anything ships.
       </p>
       <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-2 border-t px-6 py-4">
         <Button onClick={onClose} type="button" variant="ghost">

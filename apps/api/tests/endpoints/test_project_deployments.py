@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import fastapi
+import httpx
 from fastapi import testclient
 
 from apps.api.tests import support
@@ -25,6 +26,7 @@ from imbi.common import graph
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
 from imbi.common.plugins.base import (
+    ArtifactRun,
     Capability,
     Commit,
     CompareResult,
@@ -37,6 +39,7 @@ from imbi.common.plugins.base import (
     RefInfo,
     ReleaseInfo,
     RemoteDeployment,
+    RemoteRelease,
 )
 from imbi.common.plugins.registry import RegistryEntry
 
@@ -111,6 +114,34 @@ class _FakeDeploymentPlugin(DeploymentCapability):
         # Record the limit so tests can assert it was threaded through.
         self._last_limit = limit  # type: ignore[attr-defined]
         return getattr(self, '_recent', [])
+
+
+class _DispatchingDeploymentPlugin(_FakeDeploymentPlugin):
+    """Implements the artifact-dispatch half of the capability.
+
+    Records every dispatch on the class so a test driving the endpoint
+    through ``TestClient`` can assert what reached the remote.
+    """
+
+    dispatches: typing.ClassVar[list[dict[str, typing.Any]]] = []
+    run_id: typing.ClassVar[str | None] = '4242'
+
+    async def create_deployment_artifact(  # type: ignore[override]
+        self, ctx, credentials, ref, version, inputs=None
+    ):
+        type(self).dispatches.append(
+            {'ref': ref, 'version': version, 'inputs': dict(inputs or {})}
+        )
+        return ArtifactRun(
+            run_id=type(self).run_id,
+            run_url='https://ghe/run/4242' if type(self).run_id else None,
+            status='queued',
+        )
+
+    async def get_artifact_run_status(  # type: ignore[override]
+        self, ctx, credentials, run_id
+    ):
+        return ArtifactRun(run_id=run_id, status='in_progress')
 
 
 class _FakeNoSyncDeploymentPlugin(_FakeDeploymentPlugin):
@@ -196,6 +227,7 @@ def _make_resolved(
     name: str = 'GitHub Deployment',
     sync: bool = True,
     options: dict[str, typing.Any] | None = None,
+    capability_options: dict[str, typing.Any] | None = None,
     env_payloads: dict[str, dict[str, typing.Any]] | None = None,
 ) -> ResolvedCapability:
     entry = _entry(handler, slug=slug, name=name, sync=sync)
@@ -208,7 +240,7 @@ def _make_resolved(
         capability_cls=entry.manifest.get_capability('deployment').handler,
         integration={'id': 'p-1', 'slug': f'{slug}-prod', 'plugin': slug},
         integration_options=options or {},
-        capability_options={},
+        capability_options=capability_options or {},
         encrypted_credentials={},
         env_payloads=env_payloads,
     )
@@ -651,10 +683,32 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # last_tag bumped major: 6.3.0 → 7.0.0
         self.assertEqual(data['version'], 'v7.0.0')
 
-    def test_promote_sha_ref_cuts_tag_and_release(self) -> None:
-        # Promote target is a git SHA -- the handler cuts a tag, creates
-        # a release, AND dispatches trigger_deployment so the run is
-        # tracked in the deployment event.
+    def test_promote_sha_ref_cuts_tag_only(self) -> None:
+        # Promote target is a git SHA -- the handler cuts a tag AND
+        # dispatches trigger_deployment so the run is tracked in the
+        # deployment event.  The GitHub Release is *not* created: it
+        # ratifies a successful rollout, so it waits for the
+        # deployment_status webhook to drive ``releases/{tag}/publish``.
+        created: dict[str, bool] = {'release': False}
+
+        class _WatchRelease(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                created['release'] = True
+                return await super().create_release(
+                    ctx, credentials, tag, name, body_markdown, prerelease
+                )
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _WatchRelease
+        )
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -673,9 +727,8 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 202)
         data = response.json()
         self.assertEqual(data['tag'], '1a9c610abcdef')
-        self.assertEqual(
-            data['release_url'], 'https://gh/releases/1a9c610abcdef'
-        )
+        self.assertIsNone(data['release_url'])
+        self.assertFalse(created['release'])
         self.assertTrue(data['recorded'])
         self.assertIsNone(data['warning'])
         call = self.mocks['append_deployment_event'].call_args
@@ -684,11 +737,11 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(call.kwargs['external_run_id'], '42')
         self.assertEqual(call.kwargs['external_run_url'], 'https://gh/runs/42')
 
-    def test_promote_semver_tag_dispatches_and_recreates_release(self) -> None:
+    def test_promote_semver_tag_dispatches_without_publishing(self) -> None:
         # Promote target is a semver tag -- the handler attempts create_tag
-        # and create_release (idempotently) AND dispatches trigger_deployment.
-        # A real GitHub 422 "already exists" for the tag/release is silently
-        # ignored; the fake plugin succeeds so we get a release URL.
+        # (idempotently; a real GitHub 422 "already exists" is silently
+        # ignored) AND dispatches trigger_deployment.  No release URL comes
+        # back because no GitHub Release is created at promote time.
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
@@ -704,8 +757,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 202)
         data = response.json()
         self.assertEqual(data['tag'], 'v6.4.0')
-        # The fake plugin returned a release URL.
-        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertIsNone(data['release_url'])
         self.assertIsNone(data['warning'])
         # The dispatched run surfaced on the event.
         call = self.mocks['append_deployment_event'].call_args
@@ -1830,6 +1882,353 @@ class DeployedOperationLogTestCase(unittest.TestCase):
         self.assertIsNone(description['commit_sha'])
 
 
+class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
+    """Promote dispatches the Release workflow when one is configured.
+
+    The workflow owns the tag and the remote Release, so the endpoint
+    creates neither -- it records the ``Release`` node, dispatches, and
+    hands off to the watcher.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _PROMOTE: typing.ClassVar[dict[str, typing.Any]] = {
+        'action': 'promote',
+        'from_environment': 'testing',
+        'to_environment': 'staging',
+        'from_committish': 'e6a13a0d6cf93cd5af4eef2a0ca13035aea64192',
+        'tag': '0.1.5',
+        'release_name': 'Release 0.1.5',
+        'release_notes_markdown': '## What changed',
+    }
+
+    def _enable_dispatch(self, *, workflow: str = 'release.yml') -> None:
+        """Opt this test into the dispatch path.
+
+        Deliberately *not* in ``setUp``: this class inherits every test on
+        ``ProjectDeploymentsTestCase``, and configuring a Release workflow
+        for all of them would silently reroute the inherited promote tests
+        onto the dispatch branch.
+        """
+        _DispatchingDeploymentPlugin.dispatches.clear()
+        _DispatchingDeploymentPlugin.run_id = '4242'
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _DispatchingDeploymentPlugin,
+            options={'owner': 'octo', 'repo': 'demo'},
+            capability_options=(
+                {'artifact_workflow': workflow} if workflow else {}
+            ),
+        )
+        self.upsert = self._start(
+            mock.patch(f'{_MODULE}._upsert_release_node', return_value='rel1')
+        )
+        self.deployable = self._start(
+            mock.patch(f'{_MODULE}._project_is_deployable', return_value=True)
+        )
+        self.enqueue = self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_queue.enqueue_release_promote',
+                return_value=True,
+            )
+        )
+        self.set_status = self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_service.set_status',
+                return_value=None,
+            )
+        )
+        self.create_tag = self._start(
+            mock.patch(f'{_MODULE}._promote_cut_tag', return_value=None)
+        )
+
+    def _promote(self, **overrides: typing.Any) -> httpx.Response:
+        body = {**self._PROMOTE, **overrides}
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(self._BASE, json=body)
+
+    def test_dispatches_instead_of_cutting_the_tag(self) -> None:
+        self._enable_dispatch()
+        response = self._promote()
+        self.assertEqual(response.status_code, 202)
+        data = response.json()
+        self.assertEqual('building', data['phase'])
+        self.assertEqual('4242', data['artifact_run_id'])
+        self.assertEqual('0.1.5', data['tag'])
+        self.assertTrue(data['watched'])
+        self.assertIsNone(data['warning'])
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+        # The endpoint must not cut the tag itself any more.
+        self.create_tag.assert_not_called()
+
+    def test_always_sends_the_commit_input(self) -> None:
+        """release-tag.yaml tags the tip of main when ``commit`` is empty.
+
+        Omitting it would silently release a different tree than the one
+        being promoted, and the run would still go green -- so this is a
+        correctness guard, not a nicety.
+        """
+        self._enable_dispatch()
+        self._promote()
+        inputs = _DispatchingDeploymentPlugin.dispatches[0]['inputs']
+        self.assertEqual('e6a13a0', inputs['commit'])
+        self.assertTrue(inputs['commit'])
+
+    def test_dispatch_input_mapping(self) -> None:
+        self._enable_dispatch()
+        self._promote()
+        dispatch = _DispatchingDeploymentPlugin.dispatches[0]
+        # Dispatched from the default branch: workflow_dispatch resolves
+        # the workflow file on the ref, and the tag does not exist yet.
+        self.assertEqual('main', dispatch['ref'])
+        self.assertEqual('0.1.5', dispatch['version'])
+        inputs = dispatch['inputs']
+        self.assertEqual('Release 0.1.5', inputs['description'])
+        self.assertEqual('## What changed', inputs['release_notes'])
+        self.assertEqual('staging', inputs['environment'])
+        # The D6 seam: Imbi owns Deployment creation now.
+        self.assertEqual('false', inputs['create_deployment'])
+
+    def test_deployment_inputs_omitted_for_a_releasable_project(self) -> None:
+        """A releasable project's workflow declares neither input.
+
+        Publishing *is* the release for a library, so its variant of
+        release.yml drops ``environment`` and ``create_deployment``
+        entirely -- and workflow_dispatch 422s the whole call when it is
+        handed an input the workflow does not declare, so sending them
+        anyway fails the release outright.
+        """
+        self._enable_dispatch()
+        self.deployable.return_value = False
+        self._promote()
+        inputs = _DispatchingDeploymentPlugin.dispatches[0]['inputs']
+        self.assertNotIn('create_deployment', inputs)
+        self.assertNotIn('environment', inputs)
+        # The universal inputs are unaffected.
+        self.assertEqual('Release 0.1.5', inputs['description'])
+        self.assertEqual('e6a13a0', inputs['commit'])
+
+    def test_description_falls_back_to_the_tag(self) -> None:
+        """``description`` is required by release.yml, so never send empty."""
+        self._enable_dispatch()
+        self._promote(release_name=None)
+        inputs = _DispatchingDeploymentPlugin.dispatches[0]['inputs']
+        self.assertEqual('0.1.5', inputs['description'])
+
+    def test_records_the_release_node_before_dispatching(self) -> None:
+        """A failed build needs a node to block."""
+        self._enable_dispatch()
+        self._promote()
+        self.upsert.assert_awaited_once()
+        kwargs = self.upsert.await_args.kwargs
+        self.assertEqual('0.1.5', kwargs['tag'])
+        self.assertEqual('e6a13a0', kwargs['committish'])
+        # No release URL yet -- the build has not created one.
+        self.assertIsNone(kwargs['release_url'])
+
+    def test_enqueues_a_watch_job_carrying_the_promoter(self) -> None:
+        self._enable_dispatch()
+        self._promote()
+        self.enqueue.assert_awaited_once()
+        job = self.enqueue.await_args.args[1]
+        self.assertEqual('0.1.5', job.tag)
+        self.assertEqual('e6a13a0', job.committish)
+        self.assertEqual('staging', job.to_environment)
+        self.assertEqual('testing', job.from_environment)
+        self.assertEqual('4242', job.run_id)
+        self.assertEqual('rel1', job.release_id)
+        self.assertTrue(job.deploy)
+        self.assertEqual('admin@example.com', job.requested_by)
+
+    def test_releasable_only_project_queues_a_build_only_job(self) -> None:
+        self._enable_dispatch()
+        self.deployable.return_value = False
+        self._promote()
+        self.assertFalse(self.enqueue.await_args.args[1].deploy)
+
+    def test_unqueueable_watch_warns_and_is_not_watched(self) -> None:
+        self._enable_dispatch()
+        self.enqueue.return_value = False
+        data = self._promote().json()
+        self.assertFalse(data['watched'])
+        self.assertIn('could not queue a watcher', data['warning'])
+
+    def test_missing_run_id_warns_and_skips_the_watch(self) -> None:
+        self._enable_dispatch()
+        _DispatchingDeploymentPlugin.run_id = None
+        data = self._promote().json()
+        self.assertFalse(data['watched'])
+        self.assertIn('did not report a run id', data['warning'])
+        self.enqueue.assert_not_awaited()
+
+    def test_blocked_release_is_refused_before_dispatching(self) -> None:
+        self._enable_dispatch()
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {
+                    'release': json.dumps(
+                        {
+                            'tag': '0.1.5',
+                            'committish': 'e6a13a0',
+                            'blocked_reason': 'Bad build',
+                        }
+                    )
+                }
+            ]
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
+
+    def test_legacy_path_when_no_release_workflow_configured(self) -> None:
+        """A blank Release workflow keeps cutting the tag inline."""
+        self._enable_dispatch(workflow='')
+        response = self._promote()
+        self.assertEqual(response.status_code, 202)
+        self.assertIsNone(response.json()['phase'])
+        self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
+        self.create_tag.assert_awaited_once()
+
+
+class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):
+    """A failed build blocks the version, not the commit."""
+
+    async def test_fail_promote_build_scopes_the_block_to_the_tag(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'rid': 'r1'}])
+        await project_deployments.fail_promote_build(
+            db,
+            org_slug='octo',
+            project_id='p1',
+            tag='0.1.5',
+            reason='Release build reported failure',
+            requested_by='daves@aweber.com',
+        )
+        params = db.execute.await_args.args[1]
+        self.assertEqual('tag', params['scope'])
+        self.assertEqual('0.1.5', params['tag'])
+        self.assertEqual('daves@aweber.com', params['blocked_by'])
+        self.assertIn('failure', params['reason'])
+
+    async def test_missing_release_node_is_survivable(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        # Deleted mid-build: warn, don't raise into the watcher.
+        await project_deployments.fail_promote_build(
+            db, org_slug='octo', project_id='p1', tag='0.1.5', reason='boom'
+        )
+
+
+class PromotedTagSyncTestCase(unittest.IsolatedAsyncioTestCase):
+    """The tag a release build created is fed to ClickHouse.
+
+    An API-created tag fires no ``push`` event, so nothing else records
+    it.  The completion path syncs that one tag and only falls back to the
+    queued full backfill when the bounded call cannot run.
+    """
+
+    def setUp(self) -> None:
+        for target, replacement in (
+            ('_resolve_and_context', mock.AsyncMock()),
+            (
+                '_handler',
+                mock.Mock(
+                    return_value=mock.Mock(
+                        resolve_committish=mock.AsyncMock(return_value=None)
+                    )
+                ),
+            ),
+            ('_resolve_credentials', mock.Mock(return_value={})),
+            ('_get_release', mock.AsyncMock(return_value=None)),
+            ('persist_link_writeback', mock.AsyncMock()),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        project_deployments._resolve_and_context.return_value = (
+            mock.Mock(plugin_slug='github'),
+            mock.Mock(environment_config=None),
+            {},
+        )
+        self.sync_tag = self._patch(
+            'commit_sync_service.run_tag_sync', return_value=1
+        )
+        self.enqueue = self._patch(
+            'commit_sync_queue.enqueue_commit_sync', return_value=True
+        )
+
+    def _patch(self, target: str, **kwargs: typing.Any) -> mock.AsyncMock:
+        patcher = mock.patch(f'{_MODULE}.{target}', mock.AsyncMock(**kwargs))
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    async def _complete(self) -> None:
+        await project_deployments.complete_promote_build(
+            mock.AsyncMock(),
+            org_slug='octo',
+            project_id='p1',
+            release_id='rel1',
+            tag='0.1.5',
+            committish='e6a13a0',
+            to_environment='',
+            deploy=False,
+        )
+
+    async def test_records_the_one_tag_without_a_backfill(self) -> None:
+        await self._complete()
+        self.sync_tag.assert_awaited_once_with(mock.ANY, 'octo', 'p1', '0.1.5')
+        self.enqueue.assert_not_awaited()
+
+    async def test_falls_back_when_the_plugin_lacks_the_bounded_sync(
+        self,
+    ) -> None:
+        self.sync_tag.side_effect = NotImplementedError
+        await self._complete()
+        self.enqueue.assert_awaited_once()
+        self.assertEqual('0.1.5', self.sync_tag.await_args.args[3])
+
+    async def test_falls_back_when_the_bounded_sync_fails(self) -> None:
+        self.sync_tag.side_effect = RuntimeError('clickhouse is down')
+        await self._complete()
+        self.enqueue.assert_awaited_once()
+
+    async def test_a_tag_that_does_not_resolve_is_not_a_fallback(
+        self,
+    ) -> None:
+        """Zero rows means the tag is absent remotely; a backfill can't
+        find it either, so re-walking every tag buys nothing."""
+        self.sync_tag.return_value = 0
+        await self._complete()
+        self.enqueue.assert_not_awaited()
+
+
+class ProjectIsDeployableTestCase(unittest.IsolatedAsyncioTestCase):
+    """``deployable`` is per project *type*, and a project can have several."""
+
+    async def _ask(self, flags: typing.Any) -> bool:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(
+            return_value=[{'flags': json.dumps(flags)}]
+        )
+        return await project_deployments._project_is_deployable(db, 'p1')
+
+    async def test_true_when_any_type_is_deployable(self) -> None:
+        self.assertTrue(await self._ask([False, True]))
+
+    async def test_false_when_no_type_is_deployable(self) -> None:
+        self.assertFalse(await self._ask([False, False]))
+
+    async def test_false_when_the_project_has_no_type(self) -> None:
+        self.assertFalse(await self._ask([]))
+
+    async def test_false_when_the_project_is_missing(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        self.assertFalse(
+            await project_deployments._project_is_deployable(db, 'nope')
+        )
+
+
 def _relocating_resolved() -> ResolvedCapability:
     return _make_resolved(
         _RelocatingDeploymentPlugin, options={'owner': 'octo', 'repo': 'demo'}
@@ -2486,6 +2885,217 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         data = response.json()
         self.assertIsNotNone(data['warning'])
         self.assertIn('create_release', data['warning'])
+
+
+class ReleasePublishTestCase(ProjectDeploymentsTestCase):
+    """Ratifying a Release: ``POST /deployments/releases/{tag}/publish``."""
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _PUBLISH = f'{_BASE}/releases/v6.4.0/publish'
+
+    def _patch_execute(
+        self,
+        *,
+        found: bool = True,
+        blocked: bool = False,
+    ) -> dict[str, list[dict[str, typing.Any]]]:
+        """Route the endpoint's graph reads by query text.
+
+        Returns a dict the test can inspect for the parameters of the
+        ``Release``-node link upsert (empty when it never ran).
+        """
+        node = self._release_node() if found else None
+        seen: dict[str, list[dict[str, typing.Any]]] = {'upsert': []}
+
+        def _execute(
+            query: str, params: dict[str, typing.Any], columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if 'r.blocked_at IS NOT NULL' in query:
+                return (
+                    [
+                        {
+                            'release': json.dumps(
+                                {
+                                    'tag': 'v6.4.0',
+                                    'blocked_reason': 'Regression',
+                                }
+                            )
+                        }
+                    ]
+                    if blocked
+                    else []
+                )
+            if 'RETURN r{{.id, .tag' in query:
+                return [] if node is None else [{'release': json.dumps(node)}]
+            if 'SET r.description' in query:
+                seen['upsert'].append(params)
+                return [{'rid': 'rel-1'}]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        return seen
+
+    @staticmethod
+    def _release_node(**overrides: typing.Any) -> dict[str, typing.Any]:
+        return {
+            'id': 'rel-1',
+            'tag': 'v6.4.0',
+            'committish': '1a9c610',
+            'title': 'Release 6.4.0',
+            'description': '## Highlights\n- foo',
+            'created_at': '2026-01-01T00:00:00+00:00',
+            **overrides,
+        }
+
+    def test_publish_creates_the_remote_release(self) -> None:
+        seen = self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['tag'], 'v6.4.0')
+        self.assertTrue(data['published'])
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertIsNone(data['warning'])
+        # The github_release link was written back onto the node.
+        self.assertEqual(len(seen['upsert']), 1)
+        self.assertIn('https://gh/releases/v6.4.0', seen['upsert'][0]['links'])
+        # ...without clobbering the notes already recorded there.
+        self.assertEqual(seen['upsert'][0]['description'], '')
+
+    def test_publish_uses_the_nodes_title_and_notes(self) -> None:
+        # The ratification must not drift from what Imbi recorded at
+        # promote time, so title/body come from the Release node rather
+        # than from the caller.
+        captured: dict[str, typing.Any] = {}
+
+        class _Capturing(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                captured.update(
+                    tag=tag,
+                    name=name,
+                    body_markdown=body_markdown,
+                    prerelease=prerelease,
+                )
+                return await super().create_release(
+                    ctx, credentials, tag, name, body_markdown, prerelease
+                )
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _Capturing
+        )
+        self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH, json={'prerelease': True})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured['tag'], 'v6.4.0')
+        self.assertEqual(captured['name'], 'Release 6.4.0')
+        self.assertEqual(captured['body_markdown'], '## Highlights\n- foo')
+        self.assertTrue(captured['prerelease'])
+
+    def test_publish_unknown_tag_is_404(self) -> None:
+        self._patch_execute(found=False)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('No release found', response.json()['detail'])
+
+    def test_publish_of_a_blocked_release_is_409(self) -> None:
+        self._patch_execute(blocked=True)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('is blocked', response.json()['detail'])
+
+    def test_publish_degrades_a_plugin_failure_to_a_warning(self) -> None:
+        class _Boom(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                raise RuntimeError('boom')
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(_Boom)
+        seen = self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['published'])
+        self.assertIsNone(data['release_url'])
+        self.assertIn('create_release', data['warning'])
+        # Nothing was written back -- there is no URL to record.
+        self.assertEqual(seen['upsert'], [])
+
+    def test_publish_is_idempotent_for_an_existing_remote_release(
+        self,
+    ) -> None:
+        # A 422 "already exists" is the second delivery of the same
+        # deployment_status webhook, not a failure: the endpoint reports
+        # published and recovers the URL via ``get_release``.
+        class _AlreadyThere(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                raise httpx.HTTPStatusError(
+                    'already exists',
+                    request=httpx.Request('POST', 'https://api.gh/releases'),
+                    response=httpx.Response(
+                        422, json={'message': 'Reference already exists'}
+                    ),
+                )
+
+            async def get_release(  # type: ignore[override]
+                self, ctx, credentials, tag
+            ):
+                return RemoteRelease(
+                    tag=tag, html_url=f'https://gh/releases/{tag}'
+                )
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _AlreadyThere
+        )
+        seen = self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['published'])
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertIsNone(data['warning'])
+        self.assertEqual(len(seen['upsert']), 1)
+
+    def test_publish_writes_an_operations_log_audit(self) -> None:
+        self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        insert = self.mocks['clickhouse'].return_value.insert
+        insert.assert_awaited()
+        columns = insert.await_args.args[2]
+        row = dict(zip(columns, insert.await_args.args[1][0], strict=True))
+        self.assertEqual(row['version'], 'v6.4.0')
+        self.assertEqual(json.loads(row['description'])['action'], 'publish')
 
 
 class ReleaseBlockTestCase(ProjectDeploymentsTestCase):

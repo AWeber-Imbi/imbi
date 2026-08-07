@@ -7,7 +7,11 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
 import { promoteDeployment, triggerDeployment } from '@/api/endpoints'
-import type { DeploymentRunStarted } from '@/components/deploy/DeploymentModal'
+import type {
+  DeploymentRunStarted,
+  ReleaseBuildStarted,
+} from '@/components/deploy/DeploymentModal'
+import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
 import { extractApiErrorDetail } from '@/lib/apiError'
 
 export interface DeploymentActions {
@@ -39,12 +43,18 @@ export interface PromoteRequest {
 }
 
 interface UseDeploymentActionsOptions {
+  /**
+   * Called instead of `onRunStarted` when a promote dispatched a
+   * release build rather than creating a Deployment.
+   */
+  onBuildStarted?: (build: ReleaseBuildStarted) => void
   onRunStarted?: (run: DeploymentRunStarted) => void
   orgSlug: string
   projectId: string
 }
 
 export function useDeploymentActions({
+  onBuildStarted,
   onRunStarted,
   orgSlug,
   projectId,
@@ -145,6 +155,22 @@ export function useDeploymentActions({
     // fallow-ignore-next-line complexity
     onSuccess: (data, req) => {
       invalidate()
+      // Dispatch-driven promote: the release build owns the tag and the
+      // remote Release, and no Deployment exists yet — so ``run_id`` is
+      // empty and the ``onRunStarted`` check below would fall straight
+      // through to a terminal "Promoted!" toast, minutes before anything
+      // ships. Hand off to the build watcher instead.
+      if (
+        handleDispatchedBuild(data, {
+          envName: req.toEnvName,
+          onBuildStarted,
+          orgSlug,
+          projectId,
+          tagFallback: req.tag,
+        })
+      ) {
+        return
+      }
       const releaseUrl = data.release_url
       const runUrl = data.run.run_url
       const tagLabel = data.tag ?? req.tag

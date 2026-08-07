@@ -650,6 +650,97 @@ class CreateReleaseTests(helpers.TestCase):
                 event=_event(_DEPLOYMENT_BODY),
             )
 
+    async def test_null_title_selector_falls_back_to_the_version(self) -> None:
+        # An Imbi-created GitHub Deployment carries no ``description``;
+        # stringifying that null used to title the release "None".
+        config = _create_release_config(
+            '{"title_selector": "/payload/deployment/description",'
+            ' "version_expression": "payload.deployment.ref",'
+            ' "committish_expression": "substring(payload.deployment.sha,'
+            ' 0, 7)"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(
+                    {
+                        'deployment': {
+                            'ref': 'v1.2.3',
+                            'sha': 'abcdef1234567890',
+                            'description': None,
+                        }
+                    }
+                ),
+            )
+
+        self.assertEqual(
+            'Release v1.2.3', mock_create.call_args.args[2]['title']
+        )
+
+    async def test_title_selector_is_optional(self) -> None:
+        config = _create_release_config(
+            '{"version_expression": "payload.deployment.ref",'
+            ' "committish_expression": "substring(payload.deployment.sha,'
+            ' 0, 7)"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(_DEPLOYMENT_BODY),
+            )
+
+        self.assertEqual(
+            'Release v1.2.3', mock_create.call_args.args[2]['title']
+        )
+
+    async def test_title_falls_back_to_committish_without_a_tag(self) -> None:
+        config = _create_release_config(
+            '{"committish_expression": "substring(payload.deployment.sha,'
+            ' 0, 7)"}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(_DEPLOYMENT_BODY),
+            )
+
+        self.assertEqual(
+            'Release abcdef1', mock_create.call_args.args[2]['title']
+        )
+
     async def test_409_is_treated_as_idempotent(self) -> None:
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
@@ -993,6 +1084,399 @@ class AddDeploymentEventTests(helpers.TestCase):
 
         self.assertTrue(
             any('Release' in line and 'missing' in line for line in cm.output)
+        )
+
+
+def _status_body(state: str) -> dict[str, object]:
+    """A ``deployment_status`` body reporting ``state``."""
+    return {
+        'deployment': {'ref': 'v1.2.3', 'sha': 'abcdef1234567890'},
+        'deployment_status': {'state': state, 'environment': 'production'},
+    }
+
+
+_PUBLISH_CONFIG = (
+    '{"version_expression": "payload.deployment.ref",'
+    ' "status_selector": "/payload/deployment_status/state"}'
+)
+
+
+class PublishReleaseTests(helpers.TestCase):
+    def _config(self, raw: str = _PUBLISH_CONFIG) -> typing.Any:
+        return actions.PublishReleaseConfig.model_validate_json(raw)
+
+    def _patch(self, response: httpx.Response) -> typing.Any:
+        return unittest.mock.patch.object(
+            actions.ImbiClient,
+            'publish_release',
+            new_callable=unittest.mock.AsyncMock,
+            return_value=response,
+        )
+
+    async def test_success_publishes_the_tag(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200, json={'published': True})) as pub,
+        ):
+            await actions.publish_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                event=_event(_status_body('success')),
+            )
+
+        pub.assert_called_once_with('org', 'proj', 'v1.2.3', False)
+
+    async def test_prerelease_flag_is_forwarded(self) -> None:
+        config = self._config(
+            '{"version_expression": "payload.deployment.ref",'
+            ' "status_selector": "/payload/deployment_status/state",'
+            ' "prerelease": true}'
+        )
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200)) as pub,
+        ):
+            await actions.publish_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(_status_body('success')),
+            )
+
+        pub.assert_called_once_with('org', 'proj', 'v1.2.3', True)
+
+    async def test_non_success_states_do_not_publish(self) -> None:
+        for state in ('failure', 'error', 'inactive', 'pending', 'queued'):
+            with self.subTest(state=state):
+                with (
+                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self._patch(httpx.Response(200)) as pub,
+                ):
+                    await actions.publish_release(
+                        ctx=_ctx(),
+                        credentials={},
+                        external_identifier='',
+                        action_config=self._config(),
+                        event=_event(_status_body(state)),
+                    )
+                pub.assert_not_called()
+
+    async def test_unmapped_state_does_not_publish(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200)) as pub,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
+        ):
+            await actions.publish_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                event=_event(_status_body('frobbed')),
+            )
+
+        pub.assert_not_called()
+        self.assertTrue(any('Unmapped' in line for line in cm.output))
+
+    async def test_null_version_is_skipped(self) -> None:
+        config = self._config(
+            '{"version_expression": "payload.deployment.tag",'
+            ' "status_selector": "/payload/deployment_status/state"}'
+        )
+        body = _status_body('success')
+        typing.cast('dict[str, object]', body['deployment'])['tag'] = None
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200)) as pub,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
+        ):
+            await actions.publish_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(body),
+            )
+
+        pub.assert_not_called()
+        self.assertTrue(any('evaluated to null' in line for line in cm.output))
+
+    async def test_404_and_409_are_not_failures(self) -> None:
+        for status in (404, 409):
+            with self.subTest(status=status):
+                with (
+                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self._patch(httpx.Response(status, json={'detail': 'no'})),
+                    self.assertLogs('imbi.gateway.actions', 'INFO') as cm,
+                ):
+                    await actions.publish_release(
+                        ctx=_ctx(),
+                        credentials={},
+                        external_identifier='',
+                        action_config=self._config(),
+                        event=_event(_status_body('success')),
+                    )
+                self.assertTrue(
+                    any('was not published' in line for line in cm.output)
+                )
+
+
+_BLOCK_CONFIG = (
+    '{"version_expression": "payload.deployment.ref",'
+    ' "status_selector": "/payload/deployment_status/state"}'
+)
+
+
+class BlockReleaseTests(helpers.TestCase):
+    def _config(self, raw: str = _BLOCK_CONFIG) -> typing.Any:
+        return actions.BlockReleaseConfig.model_validate_json(raw)
+
+    def _patch(self, response: httpx.Response) -> typing.Any:
+        return unittest.mock.patch.object(
+            actions.ImbiClient,
+            'block_release',
+            new_callable=unittest.mock.AsyncMock,
+            return_value=response,
+        )
+
+    async def test_failure_states_block_with_a_default_reason(self) -> None:
+        for state in ('failure', 'error'):
+            with self.subTest(state=state):
+                with (
+                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self._patch(httpx.Response(200)) as block,
+                ):
+                    await actions.block_release(
+                        ctx=_ctx(),
+                        credentials={},
+                        external_identifier='',
+                        action_config=self._config(),
+                        event=_event(_status_body(state)),
+                    )
+                block.assert_called_once_with(
+                    'org', 'proj', 'v1.2.3', f'Deployment reported {state}'
+                )
+
+    async def test_inactive_does_not_block(self) -> None:
+        # ``inactive`` maps to ``rolled_back``: the deployment was
+        # superseded by a newer one, which is the normal end of every
+        # deployment's life and must never block the tag.
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200)) as block,
+        ):
+            await actions.block_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                event=_event(_status_body('inactive')),
+            )
+
+        block.assert_not_called()
+
+    async def test_success_and_pending_do_not_block(self) -> None:
+        for state in ('success', 'pending', 'queued', 'in_progress'):
+            with self.subTest(state=state):
+                with (
+                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self._patch(httpx.Response(200)) as block,
+                ):
+                    await actions.block_release(
+                        ctx=_ctx(),
+                        credentials={},
+                        external_identifier='',
+                        action_config=self._config(),
+                        event=_event(_status_body(state)),
+                    )
+                block.assert_not_called()
+
+    async def test_reason_selector_is_used(self) -> None:
+        config = self._config(
+            '{"version_expression": "payload.deployment.ref",'
+            ' "status_selector": "/payload/deployment_status/state",'
+            ' "reason_selector": "/payload/deployment_status/description"}'
+        )
+        body = _status_body('failure')
+        status = typing.cast('dict[str, object]', body['deployment_status'])
+        status['description'] = 'Migration 0042 failed'
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200)) as block,
+        ):
+            await actions.block_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(body),
+            )
+
+        block.assert_called_once_with(
+            'org', 'proj', 'v1.2.3', 'Migration 0042 failed'
+        )
+
+    async def test_null_reason_falls_back_to_the_state(self) -> None:
+        config = self._config(
+            '{"version_expression": "payload.deployment.ref",'
+            ' "status_selector": "/payload/deployment_status/state",'
+            ' "reason_selector": "/payload/deployment_status/description"}'
+        )
+        body = _status_body('failure')
+        status = typing.cast('dict[str, object]', body['deployment_status'])
+        status['description'] = None
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200)) as block,
+        ):
+            await actions.block_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(body),
+            )
+
+        block.assert_called_once_with(
+            'org', 'proj', 'v1.2.3', 'Deployment reported failure'
+        )
+
+    async def test_overlong_reason_is_truncated(self) -> None:
+        config = self._config(
+            '{"version_expression": "payload.deployment.ref",'
+            ' "status_selector": "/payload/deployment_status/state",'
+            ' "reason_selector": "/payload/deployment_status/description"}'
+        )
+        body = _status_body('failure')
+        status = typing.cast('dict[str, object]', body['deployment_status'])
+        status['description'] = 'x' * 600
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(200)) as block,
+        ):
+            await actions.block_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(body),
+            )
+
+        self.assertEqual(500, len(block.call_args.args[3]))
+
+    async def test_missing_release_logs_a_warning(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self._patch(httpx.Response(404, json={'detail': 'missing'})),
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
+        ):
+            await actions.block_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=self._config(),
+                event=_event(_status_body('failure')),
+            )
+
+        self.assertTrue(any('block dropped' in line for line in cm.output))
+
+
+class ImbiClientPublishReleaseTests(helpers.TestCase):
+    async def test_url_body_and_error_logging(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_post,
+        ):
+            async with actions.ImbiClient() as client:
+                await client.publish_release('org', 'proj', 'v1.2.3', True)
+
+        mock_post.assert_called_once_with(
+            '/organizations/org/projects/proj/deployments/releases'
+            '/v1.2.3/publish',
+            json={'prerelease': True},
+        )
+
+    async def test_server_error_logs_warning(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(500, text='boom'),
+            ),
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
+        ):
+            async with actions.ImbiClient() as client:
+                await client.publish_release('org', 'proj', 'v1.2.3', False)
+
+        self.assertTrue(
+            any('Failed to publish release' in line for line in cm.output)
+        )
+
+    async def test_404_and_409_do_not_log_warning(self) -> None:
+        for status in (404, 409):
+            with self.subTest(status=status):
+                with (
+                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    unittest.mock.patch.object(
+                        actions.ImbiClient,
+                        'post',
+                        new_callable=unittest.mock.AsyncMock,
+                        return_value=httpx.Response(status),
+                    ),
+                    self.assertNoLogs('imbi.gateway.actions', 'WARNING'),
+                ):
+                    async with actions.ImbiClient() as client:
+                        await client.publish_release(
+                            'org', 'proj', 'v1.2.3', False
+                        )
+
+
+class ImbiClientBlockReleaseTests(helpers.TestCase):
+    async def test_url_and_body(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_post,
+        ):
+            async with actions.ImbiClient() as client:
+                await client.block_release('org', 'proj', 'v1.2.3', 'nope')
+
+        mock_post.assert_called_once_with(
+            '/organizations/org/projects/proj/deployments/releases'
+            '/v1.2.3/block',
+            json={'reason': 'nope'},
+        )
+
+    async def test_server_error_logs_warning(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'post',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(500, text='boom'),
+            ),
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
+        ):
+            async with actions.ImbiClient() as client:
+                await client.block_release('org', 'proj', 'v1.2.3', 'nope')
+
+        self.assertTrue(
+            any('Failed to block release' in line for line in cm.output)
         )
 
 

@@ -50,6 +50,15 @@ class GitHubCommitSync(CommitSyncCapability):
   Re-running is safe: the ClickHouse `commits` / `tags` tables are
   `ReplacingMergeTree` and dedupe against rows the webhook already
   recorded.
+- **`sync_tag`** *(optional, default raises `NotImplementedError`)* —
+  record the single tag named `tag`. Returns rows written (0 or 1). The
+  host calls this when it already knows which tag appeared — completing a
+  promote whose release build created it, where an API-created tag fires
+  no `push` delivery — so cost should be flat in the repo's age rather
+  than growing with it. Return `0` rather than raising when the tag does
+  not exist on the remote: a build that failed before tagging is an
+  expected outcome. A plugin that does not implement it falls back to a
+  queued `sync_all_history`.
 - **`check_available`** *(optional, default `True`)* — whether an
   on-demand sync can run for `ctx` right now. Override to report `False`
   when the remote / repository cannot be resolved so the host can hide

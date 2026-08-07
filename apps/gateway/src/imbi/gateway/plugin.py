@@ -1,7 +1,8 @@
 """Built-in webhook-action plugin shipped with imbi-gateway.
 
 Wraps the bundled actions (``update_project``, ``create_release``,
-``add_deployment_event``, ``ingest_sbom``) as a
+``add_deployment_event``, ``publish_release``, ``block_release``,
+``ingest_sbom``) as a
 :class:`~imbi.common.plugins.base.WebhookActionsCapability` on a single
 :class:`~imbi.common.plugins.base.Plugin` (slug ``gateway-actions``) so
 they participate in the same discovery, validation, and dispatch flow as
@@ -79,6 +80,27 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                 model_path='imbi.gateway.actions:AddDeploymentEventConfig',
             ),
             _descriptor(
+                name='publish_release',
+                label='Publish Release on Successful Deployment',
+                description=(
+                    'Ratifies the matched Imbi Release by creating the '
+                    'remote release for its tag, once a deployment '
+                    'reports success.'
+                ),
+                callable_path='imbi.gateway.actions:publish_release',
+                model_path='imbi.gateway.actions:PublishReleaseConfig',
+            ),
+            _descriptor(
+                name='block_release',
+                label='Block Release on Failed Deployment',
+                description=(
+                    'Blocks the matched Imbi Release from shipping again '
+                    'when a deployment reports failure or error.'
+                ),
+                callable_path='imbi.gateway.actions:block_release',
+                model_path='imbi.gateway.actions:BlockReleaseConfig',
+            ),
+            _descriptor(
                 name='ingest_sbom',
                 label='Ingest CycloneDX SBoM for Release',
                 description=(
@@ -99,8 +121,9 @@ class GatewayActionsPlugin(plugin_base.Plugin):
         name='Gateway Actions',
         description=(
             'Webhook actions shipped with imbi-gateway: update project '
-            'facts, create a release, append a deployment event, and '
-            'ingest CycloneDX SBoMs.'
+            'facts, create a release, append a deployment event, publish '
+            'or block a release on the deployment outcome, and ingest '
+            'CycloneDX SBoMs.'
         ),
         auth_type='none',
         credentials=[],

@@ -6,7 +6,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { listCurrentReleases, listRecentCommits } from '@/api/endpoints'
 import { getReleaseHistory } from '@/api/releases'
-import type { DeploymentRunStarted } from '@/components/deploy/DeploymentModal'
+import type {
+  DeploymentRunStarted,
+  ReleaseBuildStarted,
+} from '@/components/deploy/DeploymentModal'
 import { Sk, SkText } from '@/components/ui/skeleton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { deriveChipColors } from '@/lib/chip-colors'
@@ -23,6 +26,7 @@ interface DeploymentsTabProps {
   connectLabel: string
   /** Pipeline environments, already sorted ascending by sort_order. */
   environments: Environment[]
+  onBuildStarted?: (build: ReleaseBuildStarted) => void
   onRunStarted?: (run: DeploymentRunStarted) => void
   orgSlug: string
   projectId: string
@@ -50,6 +54,7 @@ export function DeploymentsTab({
   canTrigger,
   connectLabel,
   environments,
+  onBuildStarted,
   onRunStarted,
   orgSlug,
   projectId,
@@ -109,7 +114,12 @@ export function DeploymentsTab({
   }
   const selectedStage = stages.find((s) => s.env.slug === effectiveSlug) ?? null
 
-  const actions = useDeploymentActions({ onRunStarted, orgSlug, projectId })
+  const actions = useDeploymentActions({
+    onBuildStarted,
+    onRunStarted,
+    orgSlug,
+    projectId,
+  })
   const { isSyncing, sync } = useDeploymentSync(orgSlug, projectId)
 
   if (currentLoading || historyLoading || commitsLoading) {

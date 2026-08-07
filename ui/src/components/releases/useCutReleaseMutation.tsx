@@ -3,10 +3,17 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
 import { cutRelease } from '@/api/releases'
+import type { ReleaseBuildStarted } from '@/components/deploy/DeploymentModal'
+import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type { CutReleaseRequest } from '@/types'
 
 interface UseCutReleaseOptions {
+  /**
+   * Called when the cut dispatched a release build instead of creating
+   * the tag inline, so the caller can mount a `ReleaseBuildWatcher`.
+   */
+  onBuildStarted?: (build: ReleaseBuildStarted) => void
   onSuccess?: () => void
   orgSlug: string
   projectId: string
@@ -18,11 +25,16 @@ interface UseCutReleaseResult {
 }
 
 /**
- * Cut a tag + GitHub release for a library project. Unlike deploy/promote
- * there is no async workflow run to watch — the cut response is synchronous,
- * so we go straight to a success toast and invalidate the release queries.
+ * Cut a tag + GitHub release for a library project.
+ *
+ * Synchronous only when the project has no Release workflow configured:
+ * then the tag and release already exist by the time this returns and a
+ * success toast is honest. With one configured the response comes back
+ * `phase: 'building'` — the dispatched workflow is what creates them —
+ * so the toast has to follow the build instead of declaring victory.
  */
 export function useCutReleaseMutation({
+  onBuildStarted,
   onSuccess,
   orgSlug,
   projectId,
@@ -46,6 +58,19 @@ export function useCutReleaseMutation({
         ['project-releases', orgSlug, projectId],
       ]) {
         void queryClient.invalidateQueries({ queryKey: key })
+      }
+      if (
+        handleDispatchedBuild(data, {
+          // A library release has no deploy target.
+          envName: null,
+          onBuildStarted,
+          orgSlug,
+          projectId,
+          tagFallback: data.tag,
+        })
+      ) {
+        onSuccess?.()
+        return
       }
       const url = data.release_url
       toast.success(

@@ -861,6 +861,27 @@ class ProcessNotificationTests(helpers.TestCase):
         }
         self.assertEqual({self.proj_id, second_proj_id}, project_ids)
 
+    async def test_handlers_run_in_ordinal_order(self) -> None:
+        # Ordering is load-bearing: ``add_deployment_event`` drops its
+        # event when the release is missing, so it has to run after
+        # ``create_release``, and ``publish_release`` after both.  The
+        # rules are created out of order so a pass can't come for free
+        # from insertion order.
+        for ordinal in (3, 1, 2):
+            await self._add_rule(
+                handler_config=json.dumps({'label': f'rule-{ordinal}'}),
+                ordinal=ordinal,
+            )
+        response = await self._post(
+            self.webhook_id, {'repo': {'id': self.ext_id}}
+        )
+        self.assertEqual(202, response.status_code)
+        labels = [
+            typing.cast('StubActionConfig', call['action_config']).label
+            for call in ACTION_CALLS
+        ]
+        self.assertEqual(['rule-1', 'rule-2', 'rule-3'], labels)
+
     async def test_project_not_found_for_external_id(self) -> None:
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': 'no-such-external-id'}}
