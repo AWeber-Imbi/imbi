@@ -75,6 +75,7 @@ __all__ = [
     'WebhookRuleCreate',
     'WebhookRuleResponse',
     'WebhookUpdate',
+    'sort_webhook_rules',
 ]
 
 
@@ -1089,6 +1090,35 @@ class WebhookUpdate(pydantic.BaseModel):
         return self
 
 
+def _webhook_rule_ordinal(rule: dict[str, typing.Any]) -> int:
+    """Sort key for a raw webhook rule map."""
+    ordinal = rule.get('ordinal')
+    return ordinal if isinstance(ordinal, int) else 0
+
+
+def sort_webhook_rules(
+    rules: list[typing.Any],
+) -> list[dict[str, typing.Any]]:
+    """Drop empty rule maps and order the rest by stored ``ordinal``.
+
+    Rule order is load-bearing -- the gateway dispatches handlers in it
+    -- but a Cypher ``ORDER BY`` ahead of ``collect()`` only survives
+    when AGE's planner picks a hash aggregate. It does for a single
+    webhook and does not when listing an organization's webhooks, so
+    the two endpoints disagreed on the order of the same rules.
+    Sorting here makes it explicit instead of planner-dependent.
+
+    Empty maps are dropped because AGE returns ``[{}]`` rather than
+    ``[]`` for a map projection over an OPTIONAL MATCH that found
+    nothing. The sort is stable, so any rule stored without an
+    ``ordinal`` keeps its relative position.
+    """
+    return sorted(
+        (rule for rule in rules if rule),
+        key=_webhook_rule_ordinal,
+    )
+
+
 class WebhookRuleResponse(pydantic.BaseModel):
     """Rule in a webhook response (no ordinal exposed)."""
 
@@ -1130,21 +1160,20 @@ class WebhookResponse(pydantic.BaseModel):
             graph.parse_agtype(record.get('rules')) or []
         )
         rules: list[WebhookRuleResponse] = []
-        for r in raw_rules:
-            if r:
-                raw_config: str = r.get('handler_config', '{}')
-                config: dict[str, typing.Any] | list[typing.Any]
-                try:
-                    config = json.loads(raw_config) if raw_config else {}
-                except json.JSONDecodeError, TypeError:
-                    config = {}
-                rules.append(
-                    WebhookRuleResponse(
-                        filter_expression=str(r['filter_expression']),
-                        handler=str(r['handler']),
-                        handler_config=config,
-                    )
+        for r in sort_webhook_rules(raw_rules):
+            raw_config: str = r.get('handler_config', '{}')
+            config: dict[str, typing.Any] | list[typing.Any]
+            try:
+                config = json.loads(raw_config) if raw_config else {}
+            except json.JSONDecodeError, TypeError:
+                config = {}
+            rules.append(
+                WebhookRuleResponse(
+                    filter_expression=str(r['filter_expression']),
+                    handler=str(r['handler']),
+                    handler_config=config,
                 )
+            )
 
         tps = record.get('tps')
         if tps:

@@ -154,7 +154,7 @@ RETURN w{{.*}} AS webhook,
        impl.event_type_selector AS event_type_selector,
        [x IN all_rules
         | x {{.filter_expression, .handler,
-              .handler_config}}]
+              .handler_config, .ordinal}}]
            AS rules
 """
 
@@ -175,7 +175,7 @@ _UPDATE_RETURN_TAIL_WITH_TPS: typing.LiteralString = (
     ' impl.event_type_selector AS event_type_selector,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
-    ' .handler_config}}] AS rules'
+    ' .handler_config, .ordinal}}] AS rules'
 )
 
 
@@ -195,7 +195,7 @@ _UPDATE_RETURN_TAIL_NO_TPS: typing.LiteralString = (
     ' null AS event_type_selector,'
     ' [x IN all_rules'
     ' | x {{.filter_expression, .handler,'
-    ' .handler_config}}] AS rules'
+    ' .handler_config, .ordinal}}] AS rules'
 )
 
 
@@ -382,7 +382,7 @@ async def list_webhooks(
            impl.event_type_selector AS event_type_selector,
            [x IN all_rules
             | x {{.filter_expression, .handler,
-                  .handler_config}}]
+                  .handler_config, .ordinal}}]
                AS rules
     ORDER BY w.name
     """
@@ -521,6 +521,8 @@ async def patch_webhook(
         'event_type_selector': graph.parse_agtype(
             existing[0].get('event_type_selector')
         ),
+        # Sorted, because the patch document's rule order is what the
+        # write below re-numbers into ``ordinal``.
         'rules': [
             {
                 'filter_expression': r['filter_expression'],
@@ -531,8 +533,7 @@ async def patch_webhook(
                     else r.get('handler_config', {})
                 ),
             }
-            for r in raw_rules
-            if r is not None
+            for r in models.sort_webhook_rules(raw_rules)
         ],
     }
 

@@ -506,3 +506,80 @@ class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):
         response = domain_models.WebhookResponse.from_graph_record(record)
         self.assertIsNone(response.integration)
         self.assertIsNone(response.identifier_selector)
+
+
+class WebhookRuleOrderingTestCase(unittest.TestCase):
+    """Tests that webhook rules are ordered by their stored ordinal.
+
+    Rule order is load-bearing -- the gateway dispatches handlers in it
+    -- and AGE only preserves the query's pre-aggregation ORDER BY when
+    its planner picks a hash aggregate. Listing an organization's
+    webhooks returned rules in a different order than fetching one
+    webhook, so the order is now sorted in Python instead.
+    """
+
+    @staticmethod
+    def _rule(handler: str, **overrides: object) -> dict[str, object]:
+        rule: dict[str, object] = {
+            'filter_expression': 'true',
+            'handler': handler,
+            'handler_config': '{}',
+        }
+        rule.update(overrides)
+        return rule
+
+    def _record(self, rules: list[dict[str, object]]) -> dict[str, object]:
+        return {
+            'webhook': {
+                'id': 'wh_test0001',
+                'name': 'Test Webhook',
+                'slug': 'test-webhook',
+                'notification_path': '/webhooks/test',
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': rules,
+        }
+
+    def test_rules_sorted_by_ordinal(self) -> None:
+        record = self._record(
+            [
+                self._rule('h.third', ordinal=2),
+                self._rule('h.first', ordinal=0),
+                self._rule('h.second', ordinal=1),
+            ]
+        )
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(
+            [rule.handler for rule in response.rules],
+            ['h.first', 'h.second', 'h.third'],
+        )
+
+    def test_ordinal_is_not_exposed_in_the_response(self) -> None:
+        record = self._record([self._rule('h.only', ordinal=0)])
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertNotIn('ordinal', response.rules[0].model_dump())
+
+    def test_rules_without_ordinal_keep_relative_order(self) -> None:
+        """Rules predating the ordinal property must not be shuffled."""
+        record = self._record(
+            [
+                self._rule('h.a'),
+                self._rule('h.b'),
+                self._rule('h.c'),
+            ]
+        )
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(
+            [rule.handler for rule in response.rules],
+            ['h.a', 'h.b', 'h.c'],
+        )
+
+    def test_sort_webhook_rules_drops_empty_maps(self) -> None:
+        """AGE returns [{}] for an OPTIONAL MATCH that found nothing."""
+        self.assertEqual(
+            domain_models.sort_webhook_rules(
+                [{}, self._rule('h.only', ordinal=0), None]
+            ),
+            [self._rule('h.only', ordinal=0)],
+        )
