@@ -20,6 +20,7 @@ from imbi.api.identity import sweeper as identity_sweeper
 from imbi.api.maintenance import worker as maintenance_worker
 from imbi.api.plugins import lifecycle as plugin_lifecycle
 from imbi.api.pr_sync import queue as pr_sync_queue
+from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.scoring import queue as score_queue
 from imbi.api.storage.client import StorageClient
 from imbi.common import clickhouse, graph, valkey
@@ -269,6 +270,43 @@ async def deployment_sync_worker_hook() -> abc.AsyncGenerator[None]:
         except Exception:  # noqa: BLE001
             LOGGER.warning(
                 'Deployment-sync worker task exited with error', exc_info=True
+            )
+
+
+@contextlib.asynccontextmanager
+async def release_promote_worker_hook() -> abc.AsyncGenerator[None]:
+    """Run the consumer that watches dispatched release builds."""
+    try:
+        client = valkey.get_client()
+    except RuntimeError:
+        LOGGER.warning(
+            'Valkey unavailable; release-promote worker not started'
+        )
+        yield None
+        return
+    if _graph is None:
+        LOGGER.warning('Graph not ready; release-promote worker not started')
+        yield None
+        return
+    stop = asyncio.Event()
+    LOGGER.info('Release-promote worker starting')
+    consumer_task = asyncio.create_task(
+        release_promote_queue.consume_release_promote(
+            client, _graph, stop=stop
+        )
+    )
+    try:
+        yield None
+    finally:
+        stop.set()
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Release-promote worker task exited with error', exc_info=True
             )
 
 

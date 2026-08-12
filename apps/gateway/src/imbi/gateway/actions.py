@@ -184,6 +184,55 @@ class ImbiClient(httpx.AsyncClient):
             return []
         return typing.cast('list[dict[str, object]]', response.json())
 
+    async def publish_release(
+        self, org_slug: str, project_id: str, tag: str, prerelease: bool
+    ) -> httpx.Response:
+        """Ratify an Imbi ``Release`` by creating it on the remote.
+
+        Title and notes come from the ``Release`` node, so the gateway
+        sends nothing but the prerelease flag. A 404 means Imbi has no
+        ``Release`` for the tag (nothing to ratify) and a 409 means the
+        release is blocked; both are expected outcomes rather than
+        errors, so they are logged at debug by the caller.
+        """
+        url = (
+            f'/organizations/{org_slug}/projects/{project_id}'
+            f'/deployments/releases/{tag}/publish'
+        )
+        LOGGER.debug('Publishing release %s', url)
+        response = await self.post(url, json={'prerelease': prerelease})
+        if response.is_error and response.status_code not in (
+            http.HTTPStatus.NOT_FOUND,
+            http.HTTPStatus.CONFLICT,
+        ):
+            LOGGER.warning(
+                'Failed to publish release %r: %s', url, response.text
+            )
+        return response
+
+    async def block_release(
+        self, org_slug: str, project_id: str, tag: str, reason: str
+    ) -> httpx.Response:
+        """Block a tag from shipping again, with a reason.
+
+        A 404 means the tag has no ``Release`` node and has never been
+        synced, so there is nothing to block; the caller logs it rather
+        than treating it as a failure.
+        """
+        url = (
+            f'/organizations/{org_slug}/projects/{project_id}'
+            f'/deployments/releases/{tag}/block'
+        )
+        LOGGER.debug('Blocking release %s', url)
+        response = await self.post(url, json={'reason': reason})
+        if response.is_error and (
+            response.status_code != http.HTTPStatus.NOT_FOUND
+        ):
+            LOGGER.warning(
+                'Failed to block release %r: %s', url, response.text
+            )
+        return response
+
     async def put_sbom(
         self,
         org_slug: str,
@@ -217,9 +266,16 @@ class CreateReleaseConfig(pydantic.BaseModel):
     ``version_expression``) is optional; when absent or evaluated to
     null, the release is still created and identified by its
     committish.
+
+    ``title_selector`` is optional and falls back to
+    ``"Release <version>"`` (the tag, or the committish when no tag
+    resolves). It is also *skipped* when the pointer resolves to null:
+    an Imbi-created GitHub Deployment carries no ``description``, so
+    a config pointing at ``/payload/deployment/description`` would
+    otherwise title the release the literal string ``"None"``.
     """
 
-    title_selector: json_pointer.JsonPointer
+    title_selector: json_pointer.JsonPointer | None = None
     committish_expression: str
     version_expression: str | None = None
 
@@ -240,6 +296,44 @@ class AddDeploymentEventConfig(pydantic.BaseModel):
     version_expression: str | None = None
     note_selector: json_pointer.JsonPointer | None = None
     external_run_id_selector: json_pointer.JsonPointer | None = None
+
+
+class PublishReleaseConfig(pydantic.BaseModel):
+    """Validates ``handler_config`` for :func:`publish_release`.
+
+    ``version_expression`` is a CEL expression resolving the tag of the
+    ``Release`` to ratify (typically ``payload.deployment.ref``).
+    ``status_selector`` points at the raw deployment state; the action
+    fires only for states that map to ``success`` (see
+    :data:`_STATUS_MAP`) so the rule's ``filter_expression`` cannot
+    accidentally ratify a failed rollout.
+
+    All JSON-Pointer selectors resolve against the event context, so the
+    webhook body lives under ``/payload``; CEL expressions read
+    ``payload.<field>``.
+    """
+
+    version_expression: str
+    status_selector: json_pointer.JsonPointer
+    prerelease: bool = False
+
+
+class BlockReleaseConfig(pydantic.BaseModel):
+    """Validates ``handler_config`` for :func:`block_release`.
+
+    The mirror of :class:`PublishReleaseConfig`: the action fires only
+    for states that map to ``failed`` -- GitHub's ``failure`` and
+    ``error``. ``inactive`` deliberately does *not* block: it maps to
+    ``rolled_back`` and means the deployment was superseded by a newer
+    one, which is the normal end of every deployment's life.
+
+    ``reason_selector`` is an optional JSON pointer at the block reason;
+    it defaults to a short description of the reported state.
+    """
+
+    version_expression: str
+    status_selector: json_pointer.JsonPointer
+    reason_selector: json_pointer.JsonPointer | None = None
 
 
 class IngestSbomConfig(pydantic.BaseModel):
@@ -336,6 +430,25 @@ def _cel_substring(
 _CEL_FUNCTIONS: dict[str, celpy.CELFunction] = {'substring': _cel_substring}
 
 
+def _deployment_state(
+    selector: json_pointer.JsonPointer, event: object
+) -> tuple[str, str | None]:
+    """Resolve ``(raw_state, imbi_status)`` from a deployment event.
+
+    ``imbi_status`` is ``None`` -- and the caller must skip -- when the
+    producer reported a state :data:`_STATUS_MAP` does not cover. Every
+    action that keys off a deployment state goes through here so the
+    vocabulary is enumerated in exactly one place: a rule written as
+    ``state != "success"`` would sweep in ``inactive`` (a deployment
+    superseded by a newer one), which must never count as a failure.
+    """
+    raw_state = str(selector.resolve(event))
+    status = _STATUS_MAP.get(raw_state)
+    if status is None:
+        LOGGER.warning('Unmapped deployment status %r — skipping', raw_state)
+    return raw_state, status
+
+
 def _evaluate_cel(expression: str, event: object) -> str | None:
     env = celpy.Environment()
     program = env.program(env.compile(expression), functions=_CEL_FUNCTIONS)
@@ -394,10 +507,11 @@ async def create_release(
     ``version_expression`` (optional); when omitted or evaluated to null
     the tag is left off the release. The title is taken from the
     JSONPointer ``title_selector`` (resolved against the event, so the
-    body is under ``/payload``). ``ctx.actor_user_id`` (the resolved
-    Imbi user's email) is passed as ``created_by`` when present;
-    otherwise the API defaults to the gateway's service principal.
-    ``action_config`` arrives pre-validated.
+    body is under ``/payload``), falling back to ``Release <version>``
+    when the selector is unset or does not resolve to a value.
+    ``ctx.actor_user_id`` (the resolved Imbi user's email) is passed as
+    ``created_by`` when present; otherwise the API defaults to the
+    gateway's service principal. ``action_config`` arrives pre-validated.
     """
     del credentials, external_identifier
     committish_value = _evaluate_cel(
@@ -410,15 +524,19 @@ async def create_release(
             ctx.project_id,
         )
         return
-    create_body: dict[str, object] = {
-        'committish': committish_value,
-        'title': str(action_config.title_selector.resolve(event)),
-    }
     version_value: str | None = None
     if action_config.version_expression is not None:
         version_value = _evaluate_cel(action_config.version_expression, event)
-        if version_value is not None:
-            create_body['tag'] = version_value
+    create_body: dict[str, object] = {
+        'committish': committish_value,
+        'title': _resolve_title(
+            action_config.title_selector,
+            event,
+            version_value or committish_value,
+        ),
+    }
+    if version_value is not None:
+        create_body['tag'] = version_value
     if ctx.actor_user_id is not None:
         create_body['created_by'] = ctx.actor_user_id
     async with ImbiClient() as client:
@@ -453,10 +571,8 @@ async def add_deployment_event(
     and CEL expressions read ``payload.<field>``.
     """
     del credentials, external_identifier
-    raw_state = str(action_config.status_selector.resolve(event))
-    status = _STATUS_MAP.get(raw_state)
+    _raw, status = _deployment_state(action_config.status_selector, event)
     if status is None:
-        LOGGER.warning('Unmapped deployment status %r — skipping', raw_state)
         return
     committish_value = _evaluate_cel(
         action_config.committish_expression, event
@@ -507,6 +623,133 @@ async def add_deployment_event(
             ctx.project_id,
             status,
         )
+
+
+async def publish_release(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: PublishReleaseConfig,
+    event: object,
+) -> None:
+    """Ratify a Release when a deployment reports success.
+
+    Imbi's ``promote`` cuts the tag and records the ``Release`` node --
+    the intent to ship. This publishes the GitHub Release for it, which
+    only makes sense once the rollout actually succeeded, so the action
+    is a no-op for every state that does not map to ``success``.
+
+    Missing releases (404) and blocked ones (409) are expected: a
+    deployment can succeed for a tag Imbi never cut, and a release
+    blocked between the deploy and its status webhook must stay
+    unratified. Neither is treated as a failure.
+    """
+    del credentials, external_identifier
+    raw_state, status = _deployment_state(action_config.status_selector, event)
+    if status != 'success':
+        LOGGER.debug(
+            'Deployment state %r is not a success for project %s;'
+            ' not publishing',
+            raw_state,
+            ctx.project_id,
+        )
+        return
+    tag_value = _evaluate_cel(action_config.version_expression, event)
+    if tag_value is None:
+        LOGGER.warning(
+            'Skipping release publish for project %s: version expression'
+            ' evaluated to null',
+            ctx.project_id,
+        )
+        return
+    async with ImbiClient() as client:
+        response = await client.publish_release(
+            ctx.org_slug, ctx.project_id, tag_value, action_config.prerelease
+        )
+    if response.status_code in (
+        http.HTTPStatus.NOT_FOUND,
+        http.HTTPStatus.CONFLICT,
+    ):
+        LOGGER.info(
+            'Release %r for project %s was not published (HTTP %s): %s',
+            tag_value,
+            ctx.project_id,
+            response.status_code,
+            response.text,
+        )
+
+
+async def block_release(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: BlockReleaseConfig,
+    event: object,
+) -> None:
+    """Block a Release when its deployment reports failure.
+
+    The counterpart to :func:`publish_release`: a rollout that fails
+    leaves the tag blocked so nobody re-deploys or re-promotes it while
+    the fix is in flight. Only the states mapping to ``failed``
+    (GitHub's ``failure`` and ``error``) block -- ``inactive`` maps to
+    ``rolled_back``, meaning the deployment was superseded by a newer
+    one, and must not.
+    """
+    del credentials, external_identifier
+    raw_state, status = _deployment_state(action_config.status_selector, event)
+    if status != 'failed':
+        LOGGER.debug(
+            'Deployment state %r is not a failure for project %s;'
+            ' not blocking',
+            raw_state,
+            ctx.project_id,
+        )
+        return
+    tag_value = _evaluate_cel(action_config.version_expression, event)
+    if tag_value is None:
+        LOGGER.warning(
+            'Skipping release block for project %s: version expression'
+            ' evaluated to null',
+            ctx.project_id,
+        )
+        return
+    reason = _resolve_block_reason(
+        action_config.reason_selector, event, raw_state
+    )
+    async with ImbiClient() as client:
+        response = await client.block_release(
+            ctx.org_slug, ctx.project_id, tag_value, reason
+        )
+    if response.status_code == http.HTTPStatus.NOT_FOUND:
+        LOGGER.warning(
+            'No release for tag %r on project %s; block dropped',
+            tag_value,
+            ctx.project_id,
+        )
+
+
+def _resolve_block_reason(
+    selector: json_pointer.JsonPointer | None, event: object, raw_state: str
+) -> str:
+    """Resolve the block reason, defaulting to the reported state.
+
+    The Imbi API requires a non-empty reason of at most 500 characters,
+    so a selector that resolves to null, an empty string, or something
+    longer falls back / is truncated here rather than 422ing the
+    webhook.
+    """
+    resolved: object = None
+    if selector is not None:
+        try:
+            resolved = selector.resolve(event)
+        except jsonpointer.JsonPointerException:
+            resolved = None
+    reason = str(resolved).strip() if resolved is not None else ''
+    if not reason:
+        reason = f'Deployment reported {raw_state}'
+    return reason[:500]
 
 
 async def ingest_sbom(
@@ -712,9 +955,17 @@ def _resolve_committish(expression: str, event: object) -> str | None:
 
 
 def _resolve_title(
-    selector: json_pointer.JsonPointer | None, event: object, tag_value: str
+    selector: json_pointer.JsonPointer | None, event: object, identity: str
 ) -> str:
-    """Resolve the optional title selector with a sensible default."""
+    """Resolve the optional title selector with a sensible default.
+
+    ``identity`` is the release's human identity -- its tag, or the
+    committish when there is no tag -- used to build the
+    ``Release <identity>`` fallback. The default applies when no
+    selector is configured, when the pointer does not resolve, *and*
+    when it resolves to JSON null: stringifying a null would title the
+    release ``"None"``.
+    """
     if selector is not None:
         try:
             resolved = selector.resolve(event)
@@ -722,4 +973,4 @@ def _resolve_title(
             resolved = None
         if resolved is not None:
             return str(resolved)
-    return f'Release {tag_value}'
+    return f'Release {identity}'

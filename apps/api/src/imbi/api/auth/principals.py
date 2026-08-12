@@ -23,6 +23,7 @@ DEPLOYMENT_SYNC = 'deployment-sync'
 MAINTENANCE = 'maintenance'
 OPSLOG_BACKFILL = 'maintenance-opslog-backfill'
 PR_SYNC = 'pr-sync'
+RELEASE_PROMOTE = 'release-promote'
 #: Fallback stamped when a queued job carries no requesting principal.
 SYSTEM = 'system'
 
@@ -33,6 +34,7 @@ PROCESS_PRINCIPALS = frozenset(
         MAINTENANCE,
         OPSLOG_BACKFILL,
         PR_SYNC,
+        RELEASE_PROMOTE,
         SYSTEM,
     }
 )

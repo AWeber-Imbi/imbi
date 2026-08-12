@@ -16,6 +16,7 @@ from imbi.api.commit_sync.service import (
     CommitSyncUnavailable,
     read_status,
     run_sync,
+    run_tag_sync,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     'enqueue_commit_sync',
     'read_status',
     'run_sync',
+    'run_tag_sync',
 ]

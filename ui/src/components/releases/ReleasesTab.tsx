@@ -13,12 +13,19 @@ import { ReleaseHistory } from './ReleaseHistory'
 import { ReleaseReadyCard } from './ReleaseReadyCard'
 
 interface ReleasesTabProps {
+  onBuildStarted?: (
+    build: import('@/components/deploy/DeploymentModal').ReleaseBuildStarted,
+  ) => void
   orgSlug: string
   project: Pick<Project, 'id' | 'links' | 'name'>
 }
 
 // fallow-ignore-next-line complexity
-export function ReleasesTab({ orgSlug, project }: ReleasesTabProps) {
+export function ReleasesTab({
+  onBuildStarted,
+  orgSlug,
+  project,
+}: ReleasesTabProps) {
   const enabled = !!orgSlug && !!project.id
   const {
     data: drift,
@@ -71,6 +78,7 @@ export function ReleasesTab({ orgSlug, project }: ReleasesTabProps) {
         {drift ? (
           <ReleaseReadyCard
             drift={drift}
+            onBuildStarted={onBuildStarted}
             onCut={() => {}}
             orgSlug={orgSlug}
             projectId={project.id}
