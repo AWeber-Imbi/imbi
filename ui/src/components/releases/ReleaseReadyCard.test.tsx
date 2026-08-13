@@ -211,12 +211,40 @@ describe('ReleaseReadyCard', () => {
       committish: 'aaa1111',
     })
     renderCard(FIRST_RELEASE)
+    // Wait for the *resolved* status, not just the call: submission is
+    // held while the query is in flight, so asserting on dispatch alone
+    // would race the answer it is waiting for.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /& release/i }),
+      ).not.toBeDisabled()
+    })
+    expect(endpoints.getCommitCheckStatus).toHaveBeenCalled()
+    expect(screen.queryByText(/CI failed/)).not.toBeInTheDocument()
+  })
+
+  it('holds submission until the CI status resolves', async () => {
+    // An unresolved query has no status, and "no status" reads the same
+    // as `unknown` — so without this the operator can submit a red
+    // commit before the answer lands and take a bare 409 instead of the
+    // acknowledgement flow.
+    let resolve: (value: { ci_status: string; committish: string }) => void
+    vi.mocked(endpoints.getCommitCheckStatus).mockReturnValue(
+      new Promise((r) => {
+        resolve = r as typeof resolve
+      }) as ReturnType<typeof endpoints.getCommitCheckStatus>,
+    )
+    renderCard(FIRST_RELEASE)
     await waitFor(() => {
       expect(endpoints.getCommitCheckStatus).toHaveBeenCalled()
     })
-    expect(screen.queryByText(/CI failed/)).not.toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /& release/i }),
-    ).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+
+    resolve!({ ci_status: 'pass', committish: 'aaa1111' })
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /& release/i }),
+      ).not.toBeDisabled()
+    })
   })
 })

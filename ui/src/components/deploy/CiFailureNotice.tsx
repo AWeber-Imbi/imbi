@@ -79,13 +79,21 @@ export function ciNeedsAcknowledgement(
  * `unknown` is the answer for a project with no CI, a token that cannot
  * read check-runs, and a commit whose checks never ran — none of which the
  * API gates on, so none of which this warns about.
+ *
+ * `ciPending` is what callers must gate submission on. An unresolved query
+ * has no `ci_status`, and "no status" is indistinguishable from `unknown`
+ * here — so without it a fast click would submit a failing commit before
+ * the answer landed and take a bare 409 instead of the acknowledgement
+ * flow. `isLoading` (not `isPending`) is deliberate: a query disabled for
+ * a null `sha` is pending forever, and that must not wedge the button —
+ * those callers already gate on the missing sha.
  */
 export function useCommitCheckStatus(
   orgSlug: string,
   projectId: string,
   sha: null | string,
-): DeploymentCommitCiStatus | undefined {
-  const { data } = useQuery({
+): { ciPending: boolean; ciStatus: DeploymentCommitCiStatus | undefined } {
+  const { data, isLoading } = useQuery({
     enabled: !!orgSlug && !!projectId && !!sha,
     queryFn: ({ signal }) =>
       getCommitCheckStatus(
@@ -97,5 +105,5 @@ export function useCommitCheckStatus(
       ),
     queryKey: ['commitCheckStatus', orgSlug, projectId, sha],
   })
-  return data?.ci_status
+  return { ciPending: isLoading, ciStatus: data?.ci_status }
 }

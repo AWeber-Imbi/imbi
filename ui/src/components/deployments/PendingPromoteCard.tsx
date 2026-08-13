@@ -110,7 +110,11 @@ export function PendingPromoteCard({
   // imbi's synced history and can lag; this is the state the API's promote
   // gate will actually see. Read before the early returns below — it's a
   // hook.
-  const ciStatus = useCommitCheckStatus(orgSlug, projectId, selectedSha)
+  const { ciPending, ciStatus } = useCommitCheckStatus(
+    orgSlug,
+    projectId,
+    selectedSha,
+  )
   const ciFailed = ciNeedsAcknowledgement(ciStatus)
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
   useEffect(() => {
@@ -138,6 +142,10 @@ export function PendingPromoteCard({
     canTrigger &&
     !actions.promotePending &&
     !isDrafting &&
+    // Hold the button until CI has answered: an unresolved status cannot
+    // be told apart from a green one, and promoting on it skips the
+    // acknowledgement the server would then demand with a 409.
+    !ciPending &&
     !(ciFailed && !ciAcknowledged)
   const selIdx = commits.findIndex((c) => c.sha === selectedSha)
   const heldCount = selIdx > 0 ? selIdx : 0

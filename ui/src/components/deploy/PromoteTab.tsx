@@ -162,7 +162,11 @@ export function PromoteTab({
   // Live CI status for the build being promoted. The commit list here comes
   // from `compare()`, which carries no check status at all, so this is the
   // only CI signal this form has.
-  const ciStatus = useCommitCheckStatus(orgSlug, projectId, selectedSha)
+  const { ciPending, ciStatus } = useCommitCheckStatus(
+    orgSlug,
+    projectId,
+    selectedSha,
+  )
   const ciFailed = ciNeedsAcknowledgement(ciStatus)
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
   // A different commit is a different decision — never carry the
@@ -288,6 +292,10 @@ export function PromoteTab({
     tagValid &&
     !!selectedSha &&
     !promoteMutation.isPending &&
+    // Hold the button until CI has answered: an unresolved status cannot
+    // be told apart from a green one, and promoting on it skips the
+    // acknowledgement the server would then demand with a 409.
+    !ciPending &&
     !(ciFailed && !ciAcknowledged)
 
   return (

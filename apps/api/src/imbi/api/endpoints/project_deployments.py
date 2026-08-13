@@ -3186,8 +3186,6 @@ async def _set_release_ci_override(
     MATCH (:Project {{id: {project_id}}})
           -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     SET r.ci_status_at_promote = {ci_status},
-        r.ci_override_by = {overridden_by},
-        r.ci_override_at = {overridden_at},
         r.updated_at = {now}
     RETURN r.id AS rid
     """
@@ -3197,9 +3195,34 @@ async def _set_release_ci_override(
             'project_id': project_id,
             'release_id': release_id,
             'ci_status': ci_status,
-            'overridden_by': overridden_by if overridden else '',
-            'overridden_at': now if overridden else '',
             'now': now,
+        },
+        ['rid'],
+    )
+    if not overridden:
+        return
+    # Only ever written, never blanked.  ``_upsert_release_node`` keys on
+    # ``(project, committish, tag)``, so re-promoting one tag lands on the
+    # same node and runs this a second time -- and a CI re-run that turns
+    # the commit green makes that the expected sequence.  Clearing the
+    # actor on that pass would erase the acknowledgement someone actually
+    # made, dropping the override badge from release history and making
+    # :func:`_release_ci_override` report a clean promote for a release
+    # that shipped over a failing build.
+    override_query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    SET r.ci_override_by = {overridden_by},
+        r.ci_override_at = {overridden_at}
+    RETURN r.id AS rid
+    """
+    await db.execute(
+        override_query,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'overridden_by': overridden_by,
+            'overridden_at': now,
         },
         ['rid'],
     )

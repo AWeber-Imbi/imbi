@@ -99,7 +99,11 @@ export function ReleaseReadyCard({
 
   // Live CI status for the commit being tagged; read before the early
   // return below because it's a hook.
-  const ciStatus = useCommitCheckStatus(orgSlug, projectId, selectedSha)
+  const { ciPending, ciStatus } = useCommitCheckStatus(
+    orgSlug,
+    projectId,
+    selectedSha,
+  )
   const ciFailed = ciNeedsAcknowledgement(ciStatus)
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
   useEffect(() => {
@@ -130,6 +134,10 @@ export function ReleaseReadyCard({
     !!selectedSha &&
     !isPending &&
     !isDrafting &&
+    // Hold the button until CI has answered: an unresolved status cannot
+    // be told apart from a green one, and releasing on it skips the
+    // acknowledgement the server would then demand with a 409.
+    !ciPending &&
     !(ciFailed && !ciAcknowledged)
   const reset = () => {
     setSelectedSha(commits[0]?.sha ?? null)

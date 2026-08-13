@@ -2156,11 +2156,26 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
             )
 
     def _ci_stamps(self) -> list[dict[str, typing.Any]]:
-        """Params of every ``_set_release_ci_override`` write that ran."""
+        """Params of every ``ci_status_at_promote`` write that ran."""
         return [
             call.args[1]
             for call in self.mock_db.execute.await_args_list
             if 'ci_status_at_promote' in call.args[0]
+        ]
+
+    def _ci_override_writes(self) -> list[dict[str, typing.Any]]:
+        """Params of every override-actor write that ran.
+
+        A separate statement from the status write on purpose, so that a
+        later green promote of the same tag cannot blank an override --
+        which makes "did the actor get written at all?" the thing to
+        assert, not what value the status write carried for it.
+        """
+        return [
+            call.args[1]
+            for call in self.mock_db.execute.await_args_list
+            if 'ci_override_by' in call.args[0]
+            and 'ci_status_at_promote' not in call.args[0]
         ]
 
     def _audit_description(self) -> dict[str, typing.Any]:
@@ -2235,23 +2250,52 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
         stamps = self._ci_stamps()
         self.assertEqual(1, len(stamps))
         self.assertEqual('fail', stamps[0]['ci_status'])
-        self.assertEqual('admin@example.com', stamps[0]['overridden_by'])
-        self.assertTrue(stamps[0]['overridden_at'])
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
+        self.assertTrue(overrides[0]['overridden_at'])
 
     def test_green_promote_records_the_status_without_an_actor(self) -> None:
         """A clean promote is still recorded, but is not an override.
 
         Keeping the status either way is what lets a reader tell "shipped
-        green" from "shipped with CI never having run"; leaving the actor
-        blank is what keeps it from looking like a decision someone made.
+        green" from "shipped with CI never having run"; writing no actor
+        at all is what keeps it from looking like a decision someone made
+        -- and, on a re-promote of a tag that was acknowledged while red,
+        what keeps the real decision from being blanked.
         """
         self._use('pass')
         self.assertEqual(202, self._promote().status_code)
         stamps = self._ci_stamps()
         self.assertEqual(1, len(stamps))
         self.assertEqual('pass', stamps[0]['ci_status'])
-        self.assertEqual('', stamps[0]['overridden_by'])
-        self.assertEqual('', stamps[0]['overridden_at'])
+        self.assertNotIn('overridden_by', stamps[0])
+        self.assertNotIn('overridden_at', stamps[0])
+        self.assertEqual([], self._ci_override_writes())
+
+    def test_green_repromote_keeps_an_earlier_override(self) -> None:
+        """Re-promoting a tag after CI goes green preserves the record.
+
+        ``_upsert_release_node`` keys on ``(project, committish, tag)``,
+        so the second promote writes to the same ``Release`` node.  A CI
+        re-run that turns the commit green makes this the expected
+        sequence, and blanking the actor on it would erase an
+        acknowledgement that really happened.
+        """
+        self._use('fail')
+        self.assertEqual(
+            202, self._promote(acknowledge_ci_failure=True).status_code
+        )
+        self._use('pass')
+        self.assertEqual(202, self._promote().status_code)
+
+        stamps = self._ci_stamps()
+        self.assertEqual(['fail', 'pass'], [s['ci_status'] for s in stamps])
+        # The green pass touched the status only -- the sole override
+        # write is still the acknowledged one.
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
 
     def test_acknowledged_promote_records_the_override_in_the_ops_log(
         self,
@@ -2290,7 +2334,9 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
         stamps = self._ci_stamps()
         self.assertEqual(1, len(stamps))
         self.assertEqual('fail', stamps[0]['ci_status'])
-        self.assertEqual('admin@example.com', stamps[0]['overridden_by'])
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
 
     def test_cut_release_proceeds_when_ci_unknown(self) -> None:
         self._use('unknown')
@@ -2377,7 +2423,9 @@ class DispatchCiGateTestCase(CiGateTestCase):
         stamps = self._ci_stamps()
         self.assertEqual(1, len(stamps))
         self.assertEqual('fail', stamps[0]['ci_status'])
-        self.assertEqual('admin@example.com', stamps[0]['overridden_by'])
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
 
     # The two inherited ops-log assertions do not hold on this path, and
     # why they don't is the whole reason the Release node is stamped: the
