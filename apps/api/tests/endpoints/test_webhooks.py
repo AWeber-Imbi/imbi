@@ -478,6 +478,44 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(data[0]['slug'], 'github-events')
         self.assertEqual(data[0]['id'], 'abc123def4')
 
+    def test_list_webhooks_orders_rules_by_ordinal(self) -> None:
+        """AGE can collect() rules out of order when listing an org."""
+        record = copy.deepcopy(self.webhook_record)
+        record['rules'] = [
+            {
+                'filter_expression': 'true',
+                'handler': 'h.third',
+                'handler_config': '{}',
+                'ordinal': 2,
+            },
+            {
+                'filter_expression': 'true',
+                'handler': 'h.first',
+                'handler_config': '{}',
+                'ordinal': 0,
+            },
+            {
+                'filter_expression': 'true',
+                'handler': 'h.second',
+                'handler_config': '{}',
+                'ordinal': 1,
+            },
+        ]
+        self.mock_db.execute.return_value = [record]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/webhooks/',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [rule['handler'] for rule in response.json()[0]['rules']],
+            ['h.first', 'h.second', 'h.third'],
+        )
+
     def test_list_webhooks_empty(self) -> None:
         self.mock_db.execute.return_value = []
         with mock.patch(
@@ -1237,6 +1275,72 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+
+    def test_patch_renumbers_ordinals_from_sorted_rules(self) -> None:
+        """A patch rewrites every rule, so a scrambled read would stick.
+
+        The rules the read returns become the JSON-Patch document, and
+        the write re-numbers ``ordinal`` from that document's order. If
+        the document is not sorted first, patching an unrelated field
+        silently reorders handler dispatch.
+        """
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'Old',
+                'notification_path': '/abc123def4',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': json.dumps(
+                [
+                    {
+                        'filter_expression': 'true',
+                        'handler': 'h.second',
+                        'handler_config': '{}',
+                        'ordinal': 1,
+                    },
+                    {
+                        'filter_expression': 'true',
+                        'handler': 'h.first',
+                        'handler_config': '{}',
+                        'ordinal': 0,
+                    },
+                ]
+            ),
+        }
+        updated_record = copy.deepcopy(existing_record)
+        updated_record['rules'] = []
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [{'id': 'abc123def4'}],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[
+                    {'op': 'replace', 'path': '/description', 'value': 'New'}
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        write_params = self.mock_db.execute.call_args_list[1][0][1]
+        self.assertEqual(write_params['rule_0_handler'], 'h.first')
+        self.assertEqual(write_params['rule_0_ord'], 0)
+        self.assertEqual(write_params['rule_1_handler'], 'h.second')
+        self.assertEqual(write_params['rule_1_ord'], 1)
 
     # -- Delete --
 
