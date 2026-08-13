@@ -382,30 +382,36 @@ async def _reconcile_in_flight_run(
         update['status'] = new_status
         update['timestamp'] = datetime.datetime.now(datetime.UTC)
     new_event = event.model_copy(update=update)
-    if new_event.status in ('success', 'failed', 'in_progress', 'pending'):
-        try:
-            await append_deployment_event(
-                db,
-                org_slug=org_slug,
-                project_id=project_id,
-                release_id=release_id,
-                env_slug=env_slug,
-                status=new_event.status,
-                # A URL-only refresh must not relabel an event the
-                # deploy flow wrote; only a status transition is this
-                # pass's own doing.
-                note='via release-train hydration'
-                if status_changed
-                else event.note,
-                external_run_id=event.external_run_id,
-                external_run_url=run_url,
-            )
-        except Exception:
-            LOGGER.exception(
-                'release-train hydration: failed to persist event for %s/%s',
-                project_id,
-                env_slug,
-            )
+    # Every status reachable here is worth persisting, so there is no
+    # status filter: ``new_event.status`` is either a mapped
+    # ``_RUN_STATUS_TO_EVENT_STATUS`` value (pending/in_progress/
+    # success/failed) or -- when the plugin reported a status we don't
+    # map -- the event's own, which the in-flight selection has already
+    # narrowed to in_progress/pending.  ``rolled_back`` is the one
+    # ``DeploymentEvent`` status this pass can never produce.
+    try:
+        await append_deployment_event(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            release_id=release_id,
+            env_slug=env_slug,
+            status=new_event.status,
+            # A URL-only refresh must not relabel an event the
+            # deploy flow wrote; only a status transition is this
+            # pass's own doing.
+            note='via release-train hydration'
+            if status_changed
+            else event.note,
+            external_run_id=event.external_run_id,
+            external_run_url=run_url,
+        )
+    except Exception:
+        LOGGER.exception(
+            'release-train hydration: failed to persist event for %s/%s',
+            project_id,
+            env_slug,
+        )
     return new_event
 
 
