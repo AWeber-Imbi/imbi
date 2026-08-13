@@ -1,6 +1,12 @@
 import { useState } from 'react'
 
-import { Ban, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import {
+  Ban,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  ShieldAlert,
+} from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -126,6 +132,33 @@ function BlockedNote({ isPending, onUnblock, rel }: BlockedNoteProps) {
   )
 }
 
+/**
+ * The record of an operator shipping over a failing CI run.
+ *
+ * Distinct from the row's `CiStatusDot`, which reports the commit's CI
+ * state *now* — a re-run can turn it green long after the fact, and the
+ * decision that was made still stands.
+ */
+function CiOverrideNote({ rel }: { rel: ReleaseHistoryEntry }) {
+  return (
+    <div className="border-warning bg-warning text-warning mt-1 mb-3 flex items-start gap-2 rounded-md border px-3 py-2.5">
+      <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+      <div className="min-w-0 flex-1 text-xs leading-relaxed">
+        <p>Released over a failing CI run</p>
+        <p className="mt-1 opacity-80">
+          acknowledged by {rel.ci_override_by}
+          {rel.ci_override_at ? (
+            <>
+              {' · '}
+              <RelativeTime tooltip={false} value={rel.ci_override_at} />
+            </>
+          ) : null}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // fallow-ignore-next-line complexity
 function ReleaseRow({
   artifact,
@@ -172,6 +205,12 @@ function ReleaseRow({
               Blocked
             </Badge>
           ) : null}
+          {rel.ci_override_by ? (
+            <Badge className="inline-flex items-center gap-1" variant="warning">
+              <ShieldAlert className="size-3" />
+              CI overridden
+            </Badge>
+          ) : null}
           {isCurrent ? <Badge variant="accent">Latest</Badge> : null}
         </span>
       </button>
@@ -184,6 +223,7 @@ function ReleaseRow({
               rel={rel}
             />
           ) : null}
+          {rel.ci_override_by ? <CiOverrideNote rel={rel} /> : null}
           {rel.notes_markdown ? (
             <div className="document-markdown max-w-none text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
               <Markdown

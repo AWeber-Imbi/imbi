@@ -11,6 +11,11 @@ import {
 } from 'lucide-react'
 
 import { draftReleaseNotes } from '@/api/endpoints'
+import {
+  CiFailureNotice,
+  ciNeedsAcknowledgement,
+  useCommitCheckStatus,
+} from '@/components/deploy/CiFailureNotice'
 import { ReleaseCommitPicker } from '@/components/releases/ReleaseCommitPicker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -101,6 +106,17 @@ export function PendingPromoteCard({
     if (!notesDirty) setNotes(draft.notes_markdown)
   }, [draft, tagDirty, notesDirty])
 
+  // Live CI status for the commit being tagged. The picker's dots come from
+  // imbi's synced history and can lag; this is the state the API's promote
+  // gate will actually see. Read before the early returns below — it's a
+  // hook.
+  const ciStatus = useCommitCheckStatus(orgSlug, projectId, selectedSha)
+  const ciFailed = ciNeedsAcknowledgement(ciStatus)
+  const [ciAcknowledged, setCiAcknowledged] = useState(false)
+  useEffect(() => {
+    setCiAcknowledged(false)
+  }, [selectedSha])
+
   if (!fromTipSha) {
     return (
       <div className="border-tertiary text-tertiary rounded-lg border p-4 text-sm">
@@ -121,7 +137,8 @@ export function PendingPromoteCard({
     !!selectedSha &&
     canTrigger &&
     !actions.promotePending &&
-    !isDrafting
+    !isDrafting &&
+    !(ciFailed && !ciAcknowledged)
   const selIdx = commits.findIndex((c) => c.sha === selectedSha)
   const heldCount = selIdx > 0 ? selIdx : 0
   const reset = () => {
@@ -130,6 +147,7 @@ export function PendingPromoteCard({
     setNotes(draft?.notes_markdown ?? '')
     setTagDirty(false)
     setNotesDirty(false)
+    setCiAcknowledged(false)
   }
 
   return (
@@ -182,6 +200,14 @@ export function PendingPromoteCard({
             />
           )}
         </section>
+
+        <CiFailureNotice
+          acknowledged={ciAcknowledged}
+          action="promote"
+          ciStatus={ciStatus}
+          onAcknowledgedChange={setCiAcknowledged}
+          sha={selectedSha}
+        />
 
         <section className="border-tertiary flex flex-col gap-2 border-t pt-4">
           <div className="flex items-center gap-2.5">
@@ -298,6 +324,7 @@ export function PendingPromoteCard({
             onClick={() => {
               if (!selectedSha) return
               actions.promote({
+                acknowledgeCiFailure: ciAcknowledged,
                 fromEnvironment: stage.upstream?.slug ?? '',
                 notes,
                 sha: selectedSha,

@@ -4,6 +4,11 @@ import { useMutation } from '@tanstack/react-query'
 import { Check, Loader2, RefreshCw, Rocket, Sparkles, Tag } from 'lucide-react'
 
 import { draftReleaseNotes } from '@/api/endpoints'
+import {
+  CiFailureNotice,
+  ciNeedsAcknowledgement,
+  useCommitCheckStatus,
+} from '@/components/deploy/CiFailureNotice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -92,6 +97,15 @@ export function ReleaseReadyCard({
     projectId,
   })
 
+  // Live CI status for the commit being tagged; read before the early
+  // return below because it's a hook.
+  const ciStatus = useCommitCheckStatus(orgSlug, projectId, selectedSha)
+  const ciFailed = ciNeedsAcknowledgement(ciStatus)
+  const [ciAcknowledged, setCiAcknowledged] = useState(false)
+  useEffect(() => {
+    setCiAcknowledged(false)
+  }, [selectedSha])
+
   // Up to date — nothing new to cut.
   if (commits.length === 0) {
     return (
@@ -111,7 +125,12 @@ export function ReleaseReadyCard({
 
   const tagValid = SEMVER_RE.test(tag)
   const isDrafting = draftMutation.isPending
-  const canSubmit = tagValid && !!selectedSha && !isPending && !isDrafting
+  const canSubmit =
+    tagValid &&
+    !!selectedSha &&
+    !isPending &&
+    !isDrafting &&
+    !(ciFailed && !ciAcknowledged)
   const reset = () => {
     setSelectedSha(commits[0]?.sha ?? null)
     setTag(drift.suggested_tag)
@@ -119,10 +138,12 @@ export function ReleaseReadyCard({
     setTagDirty(false)
     setNotesDirty(false)
     setAiSuggestion(null)
+    setCiAcknowledged(false)
   }
   const submit = () => {
     if (!selectedSha) return
     cut({
+      acknowledge_ci_failure: ciAcknowledged,
       committish: selectedSha,
       release_name: tag,
       release_notes_markdown: notes,
@@ -163,6 +184,14 @@ export function ReleaseReadyCard({
             selectedSha={selectedSha}
           />
         </section>
+
+        <CiFailureNotice
+          acknowledged={ciAcknowledged}
+          action="release"
+          ciStatus={ciStatus}
+          onAcknowledgedChange={setCiAcknowledged}
+          sha={selectedSha}
+        />
 
         <section className="border-tertiary flex flex-col gap-2 border-t pt-4">
           <p className="text-tertiary text-xs tracking-wider uppercase">

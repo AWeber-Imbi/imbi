@@ -537,6 +537,18 @@ export type ClientCredentialCreate = Schemas['ClientCredentialCreate']
 
 export type ClientCredentialCreated = Schemas['ClientCredentialCreateResponse']
 
+/**
+ * Live rolled-up CI status for one commit, read straight from the
+ * deployment plugin. Deliberately not the synced `ci_status` carried on
+ * commit rows: this is the same call the promote gate makes, so a warning
+ * built on it cannot tell the operator a commit is green and then have the
+ * promote refused.
+ */
+export interface CommitCheckStatus {
+  ci_status: DeploymentCommitCiStatus
+  committish: string
+}
+
 export interface ConfigKeyResponse {
   data_type: string
   key: string
@@ -569,6 +581,12 @@ export interface CurrentReleaseEnvironment {
 }
 
 export interface CutReleaseRequest {
+  /**
+   * Operator acknowledgement that `committish` has a failing CI run.
+   * Without it the API refuses the cut with a 409; with it the release
+   * proceeds and the override is recorded.
+   */
+  acknowledge_ci_failure?: boolean
   committish: string
   prerelease?: boolean
   release_name?: null | string
@@ -628,6 +646,8 @@ export interface DeploymentCompareResult {
 }
 
 export interface DeploymentPromoteRequest {
+  /** See {@link CutReleaseRequest.acknowledge_ci_failure}. */
+  acknowledge_ci_failure?: boolean
   action: 'promote'
   from_committish: string
   from_environment: string
@@ -1262,6 +1282,14 @@ export interface ReleaseHistoryEntry {
   blocked_at?: null | string
   blocked_by?: null | string
   blocked_reason?: null | string
+  /**
+   * Set when an operator cut this release over a *failing* CI run and
+   * acknowledged it. `ci_status` below is the commit's state right now;
+   * these record what was known, and decided, at promote time — the two
+   * diverge once a re-run turns the commit green after the fact.
+   */
+  ci_override_at?: null | string
+  ci_override_by?: null | string
   ci_status: DeploymentCommitCiStatus
   notes_markdown?: null | string
   package_url?: null | string
