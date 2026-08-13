@@ -288,6 +288,16 @@ class AddDeploymentEventConfig(pydantic.BaseModel):
     ``version_expression`` is optional; when present it narrows the
     lookup so that a single committish that ships under multiple tags
     is disambiguated.
+
+    ``external_run_id_selector`` is what makes a webhook status update
+    deduplicate onto the event the in-product deploy flow already
+    recorded (the API dedupes on that id) instead of appending an
+    anonymous second row. ``external_run_url_selector`` carries the
+    human-facing run URL, which only the webhook knows: GitHub's
+    ``Deployment`` object has no such URL at create time, so the
+    deploy flow stores ``None`` and the first ``deployment_status``
+    delivery -- whose ``log_url`` points at the Actions run -- is the
+    earliest moment it can be filled in.
     """
 
     environment_selector: json_pointer.JsonPointer
@@ -296,6 +306,7 @@ class AddDeploymentEventConfig(pydantic.BaseModel):
     version_expression: str | None = None
     note_selector: json_pointer.JsonPointer | None = None
     external_run_id_selector: json_pointer.JsonPointer | None = None
+    external_run_url_selector: json_pointer.JsonPointer | None = None
 
 
 class PublishReleaseConfig(pydantic.BaseModel):
@@ -595,6 +606,15 @@ async def add_deployment_event(
         event_body['external_run_id'] = str(
             action_config.external_run_id_selector.resolve(event)
         )
+    if action_config.external_run_url_selector is not None:
+        # Skipped when the pointer resolves to null/empty rather than
+        # sent as the literal ``"None"``: GitHub posts the first
+        # ``deployment_status`` of a rollout before the deploy workflow
+        # knows its own run URL, so ``log_url`` is legitimately absent
+        # on early deliveries and a later one fills it in.
+        run_url = action_config.external_run_url_selector.resolve(event, None)
+        if run_url:
+            event_body['external_run_url'] = str(run_url)
     async with ImbiClient() as client:
         releases = await client.list_releases(
             ctx.org_slug,

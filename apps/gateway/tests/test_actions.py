@@ -262,6 +262,28 @@ def _deployment_event_config(
     return actions.AddDeploymentEventConfig.model_validate_json(raw)
 
 
+def _run_selector_config() -> actions.AddDeploymentEventConfig:
+    """A deployment-event config wired to both run selectors."""
+    return _deployment_event_config(
+        json.dumps(
+            {
+                'environment_selector': (
+                    '/payload/deployment_status/environment'
+                ),
+                'committish_expression': (
+                    'substring(payload.deployment.sha, 0, 7)'
+                ),
+                'version_expression': 'payload.deployment.ref',
+                'status_selector': '/payload/deployment_status/state',
+                'external_run_id_selector': '/payload/deployment/id',
+                'external_run_url_selector': (
+                    '/payload/deployment_status/log_url'
+                ),
+            }
+        )
+    )
+
+
 def _patch_list_releases(
     releases: list[dict[str, object]] | None = None,
 ) -> typing.Any:
@@ -1001,6 +1023,102 @@ class AddDeploymentEventTests(helpers.TestCase):
             'https://api.github.com/repos/o/r/deployments/42',
             event_body['note'],
         )
+
+    async def test_run_selectors_emit_run_id_and_url(self) -> None:
+        payload = {
+            **_STATUS_BODY,
+            'deployment': {**_STATUS_BODY['deployment'], 'id': 42},  # type: ignore[dict-item]
+            'deployment_status': {
+                'state': 'success',
+                'environment': 'production',
+                'log_url': 'https://gh/o/r/actions/runs/99',
+            },
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_run_selector_config(),
+                event=_event(payload),
+            )
+
+        event_body = mock_record.call_args.args[4]
+        self.assertEqual('42', event_body['external_run_id'])
+        self.assertEqual(
+            'https://gh/o/r/actions/runs/99', event_body['external_run_url']
+        )
+
+    async def test_absent_run_url_omits_the_key(self) -> None:
+        # GitHub posts the first deployment_status of a rollout before
+        # the workflow knows its own run URL; the key must be dropped
+        # rather than sent as the literal "None".
+        payload = {
+            **_STATUS_BODY,
+            'deployment': {**_STATUS_BODY['deployment'], 'id': 42},  # type: ignore[dict-item]
+            'deployment_status': {
+                'state': 'in_progress',
+                'environment': 'production',
+                'log_url': '',
+            },
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_run_selector_config(),
+                event=_event(payload),
+            )
+
+        event_body = mock_record.call_args.args[4]
+        self.assertNotIn('external_run_url', event_body)
+        self.assertEqual('42', event_body['external_run_id'])
+
+    async def test_missing_run_url_pointer_omits_the_key(self) -> None:
+        # The pointer resolving to nothing at all (no ``log_url`` key)
+        # must degrade the same way an empty one does, not raise.
+        payload = {
+            **_STATUS_BODY,
+            'deployment': {**_STATUS_BODY['deployment'], 'id': 42},  # type: ignore[dict-item]
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_run_selector_config(),
+                event=_event(payload),
+            )
+
+        self.assertNotIn('external_run_url', mock_record.call_args.args[4])
 
     async def test_failure_state_maps_to_failed(self) -> None:
         payload = {

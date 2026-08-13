@@ -347,6 +347,74 @@ async def _gather_release_hydration(
     return list(run_results), ci_results
 
 
+async def _reconcile_in_flight_run(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    release_id: str,
+    env_slug: str,
+    event: models.DeploymentEvent,
+    result: typing.Any,
+) -> models.DeploymentEvent | None:
+    """Fold one plugin run report into its stored ``DeploymentEvent``.
+
+    Returns the refreshed event when the report moves the status or
+    contributes a run URL the edge doesn't have, and ``None`` when it
+    tells us nothing new -- so a page load against an idle run costs no
+    writes.  The refreshed event is persisted too, so the edge
+    self-heals instead of being re-derived on every read; a persistence
+    failure is logged rather than raised, because the release train
+    must keep rendering.
+    """
+    new_status = _RUN_STATUS_TO_EVENT_STATUS.get(result.status)
+    # Prefer the run URL the plugin just resolved from the run id.
+    # The deploy/promote flow stores null there -- GitHub's
+    # ``Deployment`` has no human-facing URL until the workflow posts
+    # its first status -- so the stored value is the stale one, and
+    # reusing it is what left the field permanently null.
+    run_url = result.run_url or event.external_run_url
+    status_changed = new_status is not None and new_status != event.status
+    if not status_changed and run_url == event.external_run_url:
+        return None
+    update: dict[str, typing.Any] = {'external_run_url': run_url}
+    if status_changed:
+        update['status'] = new_status
+        update['timestamp'] = datetime.datetime.now(datetime.UTC)
+    new_event = event.model_copy(update=update)
+    # Every status reachable here is worth persisting, so there is no
+    # status filter: ``new_event.status`` is either a mapped
+    # ``_RUN_STATUS_TO_EVENT_STATUS`` value (pending/in_progress/
+    # success/failed) or -- when the plugin reported a status we don't
+    # map -- the event's own, which the in-flight selection has already
+    # narrowed to in_progress/pending.  ``rolled_back`` is the one
+    # ``DeploymentEvent`` status this pass can never produce.
+    try:
+        await append_deployment_event(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            release_id=release_id,
+            env_slug=env_slug,
+            status=new_event.status,
+            # A URL-only refresh must not relabel an event the
+            # deploy flow wrote; only a status transition is this
+            # pass's own doing.
+            note='via release-train hydration'
+            if status_changed
+            else event.note,
+            external_run_id=event.external_run_id,
+            external_run_url=run_url,
+        )
+    except Exception:
+        LOGGER.exception(
+            'release-train hydration: failed to persist event for %s/%s',
+            project_id,
+            env_slug,
+        )
+    return new_event
+
+
 async def _hydrate_release_train(
     db: graph.Graph,
     org_slug: str,
@@ -363,12 +431,12 @@ async def _hydrate_release_train(
 ) -> dict[str, CheckStatus | None]:
     """Hydrate live deploy run + CI check-runs status per env.
 
-    Mutates ``by_env`` in place: when the plugin reports a terminal
-    status for an in-flight workflow run we update the in-memory event
-    so the response reflects the live state, and we append a fresh
-    ``DeploymentEvent`` to the edge so the system self-heals on
-    subsequent reads.  Returns a slug → ``CheckStatus`` map that the
-    caller folds into the response.
+    Mutates ``by_env`` in place: whatever
+    :func:`_reconcile_in_flight_run` learns about an in-flight run --
+    a newly terminal status, or the run URL that only exists once the
+    deploy workflow has posted a status -- replaces the in-memory event
+    so the response reflects the live state.  Returns a slug →
+    ``CheckStatus`` map that the caller folds into the response.
 
     Failures are tolerated silently — the release train must keep
     rendering even if the plugin can't be resolved or its calls hiccup.
@@ -383,9 +451,17 @@ async def _hydrate_release_train(
         if not release_id or not committish:
             continue
         deployed.append((slug, committish))
+        # ``pending`` counts as in flight: the gateway maps GitHub's
+        # ``queued``/``pending`` deployment_status states to it, and
+        # that first delivery is exactly the one that arrives before
+        # the workflow knows its own run URL.  Polling only
+        # ``in_progress`` would strand those events with a null
+        # ``external_run_url`` forever -- the bug this pass exists to
+        # fix -- unless a later ``in_progress`` webhook happened to
+        # land.
         if (
             event is not None
-            and event.status == 'in_progress'
+            and event.status in ('in_progress', 'pending')
             and event.external_run_id
         ):
             in_flight.append((slug, release_id, committish, event))
@@ -423,37 +499,19 @@ async def _hydrate_release_train(
     ):
         if isinstance(result, BaseException):
             continue
-        new_status = _RUN_STATUS_TO_EVENT_STATUS.get(result.status)
-        if new_status is None or new_status == event.status:
-            continue
-        new_event = event.model_copy(
-            update={
-                'status': new_status,
-                'timestamp': datetime.datetime.now(datetime.UTC),
-            }
+        new_event = await _reconcile_in_flight_run(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            release_id=release_id,
+            env_slug=slug,
+            event=event,
+            result=result,
         )
+        if new_event is None:
+            continue
         env, release_raw, _ = by_env[slug]
         by_env[slug] = (env, release_raw, new_event)
-        if new_status in ('success', 'failed'):
-            try:
-                await append_deployment_event(
-                    db,
-                    org_slug=org_slug,
-                    project_id=project_id,
-                    release_id=release_id,
-                    env_slug=slug,
-                    status=new_status,
-                    note='via release-train hydration',
-                    external_run_id=event.external_run_id,
-                    external_run_url=event.external_run_url,
-                )
-            except Exception:
-                LOGGER.exception(
-                    'release-train hydration: failed to persist '
-                    'terminal event for %s/%s',
-                    project_id,
-                    slug,
-                )
 
     ci_status_by_slug: dict[str, CheckStatus | None] = {}
     for (slug, _committish), ci_result in zip(
