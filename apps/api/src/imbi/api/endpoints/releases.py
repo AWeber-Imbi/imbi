@@ -382,7 +382,7 @@ async def _reconcile_in_flight_run(
         update['status'] = new_status
         update['timestamp'] = datetime.datetime.now(datetime.UTC)
     new_event = event.model_copy(update=update)
-    if new_event.status in ('success', 'failed', 'in_progress'):
+    if new_event.status in ('success', 'failed', 'in_progress', 'pending'):
         try:
             await append_deployment_event(
                 db,
@@ -445,9 +445,17 @@ async def _hydrate_release_train(
         if not release_id or not committish:
             continue
         deployed.append((slug, committish))
+        # ``pending`` counts as in flight: the gateway maps GitHub's
+        # ``queued``/``pending`` deployment_status states to it, and
+        # that first delivery is exactly the one that arrives before
+        # the workflow knows its own run URL.  Polling only
+        # ``in_progress`` would strand those events with a null
+        # ``external_run_url`` forever -- the bug this pass exists to
+        # fix -- unless a later ``in_progress`` webhook happened to
+        # land.
         if (
             event is not None
-            and event.status == 'in_progress'
+            and event.status in ('in_progress', 'pending')
             and event.external_run_id
         ):
             in_flight.append((slug, release_id, committish, event))

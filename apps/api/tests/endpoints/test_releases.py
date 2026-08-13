@@ -1902,6 +1902,113 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
         self.assertEqual(append_mock.call_args.kwargs['status'], 'in_progress')
         self.assertIsNone(append_mock.call_args.kwargs['note'])
 
+    def test_queued_event_is_polled_and_run_url_persisted(self) -> None:
+        # The gateway maps GitHub's queued/pending deployment_status to
+        # a stored 'pending' event, and that first delivery is the one
+        # that carries no log_url.  Such an event must stay in the
+        # in-flight selection and persist the URL once the plugin
+        # resolves it, or external_run_url stays null forever.
+        run_mock = mock.AsyncMock(
+            return_value=mock.MagicMock(
+                status='queued',
+                run_id='42',
+                run_url='https://gh/runs/42',
+            )
+        )
+        self._patch_plugin_resolution(
+            get_deployment_status=run_mock,
+            get_check_status=mock.AsyncMock(return_value='pass'),
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(tag='1.0.0', id='r1'),
+                    'deployments': self._events_with_run(
+                        '2026-04-20T10:00:00+00:00',
+                        'pending',
+                        run_id='42',
+                    ),
+                },
+            ],
+        ]
+        append_mock = mock.AsyncMock(return_value='no_release')
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.append_deployment_event',
+                new=append_mock,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        run_mock.assert_awaited_once()
+        body = response.json()[0]
+        self.assertEqual(body['current_status'], 'pending')
+        self.assertEqual(body['external_run_url'], 'https://gh/runs/42')
+        self.assertEqual(append_mock.call_args.kwargs['status'], 'pending')
+        self.assertEqual(
+            append_mock.call_args.kwargs['external_run_url'],
+            'https://gh/runs/42',
+        )
+        # A URL-only refresh must not relabel the gateway's event.
+        self.assertIsNone(append_mock.call_args.kwargs['note'])
+
+    def test_queued_run_advancing_to_in_progress_persists(self) -> None:
+        # The follow-up poll of that same queued event: once the run
+        # actually starts, the status transition is persisted so the
+        # train stops showing "queued".
+        run_mock = mock.AsyncMock(
+            return_value=mock.MagicMock(
+                status='in_progress',
+                run_id='42',
+                run_url='https://gh/runs/42',
+            )
+        )
+        self._patch_plugin_resolution(
+            get_deployment_status=run_mock,
+            get_check_status=mock.AsyncMock(return_value='pass'),
+        )
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': self._env('production', sort_order=30),
+                    'release': _release_row(tag='1.0.0', id='r1'),
+                    'deployments': self._events_with_run(
+                        '2026-04-20T10:00:00+00:00',
+                        'pending',
+                        run_id='42',
+                    ),
+                },
+            ],
+        ]
+        append_mock = mock.AsyncMock(return_value='no_release')
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.append_deployment_event',
+                new=append_mock,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()[0]
+        self.assertEqual(body['current_status'], 'in_progress')
+        self.assertEqual(body['external_run_url'], 'https://gh/runs/42')
+        self.assertEqual(append_mock.call_args.kwargs['status'], 'in_progress')
+        self.assertEqual(
+            append_mock.call_args.kwargs['note'],
+            'via release-train hydration',
+        )
+
     def test_no_new_run_url_makes_no_write(self) -> None:
         # Nothing changed: same status, and the plugin has no URL to
         # add. The pass must not churn the edge on every page load.
