@@ -9,6 +9,7 @@ import {
   Info,
   Loader2,
   Rocket,
+  ShieldAlert,
 } from 'lucide-react'
 
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
@@ -278,6 +279,17 @@ function ReleaseStack({
                 >
                   <Ban className="size-3" />
                   Blocked
+                </Badge>
+              ) : null}
+              {/* The dot above is the commit's CI state now; this is the
+                  record that someone shipped it while it was failing. */}
+              {rel.ci_override_by ? (
+                <Badge
+                  className="inline-flex shrink-0 items-center gap-1"
+                  variant="warning"
+                >
+                  <ShieldAlert className="size-3" />
+                  CI overridden
                 </Badge>
               ) : null}
               <span className="text-secondary min-w-0 flex-1 truncate text-xs">

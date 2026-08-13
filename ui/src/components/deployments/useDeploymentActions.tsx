@@ -34,6 +34,17 @@ export interface DeployRequest {
 }
 
 export interface PromoteRequest {
+  /**
+   * Operator acknowledgement that `sha` has a failing CI run. Without it
+   * the API refuses the promote with a 409.
+   *
+   * Required, not optional-with-a-default: a caller that renders the
+   * warning and enables its submit button off local state, but forgets to
+   * forward the flag, produces a request the API rightly refuses — and the
+   * operator sees a 409 having just ticked the box. Making this mandatory
+   * turns that into a type error.
+   */
+  acknowledgeCiFailure: boolean
   fromEnvironment: string
   notes: string
   sha: string
@@ -142,6 +153,7 @@ export function useDeploymentActions({
   const promoteMutation = useMutation({
     mutationFn: (req: PromoteRequest) =>
       promoteDeployment(orgSlug, projectId, {
+        acknowledge_ci_failure: req.acknowledgeCiFailure,
         action: 'promote',
         from_committish: req.sha,
         from_environment: req.fromEnvironment,

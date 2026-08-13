@@ -187,6 +187,8 @@ def deployed_operation_log(
     from_environment: str | None = None,
     external_run_id: str | None = None,
     occurred_at: datetime.datetime | None = None,
+    ci_status: str = 'unknown',
+    ci_override: bool = False,
 ) -> common_models.OperationLog:
     """Build a ``Deployed`` ``operations_log`` row.
 
@@ -208,11 +210,20 @@ def deployed_operation_log(
     ``argMax(performed_by, occurred_at)`` -- the row must sort by when
     the deploy actually happened, not when it was recorded. Omitting it
     keeps the model default (now).
+
+    ``ci_status`` is the rolled-up CI state of ``commit_sha`` as observed
+    when the promote / release was requested, and ``ci_override`` records
+    that an operator acknowledged a failing one to get here (ENG-102).
+    Both default to the "nothing was checked" case so the backfill and
+    resync callers, which observe deployments rather than CI, need not
+    supply them.
     """
     safe_run_url = safe_audit_url(run_url)
     description = json.dumps(
         {
             'action': action,
+            'ci_override': ci_override,
+            'ci_status': ci_status,
             'commit_sha': commit_sha,
             'plugin_slug': plugin_slug,
             'run_url': safe_run_url,

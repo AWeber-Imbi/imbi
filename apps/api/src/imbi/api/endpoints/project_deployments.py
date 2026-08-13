@@ -129,6 +129,13 @@ class PromoteActionRequest(pydantic.BaseModel):
     release_name: str | None = None
     release_notes_markdown: str = ''
     prerelease: bool = False
+    #: Operator acknowledgement that ``from_committish`` has a failing CI
+    #: run.  Without it a red commit is refused with a 409; with it the
+    #: promote proceeds and the override is recorded (see
+    #: :func:`_assert_ci_not_failing`).  Only ``fail`` is gated -- an
+    #: ``unknown`` status means CI never ran or the token cannot read
+    #: check-runs, which must not stand in for a failure.
+    acknowledge_ci_failure: bool = False
 
 
 DeploymentRequestBody = typing.Annotated[
@@ -246,6 +253,20 @@ class PromotionOption(pydantic.BaseModel):
     commits_pending: int | None = None
 
 
+class CommitCheckStatus(pydantic.BaseModel):
+    """Live rolled-up CI status for one commit.
+
+    Backs the promote / release forms' pre-flight warning.  Read live from
+    the plugin rather than from the synced ``commits`` table because it is
+    the same call the promote gate itself makes -- a banner sourced from
+    the (possibly lagging) sync could tell the operator the commit is
+    green and then have the promote refused.
+    """
+
+    committish: str
+    ci_status: plugin_base.CheckStatus = 'unknown'
+
+
 class RecentCommit(pydantic.BaseModel):
     """A commit row read from the ClickHouse ``commits`` table.
 
@@ -317,6 +338,13 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     blocked_reason: str | None = None
     blocked_by: str | None = None
     blocked_at: datetime.datetime | None = None
+    #: Set when the release was cut over a *failing* CI run that an
+    #: operator explicitly acknowledged (ENG-102).  ``ci_status`` above is
+    #: the commit's CI state as it stands *now*; this is the record of what
+    #: was known, and decided, at promote time -- the two differ once a
+    #: re-run turns the commit green after the fact.
+    ci_override_by: str | None = None
+    ci_override_at: datetime.datetime | None = None
 
 
 class ReleaseBlockRequest(pydantic.BaseModel):
@@ -377,6 +405,9 @@ class ReleaseCutRequest(pydantic.BaseModel):
     release_name: str | None = None
     release_notes_markdown: str = ''
     prerelease: bool = False
+    #: Same gate as the promote path; see
+    #: :attr:`PromoteActionRequest.acknowledge_ci_failure`.
+    acknowledge_ci_failure: bool = False
 
 
 class ReleaseCutResponse(pydantic.BaseModel):
@@ -713,6 +744,87 @@ def _handler(resolved: ResolvedCapability) -> DeploymentCapability:
     return typing.cast(DeploymentCapability, resolved.capability_cls())
 
 
+async def _resolve_ci_status(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    committish: str,
+) -> plugin_base.CheckStatus:
+    """Roll up the CI check-runs status for *committish*.
+
+    Never raises: a plugin that has no CI concept, a token that cannot read
+    check-runs, and a transport error all answer ``'unknown'``.  That is
+    the whole point -- the caller gates on ``'fail'`` alone, so a failure
+    to *ask* must never read as a failing build.
+    """
+    try:
+        return await call_with_timeout(
+            handler.get_check_status(
+                ctx,
+                _resolve_credentials(ctx, credentials),
+                committish=committish,
+            )
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug(
+            'get_check_status failed for %s on project %s; treating the CI '
+            'status as unknown',
+            committish,
+            ctx.project_id,
+            exc_info=True,
+        )
+        return 'unknown'
+
+
+async def _assert_ci_not_failing(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    *,
+    committish: str,
+    acknowledged: bool,
+    action: str,
+) -> plugin_base.CheckStatus:
+    """Refuse a promote / release off a red commit unless acknowledged.
+
+    Returns the observed status so the caller can record it alongside the
+    release.  This is a warning, not a block: an operator who has seen the
+    failure and decided to ship anyway sets ``acknowledged`` and the
+    override is recorded (:func:`_set_release_ci_override`).
+
+    ``committish`` must be the commit on the default branch, never the tag
+    being cut.  Tag-triggered workflow runs skip the test jobs, so a tag
+    has no meaningful check status of its own -- gating on it would ask a
+    question whose answer is always ``unknown``.
+
+    Only ``'fail'`` gates.  ``'warn'`` (a cancelled or stale run) is not a
+    failing build, and ``'unknown'`` means CI never ran or the token lacks
+    the scope to look -- treating either as a failure would refuse most
+    promotes.
+    """
+    status = await _resolve_ci_status(handler, ctx, credentials, committish)
+    if status != 'fail':
+        return status
+    short = versioning.short_committish(committish)
+    if not acknowledged:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'CI failed for commit {short}. Review the failing checks '
+                f'before you {action} it; to {action} it anyway, resubmit '
+                'with acknowledge_ci_failure=true.'
+            ),
+        )
+    LOGGER.warning(
+        'CI failure overridden: project=%s action=%s commit=%s actor=%s',
+        ctx.project_id,
+        action,
+        short,
+        ctx.actor_user_id,
+    )
+    return status
+
+
 def _require_deployment_sync_support(resolved: ResolvedCapability) -> None:
     """Raise 400 unless the plugin opts into deployment resync.
 
@@ -766,6 +878,8 @@ async def _record_deployment_audit(
     external_run_id: str | None = None,
     release_url: str | None = None,
     from_environment: str | None = None,
+    ci_status: str = 'unknown',
+    ci_override: bool = False,
 ) -> None:
     """Write a deployment audit row to the ``operations_log``.
 
@@ -780,6 +894,11 @@ async def _record_deployment_audit(
     operations-log UI can render directly.  ``committish`` is *also*
     recorded as ``commit_sha`` in the audit JSON so the UI can correlate
     a tagged promotion with the untagged deploy of the same commit.
+
+    ``ci_status`` / ``ci_override`` carry the promote-time CI decision
+    (ENG-102).  Deploys leave them at their defaults: a deploy ships a
+    commit some earlier promote or release already gated, so the CI
+    question is not this row's to answer.
     """
     entry = deployed_operation_log(
         project_id=project_id,
@@ -795,6 +914,8 @@ async def _record_deployment_audit(
         release_url=release_url,
         from_environment=from_environment,
         external_run_id=external_run_id,
+        ci_status=ci_status,
+        ci_override=ci_override,
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
@@ -1555,6 +1676,42 @@ async def compare_refs(
     return result
 
 
+@project_deployments_router.get('/check-status')
+async def get_commit_check_status(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+    committish: str = fastapi.Query(...),
+    source: str | None = None,
+) -> CommitCheckStatus:
+    """Roll up the CI check-runs status for one commit.
+
+    The pre-flight read behind the promote / release forms' CI warning.  It
+    is deliberately the *same* call the promote gate makes
+    (:func:`_assert_ci_not_failing`) rather than a read of the synced
+    ``commits`` table, so what the operator is shown and what the gate
+    enforces cannot disagree.
+
+    Never errors on the plugin's behalf: an unreachable or unauthorized
+    check-runs API answers ``'unknown'``, which is also the status that
+    does not gate a promote.
+    """
+    resolved, ctx, credentials = await _resolve_and_context(
+        db, org_slug, project_id, auth, source=source
+    )
+    status = await _resolve_ci_status(
+        _handler(resolved), ctx, credentials, committish
+    )
+    await persist_link_writeback(db, ctx)
+    return CommitCheckStatus(committish=committish, ci_status=status)
+
+
 @project_deployments_router.post('', status_code=202)
 async def trigger_deployment(
     org_slug: str,
@@ -2217,6 +2374,7 @@ async def _dispatch_release_build(
     to_environment: str = '',
     from_environment: str = '',
     deploy: bool,
+    ci_status: plugin_base.CheckStatus = 'unknown',
 ) -> _DispatchedBuild:
     """Record the release, dispatch its build, and queue the watcher.
 
@@ -2254,6 +2412,15 @@ async def _dispatch_release_build(
         notes_markdown=notes_markdown,
         release_url=None,
         created_by=auth.principal_name,
+    )
+    # Stamped before the dispatch, for the same reason the node itself is:
+    # the decision to ship a red commit has to outlive a build that fails.
+    await _set_release_ci_override(
+        db,
+        project_id=project_id,
+        release_id=release_id,
+        ci_status=ci_status,
+        overridden_by=auth.principal_name,
     )
     inputs = {
         _RELEASE_WORKFLOW_DESCRIPTION_INPUT: title,
@@ -2368,6 +2535,7 @@ async def _promote_via_dispatch(
     credentials: dict[str, str],
     handler: DeploymentCapability,
     valkey_client: typing.Any,
+    ci_status: plugin_base.CheckStatus = 'unknown',
 ) -> DeploymentTriggerResponse:
     """Dispatch the project's Release workflow instead of cutting the tag.
 
@@ -2391,6 +2559,7 @@ async def _promote_via_dispatch(
         to_environment=body.to_environment,
         from_environment=body.from_environment,
         deploy=await _project_is_deployable(db, project_id),
+        ci_status=ci_status,
     )
     return DeploymentTriggerResponse(
         run=DeploymentRun(run_id='', status='queued'),
@@ -2488,6 +2657,18 @@ async def _handle_promote(
     )
     handler = _handler(resolved)
 
+    # Last gate before anything irreversible: no tag has been cut and no
+    # build dispatched yet, so a 409 here leaves nothing to clean up and
+    # the client can simply resubmit with the acknowledgement set.
+    ci_status = await _assert_ci_not_failing(
+        handler,
+        ctx,
+        credentials,
+        committish=body.from_committish,
+        acknowledged=body.acknowledge_ci_failure,
+        action='promote',
+    )
+
     # A project with a Release workflow configured takes the
     # dispatch-and-watch path: the workflow builds the artifact, cuts the
     # annotated tag and creates the remote Release, and only then does
@@ -2509,6 +2690,7 @@ async def _handle_promote(
             credentials=credentials,
             handler=handler,
             valkey_client=valkey_client,
+            ci_status=ci_status,
         )
 
     warnings: list[str] = []
@@ -2591,6 +2773,13 @@ async def _handle_promote(
         release_url=release_url,
         created_by=auth.principal_name,
     )
+    await _set_release_ci_override(
+        db,
+        project_id=project_id,
+        release_id=release_id,
+        ci_status=ci_status,
+        overridden_by=auth.principal_name,
+    )
 
     # 5. Record the deployment event.
     note = f'via {resolved.plugin_slug}'
@@ -2633,6 +2822,8 @@ async def _handle_promote(
         external_run_id=str(run.run_id) if run.run_id else None,
         release_url=release_url,
         from_environment=body.from_environment,
+        ci_status=ci_status,
+        ci_override=ci_status == 'fail',
     )
     return DeploymentTriggerResponse(
         run=run,
@@ -2963,6 +3154,118 @@ async def _set_release_artifact_run(
     )
 
 
+async def _set_release_ci_override(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    release_id: str,
+    ci_status: plugin_base.CheckStatus,
+    overridden_by: str,
+) -> None:
+    """Record the CI status a release was cut against.
+
+    ``ci_status == 'fail'`` is exactly the case an operator had to
+    acknowledge to get here -- :func:`_assert_ci_not_failing` refuses it
+    otherwise -- so the actor and timestamp are stamped on that and only
+    that.  The status itself is recorded either way, because "shipped
+    green" and "shipped without CI ever having run" are different facts
+    and a blank property could not tell them apart.
+
+    Written here, at promote time, rather than only folded into the
+    ``operations_log`` row: on the dispatch path that row is written by the
+    watcher *after* a green build, so an override whose release build then
+    failed would otherwise leave no trace of the decision anywhere.
+
+    Kept off :func:`_upsert_release_node` for the same reason
+    :func:`_set_release_artifact_run` is -- that function is also the
+    resync's writer, and resync observes deployments, not CI.
+    """
+    overridden = ci_status == 'fail'
+    now = datetime.datetime.now(datetime.UTC).isoformat()
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    SET r.ci_status_at_promote = {ci_status},
+        r.updated_at = {now}
+    RETURN r.id AS rid
+    """
+    await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'ci_status': ci_status,
+            'now': now,
+        },
+        ['rid'],
+    )
+    if not overridden:
+        return
+    # Only ever written, never blanked.  ``_upsert_release_node`` keys on
+    # ``(project, committish, tag)``, so re-promoting one tag lands on the
+    # same node and runs this a second time -- and a CI re-run that turns
+    # the commit green makes that the expected sequence.  Clearing the
+    # actor on that pass would erase the acknowledgement someone actually
+    # made, dropping the override badge from release history and making
+    # :func:`_release_ci_override` report a clean promote for a release
+    # that shipped over a failing build.
+    override_query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    SET r.ci_override_by = {overridden_by},
+        r.ci_override_at = {overridden_at}
+    RETURN r.id AS rid
+    """
+    await db.execute(
+        override_query,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'overridden_by': overridden_by,
+            'overridden_at': now,
+        },
+        ['rid'],
+    )
+
+
+async def _release_ci_override(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    release_id: str,
+) -> tuple[str, bool]:
+    """Read back ``(ci_status_at_promote, was_overridden)`` for a release.
+
+    Lets the dispatch path's audit row carry the promote-time CI decision
+    without threading it through the serialized ``WatchJob`` -- the
+    ``Release`` node stamped by :func:`_set_release_ci_override` stays the
+    single source of truth, and a node written by an older build (no such
+    properties) reads as ``('unknown', False)``.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    RETURN r.ci_status_at_promote AS ci_status,
+           r.ci_override_by AS overridden_by
+    """
+    try:
+        rows = await db.execute(
+            query,
+            {'project_id': project_id, 'release_id': release_id},
+            ['ci_status', 'overridden_by'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug(
+            'CI override read failed for release %s', release_id, exc_info=True
+        )
+        return 'unknown', False
+    if not rows:
+        return 'unknown', False
+    status = graph.parse_agtype(rows[0].get('ci_status'))
+    overridden_by = graph.parse_agtype(rows[0].get('overridden_by'))
+    return str(status) if status else 'unknown', bool(overridden_by)
+
+
 async def _sync_promoted_tag(
     db: graph.Graph,
     *,
@@ -3161,6 +3464,12 @@ async def complete_promote_build(
             release_id,
             appended,
         )
+    # The CI decision was made (and stamped on the Release node) back when
+    # the operator pressed promote, minutes ago; read it back rather than
+    # re-asking the plugin, whose answer may have changed since.
+    ci_status, ci_override = await _release_ci_override(
+        db, project_id=project_id, release_id=release_id
+    )
     await _record_deployment_audit(
         project_id=project_id,
         project_slug=ctx.project_slug,
@@ -3174,6 +3483,8 @@ async def complete_promote_build(
         external_run_id=str(run.run_id) if run.run_id else None,
         release_url=release_url,
         from_environment=from_environment or None,
+        ci_status=ci_status,
+        ci_override=ci_override,
     )
     return run
 
@@ -3932,6 +4243,8 @@ async def get_release_history(
                 blocked_reason=node.get('blocked_reason'),
                 blocked_by=node.get('blocked_by'),
                 blocked_at=blocked_at,
+                ci_override_by=node.get('ci_override_by') or None,
+                ci_override_at=node.get('ci_override_at') or None,
             )
         )
     # Order by released version (highest semver first) so the head of the
@@ -3993,6 +4306,18 @@ async def cut_release(
     )
     handler = _handler(resolved)
 
+    # Same gate as the promote path, and for the same reason: a library
+    # release off a red commit is still a red artifact, and nothing
+    # irreversible has happened yet.
+    ci_status = await _assert_ci_not_failing(
+        handler,
+        ctx,
+        credentials,
+        committish=body.committish,
+        acknowledged=body.acknowledge_ci_failure,
+        action='release',
+    )
+
     # With a Release workflow configured, the build owns the tag and the
     # remote Release, exactly as on the promote path -- the only
     # difference is that nothing is deployed afterwards.  See
@@ -4013,6 +4338,7 @@ async def cut_release(
             title=body.release_name or body.tag,
             notes_markdown=body.release_notes_markdown,
             deploy=False,
+            ci_status=ci_status,
         )
         return ReleaseCutResponse(
             tag=body.tag,
@@ -4050,7 +4376,7 @@ async def cut_release(
     await persist_link_writeback(db, ctx)
 
     committish = body.committish[:7].lower()
-    await _upsert_release_node(
+    release_id = await _upsert_release_node(
         db,
         project_id=project_id,
         tag=body.tag,
@@ -4059,6 +4385,13 @@ async def cut_release(
         notes_markdown=body.release_notes_markdown,
         release_url=release_url,
         created_by=auth.principal_name,
+    )
+    await _set_release_ci_override(
+        db,
+        project_id=project_id,
+        release_id=release_id,
+        ci_status=ci_status,
+        overridden_by=auth.principal_name,
     )
 
     LOGGER.info(
@@ -4081,6 +4414,8 @@ async def cut_release(
         plugin_slug=resolved.plugin_slug,
         run_url=None,
         release_url=release_url,
+        ci_status=ci_status,
+        ci_override=ci_status == 'fail',
     )
     return ReleaseCutResponse(
         tag=body.tag,

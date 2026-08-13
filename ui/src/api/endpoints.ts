@@ -19,6 +19,7 @@ import type {
   ClientCredential,
   ClientCredentialCreate,
   ClientCredentialCreated,
+  CommitCheckStatus,
   ConfigKeyResponse,
   ConfigKeyValueResponse,
   ConfigPrefixResponse,
@@ -2258,6 +2259,26 @@ export const compareDeploymentRefs = (
   if (source) search.set('source', source)
   return apiClient.get<DeploymentCompareResult>(
     `${deploymentsBase(orgSlug, projectId)}/compare?${search.toString()}`,
+    undefined,
+    signal,
+  )
+}
+
+// Live CI check-runs status for one commit. Backs the promote / release
+// forms' CI warning; the API answers `unknown` rather than erroring when
+// check-runs can't be read, and `unknown` is also what doesn't gate a
+// promote — so this never needs error handling at the call site.
+export const getCommitCheckStatus = (
+  orgSlug: string,
+  projectId: string,
+  committish: string,
+  source?: string,
+  signal?: AbortSignal,
+): Promise<CommitCheckStatus> => {
+  const search = new URLSearchParams({ committish })
+  if (source) search.set('source', source)
+  return apiClient.get<CommitCheckStatus>(
+    `${deploymentsBase(orgSlug, projectId)}/check-status?${search.toString()}`,
     undefined,
     signal,
   )

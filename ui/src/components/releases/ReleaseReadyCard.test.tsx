@@ -13,7 +13,11 @@ import { ReleaseReadyCard } from './ReleaseReadyCard'
 vi.mock('@/api/endpoints', async () => {
   const actual =
     await vi.importActual<typeof import('@/api/endpoints')>('@/api/endpoints')
-  return { ...actual, draftReleaseNotes: vi.fn() }
+  return {
+    ...actual,
+    draftReleaseNotes: vi.fn(),
+    getCommitCheckStatus: vi.fn(),
+  }
 })
 
 // fallow-ignore-next-line unresolved-import
@@ -85,6 +89,10 @@ describe('ReleaseReadyCard', () => {
       release_url: 'https://gh/releases/v0.1.0',
       tag: 'v0.1.0',
     })
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
   })
 
   it('renders the up-to-date card when there is no drift', () => {
@@ -98,6 +106,7 @@ describe('ReleaseReadyCard', () => {
     await user.click(screen.getByRole('button', { name: /& release/i }))
     await waitFor(() => {
       expect(releases.cutRelease).toHaveBeenCalledWith('acme', 'p1', {
+        acknowledge_ci_failure: false,
         committish: 'aaa1111',
         release_name: 'v0.1.0',
         release_notes_markdown: '',
@@ -136,6 +145,106 @@ describe('ReleaseReadyCard', () => {
     })
     await waitFor(() => {
       expect(screen.getByDisplayValue('v2.0.0')).toBeInTheDocument()
+    })
+  })
+
+  describe('failing CI on the selected commit', () => {
+    beforeEach(() => {
+      vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+        ci_status: 'fail',
+        committish: 'aaa1111',
+      })
+    })
+
+    it('warns and holds the release until it is acknowledged', async () => {
+      renderCard(FIRST_RELEASE)
+      await waitFor(() => {
+        expect(screen.getByText(/CI failed for aaa1111/)).toBeInTheDocument()
+      })
+      expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+    })
+
+    it('releases anyway once acknowledged, and says so to the API', async () => {
+      const user = userEvent.setup()
+      renderCard(FIRST_RELEASE)
+      await waitFor(() => {
+        expect(screen.getByText(/CI failed for aaa1111/)).toBeInTheDocument()
+      })
+      await user.click(
+        screen.getByRole('checkbox', { name: /Release anyway/i }),
+      )
+      await user.click(screen.getByRole('button', { name: /& release/i }))
+      await waitFor(() => {
+        expect(releases.cutRelease).toHaveBeenCalledWith(
+          'acme',
+          'p1',
+          expect.objectContaining({ acknowledge_ci_failure: true }),
+        )
+      })
+    })
+
+    it('drops the acknowledgement when another commit is picked', async () => {
+      const user = userEvent.setup()
+      renderCard(FIRST_RELEASE)
+      await waitFor(() => {
+        expect(screen.getByText(/CI failed for aaa1111/)).toBeInTheDocument()
+      })
+      await user.click(
+        screen.getByRole('checkbox', { name: /Release anyway/i }),
+      )
+      // A different commit is a different decision.
+      await user.click(screen.getByText('fix: a bug'))
+      await waitFor(() => {
+        expect(
+          screen.getByRole('checkbox', { name: /Release anyway/i }),
+        ).not.toBeChecked()
+      })
+      expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+    })
+  })
+
+  it('stays silent when the CI status cannot be resolved', async () => {
+    // `unknown` covers a project with no CI and a token that cannot read
+    // check-runs; the API does not gate on it, so neither does the form.
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'unknown',
+      committish: 'aaa1111',
+    })
+    renderCard(FIRST_RELEASE)
+    // Wait for the *resolved* status, not just the call: submission is
+    // held while the query is in flight, so asserting on dispatch alone
+    // would race the answer it is waiting for.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /& release/i }),
+      ).not.toBeDisabled()
+    })
+    expect(endpoints.getCommitCheckStatus).toHaveBeenCalled()
+    expect(screen.queryByText(/CI failed/)).not.toBeInTheDocument()
+  })
+
+  it('holds submission until the CI status resolves', async () => {
+    // An unresolved query has no status, and "no status" reads the same
+    // as `unknown` — so without this the operator can submit a red
+    // commit before the answer lands and take a bare 409 instead of the
+    // acknowledgement flow.
+    let resolve: (value: { ci_status: string; committish: string }) => void
+    vi.mocked(endpoints.getCommitCheckStatus).mockReturnValue(
+      new Promise((r) => {
+        resolve = r as typeof resolve
+      }) as ReturnType<typeof endpoints.getCommitCheckStatus>,
+    )
+    renderCard(FIRST_RELEASE)
+    await waitFor(() => {
+      expect(endpoints.getCommitCheckStatus).toHaveBeenCalled()
+    })
+    expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+
+    resolve!({ ci_status: 'pass', committish: 'aaa1111' })
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /& release/i }),
+      ).not.toBeDisabled()
     })
   })
 })

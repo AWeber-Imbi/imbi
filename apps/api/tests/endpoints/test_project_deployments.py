@@ -144,6 +144,31 @@ class _DispatchingDeploymentPlugin(_FakeDeploymentPlugin):
         return ArtifactRun(run_id=run_id, status='in_progress')
 
 
+def _ci_plugin(
+    status: str = 'fail',
+    *,
+    raises: bool = False,
+    base: type[DeploymentCapability] = _FakeDeploymentPlugin,
+) -> type[DeploymentCapability]:
+    """A deployment plugin whose ``get_check_status`` answers *status*.
+
+    ``_FakeDeploymentPlugin`` deliberately does *not* override
+    ``get_check_status`` -- it inherits the capability's ``'unknown'``
+    default, which is the status that never gates a promote, so every
+    other test in this module stays unaffected by the CI gate.
+    """
+
+    class _CiPlugin(base):  # type: ignore[valid-type, misc]
+        async def get_check_status(  # type: ignore[override]
+            self, ctx, credentials, committish
+        ):
+            if raises:
+                raise RuntimeError('check-runs unavailable')
+            return status
+
+    return _CiPlugin
+
+
 class _FakeNoSyncDeploymentPlugin(_FakeDeploymentPlugin):
     """Deployment plugin that opts *out* of resync."""
 
@@ -2086,6 +2111,410 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
         self.assertIsNone(response.json()['phase'])
         self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
         self.create_tag.assert_awaited_once()
+
+
+class CiGateTestCase(ProjectDeploymentsTestCase):
+    """ENG-102: promote / release off a red commit warns and confirms.
+
+    The gate is deliberately narrow -- only ``'fail'`` stops anything.
+    ``'unknown'`` is the status a project with no CI, a token without the
+    check-runs scope, or a commit whose checks never ran all report, and
+    treating that as a failure would refuse most promotes.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _PROMOTE: typing.ClassVar[dict[str, typing.Any]] = {
+        'action': 'promote',
+        'from_environment': 'testing',
+        'to_environment': 'staging',
+        'from_committish': '1a9c610',
+        'tag': 'v6.4.0',
+    }
+    _CUT: typing.ClassVar[dict[str, typing.Any]] = {
+        'committish': '1a9c610',
+        'tag': 'v6.5.0',
+    }
+
+    def _use(
+        self, status: str = 'fail', *, raises: bool = False
+    ) -> type[DeploymentCapability]:
+        handler = _ci_plugin(status, raises=raises)
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            handler, options={'owner': 'octo', 'repo': 'demo'}
+        )
+        return handler
+
+    def _promote(self, **overrides: typing.Any) -> httpx.Response:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(self._BASE, json={**self._PROMOTE, **overrides})
+
+    def _cut(self, **overrides: typing.Any) -> httpx.Response:
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(
+                f'{self._BASE}/releases/cut', json={**self._CUT, **overrides}
+            )
+
+    def _ci_stamps(self) -> list[dict[str, typing.Any]]:
+        """Params of every ``ci_status_at_promote`` write that ran."""
+        return [
+            call.args[1]
+            for call in self.mock_db.execute.await_args_list
+            if 'ci_status_at_promote' in call.args[0]
+        ]
+
+    def _ci_override_writes(self) -> list[dict[str, typing.Any]]:
+        """Params of every override-actor write that ran.
+
+        A separate statement from the status write on purpose, so that a
+        later green promote of the same tag cannot blank an override --
+        which makes "did the actor get written at all?" the thing to
+        assert, not what value the status write carried for it.
+        """
+        return [
+            call.args[1]
+            for call in self.mock_db.execute.await_args_list
+            if 'ci_override_by' in call.args[0]
+            and 'ci_status_at_promote' not in call.args[0]
+        ]
+
+    def _audit_description(self) -> dict[str, typing.Any]:
+        ch = self.mocks['clickhouse'].return_value
+        args, _ = ch.insert.call_args
+        row = dict(zip(args[2], args[1][0], strict=False))
+        return typing.cast(
+            'dict[str, typing.Any]', json.loads(row['description'])
+        )
+
+    # -- The gate ---------------------------------------------------------
+
+    def test_promote_409_when_ci_failed(self) -> None:
+        self._use('fail')
+        response = self._promote()
+        self.assertEqual(response.status_code, 409)
+        detail = response.json()['detail']
+        self.assertIn('CI failed for commit 1a9c610', detail)
+        self.assertIn('acknowledge_ci_failure=true', detail)
+
+    def test_promote_gate_runs_before_any_side_effect(self) -> None:
+        """A refused promote must leave nothing behind to clean up.
+
+        This is what makes the 409 safe to retry with the acknowledgement
+        set: no tag was cut, no Release node written, and no deployment
+        event recorded, so the resubmit is a first attempt, not a repair.
+        """
+        self._use('fail')
+        cut_tag = self._start(
+            mock.patch(f'{_MODULE}._promote_cut_tag', return_value=None)
+        )
+        upsert = self._start(
+            mock.patch(f'{_MODULE}._upsert_release_node', return_value='rel1')
+        )
+        self.assertEqual(409, self._promote().status_code)
+        cut_tag.assert_not_called()
+        upsert.assert_not_called()
+        self.mocks['append_deployment_event'].assert_not_called()
+
+    def test_promote_proceeds_when_ci_unknown(self) -> None:
+        """The design note's load-bearing case: unknown is not failure."""
+        self._use('unknown')
+        self.assertEqual(202, self._promote().status_code)
+
+    def test_promote_proceeds_when_ci_warns(self) -> None:
+        # ``warn`` is a cancelled or stale run, not a failing one.
+        self._use('warn')
+        self.assertEqual(202, self._promote().status_code)
+
+    def test_promote_proceeds_when_ci_passes(self) -> None:
+        self._use('pass')
+        self.assertEqual(202, self._promote().status_code)
+
+    def test_promote_proceeds_when_the_ci_lookup_raises(self) -> None:
+        """A plugin that cannot answer must not read as a failing build."""
+        self._use('fail', raises=True)
+        self.assertEqual(202, self._promote().status_code)
+
+    def test_promote_allowed_when_acknowledged(self) -> None:
+        self._use('fail')
+        response = self._promote(acknowledge_ci_failure=True)
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual('v6.4.0', response.json()['tag'])
+
+    # -- The record -------------------------------------------------------
+
+    def test_acknowledged_promote_stamps_the_release_node(self) -> None:
+        self._use('fail')
+        self.assertEqual(
+            202, self._promote(acknowledge_ci_failure=True).status_code
+        )
+        stamps = self._ci_stamps()
+        self.assertEqual(1, len(stamps))
+        self.assertEqual('fail', stamps[0]['ci_status'])
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
+        self.assertTrue(overrides[0]['overridden_at'])
+
+    def test_green_promote_records_the_status_without_an_actor(self) -> None:
+        """A clean promote is still recorded, but is not an override.
+
+        Keeping the status either way is what lets a reader tell "shipped
+        green" from "shipped with CI never having run"; writing no actor
+        at all is what keeps it from looking like a decision someone made
+        -- and, on a re-promote of a tag that was acknowledged while red,
+        what keeps the real decision from being blanked.
+        """
+        self._use('pass')
+        self.assertEqual(202, self._promote().status_code)
+        stamps = self._ci_stamps()
+        self.assertEqual(1, len(stamps))
+        self.assertEqual('pass', stamps[0]['ci_status'])
+        self.assertNotIn('overridden_by', stamps[0])
+        self.assertNotIn('overridden_at', stamps[0])
+        self.assertEqual([], self._ci_override_writes())
+
+    def test_green_repromote_keeps_an_earlier_override(self) -> None:
+        """Re-promoting a tag after CI goes green preserves the record.
+
+        ``_upsert_release_node`` keys on ``(project, committish, tag)``,
+        so the second promote writes to the same ``Release`` node.  A CI
+        re-run that turns the commit green makes this the expected
+        sequence, and blanking the actor on it would erase an
+        acknowledgement that really happened.
+        """
+        self._use('fail')
+        self.assertEqual(
+            202, self._promote(acknowledge_ci_failure=True).status_code
+        )
+        self._use('pass')
+        self.assertEqual(202, self._promote().status_code)
+
+        stamps = self._ci_stamps()
+        self.assertEqual(['fail', 'pass'], [s['ci_status'] for s in stamps])
+        # The green pass touched the status only -- the sole override
+        # write is still the acknowledged one.
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
+
+    def test_acknowledged_promote_records_the_override_in_the_ops_log(
+        self,
+    ) -> None:
+        self._use('fail')
+        self.assertEqual(
+            202, self._promote(acknowledge_ci_failure=True).status_code
+        )
+        description = self._audit_description()
+        self.assertTrue(description['ci_override'])
+        self.assertEqual('fail', description['ci_status'])
+
+    def test_clean_promote_records_no_override_in_the_ops_log(self) -> None:
+        self._use('pass')
+        self.assertEqual(202, self._promote().status_code)
+        description = self._audit_description()
+        self.assertFalse(description['ci_override'])
+        self.assertEqual('pass', description['ci_status'])
+
+    # -- releases/cut -----------------------------------------------------
+
+    def test_cut_release_409_when_ci_failed(self) -> None:
+        self._use('fail')
+        response = self._cut()
+        self.assertEqual(response.status_code, 409)
+        detail = response.json()['detail']
+        self.assertIn('CI failed for commit 1a9c610', detail)
+        # The action name comes from the caller, so the copy fits the flow.
+        self.assertIn('before you release it', detail)
+
+    def test_cut_release_allowed_when_acknowledged(self) -> None:
+        self._use('fail')
+        response = self._cut(acknowledge_ci_failure=True)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual('v6.5.0', response.json()['tag'])
+        stamps = self._ci_stamps()
+        self.assertEqual(1, len(stamps))
+        self.assertEqual('fail', stamps[0]['ci_status'])
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
+
+    def test_cut_release_proceeds_when_ci_unknown(self) -> None:
+        self._use('unknown')
+        self.assertEqual(201, self._cut().status_code)
+
+    # -- The pre-flight read ----------------------------------------------
+
+    def test_check_status_endpoint_reports_the_plugin_status(self) -> None:
+        self._use('fail')
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                f'{self._BASE}/check-status?committish=1a9c610'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {'committish': '1a9c610', 'ci_status': 'fail'}, response.json()
+        )
+
+    def test_check_status_endpoint_degrades_to_unknown(self) -> None:
+        """The banner must render even when check-runs cannot be read."""
+        self._use('fail', raises=True)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                f'{self._BASE}/check-status?committish=1a9c610'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual('unknown', response.json()['ci_status'])
+
+
+class DispatchCiGateTestCase(CiGateTestCase):
+    """The CI gate also covers the dispatch-driven promote path.
+
+    This is the path where a red commit matters most: the Release workflow
+    itself cuts the tag, so without the gate Imbi would hand a failing
+    commit to a build whose whole job is to make it a release.
+    """
+
+    def _use(
+        self, status: str = 'fail', *, raises: bool = False
+    ) -> type[DeploymentCapability]:
+        """Resolve to a dispatching plugin with a Release workflow set."""
+        _DispatchingDeploymentPlugin.dispatches.clear()
+        _DispatchingDeploymentPlugin.run_id = '4242'
+        handler = _ci_plugin(
+            status, raises=raises, base=_DispatchingDeploymentPlugin
+        )
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            handler,
+            options={'owner': 'octo', 'repo': 'demo'},
+            capability_options={'artifact_workflow': 'release.yml'},
+        )
+        self._start(
+            mock.patch(f'{_MODULE}._project_is_deployable', return_value=True)
+        )
+        self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_queue.enqueue_release_promote',
+                return_value=True,
+            )
+        )
+        self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_service.set_status',
+                return_value=None,
+            )
+        )
+        return handler
+
+    def test_dispatch_refused_when_ci_failed(self) -> None:
+        self._use('fail')
+        self.assertEqual(409, self._promote().status_code)
+        # Nothing was dispatched, so no build can tag the red commit.
+        self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
+
+    def test_dispatch_allowed_when_acknowledged(self) -> None:
+        self._use('fail')
+        response = self._promote(acknowledge_ci_failure=True)
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual('building', response.json()['phase'])
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+        # Stamped before the dispatch, because on this path the ops-log row
+        # is only written after a *green* build -- an override whose build
+        # then failed would otherwise leave no trace of the decision.
+        stamps = self._ci_stamps()
+        self.assertEqual(1, len(stamps))
+        self.assertEqual('fail', stamps[0]['ci_status'])
+        overrides = self._ci_override_writes()
+        self.assertEqual(1, len(overrides))
+        self.assertEqual('admin@example.com', overrides[0]['overridden_by'])
+
+    # The two inherited ops-log assertions do not hold on this path, and
+    # why they don't is the whole reason the Release node is stamped: the
+    # audit row is not written until the build lands, so it cannot be the
+    # only record of a decision made now.  ``_release_ci_override`` is what
+    # carries it across that gap (see ReleaseCiOverrideTestCase).
+
+    def test_acknowledged_promote_records_the_override_in_the_ops_log(
+        self,
+    ) -> None:
+        self._use('fail')
+        self.assertEqual(
+            202, self._promote(acknowledge_ci_failure=True).status_code
+        )
+        self.mocks['clickhouse'].return_value.insert.assert_not_called()
+
+    def test_clean_promote_records_no_override_in_the_ops_log(self) -> None:
+        self._use('pass')
+        self.assertEqual(202, self._promote().status_code)
+        self.mocks['clickhouse'].return_value.insert.assert_not_called()
+
+
+class ReleaseCiOverrideTestCase(unittest.IsolatedAsyncioTestCase):
+    """Reading the promote-time CI decision back off the Release node.
+
+    The dispatch path's audit row is written minutes later by the watcher,
+    which must report what was decided at promote time rather than
+    re-asking the plugin -- a re-run could have turned the commit green in
+    between, and the row would then claim nothing was overridden.
+    """
+
+    async def test_reads_the_stamped_status_and_override(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(
+            return_value=[
+                {'ci_status': 'fail', 'overridden_by': 'daves@aweber.com'}
+            ]
+        )
+        status, overridden = await project_deployments._release_ci_override(
+            db, project_id='p1', release_id='r1'
+        )
+        self.assertEqual('fail', status)
+        self.assertTrue(overridden)
+
+    async def test_blank_actor_is_not_an_override(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(
+            return_value=[{'ci_status': 'pass', 'overridden_by': ''}]
+        )
+        status, overridden = await project_deployments._release_ci_override(
+            db, project_id='p1', release_id='r1'
+        )
+        self.assertEqual('pass', status)
+        self.assertFalse(overridden)
+
+    async def test_release_written_before_this_feature_reads_unknown(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(
+            return_value=[{'ci_status': None, 'overridden_by': None}]
+        )
+        self.assertEqual(
+            ('unknown', False),
+            await project_deployments._release_ci_override(
+                db, project_id='p1', release_id='r1'
+            ),
+        )
+
+    async def test_missing_release_reads_unknown(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        self.assertEqual(
+            ('unknown', False),
+            await project_deployments._release_ci_override(
+                db, project_id='p1', release_id='r1'
+            ),
+        )
+
+    async def test_a_failed_read_does_not_sink_the_audit_row(self) -> None:
+        """The audit row matters more than the CI annotation on it."""
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(side_effect=RuntimeError('AGE is down'))
+        self.assertEqual(
+            ('unknown', False),
+            await project_deployments._release_ci_override(
+                db, project_id='p1', release_id='r1'
+            ),
+        )
 
 
 class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):

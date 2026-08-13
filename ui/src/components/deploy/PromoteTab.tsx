@@ -21,6 +21,11 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 import type { DraftReleaseNotesResponse, Environment } from '@/types'
 
+import {
+  CiFailureNotice,
+  ciNeedsAcknowledgement,
+  useCommitCheckStatus,
+} from './CiFailureNotice'
 import { handleDispatchedBuild } from './releaseBuildHandoff'
 
 interface PromoteTabProps {
@@ -154,10 +159,27 @@ export function PromoteTab({
     if (!notesDirty) setNotes(draft.notes_markdown)
   }, [draft, tagDirty, notesDirty])
 
+  // Live CI status for the build being promoted. The commit list here comes
+  // from `compare()`, which carries no check status at all, so this is the
+  // only CI signal this form has.
+  const { ciPending, ciStatus } = useCommitCheckStatus(
+    orgSlug,
+    projectId,
+    selectedSha,
+  )
+  const ciFailed = ciNeedsAcknowledgement(ciStatus)
+  const [ciAcknowledged, setCiAcknowledged] = useState(false)
+  // A different commit is a different decision — never carry the
+  // acknowledgement across a selection change.
+  useEffect(() => {
+    setCiAcknowledged(false)
+  }, [selectedSha])
+
   const queryClient = useQueryClient()
   const promoteMutation = useMutation({
     mutationFn: () =>
       promoteDeployment(orgSlug, projectId, {
+        acknowledge_ci_failure: ciAcknowledged,
         action: 'promote',
         from_committish: selectedSha ?? '',
         from_environment: fromEnvironment,
@@ -266,7 +288,15 @@ export function PromoteTab({
   })
 
   const tagValid = SEMVER_RE.test(tag)
-  const canPromote = tagValid && !!selectedSha && !promoteMutation.isPending
+  const canPromote =
+    tagValid &&
+    !!selectedSha &&
+    !promoteMutation.isPending &&
+    // Hold the button until CI has answered: an unresolved status cannot
+    // be told apart from a green one, and promoting on it skips the
+    // acknowledgement the server would then demand with a 409.
+    !ciPending &&
+    !(ciFailed && !ciAcknowledged)
 
   return (
     <div className="flex flex-col gap-4">
@@ -350,6 +380,14 @@ export function PromoteTab({
           </ul>
         )}
       </section>
+
+      <CiFailureNotice
+        acknowledged={ciAcknowledged}
+        action="promote"
+        ciStatus={ciStatus}
+        onAcknowledgedChange={setCiAcknowledged}
+        sha={selectedSha}
+      />
 
       {/* Step 2 — version + notes */}
       <section>
