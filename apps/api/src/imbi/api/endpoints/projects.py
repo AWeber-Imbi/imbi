@@ -5,9 +5,11 @@ belong to multiple project types.  See ADR-0006 for rationale.
 """
 
 import asyncio
+import contextlib
 import datetime
 import json
 import logging
+import math
 import re
 import typing
 
@@ -1520,6 +1522,64 @@ _FILTER_FIELD_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _FILTER_OPS = frozenset({'eq', 'ne', 'in', 'not_in', 'exists', 'not_exists'})
 
 
+def _coerce_filter_value(
+    attribute: blueprint_attributes.FilterableAttribute,
+    raw_value: str,
+    raw_filter: str,
+) -> typing.Any:
+    """Coerce a filter value to the attribute's declared JSON type.
+
+    Filter values arrive as strings from the query parameter, but
+    boolean and numeric attributes are stored as their native agtype;
+    binding the raw string would compare ``'true'`` to ``true`` and
+    never match. Attributes without a boolean/integer/number type are
+    bound as strings, unchanged.
+
+    Raises:
+        fastapi.HTTPException: 400 when the value cannot represent the
+            attribute's type.
+    """
+    if attribute.type == 'boolean':
+        if raw_value in ('true', 'false'):
+            return raw_value == 'true'
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'Filter {raw_filter!r} requires a true/false value '
+                f'for boolean attribute {attribute.field!r}'
+            ),
+        )
+    if attribute.type in ('integer', 'number'):
+        # int() first so large integers don't round-trip through
+        # float and lose precision.
+        with contextlib.suppress(ValueError):
+            return int(raw_value)
+        if attribute.type == 'integer':
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Filter {raw_filter!r} requires an integer '
+                    f'value for integer attribute {attribute.field!r}'
+                ),
+            )
+        try:
+            number = float(raw_value)
+        except ValueError:
+            number = math.inf
+        # agtype has no NaN/Infinity literal, so non-finite values
+        # cannot be bound; reject them like unparseable input.
+        if not math.isfinite(number):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Filter {raw_filter!r} requires a finite numeric '
+                    f'value for number attribute {attribute.field!r}'
+                ),
+            )
+        return number
+    return raw_value
+
+
 def _build_attribute_filter(
     filters: list[str],
     whitelist: dict[str, blueprint_attributes.FilterableAttribute],
@@ -1533,9 +1593,11 @@ def _build_attribute_filter(
     set are excluded.
 
     Field names are validated against ``whitelist`` (and an identifier
-    pattern) before being interpolated; values are always bound as
-    query parameters. Raises ``HTTPException`` (400) on malformed
-    predicates, unknown operators, or non-filterable fields.
+    pattern) before being interpolated; values are coerced to the
+    attribute's declared type and always bound as query parameters.
+    Raises ``HTTPException`` (400) on malformed predicates, unknown
+    operators, non-filterable fields, or values that cannot represent
+    the attribute's type.
     """
     clauses: list[str] = []
     params: dict[str, typing.Any] = {}
@@ -1595,7 +1657,7 @@ def _build_attribute_filter(
         terms: list[str] = []
         for value_index, item in enumerate(values):
             key = f'f{index}_{value_index}'
-            params[key] = item
+            params[key] = _coerce_filter_value(whitelist[field], item, raw)
             terms.append(f'p.{field} {comparator} {{{key}}}')
         clauses.append(
             terms[0] if len(terms) == 1 else '(' + joiner.join(terms) + ')'

@@ -1454,6 +1454,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
                             'type': 'string',
                             'enum': ['FastAPI', 'http-service-lib'],
                         },
+                        'deprecated': {'type': 'boolean'},
+                        'coverage': {'type': 'number'},
+                        'replica_count': {'type': 'integer'},
                     },
                 }
             ),
@@ -1532,6 +1535,73 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         response = self._list_with_filter('filter=framework:ne')
         self.assertEqual(response.status_code, 400)
         self.assertIn('requires a value', response.json()['detail'])
+
+    def test_filter_boolean_value_bound_as_boolean(self) -> None:
+        """Boolean attributes bind ``true``/``false``, not strings."""
+        response = self._list_with_filter('filter=deprecated:eq:true')
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertIs(params['f0_0'], True)
+
+        response = self._list_with_filter('filter=deprecated:ne:false')
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertIs(params['f0_0'], False)
+
+    def test_filter_boolean_invalid_value_rejected(self) -> None:
+        response = self._list_with_filter('filter=deprecated:eq:maybe')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('true/false', response.json()['detail'])
+
+    def test_filter_number_value_bound_as_number(self) -> None:
+        """Number attributes bind ints/floats, not strings."""
+        response = self._list_with_filter('filter=coverage:eq:97.5')
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(params['f0_0'], 97.5)
+        self.assertIsInstance(params['f0_0'], float)
+
+        response = self._list_with_filter('filter=coverage:eq:100')
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(params['f0_0'], 100)
+        self.assertIsInstance(params['f0_0'], int)
+
+    def test_filter_integer_in_values_coerced(self) -> None:
+        """Each value in an ``in`` list is coerced independently."""
+        response = self._list_with_filter('filter=replica_count:in:1,2,3')
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(
+            [params['f0_0'], params['f0_1'], params['f0_2']], [1, 2, 3]
+        )
+
+    def test_filter_number_invalid_value_rejected(self) -> None:
+        response = self._list_with_filter('filter=coverage:eq:lots')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('numeric', response.json()['detail'])
+
+    def test_filter_integer_fractional_value_rejected(self) -> None:
+        response = self._list_with_filter('filter=replica_count:eq:1.5')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('integer', response.json()['detail'])
+
+    def test_filter_number_non_finite_values_rejected(self) -> None:
+        """agtype has no NaN/Infinity literal, so reject them."""
+        for value in ('nan', 'inf', '-inf', 'Infinity'):
+            with self.subTest(value=value):
+                response = self._list_with_filter(
+                    f'filter=coverage:eq:{value}'
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('finite', response.json()['detail'])
+
+    def test_filter_string_value_unchanged(self) -> None:
+        """String attributes still bind the raw string."""
+        response = self._list_with_filter('filter=framework:eq:FastAPI')
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.call_args.args[1]
+        self.assertEqual(params['f0_0'], 'FastAPI')
 
     # -- Lifecycle dispatch wiring ------------------------------------
 
