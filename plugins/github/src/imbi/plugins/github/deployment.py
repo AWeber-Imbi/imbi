@@ -1259,9 +1259,13 @@ class GitHubDeployment(DeploymentCapability):
         # at most once. Shared across the parallel per-env fan-out.
         run_cache: dict[str, tuple[str, str] | None] = {}
         # Likewise, deployments in a sweep share a handful of refs; the
-        # ones with no GitHub release are recorded here so the doomed
-        # lookup happens once per ref instead of once per deployment.
-        release_misses: set[str] = set()
+        # lookup for each is memoised here as a task so it happens once
+        # per ref instead of once per deployment. Holding the task (not
+        # its result) also coalesces the per-env fan-out below: envs that
+        # deployed the same ref await one in-flight request rather than
+        # each issuing their own, which is the common shape at the host's
+        # default limit=1 where no single env repeats a ref.
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]] = {}
         mainline = _mainline_branches(ctx.integration_options)
         async with self._client(ctx, credentials) as client:
             per_env = await asyncio.gather(
@@ -1271,7 +1275,7 @@ class GitHubDeployment(DeploymentCapability):
                         env,
                         page_size,
                         run_cache,
-                        release_misses,
+                        release_lookups,
                         mainline,
                     )
                     for env in environments
@@ -1305,7 +1309,7 @@ class GitHubDeployment(DeploymentCapability):
         environment: str,
         page_size: int,
         run_cache: dict[str, tuple[str, str] | None],
-        release_misses: set[str],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]],
         mainline: frozenset[str],
     ) -> list[RemoteDeployment]:
         try:
@@ -1343,7 +1347,7 @@ class GitHubDeployment(DeploymentCapability):
                 environment,
                 deployment,
                 run_cache,
-                release_misses,
+                release_lookups,
                 mainline,
             )
             if run is not None:
@@ -1356,7 +1360,7 @@ class GitHubDeployment(DeploymentCapability):
         environment: str,
         deployment: dict[str, typing.Any],
         run_cache: dict[str, tuple[str, str] | None],
-        release_misses: set[str],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]],
         mainline: frozenset[str],
     ) -> RemoteDeployment | None:
         deployment_id = deployment.get('id')
@@ -1376,7 +1380,7 @@ class GitHubDeployment(DeploymentCapability):
         description = deployment.get('description')
         release_notes = (
             await self._release_notes_for_ref(
-                client, str(ref_value), mainline, release_misses
+                client, str(ref_value), mainline, release_lookups
             )
             if ref_value
             else None
@@ -1474,31 +1478,50 @@ class GitHubDeployment(DeploymentCapability):
         client: httpx.AsyncClient,
         ref: str,
         mainline: frozenset[str],
-        release_misses: set[str] | None = None,
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]]
+        | None = None,
     ) -> RemoteRelease | None:
         """Return the GitHub release for ``ref``, metadata included.
 
-        The single release lookup every caller degrades through: a 404 /
-        non-200 / parse failure yields ``None``, and a ``403`` (token lacks
-        scope to read releases) is cached process-wide so a forbidden token
-        short-circuits instead of re-issuing the request for every
-        deployment on every resync sweep.  ``author`` is the login GitHub
-        credits with the release and ``author_subject`` its numeric user id,
-        which the host resolves to an Imbi user through the identity plugins
-        on the same service.
-
         Refs in ``mainline`` (the resolved ``mainline_branches`` option)
         never name a release, so they never reach the API.
-        ``release_misses`` collects the refs that answered ``404``/``410``
-        within one sweep so a repo whose deployments share a tagless ref
-        pays for the miss once rather than once per row; it is scoped like
-        ``run_cache`` (one sweep, one repo, one token), and omitting it
-        disables the memo for one-off host-facing lookups.
+
+        ``release_lookups`` memoises one lookup per ref for the duration of
+        a sweep.  It holds the in-flight task rather than its result, so
+        the parallel per-env fan-out in
+        :meth:`list_recent_deployments` coalesces onto a single request
+        when several environments deployed the same ref -- checking a
+        result-only cache would let every env past the check before the
+        first response landed.  Like ``run_cache`` it memoises every
+        outcome, failures included, so one sweep never retries a ref that
+        just errored; it is scoped the same way (one sweep, one repo, one
+        token), and omitting it disables the memo for one-off host-facing
+        lookups.
         """
         if ref in mainline:
             return None
-        if release_misses is not None and ref in release_misses:
-            return None
+        if release_lookups is None:
+            return await self._fetch_release(client, ref)
+        task = release_lookups.get(ref)
+        if task is None:
+            task = asyncio.ensure_future(self._fetch_release(client, ref))
+            release_lookups[ref] = task
+        return await task
+
+    async def _fetch_release(
+        self, client: httpx.AsyncClient, ref: str
+    ) -> RemoteRelease | None:
+        """Issue the release lookup for ``ref`` and shape the response.
+
+        The single release request every caller degrades through: a 404 /
+        410 / non-200 / parse failure yields ``None``, and a ``403`` (token
+        lacks scope to read releases) is cached process-wide so a forbidden
+        token short-circuits instead of re-issuing the request for every
+        deployment on every resync sweep.  ``author`` is the login GitHub
+        credits with the release and ``author_subject`` its numeric user
+        id, which the host resolves to an Imbi user through the identity
+        plugins on the same service.
+        """
         if _releases_forbidden(client):
             return None
         try:
@@ -1509,9 +1532,6 @@ class GitHubDeployment(DeploymentCapability):
             return None
         if resp.status_code == 403:
             _record_releases_forbidden(client)
-            return None
-        if resp.status_code in {404, 410} and release_misses is not None:
-            release_misses.add(ref)
             return None
         if resp.status_code != 200:
             return None
@@ -1551,7 +1571,8 @@ class GitHubDeployment(DeploymentCapability):
         client: httpx.AsyncClient,
         ref: str,
         mainline: frozenset[str],
-        release_misses: set[str] | None = None,
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]]
+        | None = None,
     ) -> str | None:
         """Return the GitHub release notes body for a deployed ref.
 
@@ -1563,7 +1584,7 @@ class GitHubDeployment(DeploymentCapability):
         release.
         """
         release = await self._release_for_ref(
-            client, ref, mainline, release_misses
+            client, ref, mainline, release_lookups
         )
         return release.body_markdown if release else None
 

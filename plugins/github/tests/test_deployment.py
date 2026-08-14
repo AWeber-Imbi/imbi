@@ -1507,6 +1507,57 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(lookup.call_count, 1)
 
     @respx.mock
+    async def test_release_404_coalesced_across_environments(self) -> None:
+        # The per-env fan-out is concurrent, so a memo of *results* would
+        # let every env past the check before the first response landed --
+        # exactly the shape at the host's default limit=1, where no single
+        # env repeats a ref and cross-env sharing is the only sharing
+        # there is. Two envs on one tagless ref must cost one lookup.
+        def _deployments(request: httpx.Request) -> httpx.Response:
+            deployment_id = {'staging': 61, 'production': 62}[
+                request.url.params['environment']
+            ]
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': deployment_id,
+                        'sha': f'sha{deployment_id}',
+                        'ref': 'release-candidate',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    }
+                ],
+            )
+
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            side_effect=_deployments
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/61/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/62/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+
+        async def _missing_release(request: httpx.Request) -> httpx.Response:
+            # Yield the way a real request does, so the second env gets a
+            # turn while the first one is still in flight.
+            await asyncio.sleep(0)
+            return httpx.Response(404, json={'message': 'Not Found'})
+
+        lookup = respx.get(
+            'https://api.github.com/repos/octo/demo/releases/'
+            'tags/release-candidate'
+        ).mock(side_effect=_missing_release)
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['staging', 'production'], limit=1
+        )
+        self.assertEqual(len(events), 2)
+        self.assertTrue(all(e.release_notes is None for e in events))
+        self.assertEqual(lookup.call_count, 1)
+
+    @respx.mock
     async def test_bot_creator_attributed_to_triggering_actor(self) -> None:
         # A workflow-created deployment lists the app bot as creator; the
         # status URL points at the Actions run, so attribution follows to
