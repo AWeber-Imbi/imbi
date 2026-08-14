@@ -1581,6 +1581,21 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('numeric', response.json()['detail'])
 
+    def test_filter_integer_fractional_value_rejected(self) -> None:
+        response = self._list_with_filter('filter=replica_count:eq:1.5')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('integer', response.json()['detail'])
+
+    def test_filter_number_non_finite_values_rejected(self) -> None:
+        """agtype has no NaN/Infinity literal, so reject them."""
+        for value in ('nan', 'inf', '-inf', 'Infinity'):
+            with self.subTest(value=value):
+                response = self._list_with_filter(
+                    f'filter=coverage:eq:{value}'
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('finite', response.json()['detail'])
+
     def test_filter_string_value_unchanged(self) -> None:
         """String attributes still bind the raw string."""
         response = self._list_with_filter('filter=framework:eq:FastAPI')

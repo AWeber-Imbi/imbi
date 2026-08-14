@@ -5,9 +5,11 @@ belong to multiple project types.  See ADR-0006 for rationale.
 """
 
 import asyncio
+import contextlib
 import datetime
 import json
 import logging
+import math
 import re
 import typing
 
@@ -1548,20 +1550,33 @@ def _coerce_filter_value(
             ),
         )
     if attribute.type in ('integer', 'number'):
-        try:
+        # int() first so large integers don't round-trip through
+        # float and lose precision.
+        with contextlib.suppress(ValueError):
             return int(raw_value)
+        if attribute.type == 'integer':
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Filter {raw_filter!r} requires an integer '
+                    f'value for integer attribute {attribute.field!r}'
+                ),
+            )
+        try:
+            number = float(raw_value)
         except ValueError:
-            try:
-                return float(raw_value)
-            except ValueError:
-                raise fastapi.HTTPException(
-                    status_code=400,
-                    detail=(
-                        f'Filter {raw_filter!r} requires a numeric '
-                        f'value for {attribute.type} attribute '
-                        f'{attribute.field!r}'
-                    ),
-                ) from None
+            number = math.inf
+        # agtype has no NaN/Infinity literal, so non-finite values
+        # cannot be bound; reject them like unparseable input.
+        if not math.isfinite(number):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=(
+                    f'Filter {raw_filter!r} requires a finite numeric '
+                    f'value for number attribute {attribute.field!r}'
+                ),
+            )
+        return number
     return raw_value
 
 
