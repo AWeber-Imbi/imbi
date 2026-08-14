@@ -738,15 +738,19 @@ def _is_already_exists_error(exc: BaseException) -> bool:
         return False
     if not isinstance(payload, dict):
         return False
-    if 'already exists' in str(payload.get('message') or '').lower():
+    body = typing.cast(dict[str, typing.Any], payload)
+    if 'already exists' in str(body.get('message') or '').lower():
         return True
-    errors = payload.get('errors')
+    errors = body.get('errors')
     if not isinstance(errors, list):
         return False
     return any(
-        isinstance(error, dict)
-        and str(error.get('code') or '').lower() == 'already_exists'
-        for error in errors
+        str(
+            typing.cast(dict[str, typing.Any], error).get('code') or ''
+        ).lower()
+        == 'already_exists'
+        for error in typing.cast(list[object], errors)
+        if isinstance(error, dict)
     )
 
 
