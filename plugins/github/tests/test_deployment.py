@@ -17,6 +17,7 @@ from imbi.common.plugins.errors import PluginAuthenticationFailed
 from imbi.plugins.github.deployment import (
     GitHubDeployment,
     _artifact_status,
+    _mainline_branches,
     _repo_root_from_redirect,
 )
 from imbi.plugins.github.plugin import GitHubPlugin
@@ -90,6 +91,21 @@ class ManifestTestCase(unittest.TestCase):
         # against an artifact that already exists.
         self.assertFalse(options['artifact_workflow'].required)
         self.assertEqual(options['artifact_version_input'].default, 'version')
+
+    def test_mainline_branches_declared_integration_level(self) -> None:
+        # Mainline branch naming is a property of the org's repos, not of
+        # one capability, and ``capability_options`` only ever reach their
+        # own capability -- so it has to sit beside flavor/host where every
+        # capability can read it off ``ctx.integration_options``.
+        options = {opt.name: opt for opt in GitHubPlugin.manifest.options}
+        self.assertIn('mainline_branches', options)
+        self.assertEqual(options['mainline_branches'].default, 'main master')
+        self.assertFalse(options['mainline_branches'].required)
+        cap = GitHubPlugin.manifest.get_capability('deployment')
+        assert cap is not None
+        self.assertNotIn(
+            'mainline_branches', {opt.name for opt in cap.options}
+        )
 
     def test_no_legacy_deploys_via_edge_declared(self) -> None:
         # Promote behaviour is inferred from the ref shape and per-env
@@ -1310,6 +1326,238 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first.call_count, 1)
 
     @respx.mock
+    async def test_branch_refs_never_reach_the_releases_api(self) -> None:
+        # A repo that deploys off its default branch reports ``ref ==
+        # 'main'``/``'master'``, which can never name a release.  Neither
+        # release route is mocked: if the lookup were attempted at all,
+        # respx would raise on the unmatched request.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 61,
+                        'sha': 'sha1',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    },
+                    {
+                        'id': 62,
+                        'sha': 'sha2',
+                        'ref': 'master',
+                        'created_at': '2026-05-13T14:05:00Z',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/61/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/62/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production'], limit=2
+        )
+        self.assertEqual(len(events), 2)
+        self.assertTrue(all(e.release_notes is None for e in events))
+
+    @respx.mock
+    async def test_configured_mainline_branches_retarget_the_guard(
+        self,
+    ) -> None:
+        # An org that deploys off ``develop`` configures it, which both
+        # suppresses the doomed ``develop`` lookup and re-enables the
+        # ``main`` one: the option replaces the default set, it doesn't
+        # extend it.  Only the ``main`` route is mocked, so respx raises
+        # if ``develop`` is looked up after all.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 91,
+                        'sha': 'sha1',
+                        'ref': 'develop',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    },
+                    {
+                        'id': 92,
+                        'sha': 'sha2',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:05:00Z',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/91/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/92/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        on_main = respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'tag_name': 'main', 'body': 'notes from main'}
+            )
+        )
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(
+                connection={
+                    'flavor': 'github',
+                    'mainline_branches': 'develop',
+                }
+            ),
+            _CREDS,
+            ['production'],
+            limit=2,
+        )
+        by_ref = {e.ref: e for e in events}
+        self.assertIsNone(by_ref['develop'].release_notes)
+        self.assertEqual(by_ref['main'].release_notes, 'notes from main')
+        self.assertEqual(on_main.call_count, 1)
+
+    @respx.mock
+    async def test_release_404_looked_up_once_per_sweep(self) -> None:
+        # Deployments sharing a tagless ref must pay for the miss once,
+        # not once per row -- and the memo is scoped to a single sweep,
+        # so a second call re-checks (a release may have been cut since).
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 71,
+                        'sha': 'sha1',
+                        'ref': 'release-candidate',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    },
+                    {
+                        'id': 72,
+                        'sha': 'sha2',
+                        'ref': 'release-candidate',
+                        'created_at': '2026-05-13T14:05:00Z',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/71/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/72/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        lookup = respx.get(
+            'https://api.github.com/repos/octo/demo/releases/'
+            'tags/release-candidate'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production'], limit=2
+        )
+        self.assertEqual(len(events), 2)
+        self.assertTrue(all(e.release_notes is None for e in events))
+        self.assertEqual(lookup.call_count, 1)
+        await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production'], limit=2
+        )
+        self.assertEqual(lookup.call_count, 2)
+
+    @respx.mock
+    async def test_release_410_cached_like_404(self) -> None:
+        # GitHub answers 410 Gone for a resource that's been disabled;
+        # treat it as a miss and suppress the repeat like a 404.
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 81,
+                        'sha': 'sha1',
+                        'ref': 'v3.0.0',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    },
+                    {
+                        'id': 82,
+                        'sha': 'sha2',
+                        'ref': 'v3.0.0',
+                        'created_at': '2026-05-13T14:05:00Z',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/81/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/82/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        lookup = respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v3.0.0'
+        ).mock(return_value=httpx.Response(410, json={'message': 'Gone'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production'], limit=2
+        )
+        self.assertTrue(all(e.release_notes is None for e in events))
+        self.assertEqual(lookup.call_count, 1)
+
+    @respx.mock
+    async def test_release_404_coalesced_across_environments(self) -> None:
+        # The per-env fan-out is concurrent, so a memo of *results* would
+        # let every env past the check before the first response landed --
+        # exactly the shape at the host's default limit=1, where no single
+        # env repeats a ref and cross-env sharing is the only sharing
+        # there is. Two envs on one tagless ref must cost one lookup.
+        def _deployments(request: httpx.Request) -> httpx.Response:
+            deployment_id = {'staging': 61, 'production': 62}[
+                request.url.params['environment']
+            ]
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': deployment_id,
+                        'sha': f'sha{deployment_id}',
+                        'ref': 'release-candidate',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    }
+                ],
+            )
+
+        respx.get('https://api.github.com/repos/octo/demo/deployments').mock(
+            side_effect=_deployments
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/61/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/62/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+
+        async def _missing_release(request: httpx.Request) -> httpx.Response:
+            # Yield the way a real request does, so the second env gets a
+            # turn while the first one is still in flight.
+            await asyncio.sleep(0)
+            return httpx.Response(404, json={'message': 'Not Found'})
+
+        lookup = respx.get(
+            'https://api.github.com/repos/octo/demo/releases/'
+            'tags/release-candidate'
+        ).mock(side_effect=_missing_release)
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['staging', 'production'], limit=1
+        )
+        self.assertEqual(len(events), 2)
+        self.assertTrue(all(e.release_notes is None for e in events))
+        self.assertEqual(lookup.call_count, 1)
+
+    @respx.mock
     async def test_bot_creator_attributed_to_triggering_actor(self) -> None:
         # A workflow-created deployment lists the app bot as creator; the
         # status URL points at the Actions run, so attribution follows to
@@ -2182,6 +2430,53 @@ class RepoRootFromRedirectTestCase(unittest.TestCase):
     def test_returns_none_when_id_missing(self) -> None:
         self.assertIsNone(
             _repo_root_from_redirect('https://api.github.com/repositories')
+        )
+
+
+class MainlineBranchesTestCase(unittest.TestCase):
+    def test_unset_falls_back_to_default(self) -> None:
+        self.assertEqual(
+            _mainline_branches({'flavor': 'github'}),
+            frozenset({'main', 'master'}),
+        )
+
+    def test_space_separated(self) -> None:
+        self.assertEqual(
+            _mainline_branches({'mainline_branches': 'develop trunk'}),
+            frozenset({'develop', 'trunk'}),
+        )
+
+    def test_commas_tolerated(self) -> None:
+        # The label advertises spaces; operators type commas anyway.
+        self.assertEqual(
+            _mainline_branches({'mainline_branches': 'main, develop,trunk'}),
+            frozenset({'main', 'develop', 'trunk'}),
+        )
+
+    def test_stray_separators_do_not_yield_empty_branch(self) -> None:
+        # An empty-string member would match a deployment with ``ref: ''``
+        # and, worse, read as a configured value.
+        self.assertEqual(
+            _mainline_branches({'mainline_branches': '  main,, master,  '}),
+            frozenset({'main', 'master'}),
+        )
+
+    def test_blank_falls_back_to_default(self) -> None:
+        # The manifest default is a form pre-fill the host does not
+        # substitute, so blank means "unconfigured", not "no exclusions".
+        self.assertEqual(
+            _mainline_branches({'mainline_branches': '   '}),
+            frozenset({'main', 'master'}),
+        )
+
+    def test_non_string_falls_back_to_default(self) -> None:
+        self.assertEqual(
+            _mainline_branches({'mainline_branches': None}),
+            frozenset({'main', 'master'}),
+        )
+        self.assertEqual(
+            _mainline_branches({'mainline_branches': 7}),
+            frozenset({'main', 'master'}),
         )
 
 

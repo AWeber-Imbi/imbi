@@ -2,7 +2,10 @@
 
 :class:`GitHubDeployment` resolves its host from the Integration's
 ``flavor`` + ``host`` options on ``ctx.integration_options`` (github.com,
-a ``*.ghe.com`` GHEC tenant, or an operator-managed GHES appliance).
+a ``*.ghe.com`` GHEC tenant, or an operator-managed GHES appliance), and
+reads ``mainline_branches`` from the same map to know which deployment
+refs are branches rather than release tags (see
+:func:`_mainline_branches`).
 
 *Deploying* drives the GitHub Deployments API
 (``POST /repos/{owner}/{repo}/deployments``) rather than
@@ -369,6 +372,40 @@ def _record_releases_forbidden(client: httpx.AsyncClient) -> None:
     for k in expired:
         _RELEASES_FORBIDDEN_TOKENS.pop(k, None)
     _RELEASES_FORBIDDEN_TOKENS[_releases_cache_key(client)] = now
+
+
+# Fallback for the ``mainline_branches`` integration option: deployment
+# refs that are branch names rather than release tags. A repo that deploys
+# off its default branch reports ``ref == 'main'`` on every deployment, so
+# ``GET /releases/tags/main`` is a guaranteed 404 — skip the request
+# outright instead of paying for it once per deployment row.
+_DEFAULT_MAINLINE_BRANCHES = frozenset({'main', 'master'})
+
+
+def _mainline_branches(
+    integration_options: dict[str, typing.Any],
+) -> frozenset[str]:
+    """Resolve the ``mainline_branches`` integration option to a set.
+
+    Declared integration-level (beside ``flavor`` / ``host``) because
+    mainline branch naming is a property of the org's repos rather than of
+    any one capability, so every capability can read the same value.  The
+    manifest's ``default`` is a form pre-fill only -- the host does not
+    substitute it -- so an absent or blank value resolves to
+    :data:`_DEFAULT_MAINLINE_BRANCHES` here, mirroring how
+    ``artifact_version_input`` re-applies its own default.  Consequently
+    the guard can be *retargeted* but not switched off; a repo that cuts
+    releases tagged with a branch name is not a case worth supporting.
+
+    Operator-entered, so tolerate commas as well as the advertised spaces
+    and discard surrounding whitespace -- a stray separator would
+    otherwise register as a branch named ``''``.
+    """
+    raw = integration_options.get('mainline_branches')
+    if not isinstance(raw, str):
+        return _DEFAULT_MAINLINE_BRANCHES
+    configured = frozenset(raw.replace(',', ' ').split())
+    return configured or _DEFAULT_MAINLINE_BRANCHES
 
 
 def _commit_from_payload(payload: dict[str, typing.Any]) -> Commit:
@@ -1221,11 +1258,25 @@ class GitHubDeployment(DeploymentCapability):
         # the triggering-actor lookup by run id so we resolve each run
         # at most once. Shared across the parallel per-env fan-out.
         run_cache: dict[str, tuple[str, str] | None] = {}
+        # Likewise, deployments in a sweep share a handful of refs; the
+        # lookup for each is memoised here as a task so it happens once
+        # per ref instead of once per deployment. Holding the task (not
+        # its result) also coalesces the per-env fan-out below: envs that
+        # deployed the same ref await one in-flight request rather than
+        # each issuing their own, which is the common shape at the host's
+        # default limit=1 where no single env repeats a ref.
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]] = {}
+        mainline = _mainline_branches(ctx.integration_options)
         async with self._client(ctx, credentials) as client:
             per_env = await asyncio.gather(
                 *(
                     self._list_deployments_for_env(
-                        client, env, page_size, run_cache
+                        client,
+                        env,
+                        page_size,
+                        run_cache,
+                        release_lookups,
+                        mainline,
                     )
                     for env in environments
                 )
@@ -1248,8 +1299,9 @@ class GitHubDeployment(DeploymentCapability):
         which 404s to ``None`` for tags without a release and caches 403s
         so a scope-limited token short-circuits.
         """
+        mainline = _mainline_branches(ctx.integration_options)
         async with self._client(ctx, credentials) as client:
-            return await self._release_notes_for_ref(client, tag)
+            return await self._release_notes_for_ref(client, tag, mainline)
 
     async def _list_deployments_for_env(
         self,
@@ -1257,6 +1309,8 @@ class GitHubDeployment(DeploymentCapability):
         environment: str,
         page_size: int,
         run_cache: dict[str, tuple[str, str] | None],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]],
+        mainline: frozenset[str],
     ) -> list[RemoteDeployment]:
         try:
             resp = await client.get(
@@ -1289,7 +1343,12 @@ class GitHubDeployment(DeploymentCapability):
         observed: list[RemoteDeployment] = []
         for deployment in deployments:
             run = await self._observe_deployment(
-                client, environment, deployment, run_cache
+                client,
+                environment,
+                deployment,
+                run_cache,
+                release_lookups,
+                mainline,
             )
             if run is not None:
                 observed.append(run)
@@ -1301,6 +1360,8 @@ class GitHubDeployment(DeploymentCapability):
         environment: str,
         deployment: dict[str, typing.Any],
         run_cache: dict[str, tuple[str, str] | None],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]],
+        mainline: frozenset[str],
     ) -> RemoteDeployment | None:
         deployment_id = deployment.get('id')
         sha = deployment.get('sha')
@@ -1318,7 +1379,9 @@ class GitHubDeployment(DeploymentCapability):
         ref_value = deployment.get('ref')
         description = deployment.get('description')
         release_notes = (
-            await self._release_notes_for_ref(client, str(ref_value))
+            await self._release_notes_for_ref(
+                client, str(ref_value), mainline, release_lookups
+            )
             if ref_value
             else None
         )
@@ -1411,18 +1474,53 @@ class GitHubDeployment(DeploymentCapability):
         return result
 
     async def _release_for_ref(
-        self, client: httpx.AsyncClient, ref: str
+        self,
+        client: httpx.AsyncClient,
+        ref: str,
+        mainline: frozenset[str],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]]
+        | None = None,
     ) -> RemoteRelease | None:
         """Return the GitHub release for ``ref``, metadata included.
 
-        The single release lookup every caller degrades through: a 404 /
-        non-200 / parse failure yields ``None``, and a ``403`` (token lacks
-        scope to read releases) is cached process-wide so a forbidden token
-        short-circuits instead of re-issuing the request for every
+        Refs in ``mainline`` (the resolved ``mainline_branches`` option)
+        never name a release, so they never reach the API.
+
+        ``release_lookups`` memoises one lookup per ref for the duration of
+        a sweep.  It holds the in-flight task rather than its result, so
+        the parallel per-env fan-out in
+        :meth:`list_recent_deployments` coalesces onto a single request
+        when several environments deployed the same ref -- checking a
+        result-only cache would let every env past the check before the
+        first response landed.  Like ``run_cache`` it memoises every
+        outcome, failures included, so one sweep never retries a ref that
+        just errored; it is scoped the same way (one sweep, one repo, one
+        token), and omitting it disables the memo for one-off host-facing
+        lookups.
+        """
+        if ref in mainline:
+            return None
+        if release_lookups is None:
+            return await self._fetch_release(client, ref)
+        task = release_lookups.get(ref)
+        if task is None:
+            task = asyncio.ensure_future(self._fetch_release(client, ref))
+            release_lookups[ref] = task
+        return await task
+
+    async def _fetch_release(
+        self, client: httpx.AsyncClient, ref: str
+    ) -> RemoteRelease | None:
+        """Issue the release lookup for ``ref`` and shape the response.
+
+        The single release request every caller degrades through: a 404 /
+        410 / non-200 / parse failure yields ``None``, and a ``403`` (token
+        lacks scope to read releases) is cached process-wide so a forbidden
+        token short-circuits instead of re-issuing the request for every
         deployment on every resync sweep.  ``author`` is the login GitHub
-        credits with the release and ``author_subject`` its numeric user id,
-        which the host resolves to an Imbi user through the identity plugins
-        on the same service.
+        credits with the release and ``author_subject`` its numeric user
+        id, which the host resolves to an Imbi user through the identity
+        plugins on the same service.
         """
         if _releases_forbidden(client):
             return None
@@ -1464,11 +1562,17 @@ class GitHubDeployment(DeploymentCapability):
         tag: str,
     ) -> RemoteRelease | None:
         """Return the GitHub release for ``tag`` with its author."""
+        mainline = _mainline_branches(ctx.integration_options)
         async with self._client(ctx, credentials) as client:
-            return await self._release_for_ref(client, tag)
+            return await self._release_for_ref(client, tag, mainline)
 
     async def _release_notes_for_ref(
-        self, client: httpx.AsyncClient, ref: str
+        self,
+        client: httpx.AsyncClient,
+        ref: str,
+        mainline: frozenset[str],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]]
+        | None = None,
     ) -> str | None:
         """Return the GitHub release notes body for a deployed ref.
 
@@ -1479,7 +1583,9 @@ class GitHubDeployment(DeploymentCapability):
         ``None`` -- resync is never blocked by a missing or unreadable
         release.
         """
-        release = await self._release_for_ref(client, ref)
+        release = await self._release_for_ref(
+            client, ref, mainline, release_lookups
+        )
         return release.body_markdown if release else None
 
     async def _latest_status(
