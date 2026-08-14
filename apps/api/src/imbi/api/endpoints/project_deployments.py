@@ -716,16 +716,38 @@ async def _load_env_flags(
 
 
 def _is_already_exists_error(exc: BaseException) -> bool:
-    """Return True when exc is a GitHub 422 'Reference already exists'."""
+    """Return True when exc is a GitHub 422 "already exists" rejection.
+
+    The remote states this two different ways.  ``POST /git/refs`` for a
+    tag that is already there answers with a bare
+    ``{"message": "Reference already exists"}``, but ``POST /releases``
+    for a tag that already carries one answers with the generic
+    ``{"message": "Validation Failed", "errors": [{"resource":
+    "Release", "code": "already_exists", "field": "tag_name"}]}`` -- so
+    the per-error codes have to be inspected as well, or a re-publish of
+    an already-ratified release reads as a hard failure instead of the
+    idempotent no-op it is.
+    """
     if not isinstance(exc, httpx.HTTPStatusError):
         return False
     if exc.response.status_code != 422:
         return False
     try:
-        msg = (exc.response.json().get('message') or '').lower()
-        return 'already exists' in msg
+        payload = exc.response.json()
     except Exception:  # noqa: BLE001
         return False
+    if not isinstance(payload, dict):
+        return False
+    if 'already exists' in str(payload.get('message') or '').lower():
+        return True
+    errors = payload.get('errors')
+    if not isinstance(errors, list):
+        return False
+    return any(
+        isinstance(error, dict)
+        and str(error.get('code') or '').lower() == 'already_exists'
+        for error in errors
+    )
 
 
 def _promote_warning(step: str, exc: BaseException) -> str:
