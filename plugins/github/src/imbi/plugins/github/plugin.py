@@ -81,6 +81,22 @@ _OPTIONS: list[PluginOption] = [
         ),
         type='string',
     ),
+    PluginOption(
+        name='mainline_branches',
+        label='Mainline branches (space-separated)',
+        description=(
+            'Branch names your repos deploy from, which therefore never '
+            'name a GitHub Release.  Deployment resync skips the release '
+            'lookup for a deployment whose ref is one of these instead of '
+            'issuing a request that is certain to 404 -- a repo deploying '
+            'off its default branch would otherwise pay for one doomed '
+            'lookup per deployment row.  Commas or spaces both separate; '
+            'leave blank for the ``main master`` default.'
+        ),
+        type='string',
+        required=False,
+        default='main master',
+    ),
 ]
 
 # The single credential store for the Integration. Every capability of
