@@ -2490,6 +2490,176 @@ async def _default_branch(
     return None
 
 
+#: How many workflow names a failed preflight lists back.  Enough to
+#: spot a typo against, short enough that a repo with a hundred workflows
+#: doesn't turn one error message into a wall of text.
+_WORKFLOW_SUGGESTION_LIMIT = 10
+
+
+def _names_workflow(
+    candidate: plugin_base.WorkflowFile, workflow: str
+) -> bool:
+    """True when *candidate* is the workflow ``artifact_workflow`` names.
+
+    The option carries whatever the operator typed into the Integration
+    form, and a dispatch endpoint accepts more than one spelling of the
+    same workflow: its remote id, its repo-relative path, or just the
+    file name.  All three are accepted here so a working configuration
+    never trips the preflight.
+    """
+    return workflow in {
+        candidate.id,
+        candidate.path,
+        candidate.path.rsplit('/', 1)[-1],
+    }
+
+
+async def _assert_workflow_exists(
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    workflow: str,
+) -> None:
+    """Refuse a dispatch the remote has no workflow for.
+
+    ``artifact_workflow`` is operator-entered and never validated against
+    the repo, so a typo, a rename, or a workflow that was deleted names
+    nothing on the remote.  Dispatching it anyway 404s inside
+    ``create_deployment_artifact`` and surfaces as a bare 500 with the
+    remote's "Not Found" reaching only the API log.  Checking first turns
+    that into a 400 that names the workflow, and -- because this runs
+    ahead of the ``Release`` node write -- leaves nothing behind.
+
+    Fails open.  A capability that cannot list workflows, or a listing
+    call that errors, degrades to ``None`` through :func:`_best_effort`
+    and the dispatch proceeds: this exists to explain a misconfiguration,
+    not to add a second way for a good release to fail.  An empty list is
+    *not* that case -- a repo with no workflows genuinely cannot run this
+    one.
+    """
+    workflows = await _best_effort(
+        handler.list_workflows(ctx, credentials),
+        f'list_workflows for project {ctx.project_id}',
+    )
+    if workflows is None:
+        return
+    if any(_names_workflow(candidate, workflow) for candidate in workflows):
+        return
+    names = sorted(
+        candidate.path.rsplit('/', 1)[-1]
+        for candidate in workflows
+        if candidate.path
+    )
+    available = ', '.join(names[:_WORKFLOW_SUGGESTION_LIMIT]) or 'none'
+    if len(names) > _WORKFLOW_SUGGESTION_LIMIT:
+        available += ', ...'
+    LOGGER.warning(
+        'Release workflow %r is not present in the repository for project '
+        '%s; refusing to dispatch it',
+        workflow,
+        ctx.project_id,
+    )
+    raise fastapi.HTTPException(
+        status_code=400,
+        detail=(
+            f'The configured Release workflow {workflow!r} does not exist '
+            f"in this project's repository, so there is nothing to "
+            f'dispatch. Correct the Release workflow option on the '
+            f'integration, or clear it to cut the tag directly. '
+            f'Workflows found: {available}.'
+        ),
+    )
+
+
+async def _delete_release_node(
+    db: graph.Graph, *, project_id: str, release_id: str
+) -> None:
+    """Undo the ``Release`` node write a failed dispatch orphaned.
+
+    Only ever called for a node :func:`_dispatch_release_build` created
+    moments earlier and then could not dispatch, so nothing on it is
+    worth keeping: no ``DEPLOYED_TO`` edge, no block, no
+    ``operations_log`` row (the watcher writes that after a green build)
+    and no embedding rows (those follow the typed node writers, not the
+    raw upsert this reverses).  ``DETACH DELETE`` takes the
+    ``HAS_RELEASE`` edge with it.
+
+    Not called for a node that already existed when the dispatch probed
+    for one -- re-promoting a tag lands on the earlier release, and
+    deleting that would discard a real one.  The probe is a read, so two
+    promotes of the same ``(tag, committish)`` racing between it and the
+    upsert could still have the loser delete the winner's node; nothing
+    serializes concurrent promotes of one tag today, and closing that
+    would take a lock rather than a wider ``WHERE``.
+
+    Best-effort: a promote that already has an error to report should
+    report *that*, not a cleanup failure stacked on top of it.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    DETACH DELETE r
+    """
+    try:
+        await db.execute(
+            query, {'project_id': project_id, 'release_id': release_id}, []
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Could not remove release %s for project %s after its dispatch '
+            'failed; it remains as a release with no tag on the remote',
+            release_id,
+            project_id,
+            exc_info=True,
+        )
+
+
+async def _untag_release_node(
+    db: graph.Graph, *, project_id: str, release_id: str
+) -> None:
+    """Take back the tag a failed dispatch put on an adopted Release.
+
+    The counterpart to :func:`_delete_release_node` for the node
+    :func:`_adopt_untagged_release` reached: that one is the untagged
+    release the resync built from the commit's testing deployments, so
+    it predates the promote and outlives it.  Only the tag comes off,
+    which returns it to exactly what it was before the dispatch was
+    attempted.
+
+    ``SET r.tag = NULL`` rather than ``REMOVE``: it is what AGE
+    supports, and every reader tests the tag with ``IS NULL`` /
+    ``IS NOT NULL`` or ``COALESCE``, which cannot tell an absent
+    property from a null one.
+
+    Best-effort, for the same reason the delete is: a promote that
+    already has an error to report should report *that*.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+    SET r.tag = NULL,
+        r.updated_at = {now}
+    """
+    try:
+        await db.execute(
+            query,
+            {
+                'project_id': project_id,
+                'release_id': release_id,
+                'now': datetime.datetime.now(datetime.UTC).isoformat(),
+            },
+            [],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Could not un-tag release %s for project %s after its dispatch '
+            'failed; it remains tagged with no tag on the remote',
+            release_id,
+            project_id,
+            exc_info=True,
+        )
+
+
 class _DispatchedBuild(typing.NamedTuple):
     """What :func:`_dispatch_release_build` leaves behind."""
 
@@ -2534,10 +2704,14 @@ async def _dispatch_release_build(
     distinguish that from a shipped release.
 
     That reasoning only covers failures *after* the dispatch, though, so
-    everything that can fail before it runs first.  A 502 here used to
-    leave a node behind that no dispatch, no block, and no promote status
-    explained -- and one that still matched the ``(tag, committish)``
-    gates in :func:`_blocked_release`.
+    everything that can fail before it runs first: the default-branch
+    resolution, and the preflight that the configured workflow is
+    something the remote can actually run.  A dispatch that fails anyway
+    takes the node with it (:func:`_delete_release_node`) unless the node
+    predates this call -- otherwise a release Imbi never dispatched is
+    left looking like one it shipped, with no tag on the remote to match
+    it, and it still satisfies the ``(tag, committish)`` gates in
+    :func:`_blocked_release`.
     """
     ref = await _default_branch(handler, ctx, credentials)
     if ref is None:
@@ -2548,10 +2722,27 @@ async def _dispatch_release_build(
                 'is the ref the Release workflow must be dispatched from.'
             ),
         )
+    await _assert_workflow_exists(
+        handler,
+        ctx,
+        credentials,
+        str(ctx.capability_options.get('artifact_workflow') or '').strip(),
+    )
+    # Whether this call is the one that creates the node decides whether a
+    # failed dispatch may delete it: re-promoting a tag lands on the
+    # release the earlier promote created, and that one is not ours to
+    # discard.
+    existing_release_id = await _release_id_for(
+        db,
+        project_id=project_id,
+        committish=versioning.short_committish(committish),
+        tag=tag,
+    )
     # The commit being promoted usually already has an untagged Release
     # holding its testing history; tag that one instead of leaving a
-    # tagged sibling beside it.
-    await _adopt_untagged_release(
+    # tagged sibling beside it.  A node reached this way is older than
+    # this promote, so a failed dispatch takes back only the tag.
+    adopted_release_id = await _adopt_untagged_release(
         db, project_id=project_id, committish=committish, tag=tag
     )
     release_id = await _upsert_release_node(
@@ -2601,11 +2792,28 @@ async def _dispatch_release_build(
             )
         )
 
+    async def _abandon() -> None:
+        """Undo what this call wrote, in the way that node allows.
+
+        An adopted node predates the promote -- it carries the commit's
+        testing history -- so only the tag this call put on it comes
+        back off.  Deleting it would discard that history.
+        """
+        if adopted_release_id is not None:
+            await _untag_release_node(
+                db, project_id=project_id, release_id=adopted_release_id
+            )
+        elif existing_release_id is None:
+            await _delete_release_node(
+                db, project_id=project_id, release_id=release_id
+            )
+
     try:
         artifact = await call_with_identity_retry(
             db, ctx, resolved, auth, fn=_dispatch, attached=True
         )
     except NotImplementedError as exc:
+        await _abandon()
         raise fastapi.HTTPException(
             status_code=400,
             detail=(
@@ -2614,6 +2822,13 @@ async def _dispatch_release_build(
                 'to cutting the tag directly.'
             ),
         ) from exc
+    except Exception:
+        # Anything else the remote or the transport raises: the build was
+        # never accepted, so the release does not exist in any sense and
+        # the error is the caller's answer.  Re-raised untouched -- 404
+        # and 422 both still arrive as a 500 (see issue #215).
+        await _abandon()
+        raise
     await persist_link_writeback(db, ctx)
 
     job = release_promote_service.WatchJob(

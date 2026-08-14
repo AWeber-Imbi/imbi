@@ -40,6 +40,7 @@ from imbi.common.plugins.base import (
     ReleaseInfo,
     RemoteDeployment,
     RemoteRelease,
+    WorkflowFile,
 )
 from imbi.common.plugins.registry import RegistryEntry
 
@@ -142,6 +143,38 @@ class _DispatchingDeploymentPlugin(_FakeDeploymentPlugin):
         self, ctx, credentials, run_id
     ):
         return ArtifactRun(run_id=run_id, status='in_progress')
+
+
+def _listing_plugin(
+    *paths: str,
+    ids: tuple[str, ...] = (),
+    raises: bool = False,
+) -> type[DeploymentCapability]:
+    """A dispatching plugin whose ``list_workflows`` answers *paths*.
+
+    ``_DispatchingDeploymentPlugin`` deliberately leaves the method
+    unimplemented -- that is the capability default, and the preflight
+    fails open on it, which is what keeps every other dispatch test on
+    this path.  *raises* models a listing call that reaches the remote and
+    errors, which must fail open the same way.
+    """
+
+    class _ListingPlugin(_DispatchingDeploymentPlugin):
+        async def list_workflows(  # type: ignore[override]
+            self, ctx, credentials
+        ):
+            if raises:
+                raise RuntimeError('workflows unavailable')
+            return [
+                WorkflowFile(
+                    id=ids[index] if index < len(ids) else str(index),
+                    path=path,
+                    name=path.rsplit('/', 1)[-1],
+                )
+                for index, path in enumerate(paths)
+            ]
+
+    return _ListingPlugin
 
 
 def _ci_plugin(
@@ -1993,7 +2026,12 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
         'release_notes_markdown': '## What changed',
     }
 
-    def _enable_dispatch(self, *, workflow: str = 'release.yml') -> None:
+    def _enable_dispatch(
+        self,
+        *,
+        workflow: str = 'release.yml',
+        handler: type[DeploymentCapability] | None = None,
+    ) -> None:
         """Opt this test into the dispatch path.
 
         Deliberately *not* in ``setUp``: this class inherits every test on
@@ -2004,7 +2042,7 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
         _DispatchingDeploymentPlugin.dispatches.clear()
         _DispatchingDeploymentPlugin.run_id = '4242'
         self.mocks['resolve_capability'].return_value = _make_resolved(
-            _DispatchingDeploymentPlugin,
+            handler or _DispatchingDeploymentPlugin,
             options={'owner': 'octo', 'repo': 'demo'},
             capability_options=(
                 {'artifact_workflow': workflow} if workflow else {}
@@ -2178,6 +2216,140 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
         self.assertIsNone(response.json()['phase'])
         self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
         self.create_tag.assert_awaited_once()
+
+    # -- Preflighting the configured workflow ------------------------------
+
+    def _deletes(self) -> list[dict[str, typing.Any]]:
+        """Params of every ``Release`` node deletion that ran."""
+        return [
+            call.args[1]
+            for call in self.mock_db.execute.await_args_list
+            if 'DETACH DELETE r' in call.args[0]
+        ]
+
+    def test_missing_workflow_is_refused_before_anything_is_written(
+        self,
+    ) -> None:
+        """The whole point: a typo'd option costs nothing but a 400.
+
+        Dispatching it would 404 from inside the plugin and arrive as a
+        bare 500, with a ``Release`` node already written for a tag the
+        remote will never carry.
+        """
+        self._enable_dispatch(
+            handler=_listing_plugin(
+                '.github/workflows/ci.yaml', '.github/workflows/docs.yaml'
+            )
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 400)
+        detail = response.json()['detail']
+        self.assertIn("'release.yml'", detail)
+        self.assertIn('does not exist', detail)
+        # Names what *is* there, so the operator can spot the typo.
+        self.assertIn('ci.yaml', detail)
+        self.assertEqual([], _DispatchingDeploymentPlugin.dispatches)
+        self.upsert.assert_not_awaited()
+        self.assertEqual([], self._deletes())
+
+    def test_workflow_matched_by_file_name(self) -> None:
+        self._enable_dispatch(
+            handler=_listing_plugin('.github/workflows/release.yml')
+        )
+        self.assertEqual(202, self._promote().status_code)
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+
+    def test_workflow_matched_by_repo_relative_path(self) -> None:
+        self._enable_dispatch(
+            workflow='.github/workflows/release.yml',
+            handler=_listing_plugin('.github/workflows/release.yml'),
+        )
+        self.assertEqual(202, self._promote().status_code)
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+
+    def test_workflow_matched_by_remote_id(self) -> None:
+        """A numeric id is what the workflow dropdown stores."""
+        self._enable_dispatch(
+            workflow='1234567',
+            handler=_listing_plugin(
+                '.github/workflows/release.yml', ids=('1234567',)
+            ),
+        )
+        self.assertEqual(202, self._promote().status_code)
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+
+    def test_unlistable_workflows_do_not_block_the_dispatch(self) -> None:
+        """The preflight explains a misconfiguration; it does not gate.
+
+        A listing call that errors says nothing about whether the workflow
+        exists, so refusing on it would turn one flaky read into a release
+        that cannot be cut.
+        """
+        self._enable_dispatch(handler=_listing_plugin(raises=True))
+        self.assertEqual(202, self._promote().status_code)
+        self.assertEqual(1, len(_DispatchingDeploymentPlugin.dispatches))
+
+    def test_repo_with_no_workflows_at_all_is_refused(self) -> None:
+        """An empty list is an answer, unlike a failed listing call."""
+        self._enable_dispatch(handler=_listing_plugin())
+        response = self._promote()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Workflows found: none', response.json()['detail'])
+        self.upsert.assert_not_awaited()
+
+    # -- Abandoning the node a failed dispatch orphaned --------------------
+
+    def _failing_dispatch(self) -> type[DeploymentCapability]:
+        class _FailingPlugin(_DispatchingDeploymentPlugin):
+            async def create_deployment_artifact(  # type: ignore[override]
+                self, ctx, credentials, ref, version, inputs=None
+            ):
+                raise RuntimeError('workflow_dispatch 422')
+
+        return _FailingPlugin
+
+    def test_failed_dispatch_removes_the_release_it_created(self) -> None:
+        """No tag was cut, so no release should be left claiming one."""
+        self._enable_dispatch(handler=self._failing_dispatch())
+        with self.assertRaises(RuntimeError):
+            self._promote()
+        deletes = self._deletes()
+        self.assertEqual(1, len(deletes))
+        self.assertEqual('rel1', deletes[0]['release_id'])
+
+    def test_failed_dispatch_keeps_a_release_it_did_not_create(self) -> None:
+        """Re-promoting a tag must not delete the earlier promote's node.
+
+        ``_upsert_release_node`` keys on ``(project, committish, tag)``, so
+        a retry lands on the release the first attempt created -- which may
+        have shipped, or be blocked, and is not this call's to discard.
+        """
+        self._enable_dispatch(handler=self._failing_dispatch())
+        self._start(
+            mock.patch(f'{_MODULE}._release_id_for', return_value='rel1')
+        )
+        with self.assertRaises(RuntimeError):
+            self._promote()
+        self.assertEqual([], self._deletes())
+
+    def test_a_plugin_that_cannot_dispatch_abandons_the_node_too(self) -> None:
+        """The 400 path leaves no more behind than the 500 path does."""
+
+        class _NoDispatchPlugin(_DispatchingDeploymentPlugin):
+            async def create_deployment_artifact(  # type: ignore[override]
+                self, ctx, credentials, ref, version, inputs=None
+            ):
+                raise NotImplementedError
+
+        self._enable_dispatch(handler=_NoDispatchPlugin)
+        response = self._promote()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'cannot dispatch a release workflow', response.json()['detail']
+        )
+        deletes = self._deletes()
+        self.assertEqual(1, len(deletes))
+        self.assertEqual('rel1', deletes[0]['release_id'])
 
 
 class CiGateTestCase(ProjectDeploymentsTestCase):
