@@ -341,6 +341,40 @@ class GraphExecuteTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await g.close()
 
+    async def test_write_only_query_with_empty_columns(self) -> None:
+        """``columns=[]`` must keep defaulting to ``['n']``.
+
+        Callers that write without returning (``DETACH DELETE`` with no
+        ``RETURN``) pass ``[]`` to say "nothing comes back".  That still
+        has to render ``AS (n agtype)``: AGE's ``cypher()`` returns
+        ``record``, so Postgres requires a column definition list on
+        *every* call, and honouring the empty list literally would emit
+        ``AS ()`` — a SQL syntax error, not a leaner query.  A no-RETURN
+        Cypher body under a one-column ``AS`` is the documented shape and
+        simply yields no rows.
+
+        """
+        g = graph.Graph()
+        await g.open()
+        try:
+            await g.execute(
+                'CREATE (n:GraphExecuteProbe {{id: {id}}}) RETURN n',
+                {'id': 'write-only'},
+            )
+            deleted = await g.execute(
+                'MATCH (n:GraphExecuteProbe {{id: {id}}}) DETACH DELETE n',
+                {'id': 'write-only'},
+                [],
+            )
+            self.assertEqual([], deleted)
+            remaining = await g.execute(
+                'MATCH (n:GraphExecuteProbe {{id: {id}}}) RETURN n',
+                {'id': 'write-only'},
+            )
+            self.assertEqual([], remaining)
+        finally:
+            await g.close()
+
 
 class GraphLifespanTests(unittest.IsolatedAsyncioTestCase):
     async def test_yields_opened_graph(self) -> None:
