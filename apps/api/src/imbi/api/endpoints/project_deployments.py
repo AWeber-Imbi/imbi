@@ -2571,6 +2571,71 @@ async def _assert_workflow_exists(
     )
 
 
+def _explain_dispatch_failure(
+    exc: BaseException, *, workflow: str, ref: str
+) -> fastapi.HTTPException | None:
+    """Translate a refused dispatch into an answer, when we know one.
+
+    ``create_deployment_artifact`` fails against the remote's dispatch
+    endpoint, and the statuses that endpoint answers with are
+    diagnostic -- each names a misconfiguration an operator can act on.
+    Unhandled they all arrive as a bare 500 whose cause reaches only the
+    API log, which is the whole complaint in issue #215.
+
+    Returns ``None`` for anything unrecognized -- including the 503 a
+    plugin timeout has already raised -- so the original exception and
+    its traceback survive instead of being flattened into a guess.
+
+    The remote's own message is deliberately not echoed into the detail:
+    it is logged at the call site, for the reason :func:`_promote_warning`
+    documents.
+    """
+    if isinstance(exc, fastapi.HTTPException):
+        return None
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return None
+    status = exc.response.status_code
+    if status == 404:
+        # Reachable despite the preflight, which fails open when the
+        # workflow listing itself could not be read.
+        return fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'The remote has no Release workflow named {workflow!r}, so '
+                f'there was nothing to dispatch. Correct the Release '
+                f'workflow option on the integration, or clear it to cut '
+                f'the tag directly.'
+            ),
+        )
+    if status == 422:
+        return fastapi.HTTPException(
+            status_code=400,
+            detail=(
+                f'The remote refused to run {workflow!r} as configured. That '
+                f'is what it reports when the workflow declares no '
+                f'workflow_dispatch trigger, when the file is absent from '
+                f'{ref!r}, and when the workflow does not declare an input '
+                f"Imbi sends. The remote's own message is in the API log."
+            ),
+        )
+    if status == 403:
+        return fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                f'The remote refused to dispatch {workflow!r}. That is what '
+                f'a disabled workflow reports, and what a credential without '
+                f'permission to run workflows reports.'
+            ),
+        )
+    return fastapi.HTTPException(
+        status_code=502,
+        detail=(
+            f'The remote answered HTTP {status} when Imbi tried to dispatch '
+            f'{workflow!r}. The release build was not started.'
+        ),
+    )
+
+
 async def _delete_release_node(
     db: graph.Graph, *, project_id: str, release_id: str
 ) -> None:
@@ -2722,12 +2787,10 @@ async def _dispatch_release_build(
                 'is the ref the Release workflow must be dispatched from.'
             ),
         )
-    await _assert_workflow_exists(
-        handler,
-        ctx,
-        credentials,
-        str(ctx.capability_options.get('artifact_workflow') or '').strip(),
-    )
+    workflow = str(
+        ctx.capability_options.get('artifact_workflow') or ''
+    ).strip()
+    await _assert_workflow_exists(handler, ctx, credentials, workflow)
     # Whether this call is the one that creates the node decides whether a
     # failed dispatch may delete it: re-promoting a tag lands on the
     # release the earlier promote created, and that one is not ours to
@@ -2822,13 +2885,28 @@ async def _dispatch_release_build(
                 'to cutting the tag directly.'
             ),
         ) from exc
-    except Exception:
+    except Exception as exc:
         # Anything else the remote or the transport raises: the build was
-        # never accepted, so the release does not exist in any sense and
-        # the error is the caller's answer.  Re-raised untouched -- 404
-        # and 422 both still arrive as a 500 (see issue #215).
+        # never accepted, so the release does not exist in any sense.
         await _abandon()
-        raise
+        LOGGER.exception(
+            'create_deployment_artifact failed for project=%s tag=%s '
+            'workflow=%s ref=%s',
+            project_id,
+            tag,
+            workflow,
+            ref,
+        )
+        if isinstance(exc, httpx.HTTPStatusError):
+            LOGGER.error(
+                'create_deployment_artifact HTTP %s response body: %s',
+                exc.response.status_code,
+                exc.response.text,
+            )
+        explained = _explain_dispatch_failure(exc, workflow=workflow, ref=ref)
+        if explained is None:
+            raise
+        raise explained from exc
     await persist_link_writeback(db, ctx)
 
     job = release_promote_service.WatchJob(

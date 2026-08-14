@@ -2299,14 +2299,32 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
 
     # -- Abandoning the node a failed dispatch orphaned --------------------
 
-    def _failing_dispatch(self) -> type[DeploymentCapability]:
+    def _failing_dispatch(
+        self, exc: BaseException | None = None
+    ) -> type[DeploymentCapability]:
+        failure = exc or RuntimeError('workflow_dispatch 422')
+
         class _FailingPlugin(_DispatchingDeploymentPlugin):
             async def create_deployment_artifact(  # type: ignore[override]
                 self, ctx, credentials, ref, version, inputs=None
             ):
-                raise RuntimeError('workflow_dispatch 422')
+                raise failure
 
         return _FailingPlugin
+
+    @staticmethod
+    def _remote_error(status: int) -> httpx.HTTPStatusError:
+        """The error a plugin's ``raise_for_status`` raises for *status*."""
+        request = httpx.Request(
+            'POST', 'https://api.gh/actions/workflows/release.yml/dispatches'
+        )
+        return httpx.HTTPStatusError(
+            f'HTTP {status}',
+            request=request,
+            response=httpx.Response(
+                status, request=request, json={'message': 'nope'}
+            ),
+        )
 
     def test_failed_dispatch_removes_the_release_it_created(self) -> None:
         """No tag was cut, so no release should be left claiming one."""
@@ -2331,6 +2349,78 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
         with self.assertRaises(RuntimeError):
             self._promote()
         self.assertEqual([], self._deletes())
+
+    # -- Explaining a refused dispatch -------------------------------------
+
+    def test_remote_404_is_a_400_not_a_500(self) -> None:
+        """Reachable when the preflight's own listing call failed open."""
+        self._enable_dispatch(
+            handler=self._failing_dispatch(self._remote_error(404))
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 400)
+        detail = response.json()['detail']
+        self.assertIn("no Release workflow named 'release.yml'", detail)
+        self.assertEqual(1, len(self._deletes()))
+
+    def test_remote_422_names_what_the_remote_rejects(self) -> None:
+        """The three ways a real workflow still refuses to be dispatched."""
+        self._enable_dispatch(
+            handler=self._failing_dispatch(self._remote_error(422))
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 400)
+        detail = response.json()['detail']
+        self.assertIn('workflow_dispatch trigger', detail)
+        self.assertIn("'main'", detail)
+        self.assertIn('does not declare an input', detail)
+
+    def test_remote_403_is_reported_as_a_refusal(self) -> None:
+        self._enable_dispatch(
+            handler=self._failing_dispatch(self._remote_error(403))
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('disabled workflow', response.json()['detail'])
+
+    def test_remote_5xx_is_a_502(self) -> None:
+        self._enable_dispatch(
+            handler=self._failing_dispatch(self._remote_error(500))
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 502)
+        self.assertIn('HTTP 500', response.json()['detail'])
+        self.assertIn('was not started', response.json()['detail'])
+
+    def test_the_remotes_own_message_is_not_echoed_to_the_client(
+        self,
+    ) -> None:
+        """Plugin text can carry internals; it belongs in the log."""
+        self._enable_dispatch(
+            handler=self._failing_dispatch(self._remote_error(422))
+        )
+        self.assertNotIn('nope', self._promote().json()['detail'])
+
+    def test_a_plugin_timeout_keeps_its_own_status(self) -> None:
+        """``call_with_timeout`` already answered 503; don't relabel it."""
+        self._enable_dispatch(
+            handler=self._failing_dispatch(
+                fastapi.HTTPException(
+                    status_code=503, detail='Plugin timed out'
+                )
+            )
+        )
+        response = self._promote()
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual('Plugin timed out', response.json()['detail'])
+        # Still abandoned: no build was accepted.
+        self.assertEqual(1, len(self._deletes()))
+
+    def test_an_unrecognized_failure_still_raises(self) -> None:
+        """No guessing: an error we can't explain keeps its traceback."""
+        self._enable_dispatch(handler=self._failing_dispatch())
+        with self.assertRaises(RuntimeError):
+            self._promote()
 
     def test_a_plugin_that_cannot_dispatch_abandons_the_node_too(self) -> None:
         """The 400 path leaves no more behind than the 500 path does."""
