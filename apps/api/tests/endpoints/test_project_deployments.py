@@ -3514,6 +3514,61 @@ class ReleasePublishTestCase(ProjectDeploymentsTestCase):
         self.assertIsNone(data['warning'])
         self.assertEqual(len(seen['upsert']), 1)
 
+    def test_publish_is_idempotent_for_a_validation_failed_conflict(
+        self,
+    ) -> None:
+        # ``POST /releases`` does not report a duplicate tag the way
+        # ``POST /git/refs`` does: the top-level message is the generic
+        # "Validation Failed" and ``already_exists`` shows up only as an
+        # error code.  Both shapes are the same idempotent no-op.
+        class _AlreadyThere(_FakeDeploymentPlugin):
+            async def create_release(  # type: ignore[override]
+                self,
+                ctx,
+                credentials,
+                tag,
+                name,
+                body_markdown,
+                prerelease=False,
+            ):
+                raise httpx.HTTPStatusError(
+                    "Client error '422 Unprocessable Entity'",
+                    request=httpx.Request('POST', 'https://api.gh/releases'),
+                    response=httpx.Response(
+                        422,
+                        json={
+                            'message': 'Validation Failed',
+                            'errors': [
+                                {
+                                    'resource': 'Release',
+                                    'code': 'already_exists',
+                                    'field': 'tag_name',
+                                }
+                            ],
+                        },
+                    ),
+                )
+
+            async def get_release(  # type: ignore[override]
+                self, ctx, credentials, tag
+            ):
+                return RemoteRelease(
+                    tag=tag, html_url=f'https://gh/releases/{tag}'
+                )
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _AlreadyThere
+        )
+        seen = self._patch_execute()
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._PUBLISH)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['published'])
+        self.assertEqual(data['release_url'], 'https://gh/releases/v6.4.0')
+        self.assertIsNone(data['warning'])
+        self.assertEqual(len(seen['upsert']), 1)
+
     def test_publish_writes_an_operations_log_audit(self) -> None:
         self._patch_execute()
         with testclient.TestClient(self.test_app) as client:
