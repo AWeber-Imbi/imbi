@@ -3642,11 +3642,19 @@ def _fallback_notes(commits: list[Commit]) -> str:
     return '\n'.join(lines).rstrip()
 
 
+_BODY_TRUNCATION_MARKER = '\n… (truncated)'
+
+
 def _truncate_commit_body(body: str) -> str:
-    """Cap one commit body so a long one can't crowd out the rest."""
+    """Cap one commit body so a long one can't crowd out the rest.
+
+    The marker counts against the cap, so the result never exceeds
+    ``_PROMPT_BODY_CAP``.
+    """
     if len(body) <= _PROMPT_BODY_CAP:
         return body
-    return body[:_PROMPT_BODY_CAP].rstrip() + '\n… (truncated)'
+    keep = _PROMPT_BODY_CAP - len(_BODY_TRUNCATION_MARKER)
+    return body[:keep].rstrip() + _BODY_TRUNCATION_MARKER
 
 
 def _build_release_notes_prompt(

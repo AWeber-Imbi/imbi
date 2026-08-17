@@ -134,7 +134,14 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
   // once the background backfill completes so badges and deploy widgets
   // refresh.
   const resync = useProjectDeploymentResync(orgSlug, project.id, () => {
-    for (const key of ['project', 'currentReleases', 'operationsLog']) {
+    for (const key of [
+      'project',
+      'currentReleases',
+      'operationsLog',
+      // Release-only projects run this same resync from "Sync Releases",
+      // and the Releases tab's drift card is what it moves.
+      'releaseDrift',
+    ]) {
       void queryClient.invalidateQueries({
         queryKey: [key, orgSlug, project.id],
       })
