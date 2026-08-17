@@ -18,6 +18,7 @@ import {
   Stethoscope as DoctorIcon,
   Filter,
   RefreshCw,
+  Rocket,
   Settings2 as SettingsIcon,
   TrendingDown,
 } from 'lucide-react'
@@ -42,6 +43,7 @@ import {
   type ProjectSchemaResponse,
   type ScoreTrend,
 } from '@/api/endpoints'
+import { getReleaseDrift } from '@/api/releases'
 import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
 import { ConnectIdentityPrompt } from '@/components/deploy/ConnectIdentityPrompt'
 import {
@@ -95,6 +97,7 @@ import { useBalancedEnvLayout } from '@/hooks/useBalancedEnvLayout'
 import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
+import { computeDriftPairs } from '@/lib/deployment-drift'
 import { formatDateTime } from '@/lib/formatDate'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
@@ -682,6 +685,25 @@ export function ProjectDetail({
   })
   const openPrCount = openPrCountData?.total ?? 0
 
+  // Drift marks the tab with a rocket: something is ready to ship. For a
+  // release-only project that's untagged commits on the head; for a
+  // deployed one it's an environment running something the next one down
+  // the pipeline isn't. Same query key as the Releases tab, so the tab
+  // and its badge share one request.
+  const { data: releaseDrift } = useQuery({
+    enabled: isReleaseOnly && !!orgSlug && !!project.id,
+    queryFn: ({ signal }) => getReleaseDrift(orgSlug, project.id, signal),
+    queryKey: ['releaseDrift', orgSlug, project.id],
+  })
+  const hasReleaseDrift = (releaseDrift?.commits_since_tag ?? 0) > 0
+  const hasDeploymentDrift = useMemo(
+    () =>
+      computeDriftPairs(sortedEnvironments, deploymentStatus).some(
+        (pair) => pair.drifted,
+      ),
+    [sortedEnvironments, deploymentStatus],
+  )
+
   // Redirect to overview when a deep-link points at a tab that no
   // longer surfaces (e.g. /configuration on a project type with no
   // configuration plugin assigned). Wait for the assignments query to
@@ -876,14 +898,20 @@ export function ProjectDetail({
     [value],
   )
 
-  const tabs: { id: TabType; label: string }[] = [
+  const tabs: { drift?: boolean; id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     ...(hasConfigurationPlugin
       ? [{ id: 'configuration' as const, label: 'Configuration' }]
       : []),
     { id: 'dependencies', label: 'Dependencies' },
     ...(hasDeploymentsTab
-      ? [{ id: 'deployments' as const, label: 'Deployments' }]
+      ? [
+          {
+            drift: hasDeploymentDrift,
+            id: 'deployments' as const,
+            label: 'Deployments',
+          },
+        ]
       : []),
     {
       id: 'documents',
@@ -897,7 +925,6 @@ export function ProjectDetail({
       : []),
     ...(hasLogsPlugin ? [{ id: 'logs' as const, label: 'Logs' }] : []),
     { id: 'operations-log', label: 'Operations Log' },
-    ...(isReleaseOnly ? [{ id: 'releases' as const, label: 'Releases' }] : []),
     ...(hasLifecyclePlugin
       ? [
           {
@@ -918,6 +945,15 @@ export function ProjectDetail({
         return `Relationships (${total})`
       })(),
     },
+    ...(isReleaseOnly
+      ? [
+          {
+            drift: hasReleaseDrift,
+            id: 'releases' as const,
+            label: 'Releases',
+          },
+        ]
+      : []),
     { id: 'score-history', label: 'Score History' },
     { id: 'doctor', label: '' },
     { id: 'settings', label: '' },
@@ -1074,6 +1110,12 @@ export function ProjectDetail({
             return (
               <TabsTrigger key={tab.id} value={tab.id}>
                 {tab.label}
+                {tab.drift ? (
+                  <Rocket
+                    aria-label="Ready to ship"
+                    className="text-action ml-1.5 size-3.5"
+                  />
+                ) : null}
               </TabsTrigger>
             )
           })}
@@ -1368,9 +1410,13 @@ export function ProjectDetail({
                 </div>
               )}
             <ReleasesTab
+              connectLabel={deploymentConnectLabel}
               onBuildStarted={handleBuildStarted}
               orgSlug={orgSlug}
               project={project}
+              readiness={deploymentReadiness}
+              serviceIcon={deploymentPlugin?.service_icon ?? null}
+              serviceLabel={deploymentPlugin?.service_name ?? null}
             />
           </TabsContent>
         )}

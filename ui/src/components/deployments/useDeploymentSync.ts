@@ -1,7 +1,8 @@
-// Sidebar "sync" action: refreshes everything the Deployments tab reads
-// from imbi's own stores — the ClickHouse commit/tag history and the
-// release/deployment state resynced from the remote's deployment
-// records. Both arms are background jobs (enqueue + status poll).
+// The "sync" action behind the Deployments sidebar and the Releases tab
+// header: refreshes everything those tabs read from imbi's own stores —
+// the ClickHouse commit/tag history and the release/deployment state
+// resynced from the remote's deployment records. Both arms are background
+// jobs (enqueue + status poll).
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
@@ -9,7 +10,14 @@ import { useCommitSync } from '@/hooks/useCommitSync'
 import { useProjectDeploymentResync } from '@/hooks/useDeploymentResync'
 import type { UserResponse } from '@/types'
 
-const DATA_KEYS = ['recentCommits', 'releaseHistory', 'currentReleases']
+const DATA_KEYS = [
+  'recentCommits',
+  'releaseHistory',
+  'currentReleases',
+  // The Releases tab syncs through this hook too, and its drift card is
+  // exactly what a sync is expected to move.
+  'releaseDrift',
+]
 
 export function useDeploymentSync(orgSlug: string, projectId: string) {
   const queryClient = useQueryClient()

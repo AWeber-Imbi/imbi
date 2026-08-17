@@ -414,11 +414,12 @@ def _commit_from_payload(payload: dict[str, typing.Any]) -> Commit:
     commit_meta: dict[str, typing.Any] = payload.get('commit') or {}
     author_meta: dict[str, typing.Any] = commit_meta.get('author') or {}
     raw_message = str(commit_meta.get('message') or '')
-    message_lines = raw_message.splitlines()
+    subject, _, body = raw_message.partition('\n')
     return Commit(
         sha=sha,
         short_sha=_short_sha(sha),
-        message=message_lines[0] if message_lines else '',
+        message=subject,
+        body=body.strip() or None,
         author=author_meta.get('name'),
         authored_at=_parse_iso(author_meta.get('date')),
         url=payload.get('html_url'),

@@ -17,6 +17,7 @@ vi.mock('@/api/endpoints', async () => {
     ...actual,
     draftReleaseNotes: vi.fn(),
     getCommitCheckStatus: vi.fn(),
+    listAdminUsers: vi.fn().mockResolvedValue([]),
   }
 })
 
@@ -98,6 +99,16 @@ describe('ReleaseReadyCard', () => {
   it('renders the up-to-date card when there is no drift', () => {
     renderCard({ ...FIRST_RELEASE, commits: [], commits_since_tag: 0 })
     expect(screen.getByText('Up to date')).toBeInTheDocument()
+  })
+
+  it('shows the author and age of each commit', () => {
+    renderCard(FIRST_RELEASE)
+    expect(screen.getByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('Bob')).toBeInTheDocument()
+    const ages = document.querySelectorAll('time')
+    expect(Array.from(ages).map((el) => el.getAttribute('datetime'))).toContain(
+      '2026-01-02T00:00:00Z',
+    )
   })
 
   it('cuts a release with the tip commit and suggested tag', async () => {

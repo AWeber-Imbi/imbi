@@ -1,9 +1,13 @@
 import { useMemo } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { GitBranch } from 'lucide-react'
 
 import { getReleaseDrift, getReleaseHistory } from '@/api/releases'
+import {
+  IntegrationSyncStatus,
+  type Readiness,
+} from '@/components/deploy/IntegrationSyncStatus'
+import { useDeploymentSync } from '@/components/deployments/useDeploymentSync'
 import { Sk, SkText, Swap } from '@/components/ui/skeleton'
 import type { Project } from '@/types'
 
@@ -13,18 +17,27 @@ import { ReleaseHistory } from './ReleaseHistory'
 import { ReleaseReadyCard } from './ReleaseReadyCard'
 
 interface ReleasesTabProps {
+  connectLabel: string
   onBuildStarted?: (
     build: import('@/components/deploy/DeploymentModal').ReleaseBuildStarted,
   ) => void
   orgSlug: string
   project: Pick<Project, 'id' | 'links' | 'name'>
+  readiness: Readiness
+  /** Third-party service powering the deployment plugin. */
+  serviceIcon: null | string
+  serviceLabel: null | string
 }
 
 // fallow-ignore-next-line complexity
 export function ReleasesTab({
+  connectLabel,
   onBuildStarted,
   orgSlug,
   project,
+  readiness,
+  serviceIcon,
+  serviceLabel,
 }: ReleasesTabProps) {
   const enabled = !!orgSlug && !!project.id
   const {
@@ -46,6 +59,8 @@ export function ReleasesTab({
     queryKey: ['releaseHistory', orgSlug, project.id],
   })
 
+  const { isSyncing, sync } = useDeploymentSync(orgSlug, project.id)
+
   const artifact = useMemo(() => deriveArtifact(project), [project])
   const ArtifactIcon = artifact.icon
 
@@ -65,13 +80,14 @@ export function ReleasesTab({
           <ArtifactIcon className="text-tertiary size-4" />
           Releases
         </h2>
-        {drift?.head_sha ? (
-          <span className="text-tertiary inline-flex items-center gap-1.5 text-xs">
-            <GitBranch size={13} />
-            build{' '}
-            <span className="font-mono">{drift.head_sha.slice(0, 7)}</span>
-          </span>
-        ) : null}
+        <IntegrationSyncStatus
+          connectLabel={connectLabel}
+          isSyncing={isSyncing}
+          onSync={sync}
+          readiness={readiness}
+          serviceIcon={serviceIcon}
+          serviceLabel={serviceLabel}
+        />
       </div>
 
       <Swap ready={!!drift && !driftLoading} skeleton={<DriftCardSkeleton />}>

@@ -71,6 +71,20 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
   const canResyncDeployments =
     isAdmin || (user?.permissions ?? []).includes('project:deployment:write')
 
+  // A build-and-release project has no environments to deploy into, so the
+  // same resync reads as "Sync Releases" there. ``releasable`` /
+  // ``deployable`` live on the project type but aren't in the generated
+  // Project type yet, hence the casts (same as ProjectDetail).
+  const projectTypes = project.project_types ?? []
+  const isReleaseOnly =
+    projectTypes.some(
+      (pt) => (pt as { releasable?: boolean }).releasable === true,
+    ) &&
+    !projectTypes.some(
+      (pt) => (pt as { deployable?: boolean }).deployable === true,
+    )
+  const syncLabel = isReleaseOnly ? 'Sync Releases' : 'Sync Deployments'
+
   const { scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)
 
   const reportQuery = useQuery({
@@ -208,7 +222,7 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 size="sm"
                 variant="outline"
               >
-                {resync.isSyncing ? 'Syncing...' : 'Sync Deployments'}
+                {resync.isSyncing ? 'Syncing...' : syncLabel}
               </Button>
             )}
             {canResyncDeployments && (
