@@ -34,14 +34,13 @@ import { matchSorter } from 'match-sorter'
 
 import { getProjectsSlim, type ProjectListItem } from '@/api/endpoints'
 import { RelativeTime } from '@/components/ui/RelativeTime'
-import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { deriveChipColors } from '@/lib/chip-colors'
+import { computeDriftPairs, type DriftPair } from '@/lib/deployment-drift'
 
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -55,14 +54,6 @@ import { Label } from './ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { ScoreBadge } from './ui/score-badge'
 import { Sk } from './ui/skeleton'
-
-interface DriftPair {
-  drifted: boolean
-  from: string
-  to: string
-  toLabelColor?: null | string
-  toSlug: string
-}
 
 // The dropdown filters, each backed by its own URL search param.
 type FacetKey = 'drifts' | 'scores' | 'teams' | 'types'
@@ -876,46 +867,6 @@ function abbreviateEnvName(name: string): string {
   return parts.map((w) => w[0]!.toUpperCase()).join('')
 }
 
-// fallow-ignore-next-line complexity
-function computeDriftPairs(
-  environments: {
-    label_color?: null | string
-    name: string
-    slug: string
-    sort_order?: null | number
-  }[],
-  releases: Record<string, { committish?: null | string; tag?: null | string }>,
-): DriftPair[] {
-  const sorted = [...environments].sort(
-    (a, b) =>
-      (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name),
-  )
-  const pairs: DriftPair[] = []
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i]
-    const b = sorted[i + 1]
-    const ra = releases[a.slug]
-    const rb = releases[b.slug]
-    const aTag = ra?.tag ?? null
-    const bTag = rb?.tag ?? null
-    const aSha = ra?.committish ?? null
-    const bSha = rb?.committish ?? null
-    // When both envs have a SHA, compare them directly so that a tag-only
-    // difference on identical commits does not register as drift. Otherwise
-    // fall back to tag-or-SHA equality.
-    const drifted =
-      aSha && bSha ? aSha !== bSha : (aTag ?? aSha) !== (bTag ?? bSha)
-    pairs.push({
-      drifted,
-      from: a.name,
-      to: b.name,
-      toLabelColor: b.label_color ?? null,
-      toSlug: b.slug,
-    })
-  }
-  return pairs
-}
-
 function DeploymentCards({
   environments,
   releases,
@@ -1350,32 +1301,22 @@ function projectReleaseDrifted(project: {
   return s.commits_since_tag > 0
 }
 
-// fallow-ignore-next-line complexity
 function ReleaseCards({
   release_summary,
 }: {
   release_summary: {
-    head_author: null | string
-    head_author_login: null | string
     head_authored_at: null | string
     head_sha: null | string
     head_short_sha: null | string
     latest_tag: null | string
     latest_tag_at: null | string
-    latest_tag_author: null | string
     latest_tag_sha: null | string
   }
 }) {
-  const { displayNames, loginToEmail } = useLoginToEmail()
   const headSha =
     release_summary.head_short_sha ??
     release_summary.head_sha?.slice(0, 7) ??
     null
-  const headActor = release_summary.head_author ?? null
-  const headActorLogin = release_summary.head_author_login ?? headActor
-  const headActorEmail = resolveActorEmail(headActorLogin, loginToEmail)
-  const tagActor = release_summary.latest_tag_author ?? null
-  const tagActorEmail = resolveActorEmail(tagActor, loginToEmail)
   return (
     <div className="flex items-start gap-2" style={{ flexWrap: 'nowrap' }}>
       <span className="border-border bg-card w-50 rounded-lg border px-3 py-2">
@@ -1386,18 +1327,7 @@ function ReleaseCards({
         <p className="flex items-center gap-2 font-mono text-base leading-tight">
           <span className="text-primary">{headSha ?? '—'}</span>
         </p>
-        <p className="text-tertiary mt-1 flex items-center justify-between text-xs">
-          <span className="min-w-0">
-            {headActor ? (
-              <UserIdentity
-                actor={headActor}
-                displayNames={displayNames}
-                email={headActorEmail}
-                linkToProfile={false}
-                size="small"
-              />
-            ) : null}
-          </span>
+        <p className="text-tertiary mt-1 flex items-center text-xs">
           {release_summary.head_authored_at && (
             <RelativeTime value={release_summary.head_authored_at} />
           )}
@@ -1419,18 +1349,7 @@ function ReleaseCards({
             </span>
           )}
         </p>
-        <p className="text-tertiary mt-1 flex items-center justify-between text-xs">
-          <span className="min-w-0">
-            {tagActor ? (
-              <UserIdentity
-                actor={tagActor}
-                displayNames={displayNames}
-                email={tagActorEmail}
-                linkToProfile={false}
-                size="small"
-              />
-            ) : null}
-          </span>
+        <p className="text-tertiary mt-1 flex items-center text-xs">
           {release_summary.latest_tag_at && (
             <RelativeTime value={release_summary.latest_tag_at} />
           )}
@@ -1469,32 +1388,16 @@ function ReleaseLabel({
   )
 }
 
-// Deployment attribution footer shared by the grid card and the hover card.
+// Deployment timestamp footer shared by the grid card and the hover card.
 function ReleaseStamp({
   release,
 }: {
-  release?: null | { deployed_at: string; performed_by?: null | string }
+  release?: null | { deployed_at: string }
 }) {
-  const { displayNames, loginToEmail } = useLoginToEmail()
-  const actor = release?.performed_by ?? null
-  const actorEmail = resolveActorEmail(actor, loginToEmail)
   return (
-    <p className="text-tertiary mt-1 flex items-center justify-between text-xs">
+    <p className="text-tertiary mt-1 flex items-center text-xs">
       {release ? (
-        <>
-          <span className="min-w-0">
-            {actor ? (
-              <UserIdentity
-                actor={actor}
-                displayNames={displayNames}
-                email={actorEmail}
-                linkToProfile={false}
-                size="small"
-              />
-            ) : null}
-          </span>
-          <RelativeTime value={release.deployed_at} />
-        </>
+        <RelativeTime value={release.deployed_at} />
       ) : (
         <span className="invisible">—</span>
       )}

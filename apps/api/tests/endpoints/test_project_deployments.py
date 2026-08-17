@@ -1722,6 +1722,73 @@ class ResyncEndpointTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['events_recorded'], 2)
 
 
+class ReleaseNotesPromptTestCase(unittest.TestCase):
+    """Direct tests for ``_build_release_notes_prompt``."""
+
+    def test_prompt_includes_commit_bodies(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _build_release_notes_prompt,
+        )
+
+        commits = [
+            Commit(
+                sha='a',
+                short_sha='aaa',
+                message='Add widgets (#8)',
+                body='## Summary\nAdds the widget endpoint.',
+            ),
+            Commit(sha='b', short_sha='bbb', message='Subject only'),
+        ]
+        prompt = _build_release_notes_prompt(
+            'proj', 'v1.0.0', 'a', 'b', commits
+        )
+        self.assertIn('Adds the widget endpoint.', prompt)
+        self.assertIn('    ## Summary', prompt)
+        self.assertIn('bbb Subject only', prompt)
+
+    def test_prompt_truncates_long_bodies(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _PROMPT_BODY_CAP,
+            _build_release_notes_prompt,
+        )
+
+        commits = [
+            Commit(
+                sha='a',
+                short_sha='aaa',
+                message='Big one',
+                body='x' * (_PROMPT_BODY_CAP + 500),
+            )
+        ]
+        prompt = _build_release_notes_prompt('proj', None, 'a', 'b', commits)
+        self.assertIn('(truncated)', prompt)
+        self.assertNotIn('x' * (_PROMPT_BODY_CAP + 1), prompt)
+
+    def test_truncated_body_stays_within_cap(self) -> None:
+        """The marker counts against the cap, not on top of it."""
+        from imbi.api.endpoints.project_deployments import (
+            _PROMPT_BODY_CAP,
+            _truncate_commit_body,
+        )
+
+        for extra in (1, 500, 10_000):
+            with self.subTest(extra=extra):
+                truncated = _truncate_commit_body(
+                    'x' * (_PROMPT_BODY_CAP + extra)
+                )
+                self.assertLessEqual(len(truncated), _PROMPT_BODY_CAP)
+                self.assertTrue(truncated.endswith('(truncated)'))
+
+    def test_body_at_cap_is_untouched(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _PROMPT_BODY_CAP,
+            _truncate_commit_body,
+        )
+
+        body = 'x' * _PROMPT_BODY_CAP
+        self.assertEqual(_truncate_commit_body(body), body)
+
+
 class FallbackNotesTestCase(unittest.TestCase):
     """Direct tests for ``_classify_bump`` and ``_fallback_notes``."""
 

@@ -1,6 +1,9 @@
 import { Check, ExternalLink, GitPullRequest } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { RelativeTime } from '@/components/ui/RelativeTime'
+import { UserIdentity } from '@/components/ui/user-identity'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import type { ChipColors } from '@/lib/chip-colors'
 import { pullRequestRefs } from '@/lib/commit-refs'
 import { cn } from '@/lib/utils'
@@ -12,6 +15,7 @@ interface CommitRowProps {
   accent?: ChipColors | null
   active: boolean
   commit: PickerCommit
+  displayNames: Map<string, string>
   held: boolean
   idx: number
   onSelect: (sha: string) => void
@@ -22,6 +26,10 @@ interface CommitRowProps {
  * `RecentCommit` (releases tab) and `DeploymentCommit` (deployments tab).
  */
 interface PickerCommit {
+  author?: null | string
+  /** Only `RecentCommit` carries it; the promote flow resolves by name alone. */
+  author_email?: null | string
+  authored_at?: null | string
   ci_status: DeploymentCommitCiStatus
   message: string
   sha: string
@@ -51,6 +59,7 @@ export function ReleaseCommitPicker({
   onSelect,
   selectedSha,
 }: ReleaseCommitPickerProps) {
+  const { displayNames } = useUserDisplayNames()
   const selIdx = commits.findIndex((c) => c.sha === selectedSha)
   return (
     <div className="border-tertiary bg-primary max-h-120 overflow-y-auto rounded-md border">
@@ -59,6 +68,7 @@ export function ReleaseCommitPicker({
           accent={accent}
           active={c.sha === selectedSha}
           commit={c}
+          displayNames={displayNames}
           held={selIdx >= 0 && idx < selIdx}
           idx={idx}
           key={c.sha}
@@ -74,10 +84,14 @@ function CommitRow({
   accent,
   active,
   commit,
+  displayNames,
   held,
   idx,
   onSelect,
 }: CommitRowProps) {
+  const author = commit.author_email
+    ? (displayNames.get(commit.author_email) ?? commit.author)
+    : commit.author
   const lines = commit.message.split('\n')
   const subject = lines[0] ?? ''
   const body = lines.slice(1).join('\n').trim()
@@ -125,11 +139,35 @@ function CommitRow({
           {commit.short_sha}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm">{subject}</span>
-        {/* ``unknown`` is the API's null-equivalent (e.g. compare results
-            carry no check status) — skip the useless gray dot. */}
-        {commit.ci_status !== 'unknown' ? (
-          <CiStatusDot status={commit.ci_status} />
-        ) : null}
+        {/* Fixed-width columns, each rendered even when empty, so age /
+            author / status line up down the list. */}
+        <div className="grid shrink-0 grid-cols-[2.5rem_9rem_1.25rem] items-center gap-3">
+          <span className="text-tertiary truncate text-right text-xs">
+            {commit.authored_at ? (
+              <RelativeTime value={commit.authored_at} variant="narrow" />
+            ) : null}
+          </span>
+          <span className="min-w-0 truncate">
+            {author ? (
+              // The row itself is the select control, so the identity chip
+              // can't link to a profile (no anchors inside a button).
+              <UserIdentity
+                actor={commit.author}
+                displayName={author}
+                email={commit.author_email}
+                linkToProfile={false}
+                size="small"
+              />
+            ) : null}
+          </span>
+          {/* ``unknown`` is the API's null-equivalent (e.g. compare results
+              carry no check status) — skip the useless gray dot. */}
+          <span className="flex justify-center">
+            {commit.ci_status !== 'unknown' ? (
+              <CiStatusDot status={commit.ci_status} />
+            ) : null}
+          </span>
+        </div>
         <Badge variant="neutral">{idx === 0 ? 'tip' : `−${idx}`}</Badge>
       </button>
       {active && body ? (

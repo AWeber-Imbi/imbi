@@ -642,6 +642,44 @@ class CompareTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.head_sha, 'c2')
         self.assertEqual(result.base_sha, 'base-sha')
 
+    @respx.mock
+    async def test_compare_splits_subject_from_body(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/compare/base...head'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'commits': [
+                        {
+                            'sha': 'c1',
+                            'commit': {
+                                'message': 'Add widgets (#8)\n\n## Summary\n'
+                                'Adds the widget endpoint.\n',
+                                'author': {'name': 'A', 'date': None},
+                            },
+                        },
+                        {
+                            'sha': 'c2',
+                            'commit': {
+                                'message': 'Subject only',
+                                'author': {'name': 'A', 'date': None},
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+        plugin = GitHubDeployment()
+        result = await plugin.compare(_ctx(), _CREDS, 'base', 'head')
+        self.assertEqual(result.commits[0].message, 'Add widgets (#8)')
+        self.assertEqual(
+            result.commits[0].body,
+            '## Summary\nAdds the widget endpoint.',
+        )
+        self.assertEqual(result.commits[1].message, 'Subject only')
+        self.assertIsNone(result.commits[1].body)
+
 
 class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock

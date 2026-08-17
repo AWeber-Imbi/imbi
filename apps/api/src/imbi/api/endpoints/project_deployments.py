@@ -18,6 +18,7 @@ import itertools
 import json
 import logging
 import re
+import textwrap
 import typing
 
 import fastapi
@@ -3520,6 +3521,7 @@ async def complete_promote_build(
 # ---------------------------------------------------------------------------
 
 _PROMPT_COMMIT_CAP = 150
+_PROMPT_BODY_CAP = 2000
 _SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
 
 
@@ -3640,6 +3642,21 @@ def _fallback_notes(commits: list[Commit]) -> str:
     return '\n'.join(lines).rstrip()
 
 
+_BODY_TRUNCATION_MARKER = '\n… (truncated)'
+
+
+def _truncate_commit_body(body: str) -> str:
+    """Cap one commit body so a long one can't crowd out the rest.
+
+    The marker counts against the cap, so the result never exceeds
+    ``_PROMPT_BODY_CAP``.
+    """
+    if len(body) <= _PROMPT_BODY_CAP:
+        return body
+    keep = _PROMPT_BODY_CAP - len(_BODY_TRUNCATION_MARKER)
+    return body[:keep].rstrip() + _BODY_TRUNCATION_MARKER
+
+
 def _build_release_notes_prompt(
     project_name: str,
     last_tag: str | None,
@@ -3656,11 +3673,20 @@ def _build_release_notes_prompt(
         f'Total commits: {len(commits)}'
         + (f' (+{omitted} earlier omitted)' if omitted else ''),
         '',
-        'Commits (oldest → newest):',
+        'Commits (oldest → newest). Indented text under a commit is that '
+        "commit's message body:",
     ]
     for commit in capped:
         author = commit.author or 'unknown'
         body_lines.append(f'- {commit.short_sha} {commit.message} — {author}')
+        # A squashed PR carries what actually changed in its body, so the
+        # subject alone reads as a chore far more often than it is one.
+        if commit.body:
+            body_lines.append(
+                textwrap.indent(
+                    _truncate_commit_body(commit.body), '    '
+                ).rstrip()
+            )
     body_lines.append('')
     body_lines.append('Return the JSON object described in the system prompt.')
     return '\n'.join(body_lines)

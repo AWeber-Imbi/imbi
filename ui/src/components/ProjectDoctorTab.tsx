@@ -71,6 +71,20 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
   const canResyncDeployments =
     isAdmin || (user?.permissions ?? []).includes('project:deployment:write')
 
+  // A build-and-release project has no environments to deploy into, so the
+  // same resync reads as "Sync Releases" there. ``releasable`` /
+  // ``deployable`` live on the project type but aren't in the generated
+  // Project type yet, hence the casts (same as ProjectDetail).
+  const projectTypes = project.project_types ?? []
+  const isReleaseOnly =
+    projectTypes.some(
+      (pt) => (pt as { releasable?: boolean }).releasable === true,
+    ) &&
+    !projectTypes.some(
+      (pt) => (pt as { deployable?: boolean }).deployable === true,
+    )
+  const syncLabel = isReleaseOnly ? 'Sync Releases' : 'Sync Deployments'
+
   const { scheduleScoreRefresh } = useProjectPatch(orgSlug, project.id)
 
   const reportQuery = useQuery({
@@ -120,7 +134,14 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
   // once the background backfill completes so badges and deploy widgets
   // refresh.
   const resync = useProjectDeploymentResync(orgSlug, project.id, () => {
-    for (const key of ['project', 'currentReleases', 'operationsLog']) {
+    for (const key of [
+      'project',
+      'currentReleases',
+      'operationsLog',
+      // Release-only projects run this same resync from "Sync Releases",
+      // and the Releases tab's drift card is what it moves.
+      'releaseDrift',
+    ]) {
       void queryClient.invalidateQueries({
         queryKey: [key, orgSlug, project.id],
       })
@@ -208,7 +229,7 @@ export function ProjectDoctorTab({ project }: { project: Project }) {
                 size="sm"
                 variant="outline"
               >
-                {resync.isSyncing ? 'Syncing...' : 'Sync Deployments'}
+                {resync.isSyncing ? 'Syncing...' : syncLabel}
               </Button>
             )}
             {canResyncDeployments && (

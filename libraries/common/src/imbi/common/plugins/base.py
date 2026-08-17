@@ -720,7 +720,11 @@ class Commit(pydantic.BaseModel):
 
     sha: str
     short_sha: str
+    #: Subject line only -- what list UIs render.
     message: str
+    #: Everything after the subject line, when the commit has one. Release
+    #: notes are drafted from this: a squashed PR keeps its summary here.
+    body: str | None = None
     author: str | None = None
     authored_at: datetime.datetime | None = None
     url: str | None = None

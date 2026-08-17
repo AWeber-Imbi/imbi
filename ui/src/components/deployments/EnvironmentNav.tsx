@@ -1,20 +1,9 @@
-import {
-  ArrowUp,
-  Check,
-  GitMerge,
-  Plug,
-  PlugZap,
-  RefreshCw,
-} from 'lucide-react'
+import { ArrowUp, Check, GitMerge } from 'lucide-react'
 
-import { EntityIcon } from '@/components/ui/entity-icon'
-import { Sk } from '@/components/ui/skeleton'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+  IntegrationSyncStatus,
+  type Readiness,
+} from '@/components/deploy/IntegrationSyncStatus'
 import { deriveChipColors } from '@/lib/chip-colors'
 import { cn } from '@/lib/utils'
 
@@ -34,8 +23,6 @@ interface EnvironmentNavProps {
   /** Stages in ascending sort order; rendered descending (last env first). */
   stages: PipelineStage[]
 }
-
-type Readiness = 'connected' | 'disconnected' | 'error' | 'loading'
 
 // fallow-ignore-next-line complexity
 export function EnvironmentNav({
@@ -96,72 +83,16 @@ export function EnvironmentNav({
           </button>
         )
       })}
-      <div className="border-tertiary mt-2 flex items-center justify-between gap-2 border-t px-2 pt-2.5 pb-1">
-        <ConnectionStatus
-          connectLabel={connectLabel}
-          readiness={readiness}
-          serviceIcon={serviceIcon}
-          serviceLabel={serviceLabel}
-        />
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                aria-label="Sync commits, tags & releases"
-                className="text-tertiary hover:text-primary shrink-0 cursor-pointer rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isSyncing}
-                onClick={onSync}
-                type="button"
-              >
-                <RefreshCw
-                  className={cn(isSyncing && 'animate-spin')}
-                  size={14}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Sync commits, tags & releases</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <IntegrationSyncStatus
+        className="border-tertiary mt-2 w-full justify-between border-t px-2 pt-2.5 pb-1"
+        connectLabel={connectLabel}
+        isSyncing={isSyncing}
+        onSync={onSync}
+        readiness={readiness}
+        serviceIcon={serviceIcon}
+        serviceLabel={serviceLabel}
+      />
     </nav>
-  )
-}
-
-function ConnectionStatus({
-  connectLabel,
-  readiness,
-  serviceIcon,
-  serviceLabel,
-}: {
-  connectLabel: string
-  readiness: Readiness
-  serviceIcon: null | string
-  serviceLabel: null | string
-}) {
-  if (readiness === 'connected') {
-    return (
-      <span className="text-success inline-flex items-center gap-1.5 text-xs">
-        {serviceIcon ? (
-          <EntityIcon className="size-3.5" icon={serviceIcon} />
-        ) : (
-          <PlugZap size={13} />
-        )}
-        {serviceLabel ?? connectLabel}
-      </span>
-    )
-  }
-  if (readiness === 'loading') {
-    return <Sk line w={148} />
-  }
-  return (
-    <span className="text-tertiary inline-flex items-center gap-1.5 text-xs">
-      <Plug size={13} />
-      {readiness === 'error'
-        ? 'Could not check deployment access'
-        : `Connect to ${connectLabel} to enable deployments`}
-    </span>
   )
 }
 
