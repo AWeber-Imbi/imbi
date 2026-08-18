@@ -2615,6 +2615,153 @@ class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class ReleaseIdentityTestCase(unittest.IsolatedAsyncioTestCase):
+    """A tagged release is looked up by tag, not by commit.
+
+    The release workflow bumps the version and tags the bump commit, so
+    the SHA every later correlation carries is not the one Imbi promoted.
+    Keying the lookup on the commit is what made those correlations miss
+    and create duplicate ``Release`` nodes.
+    """
+
+    async def test_release_id_for_matches_on_the_tag(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'rid': 'rel-1'}])
+        found = await project_deployments._release_id_for(
+            db, project_id='p1', committish='27f2f81', tag='2.45.3'
+        )
+        self.assertEqual('rel-1', found)
+        query, params, _ = db.execute.await_args.args
+        self.assertIn('r.tag = {tag}', query)
+        self.assertEqual('2.45.3', params['tag'])
+
+    async def test_upsert_merges_the_tagged_node(self) -> None:
+        """One statement, keyed on the tag -- not check-then-create."""
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'rid': 'rel-1'}])
+        with mock.patch(
+            f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            rid = await project_deployments._upsert_release_node(
+                db,
+                project_id='p1',
+                tag='2.45.3',
+                committish='27F2F81ABCDEF',
+                title='2.45.3',
+                notes_markdown='notes',
+                release_url=None,
+                created_by='a@b.c',
+            )
+        self.assertEqual('rel-1', rid)
+        db.execute.assert_awaited_once()
+        query, params, _ = db.execute.await_args.args
+        self.assertIn(
+            'MERGE (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})', query
+        )
+        # The committish is an attribute now: written on create, never
+        # rewritten over an existing node.
+        self.assertIn('r.committish = COALESCE(r.committish', query)
+        self.assertEqual('27f2f81', params['committish'])
+
+    async def test_upsert_falls_back_to_the_committish_when_untagged(
+        self,
+    ) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[{'rid': 'rel-2'}])
+        with mock.patch(
+            f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            await project_deployments._upsert_release_node(
+                db,
+                project_id='p1',
+                tag=None,
+                committish='deadbee',
+                title='deadbee',
+                notes_markdown='',
+                release_url=None,
+                created_by='a@b.c',
+            )
+        query = db.execute.await_args.args[0]
+        self.assertIn('r:Release {{committish: {committish}}}', query)
+        self.assertNotIn('r.tag', query)
+
+
+class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
+    """The Release adopts the commit its tag actually points at.
+
+    ``release-tag.yaml`` bumps the version and tags the bump commit, so
+    the tag routinely resolves to a different SHA than the one promoted.
+    Imbi used to log that and keep the stale value, which guaranteed the
+    deployment webhook -- which carries the post-bump SHA -- would miss.
+    """
+
+    def setUp(self) -> None:
+        self.tagged = mock.Mock(sha='27f2f81abcdef')
+        for target, replacement in (
+            ('_resolve_and_context', mock.AsyncMock()),
+            (
+                '_handler',
+                mock.Mock(
+                    return_value=mock.Mock(
+                        resolve_committish=mock.AsyncMock(
+                            return_value=self.tagged
+                        )
+                    )
+                ),
+            ),
+            ('_resolve_credentials', mock.Mock(return_value={})),
+            ('_get_release', mock.AsyncMock(return_value=None)),
+            ('persist_link_writeback', mock.AsyncMock()),
+            ('_sync_promoted_tag', mock.AsyncMock()),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        project_deployments._resolve_and_context.return_value = (
+            mock.Mock(plugin_slug='github'),
+            mock.Mock(environment_config=None),
+            {},
+        )
+
+    async def _complete(self, db: mock.AsyncMock) -> None:
+        await project_deployments.complete_promote_build(
+            db,
+            org_slug='octo',
+            project_id='p1',
+            release_id='rel1',
+            tag='2.45.3',
+            committish='3c1ea7b',
+            to_environment='',
+            deploy=False,
+        )
+
+    async def test_drift_rewrites_the_committish(self) -> None:
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        await self._complete(db)
+        writes = [
+            call.args[1]
+            for call in db.execute.await_args_list
+            if 'SET r.committish = {committish}' in call.args[0]
+        ]
+        self.assertEqual(1, len(writes))
+        self.assertEqual('27f2f81', writes[0]['committish'])
+        self.assertEqual('rel1', writes[0]['release_id'])
+
+    async def test_an_agreeing_tag_writes_nothing(self) -> None:
+        self.tagged.sha = '3c1ea7bfedcba'
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(return_value=[])
+        await self._complete(db)
+        self.assertFalse(
+            [
+                call
+                for call in db.execute.await_args_list
+                if 'SET r.committish = {committish}' in call.args[0]
+            ]
+        )
+
+
 class PromotedTagSyncTestCase(unittest.IsolatedAsyncioTestCase):
     """The tag a release build created is fed to ClickHouse.
 
@@ -3424,7 +3571,7 @@ class ReleasePublishTestCase(ProjectDeploymentsTestCase):
                 )
             if 'RETURN r{{.id, .tag' in query:
                 return [] if node is None else [{'release': json.dumps(node)}]
-            if 'SET r.description' in query:
+            if 'MERGE (p)-[:HAS_RELEASE]->' in query:
                 seen['upsert'].append(params)
                 return [{'rid': 'rel-1'}]
             return []
@@ -3707,7 +3854,7 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
             query: str, params: typing.Any, columns: typing.Any
         ) -> list[dict[str, typing.Any]]:
             del params, columns
-            if 'CREATE (p)-[:HAS_RELEASE]' in query:
+            if 'MERGE (p)-[:HAS_RELEASE]' in query:
                 created['node'] = True
                 return []
             if 'SET r.blocked_at' in query:
