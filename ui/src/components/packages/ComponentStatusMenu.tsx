@@ -3,6 +3,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import {
   Popover,
+  PopoverClose,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
@@ -50,19 +51,20 @@ export function ComponentStatusMenu({
           {label}
         </p>
         {STATUS_OPTIONS.map((option) => (
-          <button
-            className="hover:bg-secondary flex w-full items-center gap-2 rounded px-2 py-1.5 text-left"
-            key={option}
-            onClick={() => onSelect(option)}
-            type="button"
-          >
-            <Check
-              className={`size-3 ${option === current ? 'text-action' : 'opacity-0'}`}
-            />
-            <Badge variant={STATUS_VARIANT[option]}>
-              {STATUS_LABEL[option]}
-            </Badge>
-          </button>
+          <PopoverClose asChild key={option}>
+            <button
+              className="hover:bg-secondary flex w-full items-center gap-2 rounded px-2 py-1.5 text-left"
+              onClick={() => onSelect(option)}
+              type="button"
+            >
+              <Check
+                className={`size-3 ${option === current ? 'text-action' : 'opacity-0'}`}
+              />
+              <Badge variant={STATUS_VARIANT[option]}>
+                {STATUS_LABEL[option]}
+              </Badge>
+            </button>
+          </PopoverClose>
         ))}
       </PopoverContent>
     </Popover>

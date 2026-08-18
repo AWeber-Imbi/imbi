@@ -42,7 +42,17 @@ describe('downloadCsv', () => {
 
     expect(click).toHaveBeenCalledOnce()
     expect(clicked[0].download).toBe('report.csv')
-    expect(blobs[0].type).toBe('text/csv')
+    expect(blobs[0].type).toBe('text/csv;charset=utf-8')
+  })
+
+  it('leads the blob with a BOM so Excel decodes it as UTF-8', async () => {
+    const { blobs } = stubDownload()
+
+    downloadCsv('report.csv', ['Ä'], [['1']])
+
+    // FileReader's readAsText consumes the BOM as an encoding
+    // marker, so the bytes are what has to be asserted.
+    expect(await readBlobBytes(blobs[0])).toEqual([0xef, 0xbb, 0xbf])
   })
 
   it('clicks the anchor while it is attached, then removes it', () => {
@@ -67,6 +77,22 @@ describe('downloadCsv', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:test')
   })
 })
+
+/**
+ * Return the first three bytes of `blob`.
+ *
+ * jsdom's Blob implements neither `text()` nor `arrayBuffer()`, so the
+ * bytes come back through FileReader.
+ */
+function readBlobBytes(blob: Blob): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error)
+    reader.onload = () =>
+      resolve([...new Uint8Array(reader.result as ArrayBuffer).slice(0, 3)])
+    reader.readAsArrayBuffer(blob)
+  })
+}
 
 describe('toCsv', () => {
   it('quotes every field', () => {

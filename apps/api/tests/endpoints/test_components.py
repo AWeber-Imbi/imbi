@@ -518,9 +518,33 @@ class ComponentNotesTestCase(_ComponentsTestBase):
         self.assertEqual(body['body'], 'Migrate to 5.x')
         self.assertEqual(self._params(1)['author'], 'alice@example.com')
 
+    def test_create_strips_the_body(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'cid': RELEASE_A}],
+            [{'id': 'note-4'}],
+        ]
+        response = self.client.post(
+            self._versions(f'/{RELEASE_A}/notes'),
+            json={'body': '  Migrate to 5.x  '},
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['body'], 'Migrate to 5.x')
+
     def test_empty_body_is_rejected(self) -> None:
         response = self.client.post(
             self._versions(f'/{RELEASE_A}/notes'), json={'body': ''}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_whitespace_only_body_is_rejected(self) -> None:
+        response = self.client.post(
+            self._versions(f'/{RELEASE_A}/notes'), json={'body': '   '}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_oversized_body_is_rejected(self) -> None:
+        response = self.client.post(
+            self._versions(f'/{RELEASE_A}/notes'), json={'body': 'x' * 2001}
         )
         self.assertEqual(response.status_code, 422)
 
@@ -561,6 +585,13 @@ class ComponentAdvisoriesTestCase(_ComponentsTestBase):
             )
             self.assertEqual(self._params(index)['cve_id'], 'CVE-2025-1234')
 
+    def test_upsert_rejects_a_non_http_url(self) -> None:
+        response = self.client.put(
+            self._versions(f'/{RELEASE_A}/advisories/CVE-2025-1234'),
+            json={'url': 'javascript:alert(1)'},
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_delete_detaches_then_collects_orphan(self) -> None:
         self.mock_db.execute.side_effect = [
             [{'cid': RELEASE_A}],
@@ -573,6 +604,19 @@ class ComponentAdvisoriesTestCase(_ComponentsTestBase):
         self.assertEqual(response.status_code, 204)
         self.assertIn('DELETE e', self._query(1))
         self.assertIn('NOT EXISTS', self._query(2))
+        self.assertIn('DETACH DELETE a', self._query(2))
+
+    def test_delete_skips_the_gc_when_no_edge_matched(self) -> None:
+        """An unattached advisory must not trigger an orphan sweep."""
+        self.mock_db.execute.side_effect = [
+            [{'cid': RELEASE_A}],
+            [],
+        ]
+        response = self.client.delete(
+            self._versions(f'/{RELEASE_A}/advisories/CVE-2025-1234')
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.mock_db.execute.call_count, 2)
 
     def test_list_sorts_by_identifier(self) -> None:
         self.mock_db.execute.side_effect = [

@@ -104,6 +104,7 @@ export function ComponentNotesDialog({
         {canWrite && (
           <div className="px-6 pb-2">
             <Textarea
+              aria-label="New note"
               className="min-h-20 text-sm"
               maxLength={2000}
               onChange={(e) => setDraft(e.target.value)}

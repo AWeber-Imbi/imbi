@@ -14,13 +14,20 @@
  * object URL is revoked on a later tick: Firefox ignores a synthetic
  * click on a detached anchor, and revoking in the same tick can abort
  * a download the browser has only just started.
+ *
+ * The blob leads with a BOM and declares its charset because Excel on
+ * Windows otherwise decodes the file with the local ANSI code page,
+ * corrupting the non-ASCII project, team, and package names the
+ * reports export.
  */
 export function downloadCsv(
   filename: string,
   header: string[],
   rows: unknown[][],
 ): void {
-  const blob = new Blob([toCsv(header, rows)], { type: 'text/csv' })
+  const blob = new Blob(['\uFEFF', toCsv(header, rows)], {
+    type: 'text/csv;charset=utf-8',
+  })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.download = filename

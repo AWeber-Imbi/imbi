@@ -910,6 +910,17 @@ class Advisory(GraphModel):
     title: str | None = None
     created_by: str
 
+    @pydantic.field_validator('cve_id')
+    @classmethod
+    def _normalize_cve_id(cls, value: str) -> str:
+        """Make the documented upper-casing part of the model.
+
+        ``Advisory.cve_id`` carries a unique index, so a lower-case
+        value reaching the graph by any path other than the endpoint
+        would MERGE as a second node for the same advisory.
+        """
+        return value.strip().upper()
+
 
 class ComponentNote(GraphModel):
     """An append-only note attached to a ``ComponentRelease``.

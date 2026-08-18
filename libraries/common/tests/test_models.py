@@ -2131,3 +2131,13 @@ class ComponentGovernanceFieldsTestCase(unittest.TestCase):
             created_by='alice@example.com',
         )
         self.assertIsNone(advisory.title)
+
+    def test_advisory_upper_cases_the_identifier(self) -> None:
+        """The unique index treats case as significant, so the model
+        normalizes rather than trusting each caller to."""
+        advisory = models.Advisory(
+            cve_id='  cve-2025-1234 ',
+            url='https://example.com/CVE-2025-1234',
+            created_by='alice@example.com',
+        )
+        self.assertEqual(advisory.cve_id, 'CVE-2025-1234')

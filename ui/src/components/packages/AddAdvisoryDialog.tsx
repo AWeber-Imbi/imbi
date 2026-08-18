@@ -52,7 +52,9 @@ export function AddAdvisoryDialog({
     }
   }, [open, componentReleaseId])
 
-  const ready = cveId.trim().length > 0 && url.trim().length > 0
+  const trimmedUrl = url.trim()
+  const urlValid = isHttpUrl(trimmedUrl)
+  const ready = cveId.trim().length > 0 && urlValid
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="sm:max-w-md">
@@ -90,6 +92,11 @@ export function AddAdvisoryDialog({
               placeholder="https://nvd.nist.gov/vuln/detail/CVE-2025-1234"
               value={url}
             />
+            {trimmedUrl.length > 0 && !urlValid && (
+              <span className="text-danger">
+                Enter a full http:// or https:// address.
+              </span>
+            )}
           </Label>
           <Label className="text-tertiary flex flex-col gap-1.5 text-xs">
             <span>Title</span>
@@ -114,7 +121,7 @@ export function AddAdvisoryDialog({
               onRecord({
                 cveId: cveId.trim(),
                 title: title.trim(),
-                url: url.trim(),
+                url: trimmedUrl,
               })
             }
             type="button"
@@ -125,4 +132,21 @@ export function AddAdvisoryDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+/**
+ * True only for an absolute http(s) URL.
+ *
+ * Both reports render the recorded value as the advisory chip's href,
+ * so a scheme-less string becomes a dead link and a `javascript:` one
+ * would run on click. The API rejects the same shapes; this keeps the
+ * reader from finding out after the round trip.
+ */
+function isHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
 }

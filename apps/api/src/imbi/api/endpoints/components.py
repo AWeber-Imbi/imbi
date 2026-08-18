@@ -188,9 +188,19 @@ class ComponentStatusResponse(pydantic.BaseModel):
 
 
 class ComponentNoteRequest(pydantic.BaseModel):
-    """Body for ``POST .../notes``."""
+    """Body for ``POST .../notes``.
 
-    body: str = pydantic.Field(min_length=1)
+    The body is stripped before the length check, so a whitespace-only
+    note is a 422 rather than a blank line in the audit trail. The cap
+    matches the ``maxLength`` the notes dialog puts on its textarea.
+    """
+
+    body: typing.Annotated[
+        str,
+        pydantic.StringConstraints(
+            strip_whitespace=True, min_length=1, max_length=2000
+        ),
+    ]
 
 
 class AdvisoryRequest(pydantic.BaseModel):
@@ -202,6 +212,19 @@ class AdvisoryRequest(pydantic.BaseModel):
 
     url: str = pydantic.Field(min_length=1)
     title: str | None = None
+
+    @pydantic.field_validator('url')
+    @classmethod
+    def _require_http_url(cls, value: str) -> str:
+        """Reject anything the advisory chip must not link to.
+
+        Both reports render this value as an anchor href, so a
+        ``javascript:`` or ``data:`` URL would run on click.
+        """
+        stripped = value.strip()
+        if not stripped.lower().startswith(('http://', 'https://')):
+            raise ValueError('URL must start with http:// or https://')
+        return stripped
 
 
 class ProblemPackageRow(pydantic.BaseModel):
@@ -485,7 +508,7 @@ RETURN 1 AS deleted
 _GC_ORPHAN_ADVISORY: typing.LiteralString = """
 MATCH (a:Advisory {{cve_id: {cve_id}}})
 WHERE NOT EXISTS(()-[:HAS_ADVISORY]->(a))
-DELETE a
+DETACH DELETE a
 """
 
 
@@ -1039,8 +1062,12 @@ async def clear_component_status(
         fastapi.Depends(permissions.require_permission('component:write')),
     ],
 ) -> ComponentStatusResponse:
-    """Return a package to current. Clearing an unmarked package is a
-    no-op, not an error."""
+    """Return a package to current.
+
+    Clearing an unmarked package is a no-op, not an error. The clear is
+    as global as the mark was — every organization depending on this
+    package stops seeing it.
+    """
     await _assert_component_in_org(db, org_slug, component_id)
     result = await _write_component_status(db, component_id, None, None)
     LOGGER.info(
@@ -1294,7 +1321,7 @@ async def delete_component_advisory(
     """
     await _assert_release_in_org(db, org_slug, component_release_id)
     normalized = _normalize_cve(cve_id)
-    await db.execute(
+    deleted = await db.execute(
         _DELETE_ADVISORY_EDGE,
         {
             'component_release_id': component_release_id,
@@ -1302,7 +1329,8 @@ async def delete_component_advisory(
         },
         ['deleted'],
     )
-    await db.execute(_GC_ORPHAN_ADVISORY, {'cve_id': normalized})
+    if deleted:
+        await db.execute(_GC_ORPHAN_ADVISORY, {'cve_id': normalized})
     LOGGER.info(
         'Advisory removed: version=%s cve=%s actor=%s',
         component_release_id,

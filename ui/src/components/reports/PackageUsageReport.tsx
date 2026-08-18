@@ -44,6 +44,20 @@ interface RecentPackage {
   purl_name: string
 }
 
+/**
+ * One row of the search dropdown.
+ *
+ * `project_count` is optional because the recently-viewed entries are
+ * read back from localStorage and carry no count. Rendering a zero
+ * there reads as "no projects use this package".
+ */
+interface SearchOption {
+  id: string
+  project_count?: number
+  purl_name: string
+  status?: ComponentSearchResult['status']
+}
+
 export function PackageUsageReport() {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug ?? ''
@@ -269,19 +283,26 @@ function PackageSearch({
   setSearch,
 }: {
   onSelect: (id: string) => void
-  options: ComponentSearchResult[]
+  options: SearchOption[]
   search: string
   setSearch: (value: string) => void
 }) {
   const [focused, setFocused] = useState(false)
   return (
-    <div className="relative">
+    // Focus is tracked on the container, not the input: tabbing from
+    // the input into the option list blurs the input, and unmounting
+    // the list on that blur puts the options out of keyboard reach.
+    <div
+      className="relative"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false)
+      }}
+      onFocus={() => setFocused(true)}
+    >
       <Search className="text-tertiary absolute top-2.5 left-3 size-3.5" />
       <Input
         className="pl-9"
-        onBlur={() => setTimeout(() => setFocused(false), 150)}
         onChange={(e) => setSearch(e.target.value)}
-        onFocus={() => setFocused(true)}
         placeholder="Search packages by name or purl"
         value={search}
       />
@@ -302,9 +323,11 @@ function PackageSearch({
                   {statusLabel(option.status)}
                 </Badge>
               )}
-              <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
-                {option.project_count}
-              </span>
+              {option.project_count !== undefined && (
+                <span className="text-tertiary shrink-0 font-mono text-xs tabular-nums">
+                  {option.project_count}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -321,22 +344,33 @@ function pickOptions(
   hits: ComponentSearchResult[] | undefined,
   recent: RecentPackage[],
   query: string,
-): ComponentSearchResult[] {
+): SearchOption[] {
   if (query.trim()) return hits ?? []
   return recent.map((entry) => ({
-    ecosystem: '',
     id: entry.id,
-    name: entry.purl_name,
-    project_count: 0,
     purl_name: entry.purl_name,
-    version_count: 0,
   }))
 }
 
+/**
+ * Read the recently-viewed list, discarding anything that is not a
+ * usable entry.
+ *
+ * `JSON.parse` succeeds for any valid JSON, so an older or hand-edited
+ * value could hand back a string or an object. Filtering here keeps a
+ * bad localStorage entry from blanking the whole report.
+ */
 function readRecent(): RecentPackage[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY)
-    return raw ? (JSON.parse(raw) as RecentPackage[]) : []
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (entry): entry is RecentPackage =>
+        typeof (entry as RecentPackage | undefined)?.id === 'string' &&
+        typeof (entry as RecentPackage | undefined)?.purl_name === 'string',
+    )
   } catch {
     return []
   }
