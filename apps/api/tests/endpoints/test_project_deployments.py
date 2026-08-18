@@ -2335,6 +2335,36 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(1, len(deletes))
         self.assertEqual('rel1', deletes[0]['release_id'])
 
+    def _untags(self) -> list[dict[str, typing.Any]]:
+        """Params of every tag-removal that ran."""
+        return [
+            call.args[1]
+            for call in self.mock_db.execute.await_args_list
+            if 'SET r.tag = NULL' in call.args[0]
+        ]
+
+    def test_failed_dispatch_untags_an_adopted_release(self) -> None:
+        """An adopted node is older than the promote, so it survives.
+
+        ``_adopt_untagged_release`` tags the node the resync built from
+        the commit's testing deployments; deleting that on a failed
+        dispatch would take the testing history with it.  Only the tag
+        this call put on comes back off.
+        """
+        self._enable_dispatch(handler=self._failing_dispatch())
+        self._start(
+            mock.patch(
+                f'{_MODULE}._adopt_untagged_release',
+                return_value='rel-testing',
+            )
+        )
+        with self.assertRaises(RuntimeError):
+            self._promote()
+        self.assertEqual([], self._deletes())
+        untags = self._untags()
+        self.assertEqual(1, len(untags))
+        self.assertEqual('rel-testing', untags[0]['release_id'])
+
     def test_failed_dispatch_keeps_a_release_it_did_not_create(self) -> None:
         """Re-promoting a tag must not delete the earlier promote's node.
 
