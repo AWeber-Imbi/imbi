@@ -35,6 +35,19 @@ def _release_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return data
 
 
+def _upsert_row(
+    *, created: bool = True, unchanged: bool = False
+) -> list[dict[str, typing.Any]]:
+    """Row shape ``upsert_deployment`` reads back from its write."""
+    return [
+        {
+            'id': 'deployment-node-id',
+            'prior_created': None if created else '2026-04-20T10:00:00+00:00',
+            'unchanged': unchanged,
+        }
+    ]
+
+
 class _ReleasesTestBase(support.SharedAppTestCase):
     """Shared setup mounting release endpoints with admin auth."""
 
@@ -753,8 +766,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],  # _fetch_release
             # _fetch_deployment_edge: env exists, no edge
-            [{'env': self._env(), 'deployments': None}],
-            [{'deployments': None}],  # create_query
+            [{'env': self._env(), 'deployments': None, 'nodes': []}],
+            _upsert_row(),
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -783,12 +796,13 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             {
                 'env': self._env(),
                 'deployments': json.dumps(existing),
+                'nodes': [],
             }
         ]
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],  # _fetch_release
             edge_row,  # _fetch_deployment_edge
-            [{'deployments': None}],
+            _upsert_row(),
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with mock.patch(
@@ -809,8 +823,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         # DeploymentStatusPolicy can score the project on its status.
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'deployments': None}],
+            [{'env': self._env(), 'deployments': None, 'nodes': []}],
+            _upsert_row(),
         ]
         with (
             mock.patch(
@@ -876,14 +890,13 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
             {
                 'env': self._env(),
                 'deployments': json.dumps(existing),
+                'nodes': [],
             }
         ]
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             edge_row,
-            [{'release': _release_row()}],
-            edge_row,
-            [{'deployments': None}],
+            _upsert_row(),
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with (
@@ -913,10 +926,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         # even when external_run_id is present.
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'deployments': None}],
+            [{'env': self._env(), 'deployments': None, 'nodes': []}],
+            _upsert_row(),
         ]
         with (
             mock.patch(
@@ -950,11 +961,17 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
                 'performed_by': 'deployer',
             }
         ]
-        edge_row = [{'env': self._env(), 'deployments': json.dumps(existing)}]
+        edge_row = [
+            {
+                'env': self._env(),
+                'deployments': json.dumps(existing),
+                'nodes': [],
+            }
+        ]
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],  # _fetch_release
             edge_row,  # _fetch_deployment_edge
-            [{'deployments': None}],  # _set_deployments (in-place refresh)
+            _upsert_row(created=False),
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with (
@@ -1001,11 +1018,17 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
                 'external_run_id': 'run-99',
             }
         ]
-        edge_row = [{'env': self._env(), 'deployments': json.dumps(existing)}]
+        edge_row = [
+            {
+                'env': self._env(),
+                'deployments': json.dumps(existing),
+                'nodes': [],
+            }
+        ]
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             edge_row,
-            [{'deployments': None}],  # _set_deployments (append)
+            _upsert_row(),
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1036,12 +1059,15 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
                 {
                     'env': self._env('production'),
                     'deployments': deployments,
+                    'nodes': [],
                 },
                 {
                     'env': self._env('staging'),
                     'deployments': deployments,
+                    'nodes': [],
                 },
             ],
+            [],  # deployments_by_project: no nodes yet
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1059,7 +1085,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             # env exists but no edge
-            [{'env': self._env(), 'deployments': None}],
+            [{'env': self._env(), 'deployments': None, 'nodes': []}],
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1082,7 +1108,7 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
         )
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': deployments}],
+            [{'env': self._env(), 'deployments': deployments, 'nodes': []}],
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1108,10 +1134,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
     def test_record_deployment_success_sets_current_release(self) -> None:
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'deployments': None}],  # create edge
+            [{'env': self._env(), 'deployments': None, 'nodes': []}],
+            _upsert_row(),
             [{'current_release': RELEASE_ID}],  # current_release write
         ]
         with mock.patch(
@@ -1141,10 +1165,8 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
     ) -> None:
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'release': _release_row()}],
-            [{'env': self._env(), 'deployments': None}],
-            [{'deployments': None}],
+            [{'env': self._env(), 'deployments': None, 'nodes': []}],
+            _upsert_row(),
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1162,8 +1184,9 @@ class DeploymentEdgeTestCase(_ReleasesTestBase):
     ) -> None:
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],  # _fetch_release
-            [{'env': self._env(), 'deployments': None}],  # _fetch_edge
-            [{'deployments': None}],  # create edge
+            # _fetch_deployment_edge
+            [{'env': self._env(), 'deployments': None, 'nodes': []}],
+            _upsert_row(),
             [],  # current_release write matched nothing
         ]
         with mock.patch(
@@ -1196,7 +1219,16 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
         status: str = 'success',
         note: str | None = None,
         performed_by: str | None = None,
+        upsert: list[dict[str, typing.Any]] | None = None,
     ) -> typing.Any:
+        """Drive one append against a scripted graph.
+
+        ``upsert`` is what the single-statement node upsert reports
+        back: whether it created the deployment and whether the write
+        changed anything.  That decision moved into Cypher with the
+        node model, so the outcome a caller sees is the row the
+        database returns rather than something re-derived in Python.
+        """
         import asyncio
 
         from imbi.api.endpoints.releases import append_deployment_event
@@ -1207,9 +1239,10 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
                 {
                     'env': {'slug': 'production', 'name': 'Production'},
                     'deployments': json.dumps(existing) if existing else None,
+                    'nodes': [],
                 }
             ],
-            [{'deployments': None}],  # only consumed by append / set path
+            upsert if upsert is not None else _upsert_row(),
             # only consumed by the current_release write on success writes
             [{'current_release': RELEASE_ID}],
         ]
@@ -1243,12 +1276,16 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             }
         ]
         edge, outcome = self._call(
-            existing, external_run_id='42', status='success'
+            existing,
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False, unchanged=True),
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(len(edge.deployments), 1)
-        # Only the two read queries fired; the SET branch must not run.
-        self.assertEqual(self.mock_db.execute.await_count, 2)
+        # The upsert still runs -- it is what decides the replay
+        # changed nothing -- but nothing follows it.
+        self.assertEqual(self.mock_db.execute.await_count, 3)
 
     def test_same_run_id_status_change_updates_in_place(self) -> None:
         existing = [
@@ -1261,7 +1298,10 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             }
         ]
         edge, outcome = self._call(
-            existing, external_run_id='42', status='success'
+            existing,
+            external_run_id='42',
+            status='success',
+            upsert=_upsert_row(created=False),
         )
         self.assertEqual(outcome, 'updated')
         self.assertEqual(len(edge.deployments), 1)
@@ -1326,6 +1366,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             external_run_id='42',
             status='success',
             performed_by='octocat',
+            upsert=_upsert_row(created=False),
         )
         self.assertEqual(outcome, 'updated')
         self.assertEqual(edge.deployments[0].performed_by, 'octocat')
@@ -1366,6 +1407,7 @@ class AppendDeploymentEventDedupeTestCase(_ReleasesTestBase):
             external_run_id='42',
             status='success',
             performed_by='octocat',
+            upsert=_upsert_row(created=False, unchanged=True),
         )
         self.assertEqual(outcome, 'noop')
         self.assertEqual(edge.deployments[0].performed_by, 'octocat')
@@ -1409,6 +1451,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': None,
                 }
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1444,6 +1487,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1483,6 +1527,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1515,6 +1560,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': events,
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1542,6 +1588,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': None,
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1570,6 +1617,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': deployments,
                 }
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         lookup = mock.AsyncMock(
             return_value={(PROJECT_ID, 'production'): 'deployer'}
@@ -1615,6 +1663,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': deployments,
                 }
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         kevin = models.User(
             email='kevin@example.com',
@@ -1662,6 +1711,7 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': deployments,
                 }
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1763,6 +1813,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
             [],  # resolve_plugin → no plugin → HTTPException(404)
         ]
         with mock.patch(
@@ -1802,11 +1853,18 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
             # The persistence path does additional db.execute calls
             # (re-fetch release, edge MATCH, SET).  Provide enough
             # truthy results so append_deployment_event can land.
             [{'release': _release_row(tag='1.0.0', id='r1')}],
-            [{'env': self._env('production'), 'deployments': None}],
+            [
+                {
+                    'env': self._env('production'),
+                    'deployments': None,
+                    'nodes': [],
+                }
+            ],
             [{'deployments': '[]'}],
             [{'current_release': 'r1'}],  # current_release write on success
         ]
@@ -1852,6 +1910,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -1906,6 +1965,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -1960,6 +2020,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2014,6 +2075,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2064,6 +2126,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2095,6 +2158,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2127,6 +2191,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2169,6 +2234,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [],
+            [],  # deployments_by_project: no Deployment nodes
             [{'component_id': 'comp-1'}],
             [],
         ]
@@ -2238,6 +2304,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
             self.mock_db.execute.side_effect = [
                 [{'release': _release_row()}],
                 [],
+                [],  # deployments_by_project: no Deployment nodes
                 [{'component_id': 'comp-1'}],
                 [],
             ]
@@ -2452,6 +2519,7 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2494,6 +2562,7 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
                     ],
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2566,6 +2635,7 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
                     'identifiers': [],
                 },
             ],
+            [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',

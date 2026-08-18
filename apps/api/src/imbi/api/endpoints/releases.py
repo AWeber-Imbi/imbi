@@ -5,8 +5,13 @@ A ``Release`` node carries an optional ``tag`` (human-readable
 business identity such as ``1.0.0``) and a required 7-char
 ``committish`` (lowercase short SHA).  It is connected to its
 ``Project`` via an incoming ``HAS_RELEASE`` edge and to every
-``Environment`` it has been deployed to via a ``DEPLOYED_TO`` edge
-carrying an append-only ``deployments`` history.
+``Deployment`` node recorded against it via ``HAS_DEPLOYMENT``.
+
+Deployments used to be JSON entries in a ``deployments`` array on a
+``(:Release)-[:DEPLOYED_TO]->(:Environment)`` edge.  Writes now go to
+``Deployment`` nodes (see :mod:`imbi.common.deployments`); reads union
+the nodes with the array entries that predate them, until the phase-3
+migration converts the history and retires ``DEPLOYED_TO``.
 
 """
 
@@ -30,6 +35,7 @@ from imbi.api.endpoints.projects import lookup_ops_log_performed_by
 from imbi.api.plugins import call_with_timeout
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
+from imbi.common import deployments as deployment_nodes
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.plugins.base import CheckStatus
@@ -345,6 +351,30 @@ async def _gather_release_hydration(
         for _, committish in deployed
     ]
     return list(run_results), ci_results
+
+
+def _keep_latest(
+    by_env: dict[
+        str,
+        tuple[
+            dict[str, typing.Any],
+            dict[str, typing.Any] | None,
+            models.DeploymentEvent | None,
+        ],
+    ],
+    slug: str,
+    env: dict[str, typing.Any],
+    release: dict[str, typing.Any],
+    event: models.DeploymentEvent,
+) -> None:
+    """Keep the newest ``(release, event)`` pair seen for *slug*."""
+    existing = by_env.get(slug)
+    if (
+        existing is None
+        or existing[2] is None
+        or event.timestamp > existing[2].timestamp
+    ):
+        by_env[slug] = (env, release, event)
 
 
 async def _reconcile_in_flight_run(
@@ -858,13 +888,18 @@ async def list_current_releases(
             continue
 
         latest = max(events, key=lambda ev: ev.timestamp)
-        existing = by_env.get(slug)
-        if (
-            existing is None
-            or existing[2] is None
-            or latest.timestamp > existing[2].timestamp
-        ):
-            by_env[slug] = (env, release_raw, latest)
+        _keep_latest(by_env, slug, env, release_raw, latest)
+
+    # Union the ``Deployment`` nodes over the legacy array entries the
+    # loop above read.  Environments the project no longer deploys in
+    # are skipped: the response has always enumerated ``DEPLOYED_IN``.
+    for entry in await deployment_nodes.deployments_by_project(
+        db, [project_id]
+    ):
+        slug = str(entry.environment.get('slug') or '')
+        if entry.release is None or slug not in by_env:
+            continue
+        _keep_latest(by_env, slug, by_env[slug][0], entry.release, entry.event)
 
     ci_status_by_slug = await _hydrate_release_train(
         db, org_slug, project_id, auth, by_env
@@ -1101,16 +1136,24 @@ async def _fetch_deployment_edge(
     release_id: str,
     env_slug: str,
 ) -> tuple[dict[str, typing.Any] | None, list[models.DeploymentEvent]]:
-    """Fetch environment and any existing DEPLOYED_TO edge."""
+    """Fetch the environment and the release's deployments for it.
+
+    One query returns both representations: the ``Deployment`` nodes
+    every writer now creates, and the legacy ``deployments`` array on
+    the ``DEPLOYED_TO`` edge that predates them, so a release deployed
+    before the node model keeps its history.
+    """
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     MATCH (e:Environment {{slug: {env_slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (r)-[d:DEPLOYED_TO]->(e)
+    OPTIONAL MATCH (r)-[:HAS_DEPLOYMENT]->(dep:Deployment)-[:TARGETS]->(e)
     RETURN e{{.slug, .name}} AS env,
            CASE WHEN d IS NULL THEN null ELSE d.deployments END
-               AS deployments
+               AS deployments,
+           collect(properties(dep)) AS nodes
     """
     rows = await db.execute(
         query,
@@ -1120,15 +1163,34 @@ async def _fetch_deployment_edge(
             'env_slug': env_slug,
             'org_slug': org_slug,
         },
-        ['env', 'deployments'],
+        ['env', 'deployments', 'nodes'],
     )
     if not rows:
         return None, []
     env = graph.parse_agtype(rows[0]['env'])
-    deployments = models.parse_deployment_events(
+    legacy = models.parse_deployment_events(
         graph.parse_agtype(rows[0]['deployments'])
     )
-    return env, deployments
+    return env, deployment_nodes.merge_events(
+        legacy, _node_events(rows[0].get('nodes'))
+    )
+
+
+def _node_events(raw: typing.Any) -> list[models.DeploymentEvent]:
+    """Parse a collected list of ``Deployment`` property maps."""
+    nodes = graph.parse_agtype(raw)
+    if not isinstance(nodes, list):
+        return []
+    events: list[models.DeploymentEvent] = []
+    for props in nodes:
+        if not isinstance(props, dict):
+            continue
+        event = deployment_nodes.node_to_event(
+            typing.cast('dict[str, typing.Any]', props)
+        )
+        if event is not None:
+            events.append(event)
+    return events
 
 
 def _edge_to_response(
@@ -1151,6 +1213,28 @@ def _edge_to_response(
 AppendOutcome = typing.Literal['appended', 'updated', 'noop']
 
 
+def _carry_forward(
+    written: models.DeploymentEvent,
+    superseded: list[models.DeploymentEvent],
+) -> models.DeploymentEvent:
+    """Fill a write's unknowns from the deployment it advanced.
+
+    ``external_run_url`` and ``performed_by`` mean "unknown" rather
+    than "clear" when a caller leaves them out, and the node keeps what
+    it already had; the response has to say the same thing.
+    """
+    if not superseded:
+        return written
+    prior = superseded[-1]
+    return written.model_copy(
+        update={
+            'external_run_url': written.external_run_url
+            or prior.external_run_url,
+            'performed_by': written.performed_by or prior.performed_by,
+        }
+    )
+
+
 async def append_deployment_event(
     db: graph.Graph,
     *,
@@ -1166,11 +1250,21 @@ async def append_deployment_event(
     external_run_url: str | None = None,
     timestamp: datetime.datetime | None = None,
     performed_by: str | None = None,
+    source: str = 'api',
 ) -> (
     tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome]
     | typing.Literal['no_release', 'no_env']
 ):
-    """Append a ``DeploymentEvent`` to ``Release -[:DEPLOYED_TO]-> Env``.
+    """Record a deployment of *release_id* into *env_slug*.
+
+    Writes a ``Deployment`` node (:func:`imbi.common.deployments.
+    upsert_deployment`) rather than the ``deployments`` array the
+    ``DEPLOYED_TO`` edge used to carry: one node per deployment, so an
+    update is a single-node ``SET`` instead of a read-modify-write of
+    the whole history that a concurrent writer could clobber.  The
+    response shape is unchanged -- the node renders as the one event
+    that describes it, and its ``history`` records every transition it
+    passed through.
 
     Returns a ``(edge, outcome)`` tuple, or a string discriminant when
     the target can't be found: ``'no_release'`` when the named
@@ -1179,19 +1273,16 @@ async def append_deployment_event(
     (which has no ``Release`` node) treat a string result as "skip
     persistence, deploy still succeeded".
 
-    ``outcome`` is one of ``'appended'`` (new row), ``'updated'``
-    (dedupe path refreshed an existing row in place), or ``'noop'``
-    (dedupe path matched an identical existing row and made no write).
+    ``outcome`` is one of ``'appended'`` (a new deployment),
+    ``'updated'`` (an existing one advanced), or ``'noop'`` (a replay
+    that carried nothing new).
 
-    Deduplicates on ``external_run_id``: when the caller supplies one
-    and the most recent existing event already carries the same id,
-    the row is treated as a status update -- if ``status`` changed
-    the existing event is updated in-place, otherwise the call is a
-    no-op.  This lets resync re-replay the remote's recent history
-    without doubling up rows on the edge, while still letting an
-    in-flight workflow advance from ``in_progress`` -> ``success``.
-    Callers that omit ``external_run_id`` keep the previous append-
-    only semantics so the deploy / promote flows are unchanged.
+    Deduplicates on ``external_run_id``: the node is MERGEd on
+    ``(project, external_run_id)``, so resync can re-replay the
+    remote's recent history, and a watcher and a webhook can both
+    report the same rollout, without doubling up.  Callers that omit
+    ``external_run_id`` have nothing to correlate on, so every call
+    records a new deployment -- the append-only semantics they had.
 
     ``timestamp`` lets the resync flow record the remote's deployment
     creation time rather than ``now()``; defaults to now when omitted.
@@ -1201,6 +1292,10 @@ async def append_deployment_event(
     from GitHub during resync). Deploy/promote flows can leave this
     ``None`` -- those code paths already attribute the operator via
     ``operations_log``.
+
+    ``source`` names the writer on the node's ``history`` entry, so a
+    late webhook landing after the sweeper expired a deployment is
+    auditable rather than a silent overwrite.
     """
     release = await _fetch_release(db, org_slug, project_id, release_id)
     if release is None:
@@ -1210,176 +1305,24 @@ async def append_deployment_event(
     )
     if env is None:
         return 'no_env'
-    if external_run_id and existing:
-        # Walk newest-first so the "most recent event for this run"
-        # wins when older entries with the same id exist (rare; only
-        # possible if a caller appended duplicates before the dedupe
-        # landed).  Comparing by status keeps the no-op fast path
-        # cheap when resync re-runs against an idle remote.
-        for idx in range(len(existing) - 1, -1, -1):
-            candidate = existing[idx]
-            if candidate.external_run_id == external_run_id:
-                # A caller passing ``performed_by=None`` means "unknown",
-                # not "clear" -- keep the stored deployer so a webhook
-                # refresh can't blank attribution a resync backfilled.
-                effective_performed_by = performed_by or candidate.performed_by
-                if (
-                    candidate.status == status
-                    and candidate.note == note
-                    and candidate.external_run_url == external_run_url
-                    and candidate.performed_by == effective_performed_by
-                ):
-                    return _edge_to_response(env, existing), 'noop'
-                refreshed = candidate.model_copy(
-                    update={
-                        'status': status,
-                        'note': note,
-                        'external_run_url': external_run_url,
-                        'timestamp': timestamp
-                        or datetime.datetime.now(datetime.UTC),
-                        'performed_by': effective_performed_by,
-                    }
-                )
-                updated_list = [
-                    *existing[:idx],
-                    refreshed,
-                    *existing[idx + 1 :],
-                ]
-                updated_edge = await _set_deployments(
-                    db,
-                    project_id=project_id,
-                    release_id=release_id,
-                    env_slug=env_slug,
-                    deployments=updated_list,
-                    env=env,
-                )
-                if status == 'success':
-                    await _set_current_release(
-                        db,
-                        org_slug=org_slug,
-                        project_id=project_id,
-                        env_slug=env_slug,
-                        release_id=release_id,
-                        timestamp=refreshed.timestamp,
-                    )
-                return updated_edge, 'updated'
-    event = models.DeploymentEvent(
-        timestamp=timestamp or datetime.datetime.now(datetime.UTC),
+    result = await deployment_nodes.upsert_deployment(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        release_id=release_id,
+        env_slug=env_slug,
         status=status,
         note=note,
         external_run_id=external_run_id,
         external_run_url=external_run_url,
         performed_by=performed_by,
+        timestamp=timestamp,
+        source=source,
     )
-    deployments = [*existing, event]
-    if existing:
-        edge = await _set_deployments(
-            db,
-            project_id=project_id,
-            release_id=release_id,
-            env_slug=env_slug,
-            deployments=deployments,
-            env=env,
-        )
-    else:
-        edge = await _create_deployments_edge(
-            db,
-            project_id=project_id,
-            release_id=release_id,
-            env_slug=env_slug,
-            org_slug=org_slug,
-            deployments=deployments,
-            env=env,
-        )
-    if status == 'success':
-        await _set_current_release(
-            db,
-            org_slug=org_slug,
-            project_id=project_id,
-            env_slug=env_slug,
-            release_id=release_id,
-            timestamp=event.timestamp,
-        )
-    return edge, 'appended'
-
-
-async def _set_deployments(
-    db: graph.Graph,
-    *,
-    project_id: str,
-    release_id: str,
-    env_slug: str,
-    deployments: list[models.DeploymentEvent],
-    env: dict[str, typing.Any],
-) -> ReleaseEnvironmentEdgeResponse:
-    """Overwrite ``deployments`` on an existing ``DEPLOYED_TO`` edge."""
-    serialized = json.dumps([e.model_dump(mode='json') for e in deployments])
-    set_query: typing.LiteralString = """
-    MATCH (:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
-    MATCH (r)-[d:DEPLOYED_TO]->(:Environment {{slug: {env_slug}}})
-    SET d.deployments = {deployments}
-    RETURN d.deployments AS deployments
-    """
-    rows = await db.execute(
-        set_query,
-        {
-            'project_id': project_id,
-            'release_id': release_id,
-            'env_slug': env_slug,
-            'deployments': serialized,
-        },
-        ['deployments'],
-    )
-    if not rows:
-        # The release or DEPLOYED_TO edge vanished between the read
-        # phase and this write -- raise rather than silently report
+    if result is None:
+        # The release or the environment vanished between the read
+        # above and the write -- raise rather than silently report
         # success and skew resync counters.
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Release {release_id!r} or its deployment to '
-                f'environment {env_slug!r} no longer exists'
-            ),
-        )
-    return _edge_to_response(env, deployments)
-
-
-async def _create_deployments_edge(
-    db: graph.Graph,
-    *,
-    project_id: str,
-    release_id: str,
-    env_slug: str,
-    org_slug: str,
-    deployments: list[models.DeploymentEvent],
-    env: dict[str, typing.Any],
-) -> ReleaseEnvironmentEdgeResponse:
-    """Create the first ``DEPLOYED_TO`` edge for ``(release, env)``."""
-    serialized = json.dumps([e.model_dump(mode='json') for e in deployments])
-    create_query: typing.LiteralString = """
-    MATCH (:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
-    MATCH (e:Environment {{slug: {env_slug}}})
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    CREATE (r)-[d:DEPLOYED_TO {{deployments: {deployments}}}]->(e)
-    RETURN d.deployments AS deployments
-    """
-    rows = await db.execute(
-        create_query,
-        {
-            'project_id': project_id,
-            'release_id': release_id,
-            'env_slug': env_slug,
-            'org_slug': org_slug,
-            'deployments': serialized,
-        },
-        ['deployments'],
-    )
-    if not rows:
-        # Either the release or the (env, org) pair disappeared
-        # between the read and this write; surface the failure rather
-        # than silently report 'appended' with no persisted edge.
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
@@ -1387,7 +1330,41 @@ async def _create_deployments_edge(
                 f'organization {org_slug!r} no longer exists'
             ),
         )
-    return _edge_to_response(env, deployments)
+    if result.outcome == 'noop':
+        return _edge_to_response(env, existing), 'noop'
+    # The node the upsert just wrote replaces whatever entry described
+    # it before, so the response reflects the write without paying for
+    # a second read of the history.
+    written = models.DeploymentEvent(
+        timestamp=timestamp or datetime.datetime.now(datetime.UTC),
+        status=status,
+        note=note,
+        external_run_id=external_run_id,
+        external_run_url=external_run_url,
+        performed_by=performed_by,
+    )
+    superseded = [
+        event
+        for event in existing
+        if external_run_id and event.external_run_id == external_run_id
+    ]
+    written = _carry_forward(written, superseded)
+    deployments = deployment_nodes.merge_events(
+        [event for event in existing if event not in superseded], [written]
+    )
+    if status == 'success':
+        await _set_current_release(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            env_slug=env_slug,
+            release_id=release_id,
+            timestamp=timestamp or datetime.datetime.now(datetime.UTC),
+        )
+    return (
+        _edge_to_response(env, deployments),
+        'appended' if result.outcome == 'created' else 'updated',
+    )
 
 
 async def _set_current_release(
@@ -1576,15 +1553,38 @@ async def list_deployment_edges(
         },
         ['env', 'deployments'],
     )
-    results: list[ReleaseEnvironmentEdgeResponse] = []
+    by_slug: dict[
+        str, tuple[dict[str, typing.Any], list[models.DeploymentEvent]]
+    ] = {}
     for row in rows:
         env = graph.parse_agtype(row['env'])
         if not env:
             continue
-        deployments = models.parse_deployment_events(
-            graph.parse_agtype(row['deployments'])
+        by_slug[env['slug']] = (
+            env,
+            models.parse_deployment_events(
+                graph.parse_agtype(row['deployments'])
+            ),
         )
-        results.append(_edge_to_response(env, deployments))
+    # An environment reached only by ``Deployment`` nodes has no
+    # ``DEPLOYED_TO`` edge to have been listed above, so it is added
+    # here rather than merged into one.
+    for entry in await deployment_nodes.deployments_by_project(
+        db, [project_id]
+    ):
+        if (entry.release or {}).get('id') != release_id:
+            continue
+        slug = str(entry.environment.get('slug') or '')
+        existing = by_slug.get(slug)
+        env = entry.environment if existing is None else existing[0]
+        events = [] if existing is None else existing[1]
+        by_slug[slug] = (env, [*events, entry.event])
+    results: list[ReleaseEnvironmentEdgeResponse] = []
+    for slug in sorted(by_slug):
+        env, events = by_slug[slug]
+        results.append(
+            _edge_to_response(env, deployment_nodes.merge_events(events))
+        )
     return results
 
 

@@ -41,6 +41,7 @@ from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.api.settings import get_server_config
 from imbi.common import blueprints, clickhouse, graph, models
+from imbi.common import deployments as deployment_nodes
 from imbi.common import patch as json_patch
 from imbi.common.clickhouse import client as ch_client
 from imbi.common.plugins.base import (
@@ -756,6 +757,43 @@ async def lookup_ops_log_performed_by(
     return result
 
 
+async def _apply_deployment_nodes(
+    db: graph.Graph,
+    project_ids: list[str],
+    latest: dict[
+        tuple[str, str],
+        tuple[str | None, str | None, datetime.datetime, str | None],
+    ],
+) -> None:
+    """Union the ``Deployment`` nodes over the legacy array entries.
+
+    The array stopped growing at the node cutover, so anything deployed
+    since is only a node.  Failures are swallowed for the same reason
+    the query in :func:`_fetch_current_releases` is: release data is
+    best-effort.
+    """
+    try:
+        rows = await deployment_nodes.deployments_by_project(db, project_ids)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to fetch deployment nodes for projects', exc_info=True
+        )
+        return
+    for entry in rows:
+        if entry.release is None:
+            continue
+        key = (entry.project_id, str(entry.environment.get('slug') or ''))
+        existing = latest.get(key)
+        if existing is not None and entry.event.timestamp <= existing[2]:
+            continue
+        latest[key] = (
+            entry.release.get('tag') or None,
+            entry.release.get('committish') or None,
+            entry.event.timestamp,
+            entry.event.performed_by,
+        )
+
+
 async def _fetch_current_releases(
     db: graph.Graph,
     project_ids: list[str],
@@ -828,6 +866,8 @@ async def _fetch_current_releases(
         existing = latest.get(key)
         if existing is None or event_ts > existing[2]:
             latest[key] = (tag, committish, event_ts, performed_by)
+
+    await _apply_deployment_nodes(db, project_ids, latest)
 
     # Backfill performed_by from operations_log for events whose
     # AGE edge left it null (in-product deploy/promote path).
