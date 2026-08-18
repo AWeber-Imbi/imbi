@@ -6,10 +6,20 @@ import { Alert } from '@/components/ui/alert'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { DeploymentCommitCiStatus } from '@/types'
 
+/** The flows the API gates, in the tense the copy needs. */
+const ACTION_COPY = {
+  deploy: { gerund: 'Deploying', verb: 'Deploy' },
+  promote: { gerund: 'Promoting', verb: 'Promote' },
+  redeploy: { gerund: 'Rolling back', verb: 'Roll back' },
+  release: { gerund: 'Releasing', verb: 'Release' },
+} as const
+
+export type CiFailureAction = keyof typeof ACTION_COPY
+
 interface CiFailureNoticeProps {
   acknowledged: boolean
   /** What the operator is about to do, for the confirmation copy. */
-  action: 'promote' | 'release'
+  action: CiFailureAction
   ciStatus: DeploymentCommitCiStatus | undefined
   onAcknowledgedChange: (next: boolean) => void
   sha: null | string
@@ -32,8 +42,11 @@ export function CiFailureNotice({
   sha,
 }: CiFailureNoticeProps) {
   if (!ciNeedsAcknowledgement(ciStatus)) return null
-  const verb = action === 'promote' ? 'Promote' : 'Release'
-  const gerund = action === 'promote' ? 'Promoting' : 'Releasing'
+  const { gerund, verb } = ACTION_COPY[action]
+  const record =
+    action === 'deploy' || action === 'redeploy'
+      ? 'recorded against the deployment'
+      : 'recorded against the release'
   return (
     <Alert
       title={`CI failed for ${sha?.slice(0, 7) ?? 'this commit'}`}
@@ -42,8 +55,8 @@ export function CiFailureNotice({
       <div className="flex flex-col gap-2">
         <span>
           The checks on this commit reported a failure. Review them before
-          shipping it — {gerund} anyway is still your call, but it will be
-          recorded against the release.
+          shipping it — {gerund} anyway is still your call, but it will be{' '}
+          {record}.
         </span>
         <label className="flex w-fit cursor-pointer items-center gap-2 text-xs font-medium">
           <Checkbox

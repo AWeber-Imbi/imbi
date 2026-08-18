@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import * as endpoints from '@/api/endpoints'
 import * as releases from '@/api/releases'
 import { render } from '@/test/utils'
 import type {
@@ -19,6 +20,13 @@ vi.mock('@/api/releases', async () => {
   const actual =
     await vi.importActual<typeof import('@/api/releases')>('@/api/releases')
   return { ...actual, blockRelease: vi.fn(), unblockRelease: vi.fn() }
+})
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/api/endpoints', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/api/endpoints')>('@/api/endpoints')
+  return { ...actual, getCommitCheckStatus: vi.fn() }
 })
 
 vi.mock('sonner', () => ({
@@ -145,6 +153,10 @@ describe('CurrentlyRunningCard', () => {
     vi.clearAllMocks()
     blockRelease.mockResolvedValue({ blocked: true, tag: 'v6.4.0' })
     unblockRelease.mockResolvedValue({ blocked: false, tag: 'v6.4.0' })
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: '0009990',
+    })
   })
 
   it('shows the running version, deployer, and environment URL', () => {
@@ -170,6 +182,7 @@ describe('CurrentlyRunningCard', () => {
       screen.getByRole('button', { name: 'Roll back to v6.4.0' }),
     )
     expect(actions.deploy).toHaveBeenCalledWith({
+      acknowledgeCiFailure: false,
       action: 'deploy',
       envName: 'Production',
       envSlug: 'production',
@@ -220,10 +233,14 @@ describe('CurrentlyRunningCard', () => {
     )
     expect(screen.getByText('v6.5.1')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Deploy v6.5.1' }))
-    await user.click(
-      screen.getByRole('button', { name: 'Deploy v6.5.1 to production' }),
-    )
+    const confirm = screen.getByRole('button', {
+      name: 'Deploy v6.5.1 to production',
+    })
+    // Held until the CI query answers; green needs no acknowledgement.
+    await waitFor(() => expect(confirm).toBeEnabled())
+    await user.click(confirm)
     expect(actions.deploy).toHaveBeenCalledWith({
+      acknowledgeCiFailure: false,
       action: 'deploy',
       envName: 'Production',
       envSlug: 'production',
@@ -283,5 +300,37 @@ describe('CurrentlyRunningCard', () => {
     expect(screen.getByText(/Regression in checkout/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Unblock' }))
     expect(unblockRelease).toHaveBeenCalledWith('acme', 'p1', 'v6.4.0')
+  })
+})
+
+describe('CurrentlyRunningCard — failing CI on the release being shipped', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'fail',
+      committish: '0009990',
+    })
+  })
+
+  it('holds the rollback confirm until the failure is acknowledged', async () => {
+    const user = userEvent.setup()
+    const actions = makeActions()
+    renderCard(STAGE, actions)
+    await user.click(screen.getByRole('button', { name: 'Roll back v6.4.0' }))
+    await waitFor(() => {
+      expect(screen.getByText(/CI failed for 0009990/)).toBeInTheDocument()
+    })
+    const confirm = screen.getByRole('button', {
+      name: 'Roll back to v6.4.0',
+    })
+    expect(confirm).toBeDisabled()
+    await user.click(
+      screen.getByRole('checkbox', { name: /Roll back anyway/i }),
+    )
+    await waitFor(() => expect(confirm).not.toBeDisabled())
+    await user.click(confirm)
+    expect(actions.deploy).toHaveBeenCalledWith(
+      expect.objectContaining({ acknowledgeCiFailure: true }),
+    )
   })
 })

@@ -1,6 +1,8 @@
-import { screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import * as endpoints from '@/api/endpoints'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -11,6 +13,13 @@ import type {
 import { CommitDeployCard } from './CommitDeployCard'
 import type { PipelineStage } from './pipeline'
 import type { DeploymentActions } from './useDeploymentActions'
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/api/endpoints', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/api/endpoints')>('@/api/endpoints')
+  return { ...actual, getCommitCheckStatus: vi.fn() }
+})
 
 const ENV = {
   id: 'testing',
@@ -84,18 +93,31 @@ const setup = (
   committish: string,
   recentCommits: RecentCommit[] = RECENT,
   current: Partial<CurrentReleaseEnvironment> = {},
-) =>
+  actions: DeploymentActions = makeActions(),
+) => {
   render(
     <CommitDeployCard
       accent={null}
-      actions={makeActions()}
+      actions={actions}
       canTrigger
+      orgSlug="acme"
+      projectId="p1"
       recentCommits={recentCommits}
       stage={makeStage(committish, current)}
     />,
   )
+  return actions
+}
 
 describe('CommitDeployCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+  })
+
   it('marks the deployed commit and splits Deploy/Roll back around it', () => {
     setup('bbb2222bbb2222')
     expect(screen.getByText('deployed')).toBeInTheDocument()
@@ -169,5 +191,88 @@ describe('CommitDeployCard', () => {
         'No synced commits yet — run a sync from the pipeline sidebar.',
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('CommitDeployCard — failing CI on the commit being deployed', () => {
+  const confirmButton = () =>
+    screen.getByRole('button', { name: /^Deploy aaa1111$/ })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'fail',
+      committish: 'aaa1111',
+    })
+  })
+
+  it('warns and holds the confirm until it is acknowledged', async () => {
+    const user = userEvent.setup()
+    setup('bbb2222bbb2222')
+    await user.click(screen.getByRole('button', { name: /Deploy/ }))
+    await waitFor(() => {
+      expect(screen.getByText(/CI failed for aaa1111/)).toBeInTheDocument()
+    })
+    expect(confirmButton()).toBeDisabled()
+  })
+
+  it('carries the acknowledgement into the deploy request', async () => {
+    // Regression guard: the card dispatches through
+    // ``useDeploymentActions``, and a request that omits the flag is one
+    // the API rightly answers 409 — after the operator ticked the box.
+    const user = userEvent.setup()
+    const actions = setup('bbb2222bbb2222')
+    await user.click(screen.getByRole('button', { name: /Deploy/ }))
+    await waitFor(() => {
+      expect(screen.getByText(/CI failed for aaa1111/)).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('checkbox', { name: /Deploy anyway/i }))
+    await waitFor(() => {
+      expect(confirmButton()).not.toBeDisabled()
+    })
+    await user.click(confirmButton())
+    expect(actions.deploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acknowledgeCiFailure: true,
+        sha: 'aaa1111aaa1111',
+      }),
+    )
+  })
+
+  it('reports no acknowledgement when the commit is green', async () => {
+    const user = userEvent.setup()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+    const actions = setup('bbb2222bbb2222')
+    await user.click(screen.getByRole('button', { name: /Deploy/ }))
+    await waitFor(() => {
+      expect(confirmButton()).not.toBeDisabled()
+    })
+    expect(screen.queryByText(/CI failed/)).not.toBeInTheDocument()
+    await user.click(confirmButton())
+    expect(actions.deploy).toHaveBeenCalledWith(
+      expect.objectContaining({ acknowledgeCiFailure: false }),
+    )
+  })
+
+  it('asks about a rollback in its own words and still gates it', async () => {
+    const user = userEvent.setup()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'fail',
+      committish: 'ccc3333',
+    })
+    setup('bbb2222bbb2222')
+    await user.click(screen.getByRole('button', { name: /Roll back/ }))
+    await waitFor(() => {
+      expect(screen.getByText(/CI failed for ccc3333/)).toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole('checkbox', { name: /Roll back anyway/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Roll back to ccc3333$/ }),
+    ).toBeDisabled()
   })
 })

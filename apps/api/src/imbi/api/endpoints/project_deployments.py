@@ -109,6 +109,15 @@ class DeployActionRequest(pydantic.BaseModel):
     committish: str
     ref_label: str | None = None
     inputs: dict[str, str] | None = None
+    #: Operator acknowledgement that ``committish`` has a failing CI run.
+    #: Without it a red commit is refused with a 409; with it the deploy
+    #: proceeds (see :func:`_assert_ci_not_failing`).  A rollback is a
+    #: ``redeploy``, so it is gated the same way: the gate asks about the
+    #: ref being shipped, not about why it is being shipped, and a
+    #: rollback onto a red ref costs one acknowledgement.  Only ``fail``
+    #: is gated -- ``unknown`` means CI never ran or the token cannot
+    #: read check-runs, which must not stand in for a failure.
+    acknowledge_ci_failure: bool = False
 
 
 class PromoteActionRequest(pydantic.BaseModel):
@@ -2109,6 +2118,21 @@ async def _handle_deploy(
         environment=body.environment,
     )
     handler = _handler(resolved)
+
+    # Last gate before anything irreversible: nothing has been dispatched
+    # yet, so a 409 here leaves nothing to clean up and the client can
+    # resubmit with the acknowledgement set.  Unlike promote and release,
+    # the ref being shipped is the ref being asked about -- a deploy names
+    # a commit or a tag directly, and both carry whatever check-runs the
+    # remote has for them.
+    await _assert_ci_not_failing(
+        handler,
+        ctx,
+        credentials,
+        committish=body.committish,
+        acknowledged=body.acknowledge_ci_failure,
+        action=body.action,
+    )
 
     # Merge env_payloads (from USES_PLUGIN edge) under the caller's
     # explicit ``body.inputs`` so a manual input override always wins.

@@ -698,6 +698,12 @@ export type DeploymentStatus =
   | 'success'
 
 export interface DeploymentTriggerRequest {
+  /**
+   * See {@link CutReleaseRequest.acknowledge_ci_failure}. A rollback is a
+   * `redeploy` and is gated the same way — the API asks about the ref
+   * being shipped, not about why it is being shipped.
+   */
+  acknowledge_ci_failure?: boolean
   action: DeploymentAction
   committish: string
   environment: string

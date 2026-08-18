@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import {
   Ban,
@@ -11,6 +11,11 @@ import {
   RotateCcw,
 } from 'lucide-react'
 
+import {
+  CiFailureNotice,
+  ciNeedsAcknowledgement,
+  useCommitCheckStatus,
+} from '@/components/deploy/CiFailureNotice'
 import { BlockReleaseDialog } from '@/components/releases/BlockReleaseDialog'
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { useReleaseBlockMutation } from '@/components/releases/useReleaseBlockMutation'
@@ -55,6 +60,19 @@ export function CurrentlyRunningCard({
   const [openTag, setOpenTag] = useState<null | string>(null)
   const [confirming, setConfirming] = useState<null | RecentRelease>(null)
   const [blocking, setBlocking] = useState<null | string>(null)
+  // Live CI status for the release in the confirm dialog. The row dots
+  // come from the synced history and can lag; this is the state the API's
+  // deploy gate will actually see.
+  const { ciPending, ciStatus } = useCommitCheckStatus(
+    orgSlug,
+    projectId,
+    confirming?.entry.sha ?? null,
+  )
+  const ciFailed = ciNeedsAcknowledgement(ciStatus)
+  const [ciAcknowledged, setCiAcknowledged] = useState(false)
+  useEffect(() => {
+    setCiAcknowledged(false)
+  }, [confirming?.entry.sha])
   const {
     block,
     isPending: blockPending,
@@ -191,12 +209,17 @@ export function CurrentlyRunningCard({
       </div>
 
       <ConfirmActionDialog
+        // Held until CI has answered: an unresolved status cannot be told
+        // apart from a green one, and dispatching on it skips the
+        // acknowledgement the server would then demand with a 409.
+        confirmDisabled={ciPending || (ciFailed && !ciAcknowledged)}
         confirmLabel={confirm.confirmLabel}
         description={confirm.description}
         onCancel={() => setConfirming(null)}
         onConfirm={() => {
           if (!confirming) return
           actions.deploy({
+            acknowledgeCiFailure: ciFailed && ciAcknowledged,
             action: 'deploy',
             envName: stage.env.name,
             envSlug: stage.env.slug,
@@ -208,7 +231,15 @@ export function CurrentlyRunningCard({
         }}
         open={confirming !== null}
         title={confirm.title}
-      />
+      >
+        <CiFailureNotice
+          acknowledged={ciAcknowledged}
+          action={confirming?.relation === 'behind' ? 'redeploy' : 'deploy'}
+          ciStatus={ciStatus}
+          onAcknowledgedChange={setCiAcknowledged}
+          sha={confirming?.entry.sha ?? null}
+        />
+      </ConfirmActionDialog>
 
       <BlockReleaseDialog
         isPending={blockPending}
