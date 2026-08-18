@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import fastapi
+import httpx
 
 from imbi.api import deployment_sweeper
 from imbi.common import deployments
@@ -121,7 +122,68 @@ class SweeperTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, summary.expired)
         kwargs = self.append.await_args.kwargs
         self.assertEqual('failed', kwargs['status'])
-        self.assertEqual(deployment_sweeper.EXPIRED_NOTE, kwargs['note'])
+        self.assertTrue(
+            kwargs['note'].startswith(deployment_sweeper.EXPIRED_NOTE)
+        )
+
+    async def test_vanished_remote_run_expires(self) -> None:
+        """The dominant stuck class: dispatched, never updated, gone.
+
+        GitHub's ``get_deployment_status`` raises for status, so a run
+        the remote no longer has arrives as ``httpx.HTTPStatusError``
+        rather than a result.  Those rows would otherwise be polled,
+        fail, and be skipped on every sweep forever.
+        """
+        self.stuck.return_value = [
+            _stuck(created_at=NOW - datetime.timedelta(days=200))
+        ]
+        self.poll.side_effect = httpx.HTTPStatusError(
+            'Not Found',
+            request=httpx.Request('GET', 'https://api.github.com/x'),
+            response=httpx.Response(404),
+        )
+        summary = await self._sweep()
+        assert summary is not None
+        self.assertEqual(1, summary.expired)
+        kwargs = self.append.await_args.kwargs
+        self.assertEqual('failed', kwargs['status'])
+        # The marker stays greppable and names why the remote could not
+        # answer.
+        self.assertEqual(
+            f'{deployment_sweeper.EXPIRED_NOTE}: HTTPStatusError',
+            kwargs['note'],
+        )
+        # Stamped with when it started, not when the sweep noticed.
+        self.assertEqual(
+            self.stuck.return_value[0].created_at, kwargs['timestamp']
+        )
+
+    async def test_young_vanished_run_is_left_for_the_next_sweep(
+        self,
+    ) -> None:
+        self.poll.side_effect = httpx.HTTPStatusError(
+            'Not Found',
+            request=httpx.Request('GET', 'https://api.github.com/x'),
+            response=httpx.Response(404),
+        )
+        summary = await self._sweep()
+        assert summary is not None
+        self.assertEqual(0, summary.expired)
+        self.append.assert_not_awaited()
+
+    async def test_missing_capability_still_aborts_the_project(self) -> None:
+        """A resolution failure is not a per-item failure.
+
+        It arrives as ``fastapi.HTTPException``, which only resolution
+        raises -- so it must abort the project rather than expire one
+        deployment, even though the status code matches a remote 404.
+        """
+        self.stuck.return_value = [
+            _stuck(created_at=NOW - datetime.timedelta(days=200))
+        ]
+        self.poll.side_effect = fastapi.HTTPException(status_code=404)
+        self.assertIsNone(await self._sweep())
+        self.append.assert_not_awaited()
 
     async def test_recent_poll_failure_is_left_for_the_next_sweep(
         self,

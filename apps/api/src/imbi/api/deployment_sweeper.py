@@ -183,14 +183,25 @@ async def _expire_unpollable(
     item: deployments.StuckDeployment,
     release_id: str | None,
     now: datetime.datetime,
+    error: BaseException,
 ) -> int:
     """Expire a deployment whose run cannot be polled at all.
 
-    A run that errors on every sweep would otherwise never reach the
-    expiry branch, so a persistent 5xx or timeout kept it unfinished
-    forever -- the state this sweeper exists to end.  Returns 1 when it
-    expired the deployment, 0 when it is still young enough to keep
-    asking about.
+    This is the path the dominant stuck class takes.  A deployment
+    dispatched months ago and never updated is polled against a run the
+    remote no longer has, and the plugin raises rather than answering
+    (GitHub's ``get_deployment_status`` calls ``raise_for_status``, so a
+    vanished Deployment id is an ``httpx.HTTPStatusError``, not a
+    result).  Without expiring here those rows would be polled, fail,
+    and be skipped on every sweep forever -- exactly the state this
+    sweeper exists to end.
+
+    The note keeps :data:`EXPIRED_NOTE` as its prefix so it stays
+    greppable, and names the error class after it so the reason the
+    remote could not answer survives on the node.
+
+    Returns 1 when it expired the deployment, 0 when it is still young
+    enough to keep asking about.
     """
     if deployments.as_utc(item.created_at) >= now - EXPIRE_AFTER:
         return 0
@@ -199,7 +210,7 @@ async def _expire_unpollable(
         item,
         release_id,
         status='failed',
-        note=EXPIRED_NOTE,
+        note=f'{EXPIRED_NOTE}: {type(error).__name__}',
         run_url=None,
         timestamp=item.created_at,
     )
@@ -253,6 +264,14 @@ async def sweep_project(
             # bound plugin can't answer.  Either way no deployment of
             # this project is resolvable, so stop rather than repeat the
             # same resolution failure per row.
+            #
+            # This is deliberately narrow to ``fastapi.HTTPException``,
+            # which only resolution raises.  A *remote* 404 -- the run
+            # GitHub no longer has -- arrives as an
+            # ``httpx.HTTPStatusError`` and must fall through to the
+            # per-item handling below, which can expire it.  Widening
+            # this to catch remote errors would strand the whole
+            # project on its first vanished run.
             if exc.status_code in (400, 404):
                 return None
             LOGGER.warning(
@@ -261,15 +280,15 @@ async def sweep_project(
                 item.project_id,
                 exc.detail,
             )
-            expired += await _expire_unpollable(db, item, release_id, now)
+            expired += await _expire_unpollable(db, item, release_id, now, exc)
             continue
-        except Exception:
+        except Exception as exc:
             LOGGER.exception(
                 'sweeper could not poll run %s for project %s',
                 item.external_run_id,
                 item.project_id,
             )
-            expired += await _expire_unpollable(db, item, release_id, now)
+            expired += await _expire_unpollable(db, item, release_id, now, exc)
             continue
 
         status = deployments.RUN_STATUS_TO_STATUS.get(run.status)
