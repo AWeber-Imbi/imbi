@@ -2742,7 +2742,7 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
         writes = [
             call.args[1]
             for call in db.execute.await_args_list
-            if 'SET r.committish = {committish}' in call.args[0]
+            if 'r.committish = {committish}' in call.args[0]
         ]
         self.assertEqual(1, len(writes))
         self.assertEqual('27f2f81', writes[0]['committish'])
@@ -2757,7 +2757,7 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
             [
                 call
                 for call in db.execute.await_args_list
-                if 'SET r.committish = {committish}' in call.args[0]
+                if 'r.committish = {committish}' in call.args[0]
             ]
         )
 
@@ -4139,6 +4139,115 @@ class ExistingTagForCommittishTestCase(unittest.IsolatedAsyncioTestCase):
             await project_deployments._existing_tag_for_committish(
                 db, project_id='pid', committish='deadbeef'
             )
+
+    async def test_matches_the_promoted_committish(self) -> None:
+        """A promote heals the node onto the version-bump commit.
+
+        The testing deployments that preceded it still resync carrying
+        the promoted commit, so the lookup has to consider both.
+        """
+        db = self._db([{'tag': 'v1.0.0'}])
+        await project_deployments._existing_tag_for_committish(
+            db, project_id='pid', committish='deadbeef'
+        )
+        self.assertIn(
+            'r.promoted_committish = {committish}',
+            db.execute.await_args.args[0],
+        )
+
+
+class AdoptUntaggedReleaseTestCase(unittest.IsolatedAsyncioTestCase):
+    """The promote tags the node already holding the commit's history."""
+
+    @staticmethod
+    def _db(*results: list[dict[str, typing.Any]]) -> mock.AsyncMock:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(side_effect=list(results))
+        return db
+
+    async def test_tags_the_untagged_release_for_the_commit(self) -> None:
+        db = self._db([], [{'rid': 'rel-1'}], [{'rid': 'rel-1'}])
+        result = await project_deployments._adopt_untagged_release(
+            db, project_id='pid', committish='1A9C610FFFF', tag='v1.0.0'
+        )
+        self.assertEqual(result, 'rel-1')
+        # Normalized, because the untagged node was keyed on the short
+        # form when the resync created it.
+        self.assertEqual(
+            db.execute.await_args_list[1].args[1]['committish'], '1a9c610'
+        )
+        query, params, _ = db.execute.await_args_list[2].args
+        self.assertIn('SET r.tag', query)
+        self.assertIn('WHERE r.tag IS NULL', query)
+        self.assertEqual(params['release_id'], 'rel-1')
+        self.assertEqual(params['tag'], 'v1.0.0')
+
+    async def test_skips_when_the_node_is_tagged_before_the_write(
+        self,
+    ) -> None:
+        """Two tags promoting the same commit at once.
+
+        Both probes see the node untagged, so both reach the write.  The
+        write's own ``r.tag IS NULL`` is what makes the loser match
+        nothing rather than overwrite the winner's tag.
+        """
+        db = self._db([], [{'rid': 'rel-1'}], [])
+        with self.assertLogs('imbi.api.endpoints', level='WARNING') as logs:
+            result = await project_deployments._adopt_untagged_release(
+                db, project_id='pid', committish='1a9c610', tag='v2.0.0'
+            )
+        self.assertIsNone(result)
+        self.assertTrue(
+            any('tagged between the probe' in line for line in logs.output),
+        )
+
+    async def test_skips_when_a_release_already_carries_the_tag(self) -> None:
+        db = self._db([{'rid': 'rel-existing'}])
+        result = await project_deployments._adopt_untagged_release(
+            db, project_id='pid', committish='1a9c610', tag='v1.0.0'
+        )
+        self.assertIsNone(result)
+        self.assertEqual(db.execute.await_count, 1)
+
+    async def test_returns_none_when_nothing_to_adopt(self) -> None:
+        db = self._db([], [])
+        result = await project_deployments._adopt_untagged_release(
+            db, project_id='pid', committish='1a9c610', tag='v1.0.0'
+        )
+        self.assertIsNone(result)
+
+    async def test_skips_when_several_untagged_nodes_share_the_commit(
+        self,
+    ) -> None:
+        """Tagging every match would create the duplicate we avoid."""
+        db = self._db([], [{'rid': 'rel-1'}, {'rid': 'rel-2'}])
+        with self.assertLogs('imbi.api.endpoints', level='WARNING') as logs:
+            result = await project_deployments._adopt_untagged_release(
+                db, project_id='pid', committish='1a9c610', tag='v1.0.0'
+            )
+        self.assertIsNone(result)
+        self.assertEqual(db.execute.await_count, 2)
+        self.assertTrue(
+            any('Not adopting' in line for line in logs.output),
+        )
+
+
+class ReleaseCommittishHealTestCase(unittest.IsolatedAsyncioTestCase):
+    """The heal keeps the commit it moves away from."""
+
+    async def test_preserves_the_promoted_committish(self) -> None:
+        db = mock.AsyncMock(spec=graph.Graph)
+        db.execute = mock.AsyncMock(return_value=[])
+        await project_deployments._set_release_committish(
+            db, release_id='rel-1', committish='bump123'
+        )
+        query = db.execute.await_args.args[0]
+        self.assertIn(
+            'r.promoted_committish = COALESCE(\n            '
+            'r.promoted_committish, r.committish)',
+            query,
+        )
+        self.assertIn('r.committish = {committish}', query)
 
 
 class ReleaseAuthorTestCase(unittest.TestCase):

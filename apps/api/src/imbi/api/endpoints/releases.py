@@ -689,13 +689,20 @@ async def list_releases(
     result; when both are omitted every release is returned. Both are
     matched exactly. A null parameter is interpolated as Cypher ``null``
     and short-circuits the corresponding clause via ``null IS NULL``.
+
+    ``committish`` also matches ``promoted_committish`` -- the commit a
+    release was promoted from, kept when the promote heals the node onto
+    the commit its tag resolves to. A deployment observed on the
+    pre-bump commit belongs to that release, not to nothing.
     """
     query: typing.LiteralString = """
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     MATCH (p)-[:HAS_RELEASE]->(r:Release)
-    WHERE ({committish} IS NULL OR r.committish = {committish})
+    WHERE ({committish} IS NULL
+           OR r.committish = {committish}
+           OR r.promoted_committish = {committish})
       AND ({tag} IS NULL OR r.tag = {tag})
     RETURN r{{.*}} AS release
     ORDER BY r.created_at DESC
