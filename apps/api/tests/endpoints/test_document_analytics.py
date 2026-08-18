@@ -112,6 +112,28 @@ class ScrollDepthTestCase(unittest.TestCase):
         )
 
 
+class ReadersHavingTestCase(unittest.TestCase):
+    """The reader list must agree with the summary's reader count.
+
+    The summary counts ``uniqExactIf(principal, is_read)``. Listing a
+    principal who only viewed puts an extra avatar in the byline beside
+    a count that never included them.
+    """
+
+    def test_view_only_principals_are_excluded(self) -> None:
+        self.assertEqual(
+            document_analytics._readers_having(False), 'HAVING reads > 0'
+        )
+
+    def test_pagination_keeps_the_reads_filter(self) -> None:
+        having = document_analytics._readers_having(True)
+        self.assertIn('reads > 0', having)
+        self.assertIn('{cursor_ts:DateTime64(3)}', having)
+        self.assertIn('{cursor_principal:String}', having)
+        self.assertEqual(having.count('HAVING'), 1)
+        self.assertIn(' AND ', having)
+
+
 class SurfaceFilterTestCase(unittest.TestCase):
     """Human reads are the default answer; agents are opt-in."""
 

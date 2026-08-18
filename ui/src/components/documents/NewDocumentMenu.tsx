@@ -24,7 +24,8 @@ interface Props {
    * Attachment context the new document will be created in. Drives which
    * templates are offered (matching-type plus 'global' templates).
    * 'org' is the top-level Documents page, where the attachment is picked
-   * in the editor — every template except project-only ones applies.
+   * in the editor afterwards — so every template applies, including
+   * project ones.
    */
   context?: 'org' | 'project' | 'project_type' | 'user'
   onCreate: (template?: DocumentTemplate) => void
@@ -60,12 +61,14 @@ export function NewDocumentMenu({
     queryKey: ['documentTemplates', orgSlug, context],
   })
 
+  // The org page attaches the document after the fact, so a project
+  // template is a legitimate starting point there. Filtering those out
+  // left the menu empty — every seeded template is type 'project' — and
+  // the control silently degraded to a plain button.
   const visibleTemplates =
     context === 'project'
       ? filterTemplatesByProjectType(templates, projectTypeSlugs)
-      : context === 'org'
-        ? templates.filter((t) => t.type !== 'project')
-        : templates
+      : templates
 
   // Nothing to choose between — keep the fast path as a plain button.
   // (On error we get no templates, so degrade rather than show an empty menu.)

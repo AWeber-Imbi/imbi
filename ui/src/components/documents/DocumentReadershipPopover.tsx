@@ -309,7 +309,10 @@ function ReaderAvatarStack({
       {shown.map((reader, index) => (
         <span
           className={cn(
-            'ring-primary rounded-full ring-2',
+            // ``inline-flex`` so the ring hugs the avatar. A plain inline
+            // span is sized by line-height, which drew the ring offset
+            // from the image it is meant to outline.
+            'ring-primary inline-flex rounded-full ring-2',
             index > 0 && '-ml-1.5',
           )}
           key={reader.principal}
