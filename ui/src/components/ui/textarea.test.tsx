@@ -44,8 +44,12 @@ describe('Textarea autoResize', () => {
     )
   })
 
-  it('regrows when the value changes', () => {
-    const { rerender } = render(<Textarea autoResize value="a" />)
+  it('shrinks and regrows when the value changes', () => {
+    const { rerender } = render(<Textarea autoResize value={'a\nb\nc'} />)
+    expect(screen.getByRole('textbox').style.height).toBe(
+      `${3 * LINE_HEIGHT}px`,
+    )
+    rerender(<Textarea autoResize value="a" />)
     expect(screen.getByRole('textbox').style.height).toBe(`${LINE_HEIGHT}px`)
     rerender(<Textarea autoResize value={'a\nb\nc'} />)
     expect(screen.getByRole('textbox').style.height).toBe(
