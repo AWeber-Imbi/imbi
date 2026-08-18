@@ -35,7 +35,7 @@ import nanoid
 import pydantic
 
 from imbi.api.auth import permissions
-from imbi.common import graph, models
+from imbi.common import clickhouse, graph, models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -541,12 +541,17 @@ def _count(row: dict[str, typing.Any], key: str) -> int:
 def _timestamp(
     row: dict[str, typing.Any], key: str
 ) -> datetime.datetime | None:
-    """Return a decoded ISO-8601 column as a datetime, or ``None``."""
+    """Return a decoded ISO-8601 column as a datetime, or ``None``.
+
+    The result is always aware. Everything written here carries an
+    offset, but a stored value without one would otherwise sort against
+    the aware ``_UNDATED`` sentinel and raise ``TypeError``.
+    """
     raw = _text(row, key)
     if not raw:
         return None
     try:
-        return datetime.datetime.fromisoformat(raw)
+        return clickhouse.as_utc(datetime.datetime.fromisoformat(raw))
     except ValueError:
         LOGGER.warning('Unparseable timestamp %r in column %s', raw, key)
         return None

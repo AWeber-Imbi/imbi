@@ -2131,6 +2131,16 @@ class ComponentGovernanceFieldsTestCase(unittest.TestCase):
             created_by='alice@example.com',
         )
         self.assertIsNone(advisory.title)
+        with self.assertRaises(pydantic.ValidationError):
+            models.Advisory(  # pyright: ignore[reportCallIssue]
+                url='https://example.com/CVE-2025-1234',
+                created_by='alice@example.com',
+            )
+        with self.assertRaises(pydantic.ValidationError):
+            models.Advisory(  # pyright: ignore[reportCallIssue]
+                cve_id='CVE-2025-1234',
+                created_by='alice@example.com',
+            )
 
     def test_advisory_upper_cases_the_identifier(self) -> None:
         """The unique index treats case as significant, so the model

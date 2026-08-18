@@ -47,7 +47,19 @@ export function toCsv(header: string[], rows: unknown[][]): string {
   ].join('\n')
 }
 
-/** Quote one field, doubling any embedded quotes per RFC 4180. */
+/**
+ * Quote one field, doubling any embedded quotes per RFC 4180.
+ *
+ * A field that opens with `=`, `+`, `-`, or `@` is prefixed with an
+ * apostrophe first. RFC quoting does not stop a spreadsheet from
+ * evaluating such a value as a formula, and these exports carry
+ * user-supplied project, team, and package names.
+ */
 function quote(value: unknown): string {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`
+  const text = String(value ?? '')
+  const safe = FORMULA_LEAD.test(text) ? `'${text}` : text
+  return `"${safe.replace(/"/g, '""')}"`
 }
+
+/** A field a spreadsheet would evaluate rather than display. */
+const FORMULA_LEAD = /^[\t\r\n ]*[=+\-@]/

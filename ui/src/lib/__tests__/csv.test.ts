@@ -119,4 +119,21 @@ describe('toCsv', () => {
   it('emits only the header when there are no rows', () => {
     expect(toCsv(['A', 'B'], [])).toBe('"A","B"')
   })
+
+  it.each(['=', '+', '-', '@'])(
+    'defuses a field opening with %s so no spreadsheet evaluates it',
+    (lead) => {
+      expect(toCsv(['A'], [[`${lead}HYPERLINK("http://x")`]])).toBe(
+        `"A"\n"'${lead}HYPERLINK(""http://x"")"`,
+      )
+    },
+  )
+
+  it('defuses a formula hidden behind leading whitespace', () => {
+    expect(toCsv(['A'], [[' =1+1']])).toBe('"A"\n"\' =1+1"')
+  })
+
+  it('leaves an ordinary field unprefixed', () => {
+    expect(toCsv(['A'], [['pkg:npm/express']])).toBe('"A"\n"pkg:npm/express"')
+  })
 })

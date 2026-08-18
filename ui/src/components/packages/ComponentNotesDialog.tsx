@@ -57,7 +57,7 @@ export function ComponentNotesDialog({
     if (open) setDraft('')
   }, [open, componentReleaseId])
 
-  const { data, isLoading } = useQuery({
+  const { data, isError, isLoading } = useQuery({
     enabled: open && !!componentReleaseId,
     queryFn: ({ signal }) =>
       listComponentNotes(orgSlug, componentReleaseId, signal),
@@ -81,7 +81,10 @@ export function ComponentNotesDialog({
         </DialogHeader>
         <div className="max-h-72 space-y-3 overflow-y-auto p-6">
           {isLoading && <Sk className="h-16 w-full" />}
-          {!isLoading && (data ?? []).length === 0 && (
+          {!isLoading && isError && (
+            <p className="text-danger text-sm">Could not load the notes.</p>
+          )}
+          {!isLoading && !isError && (data ?? []).length === 0 && (
             <p className="text-tertiary text-sm">No notes yet.</p>
           )}
           {(data ?? []).map((note) => (

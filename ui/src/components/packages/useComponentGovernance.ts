@@ -45,7 +45,9 @@ interface UseComponentGovernanceResult {
 const message = (err: unknown): string =>
   err instanceof ApiError
     ? (extractApiErrorDetail(err) ?? err.message)
-    : (err as Error).message
+    : err instanceof Error
+      ? err.message
+      : 'The request failed.'
 
 /**
  * Every write on the package-governance surface, sharing one
