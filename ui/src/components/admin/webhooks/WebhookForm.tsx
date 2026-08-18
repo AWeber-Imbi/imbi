@@ -158,9 +158,13 @@ export function WebhookForm({
         handler: r.handler.trim(),
         handler_config: r.handler_config,
       })),
-      secret: secret.trim() || null,
       user_subject_selector: userSubjectSelector.trim() || null,
       user_type_selector: userTypeSelector.trim() || null,
+      // Omit the secret when the field is blank. The field always starts
+      // empty, so a blank value means "keep the current secret" -- sending
+      // an explicit null makes the PATCH diff emit `/secret: null`, which
+      // the API reads as an intentional clear.
+      ...(secret.trim() ? { secret: secret.trim() } : {}),
       // Include slug only when editing so the PATCH can update it.
       ...(isEditing ? { slug: slug.trim() } : {}),
     }
