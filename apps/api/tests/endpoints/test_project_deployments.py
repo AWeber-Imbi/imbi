@@ -3399,6 +3399,23 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         self._tags('aaa1111aaa1111')
         self.assertEqual('not_applicable', self._history()[0]['ci_status'])
 
+    def test_a_short_commit_attribute_is_too_ambiguous_to_match(self) -> None:
+        """``'a'`` would prefix-match most shas; skip it instead."""
+        self._props = {'ci_build_result': 'success', 'ci_build_sha': 'a'}
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_a_non_hex_commit_attribute_is_ignored(self) -> None:
+        """A value that is not a sha at all cannot name a commit."""
+        self._props = {
+            'ci_build_result': 'success',
+            'ci_build_sha': 'not-a-sha-at-all',
+        }
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
     def test_falls_through_to_live_check_runs(self) -> None:
         self._use_plugin('pass')
         self._tags('aaa1111aaa1111')
@@ -3444,15 +3461,25 @@ class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
         Releases past the cap keep the honest label rather than making
         the page wait on a request per row.
         """
-        handler = _ci_plugin('pass')
+        seen: list[str] = []
+
+        class _RecordingCiPlugin(_FakeDeploymentPlugin):
+            async def get_check_status(  # type: ignore[override]
+                self, ctx, credentials, committish
+            ):
+                seen.append(committish)
+                return 'pass'
+
         self.mocks['resolve_capability'].return_value = _make_resolved(
-            handler, options={'owner': 'octo', 'repo': 'demo'}
+            _RecordingCiPlugin, options={'owner': 'octo', 'repo': 'demo'}
         )
         shas = [f'{i:02d}aaaaaaaaaaa' for i in range(15)]
         self._tags(*shas)
         statuses = [e['ci_status'] for e in self._history()]
-        self.assertEqual(10, statuses.count('pass'))
-        self.assertEqual(5, statuses.count('not_applicable'))
+        self.assertEqual(['pass'] * 10 + ['not_applicable'] * 5, statuses)
+        # The cap keeps the ten highest-semver releases (v1.14.0 down to
+        # v1.5.0), not just any ten.
+        self.assertCountEqual(shas[5:], seen)
 
 
 class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):

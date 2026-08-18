@@ -63,6 +63,7 @@ export function CiStatusDot({
           s.color,
           className,
         )}
+        role="img"
         style={{ height: size + 2, width: size + 2 }}
       >
         <Icon size={size - 4} strokeWidth={3} />

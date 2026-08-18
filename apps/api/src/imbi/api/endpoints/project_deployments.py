@@ -4760,12 +4760,14 @@ def _ci_status_from_attributes(
     Returns ``None`` unless the attributes both name a commit and name
     *this* release's commit.  Prefix matching is deliberate: the webhook
     may record a short sha while the tag carries the full one, or the
-    reverse.
+    reverse.  Anything shorter than git's 7-character short-sha default,
+    or not hexadecimal at all, is too ambiguous to prefix-match against
+    and is skipped.
     """
     attr_sha = next(
         (str(props[k]) for k in _CI_ATTR_SHA_KEYS if props.get(k)), ''
     ).lower()
-    if not attr_sha:
+    if len(attr_sha) < 7 or not re.fullmatch(r'[0-9a-f]+', attr_sha):
         return None
     target = sha.lower()
     if not (target.startswith(attr_sha) or attr_sha.startswith(target)):

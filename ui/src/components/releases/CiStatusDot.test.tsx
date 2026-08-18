@@ -14,7 +14,7 @@ describe('CiStatusDot', () => {
       ['unknown', 'CI status unknown'],
     ] as const) {
       const { unmount } = render(<CiStatusDot status={status} />)
-      expect(screen.getByLabelText(label)).toBeInTheDocument()
+      expect(screen.getByRole('img', { name: label })).toBeInTheDocument()
       unmount()
     }
   })
@@ -26,13 +26,20 @@ describe('CiStatusDot', () => {
     // which made a green build look unverified.
     render(<CiStatusDot status="not_applicable" />)
     expect(
-      screen.getByLabelText('No CI status — this project has no environments'),
+      screen.getByRole('img', {
+        name: 'No CI status — this project has no environments',
+      }),
     ).toBeInTheDocument()
     expect(screen.queryByLabelText('CI status unknown')).toBeNull()
   })
 
-  it('falls back to unknown for a status it does not recognize', () => {
+  it('falls back to unknown for a missing status', () => {
     render(<CiStatusDot status={null} />)
+    expect(screen.getByLabelText('CI status unknown')).toBeInTheDocument()
+  })
+
+  it('falls back to unknown for a status it does not recognize', () => {
+    render(<CiStatusDot status="unrecognized" />)
     expect(screen.getByLabelText('CI status unknown')).toBeInTheDocument()
   })
 })
