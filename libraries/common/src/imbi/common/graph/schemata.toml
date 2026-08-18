@@ -220,12 +220,13 @@ attributes = ["name"]
 vlabel = "Project"
 attributes = ["slug"]
 
-# Per-project uniqueness of `Release.version` is enforced at the
+# Per-project uniqueness of `Release.tag` is enforced at the
 # application layer — two projects may share e.g. "1.0.0" so a
-# graph-wide UNIQUE index is not possible.
+# graph-wide UNIQUE index is not possible. The index still matters:
+# `tag` is the release identity every upsert and correlation MERGEs on.
 [[vlabel_indexes]]
 vlabel = "Release"
-attributes = ["version"]
+attributes = ["tag"]
 
 [[vlabel_indexes]]
 vlabel = "Role"

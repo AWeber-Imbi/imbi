@@ -292,6 +292,34 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 409)
 
+    def test_create_dedupes_on_the_tag_not_the_committish(self) -> None:
+        """The tag identifies the release; the commit it points at moves.
+
+        The gateway posts the post-bump SHA, so a committish-keyed
+        pre-check missed the node Imbi had already created and the
+        endpoint created a duplicate for the same tag.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'id': RELEASE_ID}],  # matched on the tag alone
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '2.45.3',
+                    'committish': '27f2f81',
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 409)
+        query, params, _ = self.mock_db.execute.call_args_list[1].args
+        self.assertIn('r.tag = {tag}', query)
+        self.assertEqual('2.45.3', params['tag'])
+
     def test_create_cross_project_duplicate_ok(self) -> None:
         """Uniqueness is per-project: another project may reuse 1.2.3."""
         self.mock_db.execute.side_effect = [

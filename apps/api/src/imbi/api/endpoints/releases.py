@@ -548,14 +548,20 @@ async def create_release(
             detail=f'Project {project_id!r} not found',
         )
 
-    # Per-project (committish, tag) uniqueness pre-check. A SHA can
-    # ship under multiple tags and a tag is optional, so the natural
-    # key combines both fields. AGE has no NULL equality, so the tag
-    # comparison is split via COALESCE to a sentinel.
+    # Per-project uniqueness pre-check. A tag is the release's
+    # identity: it names one shippable artifact, and the commit it
+    # points at moves (the release workflow bumps the version, then
+    # tags the bump commit). Matching on the committish instead let the
+    # post-bump SHA miss the node Imbi had already created and create a
+    # duplicate. Only an untagged release falls back to the committish.
+    # AGE has no NULL equality, so nullable comparisons go through
+    # COALESCE to a sentinel.
     existing_query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
-    WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
+    MATCH (p:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+    WHERE (COALESCE({tag}, '') <> '' AND r.tag = {tag})
+       OR (COALESCE({tag}, '') = ''
+           AND r.committish = {committish}
+           AND COALESCE(r.tag, '') = '')
     RETURN r.id AS id
     """
     existing = await db.execute(
@@ -571,7 +577,7 @@ async def create_release(
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
-                f'Release committish={data.committish!r} tag={data.tag!r}'
+                f'Release tag={data.tag!r} committish={data.committish!r}'
                 f' already exists for project {project_id!r}'
             ),
         )
@@ -1000,14 +1006,18 @@ async def patch_release(
     serialized_links = _serialize_links(merged_links_raw)
     del update
 
-    # Identity is ``(committish, tag)`` — reject a patch that would
-    # collide with another release on this project's same SHA.  AGE
-    # has no NULL equality, so compare via ``COALESCE`` to a sentinel.
+    # Identity is the tag (the committish is mutable), so reject a
+    # patch that would give this release a tag another release on the
+    # project already owns.  An untagged release falls back to the
+    # committish.  AGE has no NULL equality, so nullable comparisons go
+    # through ``COALESCE`` to a sentinel.
     conflict_query: typing.LiteralString = """
-    MATCH (:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(other:Release {{committish: {committish}}})
+    MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(other:Release)
     WHERE other.id <> {release_id}
-      AND COALESCE(other.tag, '') = COALESCE({tag}, '')
+      AND ((COALESCE({tag}, '') <> '' AND other.tag = {tag})
+           OR (COALESCE({tag}, '') = ''
+               AND other.committish = {committish}
+               AND COALESCE(other.tag, '') = ''))
     RETURN other.id AS id
     LIMIT 1
     """
@@ -1025,9 +1035,9 @@ async def patch_release(
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
-                f'Release committish={data["committish"]!r}'
-                f' tag={merged_tag!r} already exists for project'
-                f' {project_id!r}'
+                f'Release tag={merged_tag!r}'
+                f' committish={data["committish"]!r} already exists for'
+                f' project {project_id!r}'
             ),
         )
 

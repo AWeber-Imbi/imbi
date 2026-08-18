@@ -1024,21 +1024,26 @@ async def _release_id_for(
     committish: str,
     tag: str | None,
 ) -> str | None:
-    """Return the ``Release.id`` matching ``(project, committish, tag)``.
+    """Return the ``Release.id`` matching ``(project, tag)``.
 
     Acts as both an existence probe and a lookup for the release-id
     the caller needs to pass to ``append_deployment_event`` and the
-    deployment-audit writer. AGE doesn't expose NULL equality, so
-    tag-matching is COALESCEd through a sentinel.
+    deployment-audit writer. The tag is the identity when there is one
+    — the commit it points at moves when the release workflow bumps the
+    version — so ``committish`` only identifies an untagged release.
+    AGE doesn't expose NULL equality, so nullable comparisons are
+    COALESCEd through a sentinel.
     """
-    # Fetch all matching ids so a duplicate ``(committish, tag)`` row
-    # is visible in the logs instead of being silently masked by
-    # ``LIMIT 1`` — the schema doesn't enforce uniqueness on this pair
-    # and a stuck retry path is exactly how we'd accumulate dupes.
+    # Fetch all matching ids so a duplicate ``(project, tag)`` row is
+    # visible in the logs instead of being silently masked by
+    # ``LIMIT 1`` — AGE has no composite unique constraint to enforce
+    # the pair, so duplicates remain possible.
     query: typing.LiteralString = """
-    MATCH (:Project {{id: {project_id}}})
-        -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
-    WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
+    MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+    WHERE (COALESCE({tag}, '') <> '' AND r.tag = {tag})
+       OR (COALESCE({tag}, '') = ''
+           AND r.committish = {committish}
+           AND COALESCE(r.tag, '') = '')
     RETURN r.id AS rid
     """
     rows = await db.execute(
@@ -1054,11 +1059,11 @@ async def _release_id_for(
         return None
     if len(rows) > 1:
         LOGGER.warning(
-            'Multiple Release nodes for project=%s committish=%s tag=%r; '
+            'Multiple Release nodes for project=%s tag=%r committish=%s; '
             'using the first',
             project_id,
-            committish,
             tag,
+            committish,
         )
     rid = graph.parse_agtype(rows[0].get('rid'))
     return str(rid) if rid else None
@@ -2863,6 +2868,68 @@ async def _handle_promote(
     )
 
 
+# The upsert below is one statement so concurrent writers (promote,
+# webhook, resync) cannot interleave a check with an act -- that race is
+# how duplicate Release nodes accumulated.  It narrows that window
+# rather than closing it: AGE has no unique constraint to fall back on,
+# so two transactions that cannot yet see each other's row can still
+# both MERGE-create the same ``(project, tag)``.  Surfacing that
+# residual duplicate is what the multi-node warning in
+# ``_release_id_for`` is for.
+#
+# AGE also has no ``ON CREATE SET``
+# / ``ON MATCH SET``, so create-only properties go through ``coalesce``.
+#
+# Never overwrite existing data with nothing: an empty ``description``
+# (no notes could be resolved) or an empty ``links`` (no release URL)
+# preserves whatever the node already holds.  Without this guard a
+# resync that can't fetch notes would wipe the "What's Changed" body a
+# promote (or an earlier enriched create) had already written.
+#
+# ``created_by`` is refreshed only in one direction: a node still
+# credited to a background worker takes the real author when one is
+# known, but a person already recorded is never overwritten (including
+# by a later worker-driven pass).
+_RELEASE_UPSERT_SET: typing.Final[typing.LiteralString] = """
+    SET r.id = COALESCE(r.id, {id}),
+        r.committish = COALESCE(r.committish, {committish}),
+        r.title = COALESCE(r.title, {title}),
+        r.created_at = COALESCE(r.created_at, {now}),
+        r.description = CASE WHEN {description} = ''
+            THEN r.description ELSE {description} END,
+        r.links = CASE WHEN {links} = '[]' THEN r.links ELSE {links} END,
+        r.created_by = CASE WHEN {author} <> ''
+                AND COALESCE(r.created_by, '') IN {synthetic}
+            THEN {author} ELSE COALESCE(r.created_by, {created_by}) END,
+        r.updated_at = {now}
+    RETURN r.id AS rid
+"""
+
+# Identity is the tag: it names one shippable artifact, while the commit
+# it points at moves (the release workflow bumps the version, then tags
+# the bump commit).  Keying on the committish is what let the post-bump
+# SHA miss the node Imbi had already created.
+_RELEASE_UPSERT_BY_TAG: typing.Final[typing.LiteralString] = """
+    MATCH (p:Project {{id: {project_id}}})
+    MERGE (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
+"""
+
+# An untagged release has only its commit to be identified by.  The
+# guard lives in the caller, not here: MERGE matches on a subset of a
+# node's properties, so this pattern *would* match a tagged Release
+# carrying the same committish (verified against a live AGE instance --
+# it returns that node and leaves its tag intact rather than creating an
+# untagged sibling).  The one caller that can reach this branch (resync)
+# resolves an existing tag for the committish first, so it runs only
+# when no tagged Release on the project claims that commit.  AGE cannot
+# express "and no tag" in a MERGE pattern -- an untagged node has no
+# ``tag`` property at all -- so the predicate cannot move in here.
+_RELEASE_UPSERT_BY_COMMITTISH: typing.Final[typing.LiteralString] = """
+    MATCH (p:Project {{id: {project_id}}})
+    MERGE (p)-[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
+"""
+
+
 async def _upsert_release_node(
     db: graph.Graph,
     *,
@@ -2876,16 +2943,16 @@ async def _upsert_release_node(
 ) -> str:
     """Create the ``Release`` node if missing, otherwise update notes.
 
-    Identity is ``(project, committish, tag)``: re-promoting the same
-    tag from the same SHA is benign and refreshes notes / links;
-    re-tagging the same SHA produces a new ``Release`` node.
-    Returns the resulting ``Release.id``.
+    Identity is ``(project, tag)`` whenever a tag exists, with the
+    committish a mutable attribute: re-promoting or re-observing the
+    same tag refreshes the one node instead of spawning a sibling.  An
+    untagged release falls back to ``(project, committish)``.  Returns
+    the resulting ``Release.id``.
 
     The committish is normalized to the short, lowercase form here rather
-    than trusted from the caller: it is the identity every reader looks a
-    release up by (``_release_id_for``, the deploy path, the release
-    history), so one writer passing a full SHA yields a node nothing can
-    match and a deploy that silently attaches to a different release.
+    than trusted from the caller: it is what the untagged lookup matches
+    on and what the release history displays, so one writer passing a
+    full SHA yields a node nothing can match.
     """
     committish = versioning.short_committish(committish)
     now = datetime.datetime.now(datetime.UTC).isoformat()
@@ -2895,31 +2962,11 @@ async def _upsert_release_node(
         else json.dumps([])
     )
     new_id: str = nanoid.generate()
-    # Match the exact identity (committish, tag) before deciding to
-    # create.  Filtering inside ``OPTIONAL MATCH`` keeps a sibling
-    # release with the same committish but a different tag from
-    # spawning a duplicate ``(committish, tag)`` row.
-    create_query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
-    OPTIONAL MATCH (p)-[:HAS_RELEASE]
-        ->(existing:Release {{committish: {committish}}})
-    WHERE COALESCE(existing.tag, '') = COALESCE({tag}, '')
-    WITH p, existing
-    WHERE existing IS NULL
-    CREATE (p)-[:HAS_RELEASE]->(:Release {{
-        id: {id},
-        tag: {tag},
-        committish: {committish},
-        title: {title},
-        description: {description},
-        links: {links},
-        created_by: {created_by},
-        created_at: {now},
-        updated_at: {now}
-    }})
-    """
-    await db.execute(
-        create_query,
+    query: typing.LiteralString = (
+        _RELEASE_UPSERT_BY_TAG if tag else _RELEASE_UPSERT_BY_COMMITTISH
+    ) + _RELEASE_UPSERT_SET
+    rows = await db.execute(
+        query,
         {
             'project_id': project_id,
             'committish': committish,
@@ -2929,45 +2976,6 @@ async def _upsert_release_node(
             'description': notes_markdown,
             'links': links_json,
             'created_by': created_by,
-            'now': now,
-        },
-        [],
-    )
-    # Update notes / links on a pre-existing release (idempotent re-run).
-    # Match on (committish, tag) — tag matching uses COALESCE so a NULL
-    # tag compares equal to a NULL tag (AGE has no NULL equality).
-    #
-    # Never overwrite existing data with nothing: an empty ``description``
-    # (no notes could be resolved) or an empty ``links`` (no release URL)
-    # preserves whatever the node already holds.  Without this guard a
-    # resync that can't fetch notes would wipe the "What's Changed" body a
-    # promote (or an earlier enriched create) had already written.
-    #
-    # ``created_by`` is refreshed only in one direction: a node still
-    # credited to a background worker takes the real author when one is
-    # known, but a person already recorded is never overwritten (including
-    # by a later worker-driven pass).
-    update_query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
-    WHERE COALESCE(r.tag, '') = COALESCE({tag}, '')
-    SET r.description = CASE WHEN {description} = ''
-            THEN r.description ELSE {description} END,
-        r.links = CASE WHEN {links} = '[]' THEN r.links ELSE {links} END,
-        r.created_by = CASE WHEN {author} <> ''
-                AND COALESCE(r.created_by, '') IN {synthetic}
-            THEN {author} ELSE r.created_by END,
-        r.updated_at = {now}
-    RETURN r.id AS rid
-    """
-    rows = await db.execute(
-        update_query,
-        {
-            'project_id': project_id,
-            'committish': committish,
-            'tag': tag,
-            'description': notes_markdown,
-            'links': links_json,
             'author': (
                 ''
                 if principals.is_process_principal(created_by)
@@ -3142,6 +3150,35 @@ async def fail_promote_build(
         tag,
         project_id,
         reason,
+    )
+
+
+async def _set_release_committish(
+    db: graph.Graph,
+    *,
+    release_id: str,
+    committish: str,
+) -> None:
+    """Point a ``Release`` at the commit its tag actually resolves to.
+
+    The committish is an attribute, not the identity -- the tag is --
+    so healing it here is what makes the deployment webhook's later
+    lookup (which carries the post-bump SHA) find this node instead of
+    creating a duplicate.
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    SET r.committish = {committish},
+        r.updated_at = {now}
+    """
+    await db.execute(
+        query,
+        {
+            'release_id': release_id,
+            'committish': committish,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        [],
     )
 
 
@@ -3396,20 +3433,25 @@ async def complete_promote_build(
         actual = versioning.short_committish(tagged.sha)
         if actual != versioning.short_committish(committish):
             # Imbi created the Release node keyed on the commit it asked
-            # to tag.  A mismatch means the workflow tagged something
-            # else -- the likeliest cause is a dispatch that omitted the
-            # ``commit`` input, which makes release-tag.yaml tag the tip
-            # of the default branch instead.  Don't rewrite the node's
-            # identity underneath its DEPLOYED_TO edges; say so loudly.
-            LOGGER.error(
+            # to tag, but the release workflow bumps the version and tags
+            # the bump commit, so the tag routinely points somewhere
+            # else.  Adopt what the tag actually resolves to: the tag is
+            # the node's identity, edges hang off the node rather than
+            # off ``committish``, and every later correlation (the
+            # gateway's deployment_status lookup above all) arrives
+            # carrying the post-bump SHA.
+            LOGGER.info(
                 'release-promote: tag %s on project %s points at %s, not '
-                'the promoted commit %s; the Release node keeps the '
-                'promoted identity',
+                'the promoted commit %s; updating the Release committish',
                 tag,
                 project_id,
                 actual,
                 committish,
             )
+            await _set_release_committish(
+                db, release_id=release_id, committish=actual
+            )
+            committish = actual
 
     remote = await _get_release(handler, ctx, creds, tag)
     release_url = remote.html_url if remote else None
