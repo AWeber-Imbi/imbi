@@ -27,7 +27,7 @@ import { StatCard } from '@/components/ui/stat-card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import { useExpandableRows } from '@/hooks/useExpandableRows'
+import { useExpandedKeys } from '@/hooks/useExpandedKeys'
 import { queryKeys } from '@/lib/queryKeys'
 import type {
   ComponentSearchResult,
@@ -117,7 +117,15 @@ export function PackageUsageReport() {
         <p className="text-danger text-sm">Could not load this package.</p>
       )}
       {componentId && usage.data && (
-        <PackageDetail canWrite={canWrite} orgSlug={orgSlug} pkg={usage.data} />
+        // Keyed by package so switching packages remounts the detail —
+        // expanded version rows and any open dialog belong to the
+        // package that was on screen, not the one replacing it.
+        <PackageDetail
+          canWrite={canWrite}
+          key={usage.data.id}
+          orgSlug={orgSlug}
+          pkg={usage.data}
+        />
       )}
     </div>
   )
@@ -232,13 +240,19 @@ function PackageDetail({
           isPending={governance.isPending}
           onOpenChange={(open) => !open && setAdvisoryFor(null)}
           onRecord={({ cveId, title, url }) => {
-            governance.recordAdvisory({
-              componentReleaseId: advisoryFor.id,
-              cveId,
-              title,
-              url,
-            })
-            setAdvisoryFor(null)
+            // Close only once it lands, so a rejected write leaves the
+            // typed identifier and URL on screen next to the toast.
+            void governance
+              .recordAdvisory({
+                componentReleaseId: advisoryFor.id,
+                cveId,
+                title,
+                url,
+              })
+              .then(
+                () => setAdvisoryFor(null),
+                () => undefined,
+              )
           }}
           open
           version={advisoryFor.version}
@@ -469,7 +483,7 @@ function VersionTable({
   onOpenNotes: (version: ComponentUsageVersion) => void
   versions: ComponentUsageVersion[]
 }) {
-  const { expanded, toggleExpanded } = useExpandableRows()
+  const { isExpanded, toggle } = useExpandedKeys()
   return (
     <div className="border-tertiary bg-primary overflow-hidden rounded-lg border">
       <table className="w-full">
@@ -484,15 +498,15 @@ function VersionTable({
           </tr>
         </thead>
         <tbody>
-          {versions.map((version, index) => (
+          {versions.map((version) => (
             <VersionRow
               canWrite={canWrite}
-              expanded={expanded.has(index)}
+              expanded={isExpanded(version.id)}
               governance={governance}
               key={version.id}
               onOpenAdvisory={onOpenAdvisory}
               onOpenNotes={onOpenNotes}
-              onToggle={() => toggleExpanded(index)}
+              onToggle={() => toggle(version.id)}
               version={version}
             />
           ))}

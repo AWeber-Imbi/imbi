@@ -3,30 +3,68 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { downloadCsv, toCsv } from '@/lib/csv'
 
 describe('downloadCsv', () => {
-  afterEach(() => vi.restoreAllMocks())
-
-  it('hands the browser a named file holding the rendered CSV', () => {
-    // jsdom implements neither object URLs nor a real anchor click, so
-    // both are stubbed; what the test asserts is the filename and the
-    // bytes handed over, which is all this helper decides.
+  // jsdom implements neither object URLs nor a real anchor click, so
+  // both are stubbed. What the assertions cover is everything this
+  // helper actually decides: the filename, the bytes, and the anchor
+  // lifecycle Firefox is strict about.
+  function stubDownload() {
     const blobs: Blob[] = []
+    const revokeObjectURL = vi.fn()
     vi.stubGlobal('URL', {
       createObjectURL: (blob: Blob) => {
         blobs.push(blob)
         return 'blob:test'
       },
-      revokeObjectURL: vi.fn(),
+      revokeObjectURL,
     })
+    const clicked: { connected: boolean; download: string }[] = []
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(() => undefined)
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push({
+          connected: this.isConnected,
+          download: this.download,
+        })
+      })
+    return { blobs, click, clicked, revokeObjectURL }
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('hands the browser a named file holding the rendered CSV', () => {
+    const { blobs, click, clicked } = stubDownload()
 
     downloadCsv('report.csv', ['A'], [['1']])
 
     expect(click).toHaveBeenCalledOnce()
-    const anchor = click.mock.instances[0] as HTMLAnchorElement
-    expect(anchor.download).toBe('report.csv')
+    expect(clicked[0].download).toBe('report.csv')
     expect(blobs[0].type).toBe('text/csv')
+  })
+
+  it('clicks the anchor while it is attached, then removes it', () => {
+    const { clicked } = stubDownload()
+
+    downloadCsv('report.csv', ['A'], [['1']])
+
+    // Firefox ignores a synthetic click on a detached anchor.
+    expect(clicked[0].connected).toBe(true)
+    expect(document.querySelector('a[download]')).toBeNull()
+  })
+
+  it('defers revoking the object URL past the current tick', () => {
+    vi.useFakeTimers()
+    const { revokeObjectURL } = stubDownload()
+
+    downloadCsv('report.csv', ['A'], [['1']])
+
+    // Revoking in the same tick can abort a download just started.
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    vi.runAllTimers()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:test')
   })
 })
 

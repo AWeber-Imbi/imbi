@@ -16,7 +16,7 @@ import { Sk } from '@/components/ui/skeleton'
 import { StatCard } from '@/components/ui/stat-card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAuth } from '@/hooks/useAuth'
-import { useExpandableRows } from '@/hooks/useExpandableRows'
+import { useExpandedKeys } from '@/hooks/useExpandedKeys'
 import { queryKeys } from '@/lib/queryKeys'
 import type { ProblemPackageRow } from '@/types'
 
@@ -254,7 +254,7 @@ function FindingsTable({
   onOpenNotes: (row: ProblemPackageRow) => void
   rows: ProblemPackageRow[]
 }) {
-  const { expanded, toggleExpanded } = useExpandableRows()
+  const { isExpanded, toggle } = useExpandedKeys()
   if (rows.length === 0) return <EmptyState />
   return (
     <table className="w-full">
@@ -271,16 +271,22 @@ function FindingsTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, index) => (
-          <FindingRow
-            canWrite={canWrite}
-            expanded={expanded.has(index)}
-            key={`${row.project_id}:${row.component_release_id}`}
-            onOpenNotes={onOpenNotes}
-            onToggle={() => toggleExpanded(index)}
-            row={row}
-          />
-        ))}
+        {rows.map((row) => {
+          // Row identity, not array index: a filter change re-indexes
+          // the list and would otherwise leave a different finding
+          // showing as expanded.
+          const key = `${row.project_id}:${row.component_release_id}`
+          return (
+            <FindingRow
+              canWrite={canWrite}
+              expanded={isExpanded(key)}
+              key={key}
+              onOpenNotes={onOpenNotes}
+              onToggle={() => toggle(key)}
+              row={row}
+            />
+          )
+        })}
       </tbody>
     </table>
   )

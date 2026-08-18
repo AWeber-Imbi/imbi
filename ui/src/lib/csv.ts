@@ -9,6 +9,11 @@
 /**
  * Build a CSV from `header` + `rows` and hand it to the browser as a
  * download named `filename`.
+ *
+ * The anchor is attached to the document before it is clicked and the
+ * object URL is revoked on a later tick: Firefox ignores a synthetic
+ * click on a detached anchor, and revoking in the same tick can abort
+ * a download the browser has only just started.
  */
 export function downloadCsv(
   filename: string,
@@ -20,8 +25,11 @@ export function downloadCsv(
   const a = document.createElement('a')
   a.download = filename
   a.href = url
+  a.style.display = 'none'
+  document.body.append(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 /** Render a header row plus data rows as CSV text. */

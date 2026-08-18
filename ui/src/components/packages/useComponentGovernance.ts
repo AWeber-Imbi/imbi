@@ -29,11 +29,16 @@ interface NoteVars {
 }
 
 interface UseComponentGovernanceResult {
-  addNote: (vars: NoteVars) => void
+  // `addNote` and `recordAdvisory` resolve only once the write lands,
+  // so their dialogs can hold the reader's draft until then; a rejected
+  // write must not silently discard what they typed. Both reject on
+  // failure -- the error toast is already raised by `onError`, so
+  // callers only need the rejection to skip their success step.
+  addNote: (vars: NoteVars) => Promise<unknown>
   isPending: boolean
   markComponent: (componentId: string, status: StatusValue) => void
   markVersion: (componentReleaseId: string, status: StatusValue) => void
-  recordAdvisory: (vars: AdvisoryVars) => void
+  recordAdvisory: (vars: AdvisoryVars) => Promise<unknown>
   removeAdvisory: (componentReleaseId: string, cveId: string) => void
 }
 
@@ -59,6 +64,9 @@ export function useComponentGovernance(
 
   const invalidate = (componentReleaseId?: string) => {
     void queryClient.invalidateQueries({ queryKey: ['componentUsage'] })
+    // The search dropdown renders each package's status badge, so a
+    // mark made here goes stale in every cached search response.
+    void queryClient.invalidateQueries({ queryKey: ['componentSearch'] })
     void queryClient.invalidateQueries({
       queryKey: queryKeys.problemPackages(orgSlug),
     })
@@ -140,7 +148,7 @@ export function useComponentGovernance(
   })
 
   return {
-    addNote: (vars) => note.mutate(vars),
+    addNote: (vars) => note.mutateAsync(vars),
     isPending:
       componentStatus.isPending ||
       versionStatus.isPending ||
@@ -151,7 +159,7 @@ export function useComponentGovernance(
       componentStatus.mutate({ id: componentId, status }),
     markVersion: (componentReleaseId, status) =>
       versionStatus.mutate({ id: componentReleaseId, status }),
-    recordAdvisory: (vars) => advisory.mutate(vars),
+    recordAdvisory: (vars) => advisory.mutateAsync(vars),
     removeAdvisory: (componentReleaseId, cveId) =>
       advisoryRemoval.mutate({ componentReleaseId, cveId }),
   }

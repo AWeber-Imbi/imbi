@@ -22,7 +22,7 @@ interface ComponentNotesDialogProps {
   canWrite: boolean
   componentReleaseId: string
   isPending: boolean
-  onAddNote: (body: string) => void
+  onAddNote: (body: string) => Promise<unknown>
   onOpenChange: (open: boolean) => void
   open: boolean
   orgSlug: string
@@ -124,8 +124,13 @@ export function ComponentNotesDialog({
             <Button
               disabled={!trimmed || isPending}
               onClick={() => {
-                onAddNote(trimmed)
-                setDraft('')
+                // Clear only once the note lands. A rejected write
+                // already raises a toast; keeping the draft is what
+                // makes that toast actionable.
+                void onAddNote(trimmed).then(
+                  () => setDraft(''),
+                  () => undefined,
+                )
               }}
               type="button"
             >

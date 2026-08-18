@@ -254,9 +254,11 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ),
     # Component (SBoM package) governance.  ``component:write`` covers
     # deprecating/forbidding a package or one of its versions, recording
-    # advisories against a version, and adding notes.  It is granted to
-    # no default role: a mark made here steers every team off of a
-    # package, so who may make one is a deployment-time decision.
+    # advisories against a version, and adding notes.  No default role
+    # below ``admin`` is granted it -- a mark made here steers every team
+    # off of a package, so who else may make one is a deployment-time
+    # decision.  ``admin`` holds it like every other standard permission,
+    # via the ``DEFAULT_ROLES`` grant below.
     (
         'component:read',
         'component',
