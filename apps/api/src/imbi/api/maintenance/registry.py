@@ -26,6 +26,7 @@ MaintenanceSlug = typing.Literal[
     'deployment-resync',
     'opslog-backfill',
     'release-repair',
+    'blocker-migration',
     'commit-sync',
     'pr-sync',
     'search-reindex',
@@ -129,6 +130,20 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_release_repair,
+        ),
+        OperationDefinition(
+            slug='blocker-migration',
+            label='Migrate Release Blocks to Blockers',
+            description=(
+                'Convert releases still carrying the old blocked_at / '
+                'blocked_reason flags into Blocker nodes, which is what '
+                'deploys and promotes now check. A release left on the '
+                'flags would read as shippable. Safe to re-run: migrated '
+                'releases no longer carry the flags.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_blocker_migration,
         ),
         OperationDefinition(
             slug='commit-sync',

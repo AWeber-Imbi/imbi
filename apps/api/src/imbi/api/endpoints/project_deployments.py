@@ -324,6 +324,47 @@ class ReleaseDriftResponse(pydantic.BaseModel):
     suggested_tag: str = 'v0.1.0'
 
 
+#: What is holding a release up. Phase 1 treats these as labels only:
+#: nothing behaves differently per type.
+BlockerType = typing.Literal[
+    'build-failure',
+    'drift',
+    'product-review',
+    'qa',
+    'deploy-order',
+    'dependency',
+    'manual',
+]
+
+#: Free text on a blocker -- the reason it exists or the note explaining
+#: how it was resolved. Required to be non-empty wherever it is required
+#: at all: whoever hits the 409 needs to know why without going to ask.
+BlockerText = typing.Annotated[
+    str,
+    pydantic.StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=500
+    ),
+]
+
+
+class ReleaseBlocker(pydantic.BaseModel):
+    """One thing standing between a release and shipping."""
+
+    id: str
+    type: BlockerType = 'manual'
+    description: str
+    #: The handle an outside process files its blocker under, so the same
+    #: process can find and resolve it later without having stored an
+    #: Imbi id.
+    external_ref: str | None = None
+    status: typing.Literal['open', 'resolved'] = 'open'
+    created_at: datetime.datetime | None = None
+    created_by: str | None = None
+    resolved_at: datetime.datetime | None = None
+    resolved_by: str | None = None
+    resolution_note: str | None = None
+
+
 class ReleaseHistoryEntry(pydantic.BaseModel):
     """One published release: a ClickHouse tag joined to its Release node."""
 
@@ -342,13 +383,16 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     release_url: str | None = None
     tag_url: str | None = None
     package_url: str | None = None
-    #: ``True`` when the release is blocked from shipping. Deploys and
-    #: promotes targeting it are refused with a 409; the UI renders the
-    #: row as blocked and surfaces ``blocked_reason``.
+    #: ``True`` when the release has at least one open blocker. Deploys
+    #: and promotes targeting it are refused with a 409. The
+    #: ``blocked_*`` fields mirror the newest open blocker so callers
+    #: written against the single-reason shape keep working; ``blockers``
+    #: is the full list.
     blocked: bool = False
     blocked_reason: str | None = None
     blocked_by: str | None = None
     blocked_at: datetime.datetime | None = None
+    blockers: list[ReleaseBlocker] = []
     #: Set when the release was cut over a *failing* CI run that an
     #: operator explicitly acknowledged (ENG-102).  ``ci_status`` above is
     #: the commit's CI state as it stands *now*; this is the record of what
@@ -363,12 +407,7 @@ class ReleaseBlockRequest(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
-    reason: typing.Annotated[
-        str,
-        pydantic.StringConstraints(
-            strip_whitespace=True, min_length=1, max_length=500
-        ),
-    ]
+    reason: BlockerText
 
 
 class ReleaseBlockResponse(pydantic.BaseModel):
@@ -379,6 +418,47 @@ class ReleaseBlockResponse(pydantic.BaseModel):
     blocked_reason: str | None = None
     blocked_by: str | None = None
     blocked_at: datetime.datetime | None = None
+
+
+class BlockerCreateRequest(pydantic.BaseModel):
+    """Body for ``POST /deployments/releases/{tag}/blockers``."""
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    type: BlockerType = 'manual'
+    description: BlockerText
+    #: Supplying one makes creation idempotent: a second post with the
+    #: same reference updates the open blocker already filed under it
+    #: instead of stacking another onto the release.
+    external_ref: (
+        typing.Annotated[
+            str,
+            pydantic.StringConstraints(
+                strip_whitespace=True, min_length=1, max_length=200
+            ),
+        ]
+        | None
+    ) = None
+
+
+class BlockerUpdateRequest(pydantic.BaseModel):
+    """Body for ``PATCH .../releases/{tag}/blockers/{blocker_id}``.
+
+    Both fields are optional; omitting one leaves it as it stands.
+    """
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    type: BlockerType | None = None
+    description: BlockerText | None = None
+
+
+class BlockerResolveRequest(pydantic.BaseModel):
+    """Body for ``POST .../blockers/{blocker_id}/resolve``."""
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    resolution_note: BlockerText | None = None
 
 
 class ReleasePublishRequest(pydantic.BaseModel):
@@ -2805,7 +2885,7 @@ async def _dispatch_release_build(
     predates this call -- otherwise a release Imbi never dispatched is
     left looking like one it shipped, with no tag on the remote to match
     it, and it still satisfies the ``(tag, committish)`` gates in
-    :func:`_blocked_release`.
+    :func:`_open_blockers`.
     """
     ref = await _default_branch(handler, ctx, credentials)
     if ref is None:
@@ -3559,23 +3639,24 @@ async def fail_promote_build(
     reason: str,
     requested_by: str = '',
 ) -> None:
-    """Block ``tag`` after its release build failed.
+    """File a ``build-failure`` blocker after the release build failed.
 
-    Scoped to the tag (see :func:`_set_release_block`): the build failed
-    for this version, and the ordinary fix is to promote a bumped version
-    off the same commit, which a commit-wide block would refuse.
+    Scoped to the tag (see :func:`_create_blocker`): the build failed for
+    this version, and the ordinary fix is to promote a bumped version off
+    the same commit, which a commit-wide blocker would refuse.
     """
-    blocked = await _set_release_block(
+    blocked = await _create_blocker(
         db,
         org_slug=org_slug,
         project_id=project_id,
         tag=tag,
-        blocked_at=datetime.datetime.now(datetime.UTC).isoformat(),
-        blocked_by=requested_by or principals.RELEASE_PROMOTE,
-        reason=reason[:500],
+        blocker_type='build-failure',
+        description=reason[:500],
+        created_by=requested_by or principals.RELEASE_PROMOTE,
+        external_ref=BUILD_FAILURE_REF,
         scope='tag',
     )
-    if not blocked:
+    if blocked is None:
         # The promote creates the node before dispatching, so this means
         # someone deleted it mid-build.  Nothing to block; the warning is
         # the whole remedy.
@@ -4774,6 +4855,7 @@ async def get_release_history(
         {'project_id': project_id},
     )
     nodes = await _release_nodes_by_tag(db, org_slug, project_id)
+    blockers = await _open_blockers_by_tag(db, org_slug, project_id)
     shas = [str(r['sha']) for r in tag_rows if r.get('sha')]
     facts_by_sha = await _commit_facts_by_sha(project_id, shas)
     unknown = _CommitFacts(ci_status='unknown', author=None, author_email=None)
@@ -4783,7 +4865,8 @@ async def get_release_history(
         sha = str(row['sha'])
         node = nodes.get(name) or {}
         tagger = row.get('tagger_name')
-        blocked_at = node.get('blocked_at')
+        open_blockers = blockers.get(name, [])
+        newest = open_blockers[0] if open_blockers else None
         facts = facts_by_sha.get(sha, unknown)
         author, author_email = _release_author(
             tagger, node.get('created_by'), facts
@@ -4802,10 +4885,11 @@ async def get_release_history(
                 release_url=_release_url_from_links(node.get('links')),
                 tag_url=str(row['url']) if row.get('url') else None,
                 package_url=None,
-                blocked=bool(blocked_at),
-                blocked_reason=node.get('blocked_reason'),
-                blocked_by=node.get('blocked_by'),
-                blocked_at=blocked_at,
+                blocked=bool(open_blockers),
+                blocked_reason=newest.description if newest else None,
+                blocked_by=newest.created_by if newest else None,
+                blocked_at=newest.created_at if newest else None,
+                blockers=open_blockers,
                 ci_override_by=node.get('ci_override_by') or None,
                 ci_override_at=node.get('ci_override_at') or None,
             )
@@ -5171,15 +5255,44 @@ async def publish_release(
 
 
 # ---------------------------------------------------------------------------
-# Release blocks
+# Release blockers
 #
-# Blocking a release keeps it from shipping again -- the rollback follow-up:
-# a regression is found, the release is rolled back, and the tag is blocked
-# so nobody re-deploys or re-promotes it while the fix is in flight.  The
-# block is global (every environment) and carries a required reason.  State
-# lives on the ``Release`` node as ``blocked_at`` / ``blocked_by`` /
-# ``blocked_reason``; ``blocked_at`` is the flag.
+# Anything that has to be dealt with before a release ships is a ``Blocker``
+# node hanging off it: ``(:Release)-[:BLOCKED_BY]->(:Blocker)``.  Any blocker
+# still ``open`` refuses every deploy and promote of that release, and the
+# 409 enumerates them.  ``type`` is a label -- nothing behaves differently
+# per type.
+#
+# Resolving is the ordinary end of a blocker's life: it keeps the record of
+# what held the release up, which is the point of tracking blockers at all.
+# Deleting is for mistakes -- admin-only, and written to the operations log.
+#
+# ``block`` / ``unblock`` are unchanged from outside; they now file and
+# resolve a blocker instead of writing flags onto the ``Release`` node.
 # ---------------------------------------------------------------------------
+
+
+#: Sort key floor for a blocker whose ``created_at`` did not parse.
+_BLOCKER_EPOCH = datetime.datetime.min.replace(tzinfo=datetime.UTC)
+
+#: ``external_ref`` for the blocker the legacy ``block`` endpoint files.
+#: Re-blocking a release used to overwrite one set of flags, so it has to
+#: keep landing on one blocker rather than stacking a new one per call.
+MANUAL_BLOCK_REF = 'imbi:block-release'
+
+#: ``external_ref`` for the blocker a failed release build files. Same
+#: reason: a retried build must update its blocker, not add another.
+BUILD_FAILURE_REF = 'imbi:release-build'
+
+
+#: Matches the tagged ``Release`` a blocker hangs off, org-scoped the same
+#: way every other write in this module is.
+_RELEASE_FOR_BLOCKER: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
+"""
 
 
 async def _tag_sha(project_id: str, tag: str) -> str | None:
@@ -5193,93 +5306,286 @@ async def _tag_sha(project_id: str, tag: str) -> str | None:
     return str(rows[0]['sha']) if rows and rows[0].get('sha') else None
 
 
-async def _set_release_block(
+def _blocker_age(blocker: ReleaseBlocker) -> datetime.datetime:
+    """Sort key: when the blocker was filed, oldest possible if unknown."""
+    return blocker.created_at or _BLOCKER_EPOCH
+
+
+def _blocker(node: dict[str, typing.Any]) -> ReleaseBlocker:
+    """Build a :class:`ReleaseBlocker` from a ``Blocker`` node map."""
+    return ReleaseBlocker.model_validate(node)
+
+
+def _blockers(rows: list[dict[str, typing.Any]]) -> list[ReleaseBlocker]:
+    """Parse ``blocker`` columns, newest first."""
+    out = [
+        _blocker(
+            typing.cast(
+                'dict[str, typing.Any]', graph.parse_agtype(row['blocker'])
+            )
+        )
+        for row in rows
+    ]
+    out.sort(key=_blocker_age, reverse=True)
+    return out
+
+
+async def _load_blocker(
     db: graph.Graph,
     *,
     org_slug: str,
     project_id: str,
     tag: str,
-    blocked_at: str | None,
-    blocked_by: str | None,
-    reason: str | None,
-    scope: typing.Literal['tag'] | None = None,
-) -> bool:
-    """Write the ``blocked_*`` properties on a tagged ``Release``.
-
-    Passing ``None`` for ``blocked_at`` / ``blocked_by`` / ``reason``
-    clears the block (AGE stores a ``null`` assignment as property
-    removal).  Returns ``False`` when no ``Release`` node for ``tag``
-    exists under the org, letting the caller decide between creating one
-    and returning a 404.
-
-    ``scope='tag'`` narrows the block to this exact version, so
-    :func:`_blocked_release` stops matching it on the shared committish.
-    A failed *release build* is a property of the version, not of the
-    commit -- the usual fix is to promote a new version off the same tree,
-    which a commit-wide block would refuse.  A manual block leaves
-    ``scope`` ``None`` and keeps the broad, commit-wide semantics: an
-    operator blocking a rolled-back release means "stop shipping this
-    code", which is exactly the commit.
+    blocker_id: str,
+) -> ReleaseBlocker | None:
+    """Return one blocker on ``tag``, or ``None`` when it does not exist."""
+    query: typing.LiteralString = (
+        _RELEASE_FOR_BLOCKER
+        + """
+    MATCH (r)-[:BLOCKED_BY]->(b:Blocker {{id: {blocker_id}}})
+    RETURN b{{.*}} AS blocker
     """
-    query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    MATCH (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
-    SET r.blocked_at = {blocked_at},
-        r.blocked_by = {blocked_by},
-        r.blocked_reason = {reason},
-        r.blocked_scope = {scope},
-        r.updated_at = {now}
-    RETURN r.id AS rid
-    """
+    )
     rows = await db.execute(
         query,
         {
             'project_id': project_id,
             'org_slug': org_slug,
             'tag': tag,
-            'blocked_at': blocked_at,
-            'blocked_by': blocked_by,
-            'reason': reason,
+            'blocker_id': blocker_id,
+        },
+        ['blocker'],
+    )
+    return _blockers(rows)[0] if rows else None
+
+
+async def _list_blockers(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    status: str | None = None,
+    external_ref: str | None = None,
+) -> list[ReleaseBlocker]:
+    """Blockers on ``tag``, newest first, optionally filtered.
+
+    Both filters are matched in Cypher against the empty string standing
+    in for "no filter" -- AGE has no NULL equality, and neither an empty
+    status nor an empty reference is ever stored.
+    """
+    query: typing.LiteralString = (
+        _RELEASE_FOR_BLOCKER
+        + """
+    MATCH (r)-[:BLOCKED_BY]->(b:Blocker)
+    WHERE ({status} = '' OR b.status = {status})
+      AND ({external_ref} = ''
+           OR COALESCE(b.external_ref, '') = {external_ref})
+    RETURN b{{.*}} AS blocker
+    """
+    )
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'tag': tag,
+            'status': status or '',
+            'external_ref': external_ref or '',
+        },
+        ['blocker'],
+    )
+    return _blockers(rows)
+
+
+async def _create_blocker(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    blocker_type: BlockerType,
+    description: str,
+    created_by: str,
+    external_ref: str | None = None,
+    scope: typing.Literal['commit', 'tag'] = 'commit',
+) -> ReleaseBlocker | None:
+    """File a blocker against ``tag``.
+
+    Returns ``None`` when the project has no ``Release`` node for the
+    tag, letting the caller choose between creating one and 404ing --
+    the same contract the flag-based writer had.
+
+    An ``external_ref`` makes this idempotent: the open blocker already
+    filed under that reference is updated in place rather than joined by
+    a second one.  Without a reference every call files a new blocker,
+    because two people can legitimately block the same release for two
+    different reasons.
+    """
+    if external_ref:
+        existing = await _list_blockers(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            tag=tag,
+            status='open',
+            external_ref=external_ref,
+        )
+        if existing:
+            return await _update_blocker(
+                db,
+                org_slug=org_slug,
+                project_id=project_id,
+                tag=tag,
+                blocker_id=existing[0].id,
+                blocker_type=blocker_type,
+                description=description,
+            )
+    query: typing.LiteralString = (
+        _RELEASE_FOR_BLOCKER
+        + """
+    CREATE (r)-[:BLOCKED_BY]->(b:Blocker {{id: {id},
+                                           type: {type},
+                                           description: {description},
+                                           external_ref: {external_ref},
+                                           status: 'open',
+                                           scope: {scope},
+                                           created_at: {now},
+                                           created_by: {created_by}}})
+    RETURN b{{.*}} AS blocker
+    """
+    )
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'tag': tag,
+            'id': nanoid.generate(),
+            'type': blocker_type,
+            'description': description,
+            'external_ref': external_ref,
             'scope': scope,
+            'created_by': created_by,
             'now': datetime.datetime.now(datetime.UTC).isoformat(),
         },
-        ['rid'],
+        ['blocker'],
     )
-    return bool(rows)
+    return _blockers(rows)[0] if rows else None
 
 
-async def _blocked_release(
+async def _update_blocker(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    blocker_id: str,
+    blocker_type: BlockerType | None,
+    description: str | None,
+) -> ReleaseBlocker | None:
+    """Change a blocker's type or wording, leaving its history alone."""
+    query: typing.LiteralString = (
+        _RELEASE_FOR_BLOCKER
+        + """
+    MATCH (r)-[:BLOCKED_BY]->(b:Blocker {{id: {blocker_id}}})
+    SET b.type = COALESCE({type}, b.type),
+        b.description = COALESCE({description}, b.description),
+        b.updated_at = {now}
+    RETURN b{{.*}} AS blocker
+    """
+    )
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'tag': tag,
+            'blocker_id': blocker_id,
+            'type': blocker_type,
+            'description': description,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        ['blocker'],
+    )
+    return _blockers(rows)[0] if rows else None
+
+
+async def _resolve_open_blockers(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    resolved_by: str,
+    blocker_id: str | None = None,
+    note: str | None = None,
+) -> list[ReleaseBlocker]:
+    """Resolve open blockers on ``tag``, or just ``blocker_id``.
+
+    Returns what was actually resolved, so resolving nothing (already
+    resolved, or never blocked) is distinguishable without being an
+    error.
+    """
+    query: typing.LiteralString = (
+        _RELEASE_FOR_BLOCKER
+        + """
+    MATCH (r)-[:BLOCKED_BY]->(b:Blocker)
+    WHERE b.status = 'open'
+      AND ({blocker_id} = '' OR b.id = {blocker_id})
+    SET b.status = 'resolved',
+        b.resolved_at = {now},
+        b.resolved_by = {resolved_by},
+        b.resolution_note = {note},
+        b.updated_at = {now}
+    RETURN b{{.*}} AS blocker
+    """
+    )
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'tag': tag,
+            'blocker_id': blocker_id or '',
+            'resolved_by': resolved_by,
+            'note': note,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        ['blocker'],
+    )
+    return _blockers(rows)
+
+
+async def _open_blockers(
     db: graph.Graph,
     project_id: str,
     *,
     tag: str | None,
     committish: str | None,
-) -> tuple[str, str | None] | None:
-    """Return ``(tag_or_committish, reason)`` for a blocked release.
+) -> tuple[str, list[ReleaseBlocker]] | None:
+    """Return ``(label, blockers)`` for a blocked release.
 
     Matches on either identity so both shipping paths are covered: a
     deploy names a tag or a raw SHA, and a promote names the tag being
     promoted plus the committish it was cut from.  ``None`` means
-    nothing blocked matches.  Empty strings stand in for the absent
+    nothing open matches.  Empty strings stand in for the absent
     identity -- neither ever matches a stored value, and AGE has no
     NULL equality.
 
-    A release blocked with ``blocked_scope = 'tag'`` matches on its tag
-    only.  Those are build failures, recorded by the promote watcher
-    against one version; matching them on the committish too would wedge
-    the whole commit and refuse the ordinary fix of promoting a bumped
-    version off the same tree.  Manual blocks carry no scope and keep
-    matching both identities.
+    A blocker whose ``scope`` is ``tag`` matches on the tag only.  Those
+    are build failures, recorded against one version; matching them on
+    the committish too would wedge the whole commit and refuse the
+    ordinary fix of promoting a bumped version off the same tree.
     """
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
-    WHERE r.blocked_at IS NOT NULL
+          -[:BLOCKED_BY]->(b:Blocker)
+    WHERE b.status = 'open'
       AND (COALESCE(r.tag, '') = {tag}
            OR (COALESCE(r.committish, '') = {committish}
-               AND COALESCE(r.blocked_scope, '') <> 'tag'))
-    RETURN r{{.tag, .committish, .blocked_reason}} AS release
+               AND COALESCE(b.scope, 'commit') <> 'tag'))
+    RETURN r{{.tag, .committish}} AS release, b{{.*}} AS blocker
     """
     rows = await db.execute(
         query,
@@ -5288,7 +5594,7 @@ async def _blocked_release(
             'tag': tag or '',
             'committish': committish or '',
         },
-        ['release'],
+        ['release', 'blocker'],
     )
     if not rows:
         return None
@@ -5296,8 +5602,7 @@ async def _blocked_release(
         'dict[str, typing.Any]', graph.parse_agtype(rows[0]['release'])
     )
     label = node.get('tag') or node.get('committish') or (tag or committish)
-    reason = node.get('blocked_reason')
-    return str(label), str(reason) if reason else None
+    return str(label), _blockers(rows)
 
 
 async def _assert_not_blocked(
@@ -5307,17 +5612,338 @@ async def _assert_not_blocked(
     tag: str | None = None,
     committish: str | None = None,
 ) -> None:
-    """Raise 409 when the release being shipped is blocked."""
-    blocked = await _blocked_release(
+    """Raise 409 when the release being shipped has open blockers."""
+    found = await _open_blockers(
         db, project_id, tag=tag, committish=committish
     )
-    if blocked is None:
+    if found is None:
         return
-    label, reason = blocked
+    label, blockers = found
+    listed = '; '.join(f'[{b.type}] {b.description}' for b in blockers)
     detail = f'Release {label!r} is blocked and cannot be deployed'
-    if reason:
-        detail += f': {reason}'
+    if listed:
+        detail += f': {listed}'
     raise fastapi.HTTPException(status_code=409, detail=detail)
+
+
+async def _open_blockers_by_tag(
+    db: graph.Graph, org_slug: str, project_id: str
+) -> dict[str, list[ReleaseBlocker]]:
+    """Map ``tag -> open blockers`` for the project's tagged releases."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MATCH (p)-[:HAS_RELEASE]->(r:Release)-[:BLOCKED_BY]->(b:Blocker)
+    WHERE r.tag IS NOT NULL AND b.status = 'open'
+    RETURN r.tag AS tag, b{{.*}} AS blocker
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['tag', 'blocker'],
+    )
+    out: dict[str, list[ReleaseBlocker]] = {}
+    for row in rows:
+        tag = graph.parse_agtype(row['tag'])
+        if not tag:
+            continue
+        out.setdefault(str(tag), []).extend(_blockers([row]))
+    for entries in out.values():
+        entries.sort(key=_blocker_age, reverse=True)
+    return out
+
+
+async def _blockable_release(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    created_by: str,
+) -> bool:
+    """Ensure a ``Release`` node exists for ``tag``.
+
+    A tag that has been synced but never cut through Imbi has no node
+    yet; one is created from the synced tag so a blocker still has
+    something to hang off.  ``False`` means Imbi has never seen the tag.
+    """
+    rows = await db.execute(
+        _RELEASE_FOR_BLOCKER + '    RETURN r.id AS rid\n',
+        {'project_id': project_id, 'org_slug': org_slug, 'tag': tag},
+        ['rid'],
+    )
+    if rows:
+        return True
+    sha = await _tag_sha(project_id, tag)
+    if sha is None:
+        return False
+    await _upsert_release_node(
+        db,
+        project_id=project_id,
+        tag=tag,
+        committish=sha[:7].lower(),
+        title=tag,
+        notes_markdown='',
+        release_url=None,
+        created_by=created_by,
+    )
+    return True
+
+
+@project_deployments_router.get('/releases/{tag}/blockers')
+async def list_release_blockers(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+    status: typing.Literal['open', 'resolved'] | None = None,
+    external_ref: str | None = None,
+) -> list[ReleaseBlocker]:
+    """Blockers on ``tag``, newest first.
+
+    Filtering by ``external_ref`` is how an outside process finds the
+    blocker it filed earlier so it can resolve it.
+    """
+    return await _list_blockers(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        status=status,
+        external_ref=external_ref,
+    )
+
+
+@project_deployments_router.post('/releases/{tag}/blockers', status_code=201)
+async def add_release_blocker(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    body: BlockerCreateRequest,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> ReleaseBlocker:
+    """File a blocker against ``tag``, refusing deploys and promotes."""
+    if not await _blockable_release(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        created_by=auth.principal_name,
+    ):
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No release found for tag {tag!r}'
+        )
+    blocker = await _create_blocker(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocker_type=body.type,
+        description=body.description,
+        created_by=auth.principal_name,
+        external_ref=body.external_ref,
+    )
+    if blocker is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No release found for tag {tag!r}'
+        )
+    LOGGER.info(
+        'Release blocker added: project=%s tag=%s type=%s actor=%s',
+        project_id,
+        tag,
+        body.type,
+        auth.principal_name,
+    )
+    return blocker
+
+
+@project_deployments_router.patch(
+    '/releases/{tag}/blockers/{blocker_id}',
+)
+async def update_release_blocker(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    blocker_id: str,
+    body: BlockerUpdateRequest,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> ReleaseBlocker:
+    """Correct a blocker's type or wording."""
+    blocker = await _update_blocker(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocker_id=blocker_id,
+        blocker_type=body.type,
+        description=body.description,
+    )
+    if blocker is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No blocker {blocker_id!r} on {tag!r}'
+        )
+    LOGGER.info(
+        'Release blocker updated: project=%s tag=%s blocker=%s actor=%s',
+        project_id,
+        tag,
+        blocker_id,
+        auth.principal_name,
+    )
+    return blocker
+
+
+@project_deployments_router.post(
+    '/releases/{tag}/blockers/{blocker_id}/resolve',
+)
+async def resolve_release_blocker(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    blocker_id: str,
+    body: BlockerResolveRequest,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> ReleaseBlocker:
+    """Resolve one blocker, keeping the record of it.
+
+    Resolving an already-resolved blocker is a no-op rather than an
+    error; a 404 means no such blocker on the tag.
+    """
+    resolved = await _resolve_open_blockers(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        resolved_by=auth.principal_name,
+        blocker_id=blocker_id,
+        note=body.resolution_note,
+    )
+    if resolved:
+        LOGGER.info(
+            'Release blocker resolved: project=%s tag=%s blocker=%s actor=%s',
+            project_id,
+            tag,
+            blocker_id,
+            auth.principal_name,
+        )
+        return resolved[0]
+    blocker = await _load_blocker(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocker_id=blocker_id,
+    )
+    if blocker is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No blocker {blocker_id!r} on {tag!r}'
+        )
+    return blocker
+
+
+@project_deployments_router.delete(
+    '/releases/{tag}/blockers/{blocker_id}',
+    status_code=204,
+)
+async def delete_release_blocker(
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    blocker_id: str,
+    background: fastapi.BackgroundTasks,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> None:
+    """Erase a blocker filed by mistake -- admin only.
+
+    Deleting throws away the record of what held the release up, which
+    is what blockers exist to keep, so the ordinary way to end one is
+    :func:`resolve_release_blocker`.  The deletion is written to the
+    operations log so the erasure itself stays visible.
+    """
+    if not auth.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Deleting a blocker requires an administrator; '
+            'resolve it instead',
+        )
+    blocker = await _load_blocker(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocker_id=blocker_id,
+    )
+    if blocker is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No blocker {blocker_id!r} on {tag!r}'
+        )
+    query: typing.LiteralString = (
+        _RELEASE_FOR_BLOCKER
+        + """
+    MATCH (r)-[:BLOCKED_BY]->(b:Blocker {{id: {blocker_id}}})
+    DETACH DELETE b
+    """
+    )
+    await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+            'tag': tag,
+            'blocker_id': blocker_id,
+        },
+        [],
+    )
+    project_slug, _team_slug = await lookup_project_slugs(db, project_id)
+    LOGGER.warning(
+        'Release blocker deleted: project=%s tag=%s blocker=%s actor=%s',
+        project_id,
+        tag,
+        blocker_id,
+        auth.principal_name,
+    )
+    background.add_task(
+        _record_deployment_audit,
+        project_id=project_id,
+        project_slug=project_slug,
+        environment_slug='',
+        recorded_by=auth.principal_name,
+        action='blocker-deleted',
+        tag=tag,
+        committish='',
+        plugin_slug='',
+        run_url=None,
+    )
 
 
 @project_deployments_router.post('/releases/{tag}/block')
@@ -5336,53 +5962,40 @@ async def block_release(
 ) -> ReleaseBlockResponse:
     """Block ``tag`` from being deployed or promoted, with a reason.
 
-    Blocking is idempotent and re-blocking overwrites the reason and
-    re-stamps the actor.  A tag that has been synced but never cut
-    through Imbi has no ``Release`` node yet; one is created from the
-    synced tag so the block still holds.  A tag Imbi has never seen is
-    a 404.
+    Kept for the callers written against it (the gateway's
+    ``block_release`` action among them); it files a ``manual`` blocker.
+    Re-blocking a release already blocked this way overwrites the reason
+    and re-stamps the actor rather than stacking a second blocker, which
+    is what it did when the state was a flag on the ``Release``.
+
+    A tag that has been synced but never cut through Imbi has no
+    ``Release`` node yet; one is created from the synced tag so the
+    block still holds.  A tag Imbi has never seen is a 404.
     """
-    blocked_at = datetime.datetime.now(datetime.UTC)
-    matched = await _set_release_block(
+    if not await _blockable_release(
         db,
         org_slug=org_slug,
         project_id=project_id,
         tag=tag,
-        blocked_at=blocked_at.isoformat(),
-        blocked_by=auth.principal_name,
-        reason=body.reason,
+        created_by=auth.principal_name,
+    ):
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No release found for tag {tag!r}'
+        )
+    blocker = await _create_blocker(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        blocker_type='manual',
+        description=body.reason,
+        created_by=auth.principal_name,
+        external_ref=MANUAL_BLOCK_REF,
     )
-    if not matched:
-        sha = await _tag_sha(project_id, tag)
-        if sha is None:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'No release found for tag {tag!r}',
-            )
-        await _upsert_release_node(
-            db,
-            project_id=project_id,
-            tag=tag,
-            committish=sha[:7].lower(),
-            title=tag,
-            notes_markdown='',
-            release_url=None,
-            created_by=auth.principal_name,
+    if blocker is None:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No release found for tag {tag!r}'
         )
-        matched = await _set_release_block(
-            db,
-            org_slug=org_slug,
-            project_id=project_id,
-            tag=tag,
-            blocked_at=blocked_at.isoformat(),
-            blocked_by=auth.principal_name,
-            reason=body.reason,
-        )
-        if not matched:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'No release found for tag {tag!r}',
-            )
     LOGGER.info(
         'Release blocked: project=%s tag=%s actor=%s reason=%s',
         project_id,
@@ -5393,9 +6006,9 @@ async def block_release(
     return ReleaseBlockResponse(
         tag=tag,
         blocked=True,
-        blocked_reason=body.reason,
-        blocked_by=auth.principal_name,
-        blocked_at=blocked_at,
+        blocked_reason=blocker.description,
+        blocked_by=blocker.created_by,
+        blocked_at=blocker.created_at,
     )
 
 
@@ -5412,29 +6025,34 @@ async def unblock_release(
         ),
     ],
 ) -> ReleaseBlockResponse:
-    """Clear the block on ``tag``, letting it ship again.
+    """Clear every open blocker on ``tag``, letting it ship again.
 
-    Unblocking an unblocked release is a no-op, not an error; a 404 only
-    means no ``Release`` node exists for the tag.
+    The flag this replaced was one bit, so its one caller meant "make
+    this release shippable" -- which is now every open blocker, not just
+    the manual one.  Unblocking an unblocked release is a no-op, not an
+    error; a 404 only means no ``Release`` node exists for the tag.
     """
-    matched = await _set_release_block(
+    rows = await db.execute(
+        _RELEASE_FOR_BLOCKER + '    RETURN r.id AS rid\n',
+        {'project_id': project_id, 'org_slug': org_slug, 'tag': tag},
+        ['rid'],
+    )
+    if not rows:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f'No release found for tag {tag!r}'
+        )
+    resolved = await _resolve_open_blockers(
         db,
         org_slug=org_slug,
         project_id=project_id,
         tag=tag,
-        blocked_at=None,
-        blocked_by=None,
-        reason=None,
+        resolved_by=auth.principal_name,
     )
-    if not matched:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'No release found for tag {tag!r}',
-        )
     LOGGER.info(
-        'Release unblocked: project=%s tag=%s actor=%s',
+        'Release unblocked: project=%s tag=%s actor=%s resolved=%d',
         project_id,
         tag,
         auth.principal_name,
+        len(resolved),
     )
     return ReleaseBlockResponse(tag=tag, blocked=False)

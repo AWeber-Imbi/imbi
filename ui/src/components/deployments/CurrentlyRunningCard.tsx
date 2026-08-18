@@ -16,7 +16,7 @@ import {
   ciNeedsAcknowledgement,
   useCommitCheckStatus,
 } from '@/components/deploy/CiFailureNotice'
-import { BlockReleaseDialog } from '@/components/releases/BlockReleaseDialog'
+import { AddBlockerDialog } from '@/components/releases/AddBlockerDialog'
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { useReleaseBlockMutation } from '@/components/releases/useReleaseBlockMutation'
 import { Badge } from '@/components/ui/badge'
@@ -241,10 +241,10 @@ export function CurrentlyRunningCard({
         />
       </ConfirmActionDialog>
 
-      <BlockReleaseDialog
+      <AddBlockerDialog
         isPending={blockPending}
-        onBlock={(reason) => {
-          if (blocking) block(blocking, reason)
+        onBlock={(type, description) => {
+          if (blocking) block({ description, tag: blocking, type })
           setBlocking(null)
         }}
         onOpenChange={(next) => {

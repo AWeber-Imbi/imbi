@@ -17,11 +17,13 @@ endpoints package at import time.
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import typing
 
 import fastapi
+import nanoid
 from valkey import asyncio as valkey
 
 from imbi.api.auth import permissions, principals
@@ -744,6 +746,115 @@ async def execute_release_repair(
         retagged,
         salvaged,
         removed,
+    )
+    return 'succeeded'
+
+
+_BLOCKED_RELEASES_QUERY: typing.LiteralString = """
+MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+WHERE r.blocked_at IS NOT NULL
+RETURN r.id AS id,
+       r.blocked_at AS blocked_at,
+       r.blocked_by AS blocked_by,
+       r.blocked_reason AS reason,
+       r.blocked_scope AS scope
+"""
+
+_MIGRATE_BLOCK_QUERY: typing.LiteralString = """
+MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release
+      {{id: {id}}})
+WHERE r.blocked_at IS NOT NULL
+CREATE (r)-[:BLOCKED_BY]->(b:Blocker {{id: {blocker_id},
+                                       type: {type},
+                                       description: {description},
+                                       external_ref: {external_ref},
+                                       status: 'open',
+                                       scope: {scope},
+                                       created_at: {created_at},
+                                       created_by: {created_by}}})
+SET r.blocked_at = NULL,
+    r.blocked_by = NULL,
+    r.blocked_reason = NULL,
+    r.blocked_scope = NULL,
+    r.updated_at = {now}
+RETURN r.id AS id
+"""
+
+
+async def execute_blocker_migration(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Move a project's release blocks onto ``Blocker`` nodes.
+
+    Block state used to be ``blocked_at`` / ``blocked_by`` /
+    ``blocked_reason`` / ``blocked_scope`` on the ``Release`` itself.
+    Every writer and reader now goes through
+    ``(:Release)-[:BLOCKED_BY]->(:Blocker)``, so a release still carrying
+    the flags would read as shippable -- this converts each one into the
+    open blocker it stood for and clears the flags.
+
+    ``blocked_scope = 'tag'`` was only ever written by the release-build
+    watcher, so those become ``build-failure`` blockers keeping the
+    tag-only scope; everything else was an operator blocking by hand and
+    becomes a commit-wide ``manual`` blocker.  Both carry the
+    ``external_ref`` their endpoint uses, so a later block or unblock
+    lands on the migrated blocker instead of adding another.
+
+    Idempotent: clearing the flags is what makes a second run find
+    nothing and skip.  The write itself also requires ``blocked_at`` to
+    still be set, so two overlapping runs that read the same flagged
+    release create one blocker, not two.
+    """
+    del client
+    from imbi.api.endpoints import project_deployments
+
+    rows = await db.execute(
+        _BLOCKED_RELEASES_QUERY,
+        {'project_id': project_id},
+        ['id', 'blocked_at', 'blocked_by', 'reason', 'scope'],
+    )
+    if not rows:
+        return 'skipped'
+    now = datetime.datetime.now(datetime.UTC).isoformat()
+    migrated = 0
+    for row in rows:
+        release_id = graph.parse_agtype(row.get('id'))
+        if not release_id:
+            continue
+        scope = graph.parse_agtype(row.get('scope'))
+        tag_scoped = str(scope) == 'tag' if scope else False
+        blocked_at = graph.parse_agtype(row.get('blocked_at'))
+        blocked_by = graph.parse_agtype(row.get('blocked_by'))
+        reason = graph.parse_agtype(row.get('reason'))
+        written = await db.execute(
+            _MIGRATE_BLOCK_QUERY,
+            {
+                'project_id': project_id,
+                'id': str(release_id),
+                'blocker_id': nanoid.generate(),
+                'type': 'build-failure' if tag_scoped else 'manual',
+                'description': str(reason) if reason else 'Blocked',
+                'external_ref': (
+                    project_deployments.BUILD_FAILURE_REF
+                    if tag_scoped
+                    else project_deployments.MANUAL_BLOCK_REF
+                ),
+                'scope': 'tag' if tag_scoped else 'commit',
+                'created_at': str(blocked_at) if blocked_at else now,
+                'created_by': str(blocked_by) if blocked_by else REQUESTED_BY,
+                'now': now,
+            },
+            ['id'],
+        )
+        # The WHERE guard makes the write conditional: a concurrent run
+        # that already cleared the flags leaves nothing to match, so the
+        # release must not count as migrated here.
+        if written:
+            migrated += 1
+    if not migrated:
+        return 'skipped'
+    LOGGER.info(
+        'blocker-migration: project %s migrated=%d', project_id, migrated
     )
     return 'succeeded'
 

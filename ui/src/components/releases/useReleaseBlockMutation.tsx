@@ -2,8 +2,24 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
-import { blockRelease, unblockRelease } from '@/api/releases'
+import {
+  addReleaseBlocker,
+  resolveReleaseBlocker,
+  unblockRelease,
+} from '@/api/releases'
 import { extractApiErrorDetail } from '@/lib/apiError'
+import type { BlockerType } from '@/types'
+
+interface AddBlockerArgs {
+  description: string
+  tag: string
+  type: BlockerType
+}
+
+interface ResolveBlockerArgs {
+  blockerId: string
+  tag: string
+}
 
 interface UseReleaseBlockOptions {
   orgSlug: string
@@ -11,8 +27,9 @@ interface UseReleaseBlockOptions {
 }
 
 interface UseReleaseBlockResult {
-  block: (tag: string, reason: string) => void
+  block: (args: AddBlockerArgs) => void
   isPending: boolean
+  resolve: (args: ResolveBlockerArgs) => void
   unblock: (tag: string) => void
 }
 
@@ -22,9 +39,9 @@ const message = (err: unknown): string =>
     : (err as Error).message
 
 /**
- * Block / unblock a release tag. Both write the same `blocked_*` state on
- * the release, so they share one invalidation set: the release history and
- * the deployment pipeline both render the block.
+ * File, resolve, and clear the blockers on a release. All three change
+ * whether the release can ship, so they share one invalidation set: the
+ * release history and the deployment pipeline both render the block.
  */
 export function useReleaseBlockMutation({
   orgSlug,
@@ -42,14 +59,24 @@ export function useReleaseBlockMutation({
   }
 
   const blockMutation = useMutation({
-    mutationFn: ({ reason, tag }: { reason: string; tag: string }) =>
-      blockRelease(orgSlug, projectId, tag, { reason }),
+    mutationFn: ({ description, tag, type }: AddBlockerArgs) =>
+      addReleaseBlocker(orgSlug, projectId, tag, { description, type }),
     onError: (err) => toast.error(message(err)),
-    onSuccess: (data) => {
+    onSuccess: () => {
       invalidate()
-      toast.success(`Blocked ${data.tag}`, {
+      toast.success('Blocker added', {
         description: 'Deploys and promotes of this release are now refused.',
       })
+    },
+  })
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ blockerId, tag }: ResolveBlockerArgs) =>
+      resolveReleaseBlocker(orgSlug, projectId, tag, blockerId),
+    onError: (err) => toast.error(message(err)),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Blocker resolved')
     },
   })
 
@@ -65,9 +92,12 @@ export function useReleaseBlockMutation({
   })
 
   return {
-    block: (tag: string, reason: string) =>
-      blockMutation.mutate({ reason, tag }),
-    isPending: blockMutation.isPending || unblockMutation.isPending,
+    block: (args: AddBlockerArgs) => blockMutation.mutate(args),
+    isPending:
+      blockMutation.isPending ||
+      resolveMutation.isPending ||
+      unblockMutation.isPending,
+    resolve: (args: ResolveBlockerArgs) => resolveMutation.mutate(args),
     unblock: (tag: string) => unblockMutation.mutate(tag),
   }
 }

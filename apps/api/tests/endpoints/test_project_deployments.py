@@ -2195,12 +2195,16 @@ class DispatchDrivenPromoteTestCase(ProjectDeploymentsTestCase):
             return_value=[
                 {
                     'release': json.dumps(
+                        {'tag': '0.1.5', 'committish': 'e6a13a0'}
+                    ),
+                    'blocker': json.dumps(
                         {
-                            'tag': '0.1.5',
-                            'committish': 'e6a13a0',
-                            'blocked_reason': 'Bad build',
+                            'id': 'blk1',
+                            'type': 'build-failure',
+                            'description': 'Bad build',
+                            'status': 'open',
                         }
-                    )
+                    ),
                 }
             ]
         )
@@ -2978,11 +2982,28 @@ class ReleaseCiOverrideTestCase(unittest.IsolatedAsyncioTestCase):
 class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):
     """A failed build blocks the version, not the commit."""
 
-    async def test_fail_promote_build_scopes_the_block_to_the_tag(
+    async def test_fail_promote_build_files_a_build_failure_blocker(
         self,
     ) -> None:
         db = mock.AsyncMock()
-        db.execute = mock.AsyncMock(return_value=[{'rid': 'r1'}])
+        created: dict[str, typing.Any] = {}
+
+        async def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if 'CREATE (r)-[:BLOCKED_BY]' in query:
+                created.update(params)
+                return [
+                    {
+                        'blocker': json.dumps(
+                            {'id': 'b1', 'description': params['description']}
+                        )
+                    }
+                ]
+            return []
+
+        db.execute = mock.AsyncMock(side_effect=_execute)
         await project_deployments.fail_promote_build(
             db,
             org_slug='octo',
@@ -2991,11 +3012,13 @@ class BuildFailureBlockScopeTestCase(unittest.IsolatedAsyncioTestCase):
             reason='Release build reported failure',
             requested_by='daves@aweber.com',
         )
-        params = db.execute.await_args.args[1]
-        self.assertEqual('tag', params['scope'])
-        self.assertEqual('0.1.5', params['tag'])
-        self.assertEqual('daves@aweber.com', params['blocked_by'])
-        self.assertIn('failure', params['reason'])
+        self.assertEqual('build-failure', created['type'])
+        # Scoped to the version: the fix is a bumped tag off the same
+        # tree, which a commit-wide blocker would refuse.
+        self.assertEqual('tag', created['scope'])
+        self.assertEqual('0.1.5', created['tag'])
+        self.assertEqual('daves@aweber.com', created['created_by'])
+        self.assertIn('failure', created['description'])
 
     async def test_missing_release_node_is_survivable(self) -> None:
         db = mock.AsyncMock()
@@ -3703,7 +3726,9 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         )
 
         def _mock_execute(query, params, columns):
-            del query, params, columns
+            del params, columns
+            if 'BLOCKED_BY' in query:
+                return []
             return [
                 {
                     'release': json.dumps(
@@ -3945,16 +3970,19 @@ class ReleasePublishTestCase(ProjectDeploymentsTestCase):
             query: str, params: dict[str, typing.Any], columns: typing.Any
         ) -> list[dict[str, typing.Any]]:
             del columns
-            if 'r.blocked_at IS NOT NULL' in query:
+            if 'RETURN r{{.tag, .committish}} AS release' in query:
                 return (
                     [
                         {
-                            'release': json.dumps(
+                            'release': json.dumps({'tag': 'v6.4.0'}),
+                            'blocker': json.dumps(
                                 {
-                                    'tag': 'v6.4.0',
-                                    'blocked_reason': 'Regression',
+                                    'id': 'blk1',
+                                    'type': 'manual',
+                                    'description': 'Regression',
+                                    'status': 'open',
                                 }
-                            )
+                            ),
                         }
                     ]
                     if blocked
@@ -4188,33 +4216,90 @@ class ReleasePublishTestCase(ProjectDeploymentsTestCase):
 
 
 class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
-    """Blocking a release, unblocking it, and the deploy / promote gate."""
+    """Blocking a release, unblocking it, and the deploy / promote gate.
+
+    ``block`` / ``unblock`` are the pre-Blocker API kept for the callers
+    written against it; they now file and resolve ``Blocker`` nodes.
+    """
 
     _BASE = '/organizations/myorg/projects/proj1/deployments'
     _BLOCK = f'{_BASE}/releases/v3.32.2/block'
 
     @staticmethod
-    def _blocked_row(
+    def _blocker(
+        *,
+        blocker_id: str = 'blk1',
+        blocker_type: str = 'manual',
+        description: str = 'Regression in checkout',
+        status: str = 'open',
+        created_by: str = 'admin@example.com',
+        **extra: typing.Any,
+    ) -> str:
+        """A ``Blocker`` node map as the graph hands it back."""
+        return json.dumps(
+            {
+                'id': blocker_id,
+                'type': blocker_type,
+                'description': description,
+                'status': status,
+                'created_by': created_by,
+                'created_at': '2026-01-03T00:00:00+00:00',
+                **extra,
+            }
+        )
+
+    @classmethod
+    def _open_blocker_rows(
+        cls,
         *,
         tag: str = 'v3.32.2',
         committish: str = '1a9c610',
-        reason: str | None = 'Regression in checkout',
+        descriptions: tuple[str, ...] = ('Regression in checkout',),
     ) -> list[dict[str, typing.Any]]:
-        """One row shaped like the ``_blocked_release`` projection."""
+        """Rows shaped like the ``_open_blockers`` projection."""
+        release = json.dumps({'tag': tag, 'committish': committish})
         return [
             {
-                'release': json.dumps(
-                    {
-                        'tag': tag,
-                        'committish': committish,
-                        'blocked_reason': reason,
-                    }
-                )
+                'release': release,
+                'blocker': cls._blocker(
+                    blocker_id=f'blk{index}', description=description
+                ),
             }
+            for index, description in enumerate(descriptions)
         ]
 
-    def test_block_sets_state_and_echoes_reason(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(return_value=[{'rid': 'r1'}])
+    def _dispatch(
+        self,
+        *,
+        release_found: bool = True,
+        existing: list[dict[str, typing.Any]] | None = None,
+        created: str | None = None,
+        resolved: list[dict[str, typing.Any]] | None = None,
+    ) -> mock.AsyncMock:
+        """Route each blocker query to its answer.
+
+        Dispatching on the query text rather than call order keeps the
+        tests readable as the helpers grow round-trips.
+        """
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'CREATE (r)-[:BLOCKED_BY]' in query:
+                return [{'blocker': created}] if created else []
+            if "SET b.status = 'resolved'" in query:
+                return resolved or []
+            if 'MATCH (r)-[:BLOCKED_BY]->(b:Blocker)' in query:
+                return existing or []
+            if 'RETURN r.id AS rid' in query:
+                return [{'rid': 'r1'}] if release_found else []
+            return []
+
+        return mock.AsyncMock(side_effect=_execute)
+
+    def test_block_files_a_manual_blocker_and_echoes_the_reason(self) -> None:
+        self.mock_db.execute = self._dispatch(created=self._blocker())
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 self._BLOCK, json={'reason': 'Regression in checkout'}
@@ -4227,6 +4312,40 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['blocked_by'], 'admin@example.com')
         self.assertIsNotNone(data['blocked_at'])
 
+    def test_reblocking_updates_the_one_blocker(self) -> None:
+        """The flag it replaced was one bit, so repeats must not stack."""
+        updated: list[str] = []
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if 'SET b.type = COALESCE' in query:
+                updated.append(params['description'])
+                return [
+                    {
+                        'blocker': self._blocker(
+                            description=params['description']
+                        )
+                    }
+                ]
+            if 'MATCH (r)-[:BLOCKED_BY]->(b:Blocker)' in query:
+                self.assertEqual(
+                    project_deployments.MANUAL_BLOCK_REF,
+                    params['external_ref'],
+                )
+                return [{'blocker': self._blocker()}]
+            if 'RETURN r.id AS rid' in query:
+                return [{'rid': 'r1'}]
+            self.fail(f'unexpected query: {query}')
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self._BLOCK, json={'reason': 'Second look'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(['Second look'], updated)
+        self.assertEqual('Second look', response.json()['blocked_reason'])
+
     def test_block_requires_a_reason(self) -> None:
         with testclient.TestClient(self.test_app) as client:
             blank = client.post(self._BLOCK, json={'reason': '   '})
@@ -4236,9 +4355,6 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
 
     def test_block_creates_release_node_for_a_synced_tag(self) -> None:
         """A tag synced but never cut in Imbi still blocks."""
-        # Dispatch on the query rather than call order: the block only
-        # lands once the upsert has created the node, and keying off the
-        # text survives a change in how many round-trips the upsert makes.
         created: dict[str, bool] = {'node': False}
 
         def _execute(
@@ -4247,10 +4363,12 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
             del params, columns
             if 'MERGE (p)-[:HAS_RELEASE]' in query:
                 created['node'] = True
-                return []
-            if 'SET r.blocked_at' in query:
+                return [{'rid': 'r9'}]
+            if 'RETURN r.id AS rid' in query:
                 return [{'rid': 'r9'}] if created['node'] else []
-            return [{'rid': 'r9'}]
+            if 'CREATE (r)-[:BLOCKED_BY]' in query:
+                return [{'blocker': self._blocker(description='Rolled back')}]
+            return []
 
         self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
         query = mock.AsyncMock(return_value=[{'sha': '1a9c610abcdef'}])
@@ -4264,7 +4382,7 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(query.await_args.args[1]['tag'], 'v3.32.2')
 
     def test_block_unknown_tag_is_404(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        self.mock_db.execute = self._dispatch(release_found=False)
         with (
             mock.patch(
                 f'{_MODULE}.clickhouse.query',
@@ -4276,28 +4394,46 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('No release found', response.json()['detail'])
 
-    def test_unblock_clears_the_state(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(return_value=[{'rid': 'r1'}])
+    def test_unblock_resolves_every_open_blocker(self) -> None:
+        """One bit meant "make this shippable" -- so every blocker goes."""
+        self.mock_db.execute = self._dispatch(
+            resolved=[
+                {'blocker': self._blocker(status='resolved')},
+                {
+                    'blocker': self._blocker(
+                        blocker_id='blk2',
+                        blocker_type='qa',
+                        status='resolved',
+                    )
+                },
+            ]
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.delete(self._BLOCK)
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertFalse(data['blocked'])
         self.assertIsNone(data['blocked_reason'])
-        # All three properties are nulled in the SET.
-        params = self.mock_db.execute.await_args.args[1]
-        self.assertIsNone(params['blocked_at'])
-        self.assertIsNone(params['blocked_by'])
-        self.assertIsNone(params['reason'])
+        # One bulk resolve, not one write per blocker -- and it must not
+        # target a single blocker: the empty id is the "all open" match.
+        writes = [
+            call.args[1]
+            for call in self.mock_db.execute.await_args_list
+            if "SET b.status = 'resolved'" in call.args[0]
+        ]
+        self.assertEqual(1, len(writes))
+        self.assertEqual('', writes[0]['blocker_id'])
 
     def test_unblock_unknown_tag_is_404(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        self.mock_db.execute = self._dispatch(release_found=False)
         with testclient.TestClient(self.test_app) as client:
             response = client.delete(self._BLOCK)
         self.assertEqual(response.status_code, 404)
 
     def test_deploy_of_a_blocked_release_is_409_with_the_reason(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(return_value=self._blocked_row())
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=self._open_blocker_rows()
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 self._BASE,
@@ -4311,10 +4447,33 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 409)
         detail = response.json()['detail']
         self.assertIn("Release 'v3.32.2' is blocked", detail)
+        self.assertIn('[manual] Regression in checkout', detail)
+
+    def test_the_409_enumerates_every_open_blocker(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=self._open_blocker_rows(
+                descriptions=('Regression in checkout', 'QA tests missing')
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BASE,
+                json={
+                    'action': 'deploy',
+                    'environment': 'production',
+                    'committish': '1a9c610',
+                    'ref_label': 'v3.32.2',
+                },
+            )
+        self.assertEqual(response.status_code, 409)
+        detail = response.json()['detail']
         self.assertIn('Regression in checkout', detail)
+        self.assertIn('QA tests missing', detail)
 
     def test_promote_of_a_blocked_release_is_409(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(return_value=self._blocked_row())
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=self._open_blocker_rows()
+        )
         with testclient.TestClient(self.test_app) as client:
             response = client.post(
                 self._BASE,
@@ -4329,29 +4488,8 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn('is blocked', response.json()['detail'])
 
-    def test_block_gate_omits_the_reason_when_none_recorded(self) -> None:
-        self.mock_db.execute = mock.AsyncMock(
-            return_value=self._blocked_row(reason=None)
-        )
-        with testclient.TestClient(self.test_app) as client:
-            response = client.post(
-                self._BASE,
-                json={
-                    'action': 'deploy',
-                    'environment': 'production',
-                    'committish': '1a9c610',
-                    'ref_label': 'v3.32.2',
-                },
-            )
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(
-            response.json()['detail'],
-            "Release 'v3.32.2' is blocked and cannot be deployed",
-        )
-
-    def test_release_history_reports_block_state(self) -> None:
+    def test_release_history_reports_open_blockers(self) -> None:
         when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-        blocked_at = datetime.datetime(2026, 1, 3, tzinfo=datetime.UTC)
         query = mock.AsyncMock(
             side_effect=[
                 [
@@ -4375,22 +4513,28 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
                 [],  # ci_status lookup
             ]
         )
-        self.mock_db.execute = mock.AsyncMock(
-            return_value=[
+
+        def _execute(
+            statement: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'BLOCKED_BY' in statement:
+                return [
+                    {'tag': 'v3.32.2', 'blocker': self._blocker()},
+                ]
+            return [
                 {
                     'release': json.dumps(
                         {
                             'tag': 'v3.32.2',
                             'title': 'Release 3.32.2',
                             'created_by': 'gr',
-                            'blocked_at': blocked_at.isoformat(),
-                            'blocked_by': 'admin@example.com',
-                            'blocked_reason': 'Regression in checkout',
                         }
                     )
                 }
             ]
-        )
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
         with (
             mock.patch(f'{_MODULE}.clickhouse.query', new=query),
             testclient.TestClient(self.test_app) as client,
@@ -4403,9 +4547,246 @@ class ReleaseBlockTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data[0]['blocked_reason'], 'Regression in checkout')
         self.assertEqual(data[0]['blocked_by'], 'admin@example.com')
         self.assertIsNotNone(data[0]['blocked_at'])
-        # A tag with no Release node is not blocked.
+        self.assertEqual(['manual'], [b['type'] for b in data[0]['blockers']])
+        # A tag with no open blocker is not blocked.
         self.assertFalse(data[1]['blocked'])
-        self.assertIsNone(data[1]['blocked_reason'])
+        self.assertEqual([], data[1]['blockers'])
+
+
+class ReleaseBlockerTestCase(ProjectDeploymentsTestCase):
+    """The blocker endpoints: add, list, update, resolve, delete."""
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _BLOCKERS = f'{_BASE}/releases/v3.32.2/blockers'
+
+    _blocker = staticmethod(ReleaseBlockTestCase._blocker)
+
+    def test_add_records_the_type_and_description(self) -> None:
+        captured: dict[str, typing.Any] = {}
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if 'CREATE (r)-[:BLOCKED_BY]' in query:
+                captured.update(params)
+                return [
+                    {
+                        'blocker': self._blocker(
+                            blocker_type='product-review',
+                            description='Product has not signed off',
+                        )
+                    }
+                ]
+            if 'RETURN r.id AS rid' in query:
+                return [{'rid': 'r1'}]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BLOCKERS,
+                json={
+                    'type': 'product-review',
+                    'description': 'Product has not signed off',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual('product-review', data['type'])
+        self.assertEqual('open', data['status'])
+        self.assertEqual('product-review', captured['type'])
+        # Everything filed by hand blocks the commit, not just the tag.
+        self.assertEqual('commit', captured['scope'])
+
+    def test_add_rejects_an_unknown_type(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BLOCKERS,
+                json={'type': 'vibes', 'description': 'no'},
+            )
+        self.assertEqual(response.status_code, 422)
+
+    def test_external_ref_makes_creation_idempotent(self) -> None:
+        """A process re-filing its blocker updates, never stacks."""
+        creates = 0
+        lookups: list[str] = []
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            nonlocal creates
+            del columns
+            if 'CREATE (r)-[:BLOCKED_BY]' in query:
+                creates += 1
+                return [{'blocker': self._blocker()}]
+            if 'SET b.type = COALESCE' in query:
+                return [
+                    {
+                        'blocker': self._blocker(
+                            blocker_id='blk-existing',
+                            description=params['description'],
+                            external_ref='ci:run/42',
+                        )
+                    }
+                ]
+            if 'MATCH (r)-[:BLOCKED_BY]->(b:Blocker)' in query:
+                lookups.append(params['external_ref'])
+                return [
+                    {
+                        'blocker': self._blocker(
+                            blocker_id='blk-existing',
+                            external_ref='ci:run/42',
+                        )
+                    }
+                ]
+            if 'RETURN r.id AS rid' in query:
+                return [{'rid': 'r1'}]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self._BLOCKERS,
+                json={
+                    'type': 'build-failure',
+                    'description': 'Build 42 failed again',
+                    'external_ref': 'ci:run/42',
+                },
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(0, creates)
+        self.assertEqual(['ci:run/42'], lookups)
+        self.assertEqual('blk-existing', response.json()['id'])
+
+    def test_list_filters_by_external_ref(self) -> None:
+        captured: dict[str, typing.Any] = {}
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if 'MATCH (r)-[:BLOCKED_BY]->(b:Blocker)' in query:
+                captured.update(params)
+                return [{'blocker': self._blocker(external_ref='ci:run/42')}]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                self._BLOCKERS,
+                params={'status': 'open', 'external_ref': 'ci:run/42'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual('ci:run/42', captured['external_ref'])
+        self.assertEqual('open', captured['status'])
+        self.assertEqual(1, len(response.json()))
+
+    def test_resolve_records_who_and_the_note(self) -> None:
+        captured: dict[str, typing.Any] = {}
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if "SET b.status = 'resolved'" in query:
+                captured.update(params)
+                return [
+                    {
+                        'blocker': self._blocker(
+                            status='resolved',
+                            resolved_by='admin@example.com',
+                            resolved_at='2026-01-04T00:00:00+00:00',
+                            resolution_note='Product signed off',
+                        )
+                    }
+                ]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                f'{self._BLOCKERS}/blk1/resolve',
+                json={'resolution_note': 'Product signed off'},
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual('resolved', data['status'])
+        self.assertEqual('admin@example.com', data['resolved_by'])
+        self.assertEqual('Product signed off', data['resolution_note'])
+        self.assertEqual('blk1', captured['blocker_id'])
+        self.assertEqual('admin@example.com', captured['resolved_by'])
+
+    def test_resolving_twice_is_not_an_error(self) -> None:
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if "SET b.status = 'resolved'" in query:
+                return []
+            if 'MATCH (r)-[:BLOCKED_BY]->(b:Blocker {{id: {blocker_id}}})' in (
+                query
+            ):
+                return [{'blocker': self._blocker(status='resolved')}]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(f'{self._BLOCKERS}/blk1/resolve', json={})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual('resolved', response.json()['status'])
+
+    def test_resolving_an_unknown_blocker_is_404(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(f'{self._BLOCKERS}/nope/resolve', json={})
+        self.assertEqual(response.status_code, 404)
+
+    def test_update_changes_the_type_and_wording(self) -> None:
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[
+                {'blocker': self._blocker(blocker_type='qa', description='x')}
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.patch(
+                f'{self._BLOCKERS}/blk1',
+                json={'type': 'qa', 'description': 'x'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual('qa', response.json()['type'])
+
+    def test_delete_requires_an_administrator(self) -> None:
+        self.test_user.is_admin = False
+        self.mock_db.execute = mock.AsyncMock(
+            return_value=[{'blocker': self._blocker()}]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.delete(f'{self._BLOCKERS}/blk1')
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('resolve it instead', response.json()['detail'])
+
+    def test_delete_removes_the_blocker_for_an_administrator(self) -> None:
+        deleted: list[str] = []
+
+        def _execute(
+            query: str, params: typing.Any, columns: typing.Any
+        ) -> list[dict[str, typing.Any]]:
+            del columns
+            if 'DETACH DELETE b' in query:
+                deleted.append(params['blocker_id'])
+                return []
+            if 'MATCH (r)-[:BLOCKED_BY]->(b:Blocker {{id: {blocker_id}}})' in (
+                query
+            ):
+                return [{'blocker': self._blocker()}]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.delete(f'{self._BLOCKERS}/blk1')
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(['blk1'], deleted)
 
 
 class ResolveTagFormatsTestCase(unittest.IsolatedAsyncioTestCase):

@@ -12,6 +12,7 @@ name = [
   "APIKey",
   "AnalysisReport",
   "AnalysisResult",
+  "Blocker",
   "Blueprint",
   "ClientCredential",
   "Comment",
@@ -122,6 +123,23 @@ attributes = ["kind"]
 [[vlabel_indexes]]
 vlabel = "CommentThread"
 attributes = ["resolved"]
+
+# Every deploy and promote asks the same question — does this release
+# have an open Blocker — so `status` carries the gate. `external_ref` is
+# how an outside process finds the blocker it filed; it is not unique,
+# since the same reference may legitimately block several releases.
+[[vlabel_indexes]]
+vlabel = "Blocker"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Blocker"
+attributes = ["status"]
+
+[[vlabel_indexes]]
+vlabel = "Blocker"
+attributes = ["external_ref"]
 
 # A Component's identity is its version-stripped package URL
 # (e.g. "pkg:npm/express"). Globally unique so MERGE can dedup

@@ -13,7 +13,12 @@ import { ReleaseHistory } from './ReleaseHistory'
 vi.mock('@/api/releases', async () => {
   const actual =
     await vi.importActual<typeof import('@/api/releases')>('@/api/releases')
-  return { ...actual, blockRelease: vi.fn(), unblockRelease: vi.fn() }
+  return {
+    ...actual,
+    addReleaseBlocker: vi.fn(),
+    resolveReleaseBlocker: vi.fn(),
+    unblockRelease: vi.fn(),
+  }
 })
 
 vi.mock('sonner', () => ({
@@ -23,8 +28,18 @@ vi.mock('sonner', () => ({
   },
 }))
 
-const blockRelease = vi.mocked(releases.blockRelease)
+const addReleaseBlocker = vi.mocked(releases.addReleaseBlocker)
+const resolveReleaseBlocker = vi.mocked(releases.resolveReleaseBlocker)
 const unblockRelease = vi.mocked(releases.unblockRelease)
+
+const BLOCKER = {
+  created_at: '2026-01-03T00:00:00Z',
+  created_by: 'gavinr@aweber.com',
+  description: 'Regression in the checkout flow',
+  id: 'blk1',
+  status: 'open' as const,
+  type: 'manual' as const,
+}
 
 const RELEASES: ReleaseHistoryEntry[] = [
   {
@@ -68,7 +83,11 @@ const renderHistory = (
 describe('ReleaseHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    blockRelease.mockResolvedValue({ blocked: true, tag: 'v1.1.0' })
+    addReleaseBlocker.mockResolvedValue(BLOCKER)
+    resolveReleaseBlocker.mockResolvedValue({
+      ...BLOCKER,
+      status: 'resolved',
+    })
     unblockRelease.mockResolvedValue({ blocked: false, tag: 'v1.0.0' })
   })
 
@@ -93,15 +112,7 @@ describe('ReleaseHistory', () => {
 
   it('marks a blocked release and shows why, who, and an unblock action', async () => {
     const user = userEvent.setup()
-    renderHistory([
-      {
-        ...RELEASES[1],
-        blocked: true,
-        blocked_at: '2026-01-03T00:00:00Z',
-        blocked_by: 'gavinr@aweber.com',
-        blocked_reason: 'Regression in the checkout flow',
-      },
-    ])
+    renderHistory([{ ...RELEASES[1], blocked: true, blockers: [BLOCKER] }])
     expect(screen.getByText('Blocked')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /v1\.0\.0/ }))
     expect(
@@ -112,21 +123,72 @@ describe('ReleaseHistory', () => {
     expect(unblockRelease).toHaveBeenCalledWith('acme', 'p1', 'v1.0.0')
   })
 
-  it('blocks a release with the reason from the dialog', async () => {
+  it('lists every open blocker and resolves one at a time', async () => {
+    const user = userEvent.setup()
+    renderHistory([
+      {
+        ...RELEASES[1],
+        blocked: true,
+        blockers: [
+          BLOCKER,
+          {
+            ...BLOCKER,
+            description: 'QA tests still to be written',
+            id: 'blk2',
+            type: 'qa',
+          },
+        ],
+      },
+    ])
+    expect(screen.getByText('Blocked (2)')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /v1\.0\.0/ }))
+    expect(screen.getByText('QA')).toBeInTheDocument()
+    expect(screen.getByText(/QA tests still to be written/)).toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: 'Resolve' })[1])
+    await waitFor(() =>
+      expect(resolveReleaseBlocker).toHaveBeenCalledWith(
+        'acme',
+        'p1',
+        'v1.0.0',
+        'blk2',
+      ),
+    )
+  })
+
+  it('renders a release blocked before the Blocker model shipped', async () => {
+    const user = userEvent.setup()
+    renderHistory([
+      {
+        ...RELEASES[1],
+        blocked: true,
+        blocked_by: 'gavinr@aweber.com',
+        blocked_reason: 'Regression in the checkout flow',
+      },
+    ])
+    await user.click(screen.getByRole('button', { name: /v1\.0\.0/ }))
+    expect(
+      screen.getByText(/Regression in the checkout flow/),
+    ).toBeInTheDocument()
+    // No blocker id to resolve individually, so only Unblock is offered.
+    expect(screen.queryByRole('button', { name: 'Resolve' })).toBeNull()
+  })
+
+  it('adds a blocker with the type and reason from the dialog', async () => {
     const user = userEvent.setup()
     renderHistory(RELEASES)
     await user.click(screen.getByRole('button', { name: /v1\.1\.0/ }))
-    await user.click(screen.getByRole('button', { name: /Block release/ }))
+    await user.click(screen.getByRole('button', { name: /Add blocker/ }))
 
-    const submit = screen.getByRole('button', { name: 'Block v1.1.0' })
-    // The reason is required — no reason, no block.
+    const submit = screen.getByRole('button', { name: 'Add blocker' })
+    // The reason is required — no reason, no blocker.
     expect(submit).toBeDisabled()
 
     await user.type(screen.getByRole('textbox'), 'Rolled back — regression')
     await user.click(submit)
     await waitFor(() =>
-      expect(blockRelease).toHaveBeenCalledWith('acme', 'p1', 'v1.1.0', {
-        reason: 'Rolled back — regression',
+      expect(addReleaseBlocker).toHaveBeenCalledWith('acme', 'p1', 'v1.1.0', {
+        description: 'Rolled back — regression',
+        type: 'manual',
       }),
     )
   })

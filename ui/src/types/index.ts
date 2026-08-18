@@ -62,6 +62,17 @@ export interface AttributeScoringPolicyCreate extends ScoringPolicyCreateBase {
 }
 
 // API Response Wrappers
+/** What is holding a release up. Labels only — nothing behaves
+ * differently per type. */
+export type BlockerType =
+  | 'build-failure'
+  | 'dependency'
+  | 'deploy-order'
+  | 'drift'
+  | 'manual'
+  | 'product-review'
+  | 'qa'
+
 export interface CollectionResponse<T> {
   data: T[]
 }
@@ -1231,6 +1242,27 @@ export interface Release {
   title: string
   updated_at?: null | string
 }
+export interface ReleaseBlocker {
+  created_at?: null | string
+  created_by?: null | string
+  description: string
+  /** Handle an outside process files its blocker under, so it can find
+   * and resolve the same one later. */
+  external_ref?: null | string
+  id: string
+  resolution_note?: null | string
+  resolved_at?: null | string
+  resolved_by?: null | string
+  status: 'open' | 'resolved'
+  type: BlockerType
+}
+
+export interface ReleaseBlockerCreateRequest {
+  description: string
+  external_ref?: null | string
+  type: BlockerType
+}
+
 export interface ReleaseBlockRequest {
   reason: string
 }
@@ -1288,6 +1320,9 @@ export interface ReleaseHistoryEntry {
   blocked_at?: null | string
   blocked_by?: null | string
   blocked_reason?: null | string
+  /** Every open blocker on the release; the `blocked_*` fields above
+   * mirror the newest of them. */
+  blockers?: ReleaseBlocker[]
   /**
    * Set when an operator cut this release over a *failing* CI run and
    * acknowledged it. `ci_status` below is the commit's state right now;

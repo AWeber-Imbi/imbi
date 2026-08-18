@@ -613,6 +613,103 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('skipped', outcome)
 
 
+def _blocked_row(
+    node_id: str,
+    *,
+    scope: str | None = None,
+    reason: str | None = 'Rolled back',
+    blocked_by: str | None = 'gr@example.com',
+) -> dict[str, object]:
+    """One row as ``_BLOCKED_RELEASES_QUERY`` returns it."""
+    return {
+        'id': node_id,
+        'blocked_at': '2026-01-02T00:00:00+00:00',
+        'blocked_by': blocked_by,
+        'reason': reason,
+        'scope': scope,
+    }
+
+
+class ExecuteBlockerMigrationTests(unittest.IsolatedAsyncioTestCase):
+    """Old release-block flags become ``Blocker`` nodes."""
+
+    @staticmethod
+    def _db(
+        rows: list[dict[str, object]],
+        write_result: list[dict[str, object]] | None = None,
+    ) -> mock.AsyncMock:
+        db = mock.AsyncMock()
+        if write_result is None:
+            write_result = [{'id': 'r1'}]
+        db.execute = mock.AsyncMock(side_effect=[rows] + [write_result] * 20)
+        return db
+
+    async def test_skipped_when_nothing_is_flagged(self) -> None:
+        db = self._db([])
+        outcome = await operations.execute_blocker_migration(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('skipped', outcome)
+        db.execute.assert_awaited_once()
+
+    async def test_a_manual_block_becomes_a_commit_wide_blocker(self) -> None:
+        db = self._db([_blocked_row('r1')])
+        outcome = await operations.execute_blocker_migration(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        query, params, _ = db.execute.await_args_list[1].args
+        self.assertIn('CREATE (r)-[:BLOCKED_BY]', query)
+        self.assertEqual('manual', params['type'])
+        self.assertEqual('commit', params['scope'])
+        self.assertEqual('Rolled back', params['description'])
+        self.assertEqual('gr@example.com', params['created_by'])
+        # The blocker inherits when the block was made, not now.
+        self.assertEqual('2026-01-02T00:00:00+00:00', params['created_at'])
+        # And the flags go, which is what makes a re-run a no-op.
+        self.assertIn('SET r.blocked_at = NULL', query)
+
+    async def test_a_tag_scoped_block_becomes_a_build_failure(self) -> None:
+        db = self._db([_blocked_row('r1', scope='tag')])
+        await operations.execute_blocker_migration(db, mock.AsyncMock(), 'p1')
+        params = db.execute.await_args_list[1].args[1]
+        self.assertEqual('build-failure', params['type'])
+        self.assertEqual('tag', params['scope'])
+
+    async def test_a_block_with_no_reason_still_migrates(self) -> None:
+        db = self._db([_blocked_row('r1', reason=None, blocked_by=None)])
+        await operations.execute_blocker_migration(db, mock.AsyncMock(), 'p1')
+        params = db.execute.await_args_list[1].args[1]
+        self.assertEqual('Blocked', params['description'])
+        self.assertEqual('maintenance', params['created_by'])
+
+    async def test_every_flagged_release_is_migrated(self) -> None:
+        db = self._db([_blocked_row('r1'), _blocked_row('r2')])
+        outcome = await operations.execute_blocker_migration(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('succeeded', outcome)
+        migrated = [
+            call.args[1]['id'] for call in db.execute.await_args_list[1:]
+        ]
+        self.assertEqual(['r1', 'r2'], migrated)
+
+    async def test_a_release_cleared_mid_run_does_not_double_migrate(
+        self,
+    ) -> None:
+        # Two overlapping runs read the same flagged release. The first
+        # one's write clears the flags, so the second one's write matches
+        # nothing: the query requires blocked_at to still be set, and a
+        # rowless write must not count as migrated.
+        db = self._db([_blocked_row('r1')], write_result=[])
+        outcome = await operations.execute_blocker_migration(
+            db, mock.AsyncMock(), 'p1'
+        )
+        self.assertEqual('skipped', outcome)
+        query = db.execute.await_args_list[1].args[0]
+        self.assertIn('WHERE r.blocked_at IS NOT NULL', query)
+
+
 def _release_row(
     node_id: str,
     tag: str | None,

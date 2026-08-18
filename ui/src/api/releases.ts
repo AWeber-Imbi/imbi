@@ -3,7 +3,8 @@
 import type {
   CutReleaseRequest,
   CutReleaseResponse,
-  ReleaseBlockRequest,
+  ReleaseBlocker,
+  ReleaseBlockerCreateRequest,
   ReleaseBlockResponse,
   ReleaseDrift,
   ReleaseHistoryEntry,
@@ -54,17 +55,36 @@ export const cutRelease = (
 const blockPath = (orgSlug: string, projectId: string, tag: string): string =>
   `${base(orgSlug, projectId)}/releases/${encodeURIComponent(tag)}/block`
 
-export const blockRelease = (
-  orgSlug: string,
-  projectId: string,
-  tag: string,
-  body: ReleaseBlockRequest,
-): Promise<ReleaseBlockResponse> =>
-  apiClient.post<ReleaseBlockResponse>(blockPath(orgSlug, projectId, tag), body)
-
 export const unblockRelease = (
   orgSlug: string,
   projectId: string,
   tag: string,
 ): Promise<ReleaseBlockResponse> =>
   apiClient.delete<ReleaseBlockResponse>(blockPath(orgSlug, projectId, tag))
+
+const blockersPath = (
+  orgSlug: string,
+  projectId: string,
+  tag: string,
+): string =>
+  `${base(orgSlug, projectId)}/releases/${encodeURIComponent(tag)}/blockers`
+
+export const addReleaseBlocker = (
+  orgSlug: string,
+  projectId: string,
+  tag: string,
+  body: ReleaseBlockerCreateRequest,
+): Promise<ReleaseBlocker> =>
+  apiClient.post<ReleaseBlocker>(blockersPath(orgSlug, projectId, tag), body)
+
+export const resolveReleaseBlocker = (
+  orgSlug: string,
+  projectId: string,
+  tag: string,
+  blockerId: string,
+  resolutionNote?: string,
+): Promise<ReleaseBlocker> =>
+  apiClient.post<ReleaseBlocker>(
+    `${blockersPath(orgSlug, projectId, tag)}/${encodeURIComponent(blockerId)}/resolve`,
+    { resolution_note: resolutionNote ?? null },
+  )

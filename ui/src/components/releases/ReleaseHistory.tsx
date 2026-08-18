@@ -15,17 +15,44 @@ import { Button } from '@/components/ui/button'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
-import type { ReleaseHistoryEntry } from '@/types'
+import type { ReleaseBlocker, ReleaseHistoryEntry } from '@/types'
 
+import { AddBlockerDialog, BLOCKER_TYPES } from './AddBlockerDialog'
 import type { ArtifactInfo } from './artifact'
-import { BlockReleaseDialog } from './BlockReleaseDialog'
 import { CiStatusDot } from './CiStatusDot'
 import { useReleaseBlockMutation } from './useReleaseBlockMutation'
 
 interface BlockedNoteProps {
+  blockers: ReleaseBlocker[]
   isPending: boolean
+  onResolve: (blockerId: string) => void
   onUnblock: () => void
   rel: ReleaseHistoryEntry
+}
+
+/** Human label for a blocker type, falling back to the raw value. */
+const typeLabel = (value: string): string =>
+  BLOCKER_TYPES.find((option) => option.value === value)?.label ?? value
+
+/**
+ * The blockers to render for a release. A release blocked before the
+ * Blocker model shipped has the mirrored `blocked_*` fields and no list,
+ * so one is synthesized from them rather than showing "Blocked" with
+ * nothing under it.
+ */
+const openBlockers = (rel: ReleaseHistoryEntry): ReleaseBlocker[] => {
+  if (rel.blockers?.length) return rel.blockers
+  if (!rel.blocked) return []
+  return [
+    {
+      created_at: rel.blocked_at,
+      created_by: rel.blocked_by,
+      description: rel.blocked_reason ?? '',
+      id: '',
+      status: 'open',
+      type: 'manual',
+    },
+  ]
 }
 
 interface ReleaseHistoryProps {
@@ -42,6 +69,7 @@ interface ReleaseRowProps {
   isOpen: boolean
   isPending: boolean
   onBlock: () => void
+  onResolve: (blockerId: string) => void
   onToggle: () => void
   onUnblock: () => void
   rel: ReleaseHistoryEntry
@@ -56,7 +84,7 @@ export function ReleaseHistory({
 }: ReleaseHistoryProps) {
   const [open, setOpen] = useState<null | string>(null)
   const [blocking, setBlocking] = useState<null | string>(null)
-  const { block, isPending, unblock } = useReleaseBlockMutation({
+  const { block, isPending, resolve, unblock } = useReleaseBlockMutation({
     orgSlug,
     projectId,
   })
@@ -75,16 +103,17 @@ export function ReleaseHistory({
             isPending={isPending}
             key={rel.tag}
             onBlock={() => setBlocking(rel.tag)}
+            onResolve={(blockerId) => resolve({ blockerId, tag: rel.tag })}
             onToggle={() => setOpen((o) => (o === rel.tag ? null : rel.tag))}
             onUnblock={() => unblock(rel.tag)}
             rel={rel}
           />
         ))}
       </div>
-      <BlockReleaseDialog
+      <AddBlockerDialog
         isPending={isPending}
-        onBlock={(reason) => {
-          if (blocking) block(blocking, reason)
+        onBlock={(type, description) => {
+          if (blocking) block({ description, tag: blocking, type })
           setBlocking(null)
         }}
         onOpenChange={(next) => {
@@ -97,37 +126,73 @@ export function ReleaseHistory({
   )
 }
 
-/** Why the release is blocked, who blocked it, and how to lift it. */
-function BlockedNote({ isPending, onUnblock, rel }: BlockedNoteProps) {
+/** Every open blocker on the release, and how to clear them. */
+function BlockedNote({
+  blockers,
+  isPending,
+  onResolve,
+  onUnblock,
+  rel,
+}: BlockedNoteProps) {
   return (
-    <div className="border-danger bg-danger text-danger mt-1 mb-3 flex items-start gap-2 rounded-md border px-3 py-2.5">
-      <Ban className="mt-0.5 size-3.5 shrink-0" />
-      <div className="min-w-0 flex-1 text-xs leading-relaxed">
-        <p>
-          Blocked from deploying and promoting
-          {rel.blocked_reason ? <> — {rel.blocked_reason}</> : null}
+    <div className="border-danger bg-danger text-danger mt-1 mb-3 rounded-md border px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <Ban className="mt-0.5 size-3.5 shrink-0" />
+        <p className="min-w-0 flex-1 text-xs leading-relaxed">
+          Blocked from deploying and promoting until
+          {blockers.length === 1 ? ' this is resolved' : ' these are resolved'}
         </p>
-        {rel.blocked_by ? (
-          <p className="mt-1 opacity-80">
-            by {rel.blocked_by}
-            {rel.blocked_at ? (
-              <>
-                {' · '}
-                <RelativeTime tooltip={false} value={rel.blocked_at} />
-              </>
-            ) : null}
-          </p>
-        ) : null}
+        <Button
+          className="h-auto shrink-0 px-2 py-1 text-xs"
+          disabled={isPending}
+          onClick={onUnblock}
+          type="button"
+          variant="outline"
+        >
+          {blockers.length === 1 ? 'Unblock' : 'Resolve all'}
+        </Button>
       </div>
-      <Button
-        className="h-auto shrink-0 px-2 py-1 text-xs"
-        disabled={isPending}
-        onClick={onUnblock}
-        type="button"
-        variant="outline"
-      >
-        Unblock
-      </Button>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {blockers.map((blocker, index) => (
+          <li
+            className="flex items-start gap-2 text-xs leading-relaxed"
+            key={blocker.id || `${rel.tag}-${index}`}
+          >
+            <Badge className="mt-px shrink-0" variant="danger">
+              {typeLabel(blocker.type)}
+            </Badge>
+            <span className="min-w-0 flex-1">
+              {blocker.description}
+              {blocker.created_by ? (
+                <span className="opacity-80">
+                  {' · '}
+                  {blocker.created_by}
+                  {blocker.created_at ? (
+                    <>
+                      {' · '}
+                      <RelativeTime
+                        tooltip={false}
+                        value={blocker.created_at}
+                      />
+                    </>
+                  ) : null}
+                </span>
+              ) : null}
+            </span>
+            {blocker.id ? (
+              <Button
+                className="h-auto shrink-0 px-2 py-0.5 text-xs"
+                disabled={isPending}
+                onClick={() => onResolve(blocker.id)}
+                type="button"
+                variant="ghost"
+              >
+                Resolve
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -166,11 +231,13 @@ function ReleaseRow({
   isOpen,
   isPending,
   onBlock,
+  onResolve,
   onToggle,
   onUnblock,
   rel,
 }: ReleaseRowProps) {
-  const blocked = !!rel.blocked
+  const blockers = openBlockers(rel)
+  const blocked = blockers.length > 0
   return (
     <div
       className={cn(
@@ -203,6 +270,7 @@ function ReleaseRow({
             <Badge className="inline-flex items-center gap-1" variant="danger">
               <Ban className="size-3" />
               Blocked
+              {blockers.length > 1 ? ` (${blockers.length})` : null}
             </Badge>
           ) : null}
           {rel.ci_override_by ? (
@@ -218,7 +286,9 @@ function ReleaseRow({
         <div className="px-2 pb-3 pl-[2.1rem]">
           {blocked ? (
             <BlockedNote
+              blockers={blockers}
               isPending={isPending}
+              onResolve={onResolve}
               onUnblock={onUnblock}
               rel={rel}
             />
@@ -273,18 +343,16 @@ function ReleaseRow({
                 {artifact.indexLabel ?? 'Package index'}
               </a>
             ) : null}
-            {blocked ? null : (
-              <Button
-                className="text-tertiary hover:text-danger ml-auto h-auto gap-1 px-0 py-0 text-xs"
-                disabled={isPending}
-                onClick={onBlock}
-                type="button"
-                variant="ghost"
-              >
-                <Ban className="size-3" />
-                Block release
-              </Button>
-            )}
+            <Button
+              className="text-tertiary hover:text-danger ml-auto h-auto gap-1 px-0 py-0 text-xs"
+              disabled={isPending}
+              onClick={onBlock}
+              type="button"
+              variant="ghost"
+            >
+              <Ban className="size-3" />
+              Add blocker
+            </Button>
           </div>
         </div>
       ) : null}

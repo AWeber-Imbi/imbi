@@ -19,7 +19,11 @@ import type { DeploymentActions } from './useDeploymentActions'
 vi.mock('@/api/releases', async () => {
   const actual =
     await vi.importActual<typeof import('@/api/releases')>('@/api/releases')
-  return { ...actual, blockRelease: vi.fn(), unblockRelease: vi.fn() }
+  return {
+    ...actual,
+    addReleaseBlocker: vi.fn(),
+    unblockRelease: vi.fn(),
+  }
 })
 
 // fallow-ignore-next-line unresolved-import
@@ -33,7 +37,7 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }))
 
-const blockRelease = vi.mocked(releases.blockRelease)
+const addReleaseBlocker = vi.mocked(releases.addReleaseBlocker)
 const unblockRelease = vi.mocked(releases.unblockRelease)
 
 const ENV = {
@@ -151,7 +155,12 @@ const stageWith = (rel: ReleaseHistoryEntry): PipelineStage => ({
 describe('CurrentlyRunningCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    blockRelease.mockResolvedValue({ blocked: true, tag: 'v6.4.0' })
+    addReleaseBlocker.mockResolvedValue({
+      description: 'Regression in checkout',
+      id: 'blk1',
+      status: 'open',
+      type: 'manual',
+    })
     unblockRelease.mockResolvedValue({ blocked: false, tag: 'v6.4.0' })
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
       ci_status: 'pass',
@@ -196,13 +205,14 @@ describe('CurrentlyRunningCard', () => {
     const user = userEvent.setup()
     renderCard()
     await user.click(screen.getByRole('button', { name: 'Block v6.4.0' }))
-    const submit = screen.getByRole('button', { name: 'Block v6.4.0' })
+    const submit = screen.getByRole('button', { name: 'Add blocker' })
     expect(submit).toBeDisabled()
     await user.type(screen.getByRole('textbox'), 'Regression in checkout')
     await user.click(submit)
     await waitFor(() =>
-      expect(blockRelease).toHaveBeenCalledWith('acme', 'p1', 'v6.4.0', {
-        reason: 'Regression in checkout',
+      expect(addReleaseBlocker).toHaveBeenCalledWith('acme', 'p1', 'v6.4.0', {
+        description: 'Regression in checkout',
+        type: 'manual',
       }),
     )
   })
