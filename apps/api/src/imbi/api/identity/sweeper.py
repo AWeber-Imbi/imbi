@@ -18,8 +18,9 @@ import logging
 
 import valkey.asyncio
 
-from imbi.api.identity import errors, flows, repository
+from imbi.api.identity import errors, flows, repository, resolution
 from imbi.common import graph
+from imbi.common.plugins import PluginNotFoundError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +46,58 @@ async def _try_lock(client: valkey.asyncio.Valkey, key: str) -> bool:
     return bool(result)
 
 
+async def _handle_unresolvable(
+    db: graph.Graph,
+    integration_id: str,
+    user_id: str,
+) -> None:
+    """Deal with a connection whose plugin no longer resolves.
+
+    Two causes look identical to ``refresh_connection``.  When the
+    Integration node is gone the connection is orphaned state left over
+    by a delete, so drop it -- nothing can ever refresh it, and leaving
+    it active means retrying on every poll.  When the Integration still
+    exists the plugin is missing or dropped its identity capability,
+    which a deploy can put back, so leave the row alone and log it.
+    """
+    try:
+        integration = await resolution.load_integration(db, integration_id)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to load integration for unresolvable identity '
+            'connection integration_id=%s user_id=%s',
+            integration_id,
+            user_id,
+            exc_info=True,
+        )
+        return
+    if integration is not None:
+        LOGGER.warning(
+            'Identity refresh skipped integration_id=%s user_id=%s; '
+            'the Integration resolves no identity plugin',
+            integration_id,
+            user_id,
+        )
+        return
+    try:
+        await repository.delete_connection(db, integration_id, user_id)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to delete orphaned identity connection '
+            'integration_id=%s user_id=%s',
+            integration_id,
+            user_id,
+            exc_info=True,
+        )
+        return
+    LOGGER.info(
+        'Deleted orphaned identity connection integration_id=%s '
+        'user_id=%s; the Integration no longer exists',
+        integration_id,
+        user_id,
+    )
+
+
 async def _refresh_one(
     db: graph.Graph,
     client: valkey.asyncio.Valkey,
@@ -60,6 +113,8 @@ async def _refresh_one(
         await flows.refresh_connection(
             db, integration_id=integration_id, actor_user_id=user_id
         )
+    except PluginNotFoundError:
+        await _handle_unresolvable(db, integration_id, user_id)
     except errors.IdentityRefreshFailed:
         # ``flows.refresh_connection`` flips status to ``expired`` only
         # for plugin-level refresh failures; the missing-refresh-token

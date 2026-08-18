@@ -515,14 +515,27 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
     # -- delete ----------------------------------------------------------
 
     def test_delete_integration(self) -> None:
-        self.mock_db.execute.return_value = [{'deleted': 1}]
-        response = self.client.delete(
-            '/organizations/myorg/integrations/logzio-prod'
-        )
+        self.mock_db.execute.side_effect = [
+            [{'id': 'integration-1'}],
+            [],
+        ]
+        with mock.patch(
+            'imbi.api.endpoints.integrations.identity_repository'
+            '.delete_connections_for_integration',
+            new=mock.AsyncMock(return_value=2),
+        ) as cascade:
+            response = self.client.delete(
+                '/organizations/myorg/integrations/logzio-prod'
+            )
         self.assertEqual(response.status_code, 204)
+        cascade.assert_awaited_once()
+        self.assertEqual(
+            cascade.await_args.args[1],
+            'integration-1',
+        )
 
     def test_delete_integration_not_found(self) -> None:
-        self.mock_db.execute.return_value = [{'deleted': 0}]
+        self.mock_db.execute.return_value = [{'id': None}]
         response = self.client.delete(
             '/organizations/myorg/integrations/missing'
         )
