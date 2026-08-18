@@ -49,7 +49,9 @@ describe('ProjectTypeForm', () => {
     fireEvent.change(screen.getByPlaceholderText('e.g., REST API'), {
       target: { value: 'Config Management' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /create project type/i }))
+    fireEvent.click(
+      screen.getByRole('button', { name: /create project type/i }),
+    )
 
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(onSave.mock.calls[0][0]).toBe('aweber')
