@@ -1169,6 +1169,45 @@ class WebhookEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         self.mock_encryptor.encrypt.assert_called_once_with('my-secret')
 
+    def test_patch_webhook_keeps_secret_when_untouched(self) -> None:
+        existing_record = {
+            'webhook': {
+                'id': 'abc123def4',
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'A hook',
+                'notification_path': '/abc123def4',
+                'secret': 'enc:old-secret',
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+        updated_record = dict(existing_record)
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [updated_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'Renamed'}],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.mock_encryptor.encrypt.assert_not_called()
+        write_params = self.mock_db.execute.call_args_list[1].args[1]
+        self.assertEqual(write_params['secret'], 'enc:old-secret')
+
     def test_patch_webhook_clear_secret(self) -> None:
         existing_record = {
             'webhook': {
