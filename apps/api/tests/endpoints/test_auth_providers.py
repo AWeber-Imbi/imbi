@@ -264,15 +264,23 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
     # -- delete ----------------------------------------------------------
 
     def test_delete_login_provider(self) -> None:
-        self.mock_db.execute.return_value = [{'deleted': 1}]
-        with mock.patch(
-            'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
+        self.mock_db.execute.return_value = [{'integration_id': 'int-1'}]
+        with (
+            mock.patch(
+                'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
+            ),
+            mock.patch(
+                'imbi.api.endpoints.auth_providers.identity_repository'
+                '.delete_connections_for_integration',
+                new=mock.AsyncMock(return_value=1),
+            ) as cascade,
         ):
             response = self.client.delete('/login-providers/google')
         self.assertEqual(response.status_code, 204)
+        self.assertEqual(cascade.await_args.args[1], 'int-1')
 
     def test_delete_login_provider_not_found(self) -> None:
-        self.mock_db.execute.return_value = [{'deleted': 0}]
+        self.mock_db.execute.return_value = []
         with mock.patch(
             'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
         ):

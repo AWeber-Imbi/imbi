@@ -10,6 +10,7 @@ organization edge; an org-owned service Integration cannot be read or
 mutated through them (it 404s), and vice versa.
 """
 
+import logging
 import typing
 
 import fastapi
@@ -25,11 +26,14 @@ from imbi.api.endpoints.integrations import (
     require_login_capable,
 )
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.identity import repository as identity_repository
 from imbi.api.plugins.assignments import hydrate_integration
 from imbi.api.plugins.credentials import patch_integration_credentials
 from imbi.common import graph
 from imbi.common.auth.encryption import TokenEncryption
 from imbi.common.plugins.registry import get_plugin
+
+LOGGER = logging.getLogger(__name__)
 
 auth_providers_router = fastapi.APIRouter(
     prefix='/login-providers', tags=['Auth Providers']
@@ -322,14 +326,30 @@ async def delete_login_provider(
     OPTIONAL MATCH (i)-[:BELONGS_TO]->(o:Organization)
     WITH i, o
     WHERE o IS NULL
+    WITH i, i.id AS integration_id
     DETACH DELETE i
-    RETURN count(i) AS deleted
+    RETURN integration_id
     """
-    records = await db.execute(query, {'slug': slug}, ['deleted'])
-    deleted = graph.parse_agtype(records[0]['deleted']) if records else 0
+    records = await db.execute(query, {'slug': slug}, ['integration_id'])
+    integration_id = (
+        graph.parse_agtype(records[0]['integration_id']) if records else None
+    )
     login_repo.invalidate_cache()
-    if not records or deleted == 0:
+    if not integration_id:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Login provider with slug {slug!r} not found',
+        )
+
+    # IdentityConnection nodes point at the Integration by property, not
+    # by edge, so DETACH DELETE leaves them behind for the identity
+    # sweeper to retry forever.
+    removed = await identity_repository.delete_connections_for_integration(
+        db, str(integration_id)
+    )
+    if removed:
+        LOGGER.info(
+            'Deleted %d identity connection(s) with integration_id=%s',
+            removed,
+            integration_id,
         )

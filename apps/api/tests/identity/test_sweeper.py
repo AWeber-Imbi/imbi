@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from imbi.api.identity import errors, sweeper
+from imbi.common.plugins.errors import PluginNotFoundError
 
 
 class LockKeyTestCase(unittest.TestCase):
@@ -91,6 +92,117 @@ class RefreshOneTestCase(unittest.IsolatedAsyncioTestCase):
                 self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
             )
         refresh.assert_awaited_once()
+
+    async def test_plugin_not_found_deletes_orphan(self) -> None:
+        with (
+            mock.patch.object(
+                sweeper,
+                '_try_lock',
+                new=mock.AsyncMock(return_value=True),
+            ),
+            mock.patch.object(
+                sweeper.flows,
+                'refresh_connection',
+                new=mock.AsyncMock(side_effect=PluginNotFoundError('p')),
+            ),
+            mock.patch.object(
+                sweeper.resolution,
+                'load_integration',
+                new=mock.AsyncMock(return_value=None),
+            ),
+            mock.patch.object(
+                sweeper.repository,
+                'delete_connection',
+                new=mock.AsyncMock(),
+            ) as delete,
+        ):
+            await sweeper._refresh_one(
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
+            )
+        delete.assert_awaited_once_with(self.db, 'p', 'u')
+
+    async def test_plugin_not_found_keeps_live_integration(self) -> None:
+        with (
+            mock.patch.object(
+                sweeper,
+                '_try_lock',
+                new=mock.AsyncMock(return_value=True),
+            ),
+            mock.patch.object(
+                sweeper.flows,
+                'refresh_connection',
+                new=mock.AsyncMock(side_effect=PluginNotFoundError('p')),
+            ),
+            mock.patch.object(
+                sweeper.resolution,
+                'load_integration',
+                new=mock.AsyncMock(return_value={'id': 'p'}),
+            ),
+            mock.patch.object(
+                sweeper.repository,
+                'delete_connection',
+                new=mock.AsyncMock(),
+            ) as delete,
+        ):
+            await sweeper._refresh_one(
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
+            )
+        delete.assert_not_awaited()
+
+    async def test_plugin_not_found_survives_lookup_error(self) -> None:
+        with (
+            mock.patch.object(
+                sweeper,
+                '_try_lock',
+                new=mock.AsyncMock(return_value=True),
+            ),
+            mock.patch.object(
+                sweeper.flows,
+                'refresh_connection',
+                new=mock.AsyncMock(side_effect=PluginNotFoundError('p')),
+            ),
+            mock.patch.object(
+                sweeper.resolution,
+                'load_integration',
+                new=mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            mock.patch.object(
+                sweeper.repository,
+                'delete_connection',
+                new=mock.AsyncMock(),
+            ) as delete,
+        ):
+            await sweeper._refresh_one(
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
+            )
+        delete.assert_not_awaited()
+
+    async def test_plugin_not_found_survives_delete_error(self) -> None:
+        with (
+            mock.patch.object(
+                sweeper,
+                '_try_lock',
+                new=mock.AsyncMock(return_value=True),
+            ),
+            mock.patch.object(
+                sweeper.flows,
+                'refresh_connection',
+                new=mock.AsyncMock(side_effect=PluginNotFoundError('p')),
+            ),
+            mock.patch.object(
+                sweeper.resolution,
+                'load_integration',
+                new=mock.AsyncMock(return_value=None),
+            ),
+            mock.patch.object(
+                sweeper.repository,
+                'delete_connection',
+                new=mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+        ):
+            await sweeper._refresh_one(
+                self.db, self.client, {'integration_id': 'p', 'user_id': 'u'}
+            )
 
     async def test_refresh_failed_marks_expired(self) -> None:
         connection = mock.MagicMock()
