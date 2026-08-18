@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react'
 
 import { getScoreRollup, listTeams, ScoreRollupRow } from '@/api/endpoints'
 import { Sk } from '@/components/ui/skeleton'
+import { StatCard } from '@/components/ui/stat-card'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { parseServerTs } from '@/lib/formatDate'
 import { Team } from '@/types'
@@ -246,30 +247,6 @@ function ScorePill({ score }: { score: number }) {
     >
       {fmtScore(score)}
     </span>
-  )
-}
-
-function StatCard({
-  label,
-  value,
-  valueColor,
-}: {
-  label: string
-  value: string
-  valueColor?: string
-}) {
-  return (
-    <div className="border-tertiary bg-primary rounded-lg border p-[18px]">
-      <div className="text-overline text-tertiary tracking-wide uppercase">
-        {label}
-      </div>
-      <div
-        className="mt-2 font-mono text-[28px] leading-none tabular-nums"
-        style={{ color: valueColor ?? 'var(--text-color-primary)' }}
-      >
-        {value}
-      </div>
-    </div>
   )
 }
 

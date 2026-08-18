@@ -252,6 +252,25 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete operations log entries',
     ),
+    # Component (SBoM package) governance.  ``component:write`` covers
+    # deprecating/forbidding a package or one of its versions, recording
+    # advisories against a version, and adding notes.  No default role
+    # below ``admin`` is granted it -- a mark made here steers every team
+    # off of a package, so who else may make one is a deployment-time
+    # decision.  ``admin`` holds it like every other standard permission,
+    # via the ``DEFAULT_ROLES`` grant below.
+    (
+        'component:read',
+        'component',
+        'read',
+        'View package governance and the package reports',
+    ),
+    (
+        'component:write',
+        'component',
+        'write',
+        'Mark packages, record advisories, and add package notes',
+    ),
     # Tag management
     ('tag:create', 'tag', 'create', 'Create tags'),
     ('tag:read', 'tag', 'read', 'View tags'),
@@ -629,6 +648,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'comment:create',
             'comment:write',
             'comment:delete',
+            'component:read',
             'document_template:read',
             'me:identities:manage',
             'search:read',
@@ -642,6 +662,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         150,
         [
             'blueprint:read',
+            'component:read',
             'document:read',
             'document:analytics:read',
             'document_template:read',
@@ -672,6 +693,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         100,
         [
             'blueprint:read',
+            'component:read',
             'environment:read',
             'link_definition:read',
             'operations_log:read',

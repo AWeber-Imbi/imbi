@@ -8,6 +8,7 @@ import type { PRActivityResponse, PRActivityRow } from '@/api/endpoints'
 import { Sk } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { downloadCsv } from '@/lib/csv'
 
 interface CountColumn {
   key: string
@@ -266,31 +267,22 @@ function defaultSince(): string {
   return isoDaysAgo(30)
 }
 
-function downloadCsv(rows: PRActivityRow[], appliedSince: string) {
-  const header = [
-    'Member',
-    'Login',
-    'Email',
-    ...COUNT_COLUMNS.map((c) => c.label.replace(' ↓', '')),
-  ]
-  const lines = rows.map((r) =>
+function exportCsv(rows: PRActivityRow[], appliedSince: string) {
+  downloadCsv(
+    `pr-activity-${appliedSince}.csv`,
     [
+      'Member',
+      'Login',
+      'Email',
+      ...COUNT_COLUMNS.map((c) => c.label.replace(' ↓', '')),
+    ],
+    rows.map((r) => [
       r.display_name ?? r.login,
       r.login,
       r.email ?? '',
       ...COUNT_COLUMNS.map((c) => c.pick(r)),
-    ]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(','),
+    ]),
   )
-  const csv = [header.join(','), ...lines].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.download = `pr-activity-${appliedSince}.csv`
-  a.href = url
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 /** YYYY-MM-DD for a date `days` before today (local time). */
@@ -373,7 +365,7 @@ function Toolbar({
       <button
         className="border-tertiary text-primary hover:bg-secondary inline-flex h-8 items-center gap-1.5 rounded border px-3 text-xs transition-colors disabled:opacity-50"
         disabled={rows.length === 0}
-        onClick={() => downloadCsv(rows, appliedSince)}
+        onClick={() => exportCsv(rows, appliedSince)}
       >
         <Download size={11} />
         Download CSV

@@ -15,6 +15,17 @@ export const queryKeys = {
     anchorSlug: string,
     relType: string,
   ) => ['anchor-edges', kind, orgSlug, anchorSlug, relType] as const,
+  // Package governance. Keyed off the component-release id (not the
+  // purl) because that is what the mutations address, so a note or
+  // advisory write invalidates exactly the version it touched.
+  componentAdvisories: (orgSlug: string, componentReleaseId: string) =>
+    ['componentAdvisories', orgSlug, componentReleaseId] as const,
+  componentNotes: (orgSlug: string, componentReleaseId: string) =>
+    ['componentNotes', orgSlug, componentReleaseId] as const,
+  componentSearch: (orgSlug: string, q: string, ecosystem: string) =>
+    ['componentSearch', orgSlug, q, ecosystem] as const,
+  componentUsage: (orgSlug: string, componentId: string) =>
+    ['componentUsage', orgSlug, componentId] as const,
   documentAnalytics: (orgSlug: string, documentId: string, trendDays = 0) =>
     ['documentAnalytics', orgSlug, documentId, trendDays] as const,
   documentEditors: (orgSlug: string, documentId: string) =>
@@ -42,6 +53,7 @@ export const queryKeys = {
     ['plugin-entity-schema', slug, label] as const,
   pluginPackage: (slug: string) => ['plugin-package', slug] as const,
   pluginPackages: () => ['plugin-packages'] as const,
+  problemPackages: (orgSlug: string) => ['problemPackages', orgSlug] as const,
   projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
   // Login form's view of providers (/auth/providers, public payload with
   // default_redirect). Distinct from adminAuthProviders, which lists admin

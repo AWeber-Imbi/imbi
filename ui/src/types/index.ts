@@ -500,6 +500,11 @@ export type AdminUserCreate = Schemas['UserCreate'] & {
 }
 
 // API Key types
+// Package governance (SBoM). `Advisory` is a security advisory
+// recorded against one component version; the rest back the two
+// package reports.
+export type Advisory = Schemas['AdvisoryResponse']
+
 export type ApiKey = Schemas['APIKeyResponse']
 
 export type ApiKeyCreated = Schemas['APIKeyCreateResponse']
@@ -548,6 +553,20 @@ export interface CommitCheckStatus {
   ci_status: DeploymentCommitCiStatus
   committish: string
 }
+
+export type ComponentNote = Schemas['ComponentNoteResponse']
+
+export type ComponentSearchResponse = Schemas['ComponentSearchResponse']
+
+export type ComponentSearchResult = Schemas['ComponentSearchResult']
+
+export type ComponentStatus = 'deprecated' | 'forbidden'
+
+export type ComponentStatusResponse = Schemas['ComponentStatusResponse']
+
+export type ComponentUsage = Schemas['ComponentUsageResponse']
+
+export type ComponentUsageVersion = Schemas['UsageVersion']
 
 export interface ConfigKeyResponse {
   data_type: string
@@ -1110,6 +1129,8 @@ export interface OrganizationCreate {
 
 export type OrgMembership = Schemas['OrgMembership']
 
+export type PackageEnvironmentChip = Schemas['EnvironmentChip']
+
 // JSON Patch operation (RFC 6902)
 export type PatchOperation = Schemas['PatchOperation']
 
@@ -1202,6 +1223,10 @@ export interface PluginVertexLabel {
 }
 // `deprecated` is surfaced on the neighbour summary by the relationships
 // endpoint so the UI can flag deprecated dependencies.
+export type ProblemPackageRow = Schemas['ProblemPackageRow']
+
+export type ProblemPackagesResponse = Schemas['ProblemPackagesResponse']
+
 export type ProjectRelationship = Schemas['ProjectRelationship']
 
 export type ProjectRelationshipsResponse =

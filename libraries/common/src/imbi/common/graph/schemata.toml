@@ -10,6 +10,7 @@ name = "vector"
 [vlabels]
 name = [
   "APIKey",
+  "Advisory",
   "AnalysisReport",
   "AnalysisResult",
   "Blueprint",
@@ -18,6 +19,7 @@ name = [
   "CommentThread",
   "Component",
   "ComponentIdentifier",
+  "ComponentNote",
   "ComponentRelease",
   "Conversation",
   "Deployment",
@@ -64,6 +66,14 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "APIKey"
 attributes = ["revoked"]
+
+# One Advisory node per CVE, shared by every affected
+# ComponentRelease — the unique index is what makes the MERGE on
+# ``cve_id`` dedup rather than fan out duplicate nodes.
+[[vlabel_indexes]]
+vlabel = "Advisory"
+attributes = ["cve_id"]
+unique = true
 
 # Per-project uniqueness of the latest report (currently only one
 # kept; future history would relax this) is enforced at the
@@ -135,6 +145,19 @@ unique = true
 vlabel = "Component"
 attributes = ["ecosystem"]
 
+# The governance endpoints address a component by nanoid rather than
+# by purl_name — purls carry ``:``, ``/`` and ``@`` and cannot be a
+# path segment.
+[[vlabel_indexes]]
+vlabel = "Component"
+attributes = ["id"]
+unique = true
+
+# The problem-packages report anchors on a non-null status.
+[[vlabel_indexes]]
+vlabel = "Component"
+attributes = ["status"]
+
 # Per-component uniqueness of ComponentRelease.version is enforced
 # at the application layer via MERGE on the
 # (Component)-[:HAS_RELEASE]->(ComponentRelease) pattern — two
@@ -144,12 +167,33 @@ attributes = ["ecosystem"]
 vlabel = "ComponentRelease"
 attributes = ["version"]
 
+# Version governance addresses a ComponentRelease by nanoid, and the
+# problem-packages report anchors on a non-null status.
+[[vlabel_indexes]]
+vlabel = "ComponentRelease"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ComponentRelease"
+attributes = ["status"]
+
 # A ComponentIdentifier is globally unique by (kind, value) — a
 # given purl or CPE points at exactly one Component.
 [[vlabel_indexes]]
 vlabel = "ComponentIdentifier"
 attributes = ["kind", "value"]
 unique = true
+
+[[vlabel_indexes]]
+vlabel = "ComponentNote"
+attributes = ["id"]
+unique = true
+
+# Notes render oldest-first within a component version.
+[[vlabel_indexes]]
+vlabel = "ComponentNote"
+attributes = ["created_at"]
 
 [[vlabel_indexes]]
 vlabel = "Conversation"

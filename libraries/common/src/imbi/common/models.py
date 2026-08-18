@@ -13,6 +13,7 @@ from jsonschema_models import models as schema_models
 from imbi.common import versioning
 
 __all__ = [
+    'Advisory',
     'Blueprint',
     'BlueprintAssignment',
     'BlueprintEdge',
@@ -22,7 +23,9 @@ __all__ = [
     'CommitRecord',
     'Component',
     'ComponentIdentifier',
+    'ComponentNote',
     'ComponentRelease',
+    'ComponentStatus',
     'DeploymentEvent',
     'Document',
     'DocumentTemplate',
@@ -59,6 +62,7 @@ __all__ = [
     'TagRecord',
     'Team',
     'User',
+    'effective_component_status',
     'parse_scopes',
 ]
 
@@ -849,6 +853,93 @@ class ComponentIdentifier(GraphModel):
     value: str
 
 
+#: Governance marks a component (or one of its versions) can carry.
+#: The absence of a mark is "current" — it is never stored, so a
+#: cleared mark is a removed property rather than a third value.
+#: ``forbidden`` is stricter than ``deprecated``; see
+#: :func:`effective_component_status`.
+ComponentStatus = typing.Literal['deprecated', 'forbidden']
+
+#: Strictest-wins ordering for :func:`effective_component_status`.
+_COMPONENT_STATUS_SEVERITY: typing.Final[dict[str, int]] = {
+    'deprecated': 1,
+    'forbidden': 2,
+}
+
+
+def effective_component_status(
+    component_status: str | None,
+    release_status: str | None,
+) -> ComponentStatus | None:
+    """Return the strictest of a component and version status.
+
+    A component marked ``forbidden`` forbids every one of its
+    versions, so the component-level mark is inherited by versions
+    that carry no mark of their own — and a version may only ever be
+    marked *more* strictly than its component, never less. ``None``
+    on both sides means current. Unknown values are ignored rather
+    than raising, so a hand-edited graph cannot break a report.
+    """
+    ranked = [
+        (_COMPONENT_STATUS_SEVERITY[value], value)
+        for value in (component_status, release_status)
+        if value in _COMPONENT_STATUS_SEVERITY
+    ]
+    if not ranked:
+        return None
+    return typing.cast('ComponentStatus', max(ranked)[1])
+
+
+class Advisory(GraphModel):
+    """A published security advisory affecting component versions.
+
+    One node per ``cve_id`` — the identifier is globally unique and
+    MERGEd on, so the same CVE affecting five versions is one node
+    with five ``HAS_ADVISORY`` edges rather than five copies. Severity
+    is deliberately absent until an OSV/GHSA feed can populate it;
+    hand-entered severities go stale silently.
+    """
+
+    cve_id: str = pydantic.Field(
+        description=(
+            'Advisory identifier, upper-cased on the way in '
+            '(e.g. CVE-2025-1234 or GHSA-xxxx-xxxx-xxxx).'
+        ),
+    )
+    url: str
+    title: str | None = None
+    created_by: str
+
+    @pydantic.field_validator('cve_id')
+    @classmethod
+    def _normalize_cve_id(cls, value: str) -> str:
+        """Make the documented upper-casing part of the model.
+
+        ``Advisory.cve_id`` carries a unique index, so a lower-case
+        value reaching the graph by any path other than the endpoint
+        would MERGE as a second node for the same advisory.
+        """
+        return value.strip().upper()
+
+
+class ComponentNote(GraphModel):
+    """An append-only note attached to a ``ComponentRelease``.
+
+    Notes are the governance audit trail: why a version was
+    deprecated, what the migration path is, who to ask. They are
+    visible to every team — a component is a shared identity, not an
+    org-private one — and are never edited or deleted, matching the
+    designs. Flat scalar properties only, per the AGE constraint the
+    comments model documents.
+    """
+
+    author: str
+    body: typing.Annotated[
+        str,
+        Embeddable(chunk=True, mimetype='text/markdown'),
+    ]
+
+
 class Component(GraphModel):
     """A piece of third-party software that may appear as a
     dependency of a project ``Release``.
@@ -857,6 +948,13 @@ class Component(GraphModel):
     ``pkg:npm/express`` for any version of express. Versions are
     captured as ``ComponentRelease`` nodes linked via
     ``HAS_RELEASE``.
+
+    A component may be marked ``deprecated`` or ``forbidden`` to steer
+    projects off of it wholesale — every version inherits the mark.
+    ``status`` is the flag; clearing it removes all three ``status_*``
+    properties, mirroring the ``blocked_*`` triple on ``Release``. The
+    *why* lives in the notes on the affected versions rather than in a
+    reason property, per the report designs.
     """
 
     purl_name: str = pydantic.Field(
@@ -880,6 +978,9 @@ class Component(GraphModel):
         list[ComponentIdentifier],
         Edge(rel_type='IDENTIFIED_BY', direction='OUTGOING'),
     ] = []
+    status: ComponentStatus | None = None
+    status_at: datetime.datetime | None = None
+    status_by: str | None = None
 
 
 class ComponentRelease(GraphModel):
@@ -890,6 +991,10 @@ class ComponentRelease(GraphModel):
     ``(Component)-[:HAS_RELEASE]->(ComponentRelease {version: ...})``;
     no graph-wide UNIQUE index is possible because two components
     may legitimately ship the same version string.
+
+    ``status`` marks this one version deprecated or forbidden. The
+    status a report shows is the strictest of this mark and the
+    owning component's — see :func:`effective_component_status`.
     """
 
     component: typing.Annotated[
@@ -906,6 +1011,17 @@ class ComponentRelease(GraphModel):
             '(e.g. {"SHA-256": "abc..."}).'
         ),
     )
+    advisories: typing.Annotated[
+        list[Advisory],
+        Edge(rel_type='HAS_ADVISORY', direction='OUTGOING'),
+    ] = []
+    notes: typing.Annotated[
+        list[ComponentNote],
+        Edge(rel_type='HAS_NOTE', direction='OUTGOING'),
+    ] = []
+    status: ComponentStatus | None = None
+    status_at: datetime.datetime | None = None
+    status_by: str | None = None
 
 
 class Release(GraphModel):

@@ -7,6 +7,7 @@ import type {
   AdminSettings,
   AdminUser,
   AdminUserCreate,
+  Advisory,
   ApiKey,
   ApiKeyCreated,
   ArchiveProjectResponse,
@@ -20,6 +21,11 @@ import type {
   ClientCredentialCreate,
   ClientCredentialCreated,
   CommitCheckStatus,
+  ComponentNote,
+  ComponentSearchResponse,
+  ComponentStatus,
+  ComponentStatusResponse,
+  ComponentUsage,
   ConfigKeyResponse,
   ConfigKeyValueResponse,
   ConfigPrefixResponse,
@@ -87,6 +93,7 @@ import type {
   PluginEntity,
   PluginEntityCreate,
   PluginPackage,
+  ProblemPackagesResponse,
   Project,
   ProjectCreate,
   ProjectDeletedResponse,
@@ -3067,5 +3074,115 @@ export const getPRActivity = (
   apiClient.get<PRActivityResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/pull-requests/activity`,
     { since },
+    signal,
+  )
+
+// ---------------------------------------------------------------------
+// Package governance (SBoM components)
+//
+// Paths address a package by its nanoid, never its purl — purls carry
+// `:`, `/` and `@`. `searchComponents` is the purl-to-id resolution step.
+// ---------------------------------------------------------------------
+
+export const searchComponents = (
+  orgSlug: string,
+  params?: { ecosystem?: string; limit?: number; q?: string },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ComponentSearchResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/components/`,
+    params,
+    signal,
+  )
+
+export const getComponentUsage = (
+  orgSlug: string,
+  componentId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ComponentUsage>(
+    `/organizations/${encodeURIComponent(orgSlug)}/components/${encodeURIComponent(componentId)}/usage`,
+    undefined,
+    signal,
+  )
+
+export const setComponentStatus = (
+  orgSlug: string,
+  componentId: string,
+  status: ComponentStatus,
+) =>
+  apiClient.put<ComponentStatusResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/components/${encodeURIComponent(componentId)}/status`,
+    { status },
+  )
+
+export const clearComponentStatus = (orgSlug: string, componentId: string) =>
+  apiClient.delete<ComponentStatusResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/components/${encodeURIComponent(componentId)}/status`,
+  )
+
+export const setComponentReleaseStatus = (
+  orgSlug: string,
+  componentReleaseId: string,
+  status: ComponentStatus,
+) =>
+  apiClient.put<ComponentStatusResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/component-releases/${encodeURIComponent(componentReleaseId)}/status`,
+    { status },
+  )
+
+export const clearComponentReleaseStatus = (
+  orgSlug: string,
+  componentReleaseId: string,
+) =>
+  apiClient.delete<ComponentStatusResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/component-releases/${encodeURIComponent(componentReleaseId)}/status`,
+  )
+
+export const listComponentNotes = (
+  orgSlug: string,
+  componentReleaseId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<ComponentNote[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/component-releases/${encodeURIComponent(componentReleaseId)}/notes`,
+    undefined,
+    signal,
+  )
+
+export const createComponentNote = (
+  orgSlug: string,
+  componentReleaseId: string,
+  body: string,
+) =>
+  apiClient.post<ComponentNote>(
+    `/organizations/${encodeURIComponent(orgSlug)}/component-releases/${encodeURIComponent(componentReleaseId)}/notes`,
+    { body },
+  )
+
+export const upsertComponentAdvisory = (
+  orgSlug: string,
+  componentReleaseId: string,
+  cveId: string,
+  payload: { title?: null | string; url: string },
+) =>
+  apiClient.put<Advisory>(
+    `/organizations/${encodeURIComponent(orgSlug)}/component-releases/${encodeURIComponent(componentReleaseId)}/advisories/${encodeURIComponent(cveId)}`,
+    payload,
+  )
+
+export const deleteComponentAdvisory = (
+  orgSlug: string,
+  componentReleaseId: string,
+  cveId: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/component-releases/${encodeURIComponent(componentReleaseId)}/advisories/${encodeURIComponent(cveId)}`,
+  )
+
+export const getProblemPackages = (orgSlug: string, signal?: AbortSignal) =>
+  apiClient.get<ProblemPackagesResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/reports/problem-packages`,
+    undefined,
     signal,
   )
