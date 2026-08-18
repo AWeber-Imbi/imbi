@@ -14,6 +14,7 @@ import type { Project } from '@/types'
 import { deriveArtifact } from './artifact'
 import { CurrentlyReleasedCard } from './CurrentlyReleasedCard'
 import { ReleaseHistory } from './ReleaseHistory'
+import type { ReleaseInFlightState } from './releaseInFlight'
 import { ReleaseReadyCard } from './ReleaseReadyCard'
 
 interface ReleasesTabProps {
@@ -24,6 +25,8 @@ interface ReleasesTabProps {
   orgSlug: string
   project: Pick<Project, 'id' | 'links' | 'name'>
   readiness: Readiness
+  /** Holds the cut form while another release is still running. */
+  releaseInFlight: ReleaseInFlightState
   /** Third-party service powering the deployment plugin. */
   serviceIcon: null | string
   serviceLabel: null | string
@@ -36,6 +39,7 @@ export function ReleasesTab({
   orgSlug,
   project,
   readiness,
+  releaseInFlight,
   serviceIcon,
   serviceLabel,
 }: ReleasesTabProps) {
@@ -98,6 +102,7 @@ export function ReleasesTab({
             onCut={() => {}}
             orgSlug={orgSlug}
             projectId={project.id}
+            releaseInFlight={releaseInFlight}
           />
         ) : null}
       </Swap>

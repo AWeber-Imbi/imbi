@@ -22,6 +22,10 @@ import type {
 } from '@/types'
 
 import { ReleaseCommitPicker } from './ReleaseCommitPicker'
+import type {
+  ReleaseInFlightPhase,
+  ReleaseInFlightState,
+} from './releaseInFlight'
 import { useCutReleaseMutation } from './useCutReleaseMutation'
 
 interface ReleaseReadyCardProps {
@@ -33,6 +37,8 @@ interface ReleaseReadyCardProps {
   onCut: () => void
   orgSlug: string
   projectId: string
+  /** Holds the cut form while another release is still running. */
+  releaseInFlight: ReleaseInFlightState
 }
 
 interface TagFieldsProps {
@@ -49,6 +55,7 @@ export function ReleaseReadyCard({
   onCut,
   orgSlug,
   projectId,
+  releaseInFlight: inFlight,
 }: ReleaseReadyCardProps) {
   const commits = drift.commits
   const [selectedSha, setSelectedSha] = useState<null | string>(
@@ -90,6 +97,10 @@ export function ReleaseReadyCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ``inFlight`` is the one state this form cannot see for itself: the
+  // mutation settles as soon as the build is dispatched, so ``isPending``
+  // goes false about a second in while the drift and the suggested tag
+  // below still describe the release being built.
   const { cut, isPending } = useCutReleaseMutation({
     onBuildStarted,
     onSuccess: onCut,
@@ -134,6 +145,7 @@ export function ReleaseReadyCard({
     !!selectedSha &&
     !isPending &&
     !isDrafting &&
+    !inFlight.blocked &&
     // Hold the button until CI has answered: an unresolved status cannot
     // be told apart from a green one, and releasing on it skips the
     // acknowledgement the server would then demand with a 409.
@@ -280,22 +292,44 @@ export function ReleaseReadyCard({
           )}
         </section>
 
-        <div className="border-tertiary flex items-center justify-end gap-2 border-t pt-4">
+        <div className="border-tertiary flex items-center justify-end gap-3 border-t pt-4">
+          {inFlight.blocked ? (
+            <span className="text-tertiary mr-auto text-xs">
+              {blockedReason(inFlight.phase, inFlight.tag)}
+            </span>
+          ) : null}
           <Button onClick={reset} type="button" variant="ghost">
             Reset
           </Button>
           <Button disabled={!canSubmit} onClick={submit} type="button">
-            {isPending ? (
+            {isPending || inFlight.blocked ? (
               <Loader2 className="mr-1 size-4 animate-spin" />
             ) : (
               <Rocket className="mr-1 size-4" />
             )}
-            {`Tag ${tag || 'vX.Y.Z'} & release`}
+            {inFlight.phase === 'build_failed'
+              ? 'Release blocked'
+              : inFlight.blocked
+                ? 'Release in flight'
+                : `Tag ${tag || 'vX.Y.Z'} & release`}
           </Button>
         </div>
       </div>
     </div>
   )
+}
+
+/** Why the cut button is inert, said in the footer next to it. */
+function blockedReason(
+  phase: ReleaseInFlightPhase,
+  tag: null | string,
+): string {
+  const label = tag ?? 'the release in flight'
+  if (phase === 'adopting') return 'Checking for a release in flight…'
+  if (phase === 'build_failed') {
+    return `${label} is blocked — unblock it or fix the build first`
+  }
+  return `Blocked until ${label} finishes releasing`
 }
 
 /**

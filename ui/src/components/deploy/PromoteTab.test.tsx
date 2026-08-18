@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
+import {
+  RELEASE_IDLE,
+  type ReleaseInFlightState,
+} from '@/components/releases/releaseInFlight'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -107,7 +111,7 @@ const CURRENT: CurrentReleaseEnvironment[] = [
   },
 ]
 
-function renderPromoteTab() {
+function renderPromoteTab(inFlight: ReleaseInFlightState = RELEASE_IDLE) {
   return render(
     <PromoteTab
       environments={[ENV_TESTING, ENV_STAGING]}
@@ -116,6 +120,7 @@ function renderPromoteTab() {
       open={true}
       orgSlug="acme"
       projectId="p1"
+      releaseInFlight={inFlight}
       toEnvironment="staging"
     />,
   )
@@ -314,5 +319,36 @@ describe('PromoteTab — commit list columns', () => {
       expect(screen.getByText('feat: add thing')).toBeInTheDocument()
     })
     expect(document.querySelectorAll('time')).toHaveLength(0)
+  })
+})
+
+describe('PromoteTab — a release already in flight', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.listCurrentReleases).mockResolvedValue(CURRENT)
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue(COMPARE)
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+  })
+
+  it('goes inert and says which release is holding it', async () => {
+    // A promote cuts a tag and dispatches a build, so it is the same move
+    // the release form makes and has the same duplicate-dispatch window.
+    renderPromoteTab({
+      ...RELEASE_IDLE,
+      blocked: true,
+      phase: 'building',
+      tag: 'v2.7.0',
+    })
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Release in flight/ }),
+      ).toBeDisabled()
+    })
+    expect(
+      screen.getByText('Blocked until v2.7.0 finishes releasing'),
+    ).toBeInTheDocument()
   })
 })

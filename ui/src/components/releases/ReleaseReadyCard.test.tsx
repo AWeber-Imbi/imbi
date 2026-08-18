@@ -7,6 +7,7 @@ import * as releases from '@/api/releases'
 import { render } from '@/test/utils'
 import type { ReleaseDrift } from '@/types'
 
+import { RELEASE_IDLE, type ReleaseInFlightState } from './releaseInFlight'
 import { ReleaseReadyCard } from './ReleaseReadyCard'
 
 // fallow-ignore-next-line unresolved-import
@@ -70,13 +71,21 @@ const FIRST_RELEASE: ReleaseDrift = {
   suggested_tag: 'v0.1.0',
 }
 
-function renderCard(drift: ReleaseDrift) {
+const inFlight = (
+  over: Partial<ReleaseInFlightState> = {},
+): ReleaseInFlightState => ({ ...RELEASE_IDLE, ...over })
+
+function renderCard(
+  drift: ReleaseDrift,
+  state: ReleaseInFlightState = inFlight(),
+) {
   render(
     <ReleaseReadyCard
       drift={drift}
       onCut={() => {}}
       orgSlug="acme"
       projectId="p1"
+      releaseInFlight={state}
     />,
   )
 }
@@ -255,6 +264,66 @@ describe('ReleaseReadyCard', () => {
     await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /& release/i }),
+      ).not.toBeDisabled()
+    })
+  })
+})
+
+describe('ReleaseReadyCard — a release already in flight', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+  })
+
+  it('goes inert while a build runs and names the release holding it', async () => {
+    // The bug this closes: the cut mutation settles when the build is
+    // dispatched, so the button re-enabled a second later over the same
+    // drift and the same suggested tag.
+    renderCard(
+      FIRST_RELEASE,
+      inFlight({ blocked: true, phase: 'building', tag: 'v0.1.0' }),
+    )
+    expect(
+      screen.getByRole('button', { name: /Release in flight/ }),
+    ).toBeDisabled()
+    expect(
+      screen.getByText('Blocked until v0.1.0 finishes releasing'),
+    ).toBeInTheDocument()
+  })
+
+  it('stays inert before the first poll answers', () => {
+    // Guessing "idle" for one tick after a reload is exactly the window
+    // the double cut lands in.
+    renderCard(FIRST_RELEASE, inFlight({ blocked: true, phase: 'adopting' }))
+    expect(
+      screen.getByRole('button', { name: /Release in flight/ }),
+    ).toBeDisabled()
+    expect(
+      screen.getByText('Checking for a release in flight…'),
+    ).toBeInTheDocument()
+  })
+
+  it('says the tag is blocked when the build failed', () => {
+    renderCard(
+      FIRST_RELEASE,
+      inFlight({ blocked: true, phase: 'build_failed', tag: 'v0.1.0' }),
+    )
+    expect(
+      screen.getByRole('button', { name: /Release blocked/ }),
+    ).toBeDisabled()
+    expect(
+      screen.getByText(/v0\.1\.0 is blocked — unblock it/),
+    ).toBeInTheDocument()
+  })
+
+  it('re-enables once the release settles', async () => {
+    renderCard(FIRST_RELEASE, inFlight({ phase: 'success', tag: 'v0.1.0' }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /& release/ }),
       ).not.toBeDisabled()
     })
   })

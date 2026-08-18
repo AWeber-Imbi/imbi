@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import type { ReleaseInFlightState } from '@/components/releases/releaseInFlight'
 import {
   Dialog,
   DialogContent,
@@ -80,6 +81,8 @@ interface ReleaseModalProps {
   orgSlug: string
   projectId: string
   projectName: string
+  /** Holds the promote form while another release is still running. */
+  releaseInFlight: ReleaseInFlightState
 }
 
 // fallow-ignore-next-line complexity
@@ -98,6 +101,7 @@ export function ReleaseModal({
   orgSlug,
   projectId,
   projectName,
+  releaseInFlight,
 }: ReleaseModalProps) {
   // Lock the active tab to whichever action is actually available so a
   // deep-link to /promote/<env> on an env that no longer supports promote
@@ -166,6 +170,7 @@ export function ReleaseModal({
                   open={open && tab === 'promote'}
                   orgSlug={orgSlug}
                   projectId={projectId}
+                  releaseInFlight={releaseInFlight}
                   toEnvironment={initialEnvSlug}
                 />
               ) : (
