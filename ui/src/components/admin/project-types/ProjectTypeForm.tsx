@@ -15,13 +15,6 @@ import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -76,9 +69,10 @@ export function ProjectTypeForm({
   const [tagFormats, setTagFormats] = useState<TagFormat[]>(
     (projectType as null | { tag_formats?: TagFormat[] })?.tag_formats ?? [],
   )
-  const [orgSlug, setOrgSlug] = useState(
-    projectType?.organization.slug || selectedOrganization?.slug || '',
-  )
+  // The organization comes from the top-bar selector (or, when editing,
+  // from the project type itself), so the form does not ask for it again.
+  const orgSlug =
+    projectType?.organization.slug || selectedOrganization?.slug || ''
   const inheritedFormats =
     (
       organizations.find((o) => o.slug === orgSlug) as
@@ -211,39 +205,15 @@ export function ProjectTypeForm({
       <form className="space-y-6" onSubmit={handleSubmit}>
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <div>
-              <Label
-                className="text-secondary mb-1.5 block text-sm"
-                htmlFor="project-type-org"
-              >
-                Organization <RequiredAsterisk />
-              </Label>
-              <Select
-                disabled={isEditing || isLoading || organizations.length <= 1}
-                onValueChange={setOrgSlug}
-                value={orgSlug}
-              >
-                <SelectTrigger
-                  className={errors.organization ? 'border-red-500' : ''}
-                  id="project-type-org"
-                >
-                  <SelectValue placeholder="Select organization..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {organizations.map((org) => (
-                    <SelectItem key={org.slug} value={org.slug}>
-                      {org.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.organization && (
-                <div className="text-danger mt-1 flex items-center gap-1 text-xs">
-                  <AlertCircle className="size-3" />
-                  {errors.organization}
-                </div>
-              )}
-            </div>
+            {/* No organization picker: the top bar already selects one.
+                It can still be missing (nothing selected yet), and with no
+                field to hang the message on the error renders here. */}
+            {errors.organization && (
+              <div className="text-danger flex items-center gap-1 text-xs">
+                <AlertCircle className="size-3" />
+                {errors.organization}
+              </div>
+            )}
 
             <div
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
