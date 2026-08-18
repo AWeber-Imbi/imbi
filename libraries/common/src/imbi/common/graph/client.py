@@ -33,6 +33,9 @@ GraphModelT = typing.TypeVar(
 )
 
 
+_IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
 def _dollar_quote_tag(body: str) -> str:
     """Return a dollar-quote delimiter not present in *body*.
 
@@ -54,6 +57,48 @@ def _dollar_quote_tag(body: str) -> str:
 
 
 @functools.cache
+def _cypher_string(value: str) -> str:
+    """Quote *value* as a Cypher string literal."""
+    escaped = value.replace('\\', '\\\\').replace("'", "\\'")
+    return "'" + escaped + "'"
+
+
+def _cypher_collection(value: typing.Any) -> str:
+    """Render *value* as a Cypher literal, recursing into collections.
+
+    Lists used to be rendered with :func:`json.dumps`, which is valid
+    Cypher only while every element is a scalar.  A list of objects came
+    out with JSON's double-quoted keys (``[{"label": ...}]``) and Cypher
+    rejects those -- map keys are identifiers, not strings -- so writing
+    e.g. an Organization's ``tag_formats`` raised a syntax error.  Build
+    the literal ourselves instead, so nested maps get bare keys and
+    nested strings get Cypher escaping.
+    """
+    if isinstance(value, str):
+        return _cypher_string(value)
+    if value is None:
+        return 'null'
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, list):
+        items: list[typing.Any] = value
+        return (
+            '[' + ', '.join(_cypher_collection(item) for item in items) + ']'
+        )
+    if isinstance(value, dict):
+        mapping: dict[typing.Any, typing.Any] = value
+        pairs: list[str] = []
+        for key, item in mapping.items():
+            name = str(key)
+            if not _IDENTIFIER_PATTERN.match(name):
+                raise ValueError(
+                    f'Cypher map key {name!r} is not a valid identifier'
+                )
+            pairs.append(f'{name}: {_cypher_collection(item)}')
+        return '{' + ', '.join(pairs) + '}'
+    return json.dumps(value)
+
+
 def _embeddable_descriptors(
     node_type: type[pydantic.BaseModel],
 ) -> tuple[tuple[str, models.Embeddable], ...]:
@@ -801,12 +846,11 @@ class Graph:
         if isinstance(value, sql.Composable):
             return value
         if isinstance(value, list):
-            return sql.SQL(json.dumps(value))
+            return sql.SQL(_cypher_collection(value))
         if isinstance(value, dict):
             value = json.dumps(value)
         if isinstance(value, str):
-            escaped = value.replace('\\', '\\\\').replace("'", "\\'")
-            return sql.SQL("'" + escaped + "'")
+            return sql.SQL(_cypher_string(value))
         if value is None:
             return sql.SQL('null')
         if isinstance(value, bool):

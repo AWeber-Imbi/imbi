@@ -117,11 +117,35 @@ class CypherParamTests(unittest.TestCase):
         self.assertEqual(self._render([]), '[]')
 
     def test_string_list(self) -> None:
-        self.assertEqual(self._render(['a', 'b']), '["a", "b"]')
+        self.assertEqual(self._render(['a', 'b']), "['a', 'b']")
+
+    def test_string_list_escapes_elements(self) -> None:
+        self.assertEqual(
+            self._render(["it's", 'a\\b']), "['it\\'s', 'a\\\\b']"
+        )
 
     def test_nested_list_of_dicts(self) -> None:
-        val = [{'k': 'v'}, {'k2': 'v2'}]
-        self.assertEqual(self._render(val), json.dumps(val))
+        # Cypher map keys are identifiers, not strings, so JSON's
+        # double-quoted keys are a syntax error inside a list literal.
+        self.assertEqual(
+            self._render([{'k': 'v'}, {'k2': 'v2'}]),
+            "[{k: 'v'}, {k2: 'v2'}]",
+        )
+
+    def test_nested_list_of_lists(self) -> None:
+        self.assertEqual(
+            self._render([['a'], [1, None]]), "[['a'], [1, null]]"
+        )
+
+    def test_nested_map_values_keep_types(self) -> None:
+        self.assertEqual(
+            self._render([{'on': True, 'weight': 2.5, 'why': None}]),
+            '[{on: true, weight: 2.5, why: null}]',
+        )
+
+    def test_nested_map_rejects_non_identifier_key(self) -> None:
+        with self.assertRaises(ValueError):
+            self._render([{'not a key': 'v'}])
 
     # -- dicts --
 
