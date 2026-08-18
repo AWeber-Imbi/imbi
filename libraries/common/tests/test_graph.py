@@ -1,9 +1,11 @@
 """Tests for the graph module."""
 
+import contextlib
 import datetime
 import json
 import typing
 import unittest
+import uuid
 from unittest import mock
 
 import dotenv
@@ -339,6 +341,54 @@ class GraphExecuteTests(unittest.IsolatedAsyncioTestCase):
             result = await g.execute('MATCH (n) RETURN n')
             self.assertIsInstance(result, list)
         finally:
+            await g.close()
+
+    async def test_write_only_query_with_empty_columns(self) -> None:
+        """``columns=[]`` must keep defaulting to ``['n']``.
+
+        Callers that write without returning (``DETACH DELETE`` with no
+        ``RETURN``) pass ``[]`` to say "nothing comes back".  That still
+        has to render ``AS (n agtype)``: AGE's ``cypher()`` returns
+        ``record``, so Postgres requires a column definition list on
+        *every* call, and honouring the empty list literally would emit
+        ``AS ()`` — a SQL syntax error, not a leaner query.  A no-RETURN
+        Cypher body under a one-column ``AS`` is the documented shape and
+        simply yields no rows.
+
+        The probe id is per-run and swept in ``finally``: the suite shares
+        one database with no per-process isolation, and the node this
+        writes only disappears if the very call under test works.
+
+        """
+        probe_id = f'write-only-{uuid.uuid4()}'
+        g = graph.Graph()
+        await g.open()
+        try:
+            await g.execute(
+                'CREATE (n:GraphExecuteProbe {{id: {id}}}) RETURN n',
+                {'id': probe_id},
+            )
+            deleted = await g.execute(
+                'MATCH (n:GraphExecuteProbe {{id: {id}}}) DETACH DELETE n',
+                {'id': probe_id},
+                [],
+            )
+            self.assertEqual([], deleted)
+            remaining = await g.execute(
+                'MATCH (n:GraphExecuteProbe {{id: {id}}}) RETURN n',
+                {'id': probe_id},
+            )
+            self.assertEqual([], remaining)
+        finally:
+            # Explicit RETURN: the sweep must not lean on the shape under
+            # test.  Suppressed: it must not mask why the test failed.
+            with contextlib.suppress(Exception):
+                await g.execute(
+                    'MATCH (n:GraphExecuteProbe {{id: {id}}}) '
+                    'DETACH DELETE n RETURN 1 AS deleted',
+                    {'id': probe_id},
+                    ['deleted'],
+                )
             await g.close()
 
 
