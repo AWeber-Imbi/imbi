@@ -1865,7 +1865,7 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     'nodes': [],
                 }
             ],
-            [{'deployments': '[]'}],
+            _upsert_row(),
             [{'current_release': 'r1'}],  # current_release write on success
         ]
         with mock.patch(

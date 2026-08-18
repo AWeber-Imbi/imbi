@@ -784,7 +784,9 @@ async def _apply_deployment_nodes(
             continue
         key = (entry.project_id, str(entry.environment.get('slug') or ''))
         existing = latest.get(key)
-        if existing is not None and entry.event.timestamp <= existing[2]:
+        if existing is not None and deployment_nodes.as_utc(
+            entry.event.timestamp
+        ) <= deployment_nodes.as_utc(existing[2]):
             continue
         latest[key] = (
             entry.release.get('tag') or None,

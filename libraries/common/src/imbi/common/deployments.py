@@ -65,7 +65,9 @@ class UpsertResult(typing.NamedTuple):
 # the gateway webhook, resync, the sweeper -- converges on one node.
 # The environment is *not* part of the MERGE key; a run id belongs to a
 # single rollout, and matching on it alone means an event arriving with
-# the wrong environment retargets the node rather than forking it.
+# a different environment moves the node rather than forking it.  Moving
+# means exactly one ``TARGETS`` edge, so the stale one is deleted rather
+# than left alongside the new one -- ``MERGE`` only ever adds.
 #
 # The whole upsert is one statement so concurrent writers cannot
 # interleave a check with an act.  As with the Release upsert this
@@ -77,9 +79,17 @@ class UpsertResult(typing.NamedTuple):
 # ``COALESCE`` for create-only properties, and the captured
 # ``unchanged`` flag to keep a replay from bumping ``updated_at`` or
 # appending to ``history``.
+# ``WITH`` narrows scope, so every variable the clauses after it still
+# need is carried through explicitly -- an unbound name in a later
+# ``MERGE`` would create a node rather than fail.
 _UPSERT_MERGE: typing.Final[typing.LiteralString] = """
     MERGE (p)<-[:BELONGS_TO]-(d:Deployment
           {{external_run_id: {external_run_id}}})
+    WITH {carried}
+    OPTIONAL MATCH (d)-[stale:TARGETS]->(old:Environment)
+    WHERE id(old) <> id(e)
+    DELETE stale
+    WITH {carried}
     MERGE (d)-[:TARGETS]->(e)
 """
 
@@ -130,7 +140,12 @@ def _upsert_query(
         query += """
     MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
     """
-    query += _UPSERT_MERGE if external_run_id else _UPSERT_CREATE
+    if external_run_id:
+        query += _UPSERT_MERGE.replace(
+            '{carried}', 'd, e, r' if release_id is not None else 'd, e'
+        )
+    else:
+        query += _UPSERT_CREATE
     if release_id is not None:
         query += """
     MERGE (r)-[:HAS_DEPLOYMENT]->(d)
@@ -303,6 +318,19 @@ async def deployments_by_project(
     return out
 
 
+def as_utc(value: datetime.datetime) -> datetime.datetime:
+    """Return *value* as an aware UTC datetime.
+
+    A ``Deployment`` node always stores an aware UTC timestamp, but a
+    legacy array entry written without an offset parses naive, and
+    comparing the two raises ``TypeError``.  Naive values are read as
+    UTC, which is what every writer meant by them.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.UTC)
+    return value.astimezone(datetime.UTC)
+
+
 def merge_events(
     *sources: abc.Iterable[models.DeploymentEvent],
 ) -> list[models.DeploymentEvent]:
@@ -313,5 +341,5 @@ def merge_events(
     two representations.
     """
     merged = [event for source in sources for event in source]
-    merged.sort(key=lambda event: event.timestamp)
+    merged.sort(key=lambda event: as_utc(event.timestamp))
     return merged

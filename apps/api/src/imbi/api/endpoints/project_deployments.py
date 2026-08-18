@@ -4341,7 +4341,9 @@ async def list_promotion_options(  # noqa: C901
         if entry.release is None or existing is None:
             continue
         existing_latest = existing.get('latest')
-        if existing_latest is None or entry.event.timestamp > existing_latest:
+        if existing_latest is None or deployment_nodes.as_utc(
+            entry.event.timestamp
+        ) > deployment_nodes.as_utc(existing_latest):
             by_slug[slug] = {
                 'env': existing['env'],
                 'release': entry.release,

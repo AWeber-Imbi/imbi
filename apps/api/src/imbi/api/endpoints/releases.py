@@ -372,7 +372,8 @@ def _keep_latest(
     if (
         existing is None
         or existing[2] is None
-        or event.timestamp > existing[2].timestamp
+        or deployment_nodes.as_utc(event.timestamp)
+        > deployment_nodes.as_utc(existing[2].timestamp)
     ):
         by_env[slug] = (env, release, event)
 

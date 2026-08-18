@@ -152,7 +152,9 @@ async def _load_deployment_statuses(
         slug = str(entry.environment.get('slug') or '')
         current = latest.get(slug)
         if slug and (
-            current is None or entry.event.timestamp > current.timestamp
+            current is None
+            or deployments.as_utc(entry.event.timestamp)
+            > deployments.as_utc(current.timestamp)
         ):
             latest[slug] = entry.event
     return {slug: event.status for slug, event in latest.items()}

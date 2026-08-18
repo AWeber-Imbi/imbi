@@ -21,6 +21,7 @@ ORG = 'test-deployments-org'
 PROJECT_ID = 'test-deployments-project'
 RELEASE_ID = 'test-deployments-release'
 ENV = 'test-deployments-env'
+OTHER_ENV = 'test-deployments-env-2'
 
 
 class DeploymentNodeTestCase(unittest.IsolatedAsyncioTestCase):
@@ -68,6 +69,7 @@ class DeploymentNodeTestCase(unittest.IsolatedAsyncioTestCase):
             ('Project', 'id', PROJECT_ID),
             ('Release', 'id', RELEASE_ID),
             ('Environment', 'slug', ENV),
+            ('Environment', 'slug', OTHER_ENV),
             ('Organization', 'slug', ORG),
         ):
             await self.graph.execute(
@@ -145,6 +147,34 @@ class UpsertTests(DeploymentNodeTestCase):
         await self.upsert(external_run_id=None, status='success')
         self.assertEqual(2, len(await self.nodes()))
 
+    async def test_environment_change_moves_the_deployment(self) -> None:
+        """One run id means one deployment, in one environment.
+
+        ``MERGE`` only ever adds an edge, so without deleting the stale
+        one the node would target both environments and read back
+        twice.
+        """
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{slug: {org}}})
+            MERGE (e:Environment {{slug: {env}}})
+            MERGE (e)-[:BELONGS_TO]->(o)
+            RETURN e.slug AS slug
+            """,
+            {'org': ORG, 'env': OTHER_ENV},
+            ['slug'],
+        )
+        first = await self.upsert(status='in_progress')
+        second = await self.upsert(status='success', env_slug=OTHER_ENV)
+        assert first is not None
+        assert second is not None
+        self.assertEqual(first.id, second.id)
+        rows = await deployments.deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        self.assertEqual(OTHER_ENV, rows[0].environment['slug'])
+
     async def test_orphan_deployment_has_no_release(self) -> None:
         result = await self.upsert(release_id=None)
         assert result is not None
@@ -197,6 +227,27 @@ class ReadTests(DeploymentNodeTestCase):
 
 
 class MergeEventsTests(unittest.TestCase):
+    def test_naive_legacy_timestamps_sort_alongside_node_ones(self) -> None:
+        """A legacy entry written without an offset must not raise.
+
+        The array stored whatever its writer produced; the node always
+        stores aware UTC.  Comparing the two is a ``TypeError`` unless
+        the naive one is read as UTC.
+        """
+        from imbi.common import models
+
+        naive = models.DeploymentEvent(
+            timestamp=datetime.datetime(2026, 1, 1),  # noqa: DTZ001
+            status='pending',
+        )
+        aware = models.DeploymentEvent(
+            timestamp=datetime.datetime(2026, 2, 1, tzinfo=datetime.UTC),
+            status='success',
+        )
+        self.assertEqual(
+            [naive, aware], deployments.merge_events([aware], [naive])
+        )
+
     def test_orders_by_timestamp(self) -> None:
         from imbi.common import models
 
