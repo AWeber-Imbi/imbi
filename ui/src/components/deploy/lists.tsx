@@ -2,6 +2,7 @@ import { Check, ExternalLink } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
@@ -160,14 +161,24 @@ export function CommitList({
               <span className="min-w-0 flex-1 truncate text-sm">
                 {c.message}
               </span>
-              {c.author ? (
-                <UserIdentity
-                  actor={c.author}
-                  className="shrink-0"
-                  linkToProfile={false}
-                  size="small"
-                />
-              ) : null}
+              {/* Fixed-width columns, each rendered even when empty, so
+                  age and author line up down the list. */}
+              <div className="grid shrink-0 grid-cols-[2.5rem_9rem] items-center gap-3">
+                <span className="text-tertiary truncate text-right text-xs">
+                  {c.authored_at ? (
+                    <RelativeTime value={c.authored_at} variant="narrow" />
+                  ) : null}
+                </span>
+                <span className="min-w-0 truncate">
+                  {c.author ? (
+                    <UserIdentity
+                      actor={c.author}
+                      linkToProfile={false}
+                      size="small"
+                    />
+                  ) : null}
+                </span>
+              </div>
               {c.is_head ? <Badge variant="outline">HEAD</Badge> : null}
               {isCurrent ? <Badge variant="neutral">current</Badge> : null}
               {active ? <Check className="text-action size-4" /> : null}

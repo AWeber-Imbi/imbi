@@ -15,8 +15,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import { UserIdentity } from '@/components/ui/user-identity'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
 import type { DraftReleaseNotesResponse, Environment } from '@/types'
@@ -372,6 +374,27 @@ export function PromoteTab({
                     <span className="min-w-0 flex-1 truncate text-sm">
                       {c.message}
                     </span>
+                    {/* Fixed-width columns, each rendered even when empty,
+                        so age and author line up down the list. */}
+                    <div className="grid shrink-0 grid-cols-[2.5rem_9rem] items-center gap-3">
+                      <span className="text-tertiary truncate text-right text-xs">
+                        {c.authored_at ? (
+                          <RelativeTime
+                            value={c.authored_at}
+                            variant="narrow"
+                          />
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 truncate">
+                        {c.author ? (
+                          <UserIdentity
+                            actor={c.author}
+                            linkToProfile={false}
+                            size="small"
+                          />
+                        ) : null}
+                      </span>
+                    </div>
                     <Badge variant="neutral">{tipIndex}</Badge>
                   </button>
                 </li>

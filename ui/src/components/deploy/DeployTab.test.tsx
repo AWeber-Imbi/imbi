@@ -70,6 +70,7 @@ const TAG_B: DeploymentRef = {
 
 const COMMIT_A: DeploymentCommit = {
   author: 'alice',
+  authored_at: '2026-06-02T00:00:00Z',
   ci_status: 'pass',
   is_head: true,
   message: 'feat: add thing',
@@ -79,6 +80,7 @@ const COMMIT_A: DeploymentCommit = {
 
 const COMMIT_B: DeploymentCommit = {
   author: 'bob',
+  authored_at: '2026-06-01T00:00:00Z',
   ci_status: 'pass',
   is_head: false,
   message: 'fix: broken thing',
@@ -288,6 +290,30 @@ describe('DeployTab — commit list (testing/first env)', () => {
     await waitFor(() => {
       expect(screen.getByText('feat: add thing')).toBeInTheDocument()
     })
+  })
+
+  it('shows each commit its age and author', async () => {
+    vi.mocked(endpoints.listRefCommits).mockResolvedValue([COMMIT_A, COMMIT_B])
+    renderDeployTab('testing')
+    await waitFor(() => {
+      expect(screen.getByText('feat: add thing')).toBeInTheDocument()
+    })
+    const ages = Array.from(document.querySelectorAll('time')).map((el) =>
+      el.getAttribute('datetime'),
+    )
+    expect(ages).toEqual(['2026-06-02T00:00:00Z', '2026-06-01T00:00:00Z'])
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    expect(screen.getByText('bob')).toBeInTheDocument()
+  })
+
+  it('leaves the age column empty for an undated commit', async () => {
+    const { authored_at: _unused, ...undated } = COMMIT_A
+    vi.mocked(endpoints.listRefCommits).mockResolvedValue([undated])
+    renderDeployTab('testing')
+    await waitFor(() => {
+      expect(screen.getByText('feat: add thing')).toBeInTheDocument()
+    })
+    expect(document.querySelectorAll('time')).toHaveLength(0)
   })
 
   it('commit buttons have cursor-pointer', async () => {
