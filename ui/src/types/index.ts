@@ -1236,6 +1236,16 @@ export interface ReleaseBlockResponse {
   blocked_reason?: null | string
   tag: string
 }
+/**
+ * A release's CI status, which has one state a commit's does not:
+ * `not_applicable`, for a project with no environments and therefore no
+ * synced deployment history to read a status from. `unknown` there
+ * claimed a question had been asked and come back empty when nothing had
+ * been asked at all, which is what made a green build look unverified
+ * (#211).
+ */
+export type ReleaseCiStatus = 'not_applicable' | DeploymentCommitCiStatus
+
 export interface ReleaseDependenciesResponse {
   components: ReleaseDependencyComponent[]
   release_id: string
@@ -1290,7 +1300,7 @@ export interface ReleaseHistoryEntry {
    */
   ci_override_at?: null | string
   ci_override_by?: null | string
-  ci_status: DeploymentCommitCiStatus
+  ci_status: ReleaseCiStatus
   notes_markdown?: null | string
   package_url?: null | string
   published_at?: null | string

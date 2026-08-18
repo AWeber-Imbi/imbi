@@ -326,6 +326,12 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     #: ``created_by`` principal); ``None`` for tags with no Imbi-resolved
     #: author. Lets the UI link the author to their profile + Gravatar.
     author_email: str | None = None
+    #: ``'pass' | 'fail' | 'warn' | 'unknown' | 'not_applicable'``.
+    #: ``'not_applicable'`` means nothing could answer for this release --
+    #: a project with no environments has no synced deployment history to
+    #: read a status from, no CI attributes naming this commit, and no
+    #: usable check-runs answer.  Distinct from ``'unknown'``, which
+    #: claims the question was asked and came back empty (#211).
     ci_status: str = 'unknown'
     title: str | None = None
     notes_markdown: str | None = None
@@ -4700,12 +4706,176 @@ async def get_release_drift(
     )
 
 
+#: Project-node properties the GitHub webhook maintains for a project's
+#: latest CI run.  Not code-defined: they are blueprint attributes, so the
+#: names are a convention this reads opportunistically rather than a schema
+#: it can rely on.  A project without them simply falls through.
+_CI_ATTR_RESULT_KEYS = ('ci_build_result', 'ci_build_status')
+#: Property naming the commit the CI attributes above describe.  Without
+#: one the attributes cannot be attributed to a particular release -- a
+#: green ``ci_build_result`` says the *latest* build passed, which says
+#: nothing about the commit a six-month-old tag points at -- so the whole
+#: attribute path is skipped rather than guessed at.
+_CI_ATTR_SHA_KEYS = ('ci_build_sha', 'ci_build_commit', 'ci_build_committish')
+
+#: Vocabularies seen in the wild for a CI result, mapped onto
+#: :data:`plugin_base.CheckStatus`.  Anything unrecognized is skipped, not
+#: guessed at -- an unmapped word answering ``'pass'`` would be worse than
+#: no answer.
+_CI_ATTR_RESULT_MAP: dict[str, plugin_base.CheckStatus] = {
+    'cancelled': 'warn',
+    'canceled': 'warn',
+    'error': 'fail',
+    'fail': 'fail',
+    'failed': 'fail',
+    'failure': 'fail',
+    'neutral': 'warn',
+    'pass': 'pass',
+    'passed': 'pass',
+    'skipped': 'warn',
+    'stale': 'warn',
+    'success': 'pass',
+    'successful': 'pass',
+    'timed_out': 'warn',
+}
+
+#: How many releases the live check-runs fallback will ask about.  One
+#: request per release, on a page load rather than a background sync, so
+#: this is bounded well below the history page size; older releases keep
+#: the honest ``not_applicable`` label instead.
+_CI_FALLBACK_LIMIT = 10
+
+#: What a release's CI status reads as when nothing can answer for it.
+#: Deliberately not ``'unknown'``: for a project with no environments,
+#: ``'unknown'`` was the symptom (#211) -- it claimed a question had been
+#: asked and come back empty, when in fact nothing had been asked.
+_CI_NOT_APPLICABLE = 'not_applicable'
+
+
+def _ci_status_from_attributes(
+    props: dict[str, typing.Any], sha: str
+) -> plugin_base.CheckStatus | None:
+    """Read a release's CI status off the project's CI attributes.
+
+    Returns ``None`` unless the attributes both name a commit and name
+    *this* release's commit.  Prefix matching is deliberate: the webhook
+    may record a short sha while the tag carries the full one, or the
+    reverse.
+    """
+    attr_sha = next(
+        (str(props[k]) for k in _CI_ATTR_SHA_KEYS if props.get(k)), ''
+    ).lower()
+    if not attr_sha:
+        return None
+    target = sha.lower()
+    if not (target.startswith(attr_sha) or attr_sha.startswith(target)):
+        return None
+    result = next(
+        (str(props[k]) for k in _CI_ATTR_RESULT_KEYS if props.get(k)), ''
+    )
+    return _CI_ATTR_RESULT_MAP.get(result.strip().lower())
+
+
+async def _project_properties(
+    db: graph.Graph, project_id: str
+) -> dict[str, typing.Any]:
+    """Every property on the ``Project`` vertex, blueprint ones included."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+    RETURN properties(p) AS props
+    """
+    rows = await db.execute(query, {'project_id': project_id}, ['props'])
+    if not rows:
+        return {}
+    parsed = graph.parse_agtype(rows[0].get('props'))
+    return typing.cast('dict[str, typing.Any]', parsed or {})
+
+
+async def _fallback_ci_statuses(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    shas: list[str],
+) -> dict[str, str]:
+    """Answer CI status for releases the synced commits cannot (#211).
+
+    The history's ``ci_status`` is hydrated from the ``commits`` table,
+    which is filled by the deployment sync walking ``DEPLOYED_TO`` edges.
+    A project with no environments has no such edges, so every release
+    read ``'unknown'`` even with a green build sitting in GitHub.
+
+    Two sources, in this order, then an honest label:
+
+    1. The project's own CI attributes, when they name the release's
+       commit.  First because the two known blind spots in the check-runs
+       path -- a repo on the legacy combined-status API, and the 403
+       "checks disabled" memoization -- both answer ``'unknown'``, which
+       is exactly the symptom this exists to fix.
+    2. A live check-runs roll-up, the same call the CI gate makes.
+    3. ``not_applicable``.  Saying "unknown" here claims a question was
+       asked and came back empty; nothing had been asked.
+    """
+    if not shas:
+        return {}
+    props = await _project_properties(db, project_id)
+    out: dict[str, str] = {}
+    for sha in shas:
+        from_attrs = _ci_status_from_attributes(props, sha)
+        if from_attrs is not None:
+            out[sha] = from_attrs
+    remaining = [sha for sha in shas if sha not in out][:_CI_FALLBACK_LIMIT]
+    if not remaining:
+        return out
+    try:
+        resolved, ctx, credentials = await _resolve_and_context(
+            db, org_slug, project_id, auth
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug(
+            'release-history CI fallback: no deployment plugin for %s',
+            project_id,
+            exc_info=True,
+        )
+        return out
+    handler = _handler(resolved)
+    statuses = await asyncio.gather(
+        *(
+            _resolve_ci_status(handler, ctx, credentials, sha)
+            for sha in remaining
+        )
+    )
+    for sha, status in zip(remaining, statuses, strict=True):
+        if status != 'unknown':
+            out[sha] = status
+    return out
+
+
+async def _apply_ci_fallback(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+    entries: list[ReleaseHistoryEntry],
+) -> None:
+    """Rewrite ``'unknown'`` CI statuses in place for a non-deployable
+    project, newest release first."""
+    unknown = [e for e in entries if e.ci_status == 'unknown']
+    if not unknown:
+        return
+    resolved = await _fallback_ci_statuses(
+        db, org_slug, project_id, auth, [e.sha for e in unknown]
+    )
+    for entry in unknown:
+        entry.ci_status = resolved.get(entry.sha, _CI_NOT_APPLICABLE)
+
+
 @project_deployments_router.get('/release-history')
 async def get_release_history(
     org_slug: str,
     project_id: str,
     db: graph.Pool,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
             permissions.require_permission('project:deployment:read'),
@@ -4713,7 +4883,14 @@ async def get_release_history(
     ],
     limit: int = 20,
 ) -> list[ReleaseHistoryEntry]:
-    """Release history: ClickHouse tags joined to their ``Release`` nodes."""
+    """Release history: ClickHouse tags joined to their ``Release`` nodes.
+
+    ``ci_status`` comes from the synced ``commits`` table, which the
+    deployment sync fills by walking ``DEPLOYED_TO`` edges.  A project
+    with no environments has none, so every release read ``'unknown'``
+    even with a green build in GitHub (#211); those projects get the
+    fallback chain in :func:`_fallback_ci_statuses` instead.
+    """
     capped = max(1, min(limit, 100))
     # Fetch all tags (not a timestamp-limited window) so the semver sort
     # below ranks the full candidate set: a high-semver tag with an old or
@@ -4768,7 +4945,14 @@ async def get_release_history(
         key=lambda e: _release_tag_order_key(e.tag, e.published_at),
         reverse=True,
     )
-    return entries[:capped]
+    entries = entries[:capped]
+    # Only for projects with nothing to deploy into.  A deployable project
+    # whose commit reads ``'unknown'`` really is unknown -- the sync asked
+    # and got nothing -- and paying for a live check-runs call per release
+    # on every page load would not change that.
+    if not await _project_is_deployable(db, project_id):
+        await _apply_ci_fallback(db, org_slug, project_id, auth, entries)
+    return entries
 
 
 @project_deployments_router.post('/releases/cut', status_code=201)
