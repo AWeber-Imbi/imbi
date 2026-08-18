@@ -574,8 +574,11 @@ async def add_deployment_event(
 
     Appends a deployment event to the release's DEPLOYED_TO edge for
     the matching environment. The release is located via the Imbi API's
-    ``list_releases`` endpoint filtered by ``committish`` (required) and
-    optionally ``tag``; the first matching release's nano-id is used to
+    ``list_releases`` endpoint, tag first and committish only as a
+    fallback: the tag is the Release node's identity while its
+    committish moves (the release workflow bumps the version, then tags
+    the bump commit), so this event's SHA need not be the one recorded
+    on the node yet. The first matching release's nano-id is used to
     target the deployment endpoint. ``record_deployment`` has no
     ``created_by`` field so ``ctx.actor_user_id`` is unused here. All
     selectors resolve against the event context (body under ``/payload``)
@@ -616,12 +619,21 @@ async def add_deployment_event(
         if run_url:
             event_body['external_run_url'] = str(run_url)
     async with ImbiClient() as client:
-        releases = await client.list_releases(
-            ctx.org_slug,
-            ctx.project_id,
-            committish=committish_value,
-            tag=tag_value,
-        )
+        # Tag first: ``list_releases`` ANDs its filters, so pairing the
+        # tag with this event's SHA matches nothing while the Release
+        # node still carries the pre-bump committish -- the window
+        # between the promote and ``complete_promote_build`` healing it.
+        # Falling back to the committish keeps untagged deployments (a
+        # raw-SHA ref) and any tag Imbi never recorded resolvable.
+        releases: list[dict[str, object]] = []
+        if tag_value is not None:
+            releases = await client.list_releases(
+                ctx.org_slug, ctx.project_id, tag=tag_value
+            )
+        if not releases:
+            releases = await client.list_releases(
+                ctx.org_slug, ctx.project_id, committish=committish_value
+            )
         if not releases:
             LOGGER.warning(
                 'No release matches committish=%r tag=%r for project %s;'

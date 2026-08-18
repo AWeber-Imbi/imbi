@@ -805,12 +805,82 @@ class AddDeploymentEventTests(helpers.TestCase):
                 event=_event(_STATUS_BODY),
             )
 
-        mock_list.assert_called_once_with(
-            'org', 'proj', committish='abcdef1', tag='v1.2.3'
-        )
+        mock_list.assert_called_once_with('org', 'proj', tag='v1.2.3')
         mock_record.assert_called_once_with(
             'org', 'proj', _RELEASE_ID, 'production', {'status': 'success'}
         )
+
+    async def test_tag_lookup_wins_over_a_drifted_committish(self) -> None:
+        """The tag resolves the release even when the SHA has moved.
+
+        ``release-tag.yaml`` tags the version-bump commit, so the SHA on
+        the ``deployment_status`` payload is not the one the Release node
+        carries until ``complete_promote_build`` heals it.  Pairing both
+        filters dropped the event for that whole window.
+        """
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=[{'id': _RELEASE_ID, 'committish': '9999999'}],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                event=_event(_STATUS_BODY),
+            )
+
+        mock_list.assert_called_once_with('org', 'proj', tag='v1.2.3')
+        mock_record.assert_called_once_with(
+            'org', 'proj', _RELEASE_ID, 'production', {'status': 'success'}
+        )
+
+    async def test_lookup_falls_back_to_committish_when_tag_misses(
+        self,
+    ) -> None:
+        """A tag Imbi never recorded still resolves by commit."""
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                side_effect=[[], [{'id': _RELEASE_ID}]],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_record,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                event=_event(_STATUS_BODY),
+            )
+
+        self.assertEqual(
+            mock_list.await_args_list,
+            [
+                unittest.mock.call('org', 'proj', tag='v1.2.3'),
+                unittest.mock.call('org', 'proj', committish='abcdef1'),
+            ],
+        )
+        mock_record.assert_called_once()
 
     async def test_committish_expression_is_required(self) -> None:
         with self.assertRaises(pydantic.ValidationError):
@@ -855,9 +925,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 event=_event(_STATUS_BODY),
             )
 
-        mock_list.assert_called_once_with(
-            'org', 'proj', committish='abcdef1', tag=None
-        )
+        mock_list.assert_called_once_with('org', 'proj', committish='abcdef1')
         mock_record.assert_called_once()
 
     async def test_lookup_drops_tag_when_version_expression_yields_null(
@@ -906,9 +974,7 @@ class AddDeploymentEventTests(helpers.TestCase):
                 event=_event(payload),
             )
 
-        mock_list.assert_called_once_with(
-            'org', 'proj', committish='abcdef1', tag=None
-        )
+        mock_list.assert_called_once_with('org', 'proj', committish='abcdef1')
         mock_record.assert_called_once()
 
     async def test_null_committish_expression_skips_event(self) -> None:

@@ -2870,7 +2870,14 @@ async def _handle_promote(
 
 # The upsert below is one statement so concurrent writers (promote,
 # webhook, resync) cannot interleave a check with an act -- that race is
-# how duplicate Release nodes accumulated.  AGE has no ``ON CREATE SET``
+# how duplicate Release nodes accumulated.  It narrows that window
+# rather than closing it: AGE has no unique constraint to fall back on,
+# so two transactions that cannot yet see each other's row can still
+# both MERGE-create the same ``(project, tag)``.  Surfacing that
+# residual duplicate is what the multi-node warning in
+# ``_release_id_for`` is for.
+#
+# AGE also has no ``ON CREATE SET``
 # / ``ON MATCH SET``, so create-only properties go through ``coalesce``.
 #
 # Never overwrite existing data with nothing: an empty ``description``
@@ -2907,9 +2914,16 @@ _RELEASE_UPSERT_BY_TAG: typing.Final[typing.LiteralString] = """
     MERGE (p)-[:HAS_RELEASE]->(r:Release {{tag: {tag}}})
 """
 
-# An untagged release has only its commit to be identified by.  Callers
-# that may see one (resync) resolve an existing tag for the committish
-# first, so this branch runs only when no tagged Release claims it.
+# An untagged release has only its commit to be identified by.  The
+# guard lives in the caller, not here: MERGE matches on a subset of a
+# node's properties, so this pattern *would* match a tagged Release
+# carrying the same committish (verified against a live AGE instance --
+# it returns that node and leaves its tag intact rather than creating an
+# untagged sibling).  The one caller that can reach this branch (resync)
+# resolves an existing tag for the committish first, so it runs only
+# when no tagged Release on the project claims that commit.  AGE cannot
+# express "and no tag" in a MERGE pattern -- an untagged node has no
+# ``tag`` property at all -- so the predicate cannot move in here.
 _RELEASE_UPSERT_BY_COMMITTISH: typing.Final[typing.LiteralString] = """
     MATCH (p:Project {{id: {project_id}}})
     MERGE (p)-[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
