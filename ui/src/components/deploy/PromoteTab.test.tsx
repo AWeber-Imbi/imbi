@@ -65,6 +65,7 @@ const COMPARE: DeploymentCompareResult = {
   commits: [
     {
       author: 'bob',
+      authored_at: '2026-06-01T00:00:00Z',
       ci_status: 'unknown',
       is_head: false,
       message: 'fix: broken thing',
@@ -73,6 +74,7 @@ const COMPARE: DeploymentCompareResult = {
     },
     {
       author: 'alice',
+      authored_at: '2026-06-02T00:00:00Z',
       ci_status: 'unknown',
       is_head: true,
       message: 'feat: add thing',
@@ -267,5 +269,50 @@ describe('PromoteTab — failing CI on the build being promoted', () => {
       ).not.toBeChecked()
     })
     expect(promoteButton()).toBeDisabled()
+  })
+})
+
+describe('PromoteTab — commit list columns', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.listCurrentReleases).mockResolvedValue(CURRENT)
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue(COMPARE)
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'minor',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '## Notes',
+      reasoning: 'a feature landed',
+      version: 'v2.8.0',
+    })
+  })
+
+  it('shows each commit its age and author', async () => {
+    renderPromoteTab()
+    await waitFor(() => {
+      expect(screen.getByText('feat: add thing')).toBeInTheDocument()
+    })
+    const ages = Array.from(document.querySelectorAll('time')).map((el) =>
+      el.getAttribute('datetime'),
+    )
+    expect(ages).toEqual(['2026-06-02T00:00:00Z', '2026-06-01T00:00:00Z'])
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    expect(screen.getByText('bob')).toBeInTheDocument()
+  })
+
+  it('leaves the age column empty for an undated commit', async () => {
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue({
+      ...COMPARE,
+      commits: COMPARE.commits.map(({ authored_at: _unused, ...rest }) => rest),
+    })
+    renderPromoteTab()
+    await waitFor(() => {
+      expect(screen.getByText('feat: add thing')).toBeInTheDocument()
+    })
+    expect(document.querySelectorAll('time')).toHaveLength(0)
   })
 })
