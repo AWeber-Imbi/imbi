@@ -23,6 +23,7 @@ from imbi.api.endpoints.project_deployments import (
 from imbi.api.llm.dependencies import _get_anthropic_client
 from imbi.api.plugins.resolution import ResolvedCapability
 from imbi.api.release_promote import service as release_promote_service
+from imbi.common import deployments as common_deployments
 from imbi.common import graph
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
@@ -3259,6 +3260,176 @@ class PromotedCommittishHealingTestCase(unittest.IsolatedAsyncioTestCase):
                 if 'r.committish = {committish}' in call.args[0]
             ]
         )
+
+
+class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
+    """Recording a deployment whose release is not known yet."""
+
+    @staticmethod
+    def _body(**overrides: typing.Any) -> typing.Any:
+        fields: dict[str, typing.Any] = {
+            'status': 'in_progress',
+            'external_run_id': 'run-7',
+            'tag': '1.2.3',
+            'committish': 'abc1234',
+        }
+        fields.update(overrides)
+        return project_deployments.UnattachedDeploymentBody(**fields)
+
+    async def _record(
+        self, release_id: str | None, result: typing.Any
+    ) -> typing.Any:
+        db = mock.AsyncMock()
+        with (
+            mock.patch(
+                f'{_MODULE}._release_id_for',
+                mock.AsyncMock(return_value=release_id),
+            ),
+            mock.patch(
+                'imbi.common.deployments.upsert_deployment',
+                mock.AsyncMock(return_value=result),
+            ) as upsert,
+        ):
+            response = await project_deployments.record_unattached_deployment(
+                'octo', 'p1', 'production', self._body(), db, mock.Mock()
+            )
+        self.upsert = upsert
+        return response
+
+    async def test_records_without_a_release(self) -> None:
+        response = await self._record(
+            None, common_deployments.UpsertResult('dep-1', 'created')
+        )
+        self.assertEqual('dep-1', response.deployment_id)
+        self.assertIsNone(response.release_id)
+        kwargs = self.upsert.await_args.kwargs
+        self.assertIsNone(kwargs['release_id'])
+        # The hints the caller could not resolve ride along so the
+        # sweeper can attach the Release later.
+        self.assertEqual('1.2.3', kwargs['release_tag'])
+        self.assertEqual('abc1234', kwargs['release_committish'])
+        self.assertEqual('gateway', kwargs['source'])
+
+    async def test_attaches_a_release_that_does_resolve(self) -> None:
+        response = await self._record(
+            'rel-9', common_deployments.UpsertResult('dep-1', 'created')
+        )
+        self.assertEqual('rel-9', response.release_id)
+        self.assertEqual('rel-9', self.upsert.await_args.kwargs['release_id'])
+
+    async def test_unknown_environment_is_a_404(self) -> None:
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._record(None, None)
+        self.assertEqual(404, ctx.exception.status_code)
+
+
+class PromoteReclaimGuardTestCase(unittest.IsolatedAsyncioTestCase):
+    """A reclaimed promote job must not dispatch a second deployment.
+
+    The Valkey-stream job re-runs ``complete_promote_build`` from the
+    top when a worker dies mid-watch. Without a guard that means a
+    second GitHub Deployment, with the first orphaned in the stuck
+    backlog -- the hazard ``release_promote.queue`` names.
+    """
+
+    def setUp(self) -> None:
+        self.trigger = mock.AsyncMock(
+            return_value=DeploymentRun(run_id='new-run', status='queued')
+        )
+        for target, replacement in (
+            ('_resolve_and_context', mock.AsyncMock()),
+            (
+                '_handler',
+                mock.Mock(
+                    return_value=mock.Mock(
+                        resolve_committish=mock.AsyncMock(return_value=None),
+                        trigger_deployment=self.trigger,
+                    )
+                ),
+            ),
+            ('_resolve_credentials', mock.Mock(return_value={})),
+            ('_get_release', mock.AsyncMock(return_value=None)),
+            ('persist_link_writeback', mock.AsyncMock()),
+            ('_sync_promoted_tag', mock.AsyncMock()),
+            ('_set_release_artifact_run', mock.AsyncMock()),
+            ('_record_deployment_audit', mock.AsyncMock()),
+            (
+                '_release_ci_override',
+                mock.AsyncMock(return_value=(None, False)),
+            ),
+            (
+                'append_deployment_event',
+                mock.AsyncMock(return_value=(mock.Mock(), 'appended')),
+            ),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        project_deployments._resolve_and_context.return_value = (
+            mock.Mock(plugin_slug='github'),
+            mock.Mock(environment_config=None),
+            {},
+        )
+
+    @staticmethod
+    def _db(in_flight: list[dict[str, typing.Any]]) -> mock.AsyncMock:
+        async def _execute(
+            query: str, params: typing.Any = None, columns: typing.Any = None
+        ) -> list[dict[str, typing.Any]]:
+            del params, columns
+            if 'HAS_DEPLOYMENT' in query:
+                return in_flight
+            return []
+
+        db = mock.AsyncMock()
+        db.execute = mock.AsyncMock(side_effect=_execute)
+        return db
+
+    async def _complete(self, db: mock.AsyncMock) -> typing.Any:
+        return await project_deployments.complete_promote_build(
+            db,
+            org_slug='octo',
+            project_id='p1',
+            release_id='rel1',
+            tag='2.45.3',
+            committish='3c1ea7b',
+            to_environment='production',
+            run_id='build-1',
+        )
+
+    async def test_reuses_the_deployment_a_prior_delivery_started(
+        self,
+    ) -> None:
+        db = self._db(
+            [
+                {
+                    'run_id': 'run-99',
+                    'run_url': 'https://gh/deployments/99',
+                    'status': 'in_progress',
+                }
+            ]
+        )
+        with mock.patch(
+            f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            run = await self._complete(db)
+        self.trigger.assert_not_awaited()
+        assert run is not None
+        self.assertEqual('run-99', run.run_id)
+        self.assertEqual('in_progress', run.status)
+        # Nothing new to record: the earlier delivery already did.
+        project_deployments.append_deployment_event.assert_not_awaited()
+
+    async def test_dispatches_when_nothing_is_in_flight(self) -> None:
+        db = self._db([])
+        with mock.patch(
+            f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            run = await self._complete(db)
+        self.trigger.assert_awaited_once()
+        assert run is not None
+        self.assertEqual('new-run', run.run_id)
+        project_deployments.append_deployment_event.assert_awaited_once()
 
 
 class PromotedTagSyncTestCase(unittest.IsolatedAsyncioTestCase):

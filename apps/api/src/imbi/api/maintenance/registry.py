@@ -24,6 +24,7 @@ MaintenanceSlug = typing.Literal[
     'remediate',
     'rescore',
     'deployment-resync',
+    'deployment-sweep',
     'opslog-backfill',
     'release-repair',
     'blocker-migration',
@@ -98,6 +99,22 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_deployment_resync,
+        ),
+        OperationDefinition(
+            slug='deployment-sweep',
+            label='Close Out Stuck Deployments',
+            description=(
+                'Ask the remote what happened to every deployment still '
+                'running after 30 minutes, and record the answer. '
+                'Deployments nothing can resolve for a week are marked '
+                'failed; a deployment recorded before its release was '
+                'known is attached to it. Projects without a deployment '
+                'integration are skipped. Safe to re-run, and scheduled '
+                'rather than only operator-triggered.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_deployment_sweep,
         ),
         OperationDefinition(
             slug='opslog-backfill',

@@ -63,6 +63,7 @@ class _Harness:
             side_effect=[_deployment(status) for status in rollout]
         )
         self.fail = mock.AsyncMock()
+        self.append = mock.AsyncMock(return_value=(mock.Mock(), 'appended'))
         self.set_status = mock.AsyncMock()
         self.slept: list[float] = []
 
@@ -88,6 +89,10 @@ class _Harness:
                 'imbi.api.endpoints.project_deployments.fail_promote_build',
                 self.fail,
             ),
+            mock.patch(
+                'imbi.api.endpoints.releases.append_deployment_event',
+                self.append,
+            ),
             mock.patch.object(service, 'set_status', self.set_status),
         ]
         for patch in self._patches:
@@ -97,6 +102,13 @@ class _Harness:
     def __exit__(self, *_exc: object) -> None:
         for patch in reversed(self._patches):
             patch.stop()
+
+    def closed(self) -> list[tuple[str, str | None]]:
+        """``(status, note)`` of every deployment close-out written."""
+        return [
+            (call.kwargs['status'], call.kwargs.get('note'))
+            for call in self.append.await_args_list
+        ]
 
     def states(self) -> list[str]:
         return [
@@ -338,6 +350,101 @@ class RunWatchTests(unittest.IsolatedAsyncioTestCase):
             'https://ghe/run/late',
             harness.set_status.await_args_list[-1].kwargs['artifact_run_url'],
         )
+
+
+class RolloutCloseOutTests(unittest.IsolatedAsyncioTestCase):
+    """The watcher closes the deployment it opened.
+
+    Before this the watcher wrote its answer only to
+    ``Project.promote_status``, so a failed rollout left its deployment
+    ``in_progress`` forever and a successful one depended on a webhook
+    correlating -- the missing close-out that grew the stuck backlog.
+    """
+
+    async def test_successful_rollout_is_recorded(self) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('success',)) as harness:
+            await service.run_watch(db, _job(), sleep=harness.sleep)
+        self.assertEqual([('success', 'rollout succeeded')], harness.closed())
+        kwargs = harness.append.await_args.kwargs
+        self.assertEqual('rel1', kwargs['release_id'])
+        self.assertEqual('staging', kwargs['env_slug'])
+        # The rollout's own run id, not the build's.
+        self.assertEqual('99', kwargs['external_run_id'])
+        self.assertEqual('promote-watcher', kwargs['source'])
+
+    async def test_failed_rollout_is_recorded(self) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('failure',)) as harness:
+            state = await service.run_watch(db, _job(), sleep=harness.sleep)
+        self.assertEqual('deploy_failed', state)
+        self.assertEqual([('failed', 'rollout failure')], harness.closed())
+
+    async def test_rollout_timeout_is_recorded(self) -> None:
+        db = mock.AsyncMock()
+        with _Harness(
+            'success', rollout=('in_progress', 'in_progress')
+        ) as harness:
+            state = await service.run_watch(
+                db,
+                _job(),
+                sleep=harness.sleep,
+                deploy_timeout_seconds=0,
+            )
+        self.assertEqual('deploy_failed', state)
+        status, note = harness.closed()[0]
+        self.assertEqual('failed', status)
+        assert note is not None
+        self.assertIn('did not finish', note)
+
+    async def test_write_failure_does_not_change_the_outcome(self) -> None:
+        db = mock.AsyncMock()
+        with _Harness('success', rollout=('success',)) as harness:
+            harness.append.side_effect = RuntimeError('graph down')
+            state = await service.run_watch(db, _job(), sleep=harness.sleep)
+        self.assertEqual('success', state)
+
+
+class MarkAbandonedTests(unittest.IsolatedAsyncioTestCase):
+    """A dead-lettered promote closes the deployment it opened.
+
+    Nothing is going to watch it now, so leaving it in flight would add
+    to the stuck backlog the queue's own docstring warns about.
+    """
+
+    async def test_closes_the_in_flight_deployment(self) -> None:
+        from imbi.api.release_promote import queue
+
+        db = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi.common.deployments.close_in_flight',
+                mock.AsyncMock(return_value=['dep-1']),
+            ) as close,
+            mock.patch.object(queue, 'set_status', mock.AsyncMock()),
+        ):
+            await queue._mark_abandoned(db, _job())
+        kwargs = close.await_args.kwargs
+        self.assertEqual('rel1', kwargs['release_id'])
+        self.assertEqual('staging', kwargs['env_slug'])
+        self.assertEqual('failed', kwargs['status'])
+        self.assertEqual('promote-queue', kwargs['source'])
+
+    async def test_a_close_failure_still_reports_the_status(self) -> None:
+        from imbi.api.release_promote import queue
+
+        db = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi.common.deployments.close_in_flight',
+                mock.AsyncMock(side_effect=RuntimeError('graph down')),
+            ),
+            mock.patch.object(
+                queue, 'set_status', mock.AsyncMock()
+            ) as set_status,
+        ):
+            await queue._mark_abandoned(db, _job())
+        set_status.assert_awaited_once()
 
 
 class ReadStatusTests(unittest.IsolatedAsyncioTestCase):

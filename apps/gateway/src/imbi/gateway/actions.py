@@ -10,7 +10,7 @@ import pydantic
 import pydantic_settings
 
 from imbi.common import json_pointer
-from imbi.gateway import helpers, version
+from imbi.gateway import helpers, metrics, version
 
 if typing.TYPE_CHECKING:
     from collections import abc
@@ -153,6 +153,34 @@ class ImbiClient(httpx.AsyncClient):
         ):
             LOGGER.warning(
                 'Failed to record deployment %r: %s', url, response.text
+            )
+        return response
+
+    async def record_unattached_deployment(
+        self,
+        org_slug: str,
+        project_id: str,
+        env_slug: str,
+        body: abc.Mapping[str, object],
+    ) -> httpx.Response:
+        """Record a deployment whose release could not be resolved.
+
+        The release-scoped endpoint has no way to express this, and
+        dropping the event is how a real rollout went unrecorded
+        whenever release identity drifted.  The tag and committish
+        travel with it so the sweeper can attach the Release later.
+        """
+        url = (
+            f'/organizations/{org_slug}/projects/{project_id}'
+            f'/deployments/environments/{env_slug}/deployments'
+        )
+        LOGGER.debug('Recording unattached deployment %s', url)
+        response = await self.post(url, json=body)
+        if response.is_error:
+            LOGGER.warning(
+                'Failed to record unattached deployment %r: %s',
+                url,
+                response.text,
             )
         return response
 
@@ -576,21 +604,29 @@ async def add_deployment_event(
 ) -> None:
     """Processes a deployment_status notification.
 
-    Appends a deployment event to the release's DEPLOYED_TO edge for
-    the matching environment. The release is located via the Imbi API's
-    ``list_releases`` endpoint, tag first and committish only as a
-    fallback: the tag is the Release node's identity while its
-    committish moves (the release workflow bumps the version, then tags
-    the bump commit), so this event's SHA need not be the one recorded
-    on the node yet. The first matching release's nano-id is used to
-    target the deployment endpoint. ``record_deployment`` has no
-    ``created_by`` field so ``ctx.actor_user_id`` is unused here. All
-    selectors resolve against the event context (body under ``/payload``)
-    and CEL expressions read ``payload.<field>``.
+    Records a deployment against the matching environment.  The release
+    it belongs to is located via the Imbi API's ``list_releases``
+    endpoint, tag first and committish only as a fallback: the tag is
+    the Release node's identity while its committish moves (the release
+    workflow bumps the version, then tags the bump commit), so this
+    event's SHA need not be the one recorded on the node yet.
+
+    When no release matches, the deployment is recorded without one
+    rather than dropped, carrying the tag and committish that failed to
+    resolve so the sweeper can attach the Release once it exists.  Every
+    outcome is counted (see :mod:`imbi.gateway.metrics`), because a
+    dropped event otherwise shows up only as a log line while the
+    activity feed records the handler as having succeeded.
+
+    ``record_deployment`` has no ``created_by`` field so
+    ``ctx.actor_user_id`` is unused here. All selectors resolve against
+    the event context (body under ``/payload``) and CEL expressions read
+    ``payload.<field>``.
     """
     del credentials, external_identifier
     _raw, status = _deployment_state(action_config.status_selector, event)
     if status is None:
+        metrics.deployment_event('unmapped_status', ctx.project_id)
         return
     committish_value = _evaluate_cel(
         action_config.committish_expression, event
@@ -601,6 +637,7 @@ async def add_deployment_event(
             ' expression evaluated to null',
             ctx.project_id,
         )
+        metrics.deployment_event('no_committish', ctx.project_id)
         return
     tag_value: str | None = None
     if action_config.version_expression is not None:
@@ -650,20 +687,38 @@ async def add_deployment_event(
                     ctx.project_id,
                     status,
                 )
+                metrics.deployment_event('lookup_failed', ctx.project_id)
                 return
         if not releases:
             releases = await client.list_releases(
                 ctx.org_slug, ctx.project_id, committish=committish_value
             )
         if not releases:
-            LOGGER.warning(
+            # No Release claims this deployment yet.  Record it against
+            # the project and environment anyway: a deployment is a
+            # fact about the environment, and the release it belongs to
+            # can be attached afterwards by the sweeper.  Dropping it
+            # here is what left rollouts unrecorded whenever release
+            # identity drifted.
+            LOGGER.info(
                 'No release matches committish=%r tag=%r for project %s;'
-                ' status %r dropped',
+                ' recording status %r without one',
                 committish_value,
                 tag_value,
                 ctx.project_id,
                 status,
             )
+            await client.record_unattached_deployment(
+                ctx.org_slug,
+                ctx.project_id,
+                environment,
+                {
+                    **event_body,
+                    'tag': tag_value,
+                    'committish': committish_value,
+                },
+            )
+            metrics.deployment_event('orphaned', ctx.project_id)
             return
         release_id = str(releases[0]['id'])
         response = await client.record_deployment(
@@ -676,6 +731,9 @@ async def add_deployment_event(
             ctx.project_id,
             status,
         )
+        metrics.deployment_event('release_missing', ctx.project_id)
+        return
+    metrics.deployment_event('recorded', ctx.project_id)
 
 
 async def publish_release(

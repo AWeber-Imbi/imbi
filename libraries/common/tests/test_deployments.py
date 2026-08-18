@@ -22,6 +22,7 @@ PROJECT_ID = 'test-deployments-project'
 RELEASE_ID = 'test-deployments-release'
 ENV = 'test-deployments-env'
 OTHER_ENV = 'test-deployments-env-2'
+NOW = datetime.datetime(2026, 8, 18, tzinfo=datetime.UTC)
 
 
 class DeploymentNodeTestCase(unittest.IsolatedAsyncioTestCase):
@@ -223,6 +224,111 @@ class ReadTests(DeploymentNodeTestCase):
     async def test_deployments_by_project_empty_without_ids(self) -> None:
         self.assertEqual(
             [], await deployments.deployments_by_project(self.graph, [])
+        )
+
+
+class LifecycleTests(DeploymentNodeTestCase):
+    async def test_close_in_flight_marks_terminal(self) -> None:
+        await self.upsert(status='in_progress')
+        closed = await deployments.close_in_flight(
+            self.graph,
+            project_id=PROJECT_ID,
+            release_id=RELEASE_ID,
+            env_slug=ENV,
+            status='failed',
+            note='promote abandoned',
+            source='promote-queue',
+        )
+        self.assertEqual(1, len(closed))
+        node = (await self.nodes())[0]
+        self.assertEqual('failed', node['status'])
+        self.assertEqual('promote abandoned', node['note'])
+        self.assertEqual(
+            ['in_progress', 'failed'],
+            [entry['status'] for entry in node['history']],
+        )
+
+    async def test_close_in_flight_leaves_terminal_alone(self) -> None:
+        await self.upsert(status='success')
+        closed = await deployments.close_in_flight(
+            self.graph,
+            project_id=PROJECT_ID,
+            release_id=RELEASE_ID,
+            env_slug=ENV,
+            status='failed',
+        )
+        self.assertEqual([], closed)
+        self.assertEqual('success', (await self.nodes())[0]['status'])
+
+    async def test_stuck_selects_only_aged_in_flight_runs(self) -> None:
+        old = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        await self.upsert(status='in_progress', timestamp=old)
+        await self.upsert(
+            status='in_progress', external_run_id='fresh', timestamp=NOW
+        )
+        await self.upsert(
+            status='success', external_run_id='done', timestamp=old
+        )
+        await self.upsert(
+            status='in_progress', external_run_id=None, timestamp=old
+        )
+        stuck = await deployments.stuck_deployments(
+            self.graph,
+            project_id=PROJECT_ID,
+            cutoff=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
+        )
+        self.assertEqual(1, len(stuck))
+        self.assertEqual('4242', stuck[0].external_run_id)
+        self.assertEqual(RELEASE_ID, stuck[0].release_id)
+        self.assertEqual(ENV, stuck[0].env_slug)
+        self.assertEqual(ORG, stuck[0].org_slug)
+
+    async def test_stuck_reports_an_unattached_deployment(self) -> None:
+        old = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        await self.upsert(
+            status='in_progress',
+            release_id=None,
+            release_tag='1.2.3',
+            release_committish='abc1234',
+            timestamp=old,
+        )
+        stuck = await deployments.stuck_deployments(
+            self.graph,
+            project_id=PROJECT_ID,
+            cutoff=NOW,
+        )
+        self.assertEqual(1, len(stuck))
+        self.assertIsNone(stuck[0].release_id)
+        self.assertEqual('1.2.3', stuck[0].release_tag)
+        self.assertEqual('abc1234', stuck[0].release_committish)
+
+    async def test_attach_release(self) -> None:
+        result = await self.upsert(release_id=None)
+        assert result is not None
+        self.assertTrue(
+            await deployments.attach_release(
+                self.graph,
+                project_id=PROJECT_ID,
+                deployment_id=result.id,
+                release_id=RELEASE_ID,
+            )
+        )
+        rows = await deployments.deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        assert rows[0].release is not None
+        self.assertEqual(RELEASE_ID, rows[0].release['id'])
+
+    async def test_attach_release_missing_release(self) -> None:
+        result = await self.upsert(release_id=None)
+        assert result is not None
+        self.assertFalse(
+            await deployments.attach_release(
+                self.graph,
+                project_id=PROJECT_ID,
+                deployment_id=result.id,
+                release_id='nope',
+            )
         )
 
 

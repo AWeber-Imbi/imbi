@@ -2009,6 +2009,95 @@ class DeploymentResyncEnqueueResponse(pydantic.BaseModel):
     enqueued: bool
 
 
+class UnattachedDeploymentBody(pydantic.BaseModel):
+    """A deployment observed for a project whose release is unknown."""
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    status: typing.Literal[
+        'pending', 'in_progress', 'success', 'failed', 'rolled_back'
+    ]
+    note: str | None = None
+    external_run_id: str | None = None
+    external_run_url: str | None = None
+    #: What the observer tried and failed to resolve a release from.
+    #: Stored on the node so the sweeper can finish the correlation
+    #: once the Release exists.
+    tag: str | None = None
+    committish: str | None = None
+
+
+class UnattachedDeploymentResponse(pydantic.BaseModel):
+    """Identity of the recorded deployment."""
+
+    deployment_id: str
+    #: Set when the release turned out to be resolvable after all.
+    release_id: str | None = None
+
+
+@project_deployments_router.post(
+    '/environments/{env_slug}/deployments',
+    status_code=201,
+    response_model=UnattachedDeploymentResponse,
+)
+async def record_unattached_deployment(
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    body: UnattachedDeploymentBody,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> UnattachedDeploymentResponse:
+    """Record a deployment against a project and environment.
+
+    The release-scoped endpoint cannot express a deployment whose
+    release is unknown, and dropping such an event is how a real
+    rollout went unrecorded whenever release identity drifted.  This
+    records it anyway: the tag and committish the caller could not
+    resolve are stored on the node, and the sweeper attaches
+    ``HAS_DEPLOYMENT`` when the Release turns up.
+
+    A release that *is* resolvable is attached immediately, so a caller
+    that only lacks the lookup does not create a correlation backlog.
+    """
+    release_id = await _release_id_for(
+        db,
+        project_id=project_id,
+        tag=body.tag,
+        committish=body.committish or '',
+    )
+    result = await deployment_nodes.upsert_deployment(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        env_slug=env_slug,
+        release_id=release_id,
+        status=body.status,
+        note=body.note,
+        external_run_id=body.external_run_id,
+        external_run_url=body.external_run_url,
+        release_tag=body.tag,
+        release_committish=body.committish,
+        source='gateway',
+    )
+    if result is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Project {project_id!r} or environment {env_slug!r} in '
+                f'organization {org_slug!r} not found'
+            ),
+        )
+    return UnattachedDeploymentResponse(
+        deployment_id=result.id, release_id=release_id
+    )
+
+
 @project_deployments_router.post('/resync', status_code=202)
 async def resync_project_deployments(
     org_slug: str,
@@ -3917,6 +4006,57 @@ async def _sync_promoted_tag(
         )
 
 
+async def _in_flight_deployment(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    release_id: str,
+    env_slug: str,
+) -> DeploymentRun | None:
+    """Return the deployment this promote already started, if any.
+
+    Only a deployment carrying a run id counts: without one there is
+    nothing for the watcher to poll, so reusing it would strand the
+    promote rather than resume it.  Terminal deployments are ignored --
+    a redeploy of the same release into the same environment is a real
+    request, not a duplicate.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+          -[:HAS_RELEASE]->(:Release {{id: {release_id}}})
+          -[:HAS_DEPLOYMENT]->(d:Deployment)
+          -[:TARGETS]->(:Environment {{slug: {env_slug}}})
+    WHERE d.status IN ['pending', 'in_progress']
+          AND d.external_run_id IS NOT NULL
+    RETURN d.external_run_id AS run_id,
+           d.external_run_url AS run_url,
+           d.status AS status
+    ORDER BY d.created_at DESC
+    LIMIT 1
+    """
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'env_slug': env_slug,
+        },
+        ['run_id', 'run_url', 'status'],
+    )
+    if not rows:
+        return None
+    run_id = graph.parse_agtype(rows[0].get('run_id'))
+    if not run_id:
+        return None
+    run_url = graph.parse_agtype(rows[0].get('run_url'))
+    status = graph.parse_agtype(rows[0].get('status'))
+    return DeploymentRun(
+        run_id=str(run_id),
+        run_url=str(run_url) if run_url else None,
+        status='in_progress' if status == 'in_progress' else 'queued',
+    )
+
+
 async def complete_promote_build(
     db: graph.Graph,
     *,
@@ -4035,6 +4175,27 @@ async def complete_promote_build(
             project_id,
         )
         return None
+
+    in_flight = await _in_flight_deployment(
+        db,
+        project_id=project_id,
+        release_id=release_id,
+        env_slug=to_environment,
+    )
+    if in_flight is not None:
+        # A reclaimed promote job re-runs this function from the top.
+        # Dispatching again would create a second GitHub Deployment,
+        # orphan the first, and leave it in the stuck backlog -- the
+        # hazard ``release_promote.queue`` documents.  Watch what the
+        # earlier delivery already started instead.
+        LOGGER.info(
+            'release-promote reusing in-flight deployment %s for project '
+            '%s tag %s instead of dispatching a second one',
+            in_flight.run_id,
+            project_id,
+            tag,
+        )
+        return in_flight
 
     inputs: dict[str, str] | None = None
     if ctx.environment_config:

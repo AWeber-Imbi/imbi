@@ -1065,7 +1065,63 @@ class AddDeploymentEventTests(helpers.TestCase):
             )
         )
 
-    async def test_no_matching_release_warns_and_skips(self) -> None:
+    async def test_dispositions_are_counted(self) -> None:
+        """Every outcome is counted, not only logged.
+
+        A dropped event returns normally, so the activity feed records
+        the handler as succeeded -- counting is the only way to see the
+        loss without grepping logs.
+        """
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ),
+            unittest.mock.patch.object(
+                actions.metrics, 'deployment_event'
+            ) as mock_metric,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                event=_event(_STATUS_BODY),
+            )
+        mock_metric.assert_called_once_with('recorded', 'proj')
+
+    async def test_unmapped_status_is_counted(self) -> None:
+        body = {
+            **_STATUS_BODY,
+            'deployment_status': {'state': 'martian'},
+        }
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.metrics, 'deployment_event'
+            ) as mock_metric,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                event=_event(body),
+            )
+        mock_metric.assert_called_once_with('unmapped_status', 'proj')
+
+    async def test_no_matching_release_records_without_one(self) -> None:
+        """An unresolvable release must not cost us the deployment.
+
+        Dropping the event is how a real rollout went unrecorded
+        whenever release identity drifted. It is recorded against the
+        project and environment instead, carrying what failed to
+        resolve so the sweeper can attach the Release later.
+        """
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             _patch_list_releases([]),
@@ -1074,7 +1130,12 @@ class AddDeploymentEventTests(helpers.TestCase):
                 'record_deployment',
                 new_callable=unittest.mock.AsyncMock,
             ) as mock_record,
-            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_unattached_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201, json={'deployment_id': 'd1'}),
+            ) as mock_unattached,
         ):
             await actions.add_deployment_event(
                 ctx=_ctx(),
@@ -1085,8 +1146,15 @@ class AddDeploymentEventTests(helpers.TestCase):
             )
 
         mock_record.assert_not_called()
-        self.assertTrue(
-            any('No release matches' in line for line in cm.output)
+        mock_unattached.assert_called_once_with(
+            'org',
+            'proj',
+            'production',
+            {
+                'status': 'success',
+                'tag': 'v1.2.3',
+                'committish': 'abcdef1',
+            },
         )
 
     async def test_note_selector_emits_note(self) -> None:
