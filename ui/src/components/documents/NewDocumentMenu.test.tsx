@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -21,11 +22,14 @@ function template(overrides: Partial<DocumentTemplate> = {}): DocumentTemplate {
     project_type_slugs: [],
     slug: 'adr',
     sort_order: 1,
-    tags: ['adr'],
+    // No tags: the chip renders a LabelChip, which needs a
+    // ThemeProvider that `@/test/utils` does not wrap. Tags are not
+    // what this test is about.
+    tags: [],
     title: null,
     type: 'project',
     ...overrides,
-  } as DocumentTemplate
+  }
 }
 
 describe('NewDocumentMenu', () => {
@@ -39,10 +43,18 @@ describe('NewDocumentMenu', () => {
   it('offers project templates on the org page', async () => {
     vi.mocked(endpoints.listDocumentTemplates).mockResolvedValue([template()])
     render(<NewDocumentMenu context="org" onCreate={vi.fn()} orgSlug="acme" />)
-    const trigger = await screen.findByRole('button', {
-      name: /new document/i,
-    })
-    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+    // The trigger looks the same while the query is in flight, so opening
+    // it proves nothing until the templates have landed. Assert on the
+    // menu item itself -- that is the template the org context used to
+    // filter away.
+    await userEvent.click(
+      await screen.findByRole('button', { name: /new document/i }),
+    )
+    expect(
+      await screen.findByRole('menuitem', {
+        name: /Architecture Decision Record/,
+      }),
+    ).toBeInTheDocument()
   })
 
   it('degrades to a plain button when there are no templates', async () => {
