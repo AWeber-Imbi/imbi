@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import * as releases from '@/api/releases'
 import { render } from '@/test/utils'
@@ -326,5 +327,69 @@ describe('ReleaseReadyCard — a release already in flight', () => {
         screen.getByRole('button', { name: /& release/ }),
       ).not.toBeDisabled()
     })
+  })
+})
+
+describe('ReleaseReadyCard — a refused dispatch', () => {
+  const WORKFLOW_DETAIL =
+    "The configured Release workflow 'release.yml' does not exist in this " +
+    "project's repository, so there is nothing to dispatch. Correct the " +
+    'Release workflow option on the integration, or clear it to cut the ' +
+    'tag directly. Workflows found: test.yml.'
+
+  const releaseButton = () => screen.getByRole('button', { name: /& release/i })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+    vi.mocked(releases.cutRelease).mockRejectedValue(
+      new ApiError(400, 'Bad Request', { detail: WORKFLOW_DETAIL }),
+    )
+  })
+
+  it('renders the server detail inline and re-enables the form', async () => {
+    // Sentry IMBI-4T: the API explains exactly what is misconfigured and
+    // how to fix it, and all of it used to go into a toast that dismissed
+    // itself. Nothing was dispatched, so the form must come back too.
+    const user = userEvent.setup()
+    renderCard(FIRST_RELEASE)
+    await user.click(releaseButton())
+    await waitFor(() => {
+      expect(screen.getByText(WORKFLOW_DETAIL)).toBeInTheDocument()
+    })
+    expect(screen.getByText('Release refused')).toBeInTheDocument()
+    expect(screen.getByText(/Nothing was dispatched/)).toBeInTheDocument()
+    await waitFor(() => expect(releaseButton()).not.toBeDisabled())
+  })
+
+  it('keeps the refusal on screen until something changes', async () => {
+    // The fix is two sentences into the detail; it has to still be there
+    // while the operator acts on it.
+    const user = userEvent.setup()
+    renderCard(FIRST_RELEASE)
+    await user.click(releaseButton())
+    await waitFor(() => {
+      expect(screen.getByText(WORKFLOW_DETAIL)).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('fix: a bug'))
+    await waitFor(() => {
+      expect(screen.queryByText(WORKFLOW_DETAIL)).toBeNull()
+    })
+  })
+
+  it('leaves a failure it cannot explain to the toast', async () => {
+    // A 500 carries no sentence worth pinning to the form; "something
+    // broke" is what a toast is for.
+    const user = userEvent.setup()
+    vi.mocked(releases.cutRelease).mockRejectedValue(
+      new ApiError(500, 'Internal Server Error', { detail: 'boom' }),
+    )
+    renderCard(FIRST_RELEASE)
+    await user.click(releaseButton())
+    await waitFor(() => expect(releases.cutRelease).toHaveBeenCalled())
+    expect(screen.queryByText('Release refused')).toBeNull()
   })
 })

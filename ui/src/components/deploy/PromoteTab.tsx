@@ -29,6 +29,10 @@ import {
   ciNeedsAcknowledgement,
   useCommitCheckStatus,
 } from './CiFailureNotice'
+import {
+  dispatchFailureDetail,
+  DispatchFailureNotice,
+} from './DispatchFailureNotice'
 import { handleDispatchedBuild } from './releaseBuildHandoff'
 
 interface PromoteTabProps {
@@ -195,7 +199,11 @@ export function PromoteTab({
         tag,
         to_environment: toEnvironment,
       }),
+    // A refusal the API took the trouble to explain renders inline
+    // below instead: those details name the workflow and the fix, and a
+    // toast dismisses itself long before anyone acts on them.
     onError: (err) => {
+      if (dispatchFailureDetail(err)) return
       toast.error(
         err instanceof ApiError
           ? (extractApiErrorDetail(err) ?? err.message)
@@ -292,6 +300,15 @@ export function PromoteTab({
       onClose()
     },
   })
+
+  const promoteError = dispatchFailureDetail(promoteMutation.error)
+  // A refusal names the commit or the workflow that would have built it,
+  // so it stops describing what the button does once another commit is
+  // picked.
+  useEffect(() => {
+    promoteMutation.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSha])
 
   const tagValid = SEMVER_RE.test(tag)
   const canPromote =
@@ -516,6 +533,8 @@ export function PromoteTab({
           value={notes}
         />
       </section>
+
+      <DispatchFailureNotice action="promote" error={promoteError} />
 
       {/* Footer */}
       {/* Deliberately path-agnostic: whether the release workflow builds

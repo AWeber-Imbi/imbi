@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '@/api/client'
 import * as endpoints from '@/api/endpoints'
 import {
   RELEASE_IDLE,
@@ -350,5 +351,50 @@ describe('PromoteTab — a release already in flight', () => {
     expect(
       screen.getByText('Blocked until v2.7.0 finishes releasing'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('PromoteTab — a refused dispatch', () => {
+  const DETAIL =
+    "The remote refused to run 'release.yml' as configured. That is what " +
+    'it reports when the workflow declares no workflow_dispatch trigger.'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.listCurrentReleases).mockResolvedValue(CURRENT)
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue(COMPARE)
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'aaa1111',
+    })
+    vi.mocked(endpoints.promoteDeployment).mockRejectedValue(
+      new ApiError(400, 'Bad Request', { detail: DETAIL }),
+    )
+  })
+
+  it('renders the server detail inline and re-enables the form', async () => {
+    const user = userEvent.setup()
+    renderPromoteTab()
+    await waitFor(() => expect(promoteButton()).not.toBeDisabled())
+    await user.click(promoteButton())
+    await waitFor(() => {
+      expect(screen.getByText(DETAIL)).toBeInTheDocument()
+    })
+    expect(screen.getByText('Promote refused')).toBeInTheDocument()
+    // Nothing was dispatched, so nothing is in flight and the button
+    // must come back rather than sitting spent.
+    await waitFor(() => expect(promoteButton()).not.toBeDisabled())
+  })
+
+  it('leaves a failure it cannot explain to the toast', async () => {
+    const user = userEvent.setup()
+    vi.mocked(endpoints.promoteDeployment).mockRejectedValue(
+      new ApiError(500, 'Internal Server Error', { detail: 'boom' }),
+    )
+    renderPromoteTab()
+    await waitFor(() => expect(promoteButton()).not.toBeDisabled())
+    await user.click(promoteButton())
+    await waitFor(() => expect(endpoints.promoteDeployment).toHaveBeenCalled())
+    expect(screen.queryByText('Promote refused')).toBeNull()
   })
 })

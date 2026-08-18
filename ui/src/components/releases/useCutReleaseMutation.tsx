@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { cutRelease } from '@/api/releases'
 import type { ReleaseBuildStarted } from '@/components/deploy/DeploymentModal'
+import { dispatchFailureDetail } from '@/components/deploy/DispatchFailureNotice'
 import { handleDispatchedBuild } from '@/components/deploy/releaseBuildHandoff'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import type { CutReleaseRequest } from '@/types'
@@ -20,7 +21,15 @@ interface UseCutReleaseOptions {
 }
 
 interface UseCutReleaseResult {
+  /** Drops a standing refusal, e.g. once the operator edits the form. */
+  clearError: () => void
   cut: (body: CutReleaseRequest) => void
+  /**
+   * The server's explanation for a refused dispatch, for the caller to
+   * render inline. `null` for anything that has no explanation to give,
+   * which stays on the toast.
+   */
+  error: null | string
   isPending: boolean
 }
 
@@ -43,7 +52,11 @@ export function useCutReleaseMutation({
   const mutation = useMutation({
     mutationFn: (body: CutReleaseRequest) =>
       cutRelease(orgSlug, projectId, body),
+    // A refusal the API took the trouble to explain is rendered inline by
+    // the caller instead: those details name the workflow and the fix, and
+    // a toast dismisses itself long before anyone acts on them.
     onError: (err) => {
+      if (dispatchFailureDetail(err)) return
       toast.error(
         err instanceof ApiError
           ? (extractApiErrorDetail(err) ?? err.message)
@@ -95,7 +108,16 @@ export function useCutReleaseMutation({
   })
 
   return {
-    cut: (body: CutReleaseRequest) => mutation.mutate(body),
+    // ``reset`` itself, not a wrapper: callers put it in effect
+    // dependency lists, and a fresh identity each render would loop.
+    clearError: mutation.reset,
+    // Clearing first so a retry never renders the previous refusal beside
+    // a request that is still in flight.
+    cut: (body: CutReleaseRequest) => {
+      mutation.reset()
+      mutation.mutate(body)
+    },
+    error: dispatchFailureDetail(mutation.error),
     isPending: mutation.isPending,
   }
 }

@@ -9,6 +9,7 @@ import {
   ciNeedsAcknowledgement,
   useCommitCheckStatus,
 } from '@/components/deploy/CiFailureNotice'
+import { DispatchFailureNotice } from '@/components/deploy/DispatchFailureNotice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -101,7 +102,12 @@ export function ReleaseReadyCard({
   // mutation settles as soon as the build is dispatched, so ``isPending``
   // goes false about a second in while the drift and the suggested tag
   // below still describe the release being built.
-  const { cut, isPending } = useCutReleaseMutation({
+  const {
+    clearError: clearCutError,
+    cut,
+    error: cutError,
+    isPending,
+  } = useCutReleaseMutation({
     onBuildStarted,
     onSuccess: onCut,
     orgSlug,
@@ -119,7 +125,11 @@ export function ReleaseReadyCard({
   const [ciAcknowledged, setCiAcknowledged] = useState(false)
   useEffect(() => {
     setCiAcknowledged(false)
-  }, [selectedSha])
+    // A refusal names the commit or the workflow that would have built
+    // it; once another commit is selected it no longer describes what
+    // the button would do.
+    clearCutError()
+  }, [selectedSha, clearCutError])
 
   // Up to date — nothing new to cut.
   if (commits.length === 0) {
@@ -159,6 +169,7 @@ export function ReleaseReadyCard({
     setNotesDirty(false)
     setAiSuggestion(null)
     setCiAcknowledged(false)
+    clearCutError()
   }
   const submit = () => {
     if (!selectedSha) return
@@ -212,6 +223,8 @@ export function ReleaseReadyCard({
           onAcknowledgedChange={setCiAcknowledged}
           sha={selectedSha}
         />
+
+        <DispatchFailureNotice action="release" error={cutError} />
 
         <section className="border-tertiary flex flex-col gap-2 border-t pt-4">
           <p className="text-tertiary text-xs tracking-wider uppercase">
