@@ -268,7 +268,8 @@ export function ReleaseReadyCard({
             <DraftingNotes />
           ) : (
             <Textarea
-              className="min-h-40 font-mono text-xs"
+              autoResize
+              className="max-h-[60vh] min-h-40 font-mono text-xs"
               onChange={(e) => {
                 setNotes(e.target.value)
                 setNotesDirty(true)
