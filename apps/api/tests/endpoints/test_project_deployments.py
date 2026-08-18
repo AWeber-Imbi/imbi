@@ -2730,6 +2730,31 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
         self._use('fail', raises=True)
         self.assertEqual(202, self._deploy().status_code)
 
+    def test_acknowledged_deploy_records_the_override_in_the_ops_log(
+        self,
+    ) -> None:
+        """The deploy audit row carries the CI decision, like promote's."""
+        self._use('fail')
+        self._start(
+            mock.patch(f'{_MODULE}._release_id_for', return_value='rel1')
+        )
+        self.assertEqual(
+            202, self._deploy(acknowledge_ci_failure=True).status_code
+        )
+        description = self._audit_description()
+        self.assertTrue(description['ci_override'])
+        self.assertEqual('fail', description['ci_status'])
+
+    def test_clean_deploy_records_no_override_in_the_ops_log(self) -> None:
+        self._use('pass')
+        self._start(
+            mock.patch(f'{_MODULE}._release_id_for', return_value='rel1')
+        )
+        self.assertEqual(202, self._deploy().status_code)
+        description = self._audit_description()
+        self.assertFalse(description['ci_override'])
+        self.assertEqual('pass', description['ci_status'])
+
     def test_redeploy_is_gated_too(self) -> None:
         """A rollback is a redeploy, and is gated on the ref it ships.
 

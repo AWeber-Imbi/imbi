@@ -97,16 +97,19 @@ export function ciNeedsAcknowledgement(
  * has no `ci_status`, and "no status" is indistinguishable from `unknown`
  * here — so without it a fast click would submit a failing commit before
  * the answer landed and take a bare 409 instead of the acknowledgement
- * flow. `isLoading` (not `isPending`) is deliberate: a query disabled for
- * a null `sha` is pending forever, and that must not wedge the button —
- * those callers already gate on the missing sha.
+ * flow. `isFetching` (not `isPending`) is deliberate on both edges: a
+ * query disabled for a null `sha` is pending forever but never fetching,
+ * so it must not wedge the button — those callers already gate on the
+ * missing sha — and a background refetch of a stale cached status must
+ * still gate, or a cached "pass" that is about to come back "fail" would
+ * let the click through to a bare 409.
  */
 export function useCommitCheckStatus(
   orgSlug: string,
   projectId: string,
   sha: null | string,
 ): { ciPending: boolean; ciStatus: DeploymentCommitCiStatus | undefined } {
-  const { data, isLoading } = useQuery({
+  const { data, isFetching } = useQuery({
     enabled: !!orgSlug && !!projectId && !!sha,
     queryFn: ({ signal }) =>
       getCommitCheckStatus(
@@ -118,5 +121,5 @@ export function useCommitCheckStatus(
       ),
     queryKey: ['commitCheckStatus', orgSlug, projectId, sha],
   })
-  return { ciPending: isLoading, ciStatus: data?.ci_status }
+  return { ciPending: isFetching, ciStatus: data?.ci_status }
 }

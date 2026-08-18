@@ -2125,7 +2125,7 @@ async def _handle_deploy(
     # the ref being shipped is the ref being asked about -- a deploy names
     # a commit or a tag directly, and both carry whatever check-runs the
     # remote has for them.
-    await _assert_ci_not_failing(
+    ci_status = await _assert_ci_not_failing(
         handler,
         ctx,
         credentials,
@@ -2242,6 +2242,10 @@ async def _handle_deploy(
             plugin_slug=resolved.plugin_slug,
             run_url=run.run_url,
             external_run_id=str(run.run_id) if run.run_id else None,
+            ci_status=ci_status,
+            # Past the gate with a red status means the operator
+            # acknowledged it -- _assert_ci_not_failing raised otherwise.
+            ci_override=ci_status == 'fail',
         )
     return DeploymentTriggerResponse(
         run=run,
