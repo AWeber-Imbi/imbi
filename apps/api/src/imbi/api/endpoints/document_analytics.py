@@ -437,6 +437,25 @@ LIMIT {{row_limit:UInt32}}
 """
 
 
+def _readers_having(paginated: bool) -> str:
+    """HAVING clause for the per-reader list.
+
+    ``reads > 0`` is unconditional: a principal who only ever *viewed*
+    is not a reader.  The summary counts
+    ``uniqExactIf(principal, is_read)``, so admitting view-only
+    principals here put more avatars in a document's byline than the
+    reader count printed beside them.
+    """
+    clauses = ['reads > 0']
+    if paginated:
+        clauses.append(
+            '(last_read_at < {cursor_ts:DateTime64(3)}'
+            ' OR (last_read_at = {cursor_ts:DateTime64(3)}'
+            ' AND principal < {cursor_principal:String}))'
+        )
+    return 'HAVING ' + ' AND '.join(clauses)
+
+
 @document_analytics_router.get(
     '/analytics/readers', response_model=ReaderListResponse
 )
@@ -489,7 +508,7 @@ async def list_document_readers(
         'author': author,
         'row_limit': limit + 1,
     }
-    having = ''
+    paginated = cursor is not None
     if cursor is not None:
         decoded = decode_cursor(cursor)
         if decoded is None:
@@ -497,13 +516,9 @@ async def list_document_readers(
                 status_code=400, detail='Invalid cursor'
             )
         cursor_ts, cursor_principal = decoded
-        having = (
-            'HAVING (last_read_at < {cursor_ts:DateTime64(3)}'
-            ' OR (last_read_at = {cursor_ts:DateTime64(3)}'
-            ' AND principal < {cursor_principal:String}))'
-        )
         params['cursor_ts'] = cursor_ts
         params['cursor_principal'] = cursor_principal
+    having = _readers_having(paginated)
 
     sql = _READERS_SQL.format(
         source=_session_source(_document_filters(surface, include_self)),
