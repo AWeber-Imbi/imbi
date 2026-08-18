@@ -12,6 +12,10 @@ import {
 } from '@/components/ui/alert-dialog'
 
 interface ConfirmActionDialogProps {
+  /** Extra body content between the description and the footer. */
+  children?: ReactNode
+  /** Holds the confirm button, e.g. until a CI failure is acknowledged. */
+  confirmDisabled?: boolean
   confirmLabel: string
   description: ReactNode
   onCancel: () => void
@@ -26,6 +30,8 @@ interface ConfirmActionDialogProps {
  * deployments tab keeps its own default-styled variant.
  */
 export function ConfirmActionDialog({
+  children,
+  confirmDisabled = false,
   confirmLabel,
   description,
   onCancel,
@@ -45,9 +51,10 @@ export function ConfirmActionDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {children}
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>
+          <AlertDialogAction disabled={confirmDisabled} onClick={onConfirm}>
             {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

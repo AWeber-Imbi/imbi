@@ -1,7 +1,8 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import * as endpoints from '@/api/endpoints'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -13,6 +14,13 @@ import type {
 import { PendingReleasesCard } from './PendingReleasesCard'
 import type { PipelineStage } from './pipeline'
 import type { DeploymentActions } from './useDeploymentActions'
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/api/endpoints', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/api/endpoints')>('@/api/endpoints')
+  return { ...actual, getCommitCheckStatus: vi.fn() }
+})
 
 const ENV = {
   can_deploy: true,
@@ -121,12 +129,22 @@ const renderCard = (
       accent={null}
       actions={actions}
       canTrigger
+      orgSlug="acme"
+      projectId="p1"
       recentCommits={recentCommits}
       stage={makeStage(pending, envTag)}
     />,
   )
 
 describe('PendingReleasesCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: 'ccc333c',
+    })
+  })
+
   it('shows the up-to-date state when nothing is pending', () => {
     renderCard([])
     expect(screen.getByText('Up to date with Staging')).toBeInTheDocument()
@@ -162,6 +180,7 @@ describe('PendingReleasesCard', () => {
       screen.getByRole('button', { name: /Deploy v6\.5\.2 to production/ }),
     )
     expect(actions.deploy).toHaveBeenCalledWith({
+      acknowledgeCiFailure: false,
       action: 'deploy',
       envName: 'Production',
       envSlug: 'production',
@@ -203,7 +222,7 @@ describe('PendingReleasesCard', () => {
     ).toBeDisabled()
   })
 
-  it('marks blocked releases in the selectable stack', () => {
+  it('marks blocked releases in the selectable stack', async () => {
     renderCard([
       entry('v6.5.2', 'ccc333ccc333', 'Net-zero patch'),
       {
@@ -214,9 +233,13 @@ describe('PendingReleasesCard', () => {
     ])
     // The newest is selected and deployable; the blocked one is labelled.
     expect(screen.getByText('Blocked')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /Deploy v6\.5\.2 to production/ }),
-    ).toBeEnabled()
+    // Enabled only once CI has answered for the selected release -- until
+    // then the button is held rather than guessing green.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Deploy v6\.5\.2 to production/ }),
+      ).toBeEnabled()
+    })
   })
 
   it('links the PR references in the changes list', () => {
@@ -253,5 +276,43 @@ describe('PendingReleasesCard', () => {
     expect(
       screen.getByRole('button', { name: /Deploy 1\.102\.3 to production/ }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('PendingReleasesCard — failing CI on the release commit', () => {
+  const deployButton = () =>
+    screen.getByRole('button', { name: /Deploy v6\.5\.1 to production/ })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'fail',
+      committish: 'bbb222b',
+    })
+  })
+
+  it('warns and holds the deploy until it is acknowledged', async () => {
+    renderCard([entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')])
+    await waitFor(() => {
+      expect(screen.getByText(/CI failed for bbb222b/)).toBeInTheDocument()
+    })
+    expect(deployButton()).toBeDisabled()
+  })
+
+  it('carries the acknowledgement into the deploy request', async () => {
+    const user = userEvent.setup()
+    const actions = makeActions()
+    renderCard([entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')], actions)
+    await waitFor(() => {
+      expect(screen.getByText(/CI failed for bbb222b/)).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('checkbox', { name: /Deploy anyway/i }))
+    await waitFor(() => {
+      expect(deployButton()).not.toBeDisabled()
+    })
+    await user.click(deployButton())
+    expect(actions.deploy).toHaveBeenCalledWith(
+      expect.objectContaining({ acknowledgeCiFailure: true }),
+    )
   })
 })

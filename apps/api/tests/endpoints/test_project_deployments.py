@@ -2493,6 +2493,11 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
         'committish': '1a9c610',
         'tag': 'v6.5.0',
     }
+    _DEPLOY: typing.ClassVar[dict[str, typing.Any]] = {
+        'action': 'deploy',
+        'environment': 'testing',
+        'committish': '1a9c610',
+    }
 
     def _use(
         self, status: str = 'fail', *, raises: bool = False
@@ -2507,6 +2512,11 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
         self.mocks['append_deployment_event'].return_value = mock.Mock()
         with testclient.TestClient(self.test_app) as client:
             return client.post(self._BASE, json={**self._PROMOTE, **overrides})
+
+    def _deploy(self, **overrides: typing.Any) -> httpx.Response:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(self._BASE, json={**self._DEPLOY, **overrides})
 
     def _cut(self, **overrides: typing.Any) -> httpx.Response:
         with testclient.TestClient(self.test_app) as client:
@@ -2673,6 +2683,95 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
         description = self._audit_description()
         self.assertFalse(description['ci_override'])
         self.assertEqual('pass', description['ci_status'])
+
+    # -- deploy / redeploy ------------------------------------------------
+
+    def test_deploy_409_when_ci_failed(self) -> None:
+        self._use('fail')
+        response = self._deploy()
+        self.assertEqual(response.status_code, 409)
+        detail = response.json()['detail']
+        self.assertIn('CI failed for commit 1a9c610', detail)
+        self.assertIn('before you deploy it', detail)
+        self.assertIn('acknowledge_ci_failure=true', detail)
+
+    def test_deploy_gate_runs_before_the_plugin_is_called(self) -> None:
+        """A refused deploy must never reach the remote."""
+        handler = self._use('fail')
+        triggered: list[str] = []
+
+        async def _record(self, ctx, credentials, ref_or_sha, inputs=None):
+            triggered.append(ref_or_sha)
+            raise AssertionError('the gate let a red commit through')
+
+        self._start(mock.patch.object(handler, 'trigger_deployment', _record))
+        self.assertEqual(409, self._deploy().status_code)
+        self.assertEqual([], triggered)
+
+    def test_deploy_allowed_when_acknowledged(self) -> None:
+        self._use('fail')
+        self.assertEqual(
+            202, self._deploy(acknowledge_ci_failure=True).status_code
+        )
+
+    def test_deploy_proceeds_when_ci_unknown(self) -> None:
+        self._use('unknown')
+        self.assertEqual(202, self._deploy().status_code)
+
+    def test_deploy_proceeds_when_ci_warns(self) -> None:
+        self._use('warn')
+        self.assertEqual(202, self._deploy().status_code)
+
+    def test_deploy_proceeds_when_ci_passes(self) -> None:
+        self._use('pass')
+        self.assertEqual(202, self._deploy().status_code)
+
+    def test_deploy_proceeds_when_the_ci_lookup_raises(self) -> None:
+        self._use('fail', raises=True)
+        self.assertEqual(202, self._deploy().status_code)
+
+    def test_acknowledged_deploy_records_the_override_in_the_ops_log(
+        self,
+    ) -> None:
+        """The deploy audit row carries the CI decision, like promote's."""
+        self._use('fail')
+        self._start(
+            mock.patch(f'{_MODULE}._release_id_for', return_value='rel1')
+        )
+        self.assertEqual(
+            202, self._deploy(acknowledge_ci_failure=True).status_code
+        )
+        description = self._audit_description()
+        self.assertTrue(description['ci_override'])
+        self.assertEqual('fail', description['ci_status'])
+
+    def test_clean_deploy_records_no_override_in_the_ops_log(self) -> None:
+        self._use('pass')
+        self._start(
+            mock.patch(f'{_MODULE}._release_id_for', return_value='rel1')
+        )
+        self.assertEqual(202, self._deploy().status_code)
+        description = self._audit_description()
+        self.assertFalse(description['ci_override'])
+        self.assertEqual('pass', description['ci_status'])
+
+    def test_redeploy_is_gated_too(self) -> None:
+        """A rollback is a redeploy, and is gated on the ref it ships.
+
+        Deliberate: the gate asks about the ref, not about the operator's
+        reason for shipping it, so rolling back onto a red ref during an
+        incident costs one acknowledgement rather than being silent.
+        """
+        self._use('fail')
+        response = self._deploy(action='redeploy')
+        self.assertEqual(409, response.status_code)
+        self.assertIn('before you redeploy it', response.json()['detail'])
+        self.assertEqual(
+            202,
+            self._deploy(
+                action='redeploy', acknowledge_ci_failure=True
+            ).status_code,
+        )
 
     # -- releases/cut -----------------------------------------------------
 

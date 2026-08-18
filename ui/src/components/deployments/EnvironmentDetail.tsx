@@ -46,6 +46,8 @@ export function EnvironmentDetail({
         accent={accent}
         actions={actions}
         canTrigger={canTrigger}
+        orgSlug={orgSlug}
+        projectId={projectId}
         recentCommits={recentCommits}
         stage={stage}
       />
@@ -74,6 +76,8 @@ export function EnvironmentDetail({
           accent={accent}
           actions={actions}
           canTrigger={canTrigger}
+          orgSlug={orgSlug}
+          projectId={projectId}
           recentCommits={recentCommits}
           stage={stage}
         />

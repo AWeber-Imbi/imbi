@@ -24,6 +24,17 @@ export interface DeploymentActions {
 }
 
 export interface DeployRequest {
+  /**
+   * Operator acknowledgement that `sha` has a failing CI run. Without it
+   * the API refuses the deploy with a 409.
+   *
+   * Required, not optional-with-a-default, for the same reason as
+   * {@link PromoteRequest.acknowledgeCiFailure}: a caller that renders the
+   * warning and enables its button off local state but forgets to forward
+   * the flag produces a request the API rightly refuses, and the operator
+   * sees a 409 having just ticked the box.
+   */
+  acknowledgeCiFailure: boolean
   action: 'deploy' | 'redeploy'
   envName: string
   envSlug: string
@@ -93,6 +104,7 @@ export function useDeploymentActions({
   const deployMutation = useMutation({
     mutationFn: (req: DeployRequest) =>
       triggerDeployment(orgSlug, projectId, {
+        acknowledge_ci_failure: req.acknowledgeCiFailure,
         action: req.action,
         committish: req.sha,
         environment: req.envSlug,

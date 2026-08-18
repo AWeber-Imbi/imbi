@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 
 import {
   Clock,
@@ -9,6 +9,11 @@ import {
   Upload,
 } from 'lucide-react'
 
+import {
+  CiFailureNotice,
+  ciNeedsAcknowledgement,
+  useCommitCheckStatus,
+} from '@/components/deploy/CiFailureNotice'
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,6 +34,8 @@ interface CommitDeployCardProps {
   accent: ChipColors | null
   actions: DeploymentActions
   canTrigger: boolean
+  orgSlug: string
+  projectId: string
   /** Synced default-branch commit history, newest first. */
   recentCommits: RecentCommit[]
   stage: PipelineStage
@@ -46,6 +53,8 @@ export function CommitDeployCard({
   accent,
   actions,
   canTrigger,
+  orgSlug,
+  projectId,
   recentCommits,
   stage,
 }: CommitDeployCardProps) {
@@ -59,6 +68,20 @@ export function CommitDeployCard({
   // name — otherwise the same person renders under two names and two
   // avatar tints in one list.
   const { displayNames } = useUserDisplayNames()
+
+  // Live CI status for the commit in the confirm dialog. The row dots come
+  // from imbi's synced history and can lag; this is the state the API's
+  // deploy gate will actually see, so the two cannot disagree.
+  const { ciPending, ciStatus } = useCommitCheckStatus(
+    orgSlug,
+    projectId,
+    confirming?.commit.sha ?? null,
+  )
+  const ciFailed = ciNeedsAcknowledgement(ciStatus)
+  const [ciAcknowledged, setCiAcknowledged] = useState(false)
+  useEffect(() => {
+    setCiAcknowledged(false)
+  }, [confirming?.commit.sha])
 
   const currentSha = stage.current?.release?.committish ?? null
   const matchesCurrent = (c: RecentCommit) =>
@@ -161,6 +184,10 @@ export function CommitDeployCard({
       </div>
 
       <ConfirmActionDialog
+        // Held until CI has answered: an unresolved status cannot be told
+        // apart from a green one, and dispatching on it skips the
+        // acknowledgement the server would then demand with a 409.
+        confirmDisabled={ciPending || (ciFailed && !ciAcknowledged)}
         confirmLabel={
           confirming
             ? `${confirming.rollback ? 'Roll back to' : 'Deploy'} ${confirming.commit.short_sha}`
@@ -181,6 +208,7 @@ export function CommitDeployCard({
         onConfirm={() => {
           if (!confirming) return
           actions.deploy({
+            acknowledgeCiFailure: ciFailed && ciAcknowledged,
             action: 'deploy',
             envName: stage.env.name,
             envSlug: stage.env.slug,
@@ -196,7 +224,15 @@ export function CommitDeployCard({
             ? `Roll back ${stage.env.name}?`
             : `Deploy to ${stage.env.name}?`
         }
-      />
+      >
+        <CiFailureNotice
+          acknowledged={ciAcknowledged}
+          action={confirming?.rollback ? 'redeploy' : 'deploy'}
+          ciStatus={ciStatus}
+          onAcknowledgedChange={setCiAcknowledged}
+          sha={confirming?.commit.sha ?? null}
+        />
+      </ConfirmActionDialog>
     </StageCardShell>
   )
 }

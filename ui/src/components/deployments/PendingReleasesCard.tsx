@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   Ban,
@@ -12,6 +12,11 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 
+import {
+  CiFailureNotice,
+  ciNeedsAcknowledgement,
+  useCommitCheckStatus,
+} from '@/components/deploy/CiFailureNotice'
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,6 +38,8 @@ interface PendingReleasesCardProps {
   accent: ChipColors | null
   actions: DeploymentActions
   canTrigger: boolean
+  orgSlug: string
+  projectId: string
   /** Synced default-branch commit history, newest first. */
   recentCommits: RecentCommit[]
   stage: PipelineStage
@@ -49,26 +56,52 @@ export function PendingReleasesCard({
   accent,
   actions,
   canTrigger,
+  orgSlug,
+  projectId,
   recentCommits,
   stage,
 }: PendingReleasesCardProps) {
   const pending = stage.pendingReleases
   const [selectedTag, setSelectedTag] = useState<null | string>(null)
   const upstreamName = stage.upstream?.name ?? 'upstream'
+  const active =
+    pending.find((rel) => rel.tag === selectedTag) ?? pending[0] ?? null
 
-  if (pending.length === 0) {
+  // Live CI status for the commit the selected release points at. Read
+  // before the early return below -- it is a hook, and the release's own
+  // ``ci_status`` comes from the synced history, which can lag behind the
+  // state the API's deploy gate sees.
+  const { ciPending, ciStatus } = useCommitCheckStatus(
+    orgSlug,
+    projectId,
+    active?.sha ?? null,
+  )
+  const ciFailed = ciNeedsAcknowledgement(ciStatus)
+  const [ciAcknowledged, setCiAcknowledged] = useState(false)
+  useEffect(() => {
+    setCiAcknowledged(false)
+  }, [active?.sha])
+
+  if (pending.length === 0 || !active) {
     return <UpToDateCard upstreamName={upstreamName} />
   }
 
   const multi = pending.length > 1
-  const active = pending.find((rel) => rel.tag === selectedTag) ?? pending[0]
   const activeIdx = pending.findIndex((rel) => rel.tag === active.tag)
   const rolledUp = pending.slice(activeIdx + 1).map((rel) => rel.tag)
   const stillPending = pending.slice(0, activeIdx).map((rel) => rel.tag)
   // A blocked release is refused server-side with a 409, so the button is
   // disabled rather than letting the deploy fail after the fact.
   const blocked = !!active.blocked
-  const canSubmit = canTrigger && !actions.deployPending && !blocked
+  const canSubmit =
+    canTrigger &&
+    !actions.deployPending &&
+    !blocked &&
+    // Hold the button until CI has answered: an unresolved status cannot
+    // be told apart from a green one, and deploying on it skips the
+    // acknowledgement the server would then demand with a 409.
+    !ciPending &&
+    !(ciFailed && !ciAcknowledged)
   // The upstream can legitimately run a release that semver-ranks below
   // this env's current one (divergent lines / roll-forward of an older
   // line) — deployable, but worth calling out.
@@ -181,11 +214,20 @@ export function PendingReleasesCard({
           </div>
         ) : null}
 
+        <CiFailureNotice
+          acknowledged={ciAcknowledged}
+          action="deploy"
+          ciStatus={ciStatus}
+          onAcknowledgedChange={setCiAcknowledged}
+          sha={active.sha}
+        />
+
         <div className="border-tertiary flex items-center justify-end gap-2 border-t pt-4">
           <Button
             disabled={!canSubmit}
             onClick={() =>
               actions.deploy({
+                acknowledgeCiFailure: ciFailed && ciAcknowledged,
                 action: 'deploy',
                 envName: stage.env.name,
                 envSlug: stage.env.slug,
