@@ -515,33 +515,31 @@ class IntegrationsEndpointTestCase(support.SharedAppTestCase):
     # -- delete ----------------------------------------------------------
 
     def test_delete_integration(self) -> None:
-        self.mock_db.execute.side_effect = [
-            [{'id': 'integration-1'}],
-            [],
+        self.mock_db.execute.return_value = [
+            {'integration_id': 'integration-1', 'removed': 2}
         ]
-        with mock.patch(
-            'imbi.api.endpoints.integrations.identity_repository'
-            '.delete_connections_for_integration',
-            new=mock.AsyncMock(return_value=2),
-        ) as cascade:
-            response = self.client.delete(
-                '/organizations/myorg/integrations/logzio-prod'
-            )
-        self.assertEqual(response.status_code, 204)
-        cascade.assert_awaited_once()
-        self.assertEqual(
-            cascade.await_args.args[1],
-            'integration-1',
+        response = self.client.delete(
+            '/organizations/myorg/integrations/logzio-prod'
         )
+        self.assertEqual(response.status_code, 204)
+        self.mock_db.execute.assert_awaited_once()
+        query, params, _columns = self.mock_db.execute.await_args.args
+        self.assertEqual(params['slug'], 'logzio-prod')
+        self.assertEqual(params['org_slug'], 'myorg')
+        # The Integration and its IdentityConnection nodes go in one
+        # statement so neither can be stranded by a partial failure.
+        self.assertIn('DETACH DELETE c, i', query)
+
+    def test_delete_integration_without_connections(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'integration_id': 'integration-1', 'removed': 0}
+        ]
+        response = self.client.delete(
+            '/organizations/myorg/integrations/logzio-prod'
+        )
+        self.assertEqual(response.status_code, 204)
 
     def test_delete_integration_not_found(self) -> None:
-        self.mock_db.execute.return_value = [{'id': None}]
-        response = self.client.delete(
-            '/organizations/myorg/integrations/missing'
-        )
-        self.assertEqual(response.status_code, 404)
-
-    def test_delete_integration_no_records(self) -> None:
         self.mock_db.execute.return_value = []
         response = self.client.delete(
             '/organizations/myorg/integrations/missing'

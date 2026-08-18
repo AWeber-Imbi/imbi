@@ -93,30 +93,6 @@ class RevokeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('access_token_encrypted = null', query)
 
 
-class DeleteConnectionsForIntegrationTestCase(
-    unittest.IsolatedAsyncioTestCase
-):
-    """Verify the integration-wide cascade delete."""
-
-    async def test_returns_deleted_count(self) -> None:
-        db = mock.AsyncMock()
-        db.execute.return_value = [{'deleted': 2}]
-        deleted = await repository.delete_connections_for_integration(
-            db, 'integration-1'
-        )
-        self.assertEqual(deleted, 2)
-        query, params, _columns = db.execute.await_args.args
-        self.assertEqual(params['integration_id'], 'integration-1')
-        self.assertIn('DETACH DELETE c', query)
-
-    async def test_returns_zero_without_records(self) -> None:
-        db = mock.AsyncMock()
-        db.execute.return_value = []
-        self.assertEqual(
-            await repository.delete_connections_for_integration(db, 'i-1'), 0
-        )
-
-
 class UpsertConnectionTestCase(unittest.IsolatedAsyncioTestCase):
     """Verify upsert_connection encrypts and returns the connection id."""
 

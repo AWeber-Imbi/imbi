@@ -264,20 +264,19 @@ class AuthProvidersEndpointTestCase(support.SharedAppTestCase):
     # -- delete ----------------------------------------------------------
 
     def test_delete_login_provider(self) -> None:
-        self.mock_db.execute.return_value = [{'integration_id': 'int-1'}]
-        with (
-            mock.patch(
-                'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
-            ),
-            mock.patch(
-                'imbi.api.endpoints.auth_providers.identity_repository'
-                '.delete_connections_for_integration',
-                new=mock.AsyncMock(return_value=1),
-            ) as cascade,
+        self.mock_db.execute.return_value = [
+            {'integration_id': 'int-1', 'removed': 1}
+        ]
+        with mock.patch(
+            'imbi.api.endpoints.auth_providers.login_repo.invalidate_cache'
         ):
             response = self.client.delete('/login-providers/google')
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(cascade.await_args.args[1], 'int-1')
+        query, params, _columns = self.mock_db.execute.await_args.args
+        self.assertEqual(params['slug'], 'google')
+        # The Integration and its IdentityConnection nodes go in one
+        # statement so neither can be stranded by a partial failure.
+        self.assertIn('DETACH DELETE c, i', query)
 
     def test_delete_login_provider_not_found(self) -> None:
         self.mock_db.execute.return_value = []

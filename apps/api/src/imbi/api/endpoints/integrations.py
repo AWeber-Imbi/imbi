@@ -11,7 +11,6 @@ from imbi.api.auth import login_providers, permissions
 from imbi.api.domain import models
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
-from imbi.api.identity import repository as identity_repository
 from imbi.api.plugins import parse_options
 from imbi.api.plugins.assignments import hydrate_integration
 from imbi.api.plugins.credentials import patch_integration_credentials
@@ -483,40 +482,37 @@ async def delete_integration(
 
     """
     _ = auth
-    lookup: typing.LiteralString = """
+    # IdentityConnection nodes reference the Integration by property,
+    # not by edge, so DETACH DELETE on the Integration alone leaves them
+    # behind.  Orphans keep status='active' and a refresh token, which
+    # makes the identity sweeper retry them every minute against a
+    # plugin it can no longer resolve.  Delete both in one statement so
+    # a failure cannot strand one without the other.
+    query: typing.LiteralString = """
     MATCH (i:Integration {{slug: {slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    RETURN i.id AS id
+    WITH i, i.id AS integration_id
+    OPTIONAL MATCH (c:IdentityConnection)
+    WHERE c.integration_id = integration_id
+    DETACH DELETE c, i
+    RETURN integration_id, count(c) AS removed
     """
     records = await db.execute(
-        lookup, {'slug': slug, 'org_slug': org_slug}, ['id']
+        query,
+        {'slug': slug, 'org_slug': org_slug},
+        ['integration_id', 'removed'],
     )
-    integration_id = graph.parse_agtype(records[0]['id']) if records else None
-    if not integration_id:
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Integration with slug {slug!r} not found',
         )
-
-    query: typing.LiteralString = """
-    MATCH (i:Integration {{id: {id}}})
-    DETACH DELETE i
-    """
-    await db.execute(query, {'id': integration_id}, [])
-
-    # IdentityConnection nodes reference the Integration by property,
-    # not by edge, so DETACH DELETE leaves them behind.  Orphans keep
-    # status='active' and a refresh token, which makes the identity
-    # sweeper retry them every minute against a plugin it can no longer
-    # resolve.
-    removed = await identity_repository.delete_connections_for_integration(
-        db, str(integration_id)
-    )
+    removed = graph.parse_agtype(records[0]['removed'])
     if removed:
         LOGGER.info(
             'Deleted %d identity connection(s) with integration_id=%s',
             removed,
-            integration_id,
+            graph.parse_agtype(records[0]['integration_id']),
         )
 
 
