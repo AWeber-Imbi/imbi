@@ -3277,23 +3277,39 @@ class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
         return project_deployments.UnattachedDeploymentBody(**fields)
 
     async def _record(
-        self, release_id: str | None, result: typing.Any
+        self,
+        release_id: str | None,
+        result: typing.Any,
+        *,
+        in_org: bool = True,
+        committish: str | None = 'abc1234',
     ) -> typing.Any:
         db = mock.AsyncMock()
         with (
             mock.patch(
+                f'{_MODULE}._project_in_org',
+                mock.AsyncMock(return_value=in_org),
+            ),
+            mock.patch(
                 f'{_MODULE}._release_id_for',
                 mock.AsyncMock(return_value=release_id),
-            ),
+            ) as lookup,
             mock.patch(
                 'imbi.common.deployments.upsert_deployment',
                 mock.AsyncMock(return_value=result),
             ) as upsert,
         ):
             response = await project_deployments.record_unattached_deployment(
-                'octo', 'p1', 'production', self._body(), db, mock.Mock()
+                'octo',
+                'p1',
+                'production',
+                self._body(committish=committish),
+                db,
+                None,
+                mock.Mock(),
             )
         self.upsert = upsert
+        self.lookup = lookup
         return response
 
     async def test_records_without_a_release(self) -> None:
@@ -3316,6 +3332,35 @@ class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual('rel-9', response.release_id)
         self.assertEqual('rel-9', self.upsert.await_args.kwargs['release_id'])
+
+    async def test_project_outside_the_organization_is_a_404(self) -> None:
+        """The permission is global, so the path has to be checked.
+
+        Without this the org in the URL would not have to own the
+        project: the upsert matches the project by id and the
+        environment by org, independently of each other.
+        """
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._record(
+                None,
+                common_deployments.UpsertResult('dep-1', 'created'),
+                in_org=False,
+            )
+        self.assertEqual(404, ctx.exception.status_code)
+
+    async def test_full_sha_is_normalized_before_lookup(self) -> None:
+        """Releases store the short form; a full SHA would never match."""
+        await self._record(
+            None,
+            common_deployments.UpsertResult('dep-1', 'created'),
+            committish='abc1234def5678',
+        )
+        self.assertEqual(
+            'abc1234', self.lookup.await_args.kwargs['committish']
+        )
+        self.assertEqual(
+            'abc1234', self.upsert.await_args.kwargs['release_committish']
+        )
 
     async def test_unknown_environment_is_a_404(self) -> None:
         with self.assertRaises(fastapi.HTTPException) as ctx:

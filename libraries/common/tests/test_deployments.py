@@ -332,6 +332,31 @@ class LifecycleTests(DeploymentNodeTestCase):
         )
 
 
+class OriginTests(DeploymentNodeTestCase):
+    async def test_origin_records_the_creating_writer(self) -> None:
+        await self.upsert(status='in_progress', source='promote')
+        await self.upsert(status='success', source='gateway')
+        node = (await self.nodes())[0]
+        # Create-only: the webhook confirming a promote's rollout does
+        # not make the deployment the webhook's.
+        self.assertEqual('promote', node['origin'])
+        self.assertEqual(
+            ['promote', 'gateway'],
+            [entry['source'] for entry in node['history']],
+        )
+
+    async def test_stuck_reports_the_origin(self) -> None:
+        await self.upsert(
+            status='in_progress',
+            source='promote',
+            timestamp=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+        stuck = await deployments.stuck_deployments(
+            self.graph, project_id=PROJECT_ID, cutoff=NOW
+        )
+        self.assertEqual('promote', stuck[0].origin)
+
+
 class MergeEventsTests(unittest.TestCase):
     def test_naive_legacy_timestamps_sort_alongside_node_ones(self) -> None:
         """A legacy entry written without an offset must not raise.
@@ -352,6 +377,32 @@ class MergeEventsTests(unittest.TestCase):
         )
         self.assertEqual(
             [naive, aware], deployments.merge_events([aware], [naive])
+        )
+
+    def test_one_run_in_both_shapes_collapses_to_the_newest(self) -> None:
+        """A rollout can exist as an array entry and as a node.
+
+        It started before the node cutover and a later webhook wrote it
+        as a node; returning it twice would double-count one rollout.
+        """
+        from imbi.common import models
+
+        legacy = models.DeploymentEvent(
+            timestamp=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            status='in_progress',
+            external_run_id='42',
+        )
+        node = models.DeploymentEvent(
+            timestamp=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
+            status='success',
+            external_run_id='42',
+        )
+        other = models.DeploymentEvent(
+            timestamp=datetime.datetime(2026, 1, 3, tzinfo=datetime.UTC),
+            status='success',
+        )
+        self.assertEqual(
+            [node, other], deployments.merge_events([legacy, other], [node])
         )
 
     def test_orders_by_timestamp(self) -> None:

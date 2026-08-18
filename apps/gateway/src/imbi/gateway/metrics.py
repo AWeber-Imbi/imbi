@@ -29,6 +29,8 @@ except ImportError:  # pragma: no cover - optional dependency
 #: - ``lookup_failed`` -- the release lookup itself failed, so the
 #:   event is dropped rather than mis-attributed
 #: - ``release_missing`` -- the API rejected the write as 404
+#: - ``write_failed`` -- the API rejected the write for any other
+#:   reason, so the event is lost until something replays it
 DEPLOYMENT_EVENTS = 'imbi.gateway.deployment_events'
 
 Disposition = typing.Literal[
@@ -38,6 +40,7 @@ Disposition = typing.Literal[
     'no_committish',
     'lookup_failed',
     'release_missing',
+    'write_failed',
 ]
 
 _counter: typing.Any = None

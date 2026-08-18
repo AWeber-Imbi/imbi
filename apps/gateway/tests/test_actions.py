@@ -1065,6 +1065,53 @@ class AddDeploymentEventTests(helpers.TestCase):
             )
         )
 
+    async def test_failed_write_is_not_counted_as_recorded(self) -> None:
+        """A 5xx loses the event; the count has to say so."""
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases(),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(503),
+            ),
+            unittest.mock.patch.object(
+                actions.metrics, 'deployment_event'
+            ) as mock_metric,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                event=_event(_STATUS_BODY),
+            )
+        mock_metric.assert_called_once_with('write_failed', 'proj')
+
+    async def test_failed_unattached_write_is_counted_as_failed(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            _patch_list_releases([]),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_unattached_deployment',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(500),
+            ),
+            unittest.mock.patch.object(
+                actions.metrics, 'deployment_event'
+            ) as mock_metric,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                event=_event(_STATUS_BODY),
+            )
+        mock_metric.assert_called_once_with('write_failed', 'proj')
+
     async def test_dispositions_are_counted(self) -> None:
         """Every outcome is counted, not only logged.
 

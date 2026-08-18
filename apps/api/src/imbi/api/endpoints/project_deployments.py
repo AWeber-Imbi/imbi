@@ -54,6 +54,7 @@ from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
 from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
 from imbi.api.scoring import OptionalValkeyClient
+from imbi.api.scoring import queue as score_queue
 from imbi.common import clickhouse, graph, versioning
 from imbi.common import deployments as deployment_nodes
 from imbi.common import models as common_models
@@ -2009,6 +2010,22 @@ class DeploymentResyncEnqueueResponse(pydantic.BaseModel):
     enqueued: bool
 
 
+async def _project_in_org(
+    db: graph.Graph, org_slug: str, project_id: str
+) -> bool:
+    """True when *org_slug* owns *project_id*."""
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    RETURN p.id AS id
+    """
+    rows = await db.execute(
+        query, {'project_id': project_id, 'org_slug': org_slug}, ['id']
+    )
+    return bool(rows)
+
+
 class UnattachedDeploymentBody(pydantic.BaseModel):
     """A deployment observed for a project whose release is unknown."""
 
@@ -2046,6 +2063,7 @@ async def record_unattached_deployment(
     env_slug: str,
     body: UnattachedDeploymentBody,
     db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -2065,11 +2083,29 @@ async def record_unattached_deployment(
     A release that *is* resolvable is attached immediately, so a caller
     that only lacks the lookup does not create a correlation backlog.
     """
+    # The permission is global, and the upsert matches the project and
+    # the org-scoped environment independently -- so without this the
+    # org in the path would not have to own the project.
+    if not await _project_in_org(db, org_slug, project_id):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Project {project_id!r} not found in organization '
+                f'{org_slug!r}'
+            ),
+        )
+    # Releases store the short form, so a caller reporting a full SHA
+    # would otherwise never match one.
+    committish = (
+        versioning.short_committish(body.committish)
+        if body.committish
+        else None
+    )
     release_id = await _release_id_for(
         db,
         project_id=project_id,
         tag=body.tag,
-        committish=body.committish or '',
+        committish=committish or '',
     )
     result = await deployment_nodes.upsert_deployment(
         db,
@@ -2082,7 +2118,7 @@ async def record_unattached_deployment(
         external_run_id=body.external_run_id,
         external_run_url=body.external_run_url,
         release_tag=body.tag,
-        release_committish=body.committish,
+        release_committish=committish,
         source='gateway',
     )
     if result is None:
@@ -2093,6 +2129,12 @@ async def record_unattached_deployment(
                 f'organization {org_slug!r} not found'
             ),
         )
+    # A DeploymentStatusPolicy scores the project on its current
+    # deployment status, which this write can change -- the same reason
+    # the release-scoped endpoint enqueues.
+    await score_queue.enqueue_recompute(
+        valkey_client, project_id, 'deployment_status_change'
+    )
     return UnattachedDeploymentResponse(
         deployment_id=result.id, release_id=release_id
     )
@@ -4020,6 +4062,10 @@ async def _in_flight_deployment(
     promote rather than resume it.  Terminal deployments are ignored --
     a redeploy of the same release into the same environment is a real
     request, not a duplicate.
+
+    Scoped to deployments a promote created (``origin``): an in-flight
+    direct deploy of the same release is somebody else's rollout, and
+    adopting it would skip the promote's own dispatch and audit row.
     """
     query: typing.LiteralString = """
     MATCH (:Project {{id: {project_id}}})
@@ -4028,6 +4074,7 @@ async def _in_flight_deployment(
           -[:TARGETS]->(:Environment {{slug: {env_slug}}})
     WHERE d.status IN ['pending', 'in_progress']
           AND d.external_run_id IS NOT NULL
+          AND d.origin = 'promote'
     RETURN d.external_run_id AS run_id,
            d.external_run_url AS run_url,
            d.status AS status
@@ -4227,6 +4274,9 @@ async def complete_promote_build(
         external_run_url=run.run_url,
         # The person who pressed promote, not the worker that got here.
         performed_by=requested_by or None,
+        # Stamps ``origin`` on the node, which is what lets a reclaimed
+        # job recognize its own in-flight deployment.
+        source='promote',
     )
     if isinstance(appended, str):
         LOGGER.warning(

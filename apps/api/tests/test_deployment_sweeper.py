@@ -24,6 +24,7 @@ def _stuck(**overrides: typing.Any) -> deployments.StuckDeployment:
         'env_slug': 'production',
         'external_run_id': 'run-42',
         'status': 'in_progress',
+        'origin': 'gateway',
         'created_at': NOW - datetime.timedelta(hours=2),
         'release_id': 'rel-1',
         'release_tag': None,
@@ -33,11 +34,14 @@ def _stuck(**overrides: typing.Any) -> deployments.StuckDeployment:
     return deployments.StuckDeployment(**fields)
 
 
-def _run(status: str) -> plugin_base.DeploymentRun:
+def _run(
+    status: str, completed_at: datetime.datetime | None = None
+) -> plugin_base.DeploymentRun:
     return plugin_base.DeploymentRun(
         run_id='run-42',
         run_url='https://gh/deployments/42',
         status=typing.cast('typing.Any', status),
+        completed_at=completed_at,
     )
 
 
@@ -86,6 +90,56 @@ class SweeperTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             'https://gh/deployments/42', kwargs['external_run_url']
         )
+
+    async def test_close_out_is_stamped_with_the_run_completion(
+        self,
+    ) -> None:
+        """A late close-out must not claim to have happened now.
+
+        The current-release pointer only moves forward, so closing a
+        week-old success at sweep time would let it supersede a release
+        that shipped after it.
+        """
+        done = NOW - datetime.timedelta(days=3)
+        self.poll.return_value = _run('success', completed_at=done)
+        await self._sweep()
+        self.assertEqual(done, self.append.await_args.kwargs['timestamp'])
+
+    async def test_close_out_falls_back_to_the_start_time(self) -> None:
+        await self._sweep()
+        self.assertEqual(
+            _stuck().created_at, self.append.await_args.kwargs['timestamp']
+        )
+
+    async def test_persistent_poll_failure_eventually_expires(self) -> None:
+        self.stuck.return_value = [
+            _stuck(created_at=NOW - datetime.timedelta(days=8))
+        ]
+        self.poll.side_effect = RuntimeError('gateway timeout')
+        summary = await self._sweep()
+        assert summary is not None
+        self.assertEqual(1, summary.expired)
+        kwargs = self.append.await_args.kwargs
+        self.assertEqual('failed', kwargs['status'])
+        self.assertEqual(deployment_sweeper.EXPIRED_NOTE, kwargs['note'])
+
+    async def test_recent_poll_failure_is_left_for_the_next_sweep(
+        self,
+    ) -> None:
+        self.poll.side_effect = RuntimeError('gateway timeout')
+        summary = await self._sweep()
+        assert summary is not None
+        self.assertEqual(0, summary.expired)
+        self.append.assert_not_awaited()
+
+    async def test_naive_now_does_not_raise(self) -> None:
+        summary = await deployment_sweeper.sweep_project(
+            mock.AsyncMock(),
+            'p1',
+            now=datetime.datetime(2026, 8, 18, 12),  # noqa: DTZ001
+        )
+        assert summary is not None
+        self.assertEqual(1, summary.resolved)
 
     async def test_running_run_is_left_alone(self) -> None:
         self.poll.return_value = _run('in_progress')

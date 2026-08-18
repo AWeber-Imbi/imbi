@@ -126,6 +126,7 @@ async def _record(
     status: deployments.DeploymentStatus,
     note: str | None,
     run_url: str | None,
+    timestamp: datetime.datetime | None = None,
 ) -> None:
     """Persist a swept outcome.
 
@@ -133,6 +134,11 @@ async def _record(
     success still advances the environment's current-release pointer; an
     unattached one has no release for that pointer to name, so it is
     written straight to the node.
+
+    *timestamp* is when the rollout actually ended, not when the sweep
+    noticed.  It matters: the current-release pointer only moves
+    forward, so closing a week-old success at sweep time would let it
+    supersede a release that shipped after it.
     """
     if release_id is None:
         await deployments.upsert_deployment(
@@ -144,6 +150,7 @@ async def _record(
             note=note,
             external_run_id=item.external_run_id,
             external_run_url=run_url,
+            timestamp=timestamp,
             source=_SOURCE,
         )
         return
@@ -159,6 +166,7 @@ async def _record(
         note=note,
         external_run_id=item.external_run_id,
         external_run_url=run_url,
+        timestamp=timestamp,
         source=_SOURCE,
     )
     if isinstance(result, str):
@@ -168,6 +176,34 @@ async def _record(
             item.project_id,
             result,
         )
+
+
+async def _expire_unpollable(
+    db: graph.Graph,
+    item: deployments.StuckDeployment,
+    release_id: str | None,
+    now: datetime.datetime,
+) -> int:
+    """Expire a deployment whose run cannot be polled at all.
+
+    A run that errors on every sweep would otherwise never reach the
+    expiry branch, so a persistent 5xx or timeout kept it unfinished
+    forever -- the state this sweeper exists to end.  Returns 1 when it
+    expired the deployment, 0 when it is still young enough to keep
+    asking about.
+    """
+    if deployments.as_utc(item.created_at) >= now - EXPIRE_AFTER:
+        return 0
+    await _record(
+        db,
+        item,
+        release_id,
+        status='failed',
+        note=EXPIRED_NOTE,
+        run_url=None,
+        timestamp=item.created_at,
+    )
+    return 1
 
 
 async def sweep_project(
@@ -185,7 +221,7 @@ async def sweep_project(
     """
     from imbi.api.endpoints import project_deployments
 
-    now = now or datetime.datetime.now(datetime.UTC)
+    now = deployments.as_utc(now or datetime.datetime.now(datetime.UTC))
     stuck = await deployments.stuck_deployments(
         db, project_id=project_id, cutoff=now - STALE_AFTER
     )
@@ -225,6 +261,7 @@ async def sweep_project(
                 item.project_id,
                 exc.detail,
             )
+            expired += await _expire_unpollable(db, item, release_id, now)
             continue
         except Exception:
             LOGGER.exception(
@@ -232,6 +269,7 @@ async def sweep_project(
                 item.external_run_id,
                 item.project_id,
             )
+            expired += await _expire_unpollable(db, item, release_id, now)
             continue
 
         status = deployments.RUN_STATUS_TO_STATUS.get(run.status)
@@ -243,9 +281,10 @@ async def sweep_project(
                 status=status,
                 note=f'closed by sweeper: run {run.status}',
                 run_url=run.run_url,
+                timestamp=run.completed_at or item.created_at,
             )
             resolved += 1
-        elif item.created_at < now - EXPIRE_AFTER:
+        elif deployments.as_utc(item.created_at) < now - EXPIRE_AFTER:
             await _record(
                 db,
                 item,
@@ -253,6 +292,7 @@ async def sweep_project(
                 status='failed',
                 note=EXPIRED_NOTE,
                 run_url=run.run_url,
+                timestamp=item.created_at,
             )
             expired += 1
         elif status is not None and status != item.status:

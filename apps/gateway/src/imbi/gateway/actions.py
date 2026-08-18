@@ -708,7 +708,7 @@ async def add_deployment_event(
                 ctx.project_id,
                 status,
             )
-            await client.record_unattached_deployment(
+            unattached = await client.record_unattached_deployment(
                 ctx.org_slug,
                 ctx.project_id,
                 environment,
@@ -718,7 +718,10 @@ async def add_deployment_event(
                     'committish': committish_value,
                 },
             )
-            metrics.deployment_event('orphaned', ctx.project_id)
+            metrics.deployment_event(
+                'write_failed' if unattached.is_error else 'orphaned',
+                ctx.project_id,
+            )
             return
         release_id = str(releases[0]['id'])
         response = await client.record_deployment(
@@ -733,7 +736,12 @@ async def add_deployment_event(
         )
         metrics.deployment_event('release_missing', ctx.project_id)
         return
-    metrics.deployment_event('recorded', ctx.project_id)
+    # ``record_deployment`` logs its own failures and hands the response
+    # back rather than raising, so the disposition has to read it: a 5xx
+    # is a lost event, not a recorded one.
+    metrics.deployment_event(
+        'write_failed' if response.is_error else 'recorded', ctx.project_id
+    )
 
 
 async def publish_release(

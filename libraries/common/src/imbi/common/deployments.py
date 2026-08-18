@@ -122,6 +122,7 @@ _UPSERT_TAIL: typing.Final[typing.LiteralString] = """
               = COALESCE({performed_by}, d.performed_by, '')) AS unchanged
     SET d.id = COALESCE(d.id, {id}),
         d.created_at = COALESCE(d.created_at, {timestamp}),
+        d.origin = COALESCE(d.origin, {source}),
         d.status = {status},
         d.note = {note},
         d.external_run_url =
@@ -204,6 +205,11 @@ async def upsert_deployment(
 
     A ``None`` *external_run_url* or *performed_by* means "unknown", not
     "clear": neither can blank a value another writer already recorded.
+
+    *source* names the writer.  It lands on every ``history`` entry and,
+    for the writer that created the deployment, once on the node as
+    ``origin`` -- which is how a later reader tells a promote's rollout
+    from a direct deploy's.
 
     Returns ``None`` when the project, environment, or named release
     does not exist, so the caller can tell a missing target from a
@@ -295,23 +301,39 @@ RETURN p.id AS project_id,
        e{{.slug, .name, .sort_order}} AS env,
        CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
        d AS deployment
+ORDER BY COALESCE(d.updated_at, d.created_at) DESC
+LIMIT {limit}
 """
 
 
-async def deployments_by_project(
-    db: graph.Graph, project_ids: abc.Sequence[str]
-) -> list[ProjectDeployment]:
-    """Return every ``Deployment`` recorded for *project_ids*.
+#: Newest-first rows one call will read.  A deployment is a node per
+#: rollout now, so a long-lived project's set only grows; every request
+#: path here wants the newest state per environment, and reading the
+#: whole history to compute it would get slower forever.  Generous
+#: enough that the "latest per environment" answer is unaffected in
+#: practice -- an environment whose newest deployment falls outside
+#: this window has had hundreds of newer ones elsewhere in the project.
+DEFAULT_READ_LIMIT = 500
 
-    Callers union these with the legacy ``DEPLOYED_TO`` array entries;
-    ordering is the caller's business because every one of them ranks
-    by ``timestamp``.
+
+async def deployments_by_project(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+    *,
+    limit: int = DEFAULT_READ_LIMIT,
+) -> list[ProjectDeployment]:
+    """Return the newest ``Deployment`` nodes for *project_ids*.
+
+    Newest first, capped at *limit* rows across the whole set.  Callers
+    union these with the legacy ``DEPLOYED_TO`` array entries; ordering
+    beyond that is the caller's business because every one of them
+    ranks by ``timestamp``.
     """
     if not project_ids:
         return []
     rows = await db.execute(
         _BY_PROJECT_QUERY,
-        {'project_ids': list(project_ids)},
+        {'project_ids': list(project_ids), 'limit': limit},
         ['project_id', 'env', 'release', 'deployment'],
     )
     out: list[ProjectDeployment] = []
@@ -358,13 +380,25 @@ def merge_events(
 ) -> list[models.DeploymentEvent]:
     """Union event lists into one chronological history.
 
-    The read paths all rank by ``timestamp``, and the legacy array is
-    already stored oldest-first, so sorting is enough to interleave the
-    two representations.
+    The read paths all rank by ``timestamp``, so sorting is enough to
+    interleave the node and array representations.  One rollout can
+    appear in both: it started as an array entry before the cutover and
+    a later webhook wrote it as a node.  Entries sharing an
+    ``external_run_id`` collapse to the newest, which is the one that
+    knows how the rollout ended.
     """
     merged = [event for source in sources for event in source]
     merged.sort(key=lambda event: as_utc(event.timestamp))
-    return merged
+    newest_by_run: dict[str, models.DeploymentEvent] = {}
+    for event in merged:
+        if event.external_run_id:
+            newest_by_run[event.external_run_id] = event
+    return [
+        event
+        for event in merged
+        if not event.external_run_id
+        or newest_by_run[event.external_run_id] is event
+    ]
 
 
 _CLOSE_IN_FLIGHT_QUERY: typing.Final[typing.LiteralString] = """
@@ -427,6 +461,8 @@ class StuckDeployment(typing.NamedTuple):
     env_slug: str
     external_run_id: str
     status: DeploymentStatus
+    #: Which writer created it (``promote``, ``gateway``, ``api``, …).
+    origin: str | None
     created_at: datetime.datetime
     #: ``None`` for a deployment recorded before its Release resolved.
     release_id: str | None
@@ -491,6 +527,7 @@ async def stuck_deployments(
                 env_slug=env_slug,
                 external_run_id=str(props.get('external_run_id')),
                 status=typing.cast('DeploymentStatus', props.get('status')),
+                origin=props.get('origin'),
                 created_at=datetime.datetime.fromisoformat(created),
                 release_id=str(release_id) if release_id else None,
                 release_tag=props.get('release_tag'),
