@@ -475,7 +475,8 @@ export function PromoteTab({
         </div>
 
         <Textarea
-          className="mt-2 min-h-40 font-mono text-xs"
+          autoResize
+          className="mt-2 max-h-[60vh] min-h-40 font-mono text-xs"
           onChange={(e) => {
             setNotes(e.target.value)
             setNotesDirty(true)
