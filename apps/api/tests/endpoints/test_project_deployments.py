@@ -3398,6 +3398,189 @@ class UpdateProjectLinkTestCase(unittest.IsolatedAsyncioTestCase):
         db.execute.assert_not_called()
 
 
+class ReleaseHistoryCiFallbackTestCase(ProjectDeploymentsTestCase):
+    """#211: CI status for a project with nothing to deploy into.
+
+    The history's ``ci_status`` is hydrated from the synced ``commits``
+    table, which the deployment sync fills by walking ``DEPLOYED_TO``
+    edges.  A releasable-only project (a CLI, a library) has no
+    environments and therefore no edges, so every release read
+    ``'unknown'`` while a green build sat in GitHub.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _WHEN = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._deployable = False
+        self._props: dict[str, typing.Any] = {}
+        self.mock_db.execute = mock.AsyncMock(side_effect=self._execute)
+
+    def _execute(
+        self, query: str, params: typing.Any, columns: typing.Any
+    ) -> list[dict[str, typing.Any]]:
+        del params, columns
+        if 'pt.deployable' in query:
+            return [{'flags': json.dumps([self._deployable])}]
+        if 'properties(p)' in query:
+            return [{'props': json.dumps(self._props)}]
+        return []
+
+    def _tags(self, *shas: str) -> None:
+        """One ClickHouse tag row per sha, and no commit facts for any."""
+        m = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'name': f'v1.{i}.0',
+                        'sha': sha,
+                        'tagged_at': self._WHEN,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': self._WHEN,
+                    }
+                    for i, sha in enumerate(shas)
+                ],
+                [],
+            ]
+        )
+        patcher = mock.patch(f'{_MODULE}.clickhouse.query', new=m)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _use_plugin(self, status: str) -> None:
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _ci_plugin(status), options={'owner': 'octo', 'repo': 'demo'}
+        )
+
+    def _history(self) -> list[dict[str, typing.Any]]:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(200, response.status_code, response.text)
+        return typing.cast('list[dict[str, typing.Any]]', response.json())
+
+    def test_reads_the_projects_ci_attributes_first(self) -> None:
+        """Attributes win over check-runs, deliberately.
+
+        The check-runs path answers ``'unknown'`` for a repo on the legacy
+        combined-status API and after the 403 memoization -- both of which
+        would reintroduce the exact symptom this fixes.
+        """
+        self._props = {
+            'ci_build_result': 'success',
+            'ci_build_sha': 'aaa1111',
+        }
+        self._use_plugin('fail')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('pass', self._history()[0]['ci_status'])
+
+    def test_attributes_naming_another_commit_are_ignored(self) -> None:
+        """A green latest build says nothing about an older tag."""
+        self._props = {
+            'ci_build_result': 'success',
+            'ci_build_sha': 'bbb2222',
+        }
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_attributes_without_a_commit_are_ignored(self) -> None:
+        """Nothing ties an unattributed result to a particular release."""
+        self._props = {'ci_build_result': 'success'}
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_an_unrecognized_result_word_is_not_guessed_at(self) -> None:
+        self._props = {'ci_build_result': 'purple', 'ci_build_sha': 'aaa1111'}
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_a_short_commit_attribute_is_too_ambiguous_to_match(self) -> None:
+        """``'a'`` would prefix-match most shas; skip it instead."""
+        self._props = {'ci_build_result': 'success', 'ci_build_sha': 'a'}
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_a_non_hex_commit_attribute_is_ignored(self) -> None:
+        """A value that is not a sha at all cannot name a commit."""
+        self._props = {
+            'ci_build_result': 'success',
+            'ci_build_sha': 'not-a-sha-at-all',
+        }
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_falls_through_to_live_check_runs(self) -> None:
+        self._use_plugin('pass')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('pass', self._history()[0]['ci_status'])
+
+    def test_a_failing_build_is_reported_as_failing(self) -> None:
+        self._use_plugin('fail')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('fail', self._history()[0]['ci_status'])
+
+    def test_says_not_applicable_rather_than_unknown(self) -> None:
+        """The whole point of #211.
+
+        ``'unknown'`` claims a question was asked and came back empty.
+        For this project nothing had been asked at all, and the column
+        read the same as a genuinely red-flagged build.
+        """
+        self._use_plugin('unknown')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_a_plugin_that_cannot_answer_does_not_fail_the_page(self) -> None:
+        self.mocks['resolve_capability'].side_effect = fastapi.HTTPException(
+            status_code=404, detail='no deployment plugin'
+        )
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('not_applicable', self._history()[0]['ci_status'])
+
+    def test_a_deployable_project_keeps_its_unknown(self) -> None:
+        """A deployable project's ``unknown`` really is unknown.
+
+        The sync asked and got nothing, so a live check-runs call per
+        release on every page load would buy nothing but latency.
+        """
+        self._deployable = True
+        self._use_plugin('pass')
+        self._tags('aaa1111aaa1111')
+        self.assertEqual('unknown', self._history()[0]['ci_status'])
+
+    def test_the_live_fallback_is_bounded(self) -> None:
+        """One request per release, on a page load -- so it is capped.
+
+        Releases past the cap keep the honest label rather than making
+        the page wait on a request per row.
+        """
+        seen: list[str] = []
+
+        class _RecordingCiPlugin(_FakeDeploymentPlugin):
+            async def get_check_status(  # type: ignore[override]
+                self, ctx, credentials, committish
+            ):
+                seen.append(committish)
+                return 'pass'
+
+        self.mocks['resolve_capability'].return_value = _make_resolved(
+            _RecordingCiPlugin, options={'owner': 'octo', 'repo': 'demo'}
+        )
+        shas = [f'{i:02d}aaaaaaaaaaa' for i in range(15)]
+        self._tags(*shas)
+        statuses = [e['ci_status'] for e in self._history()]
+        self.assertEqual(['pass'] * 10 + ['not_applicable'] * 5, statuses)
+        # The cap keeps the ten highest-semver releases (v1.14.0 down to
+        # v1.5.0), not just any ten.
+        self.assertCountEqual(shas[5:], seen)
+
+
 class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
     """recent-commits / release-drift / release-history / releases/cut."""
 
@@ -3736,9 +3919,12 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(first['notes_markdown'], '## Notes')
         self.assertEqual(first['release_url'], 'https://gh/releases/v1.0.0')
         self.assertEqual(first['ci_status'], 'pass')
-        # Tag with no matching Release node -> null metadata, unknown CI.
+        # Tag with no matching Release node -> null metadata, and no CI
+        # status anywhere: the mocked project is not deployable, so the
+        # #211 fallback runs and answers ``not_applicable`` rather than
+        # claiming a question was asked and came back empty.
         self.assertIsNone(data[1]['notes_markdown'])
-        self.assertEqual(data[1]['ci_status'], 'unknown')
+        self.assertEqual(data[1]['ci_status'], 'not_applicable')
 
     def test_release_history_head_is_highest_semver_not_newest(self) -> None:
         """The head of history is the highest semver, ignoring timestamps.
