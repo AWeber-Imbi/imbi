@@ -4166,7 +4166,7 @@ class AdoptUntaggedReleaseTestCase(unittest.IsolatedAsyncioTestCase):
         return db
 
     async def test_tags_the_untagged_release_for_the_commit(self) -> None:
-        db = self._db([], [{'rid': 'rel-1'}], [])
+        db = self._db([], [{'rid': 'rel-1'}], [{'rid': 'rel-1'}])
         result = await project_deployments._adopt_untagged_release(
             db, project_id='pid', committish='1A9C610FFFF', tag='v1.0.0'
         )
@@ -4178,8 +4178,28 @@ class AdoptUntaggedReleaseTestCase(unittest.IsolatedAsyncioTestCase):
         )
         query, params, _ = db.execute.await_args_list[2].args
         self.assertIn('SET r.tag', query)
+        self.assertIn('WHERE r.tag IS NULL', query)
         self.assertEqual(params['release_id'], 'rel-1')
         self.assertEqual(params['tag'], 'v1.0.0')
+
+    async def test_skips_when_the_node_is_tagged_before_the_write(
+        self,
+    ) -> None:
+        """Two tags promoting the same commit at once.
+
+        Both probes see the node untagged, so both reach the write.  The
+        write's own ``r.tag IS NULL`` is what makes the loser match
+        nothing rather than overwrite the winner's tag.
+        """
+        db = self._db([], [{'rid': 'rel-1'}], [])
+        with self.assertLogs('imbi.api.endpoints', level='WARNING') as logs:
+            result = await project_deployments._adopt_untagged_release(
+                db, project_id='pid', committish='1a9c610', tag='v2.0.0'
+            )
+        self.assertIsNone(result)
+        self.assertTrue(
+            any('tagged between the probe' in line for line in logs.output),
+        )
 
     async def test_skips_when_a_release_already_carries_the_tag(self) -> None:
         db = self._db([{'rid': 'rel-existing'}])

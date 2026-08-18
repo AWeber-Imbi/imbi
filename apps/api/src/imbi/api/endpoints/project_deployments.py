@@ -1143,9 +1143,12 @@ async def _adopt_untagged_release(
 
     Returns the adopted ``Release.id``, or ``None`` when there is nothing
     to adopt: a Release already carries the tag (the upsert matches it),
-    no untagged node holds this commit, or more than one does -- tagging
+    no untagged node holds this commit, more than one does -- tagging
     every match would put the same tag on several nodes, which is the
-    duplicate this exists to avoid.
+    duplicate this exists to avoid -- or a concurrent promote of another
+    tag adopted the node first.  In every one of those the caller's
+    upsert goes on to create the tagged node, as it did before adoption
+    existed.
     """
     committish = versioning.short_committish(committish)
     existing = await _release_id_for(
@@ -1178,20 +1181,39 @@ async def _adopt_untagged_release(
                 committish,
             )
         return None
+    # ``r.tag IS NULL`` again, on the write itself.  The probe above ran as
+    # its own statement, so a concurrent promote of a *different* tag on
+    # the same commit can have adopted this node in between.  Restating the
+    # condition makes the second writer match nothing instead of
+    # overwriting the first one's tag, and the returned row is what tells
+    # the two apart.  Standing down is safe: the caller's upsert then
+    # creates the tagged node, which is what happened before adoption
+    # existed at all.
     adopt: typing.LiteralString = """
     MATCH (r:Release {{id: {release_id}}})
+    WHERE r.tag IS NULL
     SET r.tag = {tag},
         r.updated_at = {now}
+    RETURN r.id AS rid
     """
-    await db.execute(
+    adopted = await db.execute(
         adopt,
         {
             'release_id': ids[0],
             'tag': tag,
             'now': datetime.datetime.now(datetime.UTC).isoformat(),
         },
-        [],
+        ['rid'],
     )
+    if not adopted:
+        LOGGER.warning(
+            'Not adopting Release %s for tag %s on project %s: it was '
+            'tagged between the probe and the write',
+            ids[0],
+            tag,
+            project_id,
+        )
+        return None
     LOGGER.info(
         'Adopted untagged Release %s on commit %s for project %s as tag %s',
         ids[0],
