@@ -1085,11 +1085,19 @@ async def _existing_tag_for_committish(
     for the commit, and raises ``ValueError`` when the commit carries more
     than one distinct tag -- a retagged commit is ambiguous, so we fail the
     observation rather than silently attaching notes to the wrong release.
+
+    ``promoted_committish`` is matched alongside ``committish`` because a
+    promote heals the node onto the commit its tag resolves to (the
+    version bump), while a resync of the *testing* deployment that
+    preceded it still carries the promoted commit.  Matching only the
+    current committish would strand those late observations on an
+    untagged sibling.
     """
     query: typing.LiteralString = """
-    MATCH (:Project {{id: {project_id}}})
-        -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
+    MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
     WHERE r.tag IS NOT NULL
+      AND (r.committish = {committish}
+           OR r.promoted_committish = {committish})
     RETURN r.tag AS tag
     """
     rows = await db.execute(
@@ -1109,6 +1117,89 @@ async def _existing_tag_for_committish(
             'Multiple tagged Releases match this deployment committish'
         )
     return None
+
+
+async def _adopt_untagged_release(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    committish: str,
+    tag: str,
+) -> str | None:
+    """Put ``tag`` on the untagged Release already holding this commit.
+
+    Testing only ever receives the default branch's HEAD, never a tag,
+    so the Release node carrying a commit's testing history is untagged
+    (the resync creates it, keyed on the committish).  A promote of that
+    same commit used to create a *second*, tagged node, and the two were
+    only ever related through the shared committish -- a link the
+    promote's own heal then severs by moving the tagged node onto the
+    version-bump commit.
+
+    Adopting the existing node instead keeps one Release carrying the
+    whole testing-to-production trajectory.  It is safe only because the
+    tag is the identity: every later correlation finds the node by tag,
+    so which node receives the tag is free to choose.
+
+    Returns the adopted ``Release.id``, or ``None`` when there is nothing
+    to adopt: a Release already carries the tag (the upsert matches it),
+    no untagged node holds this commit, or more than one does -- tagging
+    every match would put the same tag on several nodes, which is the
+    duplicate this exists to avoid.
+    """
+    committish = versioning.short_committish(committish)
+    existing = await _release_id_for(
+        db, project_id=project_id, committish=committish, tag=tag
+    )
+    if existing is not None:
+        return None
+    probe: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})
+        -[:HAS_RELEASE]->(r:Release {{committish: {committish}}})
+    WHERE r.tag IS NULL
+    RETURN r.id AS rid
+    """
+    rows = await db.execute(
+        probe, {'project_id': project_id, 'committish': committish}, ['rid']
+    )
+    ids = [
+        str(rid)
+        for row in rows
+        if (rid := graph.parse_agtype(row.get('rid'))) is not None
+    ]
+    if len(ids) != 1:
+        if ids:
+            LOGGER.warning(
+                'Not adopting a Release for tag %s on project %s: %d '
+                'untagged nodes carry commit %s',
+                tag,
+                project_id,
+                len(ids),
+                committish,
+            )
+        return None
+    adopt: typing.LiteralString = """
+    MATCH (r:Release {{id: {release_id}}})
+    SET r.tag = {tag},
+        r.updated_at = {now}
+    """
+    await db.execute(
+        adopt,
+        {
+            'release_id': ids[0],
+            'tag': tag,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        [],
+    )
+    LOGGER.info(
+        'Adopted untagged Release %s on commit %s for project %s as tag %s',
+        ids[0],
+        committish,
+        project_id,
+        tag,
+    )
+    return ids[0]
 
 
 async def _best_effort[T](
@@ -2435,6 +2526,12 @@ async def _dispatch_release_build(
                 'is the ref the Release workflow must be dispatched from.'
             ),
         )
+    # The commit being promoted usually already has an untagged Release
+    # holding its testing history; tag that one instead of leaving a
+    # tagged sibling beside it.
+    await _adopt_untagged_release(
+        db, project_id=project_id, committish=committish, tag=tag
+    )
     release_id = await _upsert_release_node(
         db,
         project_id=project_id,
@@ -3165,10 +3262,18 @@ async def _set_release_committish(
     so healing it here is what makes the deployment webhook's later
     lookup (which carries the post-bump SHA) find this node instead of
     creating a duplicate.
+
+    The commit being healed away is kept as ``promoted_committish`` (set
+    once, on the first heal): it is the commit the testing deployments
+    ran, and the resync that observes them arrives carrying it long
+    after the heal.  Without it those observations match no tagged
+    release.
     """
     query: typing.LiteralString = """
     MATCH (r:Release {{id: {release_id}}})
-    SET r.committish = {committish},
+    SET r.promoted_committish = COALESCE(
+            r.promoted_committish, r.committish),
+        r.committish = {committish},
         r.updated_at = {now}
     """
     await db.execute(
