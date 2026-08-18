@@ -93,15 +93,18 @@ class UpsertResult(typing.NamedTuple):
 # appending to ``history``.
 # ``WITH`` narrows scope, so every variable the clauses after it still
 # need is carried through explicitly -- an unbound name in a later
-# ``MERGE`` would create a node rather than fail.
+# ``MERGE`` would create a node rather than fail.  ``DISTINCT`` because
+# the ``OPTIONAL MATCH`` fans out one row per stale ``TARGETS`` edge,
+# and every row after it would run the ``SET`` and ``history`` append
+# in ``_UPSERT_TAIL`` again.
 _UPSERT_MERGE: typing.Final[typing.LiteralString] = """
     MERGE (p)<-[:BELONGS_TO]-(d:Deployment
           {{external_run_id: {external_run_id}}})
-    WITH {carried}
+    WITH DISTINCT {carried}
     OPTIONAL MATCH (d)-[stale:TARGETS]->(old:Environment)
     WHERE id(old) <> id(e)
     DELETE stale
-    WITH {carried}
+    WITH DISTINCT {carried}
     MERGE (d)-[:TARGETS]->(e)
 """
 

@@ -3368,6 +3368,84 @@ class UnattachedDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(404, ctx.exception.status_code)
 
 
+class UnattachedDeploymentRouteTestCase(ProjectDeploymentsTestCase):
+    """The route contract the gateway depends on, exercised by URL.
+
+    The gateway builds this URL by hand, so the path, the 201, the
+    ``extra='forbid'`` body, and the write permission are all part of
+    the contract rather than implementation detail.
+    """
+
+    _URL = (
+        '/organizations/myorg/projects/proj1/deployments'
+        '/environments/production/deployments'
+    )
+
+    def setUp(self) -> None:
+        super().setUp()
+        from imbi.api import scoring
+
+        self.test_app.dependency_overrides[scoring._inject_optional_client] = (
+            lambda: None
+        )
+
+    def _post(self, body: dict[str, typing.Any]) -> typing.Any:
+        with (
+            mock.patch(
+                f'{_MODULE}._project_in_org',
+                mock.AsyncMock(return_value=True),
+            ),
+            mock.patch(
+                f'{_MODULE}._release_id_for',
+                mock.AsyncMock(return_value=None),
+            ),
+            mock.patch(
+                'imbi.common.deployments.upsert_deployment',
+                mock.AsyncMock(
+                    return_value=common_deployments.UpsertResult(
+                        'dep-1', 'created'
+                    )
+                ),
+            ),
+        ):
+            with testclient.TestClient(self.test_app) as client:
+                return client.post(self._URL, json=body)
+
+    def test_records_with_a_201(self) -> None:
+        response = self._post({'status': 'in_progress'})
+        self.assertEqual(response.status_code, 201, response.text)
+        data = response.json()
+        self.assertEqual('dep-1', data['deployment_id'])
+        self.assertIsNone(data['release_id'])
+
+    def test_unknown_key_is_a_422(self) -> None:
+        response = self._post({'status': 'in_progress', 'surprise': 'x'})
+        self.assertEqual(response.status_code, 422, response.text)
+
+    def test_requires_write_permission(self) -> None:
+        non_admin = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            is_active=True,
+            is_admin=False,
+            password_hash=password.hash_password('testpassword123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=non_admin,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:deployment:read'},
+        )
+
+        async def _ctx() -> permissions.AuthContext:
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = _ctx
+        response = self._post({'status': 'in_progress'})
+        self.assertEqual(response.status_code, 403, response.text)
+
+
 class PromoteReclaimGuardTestCase(unittest.IsolatedAsyncioTestCase):
     """A reclaimed promote job must not dispatch a second deployment.
 
