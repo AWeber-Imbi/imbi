@@ -301,34 +301,6 @@ async def delete_connection(
     )
 
 
-async def delete_connections_for_integration(
-    db: graph.Graph,
-    integration_id: str,
-) -> int:
-    """Hard-delete every connection bound to ``integration_id``.
-
-    ``IdentityConnection`` keys off ``integration_id`` as a property,
-    not an edge, so deleting the ``Integration`` node leaves its
-    connections behind.  Those orphans still carry ``status='active'``
-    and a refresh token, so the sweeper picks them up on every poll and
-    fails to resolve a plugin for them.  Callers that delete an
-    Integration call this to clean up.
-
-    Returns the number of connections deleted.
-    """
-    query: typing.LiteralString = """
-    MATCH (c:IdentityConnection {{integration_id: {integration_id}}})
-    DETACH DELETE c
-    RETURN count(c) AS deleted
-    """
-    records = await db.execute(
-        query, {'integration_id': integration_id}, ['deleted']
-    )
-    if not records:
-        return 0
-    return int(graph.parse_agtype(records[0]['deleted']) or 0)
-
-
 async def revoke(
     db: graph.Graph,
     integration_id: str,

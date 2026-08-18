@@ -26,7 +26,6 @@ from imbi.api.endpoints.integrations import (
     require_login_capable,
 )
 from imbi.api.graph_sql import props_template, set_clause
-from imbi.api.identity import repository as identity_repository
 from imbi.api.plugins.assignments import hydrate_integration
 from imbi.api.plugins.credentials import patch_integration_credentials
 from imbi.common import graph
@@ -321,35 +320,34 @@ async def delete_login_provider(
 
     """
     _ = auth
+    # IdentityConnection nodes point at the Integration by property, not
+    # by edge, so DETACH DELETE on the Integration alone leaves them
+    # behind for the identity sweeper to retry forever.  Delete both in
+    # one statement so a failure cannot strand one without the other.
     query: typing.LiteralString = """
     MATCH (i:Integration {{slug: {slug}}})
     OPTIONAL MATCH (i)-[:BELONGS_TO]->(o:Organization)
     WITH i, o
     WHERE o IS NULL
     WITH i, i.id AS integration_id
-    DETACH DELETE i
-    RETURN integration_id
+    OPTIONAL MATCH (c:IdentityConnection)
+    WHERE c.integration_id = integration_id
+    DETACH DELETE c, i
+    RETURN integration_id, count(c) AS removed
     """
-    records = await db.execute(query, {'slug': slug}, ['integration_id'])
-    integration_id = (
-        graph.parse_agtype(records[0]['integration_id']) if records else None
+    records = await db.execute(
+        query, {'slug': slug}, ['integration_id', 'removed']
     )
     login_repo.invalidate_cache()
-    if not integration_id:
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Login provider with slug {slug!r} not found',
         )
-
-    # IdentityConnection nodes point at the Integration by property, not
-    # by edge, so DETACH DELETE leaves them behind for the identity
-    # sweeper to retry forever.
-    removed = await identity_repository.delete_connections_for_integration(
-        db, str(integration_id)
-    )
+    removed = graph.parse_agtype(records[0]['removed'])
     if removed:
         LOGGER.info(
             'Deleted %d identity connection(s) with integration_id=%s',
             removed,
-            integration_id,
+            graph.parse_agtype(records[0]['integration_id']),
         )
