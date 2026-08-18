@@ -2683,6 +2683,11 @@ export interface paths {
          *     result; when both are omitted every release is returned. Both are
          *     matched exactly. A null parameter is interpolated as Cypher ``null``
          *     and short-circuits the corresponding clause via ``null IS NULL``.
+         *
+         *     ``committish`` also matches ``promoted_committish`` -- the commit a
+         *     release was promoted from, kept when the promote heals the node onto
+         *     the commit its tag resolves to. A deployment observed on the
+         *     pre-bump commit belongs to that release, not to nothing.
          */
         get: operations["list_releases_api_organizations__org_slug__projects__project_id__releases__get"];
         put?: never;
@@ -3944,6 +3949,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/check-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Commit Check Status
+         * @description Roll up the CI check-runs status for one commit.
+         *
+         *     The pre-flight read behind the promote / release forms' CI warning.  It
+         *     is deliberately the *same* call the promote gate makes
+         *     (:func:`_assert_ci_not_failing`) rather than a read of the synced
+         *     ``commits`` table, so what the operator is shown and what the gate
+         *     enforces cannot disagree.
+         *
+         *     Never errors on the plugin's behalf: an unreachable or unauthorized
+         *     check-runs API answers ``'unknown'``, which is also the status that
+         *     does not gate a promote.
+         */
+        get: operations["get_commit_check_status_api_organizations__org_slug__projects__project_id__deployments_check_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/deployments": {
         parameters: {
             query?: never;
@@ -4026,6 +4061,38 @@ export interface paths {
          * @description Return the project's last deployment-resync state.
          */
         get: operations["get_deployment_sync_status_api_organizations__org_slug__projects__project_id__deployments_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/promote-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Promote Status
+         * @description Return the project's in-flight (or last) promote state.
+         *
+         *     The dispatch-driven promote returns as soon as the Release workflow is
+         *     dispatched, so this is how the UI follows the rest: ``building`` while
+         *     the artifact builds, ``deploying`` while the Deployment Imbi created
+         *     rolls out, then ``success`` once that rollout reports success.
+         *
+         *     Three ways it can end short of that, differing in what the operator
+         *     has to do next: ``build_failed`` blocks the release (fix the build and
+         *     promote a bumped version, or unblock to retry); ``deploy_failed``
+         *     leaves the tag shippable (redeploy it once the cause is fixed);
+         *     ``failed`` means Imbi lost track of the build or the rollout, so the
+         *     outcome is unknown and the tag is likewise left shippable.
+         */
+        get: operations["get_promote_status_api_organizations__org_slug__projects__project_id__deployments_promote_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4199,6 +4266,38 @@ export interface paths {
          *     record an audit row.
          */
         post: operations["cut_release_api_organizations__org_slug__projects__project_id__deployments_releases_cut_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/{tag}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Release
+         * @description Ratify an existing ``Release`` by creating it on the remote.
+         *
+         *     ``promote`` cuts the tag and records the ``Release`` node -- the
+         *     *intent* to ship.  This publishes the GitHub Release for it, which
+         *     is the *ratification*: the gateway calls it from the
+         *     ``deployment_status`` webhook once the rollout reports success, so a
+         *     failed rollout leaves a blocked release rather than a ratified one.
+         *
+         *     Title and notes come from the ``Release`` node, so the ratification
+         *     can't drift from what Imbi recorded at promote time.  Idempotent: a
+         *     release the remote already has is not an error, and the node's
+         *     ``github_release`` link is refreshed either way.  Blocked releases
+         *     are refused with a 409.
+         */
+        post: operations["publish_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__publish_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4473,6 +4572,221 @@ export interface paths {
          *     then created, descending.
          */
         get: operations["pull_request_activity_api_organizations__org_slug__pull_requests_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/components/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Components
+         * @description Search the packages the organization depends on.
+         *
+         *     ``q`` matches the purl or the display name, case-insensitively;
+         *     empty returns the whole catalog (capped by ``limit``). Results sort
+         *     by project count descending — the packages worth governing are the
+         *     widely-used ones — then by purl for a stable order.
+         */
+        get: operations["search_components_api_organizations__org_slug__components__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/components/{component_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Component Usage
+         * @description Return the Package Usage payload for one package.
+         *
+         *     Deployment facts cover currently-deployed releases only. The header
+         *     counts are over the same scope, except ``version_count``, which is
+         *     every version Imbi has ever ingested for the package.
+         */
+        get: operations["get_component_usage_api_organizations__org_slug__components__component_id__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/components/{component_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Component Status
+         * @description Mark every version of a package deprecated or forbidden.
+         *
+         *     Re-marking overwrites the mark and re-stamps the actor. The mark is
+         *     global — components are shared identities, so every organization
+         *     depending on this package sees it.
+         */
+        put: operations["set_component_status_api_organizations__org_slug__components__component_id__status_put"];
+        post?: never;
+        /**
+         * Clear Component Status
+         * @description Return a package to current. Clearing an unmarked package is a
+         *     no-op, not an error.
+         */
+        delete: operations["clear_component_status_api_organizations__org_slug__components__component_id__status_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/component-releases/{component_release_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Component Release Status
+         * @description Mark one version of a package deprecated or forbidden.
+         *
+         *     A version mark never *relaxes* its component's — the effective
+         *     status reports are built from is the stricter of the two.
+         */
+        put: operations["set_component_release_status_api_organizations__org_slug__component_releases__component_release_id__status_put"];
+        post?: never;
+        /**
+         * Clear Component Release Status
+         * @description Return one version to current.
+         *
+         *     A version left current still reports as non-current while its
+         *     component carries a mark — clearing here removes only the
+         *     version's own.
+         */
+        delete: operations["clear_component_release_status_api_organizations__org_slug__component_releases__component_release_id__status_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/component-releases/{component_release_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Component Notes
+         * @description List the notes on a package version, oldest first.
+         */
+        get: operations["list_component_notes_api_organizations__org_slug__component_releases__component_release_id__notes_get"];
+        put?: never;
+        /**
+         * Create Component Note
+         * @description Append a note to a package version.
+         *
+         *     Notes are append-only and visible to every team; the author is the
+         *     calling principal, never a body field.
+         */
+        post: operations["create_component_note_api_organizations__org_slug__component_releases__component_release_id__notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/component-releases/{component_release_id}/advisories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Component Advisories
+         * @description List the advisories recorded against a package version.
+         */
+        get: operations["list_component_advisories_api_organizations__org_slug__component_releases__component_release_id__advisories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/component-releases/{component_release_id}/advisories/{cve_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upsert Component Advisory
+         * @description Record an advisory against a package version.
+         *
+         *     The identifier is upper-cased and MERGEd, so the same CVE affecting
+         *     several versions is one node with several edges. Re-recording it
+         *     updates the URL and title but keeps the original author and
+         *     creation time.
+         */
+        put: operations["upsert_component_advisory_api_organizations__org_slug__component_releases__component_release_id__advisories__cve_id__put"];
+        post?: never;
+        /**
+         * Delete Component Advisory
+         * @description Detach an advisory from a package version.
+         *
+         *     Only the edge is removed; the ``Advisory`` node survives as long as
+         *     another version still references it, and is collected once none
+         *     does. Removing an advisory that was never attached is a no-op.
+         */
+        delete: operations["delete_component_advisory_api_organizations__org_slug__component_releases__component_release_id__advisories__cve_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/reports/problem-packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Problem Packages
+         * @description Every currently-deployed package version that needs attention.
+         *
+         *     A finding is an effective status other than current *or* at least
+         *     one recorded advisory — a package still marked current but carrying
+         *     a CVE is exactly what this report exists to surface. Filtering,
+         *     counting, and CSV export are the client's job; this returns the
+         *     whole (capped) set.
+         */
+        get: operations["get_problem_packages_api_organizations__org_slug__reports_problem_packages_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6069,6 +6383,35 @@ export interface components {
             auth_types: string[];
         };
         /**
+         * AdvisoryRequest
+         * @description Body for ``PUT .../advisories/{cve_id}``.
+         *
+         *     Severity is deliberately absent — see :class:`imbi.common.models.
+         *     Advisory`.
+         */
+        AdvisoryRequest: {
+            /** Url */
+            url: string;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * AdvisoryResponse
+         * @description One advisory recorded against a component version.
+         */
+        AdvisoryResponse: {
+            /** Cve Id */
+            cve_id: string;
+            /** Url */
+            url: string;
+            /** Title */
+            title?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+        };
+        /**
          * AgePolicy
          * @description Score based on age of a datetime attribute.
          *
@@ -6779,6 +7122,8 @@ export interface components {
             short_sha: string;
             /** Message */
             message: string;
+            /** Body */
+            body?: string | null;
             /** Author */
             author?: string | null;
             /** Authored At */
@@ -6798,6 +7143,26 @@ export interface components {
              * @default false
              */
             is_head: boolean;
+        };
+        /**
+         * CommitCheckStatus
+         * @description Live rolled-up CI status for one commit.
+         *
+         *     Backs the promote / release forms' pre-flight warning.  Read live from
+         *     the plugin rather than from the synced ``commits`` table because it is
+         *     the same call the promote gate itself makes -- a banner sourced from
+         *     the (possibly lagging) sync could tell the operator the commit is
+         *     green and then have the promote refused.
+         */
+        CommitCheckStatus: {
+            /** Committish */
+            committish: string;
+            /**
+             * Ci Status
+             * @default unknown
+             * @enum {string}
+             */
+            ci_status: "pass" | "fail" | "warn" | "unknown";
         };
         /**
          * CommitSyncEnqueueResponse
@@ -6867,6 +7232,155 @@ export interface components {
              * @default []
              */
             pr_numbers: number[];
+        };
+        /**
+         * ComponentNoteRequest
+         * @description Body for ``POST .../notes``.
+         */
+        ComponentNoteRequest: {
+            /** Body */
+            body: string;
+        };
+        /**
+         * ComponentNoteResponse
+         * @description One note on a component version. Append-only, never edited.
+         */
+        ComponentNoteResponse: {
+            /** Id */
+            id: string;
+            /** Author */
+            author: string;
+            /** Body */
+            body: string;
+            /** Created At */
+            created_at?: string | null;
+        };
+        /**
+         * ComponentSearchResponse
+         * @description Search hits plus the catalog totals the filter line shows.
+         *
+         *     ``ecosystem_totals`` counts every package the org depends on per
+         *     ecosystem, unfiltered by ``q`` — it describes the catalog being
+         *     searched, not the result set.
+         */
+        ComponentSearchResponse: {
+            /**
+             * Data
+             * @default []
+             */
+            data: components["schemas"]["ComponentSearchResult"][];
+            /**
+             * Ecosystem Totals
+             * @default {}
+             */
+            ecosystem_totals: {
+                [key: string]: number;
+            };
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * ComponentSearchResult
+         * @description One package in the search dropdown.
+         */
+        ComponentSearchResult: {
+            /** Id */
+            id: string;
+            /** Purl Name */
+            purl_name: string;
+            /** Name */
+            name: string;
+            /** Ecosystem */
+            ecosystem: string;
+            /** Status */
+            status?: ("deprecated" | "forbidden") | null;
+            /**
+             * Version Count
+             * @default 0
+             */
+            version_count: number;
+            /**
+             * Project Count
+             * @default 0
+             */
+            project_count: number;
+        };
+        /**
+         * ComponentStatusRequest
+         * @description Body for the two ``PUT .../status`` endpoints.
+         */
+        ComponentStatusRequest: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "deprecated" | "forbidden";
+        };
+        /**
+         * ComponentStatusResponse
+         * @description The governance triple after a set or clear.
+         */
+        ComponentStatusResponse: {
+            /** Id */
+            id: string;
+            /** Status */
+            status?: ("deprecated" | "forbidden") | null;
+            /** Status At */
+            status_at?: string | null;
+            /** Status By */
+            status_by?: string | null;
+        };
+        /**
+         * ComponentUsageResponse
+         * @description The Package Usage screen payload for one package.
+         */
+        ComponentUsageResponse: {
+            /** Id */
+            id: string;
+            /** Purl Name */
+            purl_name: string;
+            /** Name */
+            name: string;
+            /** Ecosystem */
+            ecosystem: string;
+            /** Description */
+            description?: string | null;
+            /** Status */
+            status?: ("deprecated" | "forbidden") | null;
+            /** Status At */
+            status_at?: string | null;
+            /** Status By */
+            status_by?: string | null;
+            /**
+             * Project Count
+             * @default 0
+             */
+            project_count: number;
+            /**
+             * Version Count
+             * @default 0
+             */
+            version_count: number;
+            /**
+             * Deployed Version Count
+             * @default 0
+             */
+            deployed_version_count: number;
+            /**
+             * Vulnerable Project Count
+             * @default 0
+             */
+            vulnerable_project_count: number;
+            /** Newest Deployed Version */
+            newest_deployed_version?: string | null;
+            /**
+             * Versions
+             * @default []
+             */
+            versions: components["schemas"]["UsageVersion"][];
         };
         /**
          * Condition
@@ -7410,6 +7924,17 @@ export interface components {
             tag?: string | null;
             /** Warning */
             warning?: string | null;
+            /** Phase */
+            phase?: "building" | null;
+            /** Artifact Run Id */
+            artifact_run_id?: string | null;
+            /** Artifact Run Url */
+            artifact_run_url?: string | null;
+            /**
+             * Watched
+             * @default true
+             */
+            watched: boolean;
         };
         /** DocumentAnalyticsResponse */
         DocumentAnalyticsResponse: {
@@ -7826,6 +8351,26 @@ export interface components {
             /** Type */
             type: string;
             /** Count */
+            count: number;
+        };
+        /**
+         * EnvironmentChip
+         * @description An environment a package version is currently deployed into.
+         *
+         *     ``count`` is the number of distinct projects in the row's scope
+         *     running the version in that environment.
+         */
+        EnvironmentChip: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Label Color */
+            label_color?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
             count: number;
         };
         /**
@@ -9837,6 +10382,83 @@ export interface components {
             missing_score: number;
         };
         /**
+         * ProblemPackageRow
+         * @description One ``project + package + version`` finding.
+         *
+         *     Environments collapse into ``environments`` rather than multiplying
+         *     the row, matching the report design's row identity.
+         */
+        ProblemPackageRow: {
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Project Slug */
+            project_slug: string;
+            /** Team */
+            team?: string | null;
+            /** Team Slug */
+            team_slug?: string | null;
+            /**
+             * Project Types
+             * @default []
+             */
+            project_types: string[];
+            /** Component Id */
+            component_id: string;
+            /** Purl Name */
+            purl_name: string;
+            /** Component Name */
+            component_name: string;
+            /** Ecosystem */
+            ecosystem: string;
+            /** Component Release Id */
+            component_release_id: string;
+            /** Version */
+            version: string;
+            /** Status */
+            status?: ("deprecated" | "forbidden") | null;
+            /**
+             * Status Inherited
+             * @default false
+             */
+            status_inherited: boolean;
+            /**
+             * Advisories
+             * @default []
+             */
+            advisories: components["schemas"]["AdvisoryResponse"][];
+            /**
+             * Note Count
+             * @default 0
+             */
+            note_count: number;
+            /**
+             * Environments
+             * @default []
+             */
+            environments: components["schemas"]["EnvironmentChip"][];
+        };
+        /**
+         * ProblemPackagesResponse
+         * @description Every currently-deployed finding across the organization.
+         *
+         *     ``truncated`` is true when the row cap was hit, so the UI can say
+         *     the report is partial rather than silently under-reporting.
+         */
+        ProblemPackagesResponse: {
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["ProblemPackageRow"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
          * ProjectCreate
          * @description Request body for creating a project.
          *
@@ -10354,8 +10976,11 @@ export interface components {
          * @description Body for ``POST /deployments`` with ``action='promote'``.
          *
          *     Cuts a new tag at ``from_committish`` (the build being promoted),
-         *     creates a release on the remote, then dispatches the workflow with
-         *     the tag as the ref.
+         *     then dispatches the workflow with the tag as the ref.  The GitHub
+         *     Release is *not* created here -- it is the ratification of a
+         *     successful rollout, published later through
+         *     ``POST /deployments/releases/{tag}/publish`` (see
+         *     :func:`publish_release`).
          */
         PromoteActionRequest: {
             /**
@@ -10383,6 +11008,41 @@ export interface components {
              * @default false
              */
             prerelease: boolean;
+            /**
+             * Acknowledge Ci Failure
+             * @default false
+             */
+            acknowledge_ci_failure: boolean;
+        };
+        /**
+         * PromoteStatus
+         * @description In-flight (or last) promote state for a project.
+         */
+        PromoteStatus: {
+            /**
+             * Status
+             * @default idle
+             * @enum {string}
+             */
+            status: "idle" | "building" | "deploying" | "success" | "build_failed" | "deploy_failed" | "failed";
+            /** Tag */
+            tag?: string | null;
+            /** Committish */
+            committish?: string | null;
+            /** Environment */
+            environment?: string | null;
+            /** From Environment */
+            from_environment?: string | null;
+            /** Artifact Run Id */
+            artifact_run_id?: string | null;
+            /** Artifact Run Url */
+            artifact_run_url?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * PromotionOption
@@ -10733,6 +11393,11 @@ export interface components {
              * @default false
              */
             prerelease: boolean;
+            /**
+             * Acknowledge Ci Failure
+             * @default false
+             */
+            acknowledge_ci_failure: boolean;
         };
         /**
          * ReleaseCutResponse
@@ -10752,6 +11417,17 @@ export interface components {
             recorded: boolean;
             /** Warning */
             warning?: string | null;
+            /** Phase */
+            phase?: "building" | null;
+            /** Artifact Run Id */
+            artifact_run_id?: string | null;
+            /** Artifact Run Url */
+            artifact_run_url?: string | null;
+            /**
+             * Watched
+             * @default true
+             */
+            watched: boolean;
         };
         /**
          * ReleaseDependenciesResponse
@@ -10915,6 +11591,10 @@ export interface components {
             blocked_by?: string | null;
             /** Blocked At */
             blocked_at?: string | null;
+            /** Ci Override By */
+            ci_override_by?: string | null;
+            /** Ci Override At */
+            ci_override_at?: string | null;
         };
         /**
          * ReleaseInfo
@@ -10955,6 +11635,36 @@ export interface components {
             url: string;
             /** Label */
             label?: string | null;
+        };
+        /**
+         * ReleasePublishRequest
+         * @description Body for ``POST /deployments/releases/{tag}/publish``.
+         *
+         *     Every field is optional: the release title and notes come from the
+         *     ``Release`` node being ratified, so a caller that knows only the tag
+         *     (the gateway, reacting to a successful deployment) posts an empty
+         *     body.
+         */
+        ReleasePublishRequest: {
+            /**
+             * Prerelease
+             * @default false
+             */
+            prerelease: boolean;
+        };
+        /**
+         * ReleasePublishResponse
+         * @description Result of ratifying a ``Release`` on the remote.
+         */
+        ReleasePublishResponse: {
+            /** Tag */
+            tag: string;
+            /** Published */
+            published: boolean;
+            /** Release Url */
+            release_url?: string | null;
+            /** Warning */
+            warning?: string | null;
         };
         /**
          * ReleaseResponse
@@ -11869,6 +12579,86 @@ export interface components {
             created_at: string;
         };
         /**
+         * UsageProject
+         * @description A project currently running a given package version.
+         */
+        UsageProject: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Team */
+            team?: string | null;
+            /** Team Slug */
+            team_slug?: string | null;
+            /**
+             * Project Types
+             * @default []
+             */
+            project_types: string[];
+            /**
+             * Environments
+             * @default []
+             */
+            environments: string[];
+        };
+        /**
+         * UsageVersion
+         * @description One version group in the Package Usage table.
+         *
+         *     ``status`` is the mark on this version alone; ``effective_status``
+         *     folds in the component-level mark, and ``status_inherited`` is true
+         *     when the component's mark is what makes it non-current.
+         */
+        UsageVersion: {
+            /** Id */
+            id: string;
+            /** Version */
+            version: string;
+            /** Status */
+            status?: ("deprecated" | "forbidden") | null;
+            /** Status At */
+            status_at?: string | null;
+            /** Status By */
+            status_by?: string | null;
+            /** Effective Status */
+            effective_status?: ("deprecated" | "forbidden") | null;
+            /**
+             * Status Inherited
+             * @default false
+             */
+            status_inherited: boolean;
+            /** First Seen */
+            first_seen?: string | null;
+            /**
+             * Advisories
+             * @default []
+             */
+            advisories: components["schemas"]["AdvisoryResponse"][];
+            /**
+             * Note Count
+             * @default 0
+             */
+            note_count: number;
+            /**
+             * Project Count
+             * @default 0
+             */
+            project_count: number;
+            /**
+             * Projects
+             * @default []
+             */
+            projects: components["schemas"]["UsageProject"][];
+            /**
+             * Environments
+             * @default []
+             */
+            environments: components["schemas"]["EnvironmentChip"][];
+        };
+        /**
          * UserCreate
          * @description Request model for creating users.
          */
@@ -12600,18 +13390,6 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
-            /**
-             * Deprecated
-             * @description Indicates that the project should not be used
-             * @default false
-             */
-            deprecated: boolean;
-            /**
-             * Deprecation Reason
-             * @description Specify why the project is deprecated and what should be used instead.
-             * @default null
-             */
-            deprecation_reason: string | null;
         };
         /** ProjectResponse */
         ProjectBlueprintResponse: {
@@ -12673,18 +13451,6 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
-            /**
-             * Deprecated
-             * @description Indicates that the project should not be used
-             * @default false
-             */
-            deprecated: boolean;
-            /**
-             * Deprecation Reason
-             * @description Specify why the project is deprecated and what should be used instead.
-             * @default null
-             */
-            deprecation_reason: string | null;
         };
         /** ProjectType */
         ProjectTypeBlueprintRequest: {
@@ -12900,20 +13666,6 @@ export interface components {
              */
             can_promote: boolean;
             organization: components["schemas"]["Organization"];
-        };
-        /** ProjectDeployedInEnvironmentEdge */
-        Project_Environment_DEPLOYED_INEdgeProperties: {
-            /**
-             * Acceptance Test Status
-             * @default null
-             */
-            acceptance_test_status: ("pass" | "fail") | null;
-            /**
-             * Url
-             * @description The deployment URL for this project in this environment
-             * @default null
-             */
-            url: string | null;
         };
     };
     responses: never;
@@ -19758,6 +20510,41 @@ export interface operations {
             };
         };
     };
+    get_commit_check_status_api_organizations__org_slug__projects__project_id__deployments_check_status_get: {
+        parameters: {
+            query: {
+                committish: string;
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitCheckStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     trigger_deployment_api_organizations__org_slug__projects__project_id__deployments_post: {
         parameters: {
             query?: {
@@ -19850,6 +20637,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeploymentSyncStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_promote_status_api_organizations__org_slug__projects__project_id__deployments_promote_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoteStatus"];
                 };
             };
             /** @description Validation Error */
@@ -20096,6 +20915,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReleaseCutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__publish_post: {
+        parameters: {
+            query?: {
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReleasePublishRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleasePublishResponse"];
                 };
             };
             /** @description Validation Error */
@@ -20536,6 +21394,408 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PRActivityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_components_api_organizations__org_slug__components__get: {
+        parameters: {
+            query?: {
+                q?: string;
+                ecosystem?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_component_usage_api_organizations__org_slug__components__component_id__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentUsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_component_status_api_organizations__org_slug__components__component_id__status_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComponentStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_component_status_api_organizations__org_slug__components__component_id__status_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_component_release_status_api_organizations__org_slug__component_releases__component_release_id__status_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComponentStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_component_release_status_api_organizations__org_slug__component_releases__component_release_id__status_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_component_notes_api_organizations__org_slug__component_releases__component_release_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentNoteResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_component_note_api_organizations__org_slug__component_releases__component_release_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComponentNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentNoteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_component_advisories_api_organizations__org_slug__component_releases__component_release_id__advisories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdvisoryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_component_advisory_api_organizations__org_slug__component_releases__component_release_id__advisories__cve_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_release_id: string;
+                cve_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdvisoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdvisoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_component_advisory_api_organizations__org_slug__component_releases__component_release_id__advisories__cve_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                component_release_id: string;
+                cve_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_problem_packages_api_organizations__org_slug__reports_problem_packages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemPackagesResponse"];
                 };
             };
             /** @description Validation Error */

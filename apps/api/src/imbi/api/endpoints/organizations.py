@@ -14,6 +14,11 @@ from imbi.common import graph, models
 from imbi.common import patch as json_patch
 
 from .comments import comments_router
+from .components import (
+    component_releases_router,
+    component_reports_router,
+    components_router,
+)
 from .document_analytics import (
     document_analytics_org_router,
     document_analytics_router,
@@ -198,6 +203,18 @@ organizations_router.include_router(
 organizations_router.include_router(
     pull_requests_router,
     prefix='/{org_slug}/pull-requests',
+)
+organizations_router.include_router(
+    components_router,
+    prefix='/{org_slug}/components',
+)
+organizations_router.include_router(
+    component_releases_router,
+    prefix='/{org_slug}/component-releases',
+)
+organizations_router.include_router(
+    component_reports_router,
+    prefix='/{org_slug}/reports',
 )
 organizations_router.include_router(
     search_router,

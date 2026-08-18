@@ -2052,3 +2052,82 @@ class TagRecordTestCase(unittest.TestCase):
 
     def test_exported(self) -> None:
         self.assertIn('TagRecord', models.__all__)
+
+
+class EffectiveComponentStatusTestCase(unittest.TestCase):
+    """Test cases for strictest-wins component status resolution."""
+
+    def test_both_unmarked_is_current(self) -> None:
+        self.assertIsNone(models.effective_component_status(None, None))
+
+    def test_version_mark_alone(self) -> None:
+        self.assertEqual(
+            models.effective_component_status(None, 'deprecated'),
+            'deprecated',
+        )
+
+    def test_component_mark_is_inherited(self) -> None:
+        self.assertEqual(
+            models.effective_component_status('forbidden', None),
+            'forbidden',
+        )
+
+    def test_forbidden_beats_deprecated_either_way(self) -> None:
+        self.assertEqual(
+            models.effective_component_status('forbidden', 'deprecated'),
+            'forbidden',
+        )
+        self.assertEqual(
+            models.effective_component_status('deprecated', 'forbidden'),
+            'forbidden',
+        )
+
+    def test_unknown_values_are_ignored(self) -> None:
+        self.assertIsNone(models.effective_component_status('bogus', None))
+        self.assertEqual(
+            models.effective_component_status('bogus', 'deprecated'),
+            'deprecated',
+        )
+
+    def test_exported(self) -> None:
+        self.assertIn('effective_component_status', models.__all__)
+        self.assertIn('Advisory', models.__all__)
+        self.assertIn('ComponentNote', models.__all__)
+
+
+class ComponentGovernanceFieldsTestCase(unittest.TestCase):
+    """Test cases for the governance fields on the component models."""
+
+    def test_component_defaults_to_current(self) -> None:
+        component = models.Component(
+            purl_name='pkg:npm/express', name='express', ecosystem='npm'
+        )
+        self.assertIsNone(component.status)
+        self.assertIsNone(component.status_at)
+        self.assertIsNone(component.status_by)
+
+    def test_component_release_edges_default_empty(self) -> None:
+        component = models.Component(
+            purl_name='pkg:npm/express', name='express', ecosystem='npm'
+        )
+        release = models.ComponentRelease(component=component, version='4.0.0')
+        self.assertEqual(release.advisories, [])
+        self.assertEqual(release.notes, [])
+        self.assertIsNone(release.status)
+
+    def test_rejects_unknown_status(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.Component(
+                purl_name='pkg:npm/express',
+                name='express',
+                ecosystem='npm',
+                status='blocked',  # pyright: ignore[reportArgumentType]
+            )
+
+    def test_advisory_requires_identity(self) -> None:
+        advisory = models.Advisory(
+            cve_id='CVE-2025-1234',
+            url='https://example.com/CVE-2025-1234',
+            created_by='alice@example.com',
+        )
+        self.assertIsNone(advisory.title)

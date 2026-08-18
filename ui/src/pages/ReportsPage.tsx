@@ -1,3 +1,4 @@
+import type * as React from 'react'
 import { useEffect } from 'react'
 
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -10,6 +11,8 @@ import {
   GitCommitHorizontal,
   GitPullRequest,
   Network,
+  Package,
+  ShieldAlert,
   TrendingUp,
 } from 'lucide-react'
 
@@ -18,16 +21,20 @@ import { Navigation } from '@/components/Navigation'
 import { DocumentReadershipReport } from '@/components/reports/DocumentReadershipReport'
 import { MonthlyImprovementReport } from '@/components/reports/MonthlyImprovementReport'
 import { OpenPullRequestsReport } from '@/components/reports/OpenPullRequestsReport'
+import { PackageUsageReport } from '@/components/reports/PackageUsageReport'
 import { PRActivityReport } from '@/components/reports/PRActivityReport'
+import { ProblemPackagesReport } from '@/components/reports/ProblemPackagesReport'
 import { ProjectsGraphReport } from '@/components/reports/ProjectsGraphReport'
 import { ScoreHistoryReport } from '@/components/reports/ScoreHistoryReport'
 import { TeamKPIReport } from '@/components/reports/TeamKPIReport'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 interface Report {
+  // Owned by the report definition so adding a report is a single entry
+  // here -- sidebar link and rendered body both come off of this row,
+  // rather than an entry plus a branch in a render chain.
+  component: React.ComponentType
   description: string
-  // Owned by the report definition so adding a report is a single
-  // entry here rather than an entry plus a branch in the sidebar.
   icon: LucideIcon
   id: string
   label: string
@@ -36,6 +43,7 @@ interface Report {
 
 const REPORTS: Report[] = [
   {
+    component: MonthlyImprovementReport,
     description: 'Month-over-month score delta',
     icon: TrendingUp,
     id: 'monthly-improvement',
@@ -43,6 +51,7 @@ const REPORTS: Report[] = [
     subtitle: 'Score improvement by team for a selected month',
   },
   {
+    component: OpenPullRequestsReport,
     description: 'Open pull requests across the org',
     icon: GitPullRequest,
     id: 'open-pull-requests',
@@ -50,6 +59,7 @@ const REPORTS: Report[] = [
     subtitle: 'Open pull requests, filterable by team and project type',
   },
   {
+    component: PRActivityReport,
     description: 'PR outcomes per member',
     icon: Activity,
     id: 'pr-activity',
@@ -58,6 +68,25 @@ const REPORTS: Report[] = [
       'PRs created, open, closed, and merged per team member, since a chosen date',
   },
   {
+    component: PackageUsageReport,
+    description: 'Where one package is running',
+    icon: Package,
+    id: 'package-usage',
+    label: 'Package Usage',
+    subtitle:
+      'Every project and environment running a package, grouped by version',
+  },
+  {
+    component: ProblemPackagesReport,
+    description: 'Deprecated, forbidden, and vulnerable packages',
+    icon: ShieldAlert,
+    id: 'problem-packages',
+    label: 'Problem Packages',
+    subtitle:
+      'Projects running a marked package version or one with a known advisory',
+  },
+  {
+    component: ProjectsGraphReport,
     description: 'Service dependency graph',
     icon: Network,
     id: 'projects-graph',
@@ -65,6 +94,7 @@ const REPORTS: Report[] = [
     subtitle: 'Project relationships across the org',
   },
   {
+    component: ScoreHistoryReport,
     description: 'Score trends over time per team',
     icon: GitCommitHorizontal,
     id: 'score-history',
@@ -72,6 +102,7 @@ const REPORTS: Report[] = [
     subtitle: 'Avg score trend per team over time',
   },
   {
+    component: DocumentReadershipReport,
     description: 'Which documents get read, and which do not',
     icon: BookOpen,
     id: 'document-readership',
@@ -79,6 +110,7 @@ const REPORTS: Report[] = [
     subtitle: 'Most-read, stale, and never-read documents across the org',
   },
   {
+    component: TeamKPIReport,
     description: 'Avg quality score per team',
     icon: BarChart3,
     id: 'team-kpi',
@@ -159,13 +191,7 @@ export function ReportsPage() {
               </h1>
               <span className="text-tertiary text-sm">{active.subtitle}</span>
             </div>
-            {activeId === 'team-kpi' && <TeamKPIReport />}
-            {activeId === 'monthly-improvement' && <MonthlyImprovementReport />}
-            {activeId === 'open-pull-requests' && <OpenPullRequestsReport />}
-            {activeId === 'pr-activity' && <PRActivityReport />}
-            {activeId === 'score-history' && <ScoreHistoryReport />}
-            {activeId === 'projects-graph' && <ProjectsGraphReport />}
-            {activeId === 'document-readership' && <DocumentReadershipReport />}
+            <active.component />
           </div>
         </div>
       </main>
