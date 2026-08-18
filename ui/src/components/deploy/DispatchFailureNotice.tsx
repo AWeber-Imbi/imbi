@@ -55,7 +55,9 @@ export function DispatchFailureNotice({
       <div className="flex flex-col gap-1.5">
         <span className="leading-relaxed">{error}</span>
         <span className="text-xs opacity-80">
-          Nothing was dispatched — no tag was cut and no build started.
+          {action === 'promote'
+            ? 'Nothing was dispatched.'
+            : 'Nothing was dispatched — no tag was cut and no build started.'}
         </span>
       </div>
     </Alert>

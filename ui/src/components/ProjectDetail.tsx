@@ -510,6 +510,10 @@ export function ProjectDetail({
     projectId: project.id,
   })
   const { isPending: unblockPending, unblock } = useReleaseBlockMutation({
+    // The banner's `build_failed` comes from `promote-status`, which the
+    // unblock does not rewrite — dismiss it so the page stops claiming
+    // the tag is blocked after the operator just unblocked it.
+    onUnblocked: releaseInFlight.dismiss,
     orgSlug,
     projectId: project.id,
   })

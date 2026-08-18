@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
@@ -380,6 +381,21 @@ describe('ReleaseReadyCard — a refused dispatch', () => {
     })
   })
 
+  it('clears the refusal when the tag is edited', async () => {
+    // A 409 names the tag that was refused; typing a different one makes
+    // the old refusal describe a request nobody is making any more.
+    const user = userEvent.setup()
+    renderCard(FIRST_RELEASE)
+    await user.click(releaseButton())
+    await waitFor(() => {
+      expect(screen.getByText(WORKFLOW_DETAIL)).toBeInTheDocument()
+    })
+    await user.type(screen.getByLabelText('New tag'), '1')
+    await waitFor(() => {
+      expect(screen.queryByText(WORKFLOW_DETAIL)).toBeNull()
+    })
+  })
+
   it('leaves a failure it cannot explain to the toast', async () => {
     // A 500 carries no sentence worth pinning to the form; "something
     // broke" is what a toast is for.
@@ -391,5 +407,8 @@ describe('ReleaseReadyCard — a refused dispatch', () => {
     await user.click(releaseButton())
     await waitFor(() => expect(releases.cutRelease).toHaveBeenCalled())
     expect(screen.queryByText('Release refused')).toBeNull()
+    // "Left to the toast" means the toast actually fires — without this a
+    // regression that swallows the failure entirely would still pass.
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('boom'))
   })
 })

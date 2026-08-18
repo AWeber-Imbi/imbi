@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
@@ -396,5 +397,8 @@ describe('PromoteTab — a refused dispatch', () => {
     await user.click(promoteButton())
     await waitFor(() => expect(endpoints.promoteDeployment).toHaveBeenCalled())
     expect(screen.queryByText('Promote refused')).toBeNull()
+    // "Left to the toast" means the toast actually fires — without this a
+    // regression that swallows the failure entirely would still pass.
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('boom'))
   })
 })

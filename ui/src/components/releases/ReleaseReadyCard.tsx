@@ -235,6 +235,9 @@ export function ReleaseReadyCard({
             onChange={(v) => {
               setTag(v)
               setTagDirty(true)
+              // A 409 names the tag that was refused; once the operator
+              // edits the tag it no longer describes this request.
+              clearCutError()
             }}
             tag={tag}
             tagValid={tagValid}

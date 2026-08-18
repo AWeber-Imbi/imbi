@@ -154,6 +154,7 @@ export function ReleaseModal({
                 open={open && tab === 'deploy'}
                 orgSlug={orgSlug}
                 projectId={projectId}
+                releaseInFlight={releaseInFlight}
               />
             </TabsContent>
           ) : null}
