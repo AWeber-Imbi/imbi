@@ -846,6 +846,45 @@ class AddDeploymentEventTests(helpers.TestCase):
             'org', 'proj', _RELEASE_ID, 'production', {'status': 'success'}
         )
 
+    async def test_failed_tag_lookup_drops_instead_of_falling_back(
+        self,
+    ) -> None:
+        """A failed tag lookup must not resolve by committish.
+
+        ``list_releases`` returns ``None`` when the request itself
+        failed, which is not the same answer as an empty list -- falling
+        back would record the event against whatever node carries this
+        SHA, the mis-attribution the tag-first order exists to end.
+        """
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'list_releases',
+                new_callable=unittest.mock.AsyncMock,
+                side_effect=[None, [{'id': _RELEASE_ID}]],
+            ) as mock_list,
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'record_deployment',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_record,
+            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
+        ):
+            await actions.add_deployment_event(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=_deployment_event_config(),
+                event=_event(_STATUS_BODY),
+            )
+
+        mock_list.assert_called_once_with('org', 'proj', tag='v1.2.3')
+        mock_record.assert_not_called()
+        self.assertTrue(
+            any('dropped rather than resolved' in line for line in cm.output)
+        )
+
     async def test_lookup_falls_back_to_committish_when_tag_misses(
         self,
     ) -> None:
@@ -1907,7 +1946,14 @@ class ImbiClientListReleasesTests(helpers.TestCase):
             params={'committish': 'abcdef1', 'tag': 'v1.2.3'},
         )
 
-    async def test_error_logs_warning_and_returns_empty(self) -> None:
+    async def test_error_logs_warning_and_returns_none(self) -> None:
+        """A failed request is ``None``, not an empty list.
+
+        Callers that narrow a lookup and fall back on the empty case
+        need the two apart; ``add_deployment_event`` drops the event
+        rather than resolving it by committish when this returns
+        ``None``.
+        """
         with (
             self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
             unittest.mock.patch.object(
@@ -1921,7 +1967,7 @@ class ImbiClientListReleasesTests(helpers.TestCase):
             async with actions.ImbiClient() as client:
                 releases = await client.list_releases('org', 'proj')
 
-        self.assertEqual([], releases)
+        self.assertIsNone(releases)
         self.assertTrue(
             any('Failed to list releases' in line for line in cm.output)
         )

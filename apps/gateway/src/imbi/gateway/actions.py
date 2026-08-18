@@ -163,12 +163,16 @@ class ImbiClient(httpx.AsyncClient):
         *,
         committish: str | None = None,
         tag: str | None = None,
-    ) -> list[dict[str, object]]:
+    ) -> list[dict[str, object]] | None:
         """List releases for a project, optionally filtered.
 
         Returns the raw JSON list of releases (each a dict) so callers
         can pick the ``id`` they need without coupling to the full
-        response shape.
+        response shape.  ``None`` means the request itself failed, which
+        is a different answer from an empty list: a caller that narrows
+        a lookup and falls back on the empty case must not read a failed
+        request as proof that nothing matched.  Callers that only ask
+        "did we find one" can keep testing falsiness.
         """
         url = f'/organizations/{org_slug}/projects/{project_id}/releases/'
         params: dict[str, str] = {}
@@ -181,7 +185,7 @@ class ImbiClient(httpx.AsyncClient):
             LOGGER.warning(
                 'Failed to list releases %r: %s', url, response.text
             )
-            return []
+            return None
         return typing.cast('list[dict[str, object]]', response.json())
 
     async def publish_release(
@@ -625,11 +629,28 @@ async def add_deployment_event(
         # between the promote and ``complete_promote_build`` healing it.
         # Falling back to the committish keeps untagged deployments (a
         # raw-SHA ref) and any tag Imbi never recorded resolvable.
-        releases: list[dict[str, object]] = []
+        releases: list[dict[str, object]] | None = []
         if tag_value is not None:
             releases = await client.list_releases(
                 ctx.org_slug, ctx.project_id, tag=tag_value
             )
+            if releases is None:
+                # The lookup failed rather than came back empty, so we
+                # do not know whether the tag has a Release.  Falling
+                # back to the committish here would record the event
+                # against whatever node happens to carry this SHA --
+                # exactly the mis-attribution the tag-first order is
+                # meant to end.  Drop instead, as a failed lookup did
+                # before the fallback existed.
+                LOGGER.warning(
+                    'Release lookup by tag=%r failed for project %s;'
+                    ' status %r dropped rather than resolved by'
+                    ' committish',
+                    tag_value,
+                    ctx.project_id,
+                    status,
+                )
+                return
         if not releases:
             releases = await client.list_releases(
                 ctx.org_slug, ctx.project_id, committish=committish_value
