@@ -1182,12 +1182,8 @@ def _node_events(raw: typing.Any) -> list[models.DeploymentEvent]:
     if not isinstance(nodes, list):
         return []
     events: list[models.DeploymentEvent] = []
-    for props in nodes:
-        if not isinstance(props, dict):
-            continue
-        event = deployment_nodes.node_to_event(
-            typing.cast('dict[str, typing.Any]', props)
-        )
+    for props in typing.cast('list[dict[str, typing.Any]]', nodes):
+        event = deployment_nodes.node_to_event(props)
         if event is not None:
             events.append(event)
     return events
