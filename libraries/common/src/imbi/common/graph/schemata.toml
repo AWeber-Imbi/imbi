@@ -20,6 +20,7 @@ name = [
   "ComponentIdentifier",
   "ComponentRelease",
   "Conversation",
+  "Deployment",
   "DocumentTemplate",
   "Environment",
   "IdentityConnection",
@@ -202,6 +203,17 @@ attributes = ["email"]
 vlabel = "OAuthIdentity"
 attributes = ["provider_slug", "provider_user_id"]
 unique = true
+
+# The sweeper and the release train both select in-flight deployments,
+# and every correlating writer (webhook, watcher, resync) MERGEs on the
+# remote run id, so both properties are read on the hot path.
+[[vlabel_indexes]]
+vlabel = "Deployment"
+attributes = ["external_run_id"]
+
+[[vlabel_indexes]]
+vlabel = "Deployment"
+attributes = ["status"]
 
 [[vlabel_indexes]]
 vlabel = "Permission"

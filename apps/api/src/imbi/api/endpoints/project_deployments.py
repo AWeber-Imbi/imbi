@@ -55,6 +55,7 @@ from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.common import clickhouse, graph, versioning
+from imbi.common import deployments as deployment_nodes
 from imbi.common import models as common_models
 from imbi.common.plugins import base as plugin_base
 from imbi.common.plugins import decrypt_integration_credentials
@@ -4355,6 +4356,26 @@ async def list_promotion_options(  # noqa: C901
                 'env': env,
                 'release': release_raw,
                 'latest': None,
+            }
+
+    # Union the ``Deployment`` nodes over the legacy array entries the
+    # loop above read; environments the project no longer deploys in
+    # stay out, as they always have.
+    for entry in await deployment_nodes.deployments_by_project(
+        db, [project_id]
+    ):
+        slug = str(entry.environment.get('slug') or '')
+        existing = by_slug.get(slug)
+        if entry.release is None or existing is None:
+            continue
+        existing_latest = existing.get('latest')
+        if existing_latest is None or deployment_nodes.as_utc(
+            entry.event.timestamp
+        ) > deployment_nodes.as_utc(existing_latest):
+            by_slug[slug] = {
+                'env': existing['env'],
+                'release': entry.release,
+                'latest': entry.event.timestamp,
             }
 
     ordered = sorted(

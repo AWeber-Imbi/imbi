@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing
 
-from imbi.common import graph, models
+from imbi.common import deployments, graph, models
 from imbi.common.scoring import attribute, policies
 from imbi.common.scoring.models import (
     AnalysisResultPolicy,
@@ -143,6 +143,20 @@ async def _load_deployment_statuses(
             current = latest.get(slug)
             if current is None or event.timestamp > current.timestamp:
                 latest[slug] = event
+    # Union the ``Deployment`` nodes over the legacy array entries: a
+    # project deployed since the node cutover has no array entry to
+    # score, and would otherwise fall through to the ``'missing'`` key.
+    for entry in await deployments.deployments_by_project(
+        database, [project_id]
+    ):
+        slug = str(entry.environment.get('slug') or '')
+        current = latest.get(slug)
+        if slug and (
+            current is None
+            or deployments.as_utc(entry.event.timestamp)
+            > deployments.as_utc(current.timestamp)
+        ):
+            latest[slug] = entry.event
     return {slug: event.status for slug, event in latest.items()}
 
 
