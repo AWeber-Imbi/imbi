@@ -512,7 +512,7 @@ async def replace_release_components(
     )
     batch_id = nanoid.generate()
     if not components:
-        await _publish(project_id, release_id, batch_id, recorded_at, [], 0)
+        await publish_batch(project_id, release_id, batch_id, recorded_at, [], 0)
         return
     buckets: dict[str, list[NormalizedComponent]] = {}
     for component in components:
@@ -551,7 +551,7 @@ async def replace_release_components(
             )
         else:
             records.extend(result)
-    await _publish(
+    await publish_batch(
         project_id,
         release_id,
         batch_id,
@@ -561,13 +561,14 @@ async def replace_release_components(
     )
 
 
-async def _publish(
+async def publish_batch(
     project_id: str,
     release_id: str,
     batch_id: str,
     recorded_at: datetime.datetime,
     records: collections.abc.Sequence[models.ReleaseComponentRecord],
     parsed_count: int,
+    source: typing.Literal['ingest', 'backfill'] = 'ingest',
 ) -> None:
     """Write a batch's fact rows, then the row publishing them.
 
@@ -576,10 +577,21 @@ async def _publish(
     become visible only on the last statement. Raising part way
     leaves inert rows and a reader still on the previous snapshot.
 
-    ``parsed_count`` is what the SBoM held; ``len(records)`` is what
-    survived the graph upsert. Recording both is what makes a
-    snapshot that is short of components detectable, given that
-    losing one is deliberately non-fatal.
+    ``parsed_count`` is what the source held; ``len(records)`` is
+    what survived. Recording both is what makes a snapshot that is
+    short of components detectable, given that losing one is
+    deliberately non-fatal.
+
+    ``source`` decides precedence, not provenance alone: readers
+    resolve a release with ``argMax(batch_id, (source = 'ingest',
+    recorded_at))``, so an ``ingest`` batch outranks a ``backfill``
+    one whatever order they land in. The backfill relies on that to
+    run beside live ingests without a check-then-publish race.
+
+    Shared with the backfill rather than reimplemented there,
+    because the fact-rows-then-batch-row order is the whole
+    correctness argument and one copy of it is easier to keep
+    right than two.
     """
     if records:
         await clickhouse.insert('release_components', list(records))
@@ -590,6 +602,7 @@ async def _publish(
                 release_id=release_id,
                 batch_id=batch_id,
                 project_id=project_id,
+                source=source,
                 component_count=len(records),
                 parsed_count=parsed_count,
                 recorded_at=recorded_at,

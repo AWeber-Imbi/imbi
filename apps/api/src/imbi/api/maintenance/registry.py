@@ -37,6 +37,8 @@ MaintenanceSlug = typing.Literal[
     'commit-sync',
     'pr-sync',
     'search-reindex',
+    'sbom-backfill',
+    'sbom-backfill-report',
 ]
 
 
@@ -283,6 +285,35 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=pr_sync_queue.PAUSE_KEY,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_pr_sync,
+        ),
+        OperationDefinition(
+            slug='sbom-backfill',
+            label='Backfill SBoM Components to ClickHouse',
+            description=(
+                'Publish a ClickHouse component batch for every release '
+                'whose SBoM was ingested before dual write, reading the '
+                'component set from the graph edges. Safe to run beside '
+                'live ingests: an ingest batch always outranks a '
+                'backfill one. Fills only -- a release whose batch is '
+                'already published keeps it, wrong or not.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_sbom_backfill,
+        ),
+        OperationDefinition(
+            slug='sbom-backfill-report',
+            label='Report SBoM Component Drift',
+            description=(
+                "Compare each release's component set in the graph "
+                'against the batch published in ClickHouse and report '
+                'the releases that disagree. Compares content rather '
+                'than row counts, so equal counts over different '
+                'components are caught. Writes nothing.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_sbom_backfill_report,
         ),
         OperationDefinition(
             slug='search-reindex',
