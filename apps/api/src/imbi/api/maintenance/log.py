@@ -53,6 +53,16 @@ INSERT_SETTINGS: dict[str, typing.Any] = {
 MAX_MESSAGE_LEN = 2_000
 MAX_DETAIL_BYTES = 8_192
 
+#: Cap on the activity rows one work item may buffer. An operation that
+#: records per release meets projects with thousands of them, and a
+#: reconcile report's first run is exactly when every release
+#: disagrees -- so this is the expected shape of a migration, not a
+#: pathological one. The buffer becomes a single insert, so it is the
+#: one dimension of a row set still unbounded after ``message`` and
+#: ``detail`` are capped. The terminal ``attempt`` row is never
+#: dropped: it is what the counts and the UI page on.
+MAX_ITEM_ROWS = 1_000
+
 #: Cap on one insert. clickhouse-connect's own socket timeout defaults
 #: to 300s, and a worker flushes once per work item -- a stalled server
 #: would otherwise cost a sweep five minutes per project. Timing out
@@ -175,6 +185,7 @@ class ItemLog:
         self.project_slug = project_slug
         self.started_by = started_by
         self._rows: list[models.MaintenanceLogRecord] = []
+        self._dropped = 0
 
     def record(
         self,
@@ -183,7 +194,16 @@ class ItemLog:
         message: str = '',
         **detail: typing.Any,
     ) -> None:
-        """Buffer one activity row. Synchronous -- does no I/O."""
+        """Buffer one activity row. Synchronous -- does no I/O.
+
+        Past :data:`MAX_ITEM_ROWS` the row is counted and dropped. A
+        caller in a loop over ten thousand releases gets the first
+        thousand and a marker saying what it is missing, rather than an
+        insert nobody can hold.
+        """
+        if len(self._rows) >= MAX_ITEM_ROWS:
+            self._dropped += 1
+            return
         row = self._row('activity', disposition, action, message, detail)
         if row is not None:
             self._rows.append(row)
@@ -195,10 +215,16 @@ class ItemLog:
         duration_ms: int = 0,
         **detail: typing.Any,
     ) -> None:
-        """Buffer this item's terminal row (worker-owned)."""
+        """Buffer this item's terminal row (worker-owned).
+
+        Exempt from :data:`MAX_ITEM_ROWS`: dropping the row the counts
+        and the UI page on would hide the whole attempt.
+        """
         row = self._row('attempt', disposition, '', message, detail)
         if row is not None:
             row.duration_ms = duration_ms
+            if self._dropped:
+                row.detail['_dropped_activity_rows'] = self._dropped
             self._rows.append(row)
 
     async def flush(self) -> None:
@@ -206,6 +232,7 @@ class ItemLog:
         if not self._rows:
             return
         rows, self._rows = self._rows, []
+        self._dropped = 0
         await _write(rows)
 
     @property

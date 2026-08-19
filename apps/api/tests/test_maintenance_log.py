@@ -114,6 +114,51 @@ class RecordRunTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('', row.attempt_id)
 
 
+class ItemRowCapTests(unittest.IsolatedAsyncioTestCase):
+    """One work item cannot buffer an insert nobody can hold."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(log, '_write', mock.AsyncMock())
+        self.write = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_activity_rows_stop_at_the_cap(self) -> None:
+        item = _item_log()
+        for _ in range(log.MAX_ITEM_ROWS + 25):
+            item.record('failed', 'sbom-mismatch')
+        self.assertEqual(log.MAX_ITEM_ROWS, item.buffered)
+
+    def test_the_attempt_row_says_what_was_dropped(self) -> None:
+        item = _item_log()
+        for _ in range(log.MAX_ITEM_ROWS + 25):
+            item.record('failed', 'sbom-mismatch')
+        item.attempt('succeeded')
+        self.assertEqual(log.MAX_ITEM_ROWS + 1, item.buffered)
+        self.assertEqual(25, item._rows[-1].detail['_dropped_activity_rows'])
+
+    def test_the_attempt_row_is_never_dropped(self) -> None:
+        item = _item_log()
+        for _ in range(log.MAX_ITEM_ROWS):
+            item.record('failed', 'sbom-mismatch')
+        item.attempt('succeeded')
+        self.assertEqual('attempt', item._rows[-1].event_type)
+
+    def test_an_uncapped_item_carries_no_marker(self) -> None:
+        item = _item_log()
+        item.record('succeeded', 'normalize')
+        item.attempt('succeeded')
+        self.assertNotIn('_dropped_activity_rows', item._rows[-1].detail)
+
+    async def test_the_count_resets_with_the_buffer(self) -> None:
+        item = _item_log()
+        for _ in range(log.MAX_ITEM_ROWS + 5):
+            item.record('failed', 'sbom-mismatch')
+        await item.flush()
+        item.record('succeeded', 'normalize')
+        item.attempt('succeeded')
+        self.assertNotIn('_dropped_activity_rows', item._rows[-1].detail)
+
+
 class BestEffortConstructionTests(unittest.IsolatedAsyncioTestCase):
     """Building a row must not fail the work that logged it."""
 
