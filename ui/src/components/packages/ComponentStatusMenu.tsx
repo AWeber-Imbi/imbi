@@ -10,19 +10,21 @@ import {
 import type { ComponentStatus } from '@/types'
 
 import { STATUS_LABEL, STATUS_OPTIONS, STATUS_VARIANT } from './status'
-import type { StatusValue } from './status'
 
 interface ComponentStatusMenuProps {
   disabled?: boolean
   label: string
-  onSelect: (status: StatusValue) => void
+  onSelect: (status: ComponentStatus | null) => void
   status: ComponentStatus | null | undefined
 }
 
 /**
- * Tri-state governance picker. "Current" is offered as an option even
- * though it is stored as the absence of a mark — an operator undoing a
- * mark looks for the state to return to, not for a "clear" verb.
+ * Governance picker over the two marks, plus clearing.
+ *
+ * Unmarked is not a third mark -- it is `null`, and it renders as
+ * "Set status" so the row reads as un-reviewed rather than as
+ * reviewed-and-approved. Clearing is offered only once something is
+ * set, since there is nothing to undo otherwise.
  */
 export function ComponentStatusMenu({
   disabled,
@@ -30,7 +32,6 @@ export function ComponentStatusMenu({
   onSelect,
   status,
 }: ComponentStatusMenuProps) {
-  const current: StatusValue = status ?? 'current'
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -40,16 +41,35 @@ export function ComponentStatusMenu({
           disabled={disabled}
           type="button"
         >
-          <Badge variant={STATUS_VARIANT[current]}>
-            {STATUS_LABEL[current]}
-          </Badge>
+          {status ? (
+            <Badge variant={STATUS_VARIANT[status]}>
+              {STATUS_LABEL[status]}
+            </Badge>
+          ) : (
+            <span className="border-tertiary text-tertiary hover:text-secondary inline-flex h-5 items-center rounded border px-1.5 text-[11px] whitespace-nowrap">
+              Set status
+            </span>
+          )}
           <ChevronDown className="text-tertiary size-3" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-44 p-1">
-        <p className="text-secondary px-2 py-1 text-xs font-medium tracking-wide uppercase">
-          {label}
-        </p>
+        <div className="flex items-center justify-between gap-2 px-2 py-1">
+          <p className="text-secondary text-xs font-medium tracking-wide uppercase">
+            {label}
+          </p>
+          {status && (
+            <PopoverClose asChild>
+              <button
+                className="text-action text-xs"
+                onClick={() => onSelect(null)}
+                type="button"
+              >
+                Clear
+              </button>
+            </PopoverClose>
+          )}
+        </div>
         {STATUS_OPTIONS.map((option) => (
           <PopoverClose asChild key={option}>
             <button
@@ -58,7 +78,7 @@ export function ComponentStatusMenu({
               type="button"
             >
               <Check
-                className={`size-3 ${option === current ? 'text-action' : 'opacity-0'}`}
+                className={`size-3 ${option === status ? 'text-action' : 'opacity-0'}`}
               />
               <Badge variant={STATUS_VARIANT[option]}>
                 {STATUS_LABEL[option]}

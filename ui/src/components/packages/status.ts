@@ -1,38 +1,30 @@
 import type { ComponentStatus } from '@/types'
 
-export type StatusValue = 'current' | ComponentStatus
-
 /**
- * Badge variant per governance status. `current` is the absence of a
- * mark rather than a stored value, so it only ever renders inside the
- * status menu — a table full of green "Current" badges says nothing.
+ * Badge variant per governance status.
+ *
+ * There is no "current" value. An unmarked package or version is the
+ * absence of a mark, and the absence renders as an invitation to set
+ * one ("Set status") rather than as a green badge asserting a review
+ * that never happened.
  */
-export const STATUS_VARIANT: Record<
-  StatusValue,
-  'danger' | 'success' | 'warning'
-> = {
-  current: 'success',
+export const STATUS_VARIANT: Record<ComponentStatus, 'danger' | 'warning'> = {
   deprecated: 'warning',
   forbidden: 'danger',
 }
 
-export const STATUS_LABEL: Record<StatusValue, string> = {
-  current: 'Current',
+export const STATUS_LABEL: Record<ComponentStatus, string> = {
   deprecated: 'Deprecated',
   forbidden: 'Forbidden',
 }
 
-/** The three options a status menu offers, strictest last. */
-export const STATUS_OPTIONS: StatusValue[] = [
-  'current',
-  'deprecated',
-  'forbidden',
-]
+/** The marks a status menu offers, strictest last. */
+export const STATUS_OPTIONS: ComponentStatus[] = ['deprecated', 'forbidden']
 
-export function statusLabel(status: ComponentStatus | null | undefined) {
-  return STATUS_LABEL[status ?? 'current']
+export function statusLabel(status: ComponentStatus) {
+  return STATUS_LABEL[status]
 }
 
-export function statusVariant(status: ComponentStatus | null | undefined) {
-  return STATUS_VARIANT[status ?? 'current']
+export function statusVariant(status: ComponentStatus) {
+  return STATUS_VARIANT[status]
 }

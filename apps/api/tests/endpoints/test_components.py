@@ -142,17 +142,20 @@ class _ComponentsTestBase(support.SharedAppTestCase):
 class SearchComponentsTestCase(_ComponentsTestBase):
     """GET /components"""
 
-    def test_search_sorts_by_project_count(self) -> None:
+    def test_search_ranks_by_how_the_name_matched(self) -> None:
+        """Exact, then prefix, then substring -- not by project count.
+
+        The counts belong to the page the search picked, so they cannot
+        also be what picks it.
+        """
         self.mock_db.execute.side_effect = [
             [
                 {
                     'id': 'cmp-a',
-                    'purl_name': 'pkg:npm/left-pad',
-                    'name': 'left-pad',
+                    'purl_name': 'pkg:npm/requests-mock',
+                    'name': 'requests-mock',
                     'ecosystem': 'npm',
                     'status': None,
-                    'version_count': 1,
-                    'project_count': 2,
                 },
                 {
                     'id': 'cmp-b',
@@ -160,24 +163,75 @@ class SearchComponentsTestCase(_ComponentsTestBase):
                     'name': 'requests',
                     'ecosystem': 'pypi',
                     'status': 'deprecated',
-                    'version_count': 4,
-                    'project_count': 9,
                 },
             ],
+            [
+                {'id': 'cmp-a', 'version_count': 1, 'project_count': 9},
+                {'id': 'cmp-b', 'version_count': 4, 'project_count': 2},
+            ],
         ]
-        response = self.client.get(self._components('/'), params={'q': 'RE'})
+        response = self.client.get(
+            self._components('/'), params={'q': 'REQUESTS'}
+        )
         self.assertEqual(response.status_code, 200)
         body = response.json()
+        # cmp-a has the higher project count and still sorts second:
+        # 'requests' matches the query exactly.
         self.assertEqual(
             [row['purl_name'] for row in body['data']],
-            ['pkg:pypi/requests', 'pkg:npm/left-pad'],
+            ['pkg:pypi/requests', 'pkg:npm/requests-mock'],
         )
         self.assertEqual(body['data'][0]['status'], 'deprecated')
+        self.assertEqual(body['data'][0]['version_count'], 4)
+        self.assertEqual(body['data'][0]['project_count'], 2)
         self.assertEqual(body['total'], 2)
 
-    def test_catalog_totals_only_on_the_unfiltered_request(self) -> None:
+    def test_counts_are_gathered_only_for_the_returned_page(self) -> None:
+        """Phase two is bounded by the ids phase one settled on."""
         self.mock_db.execute.side_effect = [
+            [
+                {
+                    'id': f'cmp-{index}',
+                    'purl_name': f'pkg:npm/p{index}',
+                    'name': f'p{index}',
+                    'ecosystem': 'npm',
+                    'status': None,
+                }
+                for index in range(5)
+            ],
             [],
+        ]
+        self.client.get(self._components('/'), params={'limit': 2, 'q': 'p'})
+        self.assertEqual(self._params(1)['ids'], ['cmp-0', 'cmp-1'])
+
+    def test_a_hit_with_no_counted_rows_reports_zero(self) -> None:
+        """A component phase two says nothing about is not a 500."""
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'id': 'cmp-a',
+                    'purl_name': 'pkg:npm/express',
+                    'name': 'express',
+                    'ecosystem': 'npm',
+                    'status': None,
+                }
+            ],
+            [],
+        ]
+        body = self.client.get(
+            self._components('/'), params={'q': 'express'}
+        ).json()
+        self.assertEqual(body['data'][0]['version_count'], 0)
+        self.assertEqual(body['data'][0]['project_count'], 0)
+
+    def test_catalog_totals_only_on_the_unfiltered_request(self) -> None:
+        """An empty query costs one query, and it is the cheap one.
+
+        The screen shows recently-viewed packages rather than a slice
+        of the catalog when the box is empty, so walking the catalog to
+        build that slice would be work whose result is discarded.
+        """
+        self.mock_db.execute.side_effect = [
             [
                 {'ecosystem': 'npm', 'total': 120},
                 {'ecosystem': 'pypi', 'total': 45},
@@ -185,7 +239,8 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         ]
         body = self.client.get(self._components('/')).json()
         self.assertEqual(body['ecosystem_totals'], {'npm': 120, 'pypi': 45})
-        self.assertEqual(self.mock_db.execute.await_count, 2)
+        self.assertEqual(body['data'], [])
+        self.assertEqual(self.mock_db.execute.await_count, 1)
 
     def test_filtered_search_skips_the_catalog_scan(self) -> None:
         """The totals restate a constant; a keystroke must not rescan."""
@@ -197,7 +252,7 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self.assertEqual(self.mock_db.execute.await_count, 1)
 
     def test_query_is_lowercased_for_case_insensitive_match(self) -> None:
-        self.mock_db.execute.side_effect = [[], []]
+        self.mock_db.execute.side_effect = [[]]
         self.client.get(self._components('/'), params={'q': '  ExPrEsS '})
         self.assertEqual(self._params(0)['q'], 'express')
 
@@ -210,16 +265,18 @@ class SearchComponentsTestCase(_ComponentsTestBase):
                     'name': f'p{index}',
                     'ecosystem': 'npm',
                     'status': None,
-                    'version_count': 1,
-                    'project_count': 1,
                 }
                 for index in range(5)
             ],
             [],
         ]
-        response = self.client.get(self._components('/'), params={'limit': 2})
+        response = self.client.get(
+            self._components('/'), params={'limit': 2, 'q': 'p'}
+        )
         body = response.json()
         self.assertEqual(len(body['data']), 2)
+        # ``total`` counts every match, not the page -- the dropdown
+        # says "N more matches, keep typing to narrow".
         self.assertEqual(body['total'], 5)
 
 
@@ -385,7 +442,9 @@ class ComponentUsageTestCase(_ComponentsTestBase):
         self.assertEqual(body['vulnerable_project_count'], 1)
 
     def test_component_outside_org_is_404(self) -> None:
-        self.mock_db.execute.side_effect = [[]]
+        # The membership check runs alongside the three reads it
+        # guards rather than ahead of them, so all four are mocked.
+        self.mock_db.execute.side_effect = [[], [], [], []]
         response = self.client.get(self._components(f'/{COMPONENT_ID}/usage'))
         self.assertEqual(response.status_code, 404)
 

@@ -13,14 +13,20 @@ import {
 } from '@/api/endpoints'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
+import type { ComponentStatus } from '@/types'
 
-import { STATUS_LABEL, type StatusValue } from './status'
+import { STATUS_LABEL } from './status'
 
 interface AdvisoryVars {
   componentReleaseId: string
   cveId: string
   title?: string
   url: string
+}
+
+interface MarkVars {
+  id: string
+  status: ComponentStatus | null
 }
 
 interface NoteVars {
@@ -36,8 +42,11 @@ interface UseComponentGovernanceResult {
   // callers only need the rejection to skip their success step.
   addNote: (vars: NoteVars) => Promise<unknown>
   isPending: boolean
-  markComponent: (componentId: string, status: StatusValue) => void
-  markVersion: (componentReleaseId: string, status: StatusValue) => void
+  markComponent: (componentId: string, status: ComponentStatus | null) => void
+  markVersion: (
+    componentReleaseId: string,
+    status: ComponentStatus | null,
+  ) => void
   recordAdvisory: (vars: AdvisoryVars) => Promise<unknown>
   removeAdvisory: (componentReleaseId: string, cveId: string) => void
 }
@@ -83,31 +92,38 @@ export function useComponentGovernance(
   }
 
   const componentStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: StatusValue }) =>
-      status === 'current'
+    mutationFn: ({ id, status }: MarkVars) =>
+      status === null
         ? clearComponentStatus(orgSlug, id)
         : setComponentStatus(orgSlug, id, status),
     onError: (err) => toast.error(message(err)),
     onSuccess: (_data, { status }) => {
       invalidate()
+      if (status === null) {
+        toast.success('Package mark cleared', {
+          description: 'Versions again report their own status.',
+        })
+        return
+      }
       toast.success(`Package marked ${STATUS_LABEL[status].toLowerCase()}`, {
-        description:
-          status === 'current'
-            ? 'Versions again report their own status.'
-            : 'Every version inherits this unless marked more strictly.',
+        description: 'Every version inherits this unless marked more strictly.',
       })
     },
   })
 
   const versionStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: StatusValue }) =>
-      status === 'current'
+    mutationFn: ({ id, status }: MarkVars) =>
+      status === null
         ? clearComponentReleaseStatus(orgSlug, id)
         : setComponentReleaseStatus(orgSlug, id, status),
     onError: (err) => toast.error(message(err)),
     onSuccess: (_data, { status }) => {
       invalidate()
-      toast.success(`Version marked ${STATUS_LABEL[status].toLowerCase()}`)
+      toast.success(
+        status === null
+          ? 'Version mark cleared'
+          : `Version marked ${STATUS_LABEL[status].toLowerCase()}`,
+      )
     },
   })
 
