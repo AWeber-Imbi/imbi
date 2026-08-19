@@ -32,6 +32,7 @@ access token through the Integration credential blob's
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections.abc
 import contextlib
 import datetime
@@ -137,6 +138,31 @@ def _auth_headers(token: str) -> dict[str, str]:
         'Authorization': f'Bearer {token}',
         **_accept_header(),
     }
+
+
+#: A push event's ``before`` when the ref did not exist until now.
+_ZERO_SHA = '0' * 40
+# GitHub's compare endpoint lists at most 300 changed files and offers
+# no pagination for them -- a list this long may be incomplete.
+_COMPARE_FILES_CAP = 300
+# How many note-blob reads run at once when listing a whole notes tree.
+_NOTE_BLOB_CONCURRENCY = 10
+
+_FULL_SHA_PATTERN = re.compile(r'^[0-9a-f]{40}$')
+
+
+def _note_sha(path: object) -> str | None:
+    """Annotated commit SHA for a notes-tree path, or ``None``.
+
+    Notes trees key blobs by the annotated commit's full SHA, optionally
+    fanned out into subtrees (``ab/cdef...``); flattening the path
+    recovers the SHA.  Non-note files (``README`` and friends can live
+    on a notes ref) do not flatten to 40 hex chars and are skipped.
+    """
+    if not isinstance(path, str):
+        return None
+    flattened = path.replace('/', '').lower()
+    return flattened if _FULL_SHA_PATTERN.match(flattened) else None
 
 
 def _short_sha(sha: str) -> str:
@@ -848,6 +874,238 @@ class GitHubDeployment(DeploymentCapability):
                 additions=additions,
                 deletions=deletions,
             )
+
+    # -- Git notes ----------------------------------------------------------
+
+    async def get_commit_note(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        namespace: str,
+        committish: str,
+    ) -> str | None:
+        """Read the note on ``committish`` from ``refs/notes/<namespace>``.
+
+        The notes tree keys blobs by the *full* SHA of the annotated
+        commit (with optional fan-out subtrees like ``ab/cdef...``), so a
+        short committish is resolved through the commits endpoint first.
+        """
+        async with self._client(ctx, credentials) as client:
+            full_sha = committish.lower()
+            if not _FULL_SHA_PATTERN.match(full_sha):
+                commit = await client.get(
+                    f'/commits/{urllib.parse.quote(committish, safe="")}'
+                )
+                commit.raise_for_status()
+                full_sha = str(commit.json()['sha']).lower()
+            notes = await self._notes_tree(client, namespace)
+            if notes is None:
+                return None
+            blob_sha = notes.get(full_sha)
+            if blob_sha is None:
+                return None
+            return await self._blob_text(client, blob_sha)
+
+    async def diff_commit_notes(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        namespace: str,
+        before: str,
+        after: str,
+    ) -> dict[str, str | None]:
+        """Diff ``refs/notes/<namespace>`` between two of its commits.
+
+        ``before``/``after`` come from a push event on the notes ref;
+        the *files* changed between them are the notes of the annotated
+        commits, so the tree diff -- not the push's ``commits`` list --
+        is what names the commits whose notes changed.  An all-zero
+        ``before`` (the ref was just created) returns every note at
+        ``after``.
+
+        Known limitation: GitHub's compare endpoint is three-dot only
+        (``after`` against the merge base), so a *force-pushed* notes
+        ref whose ``before`` is not an ancestor of ``after`` can miss a
+        note that the rewrite flipped or removed.  The 404 fallback
+        below covers a ``before`` GitHub no longer has at all, and the
+        sweep backfill only repairs verdicts that are still ``null`` --
+        a stale non-null verdict from this window persists until the
+        next ordinary push touches the note.
+        """
+        async with self._client(ctx, credentials) as client:
+            if before == _ZERO_SHA:
+                return await self._all_notes(client, after)
+            quoted = urllib.parse.quote(f'{before}...{after}', safe='.')
+            resp = await client.get(f'/compare/{quoted}')
+            if resp.status_code == 404:
+                # ``before`` was garbage-collected or the ref history
+                # was rewritten; fall back to the full tree at ``after``
+                # so the push still lands rather than being dropped.
+                return await self._all_notes(client, after)
+            resp.raise_for_status()
+            payload = typing.cast('dict[str, typing.Any]', resp.json())
+            files: list[dict[str, typing.Any]] = payload.get('files') or []
+            if len(files) >= _COMPARE_FILES_CAP:
+                # The compare endpoint stops listing files at 300 and
+                # offers no pagination for them, so a full list this
+                # long may be missing entries.  Fall back to the whole
+                # tree at ``after`` -- same trade-off as the 404 path:
+                # removals in the window are missed until the sweep or
+                # the next push touches them.
+                LOGGER.warning(
+                    'Notes compare %s...%s hit the %d-file cap; '
+                    'reading the full tree instead',
+                    before,
+                    after,
+                    _COMPARE_FILES_CAP,
+                )
+                return await self._all_notes(client, after)
+            out: dict[str, str | None] = {}
+            for item in files:
+                status = str(item.get('status') or '')
+                previous = _note_sha(item.get('previous_filename'))
+                if status == 'renamed' and previous is not None:
+                    # Fan-out reshuffle: the note moved paths.  The old
+                    # path's flattened SHA only differs from the new one
+                    # if the note now annotates a different commit.
+                    out.setdefault(previous, None)
+                annotated = _note_sha(item.get('filename'))
+                if annotated is None:
+                    continue
+                if status == 'removed':
+                    out[annotated] = None
+                    continue
+                blob_sha = item.get('sha')
+                if not blob_sha:
+                    continue
+                try:
+                    body = await self._blob_text(client, str(blob_sha))
+                except httpx.HTTPError:
+                    LOGGER.warning(
+                        'Could not read note blob %s for %s; skipping',
+                        blob_sha,
+                        annotated,
+                    )
+                    body = None
+                if body is None:
+                    # Skip rather than record ``None``: in the diff a
+                    # ``None`` means "note removed" and would resolve a
+                    # drift blocker over a note we merely could not
+                    # read (``_blob_text`` already logged why).
+                    out.pop(annotated, None)
+                    continue
+                out[annotated] = body
+            return out
+
+    async def _notes_tree(
+        self, client: httpx.AsyncClient, namespace: str
+    ) -> dict[str, str] | None:
+        """Map annotated full SHA -> note blob SHA, or ``None`` sans ref."""
+        ref = await client.get(
+            f'/git/ref/{urllib.parse.quote(f"notes/{namespace}", safe="/")}'
+        )
+        if ref.status_code == 404:
+            return None
+        ref.raise_for_status()
+        tip = str(ref.json()['object']['sha'])
+        return await self._tree_notes(client, tip)
+
+    async def _tree_notes(
+        self, client: httpx.AsyncClient, commit_sha: str
+    ) -> dict[str, str]:
+        """Flatten one notes-ref commit's tree to annotated SHA -> blob."""
+        commit = await client.get(f'/git/commits/{commit_sha}')
+        commit.raise_for_status()
+        tree_sha = str(commit.json()['tree']['sha'])
+        tree = await client.get(f'/git/trees/{tree_sha}?recursive=1')
+        tree.raise_for_status()
+        payload = typing.cast('dict[str, typing.Any]', tree.json())
+        if payload.get('truncated'):
+            LOGGER.warning(
+                'Notes tree %s is truncated; some notes will be missed',
+                tree_sha,
+            )
+        entries: list[dict[str, typing.Any]] = payload.get('tree') or []
+        out: dict[str, str] = {}
+        for entry in entries:
+            if entry.get('type') != 'blob':
+                continue
+            annotated = _note_sha(entry.get('path'))
+            if annotated is not None:
+                out[annotated] = str(entry['sha'])
+        return out
+
+    async def _all_notes(
+        self, client: httpx.AsyncClient, commit_sha: str
+    ) -> dict[str, str | None]:
+        """Every note at one notes-ref commit, bodies included.
+
+        Blob reads run a few at a time (one request per note) and an
+        unreadable note is skipped rather than failing the batch or
+        recording a false "removed".
+        """
+        notes = await self._tree_notes(client, commit_sha)
+        gate = asyncio.Semaphore(_NOTE_BLOB_CONCURRENCY)
+
+        async def _read(blob_sha: str) -> str | BaseException | None:
+            async with gate:
+                try:
+                    return await self._blob_text(client, blob_sha)
+                except httpx.HTTPError as exc:
+                    return exc
+
+        items = list(notes.items())
+        bodies = await asyncio.gather(
+            *(_read(blob_sha) for _, blob_sha in items)
+        )
+        out: dict[str, str | None] = {}
+        for (annotated, blob_sha), body in zip(items, bodies, strict=True):
+            if isinstance(body, BaseException):
+                LOGGER.warning(
+                    'Could not read note blob %s for %s; skipping',
+                    blob_sha,
+                    annotated,
+                )
+                continue
+            if body is None:
+                # ``_blob_text`` could not decode it and logged why;
+                # a ``None`` here would read as "note removed".
+                continue
+            out[annotated] = body
+        return out
+
+    @staticmethod
+    async def _blob_text(
+        client: httpx.AsyncClient, blob_sha: str
+    ) -> str | None:
+        """Fetch and decode one note blob; ``None`` when undecodable."""
+        resp = await client.get(f'/git/blobs/{blob_sha}')
+        resp.raise_for_status()
+        payload = typing.cast('dict[str, typing.Any]', resp.json())
+        content = str(payload.get('content') or '')
+        if payload.get('encoding') != 'base64':
+            if not content:
+                # ``encoding: none`` with an empty body is how GitHub
+                # answers for blobs above the inline size limit --
+                # "cannot read", not "empty note".
+                LOGGER.warning(
+                    'Note blob %s answered encoding %r with no content',
+                    blob_sha,
+                    payload.get('encoding'),
+                )
+                return None
+            return content
+        try:
+            # Strip GitHub's line wrapping, then decode strictly --
+            # the default decoder silently discards invalid characters,
+            # turning garbage like '%%%%' into an empty body instead of
+            # landing on this "cannot read" path.
+            return base64.b64decode(
+                ''.join(content.split()), validate=True
+            ).decode('utf-8')
+        except (ValueError, UnicodeDecodeError):
+            LOGGER.warning('Could not decode note blob %s', blob_sha)
+            return None
 
     # -- Tags / Releases ----------------------------------------------------
 

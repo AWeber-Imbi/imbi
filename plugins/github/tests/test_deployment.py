@@ -1,6 +1,7 @@
 """Smoke tests for the GitHub deployment capability handler."""
 
 import asyncio
+import base64
 import datetime
 import json
 import time
@@ -2652,3 +2653,388 @@ class RepoRenameRelocationTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubDeployment()
         await plugin.list_commits(ctx, _CREDS, ref='main')
         self.assertIsNone(ctx.link_writeback)
+
+
+class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
+    """Reading and diffing ``refs/notes/imbi-drift`` via the Git Data API."""
+
+    REPO = 'https://api.github.com/repos/octo/demo'
+    FULL_SHA = 'abc1234' + 'f' * 33
+
+    def setUp(self) -> None:
+        self.handler = GitHubDeployment()
+
+    def _mock_tree(self, entries: list[dict[str, object]]) -> None:
+        respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
+            return_value=httpx.Response(
+                200, json={'object': {'sha': 'notes-tip'}}
+            )
+        )
+        respx.get(f'{self.REPO}/git/commits/notes-tip').mock(
+            return_value=httpx.Response(200, json={'tree': {'sha': 't1'}})
+        )
+        respx.get(f'{self.REPO}/git/trees/t1').mock(
+            return_value=httpx.Response(200, json={'tree': entries})
+        )
+
+    @staticmethod
+    def _blob(sha: str, text: str) -> None:
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/git/blobs/{sha}'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'encoding': 'base64',
+                    'content': base64.b64encode(text.encode()).decode(),
+                },
+            )
+        )
+
+    @respx.mock
+    async def test_get_commit_note_resolves_short_sha_and_fanout(
+        self,
+    ) -> None:
+        respx.get(f'{self.REPO}/commits/abc1234').mock(
+            return_value=httpx.Response(200, json={'sha': self.FULL_SHA})
+        )
+        fanout = f'{self.FULL_SHA[:2]}/{self.FULL_SHA[2:]}'
+        self._mock_tree([{'type': 'blob', 'path': fanout, 'sha': 'b1'}])
+        self._blob('b1', '{"drift_detected":false}')
+        note = await self.handler.get_commit_note(
+            _ctx(), _CREDS, 'imbi-drift', 'abc1234'
+        )
+        self.assertEqual('{"drift_detected":false}', note)
+
+    @respx.mock
+    async def test_get_commit_note_missing_ref_is_none(self) -> None:
+        respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        note = await self.handler.get_commit_note(
+            _ctx(), _CREDS, 'imbi-drift', self.FULL_SHA
+        )
+        self.assertIsNone(note)
+
+    @respx.mock
+    async def test_get_commit_note_no_entry_is_none(self) -> None:
+        self._mock_tree([{'type': 'blob', 'path': 'e' * 40, 'sha': 'b1'}])
+        note = await self.handler.get_commit_note(
+            _ctx(), _CREDS, 'imbi-drift', self.FULL_SHA
+        )
+        self.assertIsNone(note)
+
+    @respx.mock
+    async def test_diff_commit_notes_reads_the_tree_diff(self) -> None:
+        removed_sha = 'e' * 40
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'files': [
+                        {
+                            'filename': (
+                                f'{self.FULL_SHA[:2]}/{self.FULL_SHA[2:]}'
+                            ),
+                            'status': 'modified',
+                            'sha': 'b2',
+                        },
+                        {'filename': removed_sha, 'status': 'removed'},
+                        {'filename': 'README', 'status': 'added'},
+                    ]
+                },
+            )
+        )
+        self._blob('b2', '{"drift_detected":true}')
+        changed = await self.handler.diff_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+        )
+        self.assertEqual(
+            {
+                self.FULL_SHA: '{"drift_detected":true}',
+                removed_sha: None,
+            },
+            changed,
+        )
+
+    def _mock_after_tree(
+        self, entries: list[dict[str, object]] | None = None
+    ) -> None:
+        """The full tree at ``after`` the fallback paths read."""
+        respx.get(f'{self.REPO}/git/commits/{"b" * 40}').mock(
+            return_value=httpx.Response(200, json={'tree': {'sha': 't1'}})
+        )
+        respx.get(f'{self.REPO}/git/trees/t1').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'tree': entries
+                    or [{'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b1'}]
+                },
+            )
+        )
+
+    @respx.mock
+    async def test_diff_commit_notes_tracks_a_renamed_note(self) -> None:
+        old_sha = 'e' * 40
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'files': [
+                        {
+                            'filename': (
+                                f'{self.FULL_SHA[:2]}/{self.FULL_SHA[2:]}'
+                            ),
+                            'previous_filename': old_sha,
+                            'status': 'renamed',
+                            'sha': 'b2',
+                        }
+                    ]
+                },
+            )
+        )
+        self._blob('b2', '{"drift_detected":true}')
+        changed = await self.handler.diff_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+        )
+        self.assertEqual(
+            {
+                self.FULL_SHA: '{"drift_detected":true}',
+                old_sha: None,
+            },
+            changed,
+        )
+
+    @respx.mock
+    async def test_diff_commit_notes_404_falls_back_to_the_tree(
+        self,
+    ) -> None:
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(404, json={'message': 'Not Found'})
+        )
+        self._mock_after_tree()
+        self._blob('b1', '{"drift_detected":false}')
+        changed = await self.handler.diff_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+        )
+        self.assertEqual({self.FULL_SHA: '{"drift_detected":false}'}, changed)
+
+    @respx.mock
+    async def test_diff_commit_notes_file_cap_falls_back_to_the_tree(
+        self,
+    ) -> None:
+        # 300 files means the unpaginated list may be incomplete.
+        files = [
+            {'filename': f'{i:040x}', 'status': 'added', 'sha': f's{i}'}
+            for i in range(300)
+        ]
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(200, json={'files': files})
+        )
+        self._mock_after_tree()
+        self._blob('b1', '{"drift_detected":false}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+            )
+        self.assertEqual({self.FULL_SHA: '{"drift_detected":false}'}, changed)
+
+    @respx.mock
+    async def test_diff_commit_notes_skips_an_unreadable_blob(self) -> None:
+        # A failed read is skipped, not recorded as ``None`` -- in the
+        # diff a ``None`` means "note removed" and resolves blockers.
+        other_sha = 'e' * 40
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'files': [
+                        {
+                            'filename': self.FULL_SHA,
+                            'status': 'modified',
+                            'sha': 'bad',
+                        },
+                        {
+                            'filename': other_sha,
+                            'status': 'modified',
+                            'sha': 'b2',
+                        },
+                    ]
+                },
+            )
+        )
+        respx.get(f'{self.REPO}/git/blobs/bad').mock(
+            return_value=httpx.Response(500)
+        )
+        self._blob('b2', '{"drift_detected":true}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+            )
+        self.assertEqual({other_sha: '{"drift_detected":true}'}, changed)
+
+    @respx.mock
+    async def test_undecodable_blob_is_skipped(self) -> None:
+        # Not recorded as ``None``: in the diff a ``None`` means "note
+        # removed" and would resolve a drift blocker over a note that
+        # merely could not be decoded.
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'files': [
+                        {
+                            'filename': self.FULL_SHA,
+                            'status': 'modified',
+                            'sha': 'b2',
+                        }
+                    ]
+                },
+            )
+        )
+        respx.get(f'{self.REPO}/git/blobs/b2').mock(
+            return_value=httpx.Response(
+                200,
+                json={'encoding': 'base64', 'content': '%%%not-base64%%%'},
+            )
+        )
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+            )
+        self.assertEqual({}, changed)
+
+    @respx.mock
+    async def test_garbage_base64_is_skipped_not_read_as_empty(self) -> None:
+        # The default decoder discards invalid characters, so '%%%%'
+        # would decode to an empty body and stamp a null verdict
+        # instead of landing on the "cannot read" skip path.
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'files': [
+                        {
+                            'filename': self.FULL_SHA,
+                            'status': 'modified',
+                            'sha': 'b2',
+                        }
+                    ]
+                },
+            )
+        )
+        respx.get(f'{self.REPO}/git/blobs/b2').mock(
+            return_value=httpx.Response(
+                200, json={'encoding': 'base64', 'content': '%%%%'}
+            )
+        )
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+            )
+        self.assertEqual({}, changed)
+
+    @respx.mock
+    async def test_line_wrapped_base64_still_decodes(self) -> None:
+        # GitHub wraps blob content in newlines; strict validation must
+        # not reject its own wrapping.
+        fanout = f'{self.FULL_SHA[:2]}/{self.FULL_SHA[2:]}'
+        self._mock_tree([{'type': 'blob', 'path': fanout, 'sha': 'b1'}])
+        encoded = base64.b64encode(b'{"drift_detected":true}').decode()
+        wrapped = f'{encoded[:16]}\n{encoded[16:]}\n'
+        respx.get(f'{self.REPO}/git/blobs/b1').mock(
+            return_value=httpx.Response(
+                200, json={'encoding': 'base64', 'content': wrapped}
+            )
+        )
+        note = await self.handler.get_commit_note(
+            _ctx(), _CREDS, 'imbi-drift', self.FULL_SHA
+        )
+        self.assertEqual('{"drift_detected":true}', note)
+
+    @respx.mock
+    async def test_undecodable_blob_is_skipped_in_the_full_tree(
+        self,
+    ) -> None:
+        other_sha = 'e' * 40
+        self._mock_after_tree(
+            [
+                {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b2'},
+                {'type': 'blob', 'path': other_sha, 'sha': 'b3'},
+            ]
+        )
+        respx.get(f'{self.REPO}/git/blobs/b2').mock(
+            return_value=httpx.Response(
+                200,
+                json={'encoding': 'base64', 'content': '%%%not-base64%%%'},
+            )
+        )
+        self._blob('b3', '{"drift_detected":false}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', '0' * 40, 'b' * 40
+            )
+        self.assertEqual({other_sha: '{"drift_detected":false}'}, changed)
+
+    @respx.mock
+    async def test_oversized_blob_is_none(self) -> None:
+        # ``encoding: none`` with empty content is GitHub's answer for
+        # blobs above the inline size limit -- "cannot read", not an
+        # empty note.
+        self._mock_tree(
+            [{'type': 'blob', 'path': self.FULL_SHA, 'sha': 'big'}]
+        )
+        respx.get(f'{self.REPO}/git/blobs/big').mock(
+            return_value=httpx.Response(
+                200, json={'encoding': 'none', 'content': ''}
+            )
+        )
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            note = await self.handler.get_commit_note(
+                _ctx(), _CREDS, 'imbi-drift', self.FULL_SHA
+            )
+        self.assertIsNone(note)
+
+    @respx.mock
+    async def test_all_notes_skips_an_unreadable_blob(self) -> None:
+        other_sha = 'e' * 40
+        self._mock_after_tree(
+            [
+                {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'bad'},
+                {'type': 'blob', 'path': other_sha, 'sha': 'b2'},
+            ]
+        )
+        respx.get(f'{self.REPO}/git/blobs/bad').mock(
+            return_value=httpx.Response(500)
+        )
+        self._blob('b2', '{"drift_detected":false}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', '0' * 40, 'b' * 40
+            )
+        self.assertEqual({other_sha: '{"drift_detected":false}'}, changed)
+
+    @respx.mock
+    async def test_diff_commit_notes_zero_before_lists_everything(
+        self,
+    ) -> None:
+        respx.get(f'{self.REPO}/git/commits/{"b" * 40}').mock(
+            return_value=httpx.Response(200, json={'tree': {'sha': 't1'}})
+        )
+        respx.get(f'{self.REPO}/git/trees/t1').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'tree': [
+                        {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b1'},
+                        {'type': 'tree', 'path': 'ab', 'sha': 'sub'},
+                    ]
+                },
+            )
+        )
+        self._blob('b1', '{"drift_detected":false}')
+        changed = await self.handler.diff_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift', '0' * 40, 'b' * 40
+        )
+        self.assertEqual({self.FULL_SHA: '{"drift_detected":false}'}, changed)

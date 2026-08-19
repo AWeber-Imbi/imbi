@@ -2819,3 +2819,114 @@ class ImbiClientPutSbomTests(helpers.TestCase):
         self.assertTrue(
             any('Failed to put SBoM' in line for line in cm.output)
         )
+
+
+class UpdateReleaseDriftTests(helpers.TestCase):
+    @staticmethod
+    def _config(
+        ref: str = 'refs/notes/imbi-drift',
+    ) -> actions.UpdateReleaseDriftConfig:
+        return actions.UpdateReleaseDriftConfig.model_validate({'ref': ref})
+
+    def _push(
+        self,
+        ref: str = 'refs/notes/imbi-drift',
+        before: str = 'a' * 40,
+        after: str = 'b' * 40,
+    ) -> dict[str, typing.Any]:
+        return _event({'ref': ref, 'before': before, 'after': after})
+
+    async def test_forwards_before_and_after(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'update_drift_notes',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_update,
+        ):
+            await actions.update_release_drift(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='octo/demo',
+                action_config=self._config(),
+                event=self._push(),
+            )
+        mock_update.assert_awaited_once_with('org', 'proj', 'a' * 40, 'b' * 40)
+
+    async def test_other_refs_are_skipped(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'update_drift_notes',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_update,
+        ):
+            await actions.update_release_drift(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='octo/demo',
+                action_config=self._config(),
+                event=self._push(ref='refs/heads/main'),
+            )
+        mock_update.assert_not_awaited()
+
+    async def test_ref_deletion_is_skipped(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'update_drift_notes',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_update,
+        ):
+            await actions.update_release_drift(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='octo/demo',
+                action_config=self._config(),
+                event=self._push(after='0' * 40),
+            )
+        mock_update.assert_not_awaited()
+
+    async def test_missing_before_is_skipped(self) -> None:
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'update_drift_notes',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_update,
+        ):
+            event = _event({'ref': 'refs/notes/imbi-drift', 'after': 'b' * 40})
+            await actions.update_release_drift(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='octo/demo',
+                action_config=self._config(),
+                event=event,
+            )
+        mock_update.assert_not_awaited()
+
+    async def test_zero_before_is_forwarded(self) -> None:
+        # A just-created notes ref pushes an all-zero ``before``; the
+        # API ingests the whole tree for it, so it must go through.
+        with (
+            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'update_drift_notes',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(200),
+            ) as mock_update,
+        ):
+            await actions.update_release_drift(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='octo/demo',
+                action_config=self._config(),
+                event=self._push(before='0' * 40),
+            )
+        mock_update.assert_awaited_once()

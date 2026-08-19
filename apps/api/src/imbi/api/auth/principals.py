@@ -20,6 +20,7 @@ from imbi.api.auth import permissions
 #: Slugs, one per worker. See ``REQUESTED_BY`` in each worker's module.
 COMMIT_SYNC = 'commit-sync'
 DEPLOYMENT_SYNC = 'deployment-sync'
+DRIFT_SYNC = 'drift-sync'
 MAINTENANCE = 'maintenance'
 OPSLOG_BACKFILL = 'maintenance-opslog-backfill'
 PR_SYNC = 'pr-sync'
@@ -31,6 +32,7 @@ PROCESS_PRINCIPALS = frozenset(
     {
         COMMIT_SYNC,
         DEPLOYMENT_SYNC,
+        DRIFT_SYNC,
         MAINTENANCE,
         OPSLOG_BACKFILL,
         PR_SYNC,

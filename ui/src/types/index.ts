@@ -1367,6 +1367,12 @@ export interface ReleaseHistoryEntry {
   ci_override_at?: null | string
   ci_override_by?: null | string
   ci_status: ReleaseCiStatus
+  /**
+   * CI's drift verdict for the release's own commit, ingested from git
+   * notes on `refs/notes/imbi-drift`. `null` means no note has been
+   * seen yet — notes arrive asynchronously on a separate ref.
+   */
+  drift_detected?: boolean | null
   notes_markdown?: null | string
   package_url?: null | string
   published_at?: null | string

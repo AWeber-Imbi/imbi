@@ -120,6 +120,13 @@ class ReleaseResponse(pydantic.BaseModel):
     created_at: datetime.datetime
     updated_at: datetime.datetime | None = None
     created_by: str
+    #: CI's drift verdict for this release's commit, ingested from git
+    #: notes on ``refs/notes/imbi-drift``. ``None`` means no note has
+    #: been seen yet -- notes arrive asynchronously on a separate ref.
+    drift_detected: bool | None = None
+    #: When drift ingestion last looked, so "never looked" and "looked,
+    #: no note" stay distinguishable.
+    drift_checked_at: datetime.datetime | None = None
 
     @pydantic.field_validator('links', mode='before')
     @classmethod
@@ -234,6 +241,8 @@ def _release_to_response(
             'created_at': data['created_at'],
             'updated_at': data.get('updated_at'),
             'created_by': data['created_by'],
+            'drift_detected': data.get('drift_detected'),
+            'drift_checked_at': data.get('drift_checked_at'),
         }
     )
 

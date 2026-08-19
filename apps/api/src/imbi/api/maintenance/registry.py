@@ -114,7 +114,9 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
                 'running after 30 minutes, and record the answer. '
                 'Deployments nothing can resolve for a week are marked '
                 'failed; a deployment recorded before its release was '
-                'known is attached to it. Projects without a deployment '
+                'known is attached to it. Also backfills release drift '
+                'verdicts from git notes for releases without an '
+                'existing verdict. Projects without a deployment '
                 'integration are skipped. Safe to re-run, and scheduled '
                 'rather than only operator-triggered.'
             ),

@@ -678,6 +678,20 @@ class DeploymentDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(NotImplementedError):
             await self.plugin.get_artifact_run_status(self.ctx, {}, '42')
 
+    async def test_get_commit_note_default_raises(self) -> None:
+        # Raising (rather than returning None) lets hosts tell "no
+        # note" apart from "this plugin cannot answer".
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.get_commit_note(
+                self.ctx, {}, 'imbi-drift', 'abc1234'
+            )
+
+    async def test_diff_commit_notes_default_raises(self) -> None:
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.diff_commit_notes(
+                self.ctx, {}, 'imbi-drift', 'a' * 40, 'b' * 40
+            )
+
 
 class ArtifactRunTestCase(unittest.TestCase):
     def test_run_id_defaults_to_none(self) -> None:
