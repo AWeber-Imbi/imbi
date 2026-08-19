@@ -48,6 +48,18 @@ applied by `setup_schema()`. Notable tables:
 | `tags`           | `ReplacingMergeTree` | `(project_id, name)`        | a VCS plugin via [`TagRecord`](models.md)    |
 | `release_components` | `MergeTree` | `(component_id, release_id, batch_id, component_release_id)` | SBoM ingest via [`ReleaseComponentRecord`](models.md) |
 | `release_component_batches` | `MergeTree` | `(release_id, recorded_at, batch_id)` | SBoM ingest via [`ReleaseComponentBatch`](models.md) |
+| `maintenance_log` | `MergeTree`         | `(occurred_at, id)`         | the maintenance worker and its operations    |
+
+`maintenance_log` is the durable history of what a global maintenance
+operation did, written best-effort so a ClickHouse problem can never fail
+maintenance work. One table holds three kinds of append-only row, told
+apart by `event_type`: `run` (one per finished run, carrying the
+authoritative Valkey counters), `attempt` (one per work item per claim,
+written by the worker whatever the outcome), and `activity` (whatever the
+operation itself recorded while working). Counting them together would
+report events rather than outcomes, so readers filter on `event_type`.
+`item_id` is the work item; `project_id` is set only when that item is a
+project, which is every operation but `search-reindex`.
 
 The `events` row carries a `version UInt8 DEFAULT 0` column and a
 sibling `events_latest` view. Writers that update an event after

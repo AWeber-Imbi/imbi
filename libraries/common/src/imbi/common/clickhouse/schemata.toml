@@ -397,3 +397,76 @@ CREATE TABLE IF NOT EXISTS imbi.release_components {on_cluster}(
 ORDER BY (component_id, release_id, batch_id, component_release_id);
 """
 enabled = true
+
+# The durable history of what global maintenance operations did. One table
+# holds three kinds of append-only event, told apart by `event_type`:
+#
+#   `run`       one per finished run, written at finalize, carrying the
+#               authoritative Valkey counters in `detail`
+#   `attempt`   one per project per claim, written by the worker whatever
+#               the outcome
+#   `activity`  zero or more per attempt, written by the operation itself
+#
+# Separating them is what keeps counts meaningful: a sweep writes on the
+# order of 10^4 attempt rows and can write many times that in activity
+# rows, so counting the two together would report events rather than
+# outcomes.
+#
+# Plain `MergeTree`: rows are immutable facts. A project that runs twice
+# writes two attempts under two `attempt_id`s, which is the truth, so
+# there is nothing for a `ReplacingMergeTree` to collapse.
+#
+# `ORDER BY (occurred_at, id)` is exactly the keyset the read endpoint
+# pages on. A third key column absent from the cursor would put page
+# boundaries at odds with the sort order whenever two rows share a
+# millisecond -- routine during a sweep. Every other filter (`slug`,
+# `disposition`, `run_id`, `attempt_id`, `project_id`) is served by a skip
+# index instead: `set` for the genuinely bounded columns, `bloom_filter`
+# for the nanoid-shaped ones. `attempt_id` earns one because expanding a
+# row in the UI reads `event_type = 'activity'` for a single attempt with
+# no time bound -- unindexed, that is a scan of every partition inside
+# the TTL.
+#
+# `item_id` is the work item the run enumerated; `project_id` is set only
+# when that item *is* a project, which it is for every operation but
+# `search-reindex` (whose items are `Label:node_id`). Keeping them apart
+# is what lets a reader link a row to a project without having to know
+# which operations are project-scoped.
+#
+# `project_slug` is a snapshot of what the project was called when the
+# work ran; a rename does not rewrite history, and the UI links by
+# `project_id`.
+#
+# `toDateTime` in the TTL is required rather than cosmetic: a TTL
+# expression must yield Date or DateTime, and `DateTime64 + INTERVAL`
+# yields DateTime64, which the server rejects at CREATE time.
+[maintenance_log]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.maintenance_log {on_cluster}(
+  id            String,
+  occurred_at   DateTime64(3, 'UTC'),
+  run_id        String,
+  attempt_id    String DEFAULT '',
+  item_id       String DEFAULT '',
+  slug          LowCardinality(String),
+  event_type    LowCardinality(String),
+  disposition   LowCardinality(String),
+  action        LowCardinality(String) DEFAULT '',
+  project_id    LowCardinality(String) DEFAULT '',
+  project_slug  LowCardinality(String) DEFAULT '',
+  message       String DEFAULT '',
+  detail        JSON,
+  duration_ms   UInt32 DEFAULT 0,
+  started_by    LowCardinality(String) DEFAULT '',
+  INDEX idx_event event_type TYPE set(8) GRANULARITY 4,
+  INDEX idx_slug slug TYPE set(64) GRANULARITY 4,
+  INDEX idx_disposition disposition TYPE set(16) GRANULARITY 4,
+  INDEX idx_run run_id TYPE bloom_filter GRANULARITY 4,
+  INDEX idx_attempt attempt_id TYPE bloom_filter GRANULARITY 4,
+  INDEX idx_project project_id TYPE bloom_filter GRANULARITY 4
+) ENGINE = {replicated}MergeTree()
+PARTITION BY toYYYYMM(occurred_at)
+ORDER BY (occurred_at, id)
+TTL toDateTime(occurred_at) + INTERVAL 90 DAY;
+"""
+enabled = true

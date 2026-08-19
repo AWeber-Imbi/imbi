@@ -27,6 +27,7 @@ import nanoid
 from valkey import asyncio as valkey
 
 from imbi.api.auth import permissions, principals
+from imbi.api.maintenance import log
 from imbi.api.scoring import queue as score_queue
 from imbi.common import clickhouse, graph, versioning
 from imbi.common import models as common_models
@@ -43,6 +44,10 @@ OPSLOG_BACKFILL_RECORDED_BY = principals.OPSLOG_BACKFILL
 
 ExecuteOutcome = typing.Literal['succeeded', 'skipped']
 
+#: Recorded whenever an operation cannot resolve a project's owning
+#: organization, which every org-scoped service call needs.
+_NO_ORG = 'Project has no owning organization.'
+
 _ORG_SLUG_QUERY: typing.LiteralString = (
     'MATCH (p:Project {{id: {project_id}}})-[:OWNED_BY]->(:Team)'
     '-[:BELONGS_TO]->(o:Organization) RETURN o.slug AS slug'
@@ -51,6 +56,22 @@ _ORG_SLUG_QUERY: typing.LiteralString = (
 
 class MaintenanceItemFailed(Exception):
     """One project's operation failed; the message is user-safe."""
+
+
+def _skip(
+    ctx: log.MaintenanceContext,
+    action: str,
+    message: str = '',
+    **detail: object,
+) -> ExecuteOutcome:
+    """Record why this item was skipped, then skip it.
+
+    A bare ``return 'skipped'`` leaves an operator to guess between "no
+    integration", "nothing to do", and "no organization"; the attempt row
+    says only that nothing happened.
+    """
+    ctx.log.record('skipped', action, message, **detail)
+    return 'skipped'
 
 
 def _system_auth() -> permissions.AuthContext:
@@ -76,7 +97,11 @@ async def _org_slug_for(db: graph.Graph, project_id: str) -> str | None:
 
 
 async def execute_analysis(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Run the Doctor analysis and persist the report.
 
@@ -87,7 +112,7 @@ async def execute_analysis(
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
-        return 'skipped'
+        return _skip(ctx, 'no-organization', _NO_ORG)
     await project_analysis.run_and_persist(
         db, org_slug, project_id, _system_auth()
     )
@@ -95,7 +120,11 @@ async def execute_analysis(
 
 
 async def execute_remediate(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Apply every fixable Project Doctor finding for one project.
 
@@ -109,13 +138,37 @@ async def execute_remediate(
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
-        return 'skipped'
+        return _skip(ctx, 'no-organization', _NO_ORG)
     response = await project_analysis.remediate_all_for_project(
         db, org_slug=org_slug, project_id=project_id, auth=_system_auth()
     )
     if response is None or not response.outcomes:
-        return 'skipped'
+        return _skip(
+            ctx, 'remediate', 'No persisted report, or no fixable findings.'
+        )
+    # One row per remediation that did not work: which finding, which
+    # plugin, and what it said. Successful fixes stay as a count -- a
+    # project with forty findings would otherwise write forty rows to
+    # say nothing an operator will read.
+    for outcome in response.outcomes:
+        if outcome.result.status == 'failed':
+            ctx.log.record(
+                'failed',
+                'remediate',
+                outcome.result.message,
+                finding=outcome.slug,
+                plugin=outcome.plugin_id,
+            )
     failed = sum(1 for o in response.outcomes if o.result.status == 'failed')
+    fixed = sum(1 for o in response.outcomes if o.result.status == 'fixed')
+    ctx.log.record(
+        'failed' if failed else 'succeeded',
+        'remediate',
+        f'{fixed} of {len(response.outcomes)} findings fixed.',
+        fixed=fixed,
+        failed=failed,
+        total=len(response.outcomes),
+    )
     if failed:
         raise MaintenanceItemFailed(
             f'{failed} of {len(response.outcomes)} remediations failed; '
@@ -125,7 +178,11 @@ async def execute_remediate(
 
 
 async def execute_commit_sync(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Full commit/tag backfill, mirroring the queue consumer's status
     transitions so the per-project Doctor status stays truthful."""
@@ -133,7 +190,7 @@ async def execute_commit_sync(
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
-        return 'skipped'
+        return _skip(ctx, 'no-organization', _NO_ORG)
     await service.set_status(
         db, project_id, status='running', requested_by=REQUESTED_BY
     )
@@ -147,7 +204,7 @@ async def execute_commit_sync(
             requested_by=REQUESTED_BY,
             error=str(exc),
         )
-        return 'skipped'
+        return _skip(ctx, 'commit-sync', str(exc))
     except PluginRateLimited:
         # Leave the project requeue-able; the worker pauses the op.
         await service.set_status(
@@ -173,18 +230,29 @@ async def execute_commit_sync(
         commits=commits,
         tags=tags,
     )
+    ctx.log.record(
+        'succeeded',
+        'commit-sync',
+        f'Synced {commits} commit(s) and {tags} tag(s).',
+        commits=commits,
+        tags=tags,
+    )
     return 'succeeded'
 
 
 async def execute_pr_sync(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Full PR-history backfill; same shape as commit sync."""
     from imbi.api.pr_sync import service
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
-        return 'skipped'
+        return _skip(ctx, 'no-organization', _NO_ORG)
     await service.set_status(
         db, project_id, status='running', requested_by=REQUESTED_BY
     )
@@ -198,7 +266,7 @@ async def execute_pr_sync(
             requested_by=REQUESTED_BY,
             error=str(exc),
         )
-        return 'skipped'
+        return _skip(ctx, 'pr-sync', str(exc))
     except PluginRateLimited:
         # Leave the project requeue-able; the worker pauses the op.
         await service.set_status(
@@ -223,18 +291,25 @@ async def execute_pr_sync(
         requested_by=REQUESTED_BY,
         prs=prs,
     )
+    ctx.log.record(
+        'succeeded', 'pr-sync', f'Synced {prs} pull request(s).', prs=prs
+    )
     return 'succeeded'
 
 
 async def execute_deployment_resync(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Backfill recent remote deployments via the deployment plugin."""
     from imbi.api.endpoints import project_deployments
 
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
-        return 'skipped'
+        return _skip(ctx, 'no-organization', _NO_ORG)
     try:
         await project_deployments.resync_for_project(
             db,
@@ -247,13 +322,23 @@ async def execute_deployment_resync(
         # 404: no deployment capability bound; 400: the plugin doesn't
         # support deployment sync. Neither is a failure of this run.
         if exc.status_code in (400, 404):
-            return 'skipped'
+            return _skip(
+                ctx,
+                'deployment-resync',
+                str(exc.detail),
+                status_code=exc.status_code,
+            )
         raise MaintenanceItemFailed(str(exc.detail)) from exc
+    ctx.log.record('succeeded', 'deployment-resync', 'Backfilled deployments.')
     return 'succeeded'
 
 
 async def execute_deployment_sweep(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Close out deployments the remote finished but nobody recorded.
 
@@ -283,13 +368,44 @@ async def execute_deployment_sweep(
             LOGGER.exception(
                 'maintenance drift backfill failed for %s', project_id
             )
+            ctx.log.record(
+                'failed',
+                'drift-backfill',
+                'Drift backfill failed. See server logs for details.',
+            )
     if (summary is None or not summary.examined) and not stamped:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'deployment-sweep',
+            'Nothing unfinished to chase and no unanswered releases.',
+        )
+    if summary is not None and summary.examined:
+        ctx.log.record(
+            'succeeded',
+            'deployment-sweep',
+            f'{summary.resolved} closed out, {summary.expired} marked '
+            f'failed, {summary.attached} attached to a release.',
+            examined=summary.examined,
+            resolved=summary.resolved,
+            expired=summary.expired,
+            attached=summary.attached,
+        )
+    if stamped:
+        ctx.log.record(
+            'succeeded',
+            'drift-backfill',
+            f'Stamped {stamped} release(s) from git notes.',
+            stamped=stamped,
+        )
     return 'succeeded'
 
 
 async def execute_rescore(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Enqueue a score recompute onto the existing scoring stream.
 
@@ -300,7 +416,11 @@ async def execute_rescore(
     enqueued = await score_queue.enqueue_recompute(
         client, project_id, 'bulk_rescore', REQUESTED_BY
     )
-    return 'succeeded' if enqueued else 'skipped'
+    if not enqueued:
+        return _skip(
+            ctx, 'rescore', 'A recompute is already queued; debounced.'
+        )
+    return 'succeeded'
 
 
 _DEPLOYMENT_EDGES_QUERY: typing.LiteralString = """
@@ -417,7 +537,11 @@ async def _existing_opslog_rows(
 
 
 async def execute_opslog_backfill(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Backfill ``operations_log`` 'Deployed' rows from the graph edges.
 
@@ -458,7 +582,9 @@ async def execute_opslog_backfill(
         ['env_slug', 'tag', 'committish', 'deployments'],
     )
     if not rows:
-        return 'skipped'
+        return _skip(
+            ctx, 'opslog-backfill', 'Project has no deployment history.'
+        )
 
     existing_run_ids, existing_rows = await _existing_opslog_rows(project_id)
     existing_env_versions = set(existing_rows)
@@ -523,7 +649,11 @@ async def execute_opslog_backfill(
             existing_env_versions.add((env_slug, version))
 
     if not pending and not repairs:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'opslog-backfill',
+            'Every attributed deployment already has its ops-log entry.',
+        )
 
     client_instance = clickhouse.client.Clickhouse.get_instance()
     if pending:
@@ -553,6 +683,14 @@ async def execute_opslog_backfill(
             ],
             repair_columns,
         )
+    ctx.log.record(
+        'succeeded',
+        'opslog-backfill',
+        f'Wrote {len(pending)} entry(ies) and filled the committish in on '
+        f'{len(repairs)}.',
+        written=len(pending),
+        repaired=len(repairs),
+    )
     return 'succeeded'
 
 
@@ -640,7 +778,11 @@ def _release_nodes(rows: list[dict[str, typing.Any]]) -> list[_ReleaseNode]:
 
 
 async def execute_release_repair(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Repair ``Release`` node identity for one project.
 
@@ -679,7 +821,7 @@ async def execute_release_repair(
     )
     nodes = _release_nodes(rows)
     if not nodes:
-        return 'skipped'
+        return _skip(ctx, 'release-repair', 'Project has no releases.')
 
     normalized = 0
     shortened: list[_ReleaseNode] = []
@@ -764,6 +906,17 @@ async def execute_release_repair(
                     node.id,
                     node.edges,
                 )
+                # The one case here that wants a human: a duplicate this
+                # cannot remove without discarding deployment history.
+                ctx.log.record(
+                    'skipped',
+                    'duplicate-kept',
+                    f'Duplicate release for {committish} carries '
+                    f'{node.edges} deployment edge(s); left for review.',
+                    release_id=node.id,
+                    committish=committish,
+                    edges=node.edges,
+                )
                 continue
             await db.execute(
                 _DELETE_RELEASE,
@@ -773,7 +926,7 @@ async def execute_release_repair(
             removed += 1
 
     if not normalized and not retagged and not salvaged and not removed:
-        return 'skipped'
+        return _skip(ctx, 'release-repair', 'Nothing needed repair.')
     LOGGER.info(
         'release-repair: project %s normalized=%d retagged=%d salvaged=%d '
         'removed=%d',
@@ -782,6 +935,19 @@ async def execute_release_repair(
         retagged,
         salvaged,
         removed,
+    )
+    # Counts rather than a row per release: a project can carry hundreds,
+    # and "normalized 300 committishes" is the fact an operator acts on.
+    # The exceptions above get their own rows because they need one.
+    ctx.log.record(
+        'succeeded',
+        'release-repair',
+        f'Normalized {normalized}, moved {retagged} tag(s), salvaged '
+        f'{salvaged}, removed {removed} duplicate(s).',
+        normalized=normalized,
+        retagged=retagged,
+        salvaged=salvaged,
+        removed=removed,
     )
     return 'succeeded'
 
@@ -818,7 +984,11 @@ RETURN r.id AS id
 
 
 async def execute_blocker_migration(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Move a project's release blocks onto ``Blocker`` nodes.
 
@@ -850,7 +1020,9 @@ async def execute_blocker_migration(
         ['id', 'blocked_at', 'blocked_by', 'reason', 'scope'],
     )
     if not rows:
-        return 'skipped'
+        return _skip(
+            ctx, 'blocker-migration', 'No release still carries the flags.'
+        )
     now = datetime.datetime.now(datetime.UTC).isoformat()
     migrated = 0
     for row in rows:
@@ -888,29 +1060,61 @@ async def execute_blocker_migration(
         if written:
             migrated += 1
     if not migrated:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'blocker-migration',
+            'Another run cleared the flags first; nothing to migrate.',
+        )
     LOGGER.info(
         'blocker-migration: project %s migrated=%d', project_id, migrated
+    )
+    ctx.log.record(
+        'succeeded',
+        'blocker-migration',
+        f'Converted {migrated} release block(s) into blockers.',
+        migrated=migrated,
     )
     return 'succeeded'
 
 
 async def _release_dup_merge(
-    db: graph.Graph, project_id: str, *, dry_run: bool
+    db: graph.Graph,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+    dry_run: bool,
 ) -> ExecuteOutcome:
     from imbi.api import deployment_migration
 
+    action = 'release-dup-merge-report' if dry_run else 'release-dup-merge'
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
-        return 'skipped'
+        return _skip(ctx, 'no-organization', _NO_ORG)
     summary = await deployment_migration.merge_duplicate_releases(
         db, project_id, org_slug=org_slug, dry_run=dry_run
     )
-    return 'succeeded' if summary.groups else 'skipped'
+    if not summary.groups:
+        return _skip(ctx, action, 'No releases share a tag.')
+    ctx.log.record(
+        'succeeded',
+        action,
+        f'{summary.groups} tag group(s), {summary.merged} release(s) '
+        f'folded in' + (' (dry run).' if dry_run else '.'),
+        groups=summary.groups,
+        merged=summary.merged,
+        repointed_deployments=summary.repointed_deployments,
+        repointed_blockers=summary.repointed_blockers,
+        dry_run=dry_run,
+    )
+    return 'succeeded'
 
 
 async def execute_release_dup_merge_report(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report duplicate ``(project, tag)`` Release groups; writes nothing.
 
@@ -918,11 +1122,15 @@ async def execute_release_dup_merge_report(
     The per-group plan -- which node survives and why -- is logged.
     """
     del client
-    return await _release_dup_merge(db, project_id, dry_run=True)
+    return await _release_dup_merge(db, project_id, ctx=ctx, dry_run=True)
 
 
 async def execute_release_dup_merge(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Merge duplicate ``(project, tag)`` Release nodes into one.
 
@@ -931,30 +1139,70 @@ async def execute_release_dup_merge(
     worker requeues the project.
     """
     del client
-    return await _release_dup_merge(db, project_id, dry_run=False)
+    return await _release_dup_merge(db, project_id, ctx=ctx, dry_run=False)
 
 
 async def _deployment_migration(
-    db: graph.Graph, project_id: str, *, dry_run: bool
+    db: graph.Graph,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+    dry_run: bool,
 ) -> ExecuteOutcome:
     from imbi.api import deployment_migration
 
+    action = (
+        'deployment-migration-report' if dry_run else 'deployment-migration'
+    )
     summary = await deployment_migration.migrate_deployment_arrays(
         db, project_id, dry_run=dry_run
     )
-    return 'succeeded' if summary.edges else 'skipped'
+    if not summary.edges:
+        return _skip(ctx, action, 'No legacy deployment history left.')
+    if summary.malformed:
+        # Entries no DeploymentEvent could be made of. They are dropped,
+        # and until now that only reached the server log.
+        ctx.log.record(
+            'failed',
+            action,
+            f'{summary.malformed} array entry(ies) failed validation and '
+            'were dropped.',
+            malformed=summary.malformed,
+            dry_run=dry_run,
+        )
+    ctx.log.record(
+        'succeeded',
+        action,
+        f'{summary.entries} legacy entry(ies) became {summary.created} '
+        f'deployment(s)' + (' (dry run).' if dry_run else '.'),
+        edges=summary.edges,
+        entries=summary.entries,
+        created=summary.created,
+        existing=summary.existing,
+        cleared_edges=summary.cleared_edges,
+        dry_run=dry_run,
+    )
+    return 'succeeded'
 
 
 async def execute_deployment_migration_report(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report what the array-to-node migration would do; writes nothing."""
     del client
-    return await _deployment_migration(db, project_id, dry_run=True)
+    return await _deployment_migration(db, project_id, ctx=ctx, dry_run=True)
 
 
 async def execute_deployment_migration(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Migrate legacy ``DEPLOYED_TO`` array entries to Deployment nodes.
 
@@ -962,31 +1210,79 @@ async def execute_deployment_migration(
     Skipped means the project has no un-migrated arrays left.
     """
     del client
-    return await _deployment_migration(db, project_id, dry_run=False)
+    return await _deployment_migration(db, project_id, ctx=ctx, dry_run=False)
 
 
 async def _orphan_release_check(
-    db: graph.Graph, project_id: str, *, dry_run: bool
+    db: graph.Graph,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+    dry_run: bool,
 ) -> ExecuteOutcome:
     from imbi.api import deployment_migration
 
+    action = 'orphan-release-check' if dry_run else 'orphan-release-purge'
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is None:
-        return 'skipped'
+        return _skip(ctx, 'no-organization', _NO_ORG)
     summary = await deployment_migration.purge_orphan_releases(
         db, project_id, org_slug=org_slug, dry_run=dry_run
     )
     if summary is None:
         # The integration cannot confirm tag absence; already logged.
-        return 'skipped'
+        return _skip(
+            ctx,
+            action,
+            "This project's integration cannot confirm whether a tag "
+            'exists on the remote.',
+        )
+    if summary.unresolved:
+        # Candidates whose tag lookup failed. Nothing is deleted for
+        # them, and an operator re-running the purge should know why the
+        # count did not move.
+        ctx.log.record(
+            'skipped',
+            action,
+            f'{summary.unresolved} candidate(s) could not be resolved '
+            'against the remote.',
+            unresolved=summary.unresolved,
+        )
     # Only a remote-confirmed orphan counts as work: candidates whose
     # tag exists (or could not be checked) leave nothing to report or
     # delete, and 'succeeded' would misread as "orphans handled".
-    return 'succeeded' if summary.orphans else 'skipped'
+    if not summary.orphans:
+        return _skip(
+            ctx,
+            action,
+            f'{summary.candidates} candidate(s), none confirmed orphaned.',
+            tagged=summary.tagged,
+            candidates=summary.candidates,
+        )
+    ctx.log.record(
+        'succeeded',
+        action,
+        f'{summary.orphans} orphaned release(s)'
+        + (
+            ' found (dry run).'
+            if dry_run
+            else f' deleted, with {summary.blockers_deleted} blocker(s).'
+        ),
+        candidates=summary.candidates,
+        orphans=summary.orphans,
+        deleted=summary.deleted,
+        blockers_deleted=summary.blockers_deleted,
+        dry_run=dry_run,
+    )
+    return 'succeeded'
 
 
 async def execute_orphan_release_check(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report Releases whose tag the remote confirms never existed.
 
@@ -994,11 +1290,15 @@ async def execute_orphan_release_check(
     project's integration cannot answer (logged).
     """
     del client
-    return await _orphan_release_check(db, project_id, dry_run=True)
+    return await _orphan_release_check(db, project_id, ctx=ctx, dry_run=True)
 
 
 async def execute_orphan_release_purge(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Delete Releases whose tag the remote confirms never existed.
 
@@ -1006,7 +1306,7 @@ async def execute_orphan_release_purge(
     ``PluginRateLimited`` propagates so the worker requeues the project.
     """
     del client
-    return await _orphan_release_check(db, project_id, dry_run=False)
+    return await _orphan_release_check(db, project_id, ctx=ctx, dry_run=False)
 
 
 #: Reindex work items are ``Label:node_id`` -- the maintenance framework
@@ -1016,7 +1316,11 @@ _REINDEX_ITEM_SEPARATOR = ':'
 
 
 async def execute_sbom_backfill(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Publish ClickHouse component batches from the graph edges.
 
@@ -1039,7 +1343,13 @@ async def execute_sbom_backfill(
     del client
     summary = await sbom_backfill.backfill_project(db, project_id)
     if not summary.releases_published:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'sbom-backfill',
+            f'Every release already has a batch ({summary.releases_skipped} '
+            'checked), or the project has no component edges.',
+            releases_skipped=summary.releases_skipped,
+        )
     LOGGER.info(
         'SBoM backfill published %d batch(es), %d component row(s), '
         'skipped %d already-batched release(s) for project %s',
@@ -1048,11 +1358,25 @@ async def execute_sbom_backfill(
         summary.releases_skipped,
         project_id,
     )
+    ctx.log.record(
+        'succeeded',
+        'sbom-backfill',
+        f'Published {summary.releases_published} batch(es) covering '
+        f'{summary.components_written} component row(s); '
+        f'{summary.releases_skipped} release(s) already had one.',
+        releases_published=summary.releases_published,
+        releases_skipped=summary.releases_skipped,
+        components_written=summary.components_written,
+    )
     return 'succeeded'
 
 
 async def execute_sbom_backfill_report(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report releases whose two stores disagree; writes nothing.
 
@@ -1071,7 +1395,15 @@ async def execute_sbom_backfill_report(
     del client
     summary = await sbom_backfill.reconcile_project(db, project_id)
     if summary.ok:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'sbom-backfill-report',
+            f'Both stores agree across {summary.matched} release(s).',
+            matched=summary.matched,
+        )
+    # A row per disagreeing release, which is the whole point of a
+    # report: "succeeded" on its own says something was found and makes
+    # an operator go read the server logs to learn what.
     for release_id, reason in summary.mismatched.items():
         LOGGER.warning(
             'SBoM reconcile mismatch on project %s release %s: %s',
@@ -1079,12 +1411,26 @@ async def execute_sbom_backfill_report(
             release_id,
             reason,
         )
+        ctx.log.record(
+            'failed',
+            'sbom-mismatch',
+            reason,
+            release_id=release_id,
+        )
     LOGGER.warning(
         'SBoM reconcile found %d mismatched release(s) against %d '
         'matching for project %s',
         len(summary.mismatched),
         summary.matched,
         project_id,
+    )
+    ctx.log.record(
+        'succeeded',
+        'sbom-backfill-report',
+        f'{len(summary.mismatched)} release(s) disagree between the graph '
+        f'and ClickHouse; {summary.matched} agree.',
+        mismatched=len(summary.mismatched),
+        matched=summary.matched,
     )
     return 'succeeded'
 
@@ -1106,7 +1452,11 @@ async def enumerate_embeddable_nodes(db: graph.Graph) -> list[str]:
 
 
 async def execute_search_reindex(
-    db: graph.Graph, client: valkey.Valkey, item_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Rebuild one node's search embeddings from its current properties.
 
@@ -1127,7 +1477,12 @@ async def execute_search_reindex(
         label
     )
     if node_type is None:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'search-reindex',
+            f'{label} is no longer an embeddable node type.',
+            label=label,
+        )
     try:
         embedded = await _search_index.index(
             db, node_type, node_id, raise_on_error=True
@@ -1137,4 +1492,11 @@ async def execute_search_reindex(
         raise MaintenanceItemFailed(
             'Could not rebuild the search index for this node.'
         ) from exc
-    return 'succeeded' if embedded else 'skipped'
+    if not embedded:
+        return _skip(
+            ctx,
+            'search-reindex',
+            'Node went away between enumeration and execution.',
+            label=label,
+        )
+    return 'succeeded'

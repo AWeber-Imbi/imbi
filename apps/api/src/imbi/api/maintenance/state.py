@@ -21,12 +21,17 @@ from __future__ import annotations
 
 import datetime
 import inspect
+import logging
 import typing
 import uuid
 from collections import abc
 
 import pydantic
 from valkey import asyncio as valkey
+
+from imbi.api.maintenance import log
+
+LOGGER = logging.getLogger(__name__)
 
 KEY_PREFIX = 'imbi:maintenance'
 #: Backstop for a run whose instances all died mid-flight; a healthy run
@@ -165,6 +170,28 @@ async def has_active_run(client: valkey.Valkey, slug: str) -> bool:
     return bool(await client.exists(_key(slug, 'lock')))
 
 
+async def read_run_meta(client: valkey.Valkey, slug: str) -> tuple[str, str]:
+    """The current run's ``(run_id, started_by)``, empty when idle.
+
+    The activity log stamps both on every row it writes, and the worker
+    holds neither -- a run is started by whichever instance served the
+    POST, not by the one that picks the work up.
+    """
+    raw = typing.cast(
+        'list[object]',
+        await _resolve(
+            client.hmget(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+                _key(slug, 'run'), ['run_id', 'started_by']
+            )
+        ),
+    )
+    run_id, started_by = raw[0], raw[1]
+    return (
+        _decode(run_id) if run_id is not None else '',
+        _decode(started_by) if started_by is not None else '',
+    )
+
+
 async def checkout(client: valkey.Valkey, slug: str) -> str | None:
     """Pop one pending project id, marking it in flight."""
     popped = await _resolve(
@@ -279,7 +306,55 @@ async def _finish(
         pipe.expire(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'failures'), RESULT_TTL_SECONDS
         )
-        await pipe.execute()  # pyright: ignore[reportUnknownMemberType]
+        results = typing.cast(
+            'list[object]',
+            await pipe.execute(),  # pyright: ignore[reportUnknownMemberType]
+        )
+    # Only the instance whose DEL actually removed the lock writes the
+    # run row. The benign race above -- two instances both passing
+    # ``maybe_finalize``'s drained check -- is idempotent in Valkey,
+    # where both write the same hash, but the log is a plain MergeTree:
+    # two calls would leave two run rows for one run, and anything
+    # summing their counters would double them.
+    if not _opt_int(results[1] if len(results) > 1 else 0):
+        return
+    # The durable record of the run, written after the Valkey state so a
+    # ClickHouse problem cannot leave a run un-finished. The counters it
+    # carries are the authoritative ones: an activity log short of them
+    # is a logging gap, and comparing the two is how that becomes
+    # visible. An ``abandoned`` run reaches neither branch and so has no
+    # terminal row at all, which is what identifies it later.
+    #
+    # A cancelled run is the one case where the counters legitimately
+    # fall short of the attempt rows: ``cancel_run`` finishes while
+    # items are still in flight, and those record their outcomes after
+    # this row is written.
+    #
+    # ``record_run`` never raises, but this read does, and by here the
+    # terminal state is written and the lock is gone. Letting a Valkey
+    # blip out would report a failure for a cancellation that already
+    # applied.
+    try:
+        status = await read_status(client, slug)
+    except Exception:
+        LOGGER.exception(
+            'maintenance log dropped the run row for %s: '
+            'could not read the final counters',
+            slug,
+        )
+        return
+    await log.record_run(
+        slug,
+        status.run_id or '',
+        state,
+        status.started_by or '',
+        total=status.total,
+        succeeded=status.succeeded,
+        failed=status.failed,
+        skipped=status.skipped,
+        remaining=status.remaining,
+        in_flight=status.in_flight,
+    )
 
 
 async def read_status(client: valkey.Valkey, slug: str) -> RunStatus:

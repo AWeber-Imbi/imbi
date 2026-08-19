@@ -34,14 +34,14 @@ const operation = (
 // Render, wait for the registry rows, click the first Run button, and
 // return the opened confirmation dialog.
 const openRunConfirmation = async () => {
-  const { MaintenanceManagement } = await import('../MaintenanceManagement')
-  render(<MaintenanceManagement />)
+  const { MaintenanceOperations } = await import('../MaintenanceOperations')
+  render(<MaintenanceOperations />)
   await waitFor(() => expect(screen.getByText('Do Thing')).toBeInTheDocument())
   fireEvent.click(screen.getAllByRole('button', { name: /run/i })[0])
   return screen.findByRole('alertdialog')
 }
 
-describe('MaintenanceManagement', () => {
+describe('MaintenanceOperations', () => {
   beforeEach(async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.getMaintenanceOperations).mockResolvedValue([
@@ -55,8 +55,8 @@ describe('MaintenanceManagement', () => {
   })
 
   it('renders one row per registry operation', async () => {
-    const { MaintenanceManagement } = await import('../MaintenanceManagement')
-    render(<MaintenanceManagement />)
+    const { MaintenanceOperations } = await import('../MaintenanceOperations')
+    render(<MaintenanceOperations />)
     await waitFor(() =>
       expect(screen.getByText('Do Thing')).toBeInTheDocument(),
     )
@@ -68,8 +68,8 @@ describe('MaintenanceManagement', () => {
   it('shows an empty state when the registry is empty', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.getMaintenanceOperations).mockResolvedValue([])
-    const { MaintenanceManagement } = await import('../MaintenanceManagement')
-    render(<MaintenanceManagement />)
+    const { MaintenanceOperations } = await import('../MaintenanceOperations')
+    render(<MaintenanceOperations />)
     await waitFor(() =>
       expect(
         screen.getByText('No maintenance operations are available.'),
@@ -82,8 +82,8 @@ describe('MaintenanceManagement', () => {
     vi.mocked(endpoints.getMaintenanceOperations).mockRejectedValue(
       new Error('boom'),
     )
-    const { MaintenanceManagement } = await import('../MaintenanceManagement')
-    render(<MaintenanceManagement />)
+    const { MaintenanceOperations } = await import('../MaintenanceOperations')
+    render(<MaintenanceOperations />)
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument())
   })
 
@@ -122,8 +122,8 @@ describe('MaintenanceManagement', () => {
         state: 'running',
       }),
     ])
-    const { MaintenanceManagement } = await import('../MaintenanceManagement')
-    render(<MaintenanceManagement />)
+    const { MaintenanceOperations } = await import('../MaintenanceOperations')
+    render(<MaintenanceOperations />)
     await waitFor(() =>
       expect(screen.getByText('7 of 10 — 3 remaining')).toBeInTheDocument(),
     )
@@ -138,8 +138,8 @@ describe('MaintenanceManagement', () => {
     vi.mocked(endpoints.getMaintenanceOperations).mockResolvedValue([
       operation({ running: true, state: 'running' }),
     ])
-    const { MaintenanceManagement } = await import('../MaintenanceManagement')
-    render(<MaintenanceManagement />)
+    const { MaintenanceOperations } = await import('../MaintenanceOperations')
+    render(<MaintenanceOperations />)
     await waitFor(() => expect(screen.getByText('Running')).toBeInTheDocument())
   })
 
