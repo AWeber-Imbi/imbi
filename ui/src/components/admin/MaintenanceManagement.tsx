@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 
@@ -14,7 +14,12 @@ import { MaintenanceOperations } from './MaintenanceOperations'
 // separate tabs is what stops two failure lists reading as a
 // contradiction.
 export function MaintenanceManagement() {
-  const [tab, setTab] = useState('operations')
+  // The tab lives in the URL so a reload — or a shared link — comes back
+  // to the tab you were on: /admin/maintenance is Operations,
+  // /admin/maintenance/activity is Activity.
+  const navigate = useNavigate()
+  const { slug } = useParams<{ slug?: string }>()
+  const tab = slug === 'activity' ? 'activity' : 'operations'
   // The registry, for the Activity tab's operation filter. Deliberately
   // not `useMaintenanceOperations`: that hook toasts every run's terminal
   // transition, and a second instance would toast each one twice. This
@@ -32,7 +37,16 @@ export function MaintenanceManagement() {
         </h1>
       </div>
 
-      <Tabs onValueChange={setTab} value={tab}>
+      <Tabs
+        onValueChange={(value) =>
+          navigate(
+            value === 'activity'
+              ? '/admin/maintenance/activity'
+              : '/admin/maintenance',
+          )
+        }
+        value={tab}
+      >
         <TabsList className="mb-6">
           <TabsTrigger value="operations">Operations</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
