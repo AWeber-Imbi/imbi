@@ -1034,10 +1034,9 @@ class Release(GraphModel):
     setting — see ``imbi.common.versioning.validate_version``.
 
     A release may be blocked to keep it from shipping again — e.g. after
-    a rollback exposed a regression.  ``blocked_at`` is the flag: when it
-    is set, deploys and promotes targeting this release are refused, and
-    ``blocked_reason`` explains why.  Unblocking clears all three
-    ``blocked_*`` properties.
+    a rollback exposed a regression.  Block state is not stored here: it
+    lives on ``Blocker`` nodes reached through ``BLOCKED_BY``, and any
+    one of them left ``open`` refuses a deploy or promote.
 
     """
 
@@ -1071,9 +1070,53 @@ class Release(GraphModel):
             ),
         ),
     ]
-    blocked_at: datetime.datetime | None = None
-    blocked_by: str | None = None
-    blocked_reason: str | None = None
+
+
+class Blocker(GraphModel):
+    """Something that must be dealt with before a ``Release`` ships.
+
+    Any ``Blocker`` in the ``open`` status refuses every deploy and
+    promote of the release it hangs off, and the 409 enumerates them.
+    ``type`` is a label only — nothing behaves differently per type.
+
+    ``external_ref`` is the handle a process outside Imbi (a CI job, an
+    agent) files its own blocker under, so the same process can find and
+    resolve it later without having stored an Imbi id.
+
+    Resolving is the ordinary way a blocker ends: it keeps the record of
+    what held the release up, which is the point of tracking blockers at
+    all.  Deleting is for mistakes and is admin-only.
+
+    """
+
+    release: typing.Annotated[
+        Release,
+        Edge(rel_type='BLOCKED_BY', direction='INCOMING'),
+    ]
+    type: typing.Literal[
+        'build-failure',
+        'drift',
+        'product-review',
+        'qa',
+        'deploy-order',
+        'dependency',
+        'manual',
+    ] = 'manual'
+    description: str
+    external_ref: str | None = None
+    status: typing.Literal['open', 'resolved'] = 'open'
+    #: Which identity of the release the blocker refuses.  ``commit``
+    #: also refuses anything shipping the same committish under another
+    #: tag — an operator blocking a rolled-back release means "stop
+    #: shipping this code".  ``tag`` narrows it to the one version, which
+    #: is what a failed release build is: the usual fix is to promote a
+    #: bumped version off the same tree, and a commit-wide blocker would
+    #: refuse that.
+    scope: typing.Literal['commit', 'tag'] = 'commit'
+    created_by: str
+    resolved_at: datetime.datetime | None = None
+    resolved_by: str | None = None
+    resolution_note: str | None = None
 
 
 class ReleaseDeploymentEdge(RelationshipEdge):
