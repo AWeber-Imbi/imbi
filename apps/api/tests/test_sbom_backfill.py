@@ -201,6 +201,18 @@ class FingerprintTests(unittest.TestCase):
         self.assertNotEqual(a, b)
 
 
+class GraphComponentsTests(unittest.TestCase):
+    """Grouping the graph rows by release."""
+
+    def test_row_without_a_release_id_is_dropped(self) -> None:
+        """A row that cannot be attributed cannot be compared."""
+        grouped = sbom_backfill._graph_components(
+            [_row(), _row(release_id=None)]
+        )
+        self.assertEqual(list(grouped), ['r-1'])
+        self.assertEqual(len(grouped['r-1']), 1)
+
+
 class SampleTests(unittest.TestCase):
     """A reason names a few members, never a whole component set."""
 
