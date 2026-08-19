@@ -979,19 +979,22 @@ class GitHubDeployment(DeploymentCapability):
                 if not blob_sha:
                     continue
                 try:
-                    out[annotated] = await self._blob_text(
-                        client, str(blob_sha)
-                    )
+                    body = await self._blob_text(client, str(blob_sha))
                 except httpx.HTTPError:
-                    # Skip rather than record ``None``: in the diff a
-                    # ``None`` means "note removed" and would resolve a
-                    # drift blocker on a transient read failure.
                     LOGGER.warning(
                         'Could not read note blob %s for %s; skipping',
                         blob_sha,
                         annotated,
                     )
+                    body = None
+                if body is None:
+                    # Skip rather than record ``None``: in the diff a
+                    # ``None`` means "note removed" and would resolve a
+                    # drift blocker over a note we merely could not
+                    # read (``_blob_text`` already logged why).
                     out.pop(annotated, None)
+                    continue
+                out[annotated] = body
             return out
 
     async def _notes_tree(
@@ -1037,14 +1040,14 @@ class GitHubDeployment(DeploymentCapability):
     ) -> dict[str, str | None]:
         """Every note at one notes-ref commit, bodies included.
 
-        Blob reads run a few at a time (one request per note) and a
-        failed read skips its note rather than failing the batch or
+        Blob reads run a few at a time (one request per note) and an
+        unreadable note is skipped rather than failing the batch or
         recording a false "removed".
         """
         notes = await self._tree_notes(client, commit_sha)
         gate = asyncio.Semaphore(_NOTE_BLOB_CONCURRENCY)
 
-        async def _read(blob_sha: str) -> str | None | BaseException:
+        async def _read(blob_sha: str) -> str | BaseException | None:
             async with gate:
                 try:
                     return await self._blob_text(client, blob_sha)
@@ -1063,6 +1066,10 @@ class GitHubDeployment(DeploymentCapability):
                     blob_sha,
                     annotated,
                 )
+                continue
+            if body is None:
+                # ``_blob_text`` could not decode it and logged why;
+                # a ``None`` here would read as "note removed".
                 continue
             out[annotated] = body
         return out

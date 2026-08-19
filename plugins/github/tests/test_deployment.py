@@ -2875,7 +2875,10 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({other_sha: '{"drift_detected":true}'}, changed)
 
     @respx.mock
-    async def test_undecodable_blob_is_none(self) -> None:
+    async def test_undecodable_blob_is_skipped(self) -> None:
+        # Not recorded as ``None``: in the diff a ``None`` means "note
+        # removed" and would resolve a drift blocker over a note that
+        # merely could not be decoded.
         respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
             return_value=httpx.Response(
                 200,
@@ -2900,7 +2903,31 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
             changed = await self.handler.diff_commit_notes(
                 _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
             )
-        self.assertEqual({self.FULL_SHA: None}, changed)
+        self.assertEqual({}, changed)
+
+    @respx.mock
+    async def test_undecodable_blob_is_skipped_in_the_full_tree(
+        self,
+    ) -> None:
+        other_sha = 'e' * 40
+        self._mock_after_tree(
+            [
+                {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b2'},
+                {'type': 'blob', 'path': other_sha, 'sha': 'b3'},
+            ]
+        )
+        respx.get(f'{self.REPO}/git/blobs/b2').mock(
+            return_value=httpx.Response(
+                200,
+                json={'encoding': 'base64', 'content': '%%%not-base64%%%'},
+            )
+        )
+        self._blob('b3', '{"drift_detected":false}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', '0' * 40, 'b' * 40
+            )
+        self.assertEqual({other_sha: '{"drift_detected":false}'}, changed)
 
     @respx.mock
     async def test_oversized_blob_is_none(self) -> None:
