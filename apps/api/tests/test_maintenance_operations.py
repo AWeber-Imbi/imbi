@@ -733,7 +733,10 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual('skipped', outcome)
         # A bare 'skipped' leaves an operator guessing; say it debounced.
-        self.assertEqual(1, ctx.log.buffered)
+        row = ctx.log._rows[0]
+        self.assertEqual('skipped', row.disposition)
+        self.assertEqual('rescore', row.action)
+        self.assertIn('already queued', row.message)
 
 
 def _blocked_row(
