@@ -91,8 +91,8 @@ def _fingerprint(rows: typing.Iterable[tuple[str, str, str]]) -> str:
     """
     digest = hashlib.sha256()
     for row in sorted(rows):
-        digest.update('\\x1f'.join(row).encode())
-        digest.update(b'\\x1e')
+        digest.update('\x1f'.join(row).encode())
+        digest.update(b'\x1e')
     return digest.hexdigest()
 
 
