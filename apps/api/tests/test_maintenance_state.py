@@ -194,8 +194,12 @@ class CancelRunTests(unittest.IsolatedAsyncioTestCase):
 
 
 class FinishTests(unittest.IsolatedAsyncioTestCase):
+    #: hset, delete (1 = this instance removed the lock), expire, expire
+    WON: typing.ClassVar[list[int]] = [1, 1, 1, 1]
+    LOST: typing.ClassVar[list[int]] = [1, 0, 1, 1]
+
     async def test_run_row_carries_the_final_counters(self) -> None:
-        client, _ = _client_with_pipeline()
+        client, _ = _client_with_pipeline(self.WON)
         status = state.RunStatus(
             state='completed',
             run_id='r1',
@@ -224,7 +228,7 @@ class FinishTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_cancellation_is_recorded_too(self) -> None:
-        client, _ = _client_with_pipeline()
+        client, _ = _client_with_pipeline(self.WON)
         with (
             mock.patch.object(
                 state,
@@ -235,6 +239,21 @@ class FinishTests(unittest.IsolatedAsyncioTestCase):
         ):
             await state._finish(client, 'op', 'cancelled')
         self.assertEqual('cancelled', record.await_args.args[2])
+
+    async def test_only_the_lock_holder_writes_the_run_row(self) -> None:
+        # Two instances can both pass maybe_finalize's drained check; the
+        # one whose DEL removed nothing must not write a second run row.
+        client, _ = _client_with_pipeline(self.LOST)
+        with (
+            mock.patch.object(
+                state,
+                'read_status',
+                mock.AsyncMock(return_value=state.RunStatus()),
+            ),
+            mock.patch.object(log, 'record_run', mock.AsyncMock()) as record,
+        ):
+            await state._finish(client, 'op', 'completed')
+        record.assert_not_awaited()
 
 
 class ReadRunMetaTests(unittest.IsolatedAsyncioTestCase):

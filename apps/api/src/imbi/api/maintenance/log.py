@@ -33,6 +33,7 @@ import logging
 import typing
 
 import orjson
+import pydantic
 
 from imbi.common import clickhouse, models
 
@@ -90,7 +91,13 @@ async def _write(rows: list[models.MaintenanceLogRecord]) -> None:
     if not rows:
         return
     try:
-        await clickhouse.insert(TABLE, rows, settings=INSERT_SETTINGS)
+        # ``insert`` takes ``list[BaseModel]``, which is invariant, so a
+        # list of one concrete model type does not satisfy it directly.
+        await clickhouse.insert(
+            TABLE,
+            typing.cast('list[pydantic.BaseModel]', rows),
+            settings=INSERT_SETTINGS,
+        )
     except Exception:
         LOGGER.exception(
             'maintenance log write dropped %d row(s) for run %s',

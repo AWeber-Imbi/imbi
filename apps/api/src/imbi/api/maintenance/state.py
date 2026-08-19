@@ -303,13 +303,29 @@ async def _finish(
         pipe.expire(  # pyright: ignore[reportUnknownMemberType]
             _key(slug, 'failures'), RESULT_TTL_SECONDS
         )
-        await pipe.execute()  # pyright: ignore[reportUnknownMemberType]
+        results = typing.cast(
+            'list[object]',
+            await pipe.execute(),  # pyright: ignore[reportUnknownMemberType]
+        )
+    # Only the instance whose DEL actually removed the lock writes the
+    # run row. The benign race above -- two instances both passing
+    # ``maybe_finalize``'s drained check -- is idempotent in Valkey,
+    # where both write the same hash, but the log is a plain MergeTree:
+    # two calls would leave two run rows for one run, and anything
+    # summing their counters would double them.
+    if not _opt_int(results[1] if len(results) > 1 else 0):
+        return
     # The durable record of the run, written after the Valkey state so a
     # ClickHouse problem cannot leave a run un-finished. The counters it
     # carries are the authoritative ones: an activity log short of them
     # is a logging gap, and comparing the two is how that becomes
     # visible. An ``abandoned`` run reaches neither branch and so has no
     # terminal row at all, which is what identifies it later.
+    #
+    # A cancelled run is the one case where the counters legitimately
+    # fall short of the attempt rows: ``cancel_run`` finishes while
+    # items are still in flight, and those record their outcomes after
+    # this row is written.
     status = await read_status(client, slug)
     await log.record_run(
         slug,

@@ -276,7 +276,9 @@ class MaintenanceLogResponse(pydantic.BaseModel):
 
 
 def _log_row(row: dict[str, typing.Any]) -> MaintenanceLogEntry:
-    detail = row.get('detail')
+    detail: dict[str, typing.Any] = (
+        row['detail'] if isinstance(row.get('detail'), dict) else {}
+    )
     return MaintenanceLogEntry(
         id=str(row['id']),
         occurred_at=clickhouse.as_utc(row['occurred_at']),
@@ -290,7 +292,7 @@ def _log_row(row: dict[str, typing.Any]) -> MaintenanceLogEntry:
         project_id=str(row['project_id']),
         project_slug=str(row['project_slug']),
         message=str(row['message']),
-        detail=detail if isinstance(detail, dict) else {},
+        detail=detail,
         duration_ms=int(row['duration_ms'] or 0),
         started_by=str(row['started_by']),
     )

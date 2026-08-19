@@ -42,6 +42,30 @@ MaintenanceSlug = typing.Literal[
 ]
 
 
+class ExecuteOperation(typing.Protocol):
+    """The call signature every ``execute_*`` implements.
+
+    A ``Callable[...]`` cannot express this: ``ctx`` is keyword-only, and
+    a keyword-only parameter is not assignable to a positional slot, so
+    every registry entry would fail the type check.
+
+    The first three are positional-only. Implementations name the third
+    for what they operate on -- ``project_id`` for all but
+    ``search-reindex``, which takes an ``item_id`` -- and a protocol with
+    named positional parameters would demand one spelling.
+    """
+
+    async def __call__(
+        self,
+        db: graph.Graph,
+        client: valkey.Valkey,
+        item_id: str,
+        /,
+        *,
+        ctx: log.MaintenanceContext,
+    ) -> operations.ExecuteOutcome: ...
+
+
 class OperationDefinition(typing.NamedTuple):
     """One global maintenance operation."""
 
@@ -52,10 +76,7 @@ class OperationDefinition(typing.NamedTuple):
     #: operation's stream consumers; ``None`` when not rate-limited.
     pause_key: str | None
     enumerate: abc.Callable[[graph.Graph], abc.Awaitable[list[str]]]
-    execute: abc.Callable[
-        [graph.Graph, valkey.Valkey, str, log.MaintenanceContext],
-        abc.Awaitable[operations.ExecuteOutcome],
-    ]
+    execute: ExecuteOperation
     #: Whether an enumerated work item *is* a project id, which decides
     #: whether the activity log can attribute a row to a project.
     #: ``search-reindex`` enumerates ``Label:node_id`` items instead.
