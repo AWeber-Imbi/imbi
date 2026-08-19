@@ -19,10 +19,11 @@ This module owns the full SBoM ingestion pipeline:
 
 1. :func:`parse` — pure CycloneDX 1.7 deserialization, returns a
    flat list of :class:`NormalizedComponent` records.
-2. :func:`replace_release_components` — idempotent graph upsert
-   that drops a release's existing component edges and rebuilds
-   them from a normalized list (``Component`` →
-   ``ComponentRelease`` → ``ComponentIdentifier``).
+2. :func:`replace_release_components` — idempotent upsert that
+   drops a release's existing component edges and rebuilds them
+   from a normalized list (``Component`` → ``ComponentRelease`` →
+   ``ComponentIdentifier``), then records the same set of usage
+   facts in the ClickHouse ``release_components`` table.
 3. :func:`list_release_components` — reverse lookup used by the
    ``GET .../dependencies`` endpoint.
 
@@ -48,7 +49,7 @@ from cyclonedx.model import component as cdx_component
 from cyclonedx.model import license as cdx_license
 from packageurl import PackageURL
 
-from imbi.common import graph
+from imbi.common import clickhouse, graph, models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -403,7 +404,7 @@ SET cr.id = COALESCE(cr.id, {component_release_id}),
 MERGE (r)-[e:USES_COMPONENT_RELEASE]->(cr)
 SET e.scope = {scope},
     e.groups = {groups}
-RETURN c.id AS component_id
+RETURN c.id AS component_id, cr.id AS component_release_id
 """
 
 # Attach one identifier to a Component, MERGEing on the globally
@@ -446,10 +447,11 @@ RETURN c.id AS component_id,
 
 async def replace_release_components(
     db: graph.Graph,
+    project_id: str,
     release_id: str,
     components: collections.abc.Sequence[NormalizedComponent],
 ) -> None:
-    """Replace a release's component edges with the given set.
+    """Replace a release's component set with the given one.
 
     The operation is idempotent: existing
     ``USES_COMPONENT_RELEASE`` edges from ``release_id`` are
@@ -470,24 +472,47 @@ async def replace_release_components(
     safe. Each task holds one pool connection at a time for the
     duration of its current ``db.execute``.
 
-    Failures are *non-fatal*: a per-component exception is caught,
-    logged as a warning, and the other components continue
+    Graph failures are *non-fatal*: a per-component exception is
+    caught, logged as a warning, and the other components continue
     (within the same bucket and across buckets). Partial graph
     state is more useful than no graph state for deps-listing
     purposes, and the producer side typically re-PUTs on the
     next build anyway.
+
+    The ClickHouse write is different: it raises. Only components
+    whose graph upsert succeeded produce a row, so the two stores
+    agree about a partial ingest, but a failed write is not partial
+    -- it silently drops the entire release from the reports that
+    read those tables. The PUT is idempotent, so a 5xx the producer
+    retries is the correct outcome.
+
+    That write is two steps, in this order: the fact rows, then the
+    batch row publishing them. Rows whose batch was never published
+    are inert, so a failure between the two leaves readers on the
+    previous complete snapshot rather than a half-written one. It
+    does not make the two stores atomic -- the graph write has
+    already happened -- but it bounds what ClickHouse can observe.
+
+    An ingest always publishes, even when it found nothing. An
+    empty SBoM, or one whose every component failed, still needs a
+    newer batch than the ingest before it; writing none would let
+    the previous batch stay current and keep reporting components
+    the release dropped.
 
     The function does not own a transaction — callers using the
     Graph pool already run each ``execute`` inside its own
     connection. If atomic replace-set semantics become important
     we should lift the calls into an explicit transaction.
     """
-    now = datetime.datetime.now(datetime.UTC).isoformat()
+    recorded_at = datetime.datetime.now(datetime.UTC)
+    now = recorded_at.isoformat()
     await db.execute(
         _CLEAR_RELEASE_COMPONENTS,
         {'release_id': release_id},
     )
+    batch_id = nanoid.generate()
     if not components:
+        await _publish(project_id, release_id, batch_id, recorded_at, [], 0)
         return
     buckets: dict[str, list[NormalizedComponent]] = {}
     for component in components:
@@ -496,7 +521,16 @@ async def replace_release_components(
     bucket_items = list(buckets.values())
     results = await asyncio.gather(
         *(
-            _upsert_component_bucket(db, release_id, bucket, now, semaphore)
+            _upsert_component_bucket(
+                db,
+                project_id,
+                release_id,
+                bucket,
+                now,
+                batch_id,
+                recorded_at,
+                semaphore,
+            )
             for bucket in bucket_items
         ),
         return_exceptions=True,
@@ -505,6 +539,7 @@ async def replace_release_components(
     # try/except — usually a connection-pool or programming error)
     # land here. Per-component failures were already logged
     # inside the bucket task.
+    records: list[models.ReleaseComponentRecord] = []
     for bucket, result in zip(bucket_items, results, strict=True):
         if isinstance(result, BaseException):
             LOGGER.warning(
@@ -514,15 +549,65 @@ async def replace_release_components(
                 type(result).__name__,
                 result,
             )
+        else:
+            records.extend(result)
+    await _publish(
+        project_id,
+        release_id,
+        batch_id,
+        recorded_at,
+        records,
+        len(components),
+    )
+
+
+async def _publish(
+    project_id: str,
+    release_id: str,
+    batch_id: str,
+    recorded_at: datetime.datetime,
+    records: collections.abc.Sequence[models.ReleaseComponentRecord],
+    parsed_count: int,
+) -> None:
+    """Write a batch's fact rows, then the row publishing them.
+
+    The order is the point. Readers resolve a release to one
+    ``batch_id`` through the batch table, so rows written here
+    become visible only on the last statement. Raising part way
+    leaves inert rows and a reader still on the previous snapshot.
+
+    ``parsed_count`` is what the SBoM held; ``len(records)`` is what
+    survived the graph upsert. Recording both is what makes a
+    snapshot that is short of components detectable, given that
+    losing one is deliberately non-fatal.
+    """
+    if records:
+        await clickhouse.insert('release_components', list(records))
+    await clickhouse.insert(
+        'release_component_batches',
+        [
+            models.ReleaseComponentBatch(
+                release_id=release_id,
+                batch_id=batch_id,
+                project_id=project_id,
+                component_count=len(records),
+                parsed_count=parsed_count,
+                recorded_at=recorded_at,
+            )
+        ],
+    )
 
 
 async def _upsert_component_bucket(
     db: graph.Graph,
+    project_id: str,
     release_id: str,
     bucket: collections.abc.Sequence[NormalizedComponent],
     now: str,
+    batch_id: str,
+    recorded_at: datetime.datetime,
     semaphore: asyncio.Semaphore,
-) -> None:
+) -> list[models.ReleaseComponentRecord]:
     """Upsert every component in a ``purl_name`` bucket sequentially.
 
     All components in the bucket share a ``purl_name`` — and
@@ -532,11 +617,26 @@ async def _upsert_component_bucket(
     so one bad version doesn't stop the bucket's remaining
     versions from landing. The bucket itself raises only on
     unexpected (non-component) errors.
+
+    Returns the ClickHouse row for each component that landed. A
+    component that failed contributes nothing, which is what keeps
+    the two stores describing the same partial ingest.
     """
+    records: list[models.ReleaseComponentRecord] = []
     async with semaphore:
         for component in bucket:
             try:
-                await _upsert_one_component(db, release_id, component, now)
+                records.append(
+                    await _upsert_one_component(
+                        db,
+                        project_id,
+                        release_id,
+                        component,
+                        now,
+                        batch_id,
+                        recorded_at,
+                    )
+                )
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning(
                     'Failed to ingest component %s@%s for release %s: %s: %s',
@@ -546,20 +646,29 @@ async def _upsert_component_bucket(
                     type(exc).__name__,
                     exc,
                 )
+    return records
 
 
 async def _upsert_one_component(
     db: graph.Graph,
+    project_id: str,
     release_id: str,
     component: NormalizedComponent,
     now: str,
-) -> None:
+    batch_id: str,
+    recorded_at: datetime.datetime,
+) -> models.ReleaseComponentRecord:
     """Upsert one ``Component`` + ``ComponentRelease`` + identifiers.
 
     Raises on any AGE failure so the bucket loop can log it and
     move on. Concurrency control is the bucket's responsibility
     (it owns the semaphore); this helper assumes serial execution
     against a single purl_name.
+
+    Returns the ClickHouse row describing this usage. The node ids
+    come back from the upsert rather than from the nanoids passed
+    in, because ``COALESCE`` keeps the existing id when the node
+    was already there and the generated one is then discarded.
     """
     rows = await db.execute(
         _UPSERT_COMPONENT_AND_LINK,
@@ -579,7 +688,7 @@ async def _upsert_one_component(
             'groups': json.dumps(component.groups),
             'now': now,
         },
-        ['component_id'],
+        ['component_id', 'component_release_id'],
     )
     if not rows:
         # The release was deleted (or never existed) — the upsert
@@ -590,6 +699,9 @@ async def _upsert_one_component(
             f'release {release_id!r} not found during component upsert'
         )
     component_db_id = graph.parse_agtype(rows[0]['component_id'])
+    component_release_db_id = graph.parse_agtype(
+        rows[0]['component_release_id']
+    )
     for identifier in component.identifiers:
         await db.execute(
             _UPSERT_COMPONENT_IDENTIFIER,
@@ -601,6 +713,19 @@ async def _upsert_one_component(
                 'now': now,
             },
         )
+    return models.ReleaseComponentRecord(
+        batch_id=batch_id,
+        release_id=release_id,
+        project_id=project_id,
+        component_id=component_db_id,
+        component_release_id=component_release_db_id,
+        purl_name=component.purl_name,
+        ecosystem=component.ecosystem,
+        version=component.version,
+        scope=component.scope or '',
+        groups=list(component.groups),
+        recorded_at=recorded_at,
+    )
 
 
 class ListedIdentifier(pydantic.BaseModel):
