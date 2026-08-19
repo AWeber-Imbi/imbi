@@ -981,3 +981,131 @@ class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
             await operations.execute_search_reindex(
                 db, mock.AsyncMock(), 'Document:doc-1'
             )
+
+
+class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
+    """The phase-3 execute wrappers map summaries to run outcomes."""
+
+    def _patch(
+        self, name: str, summary: object
+    ) -> tuple[contextlib.ExitStack, mock.AsyncMock]:
+        call = mock.AsyncMock(return_value=summary)
+        stack = contextlib.ExitStack()
+        stack.enter_context(
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org'))
+        )
+        stack.enter_context(
+            mock.patch(f'imbi.api.deployment_migration.{name}', call)
+        )
+        return stack, call
+
+    async def test_dup_merge_report_is_a_dry_run(self) -> None:
+        from imbi.api import deployment_migration
+
+        stack, call = self._patch(
+            'merge_duplicate_releases',
+            deployment_migration.DupMergeSummary(groups=2),
+        )
+        with stack:
+            outcome = await operations.execute_release_dup_merge_report(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('succeeded', outcome)
+        self.assertTrue(call.await_args.kwargs['dry_run'])
+
+    async def test_dup_merge_with_no_duplicates_is_skipped(self) -> None:
+        from imbi.api import deployment_migration
+
+        stack, call = self._patch(
+            'merge_duplicate_releases', deployment_migration.DupMergeSummary()
+        )
+        with stack:
+            outcome = await operations.execute_release_dup_merge(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+        self.assertFalse(call.await_args.kwargs['dry_run'])
+        self.assertEqual('org', call.await_args.kwargs['org_slug'])
+
+    async def test_dup_merge_without_an_org_is_skipped(self) -> None:
+        with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
+            outcome = await operations.execute_release_dup_merge(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+
+    async def test_migration_maps_edges_to_outcome(self) -> None:
+        from imbi.api import deployment_migration
+
+        for edges, expected in ((1, 'succeeded'), (0, 'skipped')):
+            call = mock.AsyncMock(
+                return_value=deployment_migration.MigrationSummary(edges=edges)
+            )
+            with mock.patch(
+                'imbi.api.deployment_migration.migrate_deployment_arrays',
+                call,
+            ):
+                outcome = await operations.execute_deployment_migration(
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                )
+            self.assertEqual(expected, outcome)
+            self.assertFalse(call.await_args.kwargs['dry_run'])
+
+    async def test_migration_report_is_a_dry_run(self) -> None:
+        from imbi.api import deployment_migration
+
+        call = mock.AsyncMock(
+            return_value=deployment_migration.MigrationSummary(edges=1)
+        )
+        with mock.patch(
+            'imbi.api.deployment_migration.migrate_deployment_arrays', call
+        ):
+            outcome = await operations.execute_deployment_migration_report(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('succeeded', outcome)
+        self.assertTrue(call.await_args.kwargs['dry_run'])
+
+    async def test_orphan_check_skips_an_unanswerable_project(self) -> None:
+        stack, call = self._patch('purge_orphan_releases', None)
+        with stack:
+            outcome = await operations.execute_orphan_release_check(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+        self.assertTrue(call.await_args.kwargs['dry_run'])
+
+    async def test_orphan_purge_succeeds_when_candidates_exist(self) -> None:
+        from imbi.api import deployment_migration
+
+        stack, call = self._patch(
+            'purge_orphan_releases',
+            deployment_migration.OrphanSummary(
+                tagged=3, candidates=1, orphans=1, deleted=1
+            ),
+        )
+        with stack:
+            outcome = await operations.execute_orphan_release_purge(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('succeeded', outcome)
+        self.assertFalse(call.await_args.kwargs['dry_run'])
+
+    async def test_orphan_purge_without_confirmed_orphans_is_skipped(
+        self,
+    ) -> None:
+        # A candidate whose tag lookup failed (or whose tag exists) is
+        # not an orphan; succeeded would misread as "orphans handled".
+        from imbi.api import deployment_migration
+
+        stack, _call = self._patch(
+            'purge_orphan_releases',
+            deployment_migration.OrphanSummary(
+                tagged=3, candidates=1, unresolved=1, orphans=0
+            ),
+        )
+        with stack:
+            outcome = await operations.execute_orphan_release_purge(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)

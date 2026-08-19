@@ -27,6 +27,7 @@ from imbi.common import deployments as common_deployments
 from imbi.common import graph
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
+from imbi.common.plugins import errors as plugin_errors
 from imbi.common.plugins.base import (
     ArtifactRun,
     Capability,
@@ -5688,3 +5689,103 @@ class ReleaseAuthorPrincipalTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_release_is_none(self) -> None:
         self.assertIsNone(await self._principal(None))
+
+
+def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request('GET', 'https://api.github.test/commits/x')
+    return httpx.HTTPStatusError(
+        f'HTTP {status_code}',
+        request=request,
+        response=httpx.Response(status_code, request=request),
+    )
+
+
+class ResolveRemoteTagsTestCase(unittest.IsolatedAsyncioTestCase):
+    """The phase-3 tag lookup behind the dup-merge and orphan check."""
+
+    def setUp(self) -> None:
+        self.resolve_committish = mock.AsyncMock(
+            return_value=mock.Mock(sha='27f2f81abcdef012345')
+        )
+        for target, replacement in (
+            ('_resolve_and_context', mock.AsyncMock()),
+            (
+                '_handler',
+                mock.Mock(
+                    return_value=mock.Mock(
+                        resolve_committish=self.resolve_committish
+                    )
+                ),
+            ),
+            ('_resolve_credentials', mock.Mock(return_value={})),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        project_deployments._resolve_and_context.return_value = (
+            mock.Mock(plugin_slug='github'),
+            mock.Mock(environment_config=None),
+            {},
+        )
+
+    async def _resolve(
+        self, tags: list[str], probe: bool = False
+    ) -> dict[str, str] | None:
+        return await project_deployments.resolve_remote_tags(
+            mock.AsyncMock(),
+            org_slug='octo',
+            project_id='p1',
+            tags=tags,
+            probe=probe,
+        )
+
+    async def test_resolves_each_tag_to_its_sha(self) -> None:
+        result = await self._resolve(['1.0.0'])
+        self.assertEqual({'1.0.0': '27f2f81abcdef012345'}, result)
+
+    async def test_a_remote_404_reads_as_absent(self) -> None:
+        self.resolve_committish.side_effect = _http_status_error(404)
+        self.assertEqual({'1.0.0': 'absent'}, await self._resolve(['1.0.0']))
+
+    async def test_a_remote_422_reads_as_absent(self) -> None:
+        self.resolve_committish.side_effect = _http_status_error(422)
+        self.assertEqual({'1.0.0': 'absent'}, await self._resolve(['1.0.0']))
+
+    async def test_a_remote_failure_reads_as_error_not_absence(self) -> None:
+        self.resolve_committish.side_effect = _http_status_error(500)
+        self.assertEqual({'1.0.0': 'error'}, await self._resolve(['1.0.0']))
+
+    async def test_a_transport_failure_reads_as_error(self) -> None:
+        self.resolve_committish.side_effect = httpx.ConnectError('down')
+        self.assertEqual({'1.0.0': 'error'}, await self._resolve(['1.0.0']))
+
+    async def test_no_capability_answers_none(self) -> None:
+        project_deployments._resolve_and_context.side_effect = (
+            fastapi.HTTPException(status_code=404, detail='none')
+        )
+        self.assertIsNone(await self._resolve(['1.0.0']))
+
+    async def test_an_unimplemented_plugin_answers_none(self) -> None:
+        self.resolve_committish.side_effect = NotImplementedError
+        self.assertIsNone(await self._resolve(['1.0.0']))
+
+    async def test_probe_failure_answers_none(self) -> None:
+        # An unreachable repository would 404 every tag; a caller
+        # deleting on 'absent' must never see that as absence.
+        self.resolve_committish.side_effect = _http_status_error(404)
+        self.assertIsNone(await self._resolve(['1.0.0'], probe=True))
+
+    async def test_probe_success_resolves_the_tags(self) -> None:
+        result = await self._resolve(['1.0.0'], probe=True)
+        self.assertEqual({'1.0.0': '27f2f81abcdef012345'}, result)
+        self.assertEqual(
+            'HEAD',
+            self.resolve_committish.await_args_list[0].kwargs['committish'],
+        )
+
+    async def test_rate_limiting_propagates(self) -> None:
+        self.resolve_committish.side_effect = plugin_errors.PluginRateLimited(
+            retry_at=1.0
+        )
+        with self.assertRaises(plugin_errors.PluginRateLimited):
+            await self._resolve(['1.0.0'])

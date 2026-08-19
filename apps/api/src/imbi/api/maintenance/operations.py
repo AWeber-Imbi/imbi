@@ -875,6 +875,120 @@ async def execute_blocker_migration(
     return 'succeeded'
 
 
+async def _release_dup_merge(
+    db: graph.Graph, project_id: str, *, dry_run: bool
+) -> ExecuteOutcome:
+    from imbi.api import deployment_migration
+
+    org_slug = await _org_slug_for(db, project_id)
+    if org_slug is None:
+        return 'skipped'
+    summary = await deployment_migration.merge_duplicate_releases(
+        db, project_id, org_slug=org_slug, dry_run=dry_run
+    )
+    return 'succeeded' if summary.groups else 'skipped'
+
+
+async def execute_release_dup_merge_report(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Report duplicate ``(project, tag)`` Release groups; writes nothing.
+
+    Skipped means the project has no duplicates (or no organization).
+    The per-group plan -- which node survives and why -- is logged.
+    """
+    del client
+    return await _release_dup_merge(db, project_id, dry_run=True)
+
+
+async def execute_release_dup_merge(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Merge duplicate ``(project, tag)`` Release nodes into one.
+
+    See :func:`imbi.api.deployment_migration.merge_duplicate_releases`.
+    ``PluginRateLimited`` from the tag resolution propagates so the
+    worker requeues the project.
+    """
+    del client
+    return await _release_dup_merge(db, project_id, dry_run=False)
+
+
+async def _deployment_migration(
+    db: graph.Graph, project_id: str, *, dry_run: bool
+) -> ExecuteOutcome:
+    from imbi.api import deployment_migration
+
+    summary = await deployment_migration.migrate_deployment_arrays(
+        db, project_id, dry_run=dry_run
+    )
+    return 'succeeded' if summary.edges else 'skipped'
+
+
+async def execute_deployment_migration_report(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Report what the array-to-node migration would do; writes nothing."""
+    del client
+    return await _deployment_migration(db, project_id, dry_run=True)
+
+
+async def execute_deployment_migration(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Migrate legacy ``DEPLOYED_TO`` array entries to Deployment nodes.
+
+    See :func:`imbi.api.deployment_migration.migrate_deployment_arrays`.
+    Skipped means the project has no un-migrated arrays left.
+    """
+    del client
+    return await _deployment_migration(db, project_id, dry_run=False)
+
+
+async def _orphan_release_check(
+    db: graph.Graph, project_id: str, *, dry_run: bool
+) -> ExecuteOutcome:
+    from imbi.api import deployment_migration
+
+    org_slug = await _org_slug_for(db, project_id)
+    if org_slug is None:
+        return 'skipped'
+    summary = await deployment_migration.purge_orphan_releases(
+        db, project_id, org_slug=org_slug, dry_run=dry_run
+    )
+    if summary is None:
+        # The integration cannot confirm tag absence; already logged.
+        return 'skipped'
+    # Only a remote-confirmed orphan counts as work: candidates whose
+    # tag exists (or could not be checked) leave nothing to report or
+    # delete, and 'succeeded' would misread as "orphans handled".
+    return 'succeeded' if summary.orphans else 'skipped'
+
+
+async def execute_orphan_release_check(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Report Releases whose tag the remote confirms never existed.
+
+    Writes nothing.  Skipped means no remote-confirmed orphans, or the
+    project's integration cannot answer (logged).
+    """
+    del client
+    return await _orphan_release_check(db, project_id, dry_run=True)
+
+
+async def execute_orphan_release_purge(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Delete Releases whose tag the remote confirms never existed.
+
+    See :func:`imbi.api.deployment_migration.purge_orphan_releases`.
+    ``PluginRateLimited`` propagates so the worker requeues the project.
+    """
+    del client
+    return await _orphan_release_check(db, project_id, dry_run=False)
+
+
 #: Reindex work items are ``Label:node_id`` -- the maintenance framework
 #: distributes opaque item id strings, and a reindex spans every model
 #: that declares ``Embeddable`` fields, not one node type.
