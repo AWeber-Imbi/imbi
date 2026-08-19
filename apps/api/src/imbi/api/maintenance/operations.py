@@ -270,9 +270,19 @@ async def execute_deployment_sweep(
     stamped: int | None = None
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is not None:
-        stamped = await drift.sweep_project(
-            db, org_slug=org_slug, project_id=project_id
-        )
+        try:
+            stamped = await drift.sweep_project(
+                db, org_slug=org_slug, project_id=project_id
+            )
+        except PluginRateLimited:
+            # Leave the project requeue-able; the worker pauses the op.
+            raise
+        except Exception:
+            # Best-effort backfill: the deployment sweep already
+            # completed and its result stands.
+            LOGGER.exception(
+                'maintenance drift backfill failed for %s', project_id
+            )
     if (summary is None or not summary.examined) and not stamped:
         return 'skipped'
     return 'succeeded'

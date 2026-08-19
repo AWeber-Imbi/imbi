@@ -142,6 +142,11 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 #: A push event's ``before`` when the ref did not exist until now.
 _ZERO_SHA = '0' * 40
+# GitHub's compare endpoint lists at most 300 changed files and offers
+# no pagination for them -- a list this long may be incomplete.
+_COMPARE_FILES_CAP = 300
+# How many note-blob reads run at once when listing a whole notes tree.
+_NOTE_BLOB_CONCURRENCY = 10
 
 _FULL_SHA_PATTERN = re.compile(r'^[0-9a-f]{40}$')
 
@@ -940,6 +945,21 @@ class GitHubDeployment(DeploymentCapability):
             resp.raise_for_status()
             payload = typing.cast('dict[str, typing.Any]', resp.json())
             files: list[dict[str, typing.Any]] = payload.get('files') or []
+            if len(files) >= _COMPARE_FILES_CAP:
+                # The compare endpoint stops listing files at 300 and
+                # offers no pagination for them, so a full list this
+                # long may be missing entries.  Fall back to the whole
+                # tree at ``after`` -- same trade-off as the 404 path:
+                # removals in the window are missed until the sweep or
+                # the next push touches them.
+                LOGGER.warning(
+                    'Notes compare %s...%s hit the %d-file cap; '
+                    'reading the full tree instead',
+                    before,
+                    after,
+                    _COMPARE_FILES_CAP,
+                )
+                return await self._all_notes(client, after)
             out: dict[str, str | None] = {}
             for item in files:
                 status = str(item.get('status') or '')
@@ -958,7 +978,20 @@ class GitHubDeployment(DeploymentCapability):
                 blob_sha = item.get('sha')
                 if not blob_sha:
                     continue
-                out[annotated] = await self._blob_text(client, str(blob_sha))
+                try:
+                    out[annotated] = await self._blob_text(
+                        client, str(blob_sha)
+                    )
+                except httpx.HTTPError:
+                    # Skip rather than record ``None``: in the diff a
+                    # ``None`` means "note removed" and would resolve a
+                    # drift blocker on a transient read failure.
+                    LOGGER.warning(
+                        'Could not read note blob %s for %s; skipping',
+                        blob_sha,
+                        annotated,
+                    )
+                    out.pop(annotated, None)
             return out
 
     async def _notes_tree(
@@ -1002,11 +1035,36 @@ class GitHubDeployment(DeploymentCapability):
     async def _all_notes(
         self, client: httpx.AsyncClient, commit_sha: str
     ) -> dict[str, str | None]:
-        """Every note at one notes-ref commit, bodies included."""
+        """Every note at one notes-ref commit, bodies included.
+
+        Blob reads run a few at a time (one request per note) and a
+        failed read skips its note rather than failing the batch or
+        recording a false "removed".
+        """
         notes = await self._tree_notes(client, commit_sha)
+        gate = asyncio.Semaphore(_NOTE_BLOB_CONCURRENCY)
+
+        async def _read(blob_sha: str) -> str | None | BaseException:
+            async with gate:
+                try:
+                    return await self._blob_text(client, blob_sha)
+                except httpx.HTTPError as exc:
+                    return exc
+
+        items = list(notes.items())
+        bodies = await asyncio.gather(
+            *(_read(blob_sha) for _, blob_sha in items)
+        )
         out: dict[str, str | None] = {}
-        for annotated, blob_sha in notes.items():
-            out[annotated] = await self._blob_text(client, blob_sha)
+        for (annotated, blob_sha), body in zip(items, bodies, strict=True):
+            if isinstance(body, BaseException):
+                LOGGER.warning(
+                    'Could not read note blob %s for %s; skipping',
+                    blob_sha,
+                    annotated,
+                )
+                continue
+            out[annotated] = body
         return out
 
     @staticmethod
@@ -1019,6 +1077,16 @@ class GitHubDeployment(DeploymentCapability):
         payload = typing.cast('dict[str, typing.Any]', resp.json())
         content = str(payload.get('content') or '')
         if payload.get('encoding') != 'base64':
+            if not content:
+                # ``encoding: none`` with an empty body is how GitHub
+                # answers for blobs above the inline size limit --
+                # "cannot read", not "empty note".
+                LOGGER.warning(
+                    'Note blob %s answered encoding %r with no content',
+                    blob_sha,
+                    payload.get('encoding'),
+                )
+                return None
             return content
         try:
             return base64.b64decode(content).decode('utf-8')

@@ -276,6 +276,43 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual('skipped', outcome)
 
+    async def test_drift_failure_keeps_the_sweep_result(self) -> None:
+        from imbi.api import deployment_sweeper
+
+        sweep, org, _unused = self._run(
+            deployment_sweeper.SweepSummary(examined=2)
+        )
+        failing = mock.patch(
+            'imbi.api.drift.sweep_project',
+            mock.AsyncMock(side_effect=RuntimeError('boom')),
+        )
+        with (
+            sweep,
+            org,
+            failing,
+            self.assertLogs(operations.LOGGER, level='ERROR'),
+        ):
+            outcome = await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('succeeded', outcome)
+
+    async def test_drift_rate_limit_propagates(self) -> None:
+        from imbi.api import deployment_sweeper
+
+        sweep, org, _unused = self._run(deployment_sweeper.SweepSummary())
+        limited = mock.patch(
+            'imbi.api.drift.sweep_project',
+            mock.AsyncMock(
+                side_effect=operations.PluginRateLimited(retry_at=1.0)
+            ),
+        )
+        with sweep, org, limited:
+            with self.assertRaises(operations.PluginRateLimited):
+                await operations.execute_deployment_sweep(
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                )
+
     async def test_drift_backfill_alone_succeeds(self) -> None:
         sweep, org, drift_patch = self._run(None, 3)
         with sweep, org, drift_patch as drift_mock:

@@ -5826,6 +5826,27 @@ class IngestDriftNotesTests(ProjectDeploymentsTestCase):
             response = client.post(self.URL, json=self.BODY)
         self.assertEqual(404, response.status_code)
 
+    def test_without_write_permission_is_403(self) -> None:
+        # The gateway posts here as the drift-sync principal; the
+        # permission gate is the contract most likely to regress.
+        non_admin = models.User(
+            email='user@example.com',
+            display_name='Regular User',
+            is_active=True,
+            is_admin=False,
+            password_hash=password.hash_password('testpassword123'),
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=non_admin,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:deployment:read'},
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(self.URL, json=self.BODY)
+        self.assertEqual(403, response.status_code)
+
     def test_plugin_without_notes_support_is_400(self) -> None:
         with (
             mock.patch(

@@ -160,6 +160,26 @@ class ApplyNotesDiffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('a' * 40, diff_kwargs['before'])
         self.assertEqual('b' * 40, diff_kwargs['after'])
 
+    async def test_one_bad_note_does_not_stop_the_rest(self) -> None:
+        self.handler.diff_commit_notes.return_value = {
+            'e' * 40: '{"drift_detected": true}',
+            FULL_SHA: '{"drift_detected": false}',
+        }
+        apply_note = mock.AsyncMock(side_effect=[RuntimeError('boom'), 1])
+        with (
+            mock.patch.object(drift, 'apply_note', apply_note),
+            self.assertLogs(drift.LOGGER, level='ERROR'),
+        ):
+            updated = await drift.apply_notes_diff(
+                self.db,
+                org_slug='org',
+                project_id='p1',
+                before='a' * 40,
+                after='b' * 40,
+            )
+        self.assertEqual(1, updated)
+        self.assertEqual(2, apply_note.await_count)
+
     async def test_unsupported_plugin_propagates(self) -> None:
         self.handler.diff_commit_notes.side_effect = NotImplementedError
         with self.assertRaises(NotImplementedError):

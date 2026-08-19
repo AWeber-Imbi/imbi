@@ -231,13 +231,23 @@ async def apply_notes_diff(
     )
     updated = 0
     for full_sha, body in changed.items():
-        updated += await apply_note(
-            db,
-            org_slug=org_slug,
-            project_id=project_id,
-            full_sha=full_sha,
-            body=body,
-        )
+        try:
+            updated += await apply_note(
+                db,
+                org_slug=org_slug,
+                project_id=project_id,
+                full_sha=full_sha,
+                body=body,
+            )
+        except Exception:
+            # One bad note must not hold the rest of the push hostage:
+            # the write is idempotent, so a retry would re-apply the
+            # leading notes and still die on the same SHA forever.
+            LOGGER.exception(
+                'could not apply the note for %s on project %s',
+                full_sha,
+                project_id,
+            )
     return updated
 
 
