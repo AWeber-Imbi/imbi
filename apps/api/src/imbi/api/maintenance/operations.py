@@ -1316,7 +1316,11 @@ _REINDEX_ITEM_SEPARATOR = ':'
 
 
 async def execute_sbom_backfill(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Publish ClickHouse component batches from the graph edges.
 
@@ -1339,7 +1343,13 @@ async def execute_sbom_backfill(
     del client
     summary = await sbom_backfill.backfill_project(db, project_id)
     if not summary.releases_published:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'sbom-backfill',
+            f'Every release already has a batch ({summary.releases_skipped} '
+            'checked), or the project has no component edges.',
+            releases_skipped=summary.releases_skipped,
+        )
     LOGGER.info(
         'SBoM backfill published %d batch(es), %d component row(s), '
         'skipped %d already-batched release(s) for project %s',
@@ -1348,11 +1358,25 @@ async def execute_sbom_backfill(
         summary.releases_skipped,
         project_id,
     )
+    ctx.log.record(
+        'succeeded',
+        'sbom-backfill',
+        f'Published {summary.releases_published} batch(es) covering '
+        f'{summary.components_written} component row(s); '
+        f'{summary.releases_skipped} release(s) already had one.',
+        releases_published=summary.releases_published,
+        releases_skipped=summary.releases_skipped,
+        components_written=summary.components_written,
+    )
     return 'succeeded'
 
 
 async def execute_sbom_backfill_report(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report releases whose two stores disagree; writes nothing.
 
@@ -1371,7 +1395,15 @@ async def execute_sbom_backfill_report(
     del client
     summary = await sbom_backfill.reconcile_project(db, project_id)
     if summary.ok:
-        return 'skipped'
+        return _skip(
+            ctx,
+            'sbom-backfill-report',
+            f'Both stores agree across {summary.matched} release(s).',
+            matched=summary.matched,
+        )
+    # A row per disagreeing release, which is the whole point of a
+    # report: "succeeded" on its own says something was found and makes
+    # an operator go read the server logs to learn what.
     for release_id, reason in summary.mismatched.items():
         LOGGER.warning(
             'SBoM reconcile mismatch on project %s release %s: %s',
@@ -1379,12 +1411,26 @@ async def execute_sbom_backfill_report(
             release_id,
             reason,
         )
+        ctx.log.record(
+            'failed',
+            'sbom-mismatch',
+            reason,
+            release_id=release_id,
+        )
     LOGGER.warning(
         'SBoM reconcile found %d mismatched release(s) against %d '
         'matching for project %s',
         len(summary.mismatched),
         summary.matched,
         project_id,
+    )
+    ctx.log.record(
+        'succeeded',
+        'sbom-backfill-report',
+        f'{len(summary.mismatched)} release(s) disagree between the graph '
+        f'and ClickHouse; {summary.matched} agree.',
+        mismatched=len(summary.mismatched),
+        matched=summary.matched,
     )
     return 'succeeded'
 

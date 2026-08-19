@@ -1403,3 +1403,95 @@ class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual('skipped', outcome)
         self.assertEqual('Retired', _rows(ctx)[0].detail['label'])
+
+
+class SbomActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
+    """The SBoM operations' rows.
+
+    The reconcile report is the sharpest case for the activity log: it
+    found its mismatches per release and told only the server log.
+    """
+
+    async def test_each_mismatched_release_gets_a_row(self) -> None:
+        from imbi.api import sbom_backfill
+
+        ctx = _ctx()
+        summary = sbom_backfill.ReconcileSummary(
+            matched=7,
+            mismatched={
+                'r-1': 'graph has 3, clickhouse has 2',
+                'r-2': 'drift',
+            },
+        )
+        with mock.patch(
+            'imbi.api.sbom_backfill.reconcile_project',
+            mock.AsyncMock(return_value=summary),
+        ):
+            outcome = await operations.execute_sbom_backfill_report(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('succeeded', outcome)
+        mismatches = [r for r in _rows(ctx) if r.action == 'sbom-mismatch']
+        self.assertEqual(
+            ['r-1', 'r-2'], [r.detail['release_id'] for r in mismatches]
+        )
+        self.assertEqual(
+            'graph has 3, clickhouse has 2', mismatches[0].message
+        )
+        summary_row = _rows(ctx)[-1]
+        self.assertEqual(2, summary_row.detail['mismatched'])
+        self.assertEqual(7, summary_row.detail['matched'])
+
+    async def test_agreeing_stores_say_how_much_was_checked(self) -> None:
+        from imbi.api import sbom_backfill
+
+        ctx = _ctx()
+        with mock.patch(
+            'imbi.api.sbom_backfill.reconcile_project',
+            mock.AsyncMock(
+                return_value=sbom_backfill.ReconcileSummary(matched=12)
+            ),
+        ):
+            outcome = await operations.execute_sbom_backfill_report(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual(12, _rows(ctx)[0].detail['matched'])
+
+    async def test_the_backfill_records_what_it_published(self) -> None:
+        from imbi.api import sbom_backfill
+
+        ctx = _ctx()
+        with mock.patch(
+            'imbi.api.sbom_backfill.backfill_project',
+            mock.AsyncMock(
+                return_value=sbom_backfill.BackfillSummary(
+                    components_written=40,
+                    releases_published=4,
+                    releases_skipped=6,
+                )
+            ),
+        ):
+            outcome = await operations.execute_sbom_backfill(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('succeeded', outcome)
+        row = _rows(ctx)[0]
+        self.assertEqual(4, row.detail['releases_published'])
+        self.assertEqual(40, row.detail['components_written'])
+
+    async def test_a_fully_batched_project_says_so(self) -> None:
+        from imbi.api import sbom_backfill
+
+        ctx = _ctx()
+        with mock.patch(
+            'imbi.api.sbom_backfill.backfill_project',
+            mock.AsyncMock(
+                return_value=sbom_backfill.BackfillSummary(releases_skipped=9)
+            ),
+        ):
+            outcome = await operations.execute_sbom_backfill(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual(9, _rows(ctx)[0].detail['releases_skipped'])
