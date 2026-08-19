@@ -390,6 +390,23 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             settings=None,
         )
 
+    async def test_insert_forwards_settings_unchanged(self) -> None:
+        """Per-statement settings reach the server.
+
+        The maintenance log inserts a handful of rows per work item and
+        relies on ``async_insert`` to coalesce them server-side; dropping
+        the setting silently would leave one part per call.
+        """
+        ch = client.Clickhouse.get_instance()
+        ch._clickhouse = self.mock_client
+        settings = {'async_insert': 1, 'wait_for_async_insert': 1}
+
+        await ch.insert('maintenance_log', [['a']], ['id'], settings=settings)
+
+        self.assertEqual(
+            settings, self.mock_client.insert.call_args.kwargs['settings']
+        )
+
     async def test_insert_without_initialize(self) -> None:
         """Test insert auto-initializes if not initialized."""
         ch = client.Clickhouse.get_instance()

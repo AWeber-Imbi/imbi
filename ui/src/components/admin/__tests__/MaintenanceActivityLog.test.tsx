@@ -156,6 +156,46 @@ describe('MaintenanceActivityLog', () => {
     })
   })
 
+  it('pages the activity rows behind one attempt', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.getMaintenanceLog).mockImplementation((params) =>
+      Promise.resolve(
+        params.filters?.event_type === 'activity'
+          ? page(
+              [
+                entry({
+                  action: 'normalize',
+                  event_type: 'activity',
+                  id: params.cursor ? 'act-2' : 'act-1',
+                  message: 'Normalized 2 committishes',
+                }),
+              ],
+              { nextCursor: params.cursor ? undefined : 'act-cursor' },
+            )
+          : page([entry()]),
+      ),
+    )
+    await renderLog()
+    await waitFor(() =>
+      expect(screen.getByText('campaign-builder')).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /load more activity/i }),
+      ).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /load more activity/i }))
+    await waitFor(() => {
+      const calls = vi
+        .mocked(endpoints.getMaintenanceLog)
+        .mock.calls.filter(
+          ([params]) => params.filters?.event_type === 'activity',
+        )
+      expect(calls[calls.length - 1][0].cursor).toBe('act-cursor')
+    })
+  })
+
   it('reports an empty log rather than an empty table', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.getMaintenanceLog).mockResolvedValue(page([]))

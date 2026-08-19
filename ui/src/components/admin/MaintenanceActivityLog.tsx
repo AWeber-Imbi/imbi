@@ -149,7 +149,14 @@ export function MaintenanceActivityLog({
 // numerous than the attempts, so fetching them up front would trade the
 // readable view for a wall of text nobody asked for.
 function AttemptDetail({ entry }: { entry: MaintenanceLogEntry }) {
-  const { entries, isError, isLoading } = useMaintenanceLog({
+  const {
+    entries,
+    fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetchingNextPage,
+    isLoading,
+  } = useMaintenanceLog({
     attempt_id: entry.attempt_id,
     event_type: 'activity',
   })
@@ -179,6 +186,19 @@ function AttemptDetail({ entry }: { entry: MaintenanceLogEntry }) {
           <span>{row.disposition}</span>
         </div>
       ))}
+      {/* One item can buffer up to MAX_ITEM_ROWS activity rows, well
+          past a page, so an attempt that recorded per release needs its
+          own way to keep reading. */}
+      {hasNextPage && (
+        <button
+          className="text-amber-text hover:underline disabled:opacity-50"
+          disabled={isFetchingNextPage}
+          onClick={() => void fetchNextPage()}
+          type="button"
+        >
+          {isFetchingNextPage ? 'Loading…' : 'Load more activity'}
+        </button>
+      )}
     </div>
   )
 }
