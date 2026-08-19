@@ -420,9 +420,12 @@ enabled = true
 # pages on. A third key column absent from the cursor would put page
 # boundaries at odds with the sort order whenever two rows share a
 # millisecond -- routine during a sweep. Every other filter (`slug`,
-# `disposition`, `run_id`, `project_id`) is served by a skip index
-# instead: `set` for the genuinely bounded columns, `bloom_filter` for the
-# nanoid-shaped ones.
+# `disposition`, `run_id`, `attempt_id`, `project_id`) is served by a skip
+# index instead: `set` for the genuinely bounded columns, `bloom_filter`
+# for the nanoid-shaped ones. `attempt_id` earns one because expanding a
+# row in the UI reads `event_type = 'activity'` for a single attempt with
+# no time bound -- unindexed, that is a scan of every partition inside
+# the TTL.
 #
 # `item_id` is the work item the run enumerated; `project_id` is set only
 # when that item *is* a project, which it is for every operation but
@@ -459,6 +462,7 @@ CREATE TABLE IF NOT EXISTS imbi.maintenance_log {on_cluster}(
   INDEX idx_slug slug TYPE set(64) GRANULARITY 4,
   INDEX idx_disposition disposition TYPE set(16) GRANULARITY 4,
   INDEX idx_run run_id TYPE bloom_filter GRANULARITY 4,
+  INDEX idx_attempt attempt_id TYPE bloom_filter GRANULARITY 4,
   INDEX idx_project project_id TYPE bloom_filter GRANULARITY 4
 ) ENGINE = {replicated}MergeTree()
 PARTITION BY toYYYYMM(occurred_at)
