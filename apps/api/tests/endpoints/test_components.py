@@ -242,6 +242,24 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self.assertEqual(body['data'], [])
         self.assertEqual(self.mock_db.execute.await_count, 1)
 
+    def test_ecosystem_filter_keeps_the_catalog_totals(self) -> None:
+        """The totals are what the ecosystem chips count.
+
+        Dropping them once a chip is selected would empty the control
+        the reader just used.
+        """
+        self.mock_db.execute.side_effect = [
+            [
+                {'ecosystem': 'npm', 'total': 120},
+                {'ecosystem': 'pypi', 'total': 45},
+            ],
+        ]
+        body = self.client.get(
+            self._components('/'), params={'ecosystem': 'npm'}
+        ).json()
+        self.assertEqual(body['ecosystem_totals'], {'npm': 120, 'pypi': 45})
+        self.assertEqual(body['data'], [])
+
     def test_filtered_search_skips_the_catalog_scan(self) -> None:
         """The totals restate a constant; a keystroke must not rescan."""
         self.mock_db.execute.side_effect = [[]]
@@ -430,6 +448,15 @@ class ComponentUsageTestCase(_ComponentsTestBase):
     def test_prerelease_sorts_below_its_release(self) -> None:
         self.assertEqual(
             self._version_order('1.0.0', '1.0.0-rc1'), ['1.0.0', '1.0.0-rc1']
+        )
+
+    def test_a_non_decimal_digit_does_not_raise(self) -> None:
+        # ``isdigit`` accepts superscripts that ``int()`` rejects, so
+        # the comparator tests ``isdecimal``. It must sort oddly rather
+        # than 500.
+        self.assertEqual(
+            sorted(self._version_order('1.\u00b2.0', '1.0.0')),
+            ['1.0.0', '1.\u00b2.0'],
         )
 
     def test_build_metadata_does_not_demote_a_release(self) -> None:

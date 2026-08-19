@@ -779,11 +779,14 @@ async def search_components(
         ]
 
     # The totals describe the catalog, not the result set, so they are
-    # computed only for the unfiltered request -- the one the screen
-    # makes on load. Recomputing a full org-wide scan on every keystroke
-    # would double the cost of a search to restate a constant.
+    # computed only for the request with an empty box -- the one the
+    # screen makes on load. Recomputing a full org-wide scan on every
+    # keystroke would double the cost of a search to restate a
+    # constant. The ecosystem filter does not gate them: they are what
+    # the filter's own chips count, so dropping them the moment the
+    # reader picks a chip would empty the control they just used.
     totals: dict[str, int] = {}
-    if not query and not selected_ecosystem:
+    if not query:
         totals = {
             _required(row, 'ecosystem'): _count(row, 'total')
             for row in await db.execute(
@@ -941,12 +944,14 @@ def _version_sort_key(
     and sort ``1.0.0+build.5`` below the plain ``1.0.0``.
 
     Nothing here raises: a hand-written version in the graph sorts
-    oddly rather than breaking the report.
+    oddly rather than breaking the report. The digit test is
+    ``isdecimal`` rather than ``isdigit`` for that reason -- ``isdigit``
+    accepts characters ``int()`` rejects, superscripts among them.
     """
     core = version.strip().lstrip('vV').split('+', 1)[0]
     parts = re.split(r'[._\-]', core)
     release = tuple(
-        int(part) for part in itertools.takewhile(str.isdigit, parts)
+        int(part) for part in itertools.takewhile(str.isdecimal, parts)
     )
     rest = parts[len(release) :]
     return (
@@ -955,7 +960,7 @@ def _version_sort_key(
         # pre-release suffix, so it takes the higher tier.
         0 if rest else 1,
         tuple(
-            (0, int(part), '') if part.isdigit() else (1, 0, part)
+            (0, int(part), '') if part.isdecimal() else (1, 0, part)
             for part in rest
         ),
     )

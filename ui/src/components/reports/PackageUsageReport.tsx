@@ -427,6 +427,7 @@ function PackageDetail({
 
       <VersionTable
         canWrite={canWrite}
+        filtered={filtered}
         governance={governance}
         onOpenAdvisory={setAdvisoryFor}
         onOpenNotes={setNotesFor}
@@ -809,12 +810,14 @@ function VersionRow({
 
 function VersionTable({
   canWrite,
+  filtered,
   governance,
   onOpenAdvisory,
   onOpenNotes,
   versions,
 }: {
   canWrite: boolean
+  filtered: boolean
   governance: ReturnType<typeof useComponentGovernance>
   onOpenAdvisory: (version: ComponentUsageVersion) => void
   onOpenNotes: (version: ComponentUsageVersion) => void
@@ -822,14 +825,21 @@ function VersionTable({
 }) {
   const { isExpanded, toggle } = useExpandedKeys()
   if (versions.length === 0) {
+    // With no facet selected the payload passes through untouched, so
+    // an empty table means the package has no ingested deployments --
+    // telling that reader to clear a filter sends them after one that
+    // does not exist. Packages without an SBoM land here routinely.
     return (
       <div className="border-tertiary bg-primary rounded-lg border p-11 text-center">
         <p className="text-primary text-sm font-medium">
-          No deployed usage matches these filters
+          {filtered
+            ? 'No deployed usage matches these filters'
+            : 'No deployed usage recorded for this package'}
         </p>
         <p className="text-tertiary mt-1 text-xs">
-          Clear a filter, or check whether the projects you expect have deployed
-          since the last index.
+          {filtered
+            ? 'Clear a filter, or check whether the projects you expect have deployed since the last index.'
+            : 'Check whether the projects you expect have deployed since the last index.'}
         </p>
       </div>
     )
