@@ -1015,6 +1015,80 @@ async def execute_orphan_release_purge(
 _REINDEX_ITEM_SEPARATOR = ':'
 
 
+async def execute_sbom_backfill(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Publish ClickHouse component batches from the graph edges.
+
+    Phase two of the SBoM component migration. Releases ingested before
+    dual write have their component sets only as
+    ``USES_COMPONENT_RELEASE`` edges; this publishes a ``backfill``
+    batch for each one that has no batch yet.
+
+    Safe to run beside live SBoM ingests. Readers resolve a release with
+    ``argMax(batch_id, (source = 'ingest', recorded_at))``, so an ingest
+    batch outranks a backfill one whatever order the two land in.
+
+    Because of that same ordering, this **fills but does not repair**: a
+    release whose ingest batch is wrong keeps it, and this reports
+    success having changed nothing for it. Skipped means every release
+    already had a batch, or the project has no component edges.
+    """
+    from imbi.api import sbom_backfill
+
+    del client
+    summary = await sbom_backfill.backfill_project(db, project_id)
+    if not summary.releases_published:
+        return 'skipped'
+    LOGGER.info(
+        'SBoM backfill published %d batch(es), %d component row(s), '
+        'skipped %d already-batched release(s) for project %s',
+        summary.releases_published,
+        summary.components_written,
+        summary.releases_skipped,
+        project_id,
+    )
+    return 'succeeded'
+
+
+async def execute_sbom_backfill_report(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Report releases whose two stores disagree; writes nothing.
+
+    Compares content rather than counts: each release's
+    ``(component_id, component_release_id, version)`` set is sorted and
+    hashed on both sides. Equal counts over different members is the
+    failure a backfill can introduce, and counting cannot see it.
+
+    Succeeded means disagreements were found and logged -- the same
+    report-operation convention as ``release-dup-merge-report``, where
+    the outcome says whether there is anything to look at. Skipped means
+    the project's stores agree.
+    """
+    from imbi.api import sbom_backfill
+
+    del client
+    summary = await sbom_backfill.reconcile_project(db, project_id)
+    if summary.ok:
+        return 'skipped'
+    for release_id, reason in summary.mismatched.items():
+        LOGGER.warning(
+            'SBoM reconcile mismatch on project %s release %s: %s',
+            project_id,
+            release_id,
+            reason,
+        )
+    LOGGER.warning(
+        'SBoM reconcile found %d mismatched release(s) against %d '
+        'matching for project %s',
+        len(summary.mismatched),
+        summary.matched,
+        project_id,
+    )
+    return 'succeeded'
+
+
 async def enumerate_embeddable_nodes(db: graph.Graph) -> list[str]:
     """Every ``Label:node_id`` whose model declares embeddable fields."""
     items: list[str] = []
