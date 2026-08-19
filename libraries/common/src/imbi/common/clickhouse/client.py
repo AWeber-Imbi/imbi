@@ -141,9 +141,19 @@ class Clickhouse:
             self._clickhouse = None
 
     async def insert(
-        self, table: str, data: list[list[typing.Any]], column_names: list[str]
+        self,
+        table: str,
+        data: list[list[typing.Any]],
+        column_names: list[str],
+        settings: dict[str, typing.Any] | None = None,
     ) -> summary.QuerySummary:
-        """Insert data into Clickhouse"""
+        """Insert data into Clickhouse.
+
+        ``settings`` is passed through to the server for this statement
+        only -- e.g. ``{'async_insert': 1, 'wait_for_async_insert': 1}``
+        for a writer that inserts a handful of rows very often and would
+        otherwise leave one part per call.
+        """
         LOGGER.debug('Clickhouse INSERT: %s (%r)', table, column_names)
         if not self._clickhouse:
             await self.initialize()
@@ -151,7 +161,7 @@ class Clickhouse:
             raise RuntimeError('Failed to initialize ClickHouse client')
         with _translate_errors(f'insert into {table}'):
             return await self._clickhouse.insert(
-                table, data, column_names=column_names
+                table, data, column_names=column_names, settings=settings
             )
 
     async def command(

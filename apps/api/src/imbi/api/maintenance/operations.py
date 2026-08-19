@@ -27,6 +27,7 @@ import nanoid
 from valkey import asyncio as valkey
 
 from imbi.api.auth import permissions, principals
+from imbi.api.maintenance import log
 from imbi.api.scoring import queue as score_queue
 from imbi.common import clickhouse, graph, versioning
 from imbi.common import models as common_models
@@ -76,7 +77,11 @@ async def _org_slug_for(db: graph.Graph, project_id: str) -> str | None:
 
 
 async def execute_analysis(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Run the Doctor analysis and persist the report.
 
@@ -95,7 +100,11 @@ async def execute_analysis(
 
 
 async def execute_remediate(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Apply every fixable Project Doctor finding for one project.
 
@@ -125,7 +134,11 @@ async def execute_remediate(
 
 
 async def execute_commit_sync(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Full commit/tag backfill, mirroring the queue consumer's status
     transitions so the per-project Doctor status stays truthful."""
@@ -177,7 +190,11 @@ async def execute_commit_sync(
 
 
 async def execute_pr_sync(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Full PR-history backfill; same shape as commit sync."""
     from imbi.api.pr_sync import service
@@ -227,7 +244,11 @@ async def execute_pr_sync(
 
 
 async def execute_deployment_resync(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Backfill recent remote deployments via the deployment plugin."""
     from imbi.api.endpoints import project_deployments
@@ -253,7 +274,11 @@ async def execute_deployment_resync(
 
 
 async def execute_deployment_sweep(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Close out deployments the remote finished but nobody recorded.
 
@@ -289,7 +314,11 @@ async def execute_deployment_sweep(
 
 
 async def execute_rescore(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Enqueue a score recompute onto the existing scoring stream.
 
@@ -417,7 +446,11 @@ async def _existing_opslog_rows(
 
 
 async def execute_opslog_backfill(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Backfill ``operations_log`` 'Deployed' rows from the graph edges.
 
@@ -640,7 +673,11 @@ def _release_nodes(rows: list[dict[str, typing.Any]]) -> list[_ReleaseNode]:
 
 
 async def execute_release_repair(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Repair ``Release`` node identity for one project.
 
@@ -818,7 +855,11 @@ RETURN r.id AS id
 
 
 async def execute_blocker_migration(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Move a project's release blocks onto ``Blocker`` nodes.
 
@@ -910,7 +951,11 @@ async def _release_dup_merge(
 
 
 async def execute_release_dup_merge_report(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report duplicate ``(project, tag)`` Release groups; writes nothing.
 
@@ -922,7 +967,11 @@ async def execute_release_dup_merge_report(
 
 
 async def execute_release_dup_merge(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Merge duplicate ``(project, tag)`` Release nodes into one.
 
@@ -946,7 +995,11 @@ async def _deployment_migration(
 
 
 async def execute_deployment_migration_report(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report what the array-to-node migration would do; writes nothing."""
     del client
@@ -954,7 +1007,11 @@ async def execute_deployment_migration_report(
 
 
 async def execute_deployment_migration(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Migrate legacy ``DEPLOYED_TO`` array entries to Deployment nodes.
 
@@ -986,7 +1043,11 @@ async def _orphan_release_check(
 
 
 async def execute_orphan_release_check(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Report Releases whose tag the remote confirms never existed.
 
@@ -998,7 +1059,11 @@ async def execute_orphan_release_check(
 
 
 async def execute_orphan_release_purge(
-    db: graph.Graph, client: valkey.Valkey, project_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Delete Releases whose tag the remote confirms never existed.
 
@@ -1106,7 +1171,11 @@ async def enumerate_embeddable_nodes(db: graph.Graph) -> list[str]:
 
 
 async def execute_search_reindex(
-    db: graph.Graph, client: valkey.Valkey, item_id: str
+    db: graph.Graph,
+    client: valkey.Valkey,
+    item_id: str,
+    *,
+    ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
     """Rebuild one node's search embeddings from its current properties.
 

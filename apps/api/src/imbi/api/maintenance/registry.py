@@ -15,7 +15,7 @@ from collections import abc
 from valkey import asyncio as valkey
 
 from imbi.api.commit_sync import queue as commit_sync_queue
-from imbi.api.maintenance import operations
+from imbi.api.maintenance import log, operations
 from imbi.api.pr_sync import queue as pr_sync_queue
 from imbi.common import graph
 
@@ -53,9 +53,13 @@ class OperationDefinition(typing.NamedTuple):
     pause_key: str | None
     enumerate: abc.Callable[[graph.Graph], abc.Awaitable[list[str]]]
     execute: abc.Callable[
-        [graph.Graph, valkey.Valkey, str],
+        [graph.Graph, valkey.Valkey, str, log.MaintenanceContext],
         abc.Awaitable[operations.ExecuteOutcome],
     ]
+    #: Whether an enumerated work item *is* a project id, which decides
+    #: whether the activity log can attribute a row to a project.
+    #: ``search-reindex`` enumerates ``Label:node_id`` items instead.
+    items_are_projects: bool = True
 
 
 OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
@@ -328,6 +332,7 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_embeddable_nodes,
             execute=operations.execute_search_reindex,
+            items_are_projects=False,
         ),
     )
 }

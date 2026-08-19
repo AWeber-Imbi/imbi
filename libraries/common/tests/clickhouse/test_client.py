@@ -387,6 +387,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             'test_table',
             [['value1', 'value2'], ['value3', 'value4']],
             column_names=['column1', 'column2'],
+            settings=None,
         )
 
     async def test_insert_without_initialize(self) -> None:

@@ -1418,6 +1418,50 @@ class ReleaseComponentRecord(pydantic.BaseModel):
     recorded_at: datetime.datetime
 
 
+class MaintenanceLogRecord(pydantic.BaseModel):
+    """One event in the ClickHouse ``maintenance_log`` table.
+
+    The durable history of what a global maintenance operation did.
+    ``event_type`` tells the three row kinds apart:
+
+    - ``run`` -- one per finished run, written at finalize with the
+      authoritative Valkey counters in ``detail``;
+    - ``attempt`` -- one per project per claim, written by the worker
+      whatever the outcome, including ``deferred`` for a rate-limit
+      requeue;
+    - ``activity`` -- what the operation itself chose to record while
+      working on that attempt.
+
+    Counting them together would report events rather than outcomes,
+    which is why the column exists rather than a single flat stream.
+
+    ``item_id`` is the work item the run enumerated. ``project_id`` is
+    set only when that item is a project -- true of every operation but
+    ``search-reindex``, whose items are ``Label:node_id``.
+
+    ``project_slug`` is a snapshot of the name at the time the work ran;
+    a later rename does not rewrite history.
+    """
+
+    id: str = pydantic.Field(default_factory=nanoid.generate)
+    occurred_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    run_id: str
+    attempt_id: str = ''
+    item_id: str = ''
+    slug: str
+    event_type: typing.Literal['run', 'attempt', 'activity']
+    disposition: str
+    action: str = ''
+    project_id: str = ''
+    project_slug: str = ''
+    message: str = ''
+    detail: dict[str, typing.Any] = {}
+    duration_ms: int = 0
+    started_by: str = ''
+
+
 class PullRequestRecord(pydantic.BaseModel):
     """A pull request recorded in the ClickHouse ``pull_requests`` table.
 

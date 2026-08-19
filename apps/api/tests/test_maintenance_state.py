@@ -6,7 +6,7 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi.api.maintenance import state
+from imbi.api.maintenance import log, state
 
 
 def _client_with_pipeline(
@@ -191,6 +191,64 @@ class CancelRunTests(unittest.IsolatedAsyncioTestCase):
         client, _ = _client_with_pipeline()
         client.exists = mock.AsyncMock(return_value=0)
         self.assertFalse(await state.cancel_run(client, 'op'))
+
+
+class FinishTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_row_carries_the_final_counters(self) -> None:
+        client, _ = _client_with_pipeline()
+        status = state.RunStatus(
+            state='completed',
+            run_id='r1',
+            total=5,
+            succeeded=3,
+            failed=1,
+            skipped=1,
+            started_by='alice',
+        )
+        with (
+            mock.patch.object(
+                state, 'read_status', mock.AsyncMock(return_value=status)
+            ),
+            mock.patch.object(log, 'record_run', mock.AsyncMock()) as record,
+        ):
+            await state._finish(client, 'op', 'completed')
+        record.assert_awaited_once_with(
+            'op',
+            'r1',
+            'completed',
+            'alice',
+            total=5,
+            succeeded=3,
+            failed=1,
+            skipped=1,
+        )
+
+    async def test_cancellation_is_recorded_too(self) -> None:
+        client, _ = _client_with_pipeline()
+        with (
+            mock.patch.object(
+                state,
+                'read_status',
+                mock.AsyncMock(return_value=state.RunStatus()),
+            ),
+            mock.patch.object(log, 'record_run', mock.AsyncMock()) as record,
+        ):
+            await state._finish(client, 'op', 'cancelled')
+        self.assertEqual('cancelled', record.await_args.args[2])
+
+
+class ReadRunMetaTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reads_run_id_and_started_by(self) -> None:
+        client = mock.AsyncMock()
+        client.hmget = mock.AsyncMock(return_value=[b'r1', b'alice'])
+        self.assertEqual(
+            ('r1', 'alice'), await state.read_run_meta(client, 'op')
+        )
+
+    async def test_missing_values_are_empty(self) -> None:
+        client = mock.AsyncMock()
+        client.hmget = mock.AsyncMock(return_value=[None, None])
+        self.assertEqual(('', ''), await state.read_run_meta(client, 'op'))
 
 
 class ReadStatusTests(unittest.IsolatedAsyncioTestCase):

@@ -28,6 +28,8 @@ from collections import abc
 import pydantic
 from valkey import asyncio as valkey
 
+from imbi.api.maintenance import log
+
 KEY_PREFIX = 'imbi:maintenance'
 #: Backstop for a run whose instances all died mid-flight; a healthy run
 #: deletes the lock at finalize.
@@ -165,6 +167,28 @@ async def has_active_run(client: valkey.Valkey, slug: str) -> bool:
     return bool(await client.exists(_key(slug, 'lock')))
 
 
+async def read_run_meta(client: valkey.Valkey, slug: str) -> tuple[str, str]:
+    """The current run's ``(run_id, started_by)``, empty when idle.
+
+    The activity log stamps both on every row it writes, and the worker
+    holds neither -- a run is started by whichever instance served the
+    POST, not by the one that picks the work up.
+    """
+    raw = typing.cast(
+        'list[object]',
+        await _resolve(
+            client.hmget(  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+                _key(slug, 'run'), ['run_id', 'started_by']
+            )
+        ),
+    )
+    run_id, started_by = raw[0], raw[1]
+    return (
+        _decode(run_id) if run_id is not None else '',
+        _decode(started_by) if started_by is not None else '',
+    )
+
+
 async def checkout(client: valkey.Valkey, slug: str) -> str | None:
     """Pop one pending project id, marking it in flight."""
     popped = await _resolve(
@@ -280,6 +304,23 @@ async def _finish(
             _key(slug, 'failures'), RESULT_TTL_SECONDS
         )
         await pipe.execute()  # pyright: ignore[reportUnknownMemberType]
+    # The durable record of the run, written after the Valkey state so a
+    # ClickHouse problem cannot leave a run un-finished. The counters it
+    # carries are the authoritative ones: an activity log short of them
+    # is a logging gap, and comparing the two is how that becomes
+    # visible. An ``abandoned`` run reaches neither branch and so has no
+    # terminal row at all, which is what identifies it later.
+    status = await read_status(client, slug)
+    await log.record_run(
+        slug,
+        status.run_id or '',
+        state,
+        status.started_by or '',
+        total=status.total,
+        succeeded=status.succeeded,
+        failed=status.failed,
+        skipped=status.skipped,
+    )
 
 
 async def read_status(client: valkey.Valkey, slug: str) -> RunStatus:

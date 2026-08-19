@@ -8,14 +8,15 @@ import typing
 import unittest
 from unittest import mock
 
-from imbi.api.maintenance import registry, worker
+from imbi.api.maintenance import log, registry, worker
 from imbi.api.maintenance.operations import MaintenanceItemFailed
 from imbi.common.plugins.errors import PluginRateLimited
 
 
 def _operation(
-    execute: mock.AsyncMock,
+    execute: mock.AsyncMock | typing.Any,
     pause_key: str | None = None,
+    items_are_projects: bool = True,
 ) -> registry.OperationDefinition:
     return registry.OperationDefinition(
         slug=typing.cast('registry.MaintenanceSlug', 'op'),
@@ -24,6 +25,7 @@ def _operation(
         pause_key=pause_key,
         enumerate=mock.AsyncMock(return_value=[]),
         execute=execute,
+        items_are_projects=items_are_projects,
     )
 
 
@@ -45,6 +47,27 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         self.state['has_active_run'].return_value = True
         self.state['checkout'].return_value = 'p1'
         self.state['maybe_finalize'].return_value = False
+        run_meta = mock.patch.object(
+            worker.state,
+            'read_run_meta',
+            mock.AsyncMock(return_value=('run1', 'admin')),
+        )
+        run_meta.start()
+        self.addCleanup(run_meta.stop)
+        slugs = mock.patch(
+            'imbi.api.endpoints._helpers.lookup_project_slugs',
+            mock.AsyncMock(return_value=('proj', 'team')),
+        )
+        slugs.start()
+        self.addCleanup(slugs.stop)
+        writes = mock.patch.object(log, '_write', mock.AsyncMock())
+        self.write = writes.start()
+        self.addCleanup(writes.stop)
+
+    def written_rows(self) -> list[object]:
+        return [
+            row for call in self.write.await_args_list for row in call.args[0]
+        ]
 
     async def test_no_active_run_is_noop(self) -> None:
         self.state['has_active_run'].return_value = False
@@ -137,6 +160,79 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):
             await worker._tick_operation(self.client, self.db, operation)
         self.state['requeue'].assert_awaited_once_with(self.client, 'op', 'p1')
+
+    async def test_success_writes_an_attempt_row(self) -> None:
+        operation = _operation(mock.AsyncMock(return_value='succeeded'))
+        await worker._tick_operation(self.client, self.db, operation)
+        rows = self.written_rows()
+        self.assertEqual(1, len(rows))
+        self.assertEqual('attempt', rows[0].event_type)
+        self.assertEqual('succeeded', rows[0].disposition)
+        self.assertEqual('run1', rows[0].run_id)
+        self.assertEqual('p1', rows[0].project_id)
+        self.assertEqual('proj', rows[0].project_slug)
+        self.assertTrue(rows[0].attempt_id)
+
+    async def test_failure_message_reaches_the_attempt_row(self) -> None:
+        operation = _operation(
+            mock.AsyncMock(side_effect=MaintenanceItemFailed('boom'))
+        )
+        await worker._tick_operation(self.client, self.db, operation)
+        rows = self.written_rows()
+        self.assertEqual('failed', rows[0].disposition)
+        self.assertEqual('boom', rows[0].message)
+
+    async def test_what_the_operation_recorded_flushes_with_it(self) -> None:
+        async def execute(
+            _db: object,
+            _client: object,
+            _project_id: str,
+            *,
+            ctx: log.MaintenanceContext,
+        ) -> str:
+            ctx.log.record('succeeded', 'normalize', 'Normalized 2')
+            return 'succeeded'
+
+        operation = _operation(execute)
+        await worker._tick_operation(self.client, self.db, operation)
+        rows = self.written_rows()
+        self.assertEqual(['activity', 'attempt'], [r.event_type for r in rows])
+        self.assertEqual(rows[0].attempt_id, rows[1].attempt_id)
+
+    async def test_rate_limited_is_recorded_as_deferred(self) -> None:
+        operation = _operation(
+            mock.AsyncMock(side_effect=PluginRateLimited(time.time() + 120)),
+        )
+        await worker._tick_operation(self.client, self.db, operation)
+        rows = self.written_rows()
+        self.assertEqual(1, len(rows))
+        self.assertEqual('attempt', rows[0].event_type)
+        self.assertEqual('deferred', rows[0].disposition)
+
+    async def test_unrecordable_outcome_is_deferred_not_claimed(self) -> None:
+        self.state['record_outcome'].side_effect = RuntimeError('valkey down')
+        operation = _operation(mock.AsyncMock(return_value='succeeded'))
+        await worker._tick_operation(self.client, self.db, operation)
+        rows = self.written_rows()
+        self.assertEqual('deferred', rows[0].disposition)
+
+    async def test_cancellation_writes_nothing(self) -> None:
+        operation = _operation(
+            mock.AsyncMock(side_effect=asyncio.CancelledError())
+        )
+        with self.assertRaises(asyncio.CancelledError):
+            await worker._tick_operation(self.client, self.db, operation)
+        self.assertEqual([], self.written_rows())
+
+    async def test_a_non_project_item_has_no_project_id(self) -> None:
+        self.state['checkout'].return_value = 'Project:n1'
+        operation = _operation(
+            mock.AsyncMock(return_value='succeeded'), items_are_projects=False
+        )
+        await worker._tick_operation(self.client, self.db, operation)
+        rows = self.written_rows()
+        self.assertEqual('Project:n1', rows[0].item_id)
+        self.assertEqual('', rows[0].project_id)
 
 
 class RunWorkerTests(unittest.IsolatedAsyncioTestCase):

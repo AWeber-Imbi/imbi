@@ -149,13 +149,16 @@ async def aclose() -> None:
 
 
 async def insert(
-    table: str, data: list[pydantic.BaseModel]
+    table: str,
+    data: list[pydantic.BaseModel],
+    settings: dict[str, typing.Any] | None = None,
 ) -> summary.QuerySummary:
     """Insert data into Clickhouse.
 
     Args:
         table: The name of the table to insert into
         data: List of Pydantic models to insert (all must be the same type)
+        settings: Per-statement ClickHouse settings, e.g. ``async_insert``
 
     Returns:
         QuerySummary containing information about the insert operation
@@ -178,7 +181,7 @@ async def insert(
     column_names = list(dumps[0].keys())
     rows = [[dump[col] for col in column_names] for dump in dumps]
     clickhouse = client.Clickhouse.get_instance()
-    return await clickhouse.insert(table, rows, column_names)
+    return await clickhouse.insert(table, rows, column_names, settings)
 
 
 async def query(

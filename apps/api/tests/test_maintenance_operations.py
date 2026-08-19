@@ -13,11 +13,23 @@ from unittest import mock
 import fastapi
 
 from imbi.api.commit_sync.service import CommitSyncUnavailable
-from imbi.api.maintenance import operations
+from imbi.api.maintenance import log, operations
 from imbi.api.pr_sync.service import PRSyncUnavailable
 from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common.plugins.errors import PluginRateLimited
+
+
+def _ctx(item_id: str = 'p1') -> log.MaintenanceContext:
+    """A context whose ItemLog only buffers -- nothing flushes it here."""
+    return log.MaintenanceContext(
+        run_id='run1',
+        attempt_id='attempt1',
+        item_id=item_id,
+        project_id=item_id,
+        project_slug='',
+        log=log.ItemLog('slug', 'run1', 'attempt1', item_id, item_id),
+    )
 
 
 def _org_slug(value: str | None) -> mock.AsyncMock:
@@ -35,7 +47,7 @@ class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_without_org(self) -> None:
         with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
             outcome = await operations.execute_analysis(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -48,7 +60,7 @@ class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             outcome = await operations.execute_analysis(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         args = run.await_args.args
@@ -83,7 +95,7 @@ class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_without_org(self) -> None:
         with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
             outcome = await operations.execute_remediate(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -91,7 +103,7 @@ class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
         remediate = mock.AsyncMock(return_value=None)
         with self._patch(remediate):
             outcome = await operations.execute_remediate(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
         self.assertEqual(
@@ -102,7 +114,7 @@ class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
         remediate = mock.AsyncMock(return_value=_remediate_response())
         with self._patch(remediate):
             outcome = await operations.execute_remediate(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -112,7 +124,7 @@ class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
         )
         with self._patch(remediate):
             outcome = await operations.execute_remediate(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
 
@@ -123,7 +135,7 @@ class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
         with self._patch(remediate):
             with self.assertRaises(operations.MaintenanceItemFailed):
                 await operations.execute_remediate(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
 
 
@@ -146,7 +158,7 @@ class ExecuteCommitSyncTests(unittest.IsolatedAsyncioTestCase):
         )
         with patches[0], patches[1], patches[2]:
             outcome = await operations.execute_commit_sync(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         statuses = [c.kwargs['status'] for c in set_status.await_args_list]
@@ -159,7 +171,7 @@ class ExecuteCommitSyncTests(unittest.IsolatedAsyncioTestCase):
         )
         with patches[0], patches[1], patches[2]:
             outcome = await operations.execute_commit_sync(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
         self.assertEqual(
@@ -173,7 +185,7 @@ class ExecuteCommitSyncTests(unittest.IsolatedAsyncioTestCase):
         with patches[0], patches[1], patches[2]:
             with self.assertRaises(PluginRateLimited):
                 await operations.execute_commit_sync(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
         self.assertEqual(
             'queued', set_status.await_args_list[-1].kwargs['status']
@@ -186,7 +198,7 @@ class ExecuteCommitSyncTests(unittest.IsolatedAsyncioTestCase):
         with patches[0], patches[1], patches[2]:
             with self.assertRaises(operations.MaintenanceItemFailed):
                 await operations.execute_commit_sync(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
         self.assertEqual(
             'failed', set_status.await_args_list[-1].kwargs['status']
@@ -205,7 +217,7 @@ class ExecutePRSyncTests(unittest.IsolatedAsyncioTestCase):
             mock.patch('imbi.api.pr_sync.service.set_status', set_status),
         ):
             outcome = await operations.execute_pr_sync(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         self.assertEqual(7, set_status.await_args_list[-1].kwargs['prs'])
@@ -222,7 +234,7 @@ class ExecutePRSyncTests(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             outcome = await operations.execute_pr_sync(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -254,7 +266,7 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
         )
         with sweep, org, drift:
             outcome = await operations.execute_deployment_sweep(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
 
@@ -262,7 +274,7 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
         sweep, org, drift = self._run(None, None)
         with sweep, org, drift:
             outcome = await operations.execute_deployment_sweep(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -272,7 +284,7 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
         sweep, org, drift = self._run(deployment_sweeper.SweepSummary(), 0)
         with sweep, org, drift:
             outcome = await operations.execute_deployment_sweep(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -293,7 +305,7 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
             self.assertLogs(operations.LOGGER, level='ERROR'),
         ):
             outcome = await operations.execute_deployment_sweep(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
 
@@ -310,14 +322,14 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
         with sweep, org, limited:
             with self.assertRaises(operations.PluginRateLimited):
                 await operations.execute_deployment_sweep(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
 
     async def test_drift_backfill_alone_succeeds(self) -> None:
         sweep, org, drift_patch = self._run(None, 3)
         with sweep, org, drift_patch as drift_mock:
             outcome = await operations.execute_deployment_sweep(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         self.assertEqual(
@@ -341,7 +353,7 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             outcome = await operations.execute_deployment_resync(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         self.assertEqual(
@@ -365,7 +377,7 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 outcome = await operations.execute_deployment_resync(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
             self.assertEqual('skipped', outcome)
 
@@ -383,7 +395,7 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(operations.MaintenanceItemFailed) as ctx:
                 await operations.execute_deployment_resync(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
         self.assertIn('no credentials', str(ctx.exception))
 
@@ -472,7 +484,7 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             outcome = await operations.execute_opslog_backfill(
-                db, mock.AsyncMock(), 'p1'
+                db, mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         return outcome, instance
 
@@ -696,7 +708,7 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
             operations.score_queue, 'enqueue_recompute', enqueue
         ):
             outcome = await operations.execute_rescore(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         args = enqueue.await_args.args
@@ -711,7 +723,7 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
             mock.AsyncMock(return_value=False),
         ):
             outcome = await operations.execute_rescore(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -750,7 +762,7 @@ class ExecuteBlockerMigrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_when_nothing_is_flagged(self) -> None:
         db = self._db([])
         outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
         db.execute.assert_awaited_once()
@@ -758,7 +770,7 @@ class ExecuteBlockerMigrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_a_manual_block_becomes_a_commit_wide_blocker(self) -> None:
         db = self._db([_blocked_row('r1')])
         outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         query, params, _ = db.execute.await_args_list[1].args
@@ -774,14 +786,18 @@ class ExecuteBlockerMigrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_tag_scoped_block_becomes_a_build_failure(self) -> None:
         db = self._db([_blocked_row('r1', scope='tag')])
-        await operations.execute_blocker_migration(db, mock.AsyncMock(), 'p1')
+        await operations.execute_blocker_migration(
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
+        )
         params = db.execute.await_args_list[1].args[1]
         self.assertEqual('build-failure', params['type'])
         self.assertEqual('tag', params['scope'])
 
     async def test_a_block_with_no_reason_still_migrates(self) -> None:
         db = self._db([_blocked_row('r1', reason=None, blocked_by=None)])
-        await operations.execute_blocker_migration(db, mock.AsyncMock(), 'p1')
+        await operations.execute_blocker_migration(
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
+        )
         params = db.execute.await_args_list[1].args[1]
         self.assertEqual('Blocked', params['description'])
         self.assertEqual('maintenance', params['created_by'])
@@ -789,7 +805,7 @@ class ExecuteBlockerMigrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_every_flagged_release_is_migrated(self) -> None:
         db = self._db([_blocked_row('r1'), _blocked_row('r2')])
         outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         migrated = [
@@ -806,7 +822,7 @@ class ExecuteBlockerMigrationTests(unittest.IsolatedAsyncioTestCase):
         # rowless write must not count as migrated.
         db = self._db([_blocked_row('r1')], write_result=[])
         outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
         query = db.execute.await_args_list[1].args[0]
@@ -848,14 +864,14 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_skipped_without_releases(self) -> None:
         outcome = await operations.execute_release_repair(
-            self._db([]), mock.AsyncMock(), 'p1'
+            self._db([]), mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
 
     async def test_skipped_when_nothing_needs_repair(self) -> None:
         db = self._db([_release_row('r1', '2.21.0', '287d291', edges=1)])
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
         self.assertEqual([], self._queries(db))
@@ -871,7 +887,7 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         params = db.execute.await_args_list[1].args[1]
@@ -881,7 +897,7 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
     async def test_leaves_a_branch_committish_alone(self) -> None:
         db = self._db([_release_row('r1', None, 'main', edges=1)])
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
 
@@ -897,7 +913,7 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         queries = self._queries(db)
@@ -920,7 +936,7 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         queries = self._queries(db)
@@ -947,7 +963,7 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         queries = self._queries(db)
@@ -963,7 +979,7 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         self.assertNotIn('DETACH DELETE', ' '.join(self._queries(db)))
@@ -977,7 +993,7 @@ class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1'
+            db, mock.AsyncMock(), 'p1', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
         self.assertEqual([], self._queries(db))
@@ -1009,7 +1025,7 @@ class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
         )
         db = self._db(nodes=[node])
         outcome = await operations.execute_search_reindex(
-            db, mock.AsyncMock(), 'Document:doc-1'
+            db, mock.AsyncMock(), 'Document:doc-1', ctx=_ctx()
         )
         self.assertEqual('succeeded', outcome)
         self.assertEqual(common_models.Document, db.match.await_args.args[0])
@@ -1021,7 +1037,7 @@ class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
     async def test_skips_a_node_deleted_mid_run(self) -> None:
         db = self._db()
         outcome = await operations.execute_search_reindex(
-            db, mock.AsyncMock(), 'Document:ghost'
+            db, mock.AsyncMock(), 'Document:ghost', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
         db.embed_node.assert_not_awaited()
@@ -1029,7 +1045,7 @@ class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
     async def test_skips_a_label_that_is_no_longer_embeddable(self) -> None:
         db = self._db()
         outcome = await operations.execute_search_reindex(
-            db, mock.AsyncMock(), 'Retired:n-1'
+            db, mock.AsyncMock(), 'Retired:n-1', ctx=_ctx()
         )
         self.assertEqual('skipped', outcome)
         db.match.assert_not_awaited()
@@ -1043,7 +1059,7 @@ class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
         db.embed_node.side_effect = RuntimeError('model unavailable')
         with self.assertRaises(operations.MaintenanceItemFailed):
             await operations.execute_search_reindex(
-                db, mock.AsyncMock(), 'Document:doc-1'
+                db, mock.AsyncMock(), 'Document:doc-1', ctx=_ctx()
             )
 
 
@@ -1072,7 +1088,7 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
         )
         with stack:
             outcome = await operations.execute_release_dup_merge_report(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         self.assertTrue(call.await_args.kwargs['dry_run'])
@@ -1085,7 +1101,7 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
         )
         with stack:
             outcome = await operations.execute_release_dup_merge(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
         self.assertFalse(call.await_args.kwargs['dry_run'])
@@ -1094,7 +1110,7 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
     async def test_dup_merge_without_an_org_is_skipped(self) -> None:
         with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
             outcome = await operations.execute_release_dup_merge(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
 
@@ -1110,7 +1126,7 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
                 call,
             ):
                 outcome = await operations.execute_deployment_migration(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
             self.assertEqual(expected, outcome)
             self.assertFalse(call.await_args.kwargs['dry_run'])
@@ -1125,7 +1141,7 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
             'imbi.api.deployment_migration.migrate_deployment_arrays', call
         ):
             outcome = await operations.execute_deployment_migration_report(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         self.assertTrue(call.await_args.kwargs['dry_run'])
@@ -1134,7 +1150,7 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
         stack, call = self._patch('purge_orphan_releases', None)
         with stack:
             outcome = await operations.execute_orphan_release_check(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
         self.assertTrue(call.await_args.kwargs['dry_run'])
@@ -1150,7 +1166,7 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
         )
         with stack:
             outcome = await operations.execute_orphan_release_purge(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('succeeded', outcome)
         self.assertFalse(call.await_args.kwargs['dry_run'])
@@ -1170,6 +1186,6 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
         )
         with stack:
             outcome = await operations.execute_orphan_release_purge(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
