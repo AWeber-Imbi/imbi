@@ -2906,6 +2906,54 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({}, changed)
 
     @respx.mock
+    async def test_garbage_base64_is_skipped_not_read_as_empty(self) -> None:
+        # The default decoder discards invalid characters, so '%%%%'
+        # would decode to an empty body and stamp a null verdict
+        # instead of landing on the "cannot read" skip path.
+        respx.get(f'{self.REPO}/compare/{"a" * 40}...{"b" * 40}').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'files': [
+                        {
+                            'filename': self.FULL_SHA,
+                            'status': 'modified',
+                            'sha': 'b2',
+                        }
+                    ]
+                },
+            )
+        )
+        respx.get(f'{self.REPO}/git/blobs/b2').mock(
+            return_value=httpx.Response(
+                200, json={'encoding': 'base64', 'content': '%%%%'}
+            )
+        )
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            changed = await self.handler.diff_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift', 'a' * 40, 'b' * 40
+            )
+        self.assertEqual({}, changed)
+
+    @respx.mock
+    async def test_line_wrapped_base64_still_decodes(self) -> None:
+        # GitHub wraps blob content in newlines; strict validation must
+        # not reject its own wrapping.
+        fanout = f'{self.FULL_SHA[:2]}/{self.FULL_SHA[2:]}'
+        self._mock_tree([{'type': 'blob', 'path': fanout, 'sha': 'b1'}])
+        encoded = base64.b64encode(b'{"drift_detected":true}').decode()
+        wrapped = f'{encoded[:16]}\n{encoded[16:]}\n'
+        respx.get(f'{self.REPO}/git/blobs/b1').mock(
+            return_value=httpx.Response(
+                200, json={'encoding': 'base64', 'content': wrapped}
+            )
+        )
+        note = await self.handler.get_commit_note(
+            _ctx(), _CREDS, 'imbi-drift', self.FULL_SHA
+        )
+        self.assertEqual('{"drift_detected":true}', note)
+
+    @respx.mock
     async def test_undecodable_blob_is_skipped_in_the_full_tree(
         self,
     ) -> None:

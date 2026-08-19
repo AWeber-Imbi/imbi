@@ -1096,7 +1096,13 @@ class GitHubDeployment(DeploymentCapability):
                 return None
             return content
         try:
-            return base64.b64decode(content).decode('utf-8')
+            # Strip GitHub's line wrapping, then decode strictly --
+            # the default decoder silently discards invalid characters,
+            # turning garbage like '%%%%' into an empty body instead of
+            # landing on this "cannot read" path.
+            return base64.b64decode(
+                ''.join(content.split()), validate=True
+            ).decode('utf-8')
         except (ValueError, UnicodeDecodeError):
             LOGGER.warning('Could not decode note blob %s', blob_sha)
             return None
