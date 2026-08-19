@@ -258,7 +258,7 @@ def _array_entries(raw: object) -> list[dict[str, typing.Any]]:
             return []
     if not isinstance(value, list):
         return []
-    items = typing.cast('list[typing.Any]', value)
+    items = typing.cast('list[object]', value)
     return [
         typing.cast('dict[str, typing.Any]', item)
         for item in items
@@ -596,6 +596,22 @@ SET d.deployments = NULL,
 RETURN e.slug AS slug
 """
 
+# The variant for an edge with entries the migration could not
+# validate: they are stashed on the edge (nothing reads the property)
+# rather than destroyed with the array, so a hand repair stays
+# possible.
+_CLEAR_EDGE_WITH_SKIPPED: typing.Final[typing.LiteralString] = """
+MATCH (:Project {{id: {project_id}}})
+      -[:HAS_RELEASE]->(:Release {{id: {release_id}}})
+      -[d:DEPLOYED_TO]->(e:Environment {{slug: {env_slug}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+SET d.deployments = NULL,
+    d.migration_skipped = {skipped},
+    d.migrated_at = {now},
+    d.migrated_entries = {count}
+RETURN e.slug AS slug
+"""
+
 
 def _iso(value: datetime.datetime) -> str:
     return deployment_nodes.as_utc(value).isoformat()
@@ -654,16 +670,60 @@ def _last_value(
     return None
 
 
+class _EdgeRecord(typing.NamedTuple):
+    """One migratable ``DEPLOYED_TO`` edge and what its array held."""
+
+    release_id: str
+    env_slug: str
+    org_slug: str
+    entry_count: int
+    #: Raw items that failed ``DeploymentEvent`` validation (or were
+    #: not entry objects at all).  Stashed on the edge at clear time so
+    #: nothing the migration cannot represent is destroyed.
+    skipped: list[typing.Any]
+
+
+def _split_entries(
+    raw: object,
+) -> tuple[list[models.DeploymentEvent], list[typing.Any]]:
+    """Split an edge's array into validated events and everything else.
+
+    The "everything else" list is preserved verbatim: an entry the
+    model cannot validate still described a real deployment once, and
+    clearing the array must not be the moment it ceases to exist.
+    """
+    value = graph.parse_agtype(raw)
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return [], [value]
+    if not isinstance(value, list):
+        return [], [] if value in (None, '') else [value]
+    events: list[models.DeploymentEvent] = []
+    skipped: list[typing.Any] = []
+    items = typing.cast('list[object]', value)
+    for item in items:
+        if not isinstance(item, dict):
+            skipped.append(item)
+            continue
+        try:
+            events.append(models.DeploymentEvent.model_validate(item))
+        except ValueError:
+            skipped.append(item)
+    return events, skipped
+
+
 def _collect_entries(
     rows: list[dict[str, typing.Any]],
-) -> tuple[list[tuple[str, str, str, int]], list[_ArrayEntry], int]:
+) -> tuple[list[_EdgeRecord], list[_ArrayEntry], int]:
     """Parse the migratable edges into validated entries.
 
-    Returns the edges (release, env, org, raw entry count), the
-    validated entries with their edge context, and how many raw
-    entries failed validation.
+    Returns the edges (with anything they held that failed
+    validation), the validated entries with their edge context, and
+    how many raw items failed validation in total.
     """
-    edges: list[tuple[str, str, str, int]] = []
+    edges: list[_EdgeRecord] = []
     entries: list[_ArrayEntry] = []
     malformed = 0
     for row in rows:
@@ -678,12 +738,17 @@ def _collect_entries(
             continue
         tag = graph.parse_agtype(row.get('tag'))
         committish = graph.parse_agtype(row.get('committish'))
-        raw = _array_entries(row.get('deployments'))
-        events = models.parse_deployment_events(
-            graph.parse_agtype(row.get('deployments')), on_error='skip'
+        events, skipped = _split_entries(row.get('deployments'))
+        malformed += len(skipped)
+        edges.append(
+            _EdgeRecord(
+                release_id=release_id,
+                env_slug=env_slug,
+                org_slug=org_slug,
+                entry_count=len(events) + len(skipped),
+                skipped=skipped,
+            )
         )
-        malformed += max(0, len(raw) - len(events))
-        edges.append((release_id, env_slug, org_slug, len(raw)))
         entries.extend(
             _ArrayEntry(
                 event=event,
@@ -756,7 +821,8 @@ async def migrate_deployment_arrays(
     if malformed:
         LOGGER.warning(
             'deployment-migration: project %s has %d malformed array '
-            'entr%s; skipped (the edge keeps them only in dry run)',
+            'entr%s; not migrated, preserved on the edge as '
+            'migration_skipped',
             project_id,
             malformed,
             'y' if malformed == 1 else 'ies',
@@ -776,7 +842,10 @@ async def migrate_deployment_arrays(
 
     created = 0
     if dry_run:
-        created = len(by_run) - len(existing) + len(runless)
+        # Identical run-less entries hash to one deterministic id, so
+        # count distinct ids -- what a real run would create.
+        runless_ids = {_entry_node_id(project_id, e) for e in runless}
+        created = len(by_run) - len(existing) + len(runless_ids)
         LOGGER.info(
             'deployment-migration dry run: project %s: %d edge(s), %d '
             'entr%s -> %d run-id node(s) (%d already exist), %d '
@@ -867,19 +936,20 @@ async def migrate_deployment_arrays(
 
     cleared = 0
     now = datetime.datetime.now(datetime.UTC).isoformat()
-    for release_id, env_slug, org_slug, count in edges:
-        done = await db.execute(
-            _CLEAR_EDGE,
-            {
-                'project_id': project_id,
-                'release_id': release_id,
-                'env_slug': env_slug,
-                'org_slug': org_slug,
-                'now': now,
-                'count': count,
-            },
-            ['slug'],
-        )
+    for edge in edges:
+        params: dict[str, typing.Any] = {
+            'project_id': project_id,
+            'release_id': edge.release_id,
+            'env_slug': edge.env_slug,
+            'org_slug': edge.org_slug,
+            'now': now,
+            'count': edge.entry_count,
+        }
+        query = _CLEAR_EDGE
+        if edge.skipped:
+            query = _CLEAR_EDGE_WITH_SKIPPED
+            params['skipped'] = json.dumps(edge.skipped, default=str)
+        done = await db.execute(query, params, ['slug'])
         cleared += len(done)
 
     summary = MigrationSummary(
@@ -933,15 +1003,11 @@ MATCH (:Project {{id: {project_id}}})
 RETURN b.id AS id
 """
 
-_DELETE_ORPHAN_BLOCKERS: typing.Final[typing.LiteralString] = """
-MATCH (:Project {{id: {project_id}}})
-      -[:HAS_RELEASE]->(:Release {{id: {release_id}}})
-      -[:BLOCKED_BY]->(b:Blocker)
-DETACH DELETE b
-"""
-
 # The delete re-checks every orphan criterion so anything that gained
-# a run id or a deployment between the read and the write survives.
+# a run id or a deployment between the read and the write survives,
+# and RETURNs the id (aliased before the DELETE) so the caller knows
+# whether the delete actually happened -- the blockers come off only
+# then.
 _DELETE_ORPHAN_RELEASE: typing.Final[typing.LiteralString] = """
 MATCH (:Project {{id: {project_id}}})
       -[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
@@ -951,7 +1017,17 @@ WITH r, count(dt) AS edges
 OPTIONAL MATCH (r)-[:HAS_DEPLOYMENT]->(dn:Deployment)
 WITH r, edges, count(dn) AS nodes
 WHERE edges = 0 AND nodes = 0
+WITH r, r.id AS rid
 DETACH DELETE r
+RETURN rid
+"""
+
+# Deleting the release detaches its BLOCKED_BY edges; this removes the
+# Blocker nodes it left behind, by the ids read before the delete.
+_DELETE_DETACHED_BLOCKERS: typing.Final[typing.LiteralString] = """
+MATCH (b:Blocker)
+WHERE b.id IN {blocker_ids}
+DETACH DELETE b
 """
 
 
@@ -1045,6 +1121,13 @@ async def purge_orphan_releases(
             {'project_id': project_id, 'release_id': candidate.id},
             ['id'],
         )
+        blocker_ids = [
+            str(value)
+            for value in (
+                graph.parse_agtype(row.get('id')) for row in blocker_rows
+            )
+            if value
+        ]
         if dry_run:
             LOGGER.info(
                 'orphan-release-check dry run: project %s release %s '
@@ -1053,26 +1136,37 @@ async def purge_orphan_releases(
                 project_id,
                 candidate.id,
                 candidate.tag,
-                len(blocker_rows),
+                len(blocker_ids),
             )
             continue
-        if blocker_rows:
-            await db.execute(
-                _DELETE_ORPHAN_BLOCKERS,
-                {'project_id': project_id, 'release_id': candidate.id},
-                [],
-            )
-            blockers_deleted += len(blocker_rows)
-        await db.execute(
+        removed = await db.execute(
             _DELETE_ORPHAN_RELEASE,
             {
                 'project_id': project_id,
                 'release_id': candidate.id,
                 'tag': candidate.tag,
             },
-            [],
+            ['rid'],
         )
+        if not removed:
+            # The re-check declined: the release gained a run id or a
+            # deployment since the read.  Its blockers stay with it.
+            LOGGER.info(
+                'orphan-release-check: release %s (tag %s) on project '
+                '%s gained history since the read; left alone',
+                candidate.id,
+                candidate.tag,
+                project_id,
+            )
+            continue
         deleted += 1
+        if blocker_ids:
+            await db.execute(
+                _DELETE_DETACHED_BLOCKERS,
+                {'blocker_ids': blocker_ids},
+                [],
+            )
+            blockers_deleted += len(blocker_ids)
         LOGGER.info(
             'orphan-release-check: deleted release %s (tag %s) on '
             'project %s; the remote confirmed the tag does not exist',

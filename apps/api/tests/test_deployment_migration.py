@@ -470,13 +470,16 @@ class MigrateDeploymentArraysTests(unittest.IsolatedAsyncioTestCase):
             first_id, db2.writes('(d:Deployment {{id: {id}}})')[0]['id']
         )
 
-    async def test_malformed_entries_are_skipped_and_counted(self) -> None:
+    async def test_malformed_entries_are_preserved_on_the_edge(
+        self,
+    ) -> None:
+        bad = {'status': 'nonsense'}
         db = _MigrationGraphStub(
             [
                 _edge_row(
                     entries=[
                         _event('2026-01-01T00:00:00+00:00'),
-                        {'status': 'nonsense'},
+                        bad,
                     ]
                 )
             ]
@@ -487,6 +490,24 @@ class MigrateDeploymentArraysTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, summary.malformed)
         self.assertEqual(1, summary.entries)
         self.assertEqual(1, summary.created)
+        # A real run must not destroy what it could not validate: the
+        # malformed entries ride along on the cleared edge.
+        clears = db.writes('migrated_at')
+        self.assertEqual(1, len(clears))
+        self.assertEqual([bad], json.loads(clears[0]['skipped']))
+        query = next(q for q, _ in db.calls if 'migrated_at' in q)
+        self.assertIn('d.migration_skipped = {skipped}', query)
+        self.assertEqual(2, clears[0]['count'])
+
+    async def test_clean_edges_clear_without_a_skipped_stash(self) -> None:
+        db = _MigrationGraphStub(
+            [_edge_row(entries=[_event('2026-01-01T00:00:00+00:00')])]
+        )
+        await deployment_migration.migrate_deployment_arrays(db, 'p1')
+        clears = db.writes('migrated_at')
+        self.assertNotIn('skipped', clears[0])
+        query = next(q for q, _ in db.calls if 'migrated_at' in q)
+        self.assertNotIn('migration_skipped', query)
 
     async def test_edges_clear_with_an_audit_stamp(self) -> None:
         db = _MigrationGraphStub(
@@ -521,6 +542,17 @@ class MigrateDeploymentArraysTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, summary.cleared_edges)
         self.assertEqual(2, len(db.calls))  # the two reads alone
 
+    async def test_dry_run_counts_identical_runless_entries_once(
+        self,
+    ) -> None:
+        entry = _event('2026-01-01T00:00:00+00:00')
+        db = _MigrationGraphStub([_edge_row(entries=[entry, entry])])
+        summary = await deployment_migration.migrate_deployment_arrays(
+            db, 'p1', dry_run=True
+        )
+        # Both entries hash to one deterministic id, so one node.
+        self.assertEqual(1, summary.created)
+
 
 class _OrphanGraphStub:
     """Routes the orphan check's queries, recording deletes."""
@@ -529,9 +561,13 @@ class _OrphanGraphStub:
         self,
         usage: list[dict[str, typing.Any]],
         blockers: dict[str, list[str]] | None = None,
+        delete_declined: bool = False,
     ) -> None:
         self.usage = usage
         self.blockers = blockers or {}
+        #: Simulate the delete's re-check declining: the release gained
+        #: history between the read and the write.
+        self.delete_declined = delete_declined
         self.calls: list[tuple[str, dict[str, typing.Any]]] = []
 
     def writes(self, marker: str) -> list[dict[str, typing.Any]]:
@@ -554,6 +590,10 @@ class _OrphanGraphStub:
                     str(params['release_id']), []
                 )
             ]
+        if 'DETACH DELETE r' in query:
+            if self.delete_declined:
+                return []
+            return [{'rid': params['release_id']}]
         return []
 
 
@@ -617,14 +657,39 @@ class PurgeOrphanReleasesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, summary.orphans)
         self.assertEqual(1, summary.deleted)
         self.assertEqual(2, summary.blockers_deleted)
-        self.assertEqual(1, len(db.writes('DETACH DELETE b')))
+        blocker_deletes = db.writes('DETACH DELETE b')
+        self.assertEqual(1, len(blocker_deletes))
+        self.assertEqual(['b1', 'b2'], blocker_deletes[0]['blocker_ids'])
         deletes = db.writes('DETACH DELETE r')
         self.assertEqual(1, len(deletes))
         self.assertEqual('1.0.0', deletes[0]['tag'])
-        # The delete re-checks every orphan criterion.
+        # The delete re-checks every orphan criterion and reports back.
         query = next(q for q, _ in db.calls if 'DETACH DELETE r' in q)
         self.assertIn("COALESCE(r.workflow_run_id, '') = ''", query)
         self.assertIn('WHERE edges = 0 AND nodes = 0', query)
+        self.assertIn('RETURN rid', query)
+        # The blockers come off only after the release delete happened.
+        order = [q for q, _ in db.calls if 'DETACH DELETE' in q]
+        self.assertIn('DETACH DELETE r', order[0])
+        self.assertIn('DETACH DELETE b', order[1])
+
+    async def test_a_declined_recheck_keeps_release_and_blockers(
+        self,
+    ) -> None:
+        # The candidate gained a run id (or a deployment) between the
+        # read and the delete: the re-check declines, and the blockers
+        # must survive with the release they belong to.
+        db = _OrphanGraphStub(
+            [_usage_row('r1')],
+            blockers={'r1': ['b1']},
+            delete_declined=True,
+        )
+        summary = await self._purge(db, {'1.0.0': 'absent'})
+        assert summary is not None
+        self.assertEqual(1, summary.orphans)
+        self.assertEqual(0, summary.deleted)
+        self.assertEqual(0, summary.blockers_deleted)
+        self.assertEqual([], db.writes('DETACH DELETE b'))
 
     async def test_an_existing_tag_is_not_an_orphan(self) -> None:
         db = _OrphanGraphStub([_usage_row('r1')])
