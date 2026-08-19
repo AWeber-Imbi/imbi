@@ -28,7 +28,9 @@ export function useMaintenanceLog(filters: MaintenanceLogFilters) {
     fetchNextPage: query.fetchNextPage,
     hasNextPage: query.hasNextPage,
     isError: query.isError,
+    isFetching: query.isFetching,
     isFetchingNextPage: query.isFetchingNextPage,
     isLoading: query.isLoading,
+    refetch: query.refetch,
   }
 }

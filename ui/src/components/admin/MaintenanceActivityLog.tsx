@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 
 import type {
   MaintenanceDisposition,
@@ -58,8 +58,10 @@ export function MaintenanceActivityLog({
     fetchNextPage,
     hasNextPage,
     isError,
+    isFetching,
     isFetchingNextPage,
     isLoading,
+    refetch,
   } = useMaintenanceLog({
     disposition: disposition ? [disposition] : undefined,
     event_type: 'attempt',
@@ -104,6 +106,20 @@ export function MaintenanceActivityLog({
             </option>
           ))}
         </select>
+
+        <Button
+          aria-label="Refresh activity"
+          className="ml-auto"
+          disabled={isFetching}
+          onClick={() => void refetch()}
+          size="sm"
+          variant="outline"
+        >
+          <RefreshCw
+            className={`mr-2 size-3.5 ${isFetching ? 'animate-spin' : ''}`}
+          />
+          Refresh
+        </Button>
       </div>
 
       <Card>
