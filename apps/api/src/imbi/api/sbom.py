@@ -512,7 +512,9 @@ async def replace_release_components(
     )
     batch_id = nanoid.generate()
     if not components:
-        await publish_batch(project_id, release_id, batch_id, recorded_at, [], 0)
+        await publish_batch(
+            project_id, release_id, batch_id, recorded_at, [], 0
+        )
         return
     buckets: dict[str, list[NormalizedComponent]] = {}
     for component in components:
