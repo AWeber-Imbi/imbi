@@ -134,6 +134,15 @@ export function PackageUsageReport() {
   // which reads as the search having been thrown away.
   const select = (id: string) => setParams(id ? { component: id } : {})
 
+  // The usage facets describe one package's deployments. Carried into
+  // the next package they filter its table against teams and
+  // environments it may have none of, which reads as an empty report
+  // under a filter bar naming values the new table does not offer. The
+  // ecosystem selection belongs to the search, so it stays.
+  useEffect(() => {
+    setFacets(EMPTY_FACETS)
+  }, [componentId])
+
   const runSearch = (next: string) => {
     setSubmitted(next)
     // A new search retires the package on screen. Leaving the previous
@@ -158,6 +167,11 @@ export function PackageUsageReport() {
   const hits = (results.data?.data ?? []).filter(
     (hit) => ecosystems.size < 2 || ecosystems.has(hit.ecosystem),
   )
+  // The server total counts what it matched for `serverEcosystem`. Once
+  // the browser trims the page down to several selected ecosystems that
+  // number describes rows the reader excluded, so the visible set is
+  // the only honest count left.
+  const total = ecosystems.size < 2 ? (results.data?.total ?? 0) : hits.length
 
   return (
     <div className="space-y-4">
@@ -210,7 +224,7 @@ export function PackageUsageReport() {
         recent={recent}
         search={search}
         setSearch={setSearch}
-        total={results.data?.total ?? 0}
+        total={total}
       />
 
       {!componentId && <EmptyPrompt />}
@@ -364,6 +378,13 @@ function PackageDetail({
       .flatMap((v) => (v.projects ?? []).map((p) => p.id)),
   )
   const filtered = !facetsAreEmpty(facets)
+  // ``versions`` arrives newest-first and a facet keeps only versions
+  // something still deploys, so the first row is the newest deployed
+  // one the table lists. Naming a version the table no longer shows
+  // would contradict the rows under it.
+  const newest = filtered
+    ? (versions[0]?.version ?? null)
+    : pkg.newest_deployed_version
 
   return (
     <>
@@ -399,10 +420,7 @@ function PackageDetail({
               label="Vulnerable projects"
               value={String(vulnerable.size)}
             />
-            <Stat
-              label="Newest deployed"
-              value={pkg.newest_deployed_version ?? '—'}
-            />
+            <Stat label="Newest deployed" value={newest ?? '—'} />
           </div>
         </div>
       </div>
