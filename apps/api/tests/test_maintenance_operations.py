@@ -1080,7 +1080,9 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
 
         stack, call = self._patch(
             'purge_orphan_releases',
-            deployment_migration.OrphanSummary(tagged=3, candidates=1),
+            deployment_migration.OrphanSummary(
+                tagged=3, candidates=1, orphans=1, deleted=1
+            ),
         )
         with stack:
             outcome = await operations.execute_orphan_release_purge(
@@ -1088,3 +1090,22 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual('succeeded', outcome)
         self.assertFalse(call.await_args.kwargs['dry_run'])
+
+    async def test_orphan_purge_without_confirmed_orphans_is_skipped(
+        self,
+    ) -> None:
+        # A candidate whose tag lookup failed (or whose tag exists) is
+        # not an orphan; succeeded would misread as "orphans handled".
+        from imbi.api import deployment_migration
+
+        stack, _call = self._patch(
+            'purge_orphan_releases',
+            deployment_migration.OrphanSummary(
+                tagged=3, candidates=1, unresolved=1, orphans=0
+            ),
+        )
+        with stack:
+            outcome = await operations.execute_orphan_release_purge(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)

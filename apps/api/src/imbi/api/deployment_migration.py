@@ -266,6 +266,22 @@ def _array_entries(raw: object) -> list[dict[str, typing.Any]]:
     ]
 
 
+def _entry_order(entry: dict[str, typing.Any]) -> tuple[str, str]:
+    """Chronological sort key for a raw array entry.
+
+    Legacy writers stored timestamps in mixed shapes -- naive, ``Z``
+    suffixed, non-UTC offsets -- and raw string comparison orders those
+    wrongly.  Parse and normalize to UTC when possible; an unparsable
+    value sorts first, deterministically, on its raw text.
+    """
+    raw = str(entry.get('timestamp') or '')
+    try:
+        parsed = datetime.datetime.fromisoformat(raw)
+    except ValueError:
+        return ('', raw)
+    return (deployment_nodes.as_utc(parsed).isoformat(), raw)
+
+
 def _merge_arrays(
     *sources: list[dict[str, typing.Any]],
 ) -> list[dict[str, typing.Any]]:
@@ -278,7 +294,7 @@ def _merge_arrays(
             if key not in seen:
                 seen.add(key)
                 merged.append(entry)
-    merged.sort(key=lambda entry: str(entry.get('timestamp') or ''))
+    merged.sort(key=_entry_order)
     return merged
 
 

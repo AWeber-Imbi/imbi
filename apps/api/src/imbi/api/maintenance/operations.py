@@ -959,7 +959,10 @@ async def _orphan_release_check(
     if summary is None:
         # The integration cannot confirm tag absence; already logged.
         return 'skipped'
-    return 'succeeded' if summary.candidates else 'skipped'
+    # Only a remote-confirmed orphan counts as work: candidates whose
+    # tag exists (or could not be checked) leave nothing to report or
+    # delete, and 'succeeded' would misread as "orphans handled".
+    return 'succeeded' if summary.orphans else 'skipped'
 
 
 async def execute_orphan_release_check(
@@ -967,8 +970,8 @@ async def execute_orphan_release_check(
 ) -> ExecuteOutcome:
     """Report Releases whose tag the remote confirms never existed.
 
-    Writes nothing.  Skipped means no candidates, or the project's
-    integration cannot answer (logged).
+    Writes nothing.  Skipped means no remote-confirmed orphans, or the
+    project's integration cannot answer (logged).
     """
     del client
     return await _orphan_release_check(db, project_id, dry_run=True)

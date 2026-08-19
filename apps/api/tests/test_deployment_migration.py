@@ -231,6 +231,42 @@ class MergeDuplicateReleasesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('production', writes[0]['env_slug'])
         self.assertEqual('octo', writes[0]['org_slug'])
 
+    async def test_array_union_orders_by_normalized_timestamp(
+        self,
+    ) -> None:
+        # Raw string comparison would order these wrongly: the +11:00
+        # entry (12:00 UTC) predates the +00:00 one (13:00 UTC), but
+        # '13:..' sorts before '23:..' as text.
+        earlier = _event('2026-01-01T23:00:00+11:00', status='in_progress')
+        later = _event('2026-01-01T13:00:00+00:00')
+        db = _MergeGraphStub(
+            [
+                _release('r1'),
+                _release('r2', created_at='2026-02-01T00:00:00+00:00'),
+            ],
+            edges={
+                'r2': [
+                    {
+                        'env_slug': 'production',
+                        'org_slug': 'octo',
+                        'deployments': json.dumps([later]),
+                    }
+                ],
+                'r1': [
+                    {
+                        'env_slug': 'production',
+                        'org_slug': 'octo',
+                        'deployments': json.dumps([earlier]),
+                    }
+                ],
+            },
+        )
+        await self._merge(db, None)
+        writes = db.writes('MERGE (s)-[d:DEPLOYED_TO]->(e)')
+        self.assertEqual(
+            [earlier, later], json.loads(writes[0]['deployments'])
+        )
+
     async def test_properties_fill_but_never_clobber(self) -> None:
         db = _MergeGraphStub(
             [
@@ -498,6 +534,24 @@ class MigrateDeploymentArraysTests(unittest.IsolatedAsyncioTestCase):
         query = next(q for q, _ in db.calls if 'migrated_at' in q)
         self.assertIn('d.migration_skipped = {skipped}', query)
         self.assertEqual(2, clears[0]['count'])
+
+    async def test_an_undecodable_array_is_preserved_not_destroyed(
+        self,
+    ) -> None:
+        row = _edge_row()
+        row['deployments'] = 'not json at all'
+        db = _MigrationGraphStub([row])
+        summary = await deployment_migration.migrate_deployment_arrays(
+            db, 'p1'
+        )
+        self.assertEqual(1, summary.malformed)
+        self.assertEqual(0, summary.entries)
+        self.assertEqual(0, summary.created)
+        # The blob rides along on the cleared edge instead of vanishing.
+        clears = db.writes('migrated_at')
+        self.assertEqual(1, len(clears))
+        self.assertEqual(['not json at all'], json.loads(clears[0]['skipped']))
+        self.assertEqual(1, summary.cleared_edges)
 
     async def test_clean_edges_clear_without_a_skipped_stash(self) -> None:
         db = _MigrationGraphStub(
