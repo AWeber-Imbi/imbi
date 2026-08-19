@@ -1026,6 +1026,97 @@ export const cancelMaintenanceOperation = (slug: string) =>
     `/maintenance/operations/${encodeURIComponent(slug)}/cancel`,
   )
 
+// The durable activity log behind the Maintenance page's Activity tab.
+// `attempt` rows are one per work item per claim; `activity` rows are what
+// an operation recorded while working on one of them, and `run` rows close
+// out a whole run.
+export type MaintenanceDisposition =
+  | 'cancelled'
+  | 'completed'
+  | 'deferred'
+  | 'failed'
+  | 'skipped'
+  | 'succeeded'
+
+// Outcome totals for the whole filter set, disposition filter excluded —
+// what the filter chips count. Returned on the first page only.
+export interface MaintenanceLogCounts {
+  deferred: number
+  failed: number
+  skipped: number
+  succeeded: number
+}
+
+export interface MaintenanceLogEntry {
+  action: string
+  attempt_id: string
+  detail: Record<string, unknown>
+  disposition: MaintenanceDisposition
+  duration_ms: number
+  event_type: MaintenanceLogEventType
+  id: string
+  item_id: string
+  message: string
+  occurred_at: string
+  project_id: string
+  project_slug: string
+  run_id: string
+  slug: string
+  started_by: string
+}
+
+export type MaintenanceLogEventType = 'activity' | 'attempt' | 'run'
+
+export interface MaintenanceLogFilters {
+  attempt_id?: string
+  disposition?: MaintenanceDisposition[]
+  event_type?: '' | MaintenanceLogEventType
+  project_id?: string
+  run_id?: string
+  slug?: string
+}
+
+export interface MaintenanceLogPage {
+  counts?: MaintenanceLogCounts
+  entries: MaintenanceLogEntry[]
+  nextCursor?: string
+}
+
+interface MaintenanceLogEnvelope {
+  counts: MaintenanceLogCounts | null
+  data: MaintenanceLogEntry[]
+}
+
+export const getMaintenanceLog = async (
+  params: {
+    cursor?: string
+    filters?: MaintenanceLogFilters
+    limit?: number
+  },
+  signal?: AbortSignal,
+): Promise<MaintenanceLogPage> => {
+  const query: Record<string, unknown> = { limit: params.limit ?? 50 }
+  if (params.cursor) query.cursor = params.cursor
+  for (const [key, value] of Object.entries(params.filters ?? {})) {
+    // An empty event_type is meaningful: it asks for the raw stream
+    // rather than the default `attempt` view, so it is sent as ''.
+    if (value === undefined) continue
+    if (Array.isArray(value) && value.length === 0) continue
+    query[key] = value
+  }
+  const { data, headers } =
+    await apiClient.getWithHeaders<MaintenanceLogEnvelope>(
+      '/maintenance/log',
+      query,
+      signal,
+    )
+  return {
+    counts: data?.counts ?? undefined,
+    entries: Array.isArray(data?.data) ? data.data : [],
+    nextCursor: parseNextCursor(headers),
+  }
+}
+
 export interface AnalysisReport {
   created_at: string
   id: string
