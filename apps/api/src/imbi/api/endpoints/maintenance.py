@@ -6,6 +6,7 @@ registry is all that is required for a new button to appear.
 """
 
 import datetime
+import json
 import logging
 import typing
 
@@ -232,10 +233,15 @@ MAX_LOG_LIMIT = 500
 #: Columns a caller may filter the log on, each an exact match.
 _LOG_FILTERS = ('slug', 'event_type', 'run_id', 'attempt_id', 'project_id')
 
+#: ``detail`` is a ClickHouse ``JSON`` column; clickhouse-connect
+#: returns those as nested array-of-tuple paths in their internal
+#: binary form, not as a ``dict``. ``toJSONString`` makes ClickHouse
+#: serialize it to text we parse here, the same way the events
+#: endpoint reads its JSON columns.
 _LOG_COLUMNS = (
     'id, occurred_at, run_id, attempt_id, item_id, slug, event_type, '
-    'disposition, action, project_id, project_slug, message, detail, '
-    'duration_ms, started_by'
+    'disposition, action, project_id, project_slug, message, '
+    'toJSONString(detail) AS detail, duration_ms, started_by'
 )
 
 
@@ -275,10 +281,31 @@ class MaintenanceLogResponse(pydantic.BaseModel):
     data: list[MaintenanceLogEntry]
 
 
+def _log_detail(value: object) -> dict[str, typing.Any]:
+    """Parse the ``toJSONString``-serialized ``detail`` column.
+
+    Defensive: anything that is not a JSON object -- an unparseable
+    value, or a scalar written by an older row -- becomes an empty
+    dict rather than sinking the whole page.
+    """
+    if isinstance(value, dict):
+        return typing.cast('dict[str, typing.Any]', value)
+    if isinstance(value, bytes):
+        value = value.decode('utf-8', errors='replace')
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        LOGGER.warning('maintenance log row has unparseable detail')
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return typing.cast('dict[str, typing.Any]', parsed)
+
+
 def _log_row(row: dict[str, typing.Any]) -> MaintenanceLogEntry:
-    detail: dict[str, typing.Any] = (
-        row['detail'] if isinstance(row.get('detail'), dict) else {}
-    )
+    detail = _log_detail(row.get('detail'))
     return MaintenanceLogEntry(
         id=str(row['id']),
         occurred_at=clickhouse.as_utc(row['occurred_at']),

@@ -52,13 +52,13 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
             'read_run_meta',
             mock.AsyncMock(return_value=('run1', 'admin')),
         )
-        run_meta.start()
+        self.state['read_run_meta'] = run_meta.start()
         self.addCleanup(run_meta.stop)
         slugs = mock.patch(
             'imbi.api.endpoints._helpers.lookup_project_slugs',
             mock.AsyncMock(return_value=('proj', 'team')),
         )
-        slugs.start()
+        self.lookup_slugs = slugs.start()
         self.addCleanup(slugs.stop)
         writes = mock.patch.object(log, '_write', mock.AsyncMock())
         self.write = writes.start()
@@ -91,6 +91,30 @@ class TickOperationTests(unittest.IsolatedAsyncioTestCase):
         result = await worker._tick_operation(self.client, self.db, operation)
         self.assertTrue(result)
         self.state['requeue'].assert_awaited_once_with(self.client, 'op', 'p1')
+
+    async def test_log_context_failure_does_not_strand_the_claim(
+        self,
+    ) -> None:
+        """Valkey failing after checkout must not lose the item."""
+        self.state['read_run_meta'].side_effect = RuntimeError('valkey down')
+        operation = _operation(mock.AsyncMock(return_value='succeeded'))
+        result = await worker._tick_operation(self.client, self.db, operation)
+        self.assertTrue(result)
+        self.state['record_outcome'].assert_awaited_once_with(
+            self.client, 'op', 'p1', 'succeeded', ''
+        )
+        row = self.written_rows()[0]
+        self.assertEqual('', row.run_id)
+        self.assertEqual('p1', row.item_id)
+
+    async def test_a_slug_lookup_failure_keeps_the_run_metadata(self) -> None:
+        self.lookup_slugs.side_effect = RuntimeError('graph down')
+        operation = _operation(mock.AsyncMock(return_value='succeeded'))
+        result = await worker._tick_operation(self.client, self.db, operation)
+        self.assertTrue(result)
+        row = self.written_rows()[0]
+        self.assertEqual('run1', row.run_id)
+        self.assertEqual('', row.project_slug)
 
     async def test_drained_finalizes(self) -> None:
         self.state['checkout'].return_value = None

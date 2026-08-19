@@ -69,16 +69,31 @@ async def _item_context(
     ``project_id`` is left empty for an operation whose work items are
     not projects (``search-reindex``), so a reader can trust the column
     rather than having to know which operations are project-scoped.
+
+    The caller has already claimed *item_id* and incremented
+    ``in_flight``, so this cannot raise: the lookups below are log
+    metadata, and letting one fail would strand the claim until the
+    run lock expires. A failure costs the row its context, nothing
+    more.
     """
     # Imported here, not at module scope: ``imbi.api.endpoints`` pulls in
     # the maintenance router, which imports this module back.
     from imbi.api.endpoints._helpers import lookup_project_slugs
 
-    run_id, started_by = await state.read_run_meta(client, operation.slug)
     project_id = item_id if operation.items_are_projects else ''
-    project_slug = ''
-    if project_id:
-        project_slug, _ = await lookup_project_slugs(db, project_id)
+    run_id, started_by, project_slug = '', '', ''
+    try:
+        run_id, started_by = await state.read_run_meta(client, operation.slug)
+        if project_id:
+            project_slug, _ = await lookup_project_slugs(db, project_id)
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'maintenance %s could not read log context for %s; '
+            'logging this attempt without it',
+            operation.slug,
+            item_id,
+            exc_info=True,
+        )
     attempt_id = nanoid.generate()
     return log.MaintenanceContext(
         run_id=run_id,

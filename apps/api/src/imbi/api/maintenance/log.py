@@ -120,18 +120,24 @@ async def record_run(
     ``failed`` attempt rows is how a gap in this best-effort log becomes
     visible instead of silent.
     """
-    await _write(
-        [
-            models.MaintenanceLogRecord(
-                run_id=run_id,
-                slug=slug,
-                event_type='run',
-                disposition=disposition,
-                started_by=started_by,
-                detail=_sanitize_detail(detail),
-            )
-        ]
-    )
+    try:
+        row = models.MaintenanceLogRecord(
+            run_id=run_id,
+            slug=slug,
+            event_type='run',
+            disposition=disposition,
+            started_by=started_by,
+            detail=_sanitize_detail(detail),
+        )
+    except Exception:
+        # Best-effort covers building the row, not just writing it:
+        # ``record_run`` is called from run finalization and from
+        # cancellation, neither of which may fail over a log row.
+        LOGGER.exception(
+            'maintenance log dropped the run row for %s run %s', slug, run_id
+        )
+        return
+    await _write([row])
 
 
 class ItemLog:
@@ -168,9 +174,9 @@ class ItemLog:
         **detail: typing.Any,
     ) -> None:
         """Buffer one activity row. Synchronous -- does no I/O."""
-        self._rows.append(
-            self._row('activity', disposition, action, message, detail)
-        )
+        row = self._row('activity', disposition, action, message, detail)
+        if row is not None:
+            self._rows.append(row)
 
     def attempt(
         self,
@@ -181,8 +187,9 @@ class ItemLog:
     ) -> None:
         """Buffer this item's terminal row (worker-owned)."""
         row = self._row('attempt', disposition, '', message, detail)
-        row.duration_ms = duration_ms
-        self._rows.append(row)
+        if row is not None:
+            row.duration_ms = duration_ms
+            self._rows.append(row)
 
     async def flush(self) -> None:
         """Write and clear the buffer. Best-effort; never raises."""
@@ -203,21 +210,37 @@ class ItemLog:
         action: str,
         message: str,
         detail: dict[str, typing.Any],
-    ) -> models.MaintenanceLogRecord:
-        return models.MaintenanceLogRecord(
-            run_id=self.run_id,
-            attempt_id=self.attempt_id,
-            item_id=self.item_id,
-            slug=self.slug,
-            event_type=event_type,
-            disposition=disposition,
-            action=action,
-            project_id=self.project_id,
-            project_slug=self.project_slug,
-            message=message[:MAX_MESSAGE_LEN],
-            detail=_sanitize_detail(detail),
-            started_by=self.started_by,
-        )
+    ) -> models.MaintenanceLogRecord | None:
+        """Build one row, or ``None`` when building it fails.
+
+        ``record`` is called synchronously from inside an operation, so
+        a value that survives :func:`_sanitize_detail` but not model
+        validation would otherwise fail the operation's own work over a
+        log row.
+        """
+        try:
+            return models.MaintenanceLogRecord(
+                run_id=self.run_id,
+                attempt_id=self.attempt_id,
+                item_id=self.item_id,
+                slug=self.slug,
+                event_type=event_type,
+                disposition=disposition,
+                action=action,
+                project_id=self.project_id,
+                project_slug=self.project_slug,
+                message=message[:MAX_MESSAGE_LEN],
+                detail=_sanitize_detail(detail),
+                started_by=self.started_by,
+            )
+        except Exception:
+            LOGGER.exception(
+                'maintenance log dropped a %s row for %s item %s',
+                event_type,
+                self.slug,
+                self.item_id,
+            )
+            return None
 
 
 @dataclasses.dataclass(slots=True)

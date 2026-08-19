@@ -113,6 +113,36 @@ class RecordRunTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('', row.attempt_id)
 
 
+class BestEffortConstructionTests(unittest.IsolatedAsyncioTestCase):
+    """Building a row must not fail the work that logged it."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(log, '_write', mock.AsyncMock())
+        self.write = patcher.start()
+        self.addCleanup(patcher.stop)
+        sanitize = mock.patch.object(
+            log, '_sanitize_detail', side_effect=RuntimeError('nope')
+        )
+        sanitize.start()
+        self.addCleanup(sanitize.stop)
+
+    async def test_record_drops_the_row_instead_of_raising(self) -> None:
+        item = _item_log()
+        item.record('succeeded', 'normalize', 'ok', count=1)
+        self.assertEqual(0, item.buffered)
+
+    async def test_attempt_drops_the_row_instead_of_raising(self) -> None:
+        item = _item_log()
+        item.attempt('succeeded', 'ok', 12, count=1)
+        self.assertEqual(0, item.buffered)
+        await item.flush()
+        self.write.assert_not_awaited()
+
+    async def test_record_run_drops_the_row_instead_of_raising(self) -> None:
+        await log.record_run('op', 'run1', 'completed', 'admin', total=5)
+        self.write.assert_not_awaited()
+
+
 class WriteTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_rows_is_not_an_insert(self) -> None:
         with mock.patch.object(log.clickhouse, 'insert') as insert:

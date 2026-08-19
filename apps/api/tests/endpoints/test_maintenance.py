@@ -3,6 +3,7 @@
 import datetime
 from unittest import mock
 
+import httpx
 from fastapi import testclient
 
 from apps.api.tests import support
@@ -215,7 +216,7 @@ def _log_row(**overrides: object) -> dict[str, object]:
         'project_id': 'p1',
         'project_slug': 'proj',
         'message': 'boom',
-        'detail': {'count': 2},
+        'detail': '{"count":2}',
         'duration_ms': 17,
         'started_by': 'admin',
     }
@@ -228,7 +229,7 @@ class MaintenanceLogEndpointTests(MaintenanceEndpointTestCase):
 
     def _get(
         self, url: str, rows: list[dict[str, object]] | None = None
-    ) -> tuple[object, mock.AsyncMock]:
+    ) -> tuple[httpx.Response, mock.AsyncMock]:
         counts = {
             'succeeded': 3,
             'skipped': 1,
@@ -294,6 +295,23 @@ class MaintenanceLogEndpointTests(MaintenanceEndpointTestCase):
                 response = client.get('/maintenance/log?limit=2')
         self.assertEqual(2, len(response.json()['data']))
         self.assertIn('rel="next"', response.headers['Link'])
+
+    def test_detail_arrives_as_json_text(self) -> None:
+        """``toJSONString`` is what makes a JSON column readable."""
+        _, query = self._get('/maintenance/log', [_log_row()])
+        sql, _ = query.await_args_list[0].args
+        self.assertIn('toJSONString(detail) AS detail', sql)
+
+    def test_an_unparseable_detail_does_not_sink_the_page(self) -> None:
+        response, _ = self._get(
+            '/maintenance/log', [_log_row(detail='not json')]
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual({}, response.json()['data'][0]['detail'])
+
+    def test_a_non_object_detail_reads_as_empty(self) -> None:
+        response, _ = self._get('/maintenance/log', [_log_row(detail='[1,2]')])
+        self.assertEqual({}, response.json()['data'][0]['detail'])
 
     def test_a_partial_page_has_no_next_link(self) -> None:
         response, _ = self._get('/maintenance/log?limit=50', [_log_row()])
