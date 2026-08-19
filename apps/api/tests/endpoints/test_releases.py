@@ -2227,6 +2227,15 @@ def _tiny_sbom() -> dict[str, typing.Any]:
 class PutReleaseSbomTestCase(_ReleasesTestBase):
     """PUT /releases/{release_id}/sbom"""
 
+    def setUp(self) -> None:
+        super().setUp()
+        # Ingest dual-writes the component set to ClickHouse; these
+        # cases assert the graph half, so the insert is stubbed out.
+        self.ch_insert = mock.AsyncMock()
+        patcher = mock.patch('imbi.common.clickhouse.insert', self.ch_insert)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_put_success_returns_204(self) -> None:
         # _fetch_release row, then CLEAR_RELEASE_COMPONENTS (no rows),
         # then UPSERT_COMPONENT_AND_LINK (one row), then identifier
@@ -2235,7 +2244,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
             [{'release': _release_row()}],
             [],
             [],  # deployments_by_project: no Deployment nodes
-            [{'component_id': 'comp-1'}],
+            [{'component_id': 'comp-1', 'component_release_id': 'cr-1'}],
             [],
         ]
         with mock.patch(
@@ -2305,7 +2314,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
                 [{'release': _release_row()}],
                 [],
                 [],  # deployments_by_project: no Deployment nodes
-                [{'component_id': 'comp-1'}],
+                [{'component_id': 'comp-1', 'component_release_id': 'cr-1'}],
                 [],
             ]
             with mock.patch(
@@ -2364,7 +2373,14 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
             if 'MERGE (c:Component' in query:
                 if params['purl_name'] == 'pkg:npm/broken':
                     raise RuntimeError('simulated AGE error')
-                return [{'component_id': f'comp-{params["purl_name"]}'}]
+                return [
+                    {
+                        'component_id': f'comp-{params["purl_name"]}',
+                        'component_release_id': (
+                            f'cr-{params["purl_name"]}@{params["version"]}'
+                        ),
+                    }
+                ]
             if 'MERGE (ci:ComponentIdentifier' in query:
                 return []
             raise AssertionError(f'unexpected query in mock: {query[:60]!r}')
@@ -2473,7 +2489,14 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
                 in_flight.add(purl)
                 await _asyncio.sleep(0)
                 in_flight.discard(purl)
-                return [{'component_id': f'comp-{purl}'}]
+                return [
+                    {
+                        'component_id': f'comp-{purl}',
+                        'component_release_id': (
+                            f'cr-{purl}@{params["version"]}'
+                        ),
+                    }
+                ]
             if 'MERGE (ci:ComponentIdentifier' in query:
                 return []
             raise AssertionError(f'unexpected query in mock: {query[:60]!r}')

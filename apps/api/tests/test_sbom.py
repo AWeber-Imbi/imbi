@@ -2,8 +2,10 @@ import json
 import pathlib
 import typing
 import unittest
+from unittest import mock
 
 from imbi.api import sbom
+from imbi.common import graph
 
 _FIXTURE_DIR = pathlib.Path(__file__).parent / 'fixtures' / 'sbom'
 
@@ -301,3 +303,174 @@ class ScopeAndGroupsTests(unittest.TestCase):
             ],
         )
         self.assertEqual(component.groups, ['dev'])
+
+
+class DualWriteTests(unittest.IsolatedAsyncioTestCase):
+    """`replace_release_components` records the set in both stores."""
+
+    def setUp(self) -> None:
+        self.db = mock.AsyncMock(spec=graph.Graph)
+        self.db.execute.return_value = [
+            {'component_id': '"c-1"', 'component_release_id': '"cr-1"'}
+        ]
+        self.insert = mock.AsyncMock()
+        patcher = mock.patch('imbi.common.clickhouse.insert', self.insert)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def _component(**overrides: typing.Any) -> sbom.NormalizedComponent:
+        data: dict[str, typing.Any] = {
+            'purl_name': 'pkg:pypi/requests',
+            'name': 'requests',
+            'ecosystem': 'pypi',
+            'version': '2.32.0',
+            'scope': 'required',
+            'groups': ['runtime'],
+        }
+        data.update(overrides)
+        return sbom.NormalizedComponent(**data)
+
+    def _writes(self) -> dict[str, list]:
+        """Map each written table to its rows, in call order."""
+        return {
+            call.args[0]: call.args[1] for call in self.insert.await_args_list
+        }
+
+    def _batch(self) -> typing.Any:
+        (batch,) = self._writes()['release_component_batches']
+        return batch
+
+    def _facts(self) -> list:
+        return self._writes().get('release_components', [])
+
+    async def test_row_written_for_each_component(self) -> None:
+        await sbom.replace_release_components(
+            self.db, 'p-1', 'r-1', [self._component()]
+        )
+        (row,) = self._facts()
+        self.assertEqual(row.release_id, 'r-1')
+        self.assertEqual(row.project_id, 'p-1')
+        self.assertEqual(row.component_id, 'c-1')
+        self.assertEqual(row.component_release_id, 'cr-1')
+        self.assertEqual(row.purl_name, 'pkg:pypi/requests')
+        self.assertEqual(row.ecosystem, 'pypi')
+        self.assertEqual(row.version, '2.32.0')
+        self.assertEqual(row.scope, 'required')
+        self.assertEqual(row.groups, ['runtime'])
+
+    async def test_ids_come_from_the_graph_not_the_generated_nanoids(
+        self,
+    ) -> None:
+        """MERGE keeps the existing id, so the generated one is a decoy."""
+        await sbom.replace_release_components(
+            self.db, 'p-1', 'r-1', [self._component()]
+        )
+        (row,) = self._facts()
+        self.assertEqual(
+            (row.component_id, row.component_release_id), ('c-1', 'cr-1')
+        )
+
+    async def test_facts_are_written_before_the_batch_publishes_them(
+        self,
+    ) -> None:
+        """A reader must never resolve a batch to a half-written set."""
+        await sbom.replace_release_components(
+            self.db, 'p-1', 'r-1', [self._component()]
+        )
+        self.assertEqual(
+            [call.args[0] for call in self.insert.await_args_list],
+            ['release_components', 'release_component_batches'],
+        )
+
+    async def test_one_batch_id_and_timestamp_across_the_ingest(self) -> None:
+        components = [
+            self._component(purl_name=f'pkg:pypi/pkg-{n}', name=f'pkg-{n}')
+            for n in range(5)
+        ]
+        await sbom.replace_release_components(
+            self.db, 'p-1', 'r-1', components
+        )
+        rows = self._facts()
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(len({row.recorded_at for row in rows}), 1)
+        self.assertEqual(
+            {row.batch_id for row in rows}, {self._batch().batch_id}
+        )
+        self.assertEqual(self._batch().recorded_at, rows[0].recorded_at)
+
+    async def test_batch_defaults_to_the_ingest_source(self) -> None:
+        """Backfill loses the tiebreak to a live write, so this matters."""
+        await sbom.replace_release_components(
+            self.db, 'p-1', 'r-1', [self._component()]
+        )
+        self.assertEqual(self._batch().source, 'ingest')
+
+    async def test_failed_component_writes_no_row_but_is_counted(
+        self,
+    ) -> None:
+        """A short snapshot must be detectable, not silently complete."""
+        self.db.execute.side_effect = [
+            [],  # the clear
+            RuntimeError('AGE said no'),
+            [{'component_id': '"c-2"', 'component_release_id': '"cr-2"'}],
+        ]
+        await sbom.replace_release_components(
+            self.db,
+            'p-1',
+            'r-1',
+            [
+                self._component(purl_name='pkg:pypi/broken', name='broken'),
+                self._component(purl_name='pkg:pypi/fine', name='fine'),
+            ],
+        )
+        self.assertEqual([row.component_id for row in self._facts()], ['c-2'])
+        self.assertEqual(self._batch().component_count, 1)
+        self.assertEqual(self._batch().parsed_count, 2)
+
+    async def test_complete_ingest_has_matching_counts(self) -> None:
+        await sbom.replace_release_components(
+            self.db, 'p-1', 'r-1', [self._component()]
+        )
+        self.assertEqual(
+            self._batch().component_count, self._batch().parsed_count
+        )
+
+    async def test_empty_sbom_publishes_an_empty_batch(self) -> None:
+        """Without one the previous batch stays current forever."""
+        await sbom.replace_release_components(self.db, 'p-1', 'r-1', [])
+        self.assertNotIn('release_components', self._writes())
+        batch = self._batch()
+        self.assertEqual(batch.release_id, 'r-1')
+        self.assertEqual(batch.component_count, 0)
+        self.assertEqual(batch.parsed_count, 0)
+
+    async def test_all_components_failing_publishes_an_empty_batch(
+        self,
+    ) -> None:
+        self.db.execute.side_effect = [[], RuntimeError('AGE said no')]
+        await sbom.replace_release_components(
+            self.db, 'p-1', 'r-1', [self._component()]
+        )
+        self.assertEqual(self._batch().component_count, 0)
+        self.assertEqual(self._batch().parsed_count, 1)
+
+    async def test_clickhouse_failure_propagates(self) -> None:
+        """A dropped write is missing report data, not a partial one."""
+        self.insert.side_effect = RuntimeError('clickhouse unreachable')
+        with self.assertRaises(RuntimeError):
+            await sbom.replace_release_components(
+                self.db, 'p-1', 'r-1', [self._component()]
+            )
+
+    async def test_unpublished_facts_when_the_batch_write_fails(self) -> None:
+        """The rows land, stay inert, and the request still fails."""
+        self.insert.side_effect = [mock.DEFAULT, RuntimeError('no batch')]
+        with self.assertRaises(RuntimeError):
+            await sbom.replace_release_components(
+                self.db, 'p-1', 'r-1', [self._component()]
+            )
+        self.assertEqual(
+            [call.args[0] for call in self.insert.await_args_list],
+            ['release_components', 'release_component_batches'],
+        )

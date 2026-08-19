@@ -1741,7 +1741,9 @@ async def put_release_sbom(
             status_code=400,
             detail=str(exc),
         ) from exc
-    await sbom.replace_release_components(db, release_id, components)
+    await sbom.replace_release_components(
+        db, project_id, release_id, components
+    )
     return fastapi.Response(status_code=204)
 
 
