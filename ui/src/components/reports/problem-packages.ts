@@ -65,7 +65,7 @@ export function exportCsv(rows: ProblemPackageRow[]): void {
       (row.project_types ?? []).join('; '),
       row.purl_name,
       row.version,
-      row.status ? statusLabel(row.status) : 'Current',
+      row.status ? statusLabel(row.status) : '',
       (row.advisories ?? []).map((a) => a.cve_id).join('; '),
       (row.environments ?? []).map((e) => e.name).join('; '),
       row.note_count,

@@ -26,8 +26,11 @@ release from deployment history. A release deployed without an SBoM PUT
 carries no component edges and is therefore invisible to these reports.
 """
 
+import asyncio
 import datetime
+import itertools
 import logging
+import re
 import typing
 
 import fastapi
@@ -53,8 +56,8 @@ MAX_SEARCH_LIMIT: typing.Final = 200
 MAX_PROBLEM_ROWS: typing.Final = 500
 
 #: Sort key for records with no timestamp — they sort oldest, so a
-#: version ingested before ``created_at`` was recorded never displaces
-#: a dated one at the head of the list.
+#: note written before ``created_at`` was recorded never displaces a
+#: dated one at the head of the list.
 _UNDATED: typing.Final = datetime.datetime.min.replace(tzinfo=datetime.UTC)
 
 
@@ -290,35 +293,60 @@ RETURN cr.id AS cid
 LIMIT 1
 """
 
-# Package search.  An empty ``q``/``ecosystem`` matches everything --
-# AGE has no NULL-safe equality, so the sentinel is the empty string
-# rather than null.
+# Package search, phase one: which components match the typed text.
+#
+# The name test sits in its own clause ahead of the org traversal, and
+# the ``WITH`` barrier is what makes that ordering stick -- AGE compiles
+# each clause into a nested subquery, so the traversal runs over the
+# handful of components whose name matched rather than over every
+# component in the graph.  The pre-split query aggregated counts across
+# the whole cross-product before any name test applied, which is what
+# made a keystroke cost a full-catalog scan.
+#
+# ``ecosystem`` has no null-safe equality in AGE, so the "match
+# everything" sentinel is the empty string rather than null.
 _SEARCH_COMPONENTS: typing.LiteralString = """
+MATCH (c:Component)
+WHERE (toLower(c.purl_name) CONTAINS {q} OR toLower(c.name) CONTAINS {q})
+  AND ({ecosystem} = '' OR c.ecosystem = {ecosystem})
+WITH c
+MATCH (c)-[:HAS_RELEASE]->(:ComponentRelease)
+      <-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)
+      -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
+      (:Organization {{slug: {org_slug}}})
+WHERE coalesce(p.archived, false) = false
+RETURN DISTINCT c.id AS id,
+       c.purl_name AS purl_name,
+       c.name AS name,
+       c.ecosystem AS ecosystem,
+       c.status AS status
+"""
+
+# Phase two: version and project counts, for the page of components
+# phase one settled on.  Bounded by ``ids`` -- at most ``limit`` of
+# them -- so the aggregate runs over one page's cross-product instead
+# of the catalog's.
+_SEARCH_COMPONENT_COUNTS: typing.LiteralString = """
 MATCH (c:Component)-[:HAS_RELEASE]->(cr:ComponentRelease)
       <-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)
       -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
       (:Organization {{slug: {org_slug}}})
-WHERE coalesce(p.archived, false) = false
-  AND ({q} = ''
-       OR toLower(c.purl_name) CONTAINS {q}
-       OR toLower(c.name) CONTAINS {q})
-  AND ({ecosystem} = '' OR c.ecosystem = {ecosystem})
+WHERE c.id IN {ids}
+  AND coalesce(p.archived, false) = false
 RETURN c.id AS id,
-       c.purl_name AS purl_name,
-       c.name AS name,
-       c.ecosystem AS ecosystem,
-       c.status AS status,
        count(DISTINCT cr) AS version_count,
        count(DISTINCT p) AS project_count
 """
 
+# Counts the catalog directly rather than traversing to the org.  The
+# traversal made this the slowest query on the page -- 36.5s against
+# 1.07s here -- for a number that only labels a filter chip.  The cost
+# is scope: this counts every component in the graph, not only those an
+# organization deploys.  ``docs/sbom-clickhouse-migration-plan.md``
+# restores the scoping with ``uniqExact`` once the usage facts move.
 _ECOSYSTEM_TOTALS: typing.LiteralString = """
-MATCH (c:Component)-[:HAS_RELEASE]->(:ComponentRelease)
-      <-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)
-      -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
-      (:Organization {{slug: {org_slug}}})
-WHERE coalesce(p.archived, false) = false
-RETURN c.ecosystem AS ecosystem, count(DISTINCT c) AS total
+MATCH (c:Component)
+RETURN c.ecosystem AS ecosystem, count(c) AS total
 """
 
 _GET_COMPONENT: typing.LiteralString = """
@@ -702,67 +730,119 @@ async def search_components(
 ) -> ComponentSearchResponse:
     """Search the packages the organization depends on.
 
-    ``q`` matches the purl or the display name, case-insensitively;
-    empty returns the whole catalog (capped by ``limit``). Results sort
-    by project count descending — the packages worth governing are the
-    widely-used ones — then by purl for a stable order.
+    ``q`` matches the purl or the display name, case-insensitively.
+    Ranking is by how the name matched -- exact, then prefix, then
+    substring, then alphabetical -- rather than by project count: the
+    counts belong to the page this returns, not to the catalog it
+    picked the page from, and computing them catalog-wide is what made
+    the pre-split query slow.
 
-    ``ecosystem_totals`` is populated only on the unfiltered request;
-    see the note at the call site.
+    An empty ``q`` returns ``ecosystem_totals`` and no rows. The screen
+    shows the reader's recently-viewed packages rather than a slice of
+    the catalog when the box is empty, so listing every package it
+    depends on would be a full-catalog traversal whose result is
+    discarded.
     """
     capped = max(1, min(limit, MAX_SEARCH_LIMIT))
     query = q.strip().lower()
     selected_ecosystem = ecosystem.strip()
-    rows = await db.execute(
-        _SEARCH_COMPONENTS,
-        {
-            'org_slug': org_slug,
-            'q': query,
-            'ecosystem': selected_ecosystem,
-        },
-        [
-            'id',
-            'purl_name',
-            'name',
-            'ecosystem',
-            'status',
-            'version_count',
-            'project_count',
-        ],
-    )
-    results = [
-        ComponentSearchResult(
-            id=_required(row, 'id'),
-            purl_name=_required(row, 'purl_name'),
-            name=_required(row, 'name'),
-            ecosystem=_required(row, 'ecosystem'),
-            status=_status(_text(row, 'status')),
-            version_count=_count(row, 'version_count'),
-            project_count=_count(row, 'project_count'),
+
+    results: list[ComponentSearchResult] = []
+    total = 0
+    if query:
+        matches = await db.execute(
+            _SEARCH_COMPONENTS,
+            {
+                'org_slug': org_slug,
+                'q': query,
+                'ecosystem': selected_ecosystem,
+            },
+            ['id', 'purl_name', 'name', 'ecosystem', 'status'],
         )
-        for row in rows
-    ]
-    results.sort(key=lambda r: (-r.project_count, r.purl_name))
+        total = len(matches)
+        ranked = sorted(matches, key=lambda row: _match_rank(row, query))
+        page = ranked[:capped]
+        counts = await _search_counts(
+            db, org_slug, [_required(row, 'id') for row in page]
+        )
+        results = [
+            ComponentSearchResult(
+                id=_required(row, 'id'),
+                purl_name=_required(row, 'purl_name'),
+                name=_required(row, 'name'),
+                ecosystem=_required(row, 'ecosystem'),
+                status=_status(_text(row, 'status')),
+                version_count=counts.get(_required(row, 'id'), (0, 0))[0],
+                project_count=counts.get(_required(row, 'id'), (0, 0))[1],
+            )
+            for row in page
+        ]
+
     # The totals describe the catalog, not the result set, so they are
-    # computed only for the unfiltered request -- the one the screen
-    # makes on load. Recomputing a full org-wide scan on every keystroke
-    # would double the cost of a search to restate a constant.
+    # computed only for the request with an empty box -- the one the
+    # screen makes on load. Recomputing a full org-wide scan on every
+    # keystroke would double the cost of a search to restate a
+    # constant. The ecosystem filter does not gate them: they are what
+    # the filter's own chips count, so dropping them the moment the
+    # reader picks a chip would empty the control they just used.
     totals: dict[str, int] = {}
-    if not query and not selected_ecosystem:
+    if not query:
         totals = {
             _required(row, 'ecosystem'): _count(row, 'total')
             for row in await db.execute(
                 _ECOSYSTEM_TOTALS,
-                {'org_slug': org_slug},
+                {},
                 ['ecosystem', 'total'],
             )
             if _text(row, 'ecosystem')
         }
     return ComponentSearchResponse(
-        data=results[:capped],
+        data=results,
         ecosystem_totals=totals,
-        total=len(results),
+        total=total,
     )
+
+
+def _match_rank(
+    row: dict[str, typing.Any], query: str
+) -> tuple[int, int, str]:
+    """Rank one search hit: exact, then prefix, then substring.
+
+    The third element breaks ties alphabetically, and the second
+    prefers the shorter name -- ``react`` outranks
+    ``react-dom-server`` for the query ``react``.
+    """
+    name = _required(row, 'name').lower()
+    purl = _required(row, 'purl_name').lower()
+    if name == query or purl == query:
+        tier = 0
+    elif name.startswith(query) or purl.startswith(query):
+        tier = 1
+    else:
+        tier = 2
+    return (tier, len(name), _required(row, 'purl_name'))
+
+
+async def _search_counts(
+    db: graph.Graph,
+    org_slug: str,
+    component_ids: list[str],
+) -> dict[str, tuple[int, int]]:
+    """Return ``(version_count, project_count)`` per component id."""
+    if not component_ids:
+        return {}
+    rows = await db.execute(
+        _SEARCH_COMPONENT_COUNTS,
+        {'ids': component_ids, 'org_slug': org_slug},
+        ['id', 'version_count', 'project_count'],
+    )
+    return {
+        _required(row, 'id'): (
+            _count(row, 'version_count'),
+            _count(row, 'project_count'),
+        )
+        for row in rows
+    }
 
 
 # ----- Package usage -------------------------------------------------
@@ -842,8 +922,47 @@ def _usage_versions(
             project.environments.sort()
     return sorted(
         versions.values(),
-        key=lambda v: (v.first_seen or _UNDATED, v.version),
+        key=lambda v: _version_sort_key(v.version),
         reverse=True,
+    )
+
+
+def _version_sort_key(
+    version: str,
+) -> tuple[tuple[int, ...], int, tuple[tuple[int, int, str], ...]]:
+    """Order a version string newest-last, across ecosystems.
+
+    Version strings have no one ordering that spans npm and pypi, so
+    this compares what both agree on: leading numeric segments
+    numerically (``4.19.2`` below ``4.23.0``, which a string sort gets
+    backwards), and everything from the first non-numeric segment on as
+    a pre-release ranking below the plain release (``1.0.0-rc1`` below
+    ``1.0.0``).
+
+    Build metadata is dropped first. SemVer gives it no bearing on
+    precedence, and leaving it in would read as a pre-release suffix
+    and sort ``1.0.0+build.5`` below the plain ``1.0.0``.
+
+    Nothing here raises: a hand-written version in the graph sorts
+    oddly rather than breaking the report. The digit test is
+    ``isdecimal`` rather than ``isdigit`` for that reason -- ``isdigit``
+    accepts characters ``int()`` rejects, superscripts among them.
+    """
+    core = version.strip().lstrip('vV').split('+', 1)[0]
+    parts = re.split(r'[._\-]', core)
+    release = tuple(
+        int(part) for part in itertools.takewhile(str.isdecimal, parts)
+    )
+    rest = parts[len(release) :]
+    return (
+        release,
+        # A plain release outranks the same release with a
+        # pre-release suffix, so it takes the higher tier.
+        0 if rest else 1,
+        tuple(
+            (0, int(part), '') if part.isdecimal() else (1, 0, part)
+            for part in rest
+        ),
     )
 
 
@@ -863,66 +982,83 @@ async def get_component_usage(
     counts are over the same scope, except ``version_count``, which is
     every version Imbi has ever ingested for the package.
     """
-    await _assert_component_in_org(db, org_slug, component_id)
-    header_rows = await db.execute(
-        _GET_COMPONENT,
-        {'component_id': component_id},
-        [
-            'id',
-            'purl_name',
-            'name',
-            'ecosystem',
-            'description',
-            'status',
-            'status_at',
-            'status_by',
-            'version_count',
-        ],
+    # Four independent reads, and ``execute`` takes its own pooled
+    # connection per call, so the screen waits on the slowest rather
+    # than on their sum. The membership check is one of them: it is a
+    # guard on the response, not on whether the other three may run.
+    scope_rows, header_rows, usage_rows, version_rows = await asyncio.gather(
+        db.execute(
+            _COMPONENT_IN_ORG,
+            {'component_id': component_id, 'org_slug': org_slug},
+            ['cid'],
+        ),
+        db.execute(
+            _GET_COMPONENT,
+            {'component_id': component_id},
+            [
+                'id',
+                'purl_name',
+                'name',
+                'ecosystem',
+                'description',
+                'status',
+                'status_at',
+                'status_by',
+                'version_count',
+            ],
+        ),
+        db.execute(
+            _COMPONENT_USAGE,
+            {'component_id': component_id, 'org_slug': org_slug},
+            [
+                'component_release_id',
+                'version',
+                'version_status',
+                'version_status_at',
+                'version_status_by',
+                'first_seen',
+                'project_id',
+                'project_name',
+                'project_slug',
+                'team_name',
+                'team_slug',
+                'environment_name',
+                'environment_slug',
+                'environment_color',
+                'project_types',
+            ],
+        ),
+        db.execute(
+            _COMPONENT_VERSIONS,
+            {'component_id': component_id},
+            [
+                'component_release_id',
+                'version',
+                'version_status',
+                'version_status_at',
+                'version_status_by',
+                'first_seen',
+            ],
+        ),
     )
+    if not scope_rows:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'No component {component_id!r} in organization',
+        )
     if not header_rows:
         raise fastapi.HTTPException(
             status_code=404, detail=f'No component {component_id!r}'
         )
     header = header_rows[0]
     component_status = _status(_text(header, 'status'))
-
-    usage_rows = await db.execute(
-        _COMPONENT_USAGE,
-        {'component_id': component_id, 'org_slug': org_slug},
-        [
-            'component_release_id',
-            'version',
-            'version_status',
-            'version_status_at',
-            'version_status_by',
-            'first_seen',
-            'project_id',
-            'project_name',
-            'project_slug',
-            'team_name',
-            'team_slug',
-            'environment_name',
-            'environment_slug',
-            'environment_color',
-            'project_types',
-        ],
-    )
-    version_rows = await db.execute(
-        _COMPONENT_VERSIONS,
-        {'component_id': component_id},
-        [
-            'component_release_id',
-            'version',
-            'version_status',
-            'version_status_at',
-            'version_status_by',
-            'first_seen',
-        ],
-    )
     versions = _usage_versions(usage_rows, version_rows, component_status)
 
-    advisories = await _advisories_by_release(db, [v.id for v in versions])
-    note_counts = await _note_counts_by_release(db, [v.id for v in versions])
+    release_ids = [v.id for v in versions]
+    advisories, note_counts = await asyncio.gather(
+        _advisories_by_release(db, release_ids),
+        _note_counts_by_release(db, release_ids),
+    )
     for version in versions:
         version.advisories = advisories.get(version.id, [])
         version.note_count = note_counts.get(version.id, 0)
@@ -949,9 +1085,9 @@ async def get_component_usage(
         version_count=_count(header, 'version_count'),
         deployed_version_count=len(deployed),
         vulnerable_project_count=len(vulnerable),
-        # "Newest" is first-seen order, not semver: version strings
-        # across ecosystems have no one ordering, and ingest order is
-        # the only fact the graph actually knows.
+        # The table is sorted newest-first by the same comparator,
+        # so this is its top deployed row -- the number and the row a
+        # reader sees agree by construction.
         newest_deployed_version=deployed[0].version if deployed else None,
         versions=versions,
     )
