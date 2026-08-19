@@ -917,6 +917,15 @@ class GitHubDeployment(DeploymentCapability):
         is what names the commits whose notes changed.  An all-zero
         ``before`` (the ref was just created) returns every note at
         ``after``.
+
+        Known limitation: GitHub's compare endpoint is three-dot only
+        (``after`` against the merge base), so a *force-pushed* notes
+        ref whose ``before`` is not an ancestor of ``after`` can miss a
+        note that the rewrite flipped or removed.  The 404 fallback
+        below covers a ``before`` GitHub no longer has at all, and the
+        sweep backfill only repairs verdicts that are still ``null`` --
+        a stale non-null verdict from this window persists until the
+        next ordinary push touches the note.
         """
         async with self._client(ctx, credentials) as client:
             if before == _ZERO_SHA:

@@ -35,6 +35,7 @@ import fastapi
 
 from imbi.api.auth import principals
 from imbi.common import graph
+from imbi.common.plugins import errors as plugin_errors
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +48,12 @@ REQUESTED_BY = principals.DRIFT_SYNC
 #: answer is a few Git Data API calls, and the newest releases are the
 #: ones whose notes are still expected to arrive.
 SWEEP_LIMIT = 10
+
+#: How long "looked, no note" holds before the sweep asks the remote
+#: again.  Without this the sweep would re-ask about every note-less
+#: release on every run, forever -- most projects have no drift notes
+#: at all, and each ask is several Git Data API calls.
+RECHECK_AFTER = datetime.timedelta(hours=24)
 
 _SET_DRIFT: typing.Final[typing.LiteralString] = """
 MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->
@@ -62,12 +69,16 @@ WHERE r.committish = {committish}
 RETURN r.id AS id, r.tag AS tag
 """
 
+# Never-checked releases sort first (an absent ``drift_checked_at``
+# coalesces to '', which orders before every ISO timestamp) so the
+# :data:`SWEEP_LIMIT` slots cannot be monopolized by re-checks.
 _UNANSWERED_RELEASES: typing.Final[typing.LiteralString] = """
 MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
 WHERE r.drift_detected IS NULL
   AND COALESCE(r.committish, '') <> ''
+  AND (r.drift_checked_at IS NULL OR r.drift_checked_at < {cutoff})
 RETURN r.id AS id, r.tag AS tag, r.committish AS committish
-ORDER BY r.created_at DESC
+ORDER BY COALESCE(r.drift_checked_at, '') ASC, r.created_at DESC
 LIMIT {limit}
 """
 
@@ -231,24 +242,38 @@ async def apply_notes_diff(
 
 
 async def sweep_project(
-    db: graph.Graph, *, org_slug: str, project_id: str
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    now: datetime.datetime | None = None,
 ) -> int | None:
     """Backfill drift for Releases no note has answered yet.
 
     Asks the plugin for the note on each unanswered Release's own
-    committish (newest :data:`SWEEP_LIMIT` first) and stamps the
+    committish (never-checked first, then newest) and stamps the
     verdict -- including "looked, no note", which sets
     ``drift_checked_at`` while ``drift_detected`` stays ``null``.
+    That stamp is also the backoff: a release checked within
+    :data:`RECHECK_AFTER` is not asked about again, so projects whose
+    CI writes no notes are not re-polled on every sweep.
     Returns how many Releases were stamped, or ``None`` when the
     project has no plugin that can answer -- not a failure, just
-    nothing to ask.
+    nothing to ask.  :class:`PluginRateLimited` propagates so the
+    maintenance worker requeues the project instead of burning the
+    remaining budget on a throttled remote.
     """
     from imbi.api.endpoints import project_deployments
     from imbi.api.plugins import call_with_timeout
 
+    now = now or datetime.datetime.now(datetime.UTC)
     rows = await db.execute(
         _UNANSWERED_RELEASES,
-        {'project_id': project_id, 'limit': SWEEP_LIMIT},
+        {
+            'project_id': project_id,
+            'limit': SWEEP_LIMIT,
+            'cutoff': (now - RECHECK_AFTER).isoformat(),
+        },
         ['id', 'tag', 'committish'],
     )
     if not rows:
@@ -282,6 +307,8 @@ async def sweep_project(
             )
         except NotImplementedError:
             return None
+        except plugin_errors.PluginRateLimited:
+            raise
         except Exception:
             LOGGER.exception(
                 'drift sweep could not read the note for %s on project %s',

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import typing
 import unittest
 from unittest import mock
@@ -10,6 +11,7 @@ import fastapi
 
 from imbi.api import drift
 from imbi.common import graph
+from imbi.common.plugins import errors as plugin_errors
 
 FULL_SHA = 'abc1234' + 'f' * 33
 
@@ -243,6 +245,37 @@ class SweepProjectTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(
             await drift.sweep_project(self.db, org_slug='org', project_id='p1')
         )
+
+    async def test_recheck_backoff_governs_the_lookup(self) -> None:
+        # The filtering itself happens in Cypher; the contract this
+        # guards is that the query excludes recently-checked releases
+        # and asks about never-checked ones first, with the cutoff
+        # derived from RECHECK_AFTER.
+        self.db.execute.return_value = []
+        now = datetime.datetime(2026, 8, 18, 12, tzinfo=datetime.UTC)
+        await drift.sweep_project(
+            self.db, org_slug='org', project_id='p1', now=now
+        )
+        query, params = self.db.execute.await_args.args[:2]
+        self.assertIn('r.drift_checked_at IS NULL', query)
+        self.assertIn('r.drift_checked_at < {cutoff}', query)
+        self.assertIn("COALESCE(r.drift_checked_at, '') ASC", query)
+        self.assertEqual(
+            (now - drift.RECHECK_AFTER).isoformat(), params['cutoff']
+        )
+
+    async def test_rate_limit_propagates_and_stops_the_sweep(self) -> None:
+        # PluginRateLimited must reach the maintenance worker so the
+        # project is requeued -- swallowing it would hammer the
+        # remaining releases against a throttled remote.
+        self.db.execute.return_value = self._rows()
+        self.handler.get_commit_note.side_effect = (
+            plugin_errors.PluginRateLimited(retry_at=1234.0)
+        )
+        with self.assertRaises(plugin_errors.PluginRateLimited):
+            await drift.sweep_project(self.db, org_slug='org', project_id='p1')
+        # Only the release lookup ran; nothing was stamped.
+        self.assertEqual(1, self.db.execute.await_count)
 
     async def test_remote_error_skips_the_release(self) -> None:
         self.db.execute.side_effect = [
