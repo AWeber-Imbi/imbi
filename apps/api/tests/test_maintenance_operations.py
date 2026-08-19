@@ -72,7 +72,12 @@ class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
 def _remediate_response(*statuses: str) -> mock.Mock:
     """A fake RemediateAllResponse carrying outcomes of the given statuses."""
     outcomes = [
-        mock.Mock(result=mock.Mock(status=status)) for status in statuses
+        mock.Mock(
+            plugin_id='plugin',
+            result=mock.Mock(message=f'{status} message', status=status),
+            slug=f'finding-{index}',
+        )
+        for index, status in enumerate(statuses)
     ]
     return mock.Mock(outcomes=outcomes)
 
@@ -1189,3 +1194,209 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
                 mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
+
+
+def _rows(ctx: log.MaintenanceContext) -> list[typing.Any]:
+    """The activity rows an operation buffered on its context."""
+    return ctx.log._rows
+
+
+def _actions(ctx: log.MaintenanceContext) -> list[tuple[str, str]]:
+    return [(row.action, row.disposition) for row in _rows(ctx)]
+
+
+class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
+    """What operations record beyond their attempt row.
+
+    The attempt row already says succeeded / skipped / failed. These
+    assert the *why*, which before this only reached the server log.
+    """
+
+    async def test_a_missing_organization_says_so(self) -> None:
+        ctx = _ctx()
+        with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
+            outcome = await operations.execute_analysis(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual([('no-organization', 'skipped')], _actions(ctx))
+
+    @staticmethod
+    def _commit_sync_patches(
+        run_sync: mock.AsyncMock,
+    ) -> list[contextlib.AbstractContextManager[object]]:
+        return [
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
+            mock.patch('imbi.api.commit_sync.service.run_sync', run_sync),
+            mock.patch(
+                'imbi.api.commit_sync.service.set_status', mock.AsyncMock()
+            ),
+        ]
+
+    async def test_commit_sync_records_the_unavailable_reason(self) -> None:
+        ctx = _ctx()
+        org, run_sync, set_status = self._commit_sync_patches(
+            mock.AsyncMock(
+                side_effect=CommitSyncUnavailable('No commit-sync integration')
+            )
+        )
+        with org, run_sync, set_status:
+            outcome = await operations.execute_commit_sync(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('skipped', outcome)
+        row = _rows(ctx)[0]
+        self.assertEqual('commit-sync', row.action)
+        self.assertIn('No commit-sync integration', row.message)
+
+    async def test_commit_sync_records_what_it_synced(self) -> None:
+        ctx = _ctx()
+        org, run_sync, set_status = self._commit_sync_patches(
+            mock.AsyncMock(return_value=(12, 3))
+        )
+        with org, run_sync, set_status:
+            await operations.execute_commit_sync(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        row = _rows(ctx)[0]
+        self.assertEqual({'commits': 12, 'tags': 3}, row.detail)
+
+    async def test_each_failed_remediation_gets_a_row(self) -> None:
+        ctx = _ctx()
+        remediate = mock.AsyncMock(
+            return_value=_remediate_response('failed', 'fixed', 'failed')
+        )
+        with (
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
+            mock.patch(
+                'imbi.api.endpoints.project_analysis.'
+                'remediate_all_for_project',
+                remediate,
+            ),
+            self.assertRaises(operations.MaintenanceItemFailed),
+        ):
+            await operations.execute_remediate(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        failures = [r for r in _rows(ctx) if r.disposition == 'failed']
+        # Two per-finding rows plus the summary, which is also a failure.
+        self.assertEqual(3, len(failures))
+        self.assertEqual(
+            ['finding-0', 'finding-2'],
+            [r.detail['finding'] for r in failures if 'finding' in r.detail],
+        )
+        self.assertEqual(1, failures[-1].detail['fixed'])
+
+    async def test_the_sweep_records_its_counts(self) -> None:
+        from imbi.api import deployment_sweeper
+
+        ctx = _ctx()
+        with (
+            mock.patch(
+                'imbi.api.deployment_sweeper.sweep_project',
+                mock.AsyncMock(
+                    return_value=deployment_sweeper.SweepSummary(
+                        attached=1, examined=4, expired=1, resolved=2
+                    )
+                ),
+            ),
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
+            mock.patch(
+                'imbi.api.drift.sweep_project', mock.AsyncMock(return_value=3)
+            ),
+        ):
+            await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual(
+            [
+                ('deployment-sweep', 'succeeded'),
+                ('drift-backfill', 'succeeded'),
+            ],
+            _actions(ctx),
+        )
+        self.assertEqual(2, _rows(ctx)[0].detail['resolved'])
+        self.assertEqual(3, _rows(ctx)[1].detail['stamped'])
+
+    async def test_an_unresolvable_orphan_candidate_is_recorded(self) -> None:
+        from imbi.api import deployment_migration
+
+        ctx = _ctx()
+        with (
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
+            mock.patch(
+                'imbi.api.deployment_migration.purge_orphan_releases',
+                mock.AsyncMock(
+                    return_value=deployment_migration.OrphanSummary(
+                        candidates=2, tagged=5, unresolved=2
+                    )
+                ),
+            ),
+        ):
+            outcome = await operations.execute_orphan_release_check(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual(
+            [
+                ('orphan-release-check', 'skipped'),
+                ('orphan-release-check', 'skipped'),
+            ],
+            _actions(ctx),
+        )
+        self.assertEqual(2, _rows(ctx)[0].detail['unresolved'])
+
+    async def test_a_dry_run_says_it_was_one(self) -> None:
+        from imbi.api import deployment_migration
+
+        ctx = _ctx()
+        with (
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
+            mock.patch(
+                'imbi.api.deployment_migration.merge_duplicate_releases',
+                mock.AsyncMock(
+                    return_value=deployment_migration.DupMergeSummary(
+                        groups=2, merged=3
+                    )
+                ),
+            ),
+        ):
+            await operations.execute_release_dup_merge_report(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        row = _rows(ctx)[0]
+        self.assertEqual('release-dup-merge-report', row.action)
+        self.assertTrue(row.detail['dry_run'])
+        self.assertIn('dry run', row.message)
+
+    async def test_malformed_migration_entries_are_recorded(self) -> None:
+        from imbi.api import deployment_migration
+
+        ctx = _ctx()
+        with mock.patch(
+            'imbi.api.deployment_migration.migrate_deployment_arrays',
+            mock.AsyncMock(
+                return_value=deployment_migration.MigrationSummary(
+                    created=1, edges=2, entries=4, malformed=2
+                )
+            ),
+        ):
+            await operations.execute_deployment_migration(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual(
+            [
+                ('deployment-migration', 'failed'),
+                ('deployment-migration', 'succeeded'),
+            ],
+            _actions(ctx),
+        )
+        self.assertEqual(2, _rows(ctx)[0].detail['malformed'])
+
+    async def test_a_reindex_of_a_retired_label_says_why(self) -> None:
+        ctx = _ctx()
+        outcome = await operations.execute_search_reindex(
+            mock.AsyncMock(), mock.AsyncMock(), 'Retired:n1', ctx=ctx
+        )
+        self.assertEqual('skipped', outcome)
+        self.assertEqual('Retired', _rows(ctx)[0].detail['label'])
