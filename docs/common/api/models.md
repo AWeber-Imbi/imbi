@@ -62,6 +62,11 @@ any version-control plugin (GitHub, GitLab, …) can reuse them.
   (`ReplacingMergeTree` keyed by `(project_id, sha)`)
 - **TagRecord**: A VCS tag, written to the `tags` table
   (`ReplacingMergeTree` keyed by `(project_id, name)`)
+- **ReleaseComponentRecord**: One SBoM dependency of a release, written
+  to the `release_components` table
+- **ReleaseComponentBatch**: The record publishing one release's
+  component snapshot, written to `release_component_batches` after every
+  fact row of that batch
 
 ## Basic Usage
 
@@ -166,3 +171,7 @@ versioning.matches_tag_formats("nightly", patterns)  # False
 ::: imbi.common.models.CommitRecord
 
 ::: imbi.common.models.TagRecord
+
+::: imbi.common.models.ReleaseComponentRecord
+
+::: imbi.common.models.ReleaseComponentBatch

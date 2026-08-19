@@ -5,6 +5,7 @@ from unittest import mock
 
 from clickhouse_connect.driver import exceptions
 
+from imbi.common import models
 from imbi.common.clickhouse import client
 
 
@@ -57,11 +58,66 @@ class PackagedSchemataTestCase(unittest.TestCase):
         self.assertIn('CREATE TABLE IF NOT EXISTS imbi.tags', query)
         self.assertIn('ORDER BY (project_id, name)', query)
 
+    def test_release_components_table_defined_and_enabled(self) -> None:
+        schemata = self._schemata()
+        self.assertIn('release_components', schemata)
+        self.assertTrue(schemata['release_components'].get('enabled'))
+        query = str(schemata['release_components']['query'])
+        self.assertIn(
+            'CREATE TABLE IF NOT EXISTS imbi.release_components', query
+        )
+        self.assertIn(
+            'ORDER BY (component_id, release_id, batch_id, '
+            'component_release_id)',
+            query,
+        )
+
+    def test_release_component_batches_defined_and_enabled(self) -> None:
+        schemata = self._schemata()
+        self.assertIn('release_component_batches', schemata)
+        self.assertTrue(schemata['release_component_batches'].get('enabled'))
+        query = str(schemata['release_component_batches']['query'])
+        self.assertIn(
+            'CREATE TABLE IF NOT EXISTS imbi.release_component_batches', query
+        )
+        self.assertIn('ORDER BY (release_id, recorded_at, batch_id)', query)
+
+    def test_component_tables_are_not_replacing(self) -> None:
+        """Batches are immutable, so there is nothing to collapse."""
+        schemata = self._schemata()
+        for table in ('release_components', 'release_component_batches'):
+            with self.subTest(table=table):
+                query = str(schemata[table]['query'])
+                self.assertIn('MergeTree()', query)
+                self.assertNotIn('ReplacingMergeTree', query)
+
+    def _columns(self, table: str) -> list[str]:
+        query = str(self._schemata()[table]['query'])
+        body = query[query.index('(') + 1 : query.index(') ENGINE')]
+        return [
+            line.split()[0]
+            for line in body.splitlines()
+            if line.strip() and not line.lstrip().startswith('--')
+        ]
+
+    def test_component_columns_match_the_record_models(self) -> None:
+        """A column the model cannot supply is a silently empty column."""
+        for table, model in (
+            ('release_components', models.ReleaseComponentRecord),
+            ('release_component_batches', models.ReleaseComponentBatch),
+        ):
+            with self.subTest(table=table):
+                self.assertEqual(
+                    self._columns(table), list(model.model_fields)
+                )
+
     def test_every_entry_loads_as_schemata_query(self) -> None:
         loaded = client.Clickhouse.get_instance()._load_schemata_queries()
         names = {q.name for q in loaded}
         self.assertIn('commits', names)
         self.assertIn('tags', names)
+        self.assertIn('release_components', names)
+        self.assertIn('release_component_batches', names)
 
 
 class RenderClusterPlaceholdersTestCase(unittest.TestCase):

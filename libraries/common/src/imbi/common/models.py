@@ -52,7 +52,9 @@ __all__ = [
     'RelationshipEdge',
     'RelationshipLink',
     'Release',
+    'ReleaseComponentBatch',
     'ReleaseComponentEdge',
+    'ReleaseComponentRecord',
     'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
@@ -1327,6 +1329,93 @@ class TagRecord(pydantic.BaseModel):
     recorded_at: datetime.datetime = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
     )
+
+
+class ReleaseComponentBatch(pydantic.BaseModel):
+    """The record that publishes one release's component snapshot.
+
+    Rows land in the ClickHouse ``release_component_batches`` table and
+    are written **after** every :class:`ReleaseComponentRecord` of the
+    same ``batch_id``. A batch is what readers resolve a release to:
+
+    .. code-block:: sql
+
+        SELECT release_id,
+               argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id
+          FROM imbi.release_component_batches
+         WHERE release_id IN {release_ids}
+         GROUP BY release_id
+
+    Fact rows are then matched on ``(release_id, batch_id)``. Rows whose
+    batch was never published are inert, so an interrupted write leaves
+    readers on the previous complete snapshot.
+
+    An ingest that found no components still publishes a batch, with
+    ``component_count`` 0. Without one the previous batch would stay
+    current and the release would keep reporting components it dropped.
+
+    ``component_count`` is the rows actually written and ``parsed_count``
+    the components the SBoM held. They differ when the graph upsert
+    dropped some component, which is deliberately non-fatal -- recording
+    both is what makes an incomplete snapshot detectable rather than
+    silently authoritative.
+
+    ``source`` leads the resolver key. A backfill row can never outrank
+    an ingest for the same release, whatever order they land in, so
+    backfilling alongside live writes needs no check-then-publish race.
+    """
+
+    release_id: str
+    batch_id: str
+    project_id: str
+    source: typing.Literal['ingest', 'backfill'] = 'ingest'
+    component_count: int = pydantic.Field(ge=0, lt=2**32)
+    parsed_count: int = pydantic.Field(ge=0, lt=2**32)
+    recorded_at: datetime.datetime
+
+    @pydantic.model_validator(mode='after')
+    def _check_counts(self) -> ReleaseComponentBatch:
+        """Rows written cannot exceed the components the SBoM held."""
+        if self.component_count > self.parsed_count:
+            raise ValueError(
+                'component_count cannot exceed parsed_count '
+                f'({self.component_count} > {self.parsed_count})'
+            )
+        return self
+
+
+class ReleaseComponentRecord(pydantic.BaseModel):
+    """One component a release depends on, per its SBoM.
+
+    Rows land in the ClickHouse ``release_components`` table. Component
+    and release identity live in the graph; this table holds only the
+    usage fact joining them, which is what the component reports
+    aggregate over.
+
+    Only fields immutable for the life of the release are carried here.
+    Team, project type, and environment are deliberately absent: they are
+    mutable, and an append-only table would serve stale values for them.
+    ``project_id`` is the exception -- it does not change for a release,
+    and it is what lets the authorization checks scope to an
+    organization without enumerating its releases.
+
+    A row is invisible until :class:`ReleaseComponentBatch` publishes its
+    ``batch_id``. Neither ``recorded_at`` nor ``batch_id`` has a default:
+    both belong to the batch, not the row, and a per-row default would
+    split one snapshot across several.
+    """
+
+    batch_id: str
+    release_id: str
+    project_id: str
+    component_id: str
+    component_release_id: str
+    purl_name: str
+    ecosystem: str
+    version: str
+    scope: str = ''
+    groups: list[str] = pydantic.Field(default_factory=list)
+    recorded_at: datetime.datetime
 
 
 class PullRequestRecord(pydantic.BaseModel):

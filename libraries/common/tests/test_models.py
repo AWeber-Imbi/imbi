@@ -2054,6 +2054,145 @@ class TagRecordTestCase(unittest.TestCase):
         self.assertIn('TagRecord', models.__all__)
 
 
+class ReleaseComponentRecordTestCase(unittest.TestCase):
+    """Test cases for the ReleaseComponentRecord ClickHouse insert model."""
+
+    _COLUMNS: typing.ClassVar[list[str]] = [
+        'batch_id',
+        'release_id',
+        'project_id',
+        'component_id',
+        'component_release_id',
+        'purl_name',
+        'ecosystem',
+        'version',
+        'scope',
+        'groups',
+        'recorded_at',
+    ]
+
+    @staticmethod
+    def _record(**overrides: typing.Any) -> models.ReleaseComponentRecord:
+        fields: dict[str, typing.Any] = {
+            'batch_id': 'b-1',
+            'release_id': 'r-1',
+            'project_id': 'p-1',
+            'component_id': 'c-1',
+            'component_release_id': 'cr-1',
+            'purl_name': 'pkg:pypi/requests',
+            'ecosystem': 'pypi',
+            'version': '2.32.0',
+            'recorded_at': datetime.datetime(2026, 8, 19, tzinfo=datetime.UTC),
+        }
+        fields.update(overrides)
+        return models.ReleaseComponentRecord(**fields)
+
+    def test_minimal_fields_and_defaults(self) -> None:
+        record = self._record()
+        self.assertEqual(record.scope, '')
+        self.assertEqual(record.groups, [])
+
+    def test_batch_fields_are_required(self) -> None:
+        """Both belong to the batch, so neither may default per row."""
+        for omitted in ('batch_id', 'recorded_at'):
+            with self.subTest(field=omitted):
+                fields = {
+                    'batch_id': 'b-1',
+                    'release_id': 'r-1',
+                    'project_id': 'p-1',
+                    'component_id': 'c-1',
+                    'component_release_id': 'cr-1',
+                    'purl_name': 'pkg:pypi/requests',
+                    'ecosystem': 'pypi',
+                    'version': '2.32.0',
+                    'recorded_at': datetime.datetime(
+                        2026, 8, 19, tzinfo=datetime.UTC
+                    ),
+                }
+                del fields[omitted]
+                with self.assertRaises(pydantic.ValidationError):
+                    models.ReleaseComponentRecord(**fields)
+
+    def test_field_names_match_release_components_columns(self) -> None:
+        self.assertEqual(
+            list(models.ReleaseComponentRecord.model_fields), self._COLUMNS
+        )
+
+    def test_exported(self) -> None:
+        self.assertIn('ReleaseComponentRecord', models.__all__)
+
+
+class ReleaseComponentBatchTestCase(unittest.TestCase):
+    """Test cases for the ReleaseComponentBatch publication model."""
+
+    _COLUMNS: typing.ClassVar[list[str]] = [
+        'release_id',
+        'batch_id',
+        'project_id',
+        'source',
+        'component_count',
+        'parsed_count',
+        'recorded_at',
+    ]
+
+    @staticmethod
+    def _batch(**overrides: typing.Any) -> models.ReleaseComponentBatch:
+        fields: dict[str, typing.Any] = {
+            'release_id': 'r-1',
+            'batch_id': 'b-1',
+            'project_id': 'p-1',
+            'component_count': 3,
+            'parsed_count': 3,
+            'recorded_at': datetime.datetime(2026, 8, 19, tzinfo=datetime.UTC),
+        }
+        fields.update(overrides)
+        return models.ReleaseComponentBatch(**fields)
+
+    def test_source_defaults_to_ingest(self) -> None:
+        """The tiebreak reads this, so live writes must win by default."""
+        self.assertEqual(self._batch().source, 'ingest')
+
+    def test_source_rejects_unknown_values(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._batch(source='migration')
+
+    def test_empty_batch_is_representable(self) -> None:
+        """An ingest finding nothing still has to publish."""
+        batch = self._batch(component_count=0, parsed_count=0)
+        self.assertEqual(batch.component_count, 0)
+
+    def test_partial_ingest_is_detectable(self) -> None:
+        batch = self._batch(component_count=2, parsed_count=3)
+        self.assertNotEqual(batch.component_count, batch.parsed_count)
+
+    def test_counts_accept_the_uint32_bounds(self) -> None:
+        batch = self._batch(component_count=0, parsed_count=2**32 - 1)
+        self.assertEqual(batch.parsed_count, 2**32 - 1)
+        batch = self._batch(component_count=2**32 - 1, parsed_count=2**32 - 1)
+        self.assertEqual(batch.component_count, 2**32 - 1)
+
+    def test_component_count_cannot_exceed_parsed_count(self) -> None:
+        """More rows written than components parsed is not a state."""
+        with self.assertRaises(pydantic.ValidationError):
+            self._batch(component_count=1, parsed_count=0)
+
+    def test_counts_reject_values_the_column_cannot_hold(self) -> None:
+        """UInt32 wraps silently, so reject out of range before insert."""
+        for field in ('component_count', 'parsed_count'):
+            for value in (-1, 2**32):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises(pydantic.ValidationError):
+                        self._batch(**{field: value})
+
+    def test_field_names_match_batches_columns(self) -> None:
+        self.assertEqual(
+            list(models.ReleaseComponentBatch.model_fields), self._COLUMNS
+        )
+
+    def test_exported(self) -> None:
+        self.assertIn('ReleaseComponentBatch', models.__all__)
+
+
 class EffectiveComponentStatusTestCase(unittest.TestCase):
     """Test cases for strictest-wins component status resolution."""
 

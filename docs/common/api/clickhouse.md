@@ -46,6 +46,8 @@ applied by `setup_schema()`. Notable tables:
 | `operations_log` | `ReplacingMergeTree` | `(project_id, id)`          | ops-log writers                              |
 | `commits`        | `ReplacingMergeTree` | `(project_id, sha)`         | a VCS plugin via [`CommitRecord`](models.md) |
 | `tags`           | `ReplacingMergeTree` | `(project_id, name)`        | a VCS plugin via [`TagRecord`](models.md)    |
+| `release_components` | `MergeTree` | `(component_id, release_id, batch_id, component_release_id)` | SBoM ingest via [`ReleaseComponentRecord`](models.md) |
+| `release_component_batches` | `MergeTree` | `(release_id, recorded_at, batch_id)` | SBoM ingest via [`ReleaseComponentBatch`](models.md) |
 
 The `events` row carries a `version UInt8 DEFAULT 0` column and a
 sibling `events_latest` view. Writers that update an event after
@@ -91,6 +93,53 @@ await clickhouse.insert(
     ],
 )
 ```
+
+`release_components` holds one row per component a release depends on,
+written from the SBoM it was ingested with, and `release_component_batches`
+holds the record that publishes each snapshot. Component and release
+identity stay in the graph; only the usage fact joining them lives here,
+because that fact is what the component reports aggregate over.
+
+Batch rows are written **after** every fact row of the same `batch_id`.
+Readers resolve a release to one batch, then match fact rows on
+`(release_id, batch_id)`:
+
+```sql
+SELECT release_id,
+       argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id
+  FROM imbi.release_component_batches
+ WHERE release_id IN {release_ids}
+ GROUP BY release_id
+```
+
+Publishing separately is what makes three things work:
+
+- **An ingest that found no components is representable**, as a batch with
+  `component_count` 0. Keyed on the fact rows alone it would write nothing,
+  the previous batch would stay current, and the release would keep
+  reporting components it dropped.
+- **Two ingests in the same millisecond resolve to one snapshot** rather
+  than the union of both, because `argMax` returns a single `batch_id`.
+  Which one wins is undefined, as concurrent PUTs for one release already
+  are; that they do not merge is the point.
+- **A backfill can never outrank an ingest**, because `source = 'ingest'`
+  leads the resolver key. Once a release has an ingest batch no backfill can
+  displace it, whatever order the two land in, so backfilling alongside live
+  writes needs no check-then-publish race.
+
+Fact rows whose batch was never published are inert, so a failed or
+interrupted write leaves readers on the previous complete snapshot. This is
+not a distributed transaction — the graph write it accompanies has already
+happened — but ClickHouse readers never observe a half-written set.
+
+`component_count` is the rows actually written and `parsed_count` the
+components the SBoM held. A graph upsert that drops a component stays
+non-fatal, so the two differ exactly when a snapshot claims to be complete
+without being complete.
+
+Because a batch is immutable once published, both tables are plain
+`MergeTree` — there is nothing for a `ReplacingMergeTree` to collapse.
+Superseded batches stay readable for debugging.
 
 ## Clustered Deployments
 
