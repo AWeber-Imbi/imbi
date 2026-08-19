@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 from unittest import mock
 
@@ -158,6 +159,19 @@ class WriteTests(unittest.IsolatedAsyncioTestCase):
             mock.AsyncMock(side_effect=RuntimeError('clickhouse down')),
         ):
             await item.flush()
+
+    async def test_a_stalled_insert_times_out(self) -> None:
+        async def _stall(*_args: object, **_kwargs: object) -> None:
+            await asyncio.sleep(60)
+
+        item = _item_log()
+        item.attempt('succeeded')
+        with (
+            mock.patch.object(log, 'WRITE_TIMEOUT_SECONDS', 0.01),
+            mock.patch.object(log.clickhouse, 'insert', _stall),
+        ):
+            await item.flush()
+        self.assertEqual(0, item.buffered)
 
     async def test_the_insert_asks_the_server_to_batch(self) -> None:
         item = _item_log()

@@ -255,6 +255,24 @@ class FinishTests(unittest.IsolatedAsyncioTestCase):
             await state._finish(client, 'op', 'completed')
         record.assert_not_awaited()
 
+    async def test_a_status_read_failure_does_not_reach_the_caller(
+        self,
+    ) -> None:
+        # The terminal state is already written and the lock is gone by
+        # here; cancel_run must not report a failure for a cancellation
+        # that applied.
+        client, _ = _client_with_pipeline(self.WON)
+        with (
+            mock.patch.object(
+                state,
+                'read_status',
+                mock.AsyncMock(side_effect=RuntimeError('valkey down')),
+            ),
+            mock.patch.object(log, 'record_run', mock.AsyncMock()) as record,
+        ):
+            await state._finish(client, 'op', 'cancelled')
+        record.assert_not_awaited()
+
 
 class ReadRunMetaTests(unittest.IsolatedAsyncioTestCase):
     async def test_reads_run_id_and_started_by(self) -> None:

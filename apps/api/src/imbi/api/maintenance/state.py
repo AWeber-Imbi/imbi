@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime
 import inspect
+import logging
 import typing
 import uuid
 from collections import abc
@@ -29,6 +30,8 @@ import pydantic
 from valkey import asyncio as valkey
 
 from imbi.api.maintenance import log
+
+LOGGER = logging.getLogger(__name__)
 
 KEY_PREFIX = 'imbi:maintenance'
 #: Backstop for a run whose instances all died mid-flight; a healthy run
@@ -326,7 +329,20 @@ async def _finish(
     # fall short of the attempt rows: ``cancel_run`` finishes while
     # items are still in flight, and those record their outcomes after
     # this row is written.
-    status = await read_status(client, slug)
+    #
+    # ``record_run`` never raises, but this read does, and by here the
+    # terminal state is written and the lock is gone. Letting a Valkey
+    # blip out would report a failure for a cancellation that already
+    # applied.
+    try:
+        status = await read_status(client, slug)
+    except Exception:
+        LOGGER.exception(
+            'maintenance log dropped the run row for %s: '
+            'could not read the final counters',
+            slug,
+        )
+        return
     await log.record_run(
         slug,
         status.run_id or '',

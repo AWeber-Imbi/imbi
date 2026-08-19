@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { getMaintenanceOperations } from '@/api/endpoints'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { MaintenanceActivityLog } from './MaintenanceActivityLog'
 import { MaintenanceOperations } from './MaintenanceOperations'
@@ -33,17 +33,17 @@ export function MaintenanceManagement() {
       </div>
 
       <Tabs onValueChange={setTab} value={tab}>
-        <TabsList>
+        <TabsList className="mb-6">
           <TabsTrigger value="operations">Operations</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
+        <TabsContent value="operations">
+          <MaintenanceOperations />
+        </TabsContent>
+        <TabsContent value="activity">
+          <MaintenanceActivityLog operations={operations ?? []} />
+        </TabsContent>
       </Tabs>
-
-      {tab === 'operations' ? (
-        <MaintenanceOperations />
-      ) : (
-        <MaintenanceActivityLog operations={operations ?? []} />
-      )}
     </div>
   )
 }

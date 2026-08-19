@@ -28,6 +28,7 @@ flush is how a table earns a "too many parts" complaint.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import typing
@@ -51,6 +52,13 @@ INSERT_SETTINGS: dict[str, typing.Any] = {
 
 MAX_MESSAGE_LEN = 2_000
 MAX_DETAIL_BYTES = 8_192
+
+#: Cap on one insert. clickhouse-connect's own socket timeout defaults
+#: to 300s, and a worker flushes once per work item -- a stalled server
+#: would otherwise cost a sweep five minutes per project. Timing out
+#: costs the run its log rows, which is the trade this module always
+#: makes.
+WRITE_TIMEOUT_SECONDS = 10.0
 
 #: Outcome of one attempt or activity. ``deferred`` is a rate-limit
 #: requeue -- claimed, paused, handed back -- which is neither a failure
@@ -91,13 +99,15 @@ async def _write(rows: list[models.MaintenanceLogRecord]) -> None:
     if not rows:
         return
     try:
-        # ``insert`` takes ``list[BaseModel]``, which is invariant, so a
-        # list of one concrete model type does not satisfy it directly.
-        await clickhouse.insert(
-            TABLE,
-            typing.cast('list[pydantic.BaseModel]', rows),
-            settings=INSERT_SETTINGS,
-        )
+        async with asyncio.timeout(WRITE_TIMEOUT_SECONDS):
+            # ``insert`` takes ``list[BaseModel]``, which is invariant,
+            # so a list of one concrete model type does not satisfy it
+            # directly.
+            await clickhouse.insert(
+                TABLE,
+                typing.cast('list[pydantic.BaseModel]', rows),
+                settings=INSERT_SETTINGS,
+            )
     except Exception:
         LOGGER.exception(
             'maintenance log write dropped %d row(s) for run %s',

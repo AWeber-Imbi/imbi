@@ -59,6 +59,10 @@ const renderLog = async () => {
 describe('MaintenanceActivityLog', () => {
   beforeEach(async () => {
     const endpoints = await import('@/api/endpoints')
+    // Vitest does not clear mocks between tests here, and several of
+    // these assert on `mock.calls[0]` -- a call left over from the
+    // previous test would be the one they read.
+    vi.clearAllMocks()
     vi.mocked(endpoints.getMaintenanceLog).mockResolvedValue(page([entry()]))
   })
 
@@ -133,9 +137,12 @@ describe('MaintenanceActivityLog', () => {
 
   it('offers more only when the server says there is more', async () => {
     const endpoints = await import('@/api/endpoints')
-    vi.mocked(endpoints.getMaintenanceLog).mockResolvedValue(
-      page([entry()], { nextCursor: 'cursor2' }),
-    )
+    // Distinct ids per page: React keys rows by id, and reusing one
+    // across both pages logs a duplicate-key warning that has nothing
+    // to do with what this test asserts.
+    vi.mocked(endpoints.getMaintenanceLog)
+      .mockResolvedValueOnce(page([entry()], { nextCursor: 'cursor2' }))
+      .mockResolvedValueOnce(page([entry({ id: 'row2' })]))
     await renderLog()
     await waitFor(() =>
       expect(
