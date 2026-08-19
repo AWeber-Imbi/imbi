@@ -2,7 +2,7 @@
 
 Wraps the bundled actions (``update_project``, ``create_release``,
 ``add_deployment_event``, ``publish_release``, ``block_release``,
-``ingest_sbom``) as a
+``update_release_drift``, ``ingest_sbom``) as a
 :class:`~imbi.common.plugins.base.WebhookActionsCapability` on a single
 :class:`~imbi.common.plugins.base.Plugin` (slug ``gateway-actions``) so
 they participate in the same discovery, validation, and dispatch flow as
@@ -101,6 +101,18 @@ class GatewayWebhookActions(plugin_base.WebhookActionsCapability):
                 model_path='imbi.gateway.actions:BlockReleaseConfig',
             ),
             _descriptor(
+                name='update_release_drift',
+                label='Update Release Drift from Notes Push',
+                description=(
+                    'Forwards a push to the drift-notes ref '
+                    '(refs/notes/imbi-drift) to the Imbi API, which '
+                    'diffs the notes tree and stamps drift_detected on '
+                    'the affected Releases.'
+                ),
+                callable_path='imbi.gateway.actions:update_release_drift',
+                model_path='imbi.gateway.actions:UpdateReleaseDriftConfig',
+            ),
+            _descriptor(
                 name='ingest_sbom',
                 label='Ingest CycloneDX SBoM for Release',
                 description=(
@@ -122,8 +134,8 @@ class GatewayActionsPlugin(plugin_base.Plugin):
         description=(
             'Webhook actions shipped with imbi-gateway: update project '
             'facts, create a release, append a deployment event, publish '
-            'or block a release on the deployment outcome, and ingest '
-            'CycloneDX SBoMs.'
+            'or block a release on the deployment outcome, ingest drift '
+            'verdicts from git-notes pushes, and ingest CycloneDX SBoMs.'
         ),
         auth_type='none',
         credentials=[],

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  GitCompareArrows,
   ShieldAlert,
 } from 'lucide-react'
 import Markdown from 'react-markdown'
@@ -271,6 +272,16 @@ function ReleaseRow({
               <Ban className="size-3" />
               Blocked
               {blockers.length > 1 ? ` (${blockers.length})` : null}
+            </Badge>
+          ) : null}
+          {rel.drift_detected === true ? (
+            <Badge
+              className="inline-flex items-center gap-1"
+              title="CI reported configuration drift on this release's commit"
+              variant="warning"
+            >
+              <GitCompareArrows className="size-3" />
+              Drift
             </Badge>
           ) : null}
           {rel.ci_override_by ? (

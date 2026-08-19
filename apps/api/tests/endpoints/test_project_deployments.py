@@ -5789,3 +5789,61 @@ class ResolveRemoteTagsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(plugin_errors.PluginRateLimited):
             await self._resolve(['1.0.0'])
+
+
+class IngestDriftNotesTests(ProjectDeploymentsTestCase):
+    URL = '/organizations/myorg/projects/proj1/deployments/drift-notes'
+    BODY: typing.ClassVar[dict[str, str]] = {
+        'before': 'a' * 40,
+        'after': 'b' * 40,
+    }
+
+    def test_forwards_the_push_to_the_drift_ingester(self) -> None:
+        apply_diff = mock.AsyncMock(return_value=3)
+        with (
+            mock.patch(
+                f'{_MODULE}._project_in_org',
+                mock.AsyncMock(return_value=True),
+            ),
+            mock.patch('imbi.api.drift.apply_notes_diff', apply_diff),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(self.URL, json=self.BODY)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual({'updated': 3}, response.json())
+        kwargs = apply_diff.await_args.kwargs
+        self.assertEqual('a' * 40, kwargs['before'])
+        self.assertEqual('b' * 40, kwargs['after'])
+
+    def test_unknown_project_is_404(self) -> None:
+        with (
+            mock.patch(
+                f'{_MODULE}._project_in_org',
+                mock.AsyncMock(return_value=False),
+            ),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(self.URL, json=self.BODY)
+        self.assertEqual(404, response.status_code)
+
+    def test_plugin_without_notes_support_is_400(self) -> None:
+        with (
+            mock.patch(
+                f'{_MODULE}._project_in_org',
+                mock.AsyncMock(return_value=True),
+            ),
+            mock.patch(
+                'imbi.api.drift.apply_notes_diff',
+                mock.AsyncMock(side_effect=NotImplementedError),
+            ),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(self.URL, json=self.BODY)
+        self.assertEqual(400, response.status_code)
+
+    def test_malformed_shas_are_422(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                self.URL, json={'before': 'nope', 'after': 'b' * 40}
+            )
+        self.assertEqual(422, response.status_code)

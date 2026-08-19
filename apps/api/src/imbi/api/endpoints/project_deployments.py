@@ -408,6 +408,11 @@ class ReleaseHistoryEntry(pydantic.BaseModel):
     #: re-run turns the commit green after the fact.
     ci_override_by: str | None = None
     ci_override_at: datetime.datetime | None = None
+    #: CI's drift verdict for the release's own commit, ingested from
+    #: git notes on ``refs/notes/imbi-drift``.  ``None`` means no note
+    #: has been seen yet -- a real state, because CI pushes notes
+    #: asynchronously to a separate ref.
+    drift_detected: bool | None = None
 
 
 class ReleaseBlockRequest(pydantic.BaseModel):
@@ -2051,6 +2056,77 @@ class UnattachedDeploymentResponse(pydantic.BaseModel):
     deployment_id: str
     #: Set when the release turned out to be resolvable after all.
     release_id: str | None = None
+
+
+class DriftNotesPushBody(pydantic.BaseModel):
+    """A push to the drift-notes ref: two commits *of the notes ref*.
+
+    The annotated commits whose notes changed are not in the push
+    payload -- the notes tree has to be diffed between these to find
+    them, which the deployment plugin does.
+    """
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    before: typing.Annotated[str, pydantic.Field(pattern=r'^[0-9a-f]{40}$')]
+    after: typing.Annotated[str, pydantic.Field(pattern=r'^[0-9a-f]{40}$')]
+
+
+class DriftNotesResponse(pydantic.BaseModel):
+    """How many Releases the push's notes stamped."""
+
+    updated: int
+
+
+@project_deployments_router.post(
+    '/drift-notes',
+    response_model=DriftNotesResponse,
+)
+async def ingest_drift_notes(
+    org_slug: str,
+    project_id: str,
+    body: DriftNotesPushBody,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:write'),
+        ),
+    ],
+) -> DriftNotesResponse:
+    """Ingest one push to ``refs/notes/imbi-drift``.
+
+    The gateway's ``update_release_drift`` action forwards the push's
+    ``before``/``after`` here; the plugin diffs the notes tree between
+    them and each changed note lands on the Releases whose committish
+    it annotates (see :mod:`imbi.api.drift`).  ``updated`` counts the
+    Releases stamped -- zero is normal for notes on commits no Release
+    points at.
+    """
+    from imbi.api import drift
+
+    if not await _project_in_org(db, org_slug, project_id):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Project {project_id!r} not found in organization '
+                f'{org_slug!r}'
+            ),
+        )
+    try:
+        updated = await drift.apply_notes_diff(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            before=body.before,
+            after=body.after,
+        )
+    except NotImplementedError as exc:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=('The bound deployment plugin does not support git notes'),
+        ) from exc
+    return DriftNotesResponse(updated=updated)
 
 
 @project_deployments_router.post(
@@ -3875,6 +3951,93 @@ async def resolve_remote_tags(
     return out
 
 
+async def resolve_deployment_capability(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+) -> tuple[DeploymentCapability, PluginContext, dict[str, str]]:
+    """Resolve the project's deployment plugin for a headless caller.
+
+    The drift ingester's counterpart to what :func:`poll_promote_rollout`
+    does inline: resolve the capability under a synthetic principal with
+    best-effort identity, and hand back the instantiated handler, its
+    context, and the credentials to call it with.  Raises the same
+    ``HTTPException`` as capability resolution (404 when nothing provides
+    the capability, 400 when the bound plugin cannot answer).
+    """
+    resolved, ctx, credentials = await _resolve_and_context(
+        db,
+        org_slug,
+        project_id,
+        _watcher_auth(),
+        source=None,
+        best_effort_identity=True,
+    )
+    return _handler(resolved), ctx, _resolve_credentials(ctx, credentials)
+
+
+async def sync_drift_blocker(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    committish: str,
+    drift_detected: bool | None,
+    requested_by: str,
+) -> None:
+    """File or resolve the ``drift`` blocker to match a note's verdict.
+
+    ``True`` files (or refreshes) the blocker under
+    :data:`DRIFT_BLOCKER_REF` -- the ``external_ref`` keeps repeated
+    notes landing on one blocker instead of stacking a new one per push.
+    Any other verdict resolves it: the evidence for the block is gone,
+    whether the note flipped to ``false`` or was removed.  Scoped to the
+    commit (the default), because the note describes the commit itself
+    rather than one version cut from it.
+    """
+    if drift_detected:
+        blocked = await _create_blocker(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            tag=tag,
+            blocker_type='drift',
+            description=(
+                f'CI reported configuration drift on commit {committish}'
+            ),
+            created_by=requested_by,
+            external_ref=DRIFT_BLOCKER_REF,
+        )
+        if blocked is None:
+            LOGGER.warning(
+                'drift ingestion could not block tag %s on project %s: '
+                'no Release node found',
+                tag,
+                project_id,
+            )
+        return
+    open_drift = await _list_blockers(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        tag=tag,
+        status='open',
+        external_ref=DRIFT_BLOCKER_REF,
+    )
+    for blocker in open_drift:
+        await _resolve_open_blockers(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            tag=tag,
+            resolved_by=requested_by,
+            blocker_id=blocker.id,
+            note='drift note cleared',
+        )
+
+
 async def fail_promote_build(
     db: graph.Graph,
     *,
@@ -5390,6 +5553,7 @@ async def get_release_history(
                 blockers=open_blockers,
                 ci_override_by=node.get('ci_override_by') or None,
                 ci_override_at=node.get('ci_override_at') or None,
+                drift_detected=node.get('drift_detected'),
             )
         )
     # Order by released version (highest semver first) so the head of the
@@ -5794,6 +5958,12 @@ MANUAL_BLOCK_REF = 'imbi:block-release'
 #: ``external_ref`` for the blocker a failed release build files. Same
 #: reason: a retried build must update its blocker, not add another.
 BUILD_FAILURE_REF = 'imbi:release-build'
+
+#: ``external_ref`` for the blocker drift ingestion files when a git
+#: note reports ``drift_detected: true``. Same reason again: every later
+#: note for the commit must land on the one blocker, and a note flipping
+#: to ``false`` must be able to find it to resolve it.
+DRIFT_BLOCKER_REF = 'imbi:drift'
 
 
 #: Matches the tagged ``Release`` a blocker hangs off, org-scoped the same

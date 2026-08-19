@@ -265,6 +265,34 @@ class ImbiClient(httpx.AsyncClient):
             )
         return response
 
+    async def update_drift_notes(
+        self, org_slug: str, project_id: str, before: str, after: str
+    ) -> httpx.Response:
+        """Forward a drift-notes push for the API to diff and ingest.
+
+        ``before``/``after`` are commits of the notes ref itself; the
+        API resolves which annotated commits' notes changed through the
+        project's deployment plugin (the push payload cannot say). A
+        400 means the bound plugin has no git-notes support, which is a
+        configuration fact rather than a delivery failure; the caller
+        logs it and moves on.
+        """
+        url = (
+            f'/organizations/{org_slug}/projects/{project_id}'
+            f'/deployments/drift-notes'
+        )
+        LOGGER.debug('Updating drift notes %s', url)
+        response = await self.post(
+            url, json={'before': before, 'after': after}
+        )
+        if response.is_error and (
+            response.status_code != http.HTTPStatus.BAD_REQUEST
+        ):
+            LOGGER.warning(
+                'Failed to update drift notes %r: %s', url, response.text
+            )
+        return response
+
     async def put_sbom(
         self,
         org_slug: str,
@@ -377,6 +405,19 @@ class BlockReleaseConfig(pydantic.BaseModel):
     version_expression: str
     status_selector: json_pointer.JsonPointer
     reason_selector: json_pointer.JsonPointer | None = None
+
+
+class UpdateReleaseDriftConfig(pydantic.BaseModel):
+    """Validates ``handler_config`` for :func:`update_release_drift`.
+
+    ``ref`` is the fully-qualified notes ref whose pushes carry drift
+    verdicts. The action itself re-checks the payload's ``ref`` against
+    it -- a push event looks the same for every ref, so a rule whose
+    ``filter_expression`` forgets to pin the ref must not ingest branch
+    pushes as notes.
+    """
+
+    ref: str = 'refs/notes/imbi-drift'
 
 
 class IngestSbomConfig(pydantic.BaseModel):
@@ -869,6 +910,80 @@ def _resolve_block_reason(
     if not reason:
         reason = f'Deployment reported {raw_state}'
     return reason[:500]
+
+
+_FULL_SHA_PATTERN = re.compile(r'^[0-9a-f]{40}$')
+
+
+async def update_release_drift(
+    *,
+    ctx: plugin_base.PluginContext,
+    credentials: dict[str, str],
+    external_identifier: str,
+    action_config: UpdateReleaseDriftConfig,
+    event: object,
+) -> None:
+    """Processes a push to the drift-notes ref.
+
+    The push's ``commits`` are commits *of the notes ref*, not the
+    annotated commits, so nothing here can say which releases the push
+    touches. The action forwards ``before``/``after`` to the Imbi API,
+    which diffs the notes tree between them through the project's
+    deployment plugin and stamps ``drift_detected`` on the Releases
+    whose commits the changed notes annotate.
+
+    A push whose ``ref`` is not the configured notes ref is skipped:
+    push deliveries all share one event type, and ingesting a branch
+    push as notes would diff the wrong tree. ``after`` must be a real
+    commit (a ref deletion pushes all zeros, and there is no tree to
+    read there); an all-zero ``before`` is fine -- it means the ref was
+    just created and the API ingests every note it carries.
+    """
+    del credentials, external_identifier
+    payload = (
+        typing.cast('dict[str, typing.Any]', event).get('payload')
+        if isinstance(event, dict)
+        else None
+    )
+    if not isinstance(payload, dict):
+        return
+    body = typing.cast('dict[str, typing.Any]', payload)
+    if str(body.get('ref') or '') != action_config.ref:
+        LOGGER.debug(
+            'Skipping drift update for project %s: push ref %r is not %r',
+            ctx.project_id,
+            body.get('ref'),
+            action_config.ref,
+        )
+        return
+    before = str(body.get('before') or '').lower()
+    after = str(body.get('after') or '').lower()
+    if not _FULL_SHA_PATTERN.match(after) or after == '0' * 40:
+        LOGGER.warning(
+            'Skipping drift update for project %s: push has no usable '
+            'after commit (%r)',
+            ctx.project_id,
+            body.get('after'),
+        )
+        return
+    if not _FULL_SHA_PATTERN.match(before):
+        LOGGER.warning(
+            'Skipping drift update for project %s: push has no usable '
+            'before commit (%r)',
+            ctx.project_id,
+            body.get('before'),
+        )
+        return
+    async with ImbiClient() as client:
+        response = await client.update_drift_notes(
+            ctx.org_slug, ctx.project_id, before, after
+        )
+    if response.status_code == http.HTTPStatus.BAD_REQUEST:
+        LOGGER.info(
+            'Drift notes not ingested for project %s: %s',
+            ctx.project_id,
+            response.text,
+        )
 
 
 async def ingest_sbom(

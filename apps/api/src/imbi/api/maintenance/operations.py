@@ -257,13 +257,23 @@ async def execute_deployment_sweep(
 ) -> ExecuteOutcome:
     """Close out deployments the remote finished but nobody recorded.
 
-    Skipped means the project has no deployment capability bound, or
-    had nothing unfinished old enough to chase.
+    Also backfills ``Release.drift_detected`` from git notes for
+    releases no note has answered yet -- the webhook-loss cover for
+    drift ingestion, the same way the sweep itself covers deployment
+    status.  Skipped means the project has no deployment capability
+    bound, or had nothing unfinished old enough to chase and no
+    unanswered releases.
     """
-    from imbi.api import deployment_sweeper
+    from imbi.api import deployment_sweeper, drift
 
     summary = await deployment_sweeper.sweep_project(db, project_id)
-    if summary is None or not summary.examined:
+    stamped: int | None = None
+    org_slug = await _org_slug_for(db, project_id)
+    if org_slug is not None:
+        stamped = await drift.sweep_project(
+            db, org_slug=org_slug, project_id=project_id
+        )
+    if (summary is None or not summary.examined) and not stamped:
         return 'skipped'
     return 'succeeded'
 

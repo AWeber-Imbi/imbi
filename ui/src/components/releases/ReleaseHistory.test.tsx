@@ -110,6 +110,19 @@ describe('ReleaseHistory', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('marks a release whose commit CI flagged for drift', () => {
+    renderHistory([
+      { ...RELEASES[0], drift_detected: true },
+      { ...RELEASES[1], drift_detected: false },
+    ])
+    expect(screen.getByText('Drift')).toBeInTheDocument()
+  })
+
+  it('shows no drift badge while no note has been seen', () => {
+    renderHistory(RELEASES)
+    expect(screen.queryByText('Drift')).not.toBeInTheDocument()
+  })
+
   it('marks a blocked release and shows why, who, and an unblock action', async () => {
     const user = userEvent.setup()
     renderHistory([{ ...RELEASES[1], blocked: true, blockers: [BLOCKER] }])

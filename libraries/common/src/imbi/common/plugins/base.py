@@ -1437,6 +1437,52 @@ class DeploymentCapability(CapabilityHandler):
         del ctx, credentials, tag
         return None
 
+    async def get_commit_note(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        namespace: str,
+        committish: str,
+    ) -> str | None:
+        """Return the git note on ``committish`` in ``namespace``.
+
+        ``namespace`` names the notes ref without its ``refs/notes/``
+        prefix (e.g. ``imbi-drift`` for ``refs/notes/imbi-drift``).
+        ``committish`` may be short; the notes tree is keyed by the full
+        SHA, so implementations resolve it first.  Returns the note's
+        raw body, or ``None`` when the ref does not exist or carries no
+        note for the commit -- both mean "no note", which is a real
+        answer, not a failure.
+
+        Optional -- capabilities without a git-notes concept raise
+        :class:`NotImplementedError` so hosts can tell "no note" apart
+        from "cannot answer".
+        """
+        del ctx, credentials, namespace, committish
+        raise NotImplementedError
+
+    async def diff_commit_notes(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        namespace: str,
+        before: str,
+        after: str,
+    ) -> dict[str, str | None]:
+        """Diff a notes ref between two of its own commits.
+
+        ``before`` and ``after`` are commits *of the notes ref* (what a
+        push event to ``refs/notes/<namespace>`` reports), not annotated
+        commits.  Returns a map of annotated commit SHA (full, fan-out
+        subtrees flattened) to the note's new body -- ``None`` for a
+        note the push removed.  An all-zero ``before`` means the ref was
+        just created; implementations return every note in ``after``.
+
+        Optional -- same contract as :meth:`get_commit_note`.
+        """
+        del ctx, credentials, namespace, before, after
+        raise NotImplementedError
+
 
 class LifecycleCapability(CapabilityHandler):
     """React to project state changes -- create, update, archive,

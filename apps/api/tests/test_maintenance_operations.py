@@ -232,22 +232,35 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
     def _sweep(result: object) -> mock.AsyncMock:
         return mock.AsyncMock(return_value=result)
 
+    def _run(
+        self, sweep_result: object, drift_result: object = 0
+    ) -> typing.Any:
+        return (
+            mock.patch(
+                'imbi.api.deployment_sweeper.sweep_project',
+                self._sweep(sweep_result),
+            ),
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
+            mock.patch(
+                'imbi.api.drift.sweep_project', self._sweep(drift_result)
+            ),
+        )
+
     async def test_swept_deployments_succeed(self) -> None:
         from imbi.api import deployment_sweeper
 
-        with mock.patch(
-            'imbi.api.deployment_sweeper.sweep_project',
-            self._sweep(deployment_sweeper.SweepSummary(examined=2)),
-        ):
+        sweep, org, drift = self._run(
+            deployment_sweeper.SweepSummary(examined=2)
+        )
+        with sweep, org, drift:
             outcome = await operations.execute_deployment_sweep(
                 mock.AsyncMock(), mock.AsyncMock(), 'p1'
             )
         self.assertEqual('succeeded', outcome)
 
     async def test_no_capability_is_skipped(self) -> None:
-        with mock.patch(
-            'imbi.api.deployment_sweeper.sweep_project', self._sweep(None)
-        ):
+        sweep, org, drift = self._run(None, None)
+        with sweep, org, drift:
             outcome = await operations.execute_deployment_sweep(
                 mock.AsyncMock(), mock.AsyncMock(), 'p1'
             )
@@ -256,14 +269,28 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
     async def test_nothing_stuck_is_skipped(self) -> None:
         from imbi.api import deployment_sweeper
 
-        with mock.patch(
-            'imbi.api.deployment_sweeper.sweep_project',
-            self._sweep(deployment_sweeper.SweepSummary()),
-        ):
+        sweep, org, drift = self._run(deployment_sweeper.SweepSummary(), 0)
+        with sweep, org, drift:
             outcome = await operations.execute_deployment_sweep(
                 mock.AsyncMock(), mock.AsyncMock(), 'p1'
             )
         self.assertEqual('skipped', outcome)
+
+    async def test_drift_backfill_alone_succeeds(self) -> None:
+        sweep, org, drift_patch = self._run(None, 3)
+        with sweep, org, drift_patch as drift_mock:
+            outcome = await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('succeeded', outcome)
+        self.assertEqual(
+            {'org_slug': 'org', 'project_id': 'p1'},
+            {
+                k: v
+                for k, v in drift_mock.await_args.kwargs.items()
+                if k in ('org_slug', 'project_id')
+            },
+        )
 
 
 class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
