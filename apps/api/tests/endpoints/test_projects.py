@@ -725,6 +725,72 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_patch_project_keeps_set_clause_join_free(self) -> None:
+        """No statement mixes a property SET with a join.
+
+        Apache AGE aborts a query whose Cypher SET clause ends up under
+        a nested-loop join ("cypher SET clause cannot be rescanned"),
+        and the planner's choice of join method depends on table
+        statistics -- so a combined statement fails on some databases
+        and not others.  The property SET therefore runs alone, and the
+        relationship changes and the read-back run as their own
+        statements.
+        """
+        existing = self._project_data(
+            environments=[
+                {
+                    'slug': 'staging',
+                    'name': 'Staging',
+                    'id': 'env-1',
+                    'created_at': '2026-01-01T00:00:00Z',
+                    'updated_at': '2026-01-01T00:00:00Z',
+                }
+            ]
+        )
+        updated = self._project_data(name='Renamed API')
+
+        self.mock_db.execute.side_effect = [
+            [{'project': existing, 'outbound_count': 0, 'inbound_count': 0}],
+            [{'slug': 'platform'}],
+            [{'pt_slug': 'api-service', 'found': True}],
+            [{'env_slug': 'testing', 'found': True}],
+            [{'project': updated, 'outbound_count': 0, 'inbound_count': 0}],
+        ]
+
+        with (
+            mock.patch('imbi.common.blueprints.get_model') as mock_get_model,
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+            response = self.client.patch(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json=[
+                    {'op': 'replace', 'path': '/name', 'value': 'Renamed API'},
+                    {
+                        'op': 'add',
+                        'path': '/environments',
+                        'value': {'testing': {'url': 'postgresql://db'}},
+                    },
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        statements = self.mock_db._execute_batch.call_args.args[0]
+        set_statements = [s for s in statements if 'SET p.' in s.cypher]
+        self.assertEqual(len(set_statements), 1)
+        set_cypher = set_statements[0].cypher
+        for join in ('UNWIND', 'OPTIONAL MATCH', 'MERGE', 'DELETE'):
+            self.assertNotIn(join, set_cypher)
+        self.assertTrue(set_cypher.rstrip().endswith('RETURN p'))
+
+        # The read-back is a plain read -- it must not carry the SET.
+        read_query = self.mock_db.execute.call_args.args[0]
+        self.assertIn('OPTIONAL MATCH', read_query)
+        self.assertNotIn('SET p.', read_query)
+
     def test_patch_project_environments_uses_inline_create(self) -> None:
         """Env edges are re-created with inline props (not SET r = {map}).
 
@@ -771,14 +837,19 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
 
+        # The relationship changes run as their own batched statement,
+        # separate from the property SET (AGE cannot rescan a SET that
+        # ends up under a nested-loop join).
+        statements = self.mock_db._execute_batch.call_args.args[0]
         update_query = next(
-            call.args[0]
-            for call in self.mock_db.execute.call_args_list
-            if 'old_env:DEPLOYED_IN' in call.args[0]
+            stmt.cypher
+            for stmt in statements
+            if 'old_env:DEPLOYED_IN' in stmt.cypher
         )
         self.assertIn('CREATE (p)-[:DEPLOYED_IN', update_query)
         self.assertNotIn('MERGE (p)-[r:DEPLOYED_IN]->(e)', update_query)
         self.assertNotIn('SET r =', update_query)
+        self.assertNotIn('SET p.', update_query)
 
     def test_patch_project_team_change(self) -> None:
         """Patch a project to change its team."""
@@ -863,10 +934,11 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
         self.assertEqual(response.status_code, 200)
 
+        statements = self.mock_db._execute_batch.call_args.args[0]
         update_query = next(
-            call.args[0]
-            for call in self.mock_db.execute.call_args_list
-            if 'old_own:OWNED_BY' in call.args[0]
+            stmt.cypher
+            for stmt in statements
+            if 'old_own:OWNED_BY' in stmt.cypher
         )
         self.assertIn('MERGE (p)-[:OWNED_BY]->(new_t)', update_query)
         self.assertNotIn('CREATE (p)-[:OWNED_BY]', update_query)
@@ -1158,6 +1230,18 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
 
     # -- Archive -------------------------------------------------------
 
+    def _archived_write_params(self) -> dict[str, typing.Any]:
+        """Params of the statement that wrote the archived state.
+
+        The write and the read-back are separate statements, so the
+        last ``execute`` call is the read.
+        """
+        return next(
+            call.args[1]
+            for call in self.mock_db.execute.call_args_list
+            if 'SET p.archived' in call.args[0]
+        )
+
     def test_archive_success(self) -> None:
         """Archiving a project marks it archived and returns it."""
         archived = self._project_data(
@@ -1192,9 +1276,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertTrue(data['archived'])
         self.assertEqual(data['archived_at'], '2026-05-11T20:00:00Z')
         self.assertEqual(data['lifecycle_results'], [])
-        call_kwargs = self.mock_db.execute.call_args
-        self.assertIs(call_kwargs.args[1]['archived'], True)
-        self.assertIsNotNone(call_kwargs.args[1]['archived_at'])
+        write_params = self._archived_write_params()
+        self.assertIs(write_params['archived'], True)
+        self.assertIsNotNone(write_params['archived_at'])
 
     def test_archive_not_found(self) -> None:
         """Archiving a missing project returns 404."""
@@ -1273,9 +1357,9 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         self.assertFalse(data['archived'])
         self.assertIsNone(data['archived_at'])
         self.assertEqual(data['lifecycle_results'], [])
-        call_kwargs = self.mock_db.execute.call_args
-        self.assertIs(call_kwargs.args[1]['archived'], False)
-        self.assertIsNone(call_kwargs.args[1]['archived_at'])
+        write_params = self._archived_write_params()
+        self.assertIs(write_params['archived'], False)
+        self.assertIsNone(write_params['archived_at'])
 
     def test_unarchive_not_found(self) -> None:
         """Unarchiving a missing project returns 404."""

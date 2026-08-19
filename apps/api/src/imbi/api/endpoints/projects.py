@@ -44,6 +44,7 @@ from imbi.common import blueprints, clickhouse, graph, models
 from imbi.common import deployments as deployment_nodes
 from imbi.common import patch as json_patch
 from imbi.common.clickhouse import client as ch_client
+from imbi.common.graph import cypher as graph_cypher
 from imbi.common.plugins.base import (
     LifecycleCapability,
     PluginContext,
@@ -1200,6 +1201,16 @@ def _flatten_edge_props(
                 {k: v for k, v in edge.items() if k not in _PROTECTED_ENV_KEYS}
             )
     return project
+
+
+# Project lookup scoped to its organization, shared by the update
+# statements and their read-back.
+_UPDATE_MATCH_FRAGMENT: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    WITH DISTINCT p, o
+    """
 
 
 # -- Return fragment used by all read queries ---------------------------
@@ -2803,22 +2814,17 @@ async def _execute_project_update(
     rel_clauses, new_env_params = _build_update_clauses(data)
     set_stmt = set_clause('p', props)
 
-    update_query: str = (
-        """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    WITH DISTINCT p, o
-    """
-        + set_stmt
-        + rel_clauses
-        + """
-    WITH DISTINCT p, o
-    """
-        + _RETURN_FRAGMENT
-    )
-
-    update_params: dict[str, typing.Any] = {
+    # AGE refuses to run a query whose Cypher SET clause ends up under
+    # a nested-loop join: "cypher SET clause cannot be rescanned".
+    # The relationship clauses (their ``UNWIND``/``MATCH`` pairs) and
+    # the read-back fragment are exactly such joins, and whether the
+    # planner picks a nested loop over a hash join depends on table
+    # statistics -- so a single combined statement fails only on some
+    # databases.  Keep SET alone in its own statement, run the
+    # relationship changes in a second one, and read the project back
+    # separately.  Both writes go through ``_execute_batch`` so they
+    # still commit or roll back together.
+    write_params: dict[str, typing.Any] = {
         'project_id': project_id,
         'org_slug': org_slug,
         **props,
@@ -2826,6 +2832,26 @@ async def _execute_project_update(
         'new_type_slugs': data.project_type_slugs or [],
         **new_env_params,
     }
+    statements: list[graph_cypher.Statement] = []
+    if set_stmt:
+        statements.append(
+            graph_cypher.Statement(
+                cypher=_UPDATE_MATCH_FRAGMENT + set_stmt + ' RETURN p',
+                params=write_params,
+            ),
+        )
+    if rel_clauses:
+        statements.append(
+            graph_cypher.Statement(
+                cypher=(
+                    _UPDATE_MATCH_FRAGMENT
+                    + rel_clauses
+                    + ' WITH DISTINCT p, o RETURN p'
+                ),
+                params=write_params,
+            ),
+        )
+    read_query: str = _UPDATE_MATCH_FRAGMENT + _RETURN_FRAGMENT
     # AGE sporadically raises "Entity failed to be updated" on
     # multi-stage MATCH/SET queries even when the entity exists.
     # The error is non-deterministic and resolves on retry, so wrap
@@ -2834,9 +2860,15 @@ async def _execute_project_update(
     updated: list[dict[str, typing.Any]] = []
     for attempt in range(3):
         try:
+            # imbi-common exposes ``_execute_batch`` as the host-side
+            # transactional primitive (see ``project_analysis``); it is
+            # single-underscore by convention, not truly private.
+            await db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+                statements,
+            )
             updated = await db.execute(
-                update_query,
-                update_params,
+                read_query,
+                {'project_id': project_id, 'org_slug': org_slug},
                 ['project', 'outbound_count', 'inbound_count'],
             )
             break
@@ -3248,20 +3280,21 @@ async def _set_archived_state(
     """Toggle archived state on a project and return the updated entity."""
     now = datetime.datetime.now(datetime.UTC).isoformat()
     archived_at: str | None = now if archived else None
-    query: typing.LiteralString = (
-        """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    # Write and read back as separate statements: AGE aborts a query
+    # whose SET clause ends up under a nested-loop join (see
+    # ``_execute_project_update``), and the read-back fragment is a
+    # chain of exactly such joins.
+    write_query: typing.LiteralString = (
+        _UPDATE_MATCH_FRAGMENT
+        + """
     SET p.archived = {archived},
         p.archived_at = {archived_at},
         p.updated_at = {updated_at}
-    WITH DISTINCT p, o
+    RETURN p
     """
-        + _RETURN_FRAGMENT
     )
-    records = await db.execute(
-        query,
+    written = await db.execute(
+        write_query,
         {
             'project_id': project_id,
             'org_slug': org_slug,
@@ -3269,6 +3302,16 @@ async def _set_archived_state(
             'archived_at': archived_at,
             'updated_at': now,
         },
+        ['project'],
+    )
+    if not written:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+    records = await db.execute(
+        _UPDATE_MATCH_FRAGMENT + _RETURN_FRAGMENT,
+        {'project_id': project_id, 'org_slug': org_slug},
         ['project', 'outbound_count', 'inbound_count'],
     )
     if not records:
