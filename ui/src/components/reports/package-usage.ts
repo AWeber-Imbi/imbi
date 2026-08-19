@@ -101,9 +101,11 @@ export function usageFacetOptions(
   key: UsageFacetKey,
 ): { count: number; label: string; slug: string }[] {
   const counts = new Map<string, number>()
+  // Seed every value the table mentions, so an option the other facets
+  // exclude shows as zero instead of vanishing from the dropdown.
   for (const row of rows) {
     for (const value of facetValues(row, key)) {
-      counts.set(value, (counts.get(value) ?? 0) + 0)
+      if (!counts.has(value)) counts.set(value, 0)
     }
   }
   for (const row of rows.filter((r) => matches(r, facets, key))) {

@@ -401,10 +401,44 @@ class ComponentUsageTestCase(_ComponentsTestBase):
             self._components(f'/{COMPONENT_ID}/usage')
         ).json()
         self.assertEqual(len(body['versions']), 2)
-        # Newest-first by first-seen, not by version string.
         self.assertEqual(body['versions'][0]['version'], '5.0.0')
         self.assertEqual(body['deployed_version_count'], 0)
         self.assertIsNone(body['newest_deployed_version'])
+
+    def _version_order(self, *versions: str) -> list[str]:
+        self._respond(
+            usage_rows=[],
+            version_rows=[
+                _version_row(
+                    component_release_id=f'crel{index}nanoid',
+                    version=version,
+                )
+                for index, version in enumerate(versions)
+            ],
+        )
+        body = self.client.get(
+            self._components(f'/{COMPONENT_ID}/usage')
+        ).json()
+        return [version['version'] for version in body['versions']]
+
+    def test_versions_sort_numerically(self) -> None:
+        # A string sort puts 4.23.0 below 4.9.0.
+        self.assertEqual(
+            self._version_order('4.9.0', '4.23.0'), ['4.23.0', '4.9.0']
+        )
+
+    def test_prerelease_sorts_below_its_release(self) -> None:
+        self.assertEqual(
+            self._version_order('1.0.0', '1.0.0-rc1'), ['1.0.0', '1.0.0-rc1']
+        )
+
+    def test_build_metadata_does_not_demote_a_release(self) -> None:
+        # SemVer gives build metadata no bearing on precedence, so it
+        # must not read as a pre-release suffix.
+        self.assertEqual(
+            self._version_order('1.0.0-rc1', '1.0.0+build.5'),
+            ['1.0.0+build.5', '1.0.0-rc1'],
+        )
 
     def test_advisories_and_note_counts_are_attached(self) -> None:
         self._respond(

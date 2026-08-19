@@ -936,10 +936,15 @@ def _version_sort_key(
     a pre-release ranking below the plain release (``1.0.0-rc1`` below
     ``1.0.0``).
 
+    Build metadata is dropped first. SemVer gives it no bearing on
+    precedence, and leaving it in would read as a pre-release suffix
+    and sort ``1.0.0+build.5`` below the plain ``1.0.0``.
+
     Nothing here raises: a hand-written version in the graph sorts
     oddly rather than breaking the report.
     """
-    parts = re.split(r'[._\-+]', version.strip().lstrip('vV'))
+    core = version.strip().lstrip('vV').split('+', 1)[0]
+    parts = re.split(r'[._\-]', core)
     release = tuple(
         int(part) for part in itertools.takewhile(str.isdigit, parts)
     )
