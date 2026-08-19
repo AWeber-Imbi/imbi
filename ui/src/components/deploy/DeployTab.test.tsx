@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
+import {
+  RELEASE_IDLE,
+  type ReleaseInFlightState,
+} from '@/components/releases/releaseInFlight'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
@@ -100,7 +104,11 @@ const CURRENT_RELEASE: CurrentReleaseEnvironment = {
   },
 }
 
-function renderDeployTab(envSlug = 'staging', envs = ENVIRONMENTS) {
+function renderDeployTab(
+  envSlug = 'staging',
+  envs = ENVIRONMENTS,
+  inFlight: ReleaseInFlightState = RELEASE_IDLE,
+) {
   return render(
     <DeployTab
       environments={envs}
@@ -109,6 +117,7 @@ function renderDeployTab(envSlug = 'staging', envs = ENVIRONMENTS) {
       open={true}
       orgSlug="acme"
       projectId="p1"
+      releaseInFlight={inFlight}
     />,
   )
 }
@@ -242,6 +251,36 @@ describe('DeployTab — tag list (staging/production)', () => {
     })
     const btn = screen.getByText('v2.7.0').closest('button')
     expect(btn).toHaveClass('cursor-pointer')
+  })
+})
+
+describe('DeployTab — a release already in flight', () => {
+  beforeEach(() => {
+    vi.mocked(endpoints.listCurrentReleases).mockResolvedValue([])
+    vi.mocked(endpoints.listDeploymentRefs).mockResolvedValue([TAG_A])
+  })
+
+  it('goes inert and says which release is holding it', async () => {
+    // The deployments tab folds this into `canTrigger`, but the modal's
+    // deep-link (`/deploy/<env>`) lands here directly — the same gate has
+    // to hold or a URL is all it takes to deploy over a running release.
+    const user = userEvent.setup()
+    renderDeployTab('staging', ENVIRONMENTS, {
+      ...RELEASE_IDLE,
+      blocked: true,
+      phase: 'building',
+      tag: 'v2.7.0',
+    })
+    await waitFor(() => {
+      expect(screen.getByText('v2.7.0')).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('v2.7.0'))
+    expect(
+      screen.getByRole('button', { name: /Deploy v2\.7\.0 to Staging/ }),
+    ).toBeDisabled()
+    expect(
+      screen.getByText('Blocked until v2.7.0 finishes releasing'),
+    ).toBeInTheDocument()
   })
 })
 

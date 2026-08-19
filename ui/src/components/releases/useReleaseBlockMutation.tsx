@@ -22,6 +22,13 @@ interface ResolveBlockerArgs {
 }
 
 interface UseReleaseBlockOptions {
+  /**
+   * Fires after the server confirms an unblock. The release-in-flight
+   * banner keys off `promote-status`, which still reads `build_failed`
+   * after the block record is cleared — the caller has to retire that
+   * banner itself or it keeps claiming the tag is blocked.
+   */
+  onUnblocked?: () => void
   orgSlug: string
   projectId: string
 }
@@ -44,6 +51,7 @@ const message = (err: unknown): string =>
  * release history and the deployment pipeline both render the block.
  */
 export function useReleaseBlockMutation({
+  onUnblocked,
   orgSlug,
   projectId,
 }: UseReleaseBlockOptions): UseReleaseBlockResult {
@@ -85,6 +93,7 @@ export function useReleaseBlockMutation({
     onError: (err) => toast.error(message(err)),
     onSuccess: (data) => {
       invalidate()
+      onUnblocked?.()
       toast.success(`Unblocked ${data.tag}`, {
         description: 'This release can be deployed again.',
       })

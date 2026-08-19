@@ -22,6 +22,7 @@ from imbi.api.endpoints.project_deployments import (
 )
 from imbi.api.llm.dependencies import _get_anthropic_client
 from imbi.api.plugins.resolution import ResolvedCapability
+from imbi.api.release_promote import service as release_promote_service
 from imbi.common import graph
 from imbi.common.llm import AnthropicClient, CompletionResult
 from imbi.common.models import SEMVER_TAG_FORMAT, TagFormat
@@ -2908,6 +2909,90 @@ class DispatchCiGateTestCase(CiGateTestCase):
         self._use('pass')
         self.assertEqual(202, self._promote().status_code)
         self.mocks['clickhouse'].return_value.insert.assert_not_called()
+
+
+class ReleaseInFlightGuardTestCase(ProjectDeploymentsTestCase):
+    """A second cut of a tag already building is refused with a 409.
+
+    An in-flight release is derived state, not a stored node: the tag it
+    is cutting does not exist in the graph until the build lands, so
+    nothing else on this endpoint knows it is coming.  The UI gates on
+    the same ``promote-status`` reading, but a courtesy is not a guard --
+    a second tab or a scripted caller reaches here regardless.
+    """
+
+    _BASE = '/organizations/myorg/projects/proj1/deployments'
+    _CUT: typing.ClassVar[dict[str, typing.Any]] = {
+        'committish': '1a9c610',
+        'tag': 'v6.5.0',
+    }
+    _PROMOTE: typing.ClassVar[dict[str, typing.Any]] = {
+        'action': 'promote',
+        'from_environment': 'testing',
+        'to_environment': 'staging',
+        'from_committish': '1a9c610',
+        'tag': 'v6.5.0',
+    }
+
+    def _in_flight(self, status: str, tag: str | None) -> None:
+        self._start(
+            mock.patch(
+                f'{_MODULE}.release_promote_service.read_status',
+                return_value=release_promote_service.PromoteStatus(
+                    status=typing.cast(typing.Any, status), tag=tag
+                ),
+            )
+        )
+
+    def _cut(self, **overrides: typing.Any) -> httpx.Response:
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(
+                f'{self._BASE}/releases/cut', json={**self._CUT, **overrides}
+            )
+
+    def _promote(self, **overrides: typing.Any) -> httpx.Response:
+        self.mocks['append_deployment_event'].return_value = mock.Mock()
+        with testclient.TestClient(self.test_app) as client:
+            return client.post(self._BASE, json={**self._PROMOTE, **overrides})
+
+    def test_cut_409_while_the_same_tag_is_building(self) -> None:
+        self._in_flight('building', 'v6.5.0')
+        response = self._cut()
+        self.assertEqual(409, response.status_code)
+        detail = response.json()['detail']
+        self.assertIn('v6.5.0 is already building', detail)
+
+    def test_cut_409_while_the_same_tag_is_deploying(self) -> None:
+        self._in_flight('deploying', 'v6.5.0')
+        self.assertEqual(409, self._cut().status_code)
+
+    def test_a_different_tag_is_allowed_through(self) -> None:
+        """Not a mistake to refuse: an operator's judgement call.
+
+        The promote status carries no queue, so a second *different* tag
+        while one is in flight is a decision, not a duplicate click.
+        """
+        self._in_flight('building', 'v6.4.0')
+        self.assertEqual(201, self._cut().status_code)
+
+    def test_a_settled_promote_does_not_gate(self) -> None:
+        self._in_flight('success', 'v6.5.0')
+        self.assertEqual(201, self._cut().status_code)
+
+    def test_an_untagged_in_flight_promote_does_not_gate(self) -> None:
+        """The status exists before the tag is written to it.
+
+        Gating on a blank tag would refuse every cut for the seconds
+        between the dispatch and the worker's first write.
+        """
+        self._in_flight('building', None)
+        self.assertEqual(201, self._cut().status_code)
+
+    def test_promote_409_while_the_same_tag_is_building(self) -> None:
+        self._in_flight('building', 'v6.5.0')
+        response = self._promote()
+        self.assertEqual(409, response.status_code)
+        self.assertIn('promote it again', response.json()['detail'])
 
 
 class ReleaseCiOverrideTestCase(unittest.IsolatedAsyncioTestCase):

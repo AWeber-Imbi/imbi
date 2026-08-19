@@ -3177,6 +3177,12 @@ async def _handle_promote(
         committish=body.from_committish[:7].lower(),
     )
 
+    # A promote cuts a tag too, so the same duplicate-dispatch window is
+    # open here.
+    await _assert_no_release_in_flight(
+        db, project_id, tag=body.tag, action='promote'
+    )
+
     # Infer promote behaviour from the ref shape of ``body.tag``:
     #
     # * Matches a configured tag format (or, with none configured, any
@@ -5134,6 +5140,12 @@ async def cut_release(
             ),
         )
 
+    # Before anything is resolved or dispatched: a release of this tag may
+    # already be building, and nothing in the graph says so yet.
+    await _assert_no_release_in_flight(
+        db, project_id, tag=body.tag, action='release'
+    )
+
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
@@ -5789,6 +5801,46 @@ async def _open_blockers(
     )
     label = node.get('tag') or node.get('committish') or (tag or committish)
     return str(label), _blockers(rows)
+
+
+async def _assert_no_release_in_flight(
+    db: graph.Graph,
+    project_id: str,
+    *,
+    tag: str,
+    action: str,
+) -> None:
+    """Refuse a second cut of *tag* while the first one is still running.
+
+    A dispatched release lives for minutes -- the workflow cuts the tag,
+    builds the artifact, then Imbi rolls it out -- and until it lands
+    nothing in the graph says the tag exists.  ``ReleaseReadyCard`` is
+    where that bites: its mutation settles the moment the build is
+    dispatched, so the form re-enables over the same drift and the same
+    suggested tag, and cutting again is the obvious next click.
+
+    The UI now gates on the same state, but a courtesy is not a guard: a
+    second tab, a stale page, or a scripted caller reaches this endpoint
+    regardless.  Scoped to the same tag on purpose -- a *different* tag
+    while one is in flight is a judgement call for the operator, not a
+    mistake to refuse, and the promote status carries no queue.
+
+    Derived, not stored: an in-flight release is a phase of the last
+    promote, so this reads ``promote-status`` rather than adding a node
+    whose only job would be to be cleaned up.
+    """
+    status = await release_promote_service.read_status(db, project_id)
+    if status.status not in ('building', 'deploying'):
+        return
+    if not status.tag or status.tag != tag:
+        return
+    raise fastapi.HTTPException(
+        status_code=409,
+        detail=(
+            f'Release {tag} is already {status.status}; wait for it to '
+            f'finish before you {action} it again.'
+        ),
+    )
 
 
 async def _assert_not_blocked(

@@ -11,6 +11,7 @@ import {
   listCurrentReleases,
   promoteDeployment,
 } from '@/api/endpoints'
+import type { ReleaseInFlightState } from '@/components/releases/releaseInFlight'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,10 @@ import {
   ciNeedsAcknowledgement,
   useCommitCheckStatus,
 } from './CiFailureNotice'
+import {
+  dispatchFailureDetail,
+  DispatchFailureNotice,
+} from './DispatchFailureNotice'
 import { handleDispatchedBuild } from './releaseBuildHandoff'
 
 interface PromoteTabProps {
@@ -47,6 +52,8 @@ interface PromoteTabProps {
   open: boolean
   orgSlug: string
   projectId: string
+  /** Holds the form while another release is still building or rolling out. */
+  releaseInFlight: ReleaseInFlightState
   toEnvironment: string
 }
 
@@ -62,6 +69,7 @@ export function PromoteTab({
   open,
   orgSlug,
   projectId,
+  releaseInFlight: inFlight,
   toEnvironment,
 }: PromoteTabProps) {
   const toEnvName = useMemo(
@@ -191,7 +199,11 @@ export function PromoteTab({
         tag,
         to_environment: toEnvironment,
       }),
+    // A refusal the API took the trouble to explain renders inline
+    // below instead: those details name the workflow and the fix, and a
+    // toast dismisses itself long before anyone acts on them.
     onError: (err) => {
+      if (dispatchFailureDetail(err)) return
       toast.error(
         err instanceof ApiError
           ? (extractApiErrorDetail(err) ?? err.message)
@@ -289,11 +301,24 @@ export function PromoteTab({
     },
   })
 
+  const promoteError = dispatchFailureDetail(promoteMutation.error)
+  // A refusal names the commit or the workflow that would have built it,
+  // so it stops describing what the button does once another commit is
+  // picked.
+  useEffect(() => {
+    promoteMutation.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSha])
+
   const tagValid = SEMVER_RE.test(tag)
   const canPromote =
     tagValid &&
     !!selectedSha &&
     !promoteMutation.isPending &&
+    // A promote cuts a tag and dispatches a build, so it is the same
+    // move the release form makes -- and must be just as inert while one
+    // is already running.
+    !inFlight.blocked &&
     // Hold the button until CI has answered: an unresolved status cannot
     // be told apart from a green one, and promoting on it skips the
     // acknowledgement the server would then demand with a 409.
@@ -509,6 +534,8 @@ export function PromoteTab({
         />
       </section>
 
+      <DispatchFailureNotice action="promote" error={promoteError} />
+
       {/* Footer */}
       {/* Deliberately path-agnostic: whether the release workflow builds
           first depends on server-side plugin configuration this tab
@@ -520,7 +547,14 @@ export function PromoteTab({
         rolled out to {toEnvironment}. If this project has a release workflow,
         that build runs first and must succeed before anything ships.
       </p>
-      <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-2 border-t px-6 py-4">
+      <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-3 border-t px-6 py-4">
+        {inFlight.blocked ? (
+          <span className="text-tertiary mr-auto text-xs">
+            {inFlight.tag
+              ? `Blocked until ${inFlight.tag} finishes releasing`
+              : 'Blocked until the release in flight finishes'}
+          </span>
+        ) : null}
         <Button onClick={onClose} type="button" variant="ghost">
           Cancel
         </Button>
@@ -529,12 +563,14 @@ export function PromoteTab({
           onClick={() => promoteMutation.mutate()}
           type="button"
         >
-          {promoteMutation.isPending ? (
+          {promoteMutation.isPending || inFlight.blocked ? (
             <Loader2 className="mr-1 size-4 animate-spin" />
           ) : (
             <Rocket className="mr-1 size-4" />
           )}
-          {`Tag ${tag || 'vX.Y.Z'} & deploy to ${toEnvironment}`}
+          {inFlight.blocked
+            ? 'Release in flight'
+            : `Tag ${tag || 'vX.Y.Z'} & deploy to ${toEnvironment}`}
         </Button>
       </div>
     </div>

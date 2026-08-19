@@ -67,7 +67,10 @@ import { ProjectDoctorTab } from '@/components/ProjectDoctorTab'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
 import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
+import { useReleaseInFlightState } from '@/components/releases/releaseInFlight'
+import { ReleaseInFlightBanner } from '@/components/releases/ReleaseInFlightBanner'
 import { ReleasesTab } from '@/components/releases/ReleasesTab'
+import { useReleaseBlockMutation } from '@/components/releases/useReleaseBlockMutation'
 import { RelocatePreviewDialog } from '@/components/RelocatePreviewDialog'
 import { ScoreHistoryTab } from '@/components/ScoreHistoryTab'
 import { Button } from '@/components/ui/button'
@@ -486,6 +489,31 @@ export function ProjectDetail({
     envName: envNameForSlug,
     hasActiveBuild: activeBuilds.some((b) => b.originProjectId === project.id),
     onBuildStarted: handleBuildStarted,
+    orgSlug,
+    projectId: project.id,
+  })
+
+  // One derived answer to "is a release running right now?", handed to
+  // every affordance that could start another. Until this landed the only
+  // trace of a dispatched promote was a toast, so the release form
+  // re-enabled seconds after a cut -- over the same drift and the same
+  // suggested tag -- and a second click cut the tag twice.
+  //
+  // Passed down rather than published through context: the two forms that
+  // read it are one hop away (ReleasesTab and ReleaseModal both already
+  // take their props from here), and the deployments cards take it folded
+  // into the `canTrigger` they already have.
+  const releaseInFlight = useReleaseInFlightState({
+    enabled: !!orgSlug && !!project.id,
+    envName: envNameForSlug,
+    orgSlug,
+    projectId: project.id,
+  })
+  const { isPending: unblockPending, unblock } = useReleaseBlockMutation({
+    // The banner's `build_failed` comes from `promote-status`, which the
+    // unblock does not rewrite — dismiss it so the page stops claiming
+    // the tag is blocked after the operator just unblocked it.
+    onUnblocked: releaseInFlight.dismiss,
     orgSlug,
     projectId: project.id,
   })
@@ -1121,6 +1149,17 @@ export function ProjectDetail({
           })}
         </TabsList>
 
+        {releaseInFlight.phase === 'idle' ? null : (
+          <div className="mb-6">
+            <ReleaseInFlightBanner
+              onRedeploy={() => handleTabChange('deployments')}
+              onUnblock={unblock}
+              state={releaseInFlight}
+              unblockPending={unblockPending}
+            />
+          </div>
+        )}
+
         <TabsContent className="space-y-6" value="overview">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
             {/* Left column: Details */}
@@ -1415,6 +1454,7 @@ export function ProjectDetail({
               orgSlug={orgSlug}
               project={project}
               readiness={deploymentReadiness}
+              releaseInFlight={releaseInFlight}
               serviceIcon={deploymentPlugin?.service_icon ?? null}
               serviceLabel={deploymentPlugin?.service_name ?? null}
             />
@@ -1439,7 +1479,7 @@ export function ProjectDetail({
                 </div>
               )}
             <DeploymentsTab
-              canTrigger={canTriggerDeployments}
+              canTrigger={canTriggerDeployments && !releaseInFlight.blocked}
               connectLabel={deploymentConnectLabel}
               environments={sortedEnvironments}
               onBuildStarted={handleBuildStarted}
@@ -1511,6 +1551,7 @@ export function ProjectDetail({
               orgSlug={orgSlug}
               projectId={project.id}
               projectName={project.name}
+              releaseInFlight={releaseInFlight}
             />
           )
         })()

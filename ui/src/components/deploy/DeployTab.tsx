@@ -8,6 +8,7 @@ import {
   listDeploymentRefs,
   listRefCommits,
 } from '@/api/endpoints'
+import type { ReleaseInFlightState } from '@/components/releases/releaseInFlight'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RelativeTime } from '@/components/ui/RelativeTime'
@@ -30,6 +31,10 @@ interface DeployTabProps {
   open: boolean
   orgSlug: string
   projectId: string
+  // The deployments tab already folds this into `canTrigger`, but the
+  // modal deep-links (`/deploy/<env>`) land here directly — without the
+  // same gate a URL is all it takes to deploy over a release in flight.
+  releaseInFlight: ReleaseInFlightState
 }
 
 interface SelectedVersion {
@@ -45,6 +50,7 @@ export function DeployTab({
   open,
   orgSlug,
   projectId,
+  releaseInFlight: inFlight,
 }: DeployTabProps) {
   const sorted = useMemo(() => sortEnvironments(environments), [environments])
   // Env is locked at modal open time — the URL ``/deploy/<env>`` carries
@@ -293,11 +299,18 @@ export function DeployTab({
 
       {/* Footer */}
       <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-2 border-t px-6 py-4">
+        {inFlight.blocked ? (
+          <span className="text-tertiary mr-auto text-xs">
+            {inFlight.tag
+              ? `Blocked until ${inFlight.tag} finishes releasing`
+              : 'Blocked until the release in flight finishes'}
+          </span>
+        ) : null}
         <Button onClick={onClose} type="button" variant="ghost">
           Cancel
         </Button>
         <Button
-          disabled={!selected || isPending}
+          disabled={!selected || isPending || inFlight.blocked}
           onClick={onDeploy}
           type="button"
         >
