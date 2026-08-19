@@ -225,20 +225,34 @@ class FinishTests(unittest.IsolatedAsyncioTestCase):
             succeeded=3,
             failed=1,
             skipped=1,
+            remaining=0,
+            in_flight=0,
         )
 
-    async def test_cancellation_is_recorded_too(self) -> None:
+    async def test_cancellation_records_what_it_left_unfinished(
+        self,
+    ) -> None:
+        # A cancelled run finishes with items still in flight, so its
+        # counters fall short of its attempt rows by design. Recording
+        # the shortfall is what separates that from a logging gap.
         client, _ = _client_with_pipeline(self.WON)
+        status = state.RunStatus(
+            state='cancelled',
+            total=10,
+            succeeded=4,
+            in_flight=2,
+            remaining=4,
+        )
         with (
             mock.patch.object(
-                state,
-                'read_status',
-                mock.AsyncMock(return_value=state.RunStatus()),
+                state, 'read_status', mock.AsyncMock(return_value=status)
             ),
             mock.patch.object(log, 'record_run', mock.AsyncMock()) as record,
         ):
             await state._finish(client, 'op', 'cancelled')
         self.assertEqual('cancelled', record.await_args.args[2])
+        self.assertEqual(2, record.await_args.kwargs['in_flight'])
+        self.assertEqual(4, record.await_args.kwargs['remaining'])
 
     async def test_only_the_lock_holder_writes_the_run_row(self) -> None:
         # Two instances can both pass maybe_finalize's drained check; the

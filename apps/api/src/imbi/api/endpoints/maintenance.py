@@ -230,9 +230,6 @@ async def cancel_maintenance_operation(
 DEFAULT_LOG_LIMIT = 50
 MAX_LOG_LIMIT = 500
 
-#: Columns a caller may filter the log on, each an exact match.
-_LOG_FILTERS = ('slug', 'event_type', 'run_id', 'attempt_id', 'project_id')
-
 #: ``detail`` is a ClickHouse ``JSON`` column; clickhouse-connect
 #: returns those as nested array-of-tuple paths in their internal
 #: binary form, not as a ``dict``. ``toJSONString`` makes ClickHouse

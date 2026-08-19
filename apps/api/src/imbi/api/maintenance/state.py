@@ -352,6 +352,8 @@ async def _finish(
         succeeded=status.succeeded,
         failed=status.failed,
         skipped=status.skipped,
+        remaining=status.remaining,
+        in_flight=status.in_flight,
     )
 
 

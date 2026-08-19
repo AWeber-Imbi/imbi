@@ -279,6 +279,35 @@ class MaintenanceLogEndpointTests(MaintenanceEndpointTestCase):
         self.assertEqual('p9', params['project_id'])
         self.assertEqual('r9', params['run_id'])
 
+    def test_a_time_window_is_bound_as_a_timestamp(self) -> None:
+        _, query = self._get(
+            '/maintenance/log?since=2026-08-01T00:00:00Z'
+            '&until=2026-08-19T00:00:00Z'
+        )
+        sql, params = query.await_args_list[0].args
+        self.assertIn('occurred_at >= {since:DateTime64(3)}', sql)
+        self.assertIn('occurred_at < {until:DateTime64(3)}', sql)
+        self.assertEqual(
+            datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
+            params['since'],
+        )
+        self.assertEqual(
+            datetime.datetime(2026, 8, 19, tzinfo=datetime.UTC),
+            params['until'],
+        )
+
+    def test_the_window_also_bounds_the_counts(self) -> None:
+        _, query = self._get('/maintenance/log?since=2026-08-01T00:00:00Z')
+        count_sql, count_params = query.await_args_list[1].args
+        self.assertIn('occurred_at >= {since:DateTime64(3)}', count_sql)
+        self.assertIn('since', count_params)
+
+    def test_a_malformed_timestamp_is_rejected(self) -> None:
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get('/maintenance/log?since=yesterday')
+        self.assertEqual(400, response.status_code)
+        self.assertIn('since', response.json()['detail'])
+
     def test_expanding_an_attempt_reads_its_activity(self) -> None:
         _, query = self._get(
             '/maintenance/log?event_type=activity&attempt_id=a1'

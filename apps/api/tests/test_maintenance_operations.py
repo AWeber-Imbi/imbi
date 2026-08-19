@@ -32,6 +32,15 @@ def _ctx(item_id: str = 'p1') -> log.MaintenanceContext:
     )
 
 
+def _rows(ctx: log.MaintenanceContext) -> tuple[typing.Any, ...]:
+    """The activity rows an operation buffered on its context."""
+    return ctx.log.rows
+
+
+def _actions(ctx: log.MaintenanceContext) -> list[tuple[str, str]]:
+    return [(row.action, row.disposition) for row in _rows(ctx)]
+
+
 def _org_slug(value: str | None) -> mock.AsyncMock:
     return mock.AsyncMock(return_value=value)
 
@@ -733,7 +742,7 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual('skipped', outcome)
         # A bare 'skipped' leaves an operator guessing; say it debounced.
-        row = ctx.log._rows[0]
+        row = _rows(ctx)[0]
         self.assertEqual('skipped', row.disposition)
         self.assertEqual('rescore', row.action)
         self.assertIn('already queued', row.message)
@@ -1200,15 +1209,6 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
                 mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
             )
         self.assertEqual('skipped', outcome)
-
-
-def _rows(ctx: log.MaintenanceContext) -> list[typing.Any]:
-    """The activity rows an operation buffered on its context."""
-    return ctx.log._rows
-
-
-def _actions(ctx: log.MaintenanceContext) -> list[tuple[str, str]]:
-    return [(row.action, row.disposition) for row in _rows(ctx)]
 
 
 class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):

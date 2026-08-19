@@ -240,6 +240,15 @@ class ItemLog:
         """How many rows are waiting on a flush (tests, diagnostics)."""
         return len(self._rows)
 
+    @property
+    def rows(self) -> tuple[models.MaintenanceLogRecord, ...]:
+        """The buffered rows, for tests and diagnostics.
+
+        A copy: the buffer is the writer's, and a caller that mutated it
+        would silently change what gets written.
+        """
+        return tuple(self._rows)
+
     def _row(
         self,
         event_type: typing.Literal['attempt', 'activity'],
