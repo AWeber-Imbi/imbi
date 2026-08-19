@@ -2165,6 +2165,18 @@ class ReleaseComponentBatchTestCase(unittest.TestCase):
         batch = self._batch(component_count=2, parsed_count=3)
         self.assertNotEqual(batch.component_count, batch.parsed_count)
 
+    def test_counts_accept_the_uint32_bounds(self) -> None:
+        batch = self._batch(component_count=0, parsed_count=2**32 - 1)
+        self.assertEqual(batch.parsed_count, 2**32 - 1)
+
+    def test_counts_reject_values_the_column_cannot_hold(self) -> None:
+        """UInt32 wraps silently, so reject out of range before insert."""
+        for field in ('component_count', 'parsed_count'):
+            for value in (-1, 2**32):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises(pydantic.ValidationError):
+                        self._batch(**{field: value})
+
     def test_field_names_match_batches_columns(self) -> None:
         self.assertEqual(
             list(models.ReleaseComponentBatch.model_fields), self._COLUMNS

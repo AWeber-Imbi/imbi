@@ -106,7 +106,7 @@ Readers resolve a release to one batch, then match fact rows on
 
 ```sql
 SELECT release_id,
-       argMax(batch_id, (recorded_at, source = 'ingest')) AS batch_id
+       argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id
   FROM imbi.release_component_batches
  WHERE release_id IN {release_ids}
  GROUP BY release_id
@@ -123,8 +123,9 @@ Publishing separately is what makes three things work:
   Which one wins is undefined, as concurrent PUTs for one release already
   are; that they do not merge is the point.
 - **A backfill can never outrank an ingest**, because `source = 'ingest'`
-  breaks the tie deterministically. Backfilling alongside live writes needs
-  no check-then-publish race.
+  leads the resolver key. Once a release has an ingest batch no backfill can
+  displace it, whatever order the two land in, so backfilling alongside live
+  writes needs no check-then-publish race.
 
 Fact rows whose batch was never published are inert, so a failed or
 interrupted write leaves readers on the previous complete snapshot. This is

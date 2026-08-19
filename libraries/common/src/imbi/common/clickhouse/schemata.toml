@@ -327,7 +327,7 @@ enabled = true
 # batch and match fact rows on `(release_id, batch_id)`:
 #
 #   SELECT release_id,
-#          argMax(batch_id, (recorded_at, source = 'ingest')) AS batch_id
+#          argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id
 #     FROM imbi.release_component_batches
 #    WHERE release_id IN {release_ids}
 #    GROUP BY release_id
@@ -340,8 +340,10 @@ enabled = true
 # resolve to one snapshot rather than the union of both, because `argMax`
 # returns a single `batch_id` (which of them wins is undefined, as
 # concurrent PUTs for one release already are). And a backfill can never
-# outrank an ingest, because `source = 'ingest'` breaks the tie
-# deterministically -- no check-then-publish race to lose.
+# outrank an ingest, because `source = 'ingest'` leads the resolver key
+# -- once a release has an ingest batch, no backfill can displace it,
+# whatever order the two land in, so there is no check-then-publish race
+# to lose.
 #
 # Fact rows whose batch was never published are inert, so a failed or
 # interrupted write leaves readers on the previous complete snapshot.

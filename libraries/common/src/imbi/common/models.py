@@ -1341,7 +1341,7 @@ class ReleaseComponentBatch(pydantic.BaseModel):
     .. code-block:: sql
 
         SELECT release_id,
-               argMax(batch_id, (recorded_at, source = 'ingest')) AS batch_id
+               argMax(batch_id, (source = 'ingest', recorded_at)) AS batch_id
           FROM imbi.release_component_batches
          WHERE release_id IN {release_ids}
          GROUP BY release_id
@@ -1360,17 +1360,17 @@ class ReleaseComponentBatch(pydantic.BaseModel):
     both is what makes an incomplete snapshot detectable rather than
     silently authoritative.
 
-    ``source`` breaks ties. A backfill row can never outrank an ingest
-    for the same release, whatever order they land in, so backfilling
-    alongside live writes needs no check-then-publish race.
+    ``source`` leads the resolver key. A backfill row can never outrank
+    an ingest for the same release, whatever order they land in, so
+    backfilling alongside live writes needs no check-then-publish race.
     """
 
     release_id: str
     batch_id: str
     project_id: str
     source: typing.Literal['ingest', 'backfill'] = 'ingest'
-    component_count: int
-    parsed_count: int
+    component_count: int = pydantic.Field(ge=0, lt=2**32)
+    parsed_count: int = pydantic.Field(ge=0, lt=2**32)
     recorded_at: datetime.datetime
 
 
