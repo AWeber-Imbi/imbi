@@ -27,6 +27,12 @@ MaintenanceSlug = typing.Literal[
     'deployment-sweep',
     'opslog-backfill',
     'release-repair',
+    'release-dup-merge-report',
+    'release-dup-merge',
+    'deployment-migration-report',
+    'deployment-migration',
+    'orphan-release-check',
+    'orphan-release-purge',
     'blocker-migration',
     'commit-sync',
     'pr-sync',
@@ -147,6 +153,96 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_release_repair,
+        ),
+        OperationDefinition(
+            slug='release-dup-merge-report',
+            label='Report Duplicate Releases (dry run)',
+            description=(
+                'Report duplicate releases sharing one tag without '
+                'changing anything: which node Merge Duplicate Releases '
+                'would keep (the one whose commit matches what the tag '
+                'points at on the remote, else the newest) and which it '
+                'would fold in. Details land in the server logs.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_release_dup_merge_report,
+        ),
+        OperationDefinition(
+            slug='release-dup-merge',
+            label='Merge Duplicate Releases',
+            description=(
+                'Fold releases sharing one tag into a single node: the '
+                'survivor is the one whose commit matches what the tag '
+                'points at on the remote (else the newest). Deployments, '
+                'blockers, deployment history, and current-release '
+                'pointers move to the survivor; notes and links it lacks '
+                'are filled in, never overwritten. Run this before '
+                'Migrate Deployment History so migrated deployments land '
+                'on surviving releases. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_release_dup_merge,
+        ),
+        OperationDefinition(
+            slug='deployment-migration-report',
+            label='Report Deployment History Migration (dry run)',
+            description=(
+                'Report what Migrate Deployment History would do without '
+                'changing anything: how many legacy per-release '
+                'deployment entries exist and how many Deployment '
+                'records they would become. Details land in the server '
+                'logs.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_deployment_migration_report,
+        ),
+        OperationDefinition(
+            slug='deployment-migration',
+            label='Migrate Deployment History',
+            description=(
+                'Move legacy per-release deployment history into '
+                'first-class Deployment records. Entries describing the '
+                'same workflow run collapse into one record that keeps '
+                'every status transition. Run this after Merge Duplicate '
+                'Releases, then run Close Out Stuck Deployments to drain '
+                'what it surfaces. Safe to re-run: migrated history is '
+                'cleared at the source.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_deployment_migration,
+        ),
+        OperationDefinition(
+            slug='orphan-release-check',
+            label='Report Orphaned Releases (dry run)',
+            description=(
+                'Report releases whose tag never came to exist on the '
+                'remote (leftovers of failed release dispatches) without '
+                'deleting anything. Only counts a release when the '
+                'remote positively confirms the tag is absent; projects '
+                'whose integration cannot answer are skipped and logged.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_orphan_release_check,
+        ),
+        OperationDefinition(
+            slug='orphan-release-purge',
+            label='Delete Orphaned Releases',
+            description=(
+                'Delete releases whose tag never came to exist on the '
+                'remote: tagged, never built, never deployed, and the '
+                'remote positively confirms the tag is absent. Blockers '
+                'attached to them are removed too. Run Report Orphaned '
+                'Releases first and review the logs. Projects whose '
+                'integration cannot answer are skipped.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_orphan_release_purge,
         ),
         OperationDefinition(
             slug='blocker-migration',

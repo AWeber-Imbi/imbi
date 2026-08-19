@@ -60,6 +60,7 @@ from imbi.common import deployments as deployment_nodes
 from imbi.common import models as common_models
 from imbi.common.plugins import base as plugin_base
 from imbi.common.plugins import decrypt_integration_credentials
+from imbi.common.plugins import errors as plugin_errors
 from imbi.common.plugins.base import (
     Commit,
     CompareResult,
@@ -3771,6 +3772,107 @@ async def poll_promote_rollout(
             ctx, _resolve_credentials(ctx, credentials), run_id=run_id
         )
     )
+
+
+#: Per-tag answer :func:`resolve_remote_tags` gives when it could not
+#: return a sha: ``'absent'`` means the remote positively answered that
+#: no such ref exists; ``'error'`` means the question could not be
+#: answered (a transient failure must never read as absence).
+TagLookup = typing.Literal['absent', 'error']
+
+
+async def resolve_remote_tags(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tags: collections.abc.Sequence[str],
+    probe: bool = False,
+) -> dict[str, str | TagLookup] | None:
+    """Resolve each tag to the full sha it points at on the remote.
+
+    For the phase-3 maintenance operations: the duplicate-release merge
+    asks which node's committish agrees with the remote, and the
+    orphan-release check asks whether a tag exists there at all.
+
+    Returns ``None`` when the project's integration cannot answer at
+    all -- no deployment capability bound, no usable credentials, or a
+    plugin that does not implement ``resolve_committish``.  Otherwise
+    the mapping answers per tag: the full sha, ``'absent'`` when the
+    remote positively reports the ref does not exist (HTTP 404/422), or
+    ``'error'`` when the lookup failed for any other reason.
+
+    With *probe* set, ``HEAD`` is resolved first and any failure
+    returns ``None``: a repository that cannot answer for its own HEAD
+    (deleted, renamed, credentials revoked) would report every tag as
+    404, and a caller deleting releases on ``'absent'`` must not read
+    unreachability as absence.
+
+    ``PluginRateLimited`` propagates so the maintenance worker can
+    requeue the project rather than record a wrong answer.
+    """
+
+    def _lookup_failure(exc: httpx.HTTPStatusError) -> TagLookup:
+        # 404 is the remote saying "no such ref"; GitHub answers 422 for
+        # a ref it cannot even parse.  Everything else (403, 5xx) is the
+        # remote failing to answer, not answering "no".
+        if exc.response.status_code in (404, 422):
+            return 'absent'
+        return 'error'
+
+    try:
+        resolved, ctx, credentials = await _resolve_and_context(
+            db,
+            org_slug,
+            project_id,
+            _watcher_auth(),
+            source=None,
+            best_effort_identity=True,
+        )
+    except fastapi.HTTPException:
+        return None
+    handler = _handler(resolved)
+    creds = _resolve_credentials(ctx, credentials)
+    if probe:
+        try:
+            await call_with_timeout(
+                handler.resolve_committish(ctx, creds, committish='HEAD')
+            )
+        except NotImplementedError:
+            return None
+        except plugin_errors.PluginRateLimited:
+            raise
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'project %s cannot resolve its own HEAD; refusing to '
+                'answer tag lookups that could read as absence',
+                project_id,
+                exc_info=True,
+            )
+            return None
+    out: dict[str, str | TagLookup] = {}
+    for tag in tags:
+        try:
+            commit = await call_with_timeout(
+                handler.resolve_committish(ctx, creds, committish=tag)
+            )
+        except NotImplementedError:
+            return None
+        except plugin_errors.PluginRateLimited:
+            raise
+        except httpx.HTTPStatusError as exc:
+            out[tag] = _lookup_failure(exc)
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'resolve_committish failed for tag %s on project %s',
+                tag,
+                project_id,
+                exc_info=True,
+            )
+            out[tag] = 'error'
+        else:
+            out[tag] = commit.sha
+    return out
 
 
 async def fail_promote_build(
