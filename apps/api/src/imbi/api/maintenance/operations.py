@@ -252,6 +252,22 @@ async def execute_deployment_resync(
     return 'succeeded'
 
 
+async def execute_deployment_sweep(
+    db: graph.Graph, client: valkey.Valkey, project_id: str
+) -> ExecuteOutcome:
+    """Close out deployments the remote finished but nobody recorded.
+
+    Skipped means the project has no deployment capability bound, or
+    had nothing unfinished old enough to chase.
+    """
+    from imbi.api import deployment_sweeper
+
+    summary = await deployment_sweeper.sweep_project(db, project_id)
+    if summary is None or not summary.examined:
+        return 'skipped'
+    return 'succeeded'
+
+
 async def execute_rescore(
     db: graph.Graph, client: valkey.Valkey, project_id: str
 ) -> ExecuteOutcome:

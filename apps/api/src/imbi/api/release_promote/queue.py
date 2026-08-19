@@ -39,7 +39,7 @@ import pydantic
 from valkey import asyncio as valkey
 
 from imbi.api.release_promote.service import WatchJob, run_watch, set_status
-from imbi.common import graph
+from imbi.common import deployments, graph
 from imbi.common.plugins.errors import PluginRateLimited
 
 STREAM = 'imbi:release-promote'
@@ -255,7 +255,31 @@ async def _maybe_dead_letter(
 
 
 async def _mark_abandoned(db: graph.Graph, job: WatchJob) -> None:
-    """Flag a dead-lettered watch so the UI stops showing ``building``."""
+    """Flag a dead-lettered watch so the UI stops showing ``building``.
+
+    Whatever deployment the promote managed to open is closed out too:
+    nothing is going to watch it now, so leaving it ``in_progress``
+    would add to the stuck backlog this queue's own docstring warns
+    about.  The ``history`` on the node keeps the trail if a late
+    webhook lands afterwards.
+    """
+    try:
+        await deployments.close_in_flight(
+            db,
+            project_id=job.project_id,
+            release_id=job.release_id,
+            env_slug=job.to_environment,
+            status='failed',
+            note='promote watch abandoned',
+            source='promote-queue',
+        )
+    except Exception:
+        LOGGER.exception(
+            'could not close the deployment for abandoned promote of '
+            'project %s tag %s',
+            job.project_id,
+            job.tag,
+        )
     await set_status(
         db,
         job.project_id,

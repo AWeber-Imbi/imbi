@@ -288,15 +288,9 @@ async def _fetch_release(
     )
 
 
-_RUN_STATUS_TO_EVENT_STATUS: dict[str, _DEPLOYMENT_STATUS] = {
-    'queued': 'pending',
-    'in_progress': 'in_progress',
-    'success': 'success',
-    'failure': 'failed',
-    # The DeploymentEvent literal has no 'cancelled' bucket; treat
-    # it as a failed terminal so the train stops showing "deploying…".
-    'cancelled': 'failed',
-}
+#: Alias kept for readers of this module; the map is shared with the
+#: sweeper, which folds the same plugin answers into the same statuses.
+_RUN_STATUS_TO_EVENT_STATUS = deployment_nodes.RUN_STATUS_TO_STATUS
 
 
 async def _gather_release_hydration(

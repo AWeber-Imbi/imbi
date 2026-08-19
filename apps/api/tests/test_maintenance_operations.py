@@ -227,6 +227,45 @@ class ExecutePRSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('skipped', outcome)
 
 
+class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _sweep(result: object) -> mock.AsyncMock:
+        return mock.AsyncMock(return_value=result)
+
+    async def test_swept_deployments_succeed(self) -> None:
+        from imbi.api import deployment_sweeper
+
+        with mock.patch(
+            'imbi.api.deployment_sweeper.sweep_project',
+            self._sweep(deployment_sweeper.SweepSummary(examined=2)),
+        ):
+            outcome = await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('succeeded', outcome)
+
+    async def test_no_capability_is_skipped(self) -> None:
+        with mock.patch(
+            'imbi.api.deployment_sweeper.sweep_project', self._sweep(None)
+        ):
+            outcome = await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+
+    async def test_nothing_stuck_is_skipped(self) -> None:
+        from imbi.api import deployment_sweeper
+
+        with mock.patch(
+            'imbi.api.deployment_sweeper.sweep_project',
+            self._sweep(deployment_sweeper.SweepSummary()),
+        ):
+            outcome = await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1'
+            )
+        self.assertEqual('skipped', outcome)
+
+
 class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_success(self) -> None:
         resync = mock.AsyncMock()

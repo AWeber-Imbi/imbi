@@ -44,6 +44,18 @@ DeploymentStatus = typing.Literal[
     'rolled_back',
 ]
 
+#: Plugin run status -> deployment status.  The ``DeploymentEvent``
+#: vocabulary has no ``cancelled`` bucket, so a cancelled run reads as
+#: a failed terminal -- what matters downstream is that it stopped.
+RUN_STATUS_TO_STATUS: dict[str, DeploymentStatus] = {
+    'queued': 'pending',
+    'pending': 'pending',
+    'in_progress': 'in_progress',
+    'success': 'success',
+    'failure': 'failed',
+    'cancelled': 'failed',
+}
+
 #: How an upsert changed the node.  ``created`` is a brand-new node,
 #: ``updated`` a status/note/URL change on an existing one, and
 #: ``noop`` a replay that carried nothing new -- resync counts on the
@@ -81,15 +93,18 @@ class UpsertResult(typing.NamedTuple):
 # appending to ``history``.
 # ``WITH`` narrows scope, so every variable the clauses after it still
 # need is carried through explicitly -- an unbound name in a later
-# ``MERGE`` would create a node rather than fail.
+# ``MERGE`` would create a node rather than fail.  ``DISTINCT`` because
+# the ``OPTIONAL MATCH`` fans out one row per stale ``TARGETS`` edge,
+# and every row after it would run the ``SET`` and ``history`` append
+# in ``_UPSERT_TAIL`` again.
 _UPSERT_MERGE: typing.Final[typing.LiteralString] = """
     MERGE (p)<-[:BELONGS_TO]-(d:Deployment
           {{external_run_id: {external_run_id}}})
-    WITH {carried}
+    WITH DISTINCT {carried}
     OPTIONAL MATCH (d)-[stale:TARGETS]->(old:Environment)
     WHERE id(old) <> id(e)
     DELETE stale
-    WITH {carried}
+    WITH DISTINCT {carried}
     MERGE (d)-[:TARGETS]->(e)
 """
 
@@ -110,11 +125,15 @@ _UPSERT_TAIL: typing.Final[typing.LiteralString] = """
               = COALESCE({performed_by}, d.performed_by, '')) AS unchanged
     SET d.id = COALESCE(d.id, {id}),
         d.created_at = COALESCE(d.created_at, {timestamp}),
+        d.origin = COALESCE(d.origin, {source}),
         d.status = {status},
         d.note = {note},
         d.external_run_url =
             COALESCE({external_run_url}, d.external_run_url),
         d.performed_by = COALESCE({performed_by}, d.performed_by),
+        d.release_tag = COALESCE({release_tag}, d.release_tag),
+        d.release_committish =
+            COALESCE({release_committish}, d.release_committish),
         d.updated_at = CASE WHEN unchanged
             THEN COALESCE(d.updated_at, {timestamp}) ELSE {timestamp} END,
         d.history = CASE WHEN prior_status = {status}
@@ -165,6 +184,8 @@ async def upsert_deployment(
     external_run_id: str | None = None,
     external_run_url: str | None = None,
     performed_by: str | None = None,
+    release_tag: str | None = None,
+    release_committish: str | None = None,
     timestamp: datetime.datetime | None = None,
     source: str = 'api',
 ) -> UpsertResult | None:
@@ -180,10 +201,18 @@ async def upsert_deployment(
 
     *release_id* attaches ``HAS_DEPLOYMENT``; ``None`` records the
     deployment against the project and environment alone, for a gateway
-    event whose release cannot be resolved yet.
+    event whose release cannot be resolved yet.  Such a caller passes
+    the *release_tag* / *release_committish* it could not resolve, so
+    :func:`attach_release` can finish the job when the Release turns
+    up.
 
     A ``None`` *external_run_url* or *performed_by* means "unknown", not
     "clear": neither can blank a value another writer already recorded.
+
+    *source* names the writer.  It lands on every ``history`` entry and,
+    for the writer that created the deployment, once on the node as
+    ``origin`` -- which is how a later reader tells a promote's rollout
+    from a direct deploy's.
 
     Returns ``None`` when the project, environment, or named release
     does not exist, so the caller can tell a missing target from a
@@ -202,6 +231,8 @@ async def upsert_deployment(
             'external_run_id': external_run_id,
             'external_run_url': external_run_url,
             'performed_by': performed_by,
+            'release_tag': release_tag,
+            'release_committish': release_committish,
             'status': status,
             'note': note,
             'source': source,
@@ -273,23 +304,39 @@ RETURN p.id AS project_id,
        e{{.slug, .name, .sort_order}} AS env,
        CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
        d AS deployment
+ORDER BY COALESCE(d.updated_at, d.created_at) DESC
+LIMIT {limit}
 """
 
 
-async def deployments_by_project(
-    db: graph.Graph, project_ids: abc.Sequence[str]
-) -> list[ProjectDeployment]:
-    """Return every ``Deployment`` recorded for *project_ids*.
+#: Newest-first rows one call will read.  A deployment is a node per
+#: rollout now, so a long-lived project's set only grows; every request
+#: path here wants the newest state per environment, and reading the
+#: whole history to compute it would get slower forever.  Generous
+#: enough that the "latest per environment" answer is unaffected in
+#: practice -- an environment whose newest deployment falls outside
+#: this window has had hundreds of newer ones elsewhere in the project.
+DEFAULT_READ_LIMIT = 500
 
-    Callers union these with the legacy ``DEPLOYED_TO`` array entries;
-    ordering is the caller's business because every one of them ranks
-    by ``timestamp``.
+
+async def deployments_by_project(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+    *,
+    limit: int = DEFAULT_READ_LIMIT,
+) -> list[ProjectDeployment]:
+    """Return the newest ``Deployment`` nodes for *project_ids*.
+
+    Newest first, capped at *limit* rows across the whole set.  Callers
+    union these with the legacy ``DEPLOYED_TO`` array entries; ordering
+    beyond that is the caller's business because every one of them
+    ranks by ``timestamp``.
     """
     if not project_ids:
         return []
     rows = await db.execute(
         _BY_PROJECT_QUERY,
-        {'project_ids': list(project_ids)},
+        {'project_ids': list(project_ids), 'limit': limit},
         ['project_id', 'env', 'release', 'deployment'],
     )
     out: list[ProjectDeployment] = []
@@ -336,10 +383,187 @@ def merge_events(
 ) -> list[models.DeploymentEvent]:
     """Union event lists into one chronological history.
 
-    The read paths all rank by ``timestamp``, and the legacy array is
-    already stored oldest-first, so sorting is enough to interleave the
-    two representations.
+    The read paths all rank by ``timestamp``, so sorting is enough to
+    interleave the node and array representations.  One rollout can
+    appear in both: it started as an array entry before the cutover and
+    a later webhook wrote it as a node.  Entries sharing an
+    ``external_run_id`` collapse to the newest, which is the one that
+    knows how the rollout ended.
     """
     merged = [event for source in sources for event in source]
     merged.sort(key=lambda event: as_utc(event.timestamp))
-    return merged
+    newest_by_run: dict[str, models.DeploymentEvent] = {}
+    for event in merged:
+        if event.external_run_id:
+            newest_by_run[event.external_run_id] = event
+    return [
+        event
+        for event in merged
+        if not event.external_run_id
+        or newest_by_run[event.external_run_id] is event
+    ]
+
+
+_CLOSE_IN_FLIGHT_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (:Project {{id: {project_id}}})
+      -[:HAS_RELEASE]->(:Release {{id: {release_id}}})
+      -[:HAS_DEPLOYMENT]->(d:Deployment)
+      -[:TARGETS]->(:Environment {{slug: {env_slug}}})
+WHERE d.status IN ['pending', 'in_progress']
+SET d.status = {status},
+    d.note = {note},
+    d.updated_at = {timestamp},
+    d.history = COALESCE(d.history, []) + [{{status: {status},
+         timestamp: {timestamp}, source: {source}}}]
+RETURN d.id AS id
+"""
+
+
+async def close_in_flight(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    release_id: str,
+    env_slug: str,
+    status: DeploymentStatus,
+    note: str | None = None,
+    source: str = 'api',
+    timestamp: datetime.datetime | None = None,
+) -> list[str]:
+    """Drive every unfinished deployment of a release terminal.
+
+    For the writer that knows the outcome but not which run produced
+    it -- a promote whose watch was abandoned, a rollout that timed
+    out.  Returns the ids it closed.
+    """
+    ts = (timestamp or datetime.datetime.now(datetime.UTC)).astimezone(
+        datetime.UTC
+    )
+    rows = await db.execute(
+        _CLOSE_IN_FLIGHT_QUERY,
+        {
+            'project_id': project_id,
+            'release_id': release_id,
+            'env_slug': env_slug,
+            'status': status,
+            'note': note,
+            'source': source,
+            'timestamp': ts.isoformat(),
+        },
+        ['id'],
+    )
+    return [str(graph.parse_agtype(row['id'])) for row in rows]
+
+
+class StuckDeployment(typing.NamedTuple):
+    """An unfinished deployment the sweeper can chase to an answer."""
+
+    id: str
+    project_id: str
+    org_slug: str
+    env_slug: str
+    external_run_id: str
+    status: DeploymentStatus
+    #: Which writer created it (``promote``, ``gateway``, ``api``, …).
+    origin: str | None
+    created_at: datetime.datetime
+    #: ``None`` for a deployment recorded before its Release resolved.
+    release_id: str | None
+    release_tag: str | None
+    release_committish: str | None
+
+
+_STUCK_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project {{id: {project_id}}})<-[:BELONGS_TO]-(d:Deployment)
+      -[:TARGETS]->(e:Environment)-[:BELONGS_TO]->(o:Organization)
+WHERE d.status IN ['pending', 'in_progress']
+      AND d.external_run_id IS NOT NULL
+      AND COALESCE(d.updated_at, d.created_at) < {cutoff}
+OPTIONAL MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d)
+RETURN d AS deployment,
+       e.slug AS env_slug,
+       o.slug AS org_slug,
+       CASE WHEN r IS NULL THEN null ELSE r.id END AS release_id
+"""
+
+
+async def stuck_deployments(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    cutoff: datetime.datetime,
+) -> list[StuckDeployment]:
+    """Return the project's deployments still running past *cutoff*.
+
+    Only deployments carrying an ``external_run_id`` come back: without
+    one there is no run for the sweeper to ask about, so nothing it
+    could learn.
+    """
+    rows = await db.execute(
+        _STUCK_QUERY,
+        {
+            'project_id': project_id,
+            'cutoff': cutoff.astimezone(datetime.UTC).isoformat(),
+        },
+        ['deployment', 'env_slug', 'org_slug', 'release_id'],
+    )
+    out: list[StuckDeployment] = []
+    for row in rows:
+        props = graph.parse_agtype(row.get('deployment'))
+        env_slug = graph.parse_agtype(row.get('env_slug'))
+        org_slug = graph.parse_agtype(row.get('org_slug'))
+        if (
+            not isinstance(props, dict)
+            or not isinstance(env_slug, str)
+            or not isinstance(org_slug, str)
+        ):
+            continue
+        created = props.get('created_at')
+        if not isinstance(created, str):
+            continue
+        release_id = graph.parse_agtype(row.get('release_id'))
+        out.append(
+            StuckDeployment(
+                id=str(props.get('id')),
+                project_id=project_id,
+                org_slug=org_slug,
+                env_slug=env_slug,
+                external_run_id=str(props.get('external_run_id')),
+                status=typing.cast('DeploymentStatus', props.get('status')),
+                origin=props.get('origin'),
+                created_at=datetime.datetime.fromisoformat(created),
+                release_id=str(release_id) if release_id else None,
+                release_tag=props.get('release_tag'),
+                release_committish=props.get('release_committish'),
+            )
+        )
+    return out
+
+
+_ATTACH_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project {{id: {project_id}}})<-[:BELONGS_TO]-(d:Deployment
+      {{id: {deployment_id}}})
+MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
+MERGE (r)-[:HAS_DEPLOYMENT]->(d)
+RETURN d.id AS id
+"""
+
+
+async def attach_release(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    deployment_id: str,
+    release_id: str,
+) -> bool:
+    """Attach a deployment recorded before its release resolved."""
+    rows = await db.execute(
+        _ATTACH_QUERY,
+        {
+            'project_id': project_id,
+            'deployment_id': deployment_id,
+            'release_id': release_id,
+        },
+        ['id'],
+    )
+    return bool(rows)

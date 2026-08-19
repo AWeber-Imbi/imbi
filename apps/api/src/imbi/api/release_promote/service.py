@@ -511,6 +511,59 @@ async def run_watch(
         return 'failed'
 
 
+async def _close_deployment(
+    db: graph.Graph,
+    job: WatchJob,
+    *,
+    run_id: str,
+    status: typing.Literal['success', 'failed'],
+    note: str,
+) -> None:
+    """Record the rollout outcome on the deployment this promote opened.
+
+    The watcher polls the rollout to a terminal state and used to write
+    that answer only to ``Project.promote_status``, so a failed rollout
+    left its deployment ``in_progress`` forever and a successful one
+    depended on a webhook correlating.  Writing it here makes the
+    webhook a redundant confirmation rather than the only writer.
+
+    Failures are logged, never raised: the promote outcome is already
+    decided by the time this runs, and losing the write must not turn a
+    finished promote into an error.
+    """
+    from imbi.api.endpoints.releases import append_deployment_event
+
+    try:
+        result = await append_deployment_event(
+            db,
+            org_slug=job.org_slug,
+            project_id=job.project_id,
+            release_id=job.release_id,
+            env_slug=job.to_environment,
+            status=status,
+            note=note,
+            external_run_id=run_id or None,
+            performed_by=job.requested_by or None,
+            source='promote-watcher',
+        )
+    except Exception:
+        LOGGER.exception(
+            'release-promote could not close the deployment for project %s '
+            'tag %s',
+            job.project_id,
+            job.tag,
+        )
+        return
+    if isinstance(result, str):
+        LOGGER.warning(
+            'release-promote could not close the deployment for project %s '
+            'release %s: %s',
+            job.project_id,
+            job.release_id,
+            result,
+        )
+
+
 async def _watch_rollout(
     db: graph.Graph,
     job: WatchJob,
@@ -555,6 +608,16 @@ async def _watch_rollout(
                 timeout_seconds,
                 status,
             )
+            await _close_deployment(
+                db,
+                job,
+                run_id=run_id,
+                status='failed',
+                note=(
+                    f'rollout did not finish within {minutes} minutes '
+                    f'(last seen {status})'
+                ),
+            )
             await mark(
                 'deploy_failed',
                 error=(
@@ -584,6 +647,13 @@ async def _watch_rollout(
             job.tag,
             status,
         )
+        await _close_deployment(
+            db,
+            job,
+            run_id=run_id,
+            status='failed',
+            note=f'rollout {status}',
+        )
         await mark(
             'deploy_failed',
             error=(
@@ -595,5 +665,8 @@ async def _watch_rollout(
         )
         return 'deploy_failed'
 
+    await _close_deployment(
+        db, job, run_id=run_id, status='success', note='rollout succeeded'
+    )
     await mark('success', run_url=build_run_url)
     return 'success'
