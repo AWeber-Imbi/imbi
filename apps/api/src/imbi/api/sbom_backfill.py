@@ -96,6 +96,30 @@ def _fingerprint(rows: typing.Iterable[tuple[str, str, str]]) -> str:
     return digest.hexdigest()
 
 
+#: How many differing members a mismatch reason names before it
+#: stops. A release can hold thousands of components, and a reason
+#: that long is unreadable in a log line and unusable in a report.
+_SAMPLE_LIMIT = 5
+
+
+def _sample(rows: set[tuple[str, str, str]]) -> str:
+    """Render up to :data:`_SAMPLE_LIMIT` differing members.
+
+    Counts alone cannot distinguish the equal-count, different-member
+    drift this report exists to catch, so the reason names the members
+    an operator would go look at. Sorted so two runs over the same
+    disagreement read the same.
+    """
+    ordered = sorted(rows)
+    shown = ', '.join(
+        f'{component_id}/{release_id}@{version}'
+        for component_id, release_id, version in ordered[:_SAMPLE_LIMIT]
+    )
+    if len(ordered) > _SAMPLE_LIMIT:
+        return f'[{shown}, +{len(ordered) - _SAMPLE_LIMIT} more]'
+    return f'[{shown}]'
+
+
 def _graph_components(
     rows: list[dict[str, typing.Any]],
 ) -> dict[str, list[dict[str, typing.Any]]]:
@@ -288,25 +312,30 @@ async def reconcile_project(
     matched = 0
     mismatched: dict[str, str] = {}
     for release_id, components in by_release.items():
-        expected = _fingerprint(
+        expected_rows = [
             (
                 str(component['component_id']),
                 str(component['component_release_id']),
                 str(component.get('version') or ''),
             )
             for component in components
-        )
+        ]
+        expected = _fingerprint(expected_rows)
         if release_id not in published:
             mismatched[release_id] = (
                 f'no published batch; graph has {len(components)} component(s)'
             )
             continue
-        actual = _fingerprint(published[release_id])
-        if actual == expected:
+        actual_rows = published[release_id]
+        if _fingerprint(actual_rows) == expected:
             matched += 1
         else:
+            in_graph = set(expected_rows) - set(actual_rows)
+            in_clickhouse = set(actual_rows) - set(expected_rows)
             mismatched[release_id] = (
-                f'component sets differ: graph {len(components)}, '
-                f'clickhouse {len(published[release_id])}'
+                f'component sets differ: graph {len(expected_rows)}, '
+                f'clickhouse {len(actual_rows)}; '
+                f'only in graph {_sample(in_graph)}; '
+                f'only in clickhouse {_sample(in_clickhouse)}'
             )
     return ReconcileSummary(matched, mismatched)

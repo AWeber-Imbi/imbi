@@ -139,6 +139,14 @@ class ReconcileProjectTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(summary.ok)
         self.assertIn('r-1', summary.mismatched)
 
+    async def test_mismatch_names_the_differing_members(self) -> None:
+        """Counts alone leave an operator nothing to go look at."""
+        self._published(('c-9', 'cr-9', '2.32.0'))
+        summary = await sbom_backfill.reconcile_project(self.db, 'p-1')
+        reason = summary.mismatched['r-1']
+        self.assertIn('c-1/cr-1@2.32.0', reason)
+        self.assertIn('c-9/cr-9@2.32.0', reason)
+
     async def test_differing_version_is_a_mismatch(self) -> None:
         self._published(('c-1', 'cr-1', '2.31.0'))
         summary = await sbom_backfill.reconcile_project(self.db, 'p-1')
@@ -183,6 +191,28 @@ class FingerprintTests(unittest.TestCase):
         a = sbom_backfill._fingerprint([('ab', 'c', 'd')])
         b = sbom_backfill._fingerprint([('a', 'bc', 'd')])
         self.assertNotEqual(a, b)
+
+
+class SampleTests(unittest.TestCase):
+    """A reason names a few members, never a whole component set."""
+
+    def test_empty_side_renders_as_an_empty_list(self) -> None:
+        self.assertEqual(sbom_backfill._sample(set()), '[]')
+
+    def test_members_are_sorted_so_two_runs_read_the_same(self) -> None:
+        rows = {('c-2', 'cr-2', '2'), ('c-1', 'cr-1', '1')}
+        self.assertEqual(
+            sbom_backfill._sample(rows), '[c-1/cr-1@1, c-2/cr-2@2]'
+        )
+
+    def test_long_lists_are_truncated_with_a_remainder(self) -> None:
+        rows = {
+            (f'c-{index}', f'cr-{index}', '1')
+            for index in range(sbom_backfill._SAMPLE_LIMIT + 3)
+        }
+        rendered = sbom_backfill._sample(rows)
+        self.assertIn('+3 more]', rendered)
+        self.assertEqual(rendered.count('@'), sbom_backfill._SAMPLE_LIMIT)
 
 
 class GroupsCoercionTests(unittest.TestCase):
