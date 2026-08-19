@@ -2168,6 +2168,13 @@ class ReleaseComponentBatchTestCase(unittest.TestCase):
     def test_counts_accept_the_uint32_bounds(self) -> None:
         batch = self._batch(component_count=0, parsed_count=2**32 - 1)
         self.assertEqual(batch.parsed_count, 2**32 - 1)
+        batch = self._batch(component_count=2**32 - 1, parsed_count=2**32 - 1)
+        self.assertEqual(batch.component_count, 2**32 - 1)
+
+    def test_component_count_cannot_exceed_parsed_count(self) -> None:
+        """More rows written than components parsed is not a state."""
+        with self.assertRaises(pydantic.ValidationError):
+            self._batch(component_count=1, parsed_count=0)
 
     def test_counts_reject_values_the_column_cannot_hold(self) -> None:
         """UInt32 wraps silently, so reject out of range before insert."""

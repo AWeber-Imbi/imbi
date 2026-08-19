@@ -1373,6 +1373,16 @@ class ReleaseComponentBatch(pydantic.BaseModel):
     parsed_count: int = pydantic.Field(ge=0, lt=2**32)
     recorded_at: datetime.datetime
 
+    @pydantic.model_validator(mode='after')
+    def _check_counts(self) -> ReleaseComponentBatch:
+        """Rows written cannot exceed the components the SBoM held."""
+        if self.component_count > self.parsed_count:
+            raise ValueError(
+                'component_count cannot exceed parsed_count '
+                f'({self.component_count} > {self.parsed_count})'
+            )
+        return self
+
 
 class ReleaseComponentRecord(pydantic.BaseModel):
     """One component a release depends on, per its SBoM.
