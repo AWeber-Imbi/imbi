@@ -727,10 +727,13 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
             'enqueue_recompute',
             mock.AsyncMock(return_value=False),
         ):
+            ctx = _ctx()
             outcome = await operations.execute_rescore(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
             )
         self.assertEqual('skipped', outcome)
+        # A bare 'skipped' leaves an operator guessing; say it debounced.
+        self.assertEqual(1, ctx.log.buffered)
 
 
 def _blocked_row(

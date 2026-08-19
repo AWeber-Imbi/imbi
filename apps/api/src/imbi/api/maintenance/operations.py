@@ -416,7 +416,11 @@ async def execute_rescore(
     enqueued = await score_queue.enqueue_recompute(
         client, project_id, 'bulk_rescore', REQUESTED_BY
     )
-    return 'succeeded' if enqueued else 'skipped'
+    if not enqueued:
+        return _skip(
+            ctx, 'rescore', 'A recompute is already queued; debounced.'
+        )
+    return 'succeeded'
 
 
 _DEPLOYMENT_EDGES_QUERY: typing.LiteralString = """
