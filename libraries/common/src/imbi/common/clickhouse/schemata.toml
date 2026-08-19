@@ -312,3 +312,86 @@ ORDER BY (org_slug, document_id, session_id)
 TTL toDateTime(started_at) + INTERVAL 2 YEAR;
 """
 enabled = true
+
+# The SBoM component set of a release, as two tables: immutable fact rows
+# and the batch record that publishes them.
+#
+# This is the tabular half of the component catalog. Identity (`Component`,
+# `ComponentRelease`) and governance stay in the graph; the usage fact
+# joining a release to a component lives here, because that fact is what
+# every component report aggregates over and what the graph traversal
+# could not answer at any tolerable cost.
+#
+# A batch is published by its row in `release_component_batches`, written
+# after every fact row of that batch. Readers resolve a release to one
+# batch and match fact rows on `(release_id, batch_id)`:
+#
+#   SELECT release_id,
+#          argMax(batch_id, (recorded_at, source = 'ingest')) AS batch_id
+#     FROM imbi.release_component_batches
+#    WHERE release_id IN {release_ids}
+#    GROUP BY release_id
+#
+# Publishing separately is what makes three things work. An ingest that
+# found no components is representable, as a batch with `component_count`
+# 0 -- keyed on the fact rows alone it would write nothing and the
+# previous batch would stay current, so the release would keep reporting
+# components it had dropped. Two ingests landing in the same millisecond
+# resolve to one snapshot rather than the union of both, because `argMax`
+# returns a single `batch_id` (which of them wins is undefined, as
+# concurrent PUTs for one release already are). And a backfill can never
+# outrank an ingest, because `source = 'ingest'` breaks the tie
+# deterministically -- no check-then-publish race to lose.
+#
+# Fact rows whose batch was never published are inert, so a failed or
+# interrupted write leaves readers on the previous complete snapshot.
+#
+# `component_count` is the rows written and `parsed_count` the components
+# the SBoM held. They differ when the graph upsert dropped some component
+# -- which stays non-fatal -- so a snapshot that claims to be complete
+# without being complete is detectable rather than silent.
+#
+# Plain `MergeTree`: batches are immutable, so there is nothing for a
+# `ReplacingMergeTree` to collapse. Superseded batches stay readable for
+# debugging and can take a TTL later if volume warrants one.
+#
+# `LowCardinality` is applied only to genuinely bounded dimensions. The
+# nanoid columns are plain `String` for the same reason `commits.sha` is:
+# they have no ceiling.
+[release_component_batches]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.release_component_batches {on_cluster}(
+  release_id       String,
+  batch_id         String,
+  project_id       LowCardinality(String),
+  source           LowCardinality(String) DEFAULT 'ingest',
+  component_count  UInt32,
+  parsed_count     UInt32,
+  recorded_at      DateTime64(3, 'UTC')
+) ENGINE = {replicated}MergeTree()
+ORDER BY (release_id, recorded_at, batch_id);
+"""
+enabled = true
+
+# `ORDER BY` leads with `component_id` because every report filters on it
+# first. The per-release hydration read matches on `(release_id,
+# batch_id)` instead and scans; the table is small enough that this is
+# fine, and worth revisiting only if measurement says otherwise.
+[release_components]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.release_components {on_cluster}(
+  batch_id              String,
+  release_id            String,
+  project_id            LowCardinality(String),
+  component_id          String,
+  component_release_id  String,
+  purl_name             String,
+  ecosystem             LowCardinality(String),
+  version               String,
+  scope                 LowCardinality(String) DEFAULT '',
+  groups                Array(String),
+  recorded_at           DateTime64(3, 'UTC')
+) ENGINE = {replicated}MergeTree()
+ORDER BY (component_id, release_id, batch_id, component_release_id);
+"""
+enabled = true
