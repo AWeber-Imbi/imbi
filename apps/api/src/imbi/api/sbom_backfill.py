@@ -22,6 +22,7 @@ on the cheap outgoing direction.
 
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
 import datetime
 import hashlib
@@ -80,7 +81,9 @@ class ReconcileSummary:
         return not self.mismatched
 
 
-def _fingerprint(rows: typing.Iterable[tuple[str, str, str]]) -> str:
+def _fingerprint(
+    rows: collections.abc.Iterable[tuple[str, str, str]],
+) -> str:
     """Hash a release's component set, order-independently.
 
     Row counts are a weak comparison: two stores can hold the same
@@ -88,9 +91,14 @@ def _fingerprint(rows: typing.Iterable[tuple[str, str, str]]) -> str:
     exactly the failure a backfill can introduce. Sorting before
     hashing makes the digest depend on content alone, so neither
     store's natural ordering enters into it.
+
+    Deduplicated as well as sorted, so the digest describes the set
+    the reason strings already describe. A repeated tuple carries no
+    fact the first one did not, and counting it would report a
+    mismatch whose set difference is empty on both sides.
     """
     digest = hashlib.sha256()
-    for row in sorted(rows):
+    for row in sorted(set(rows)):
         digest.update('\x1f'.join(row).encode())
         digest.update(b'\x1e')
     return digest.hexdigest()
@@ -273,7 +281,7 @@ def _groups(value: typing.Any) -> list[str]:
     hand-edited edge.
     """
     if isinstance(value, list):
-        return [str(item) for item in value]
+        return [str(item) for item in typing.cast('list[typing.Any]', value)]
     return []
 
 

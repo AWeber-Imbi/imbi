@@ -186,6 +186,14 @@ class FingerprintTests(unittest.TestCase):
         b = sbom_backfill._fingerprint([('c-2', 'cr-1', '1')])
         self.assertNotEqual(a, b)
 
+    def test_repeated_members_do_not_change_the_digest(self) -> None:
+        """A repeated tuple carries no fact the first one did not."""
+        a = sbom_backfill._fingerprint([('c-1', 'cr-1', '1')])
+        b = sbom_backfill._fingerprint(
+            [('c-1', 'cr-1', '1'), ('c-1', 'cr-1', '1')]
+        )
+        self.assertEqual(a, b)
+
     def test_field_boundaries_are_not_ambiguous(self) -> None:
         """Concatenation without a separator would collide these."""
         a = sbom_backfill._fingerprint([('ab', 'c', 'd')])
