@@ -2149,7 +2149,11 @@ async def list_projects(
         project_data['current_releases'] = releases.get(
             str(project_data.get('id', '')), {}
         )
-    drift_ranges = await _evaluate_environment_drift(project_data_list)
+    # Only ``ProjectListItem`` carries ``drift_ranges``, so the two
+    # reads behind it are pure waste on the full-response path.
+    drift_ranges = (
+        await _evaluate_environment_drift(project_data_list) if slim else {}
+    )
 
     for project_data in project_data_list:
         pid = str(project_data.get('id', ''))

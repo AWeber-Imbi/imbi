@@ -391,6 +391,11 @@ async def backfill_verdicts(
     commits permanently unanswered, which the rule reads as "nothing to
     do".
 
+    A project whose notes ref does not exist yet is a complete, empty
+    listing, so it is marked and not asked again -- the alternative is a
+    Git Data call per note-less project on every sweep, and the webhook
+    covers a ref created later from its first push onward.
+
     Returns how many verdicts were recorded, or ``None`` when nothing
     could answer -- no capability bound, or one without git notes.
     Raises when the verdicts could not be stored: the maintenance
