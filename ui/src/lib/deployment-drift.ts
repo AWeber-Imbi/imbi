@@ -30,7 +30,10 @@ export interface DriftProject {
     string,
     { committish?: null | string; tag?: null | string }
   >
-  /** `"<base>..<head>"` -> whether CI flagged any commit in that range. */
+  /** `"<base>..<head>"` -> whether that range needs action. `false`
+   *  means every commit in it carries a CI verdict of `false`; `true`
+   *  means a `true` verdict or an unanswered commit. Absent means the
+   *  range was never evaluated, which readers must fail closed on. */
   drift_ranges?: Record<string, boolean>
   environments?: DriftEnvironment[] | null
   release_summary?: null | {

@@ -226,14 +226,16 @@ class ReleaseSummary(pydantic.BaseModel):
     latest_tag_at: datetime.datetime | None = None
     latest_tag_author: str | None = None
     commits_since_tag: int = 0
-    #: True when at least one commit since the tag carries a CI drift
-    #: verdict of ``true``.  This -- not ``commits_since_tag`` -- is what
-    #: says the project needs releasing: a range of ignorable commits
-    #: (docs, CI config) counts toward the tally but not toward this.
+    #: True unless CI positively answered ``false`` for every commit
+    #: since the tag: one ``true``, or one commit with no verdict at
+    #: all, means the project needs releasing.  Fail closed -- only
+    #: proven clean is clean.  A range of ignorable commits (docs, CI
+    #: config) still counts toward ``commits_since_tag`` but is answered
+    #: ``false`` and so not toward this.
     drift_detected: bool = False
-    #: How many commits in that range carry a verdict at all.  Zero means
-    #: nothing has been checked, which reads the same as clean but for a
-    #: very different reason.
+    #: How many commits in that range carry a verdict at all.  Says how
+    #: much of the range's ``drift_detected`` rests on verdicts rather
+    #: than on the fail-closed default.
     drift_answered: int = 0
 
 
@@ -292,11 +294,13 @@ class ProjectListItem(pydantic.BaseModel):
         default_factory=dict
     )
     release_summary: ReleaseSummary | None = None
-    #: ``"<base>..<head>"`` -> whether any commit in that range carries a
-    #: CI drift verdict of ``true``.  Keyed by the two committishes so
-    #: the client needs no agreement about environment naming: it already
-    #: knows both endpoints of every pair it draws.  A pair with no entry
-    #: was never evaluated, which the rule reads as nothing to do.
+    #: ``"<base>..<head>"`` -> whether that range needs action: any
+    #: commit in it CI called ``true``, or any commit CI never answered.
+    #: ``false`` means every commit was positively answered ``false``.
+    #: Keyed by the two committishes so the client needs no agreement
+    #: about environment naming: it already knows both endpoints of
+    #: every pair it draws.  A pair with no entry was never evaluated,
+    #: which the client must fail closed on and show.
     drift_ranges: dict[str, bool] = pydantic.Field(default_factory=dict)
 
 
@@ -907,40 +911,60 @@ async def _fetch_current_releases(
     return result
 
 
-async def _fetch_drifting_commit_times(
-    project_ids: list[str],
-) -> dict[str, list[datetime.datetime]]:
-    """Return {project_id: [time of each commit CI called drift]}.
+async def _fetch_actionable_commit_times(
+    windows: dict[str, tuple[datetime.datetime, datetime.datetime]],
+) -> dict[str, list[datetime.datetime]] | None:
+    """Return {project_id: [time of each commit not proven clean]}.
 
-    Only commits whose verdict is ``true``.  That is all the rule needs
-    for an environment pair -- "does this range contain one" -- and it
-    keeps the set small enough to evaluate every pair in Python instead
-    of a windowed query per pair.
+    Actionable means the verdict is ``true`` or there is no verdict at
+    all -- the rule suppresses a commit only when CI positively said
+    ``false``.  Expressed as an ANTI JOIN against the answered-``false``
+    verdicts so the exclusion cannot depend on unmatched-row default
+    semantics.
+
+    Unanswered commits are most commits, so the scan is bounded to one
+    ``(min lo, max hi]`` window per project -- the union of that
+    project's promotion ranges.  Commits in gaps between ranges come
+    back too; the caller's per-pair check discards them.
 
     ``committed_at`` for the same reason as
     :func:`_fetch_release_summaries`: a rebase or cherry-pick leaves the
     author date pointing before the release it landed after.
 
-    Errors are swallowed; a missing verdict reads as "nothing to do",
-    which is what the rule says anyway.
+    Errors are swallowed and return ``None`` -- distinct from "no
+    actionable commits" -- so the caller can mark every evaluable range
+    actionable instead of clean.  Failing closed: an unavailable verdict
+    store must not read as proof of cleanliness.
     """
-    if not project_ids:
+    if not windows:
         return {}
+    project_ids = list(windows)
     try:
         rows = await clickhouse.query(
             'SELECT c.project_id AS project_id,'
             ' COALESCE(c.committed_at, c.authored_at) AS at'
             ' FROM commits AS c FINAL'
-            ' INNER JOIN (SELECT project_id, sha FROM commit_drift FINAL'
-            ' WHERE drift_detected'
+            ' LEFT ANTI JOIN (SELECT project_id, sha'
+            ' FROM commit_drift FINAL'
+            ' WHERE NOT drift_detected'
             ' AND project_id IN {project_ids:Array(String)}) AS d'
             ' ON d.project_id = c.project_id AND d.sha = c.sha'
-            ' WHERE c.project_id IN {project_ids:Array(String)}',
-            {'project_ids': project_ids},
+            ' WHERE c.project_id IN {project_ids:Array(String)}'
+            ' AND COALESCE(c.committed_at, c.authored_at) >'
+            ' mapFromArrays({project_ids:Array(String)},'
+            ' {los:Array(DateTime64(3))})[c.project_id]'
+            ' AND COALESCE(c.committed_at, c.authored_at) <='
+            ' mapFromArrays({project_ids:Array(String)},'
+            ' {his:Array(DateTime64(3))})[c.project_id]',
+            {
+                'project_ids': project_ids,
+                'los': [windows[pid][0] for pid in project_ids],
+                'his': [windows[pid][1] for pid in project_ids],
+            },
         )
     except Exception:  # noqa: BLE001
-        LOGGER.warning('Failed to fetch drifting commits', exc_info=True)
-        return {}
+        LOGGER.warning('Failed to fetch actionable commits', exc_info=True)
+        return None
     out: dict[str, list[datetime.datetime]] = {}
     for row in rows:
         pid = str(row.get('project_id') or '')
@@ -1032,15 +1056,23 @@ async def _evaluate_environment_drift(
 ) -> dict[str, dict[str, bool]]:
     """Apply the rule to every project's promotion steps.
 
-    Two reads -- the endpoint commit times and the drifting commit times
-    -- then the ranges are evaluated here rather than in SQL.  A drifting
-    commit is rare enough per project that a windowed query per pair
-    would cost more than the comparison saves.
+    Two sequential reads: the endpoint commit times first, then the
+    actionable commits inside one window per project spanning that
+    project's ranges.  Sequential because the second read's window comes
+    from the first; the ranges are then evaluated here rather than in
+    SQL, since per-pair windowed queries would cost more than the
+    comparison saves.
 
     A range whose endpoints cannot both be dated is left out entirely
-    rather than reported clean: the caller cannot tell those apart, but
-    the rule treats them the same way, and an absent key says plainly
-    that nothing was evaluated.
+    rather than reported clean; the UI reads an absent key as "not
+    evaluated" and shows the pair.  Every evaluable pair gets an
+    explicit boolean, ``false`` included -- with absent-means-show, a
+    sparse dict of positives would mark every clean pair drifted.
+
+    Differing shas whose endpoint times tie or reverse (``hi <= lo``,
+    possible at git's one-second timestamp precision) are actionable:
+    timestamp order could not establish the range, and an unorderable
+    range must not read as clean.
     """
     ranges_by_pid: dict[str, list[tuple[str, str]]] = {}
     for project_data in project_data_list:
@@ -1061,21 +1093,39 @@ async def _evaluate_environment_drift(
             for sha in pair
         }
     )
-    times, drifting = await asyncio.gather(
-        _fetch_commit_times(pids, shas),
-        _fetch_drifting_commit_times(pids),
-    )
+    times = await _fetch_commit_times(pids, shas)
+    windows: dict[str, tuple[datetime.datetime, datetime.datetime]] = {}
+    for pid, pairs in ranges_by_pid.items():
+        bounds = [
+            (lo, hi)
+            for base, head in pairs
+            if (lo := times.get((pid, base))) is not None
+            and (hi := times.get((pid, head))) is not None
+            and lo < hi
+        ]
+        if bounds:
+            windows[pid] = (
+                min(lo for lo, _ in bounds),
+                max(hi for _, hi in bounds),
+            )
+    actionable = await _fetch_actionable_commit_times(windows)
     out: dict[str, dict[str, bool]] = {}
     for pid, pairs in ranges_by_pid.items():
-        marks = drifting.get(pid, [])
+        marks = actionable.get(pid, []) if actionable is not None else None
         for base, head in pairs:
             lo = times.get((pid, base))
             hi = times.get((pid, head))
             if lo is None or hi is None:
                 continue
-            out.setdefault(pid, {})[_range_key(base, head)] = any(
-                lo < at <= hi for at in marks
-            )
+            key = _range_key(base, head)
+            if hi <= lo:
+                out.setdefault(pid, {})[key] = True
+            elif marks is None:
+                out.setdefault(pid, {})[key] = True
+            else:
+                out.setdefault(pid, {})[key] = any(
+                    lo < at <= hi for at in marks
+                )
     return out
 
 
@@ -1211,9 +1261,14 @@ async def _fetch_release_summaries(
                     for row in count_rows
                     if row.get('project_id') is not None
                 }
+                # Fail closed: a commit needs action unless CI
+                # positively answered ``false`` for it, so the range is
+                # clean only when every commit is answered and none
+                # drifted.
                 drift_by_pid = {
                     str(row['project_id']): (
-                        int(row['drifted']) > 0,
+                        int(row['drifted']) > 0
+                        or int(row['answered']) < int(row['c']),
                         int(row['answered']),
                     )
                     for row in count_rows

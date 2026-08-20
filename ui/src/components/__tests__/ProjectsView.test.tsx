@@ -231,6 +231,32 @@ describe('ProjectsView filter counts', () => {
     expect(panel.queryByText(/C → R/)).not.toBeInTheDocument()
   })
 
+  it('shows a version difference nothing has verified', async () => {
+    // Same commits differ as Delta's, but no commit in either range
+    // carries a verdict at all. Only proven clean is clean, so an
+    // unverified difference stays in the queue: absent range keys and
+    // an absent drift_detected both fail closed.
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      {
+        ...QUIET_PROJECTS[0],
+        drift_ranges: {},
+        id: 'p10',
+        name: 'Unverified',
+        release_summary: releaseSummary({
+          commits_since_tag: 2,
+          head_sha: 'ccc',
+        }),
+      },
+    ])
+    renderView()
+    await waitFor(() =>
+      expect(screen.getByText('Unverified')).toBeInTheDocument(),
+    )
+    const panel = await openFilter(userEvent.setup(), /filter by drift/i)
+    expect(countFor(panel, /S → P/)).toBe('1')
+    expect(countFor(panel, /C → R/)).toBe('1')
+  })
+
   it('offers an unscored option for projects with no score', async () => {
     renderView()
     await waitFor(() => expect(screen.getByText('Delta')).toBeInTheDocument())

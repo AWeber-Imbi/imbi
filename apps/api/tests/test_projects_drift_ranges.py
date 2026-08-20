@@ -89,7 +89,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     def _patch(
         self,
         times: dict[tuple[str, str], datetime.datetime],
-        drifting: dict[str, list[datetime.datetime]],
+        actionable: dict[str, list[datetime.datetime]] | None,
     ) -> typing.Any:
         return (
             mock.patch.object(
@@ -99,14 +99,14 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 projects,
-                '_fetch_drifting_commit_times',
-                mock.AsyncMock(return_value=drifting),
+                '_fetch_actionable_commit_times',
+                mock.AsyncMock(return_value=actionable),
             ),
         )
 
     async def _run(
         self,
-        drifting: list[datetime.datetime],
+        actionable: list[datetime.datetime] | None,
         times: dict[tuple[str, str], datetime.datetime] | None = None,
     ) -> dict[str, dict[str, bool]]:
         resolved = (
@@ -114,7 +114,9 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
             if times is None
             else times
         )
-        a, b = self._patch(resolved, {'p1': drifting})
+        a, b = self._patch(
+            resolved, {'p1': actionable} if actionable is not None else None
+        )
         with a, b:
             return await projects._evaluate_environment_drift([self.PROJECT])
 
@@ -156,17 +158,61 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_an_undatable_endpoint_yields_no_key(self) -> None:
-        # Absent, not False: nothing was evaluated.
+        # Absent, not False: nothing was evaluated, and the client
+        # fails closed on an absent key.
         self.assertEqual(
             {}, await self._run([_at(15)], times={('p1', 'base'): _at(10)})
         )
 
+    async def test_tied_endpoint_times_are_actionable(self) -> None:
+        # Different shas whose commits share a one-second timestamp:
+        # order cannot be established, so the range must not read clean.
+        self.assertEqual(
+            {'p1': {'base..head': True}},
+            await self._run(
+                [], times={('p1', 'base'): _at(10), ('p1', 'head'): _at(10)}
+            ),
+        )
+
+    async def test_reversed_endpoint_times_are_actionable(self) -> None:
+        self.assertEqual(
+            {'p1': {'base..head': True}},
+            await self._run(
+                [], times={('p1', 'base'): _at(20), ('p1', 'head'): _at(10)}
+            ),
+        )
+
+    async def test_a_failed_verdict_fetch_fails_closed(self) -> None:
+        # None means the verdict store could not answer; an unavailable
+        # store must not read as proof of cleanliness.
+        self.assertEqual({'p1': {'base..head': True}}, await self._run(None))
+
+    async def test_the_window_spans_every_orderable_range(self) -> None:
+        project = {
+            'id': 'p1',
+            'environments': PIPELINE,
+            'current_releases': {
+                'testing': _release('head'),
+                'staging': _release('mid'),
+                'production': _release('base'),
+            },
+        }
+        times = {
+            ('p1', 'base'): _at(5),
+            ('p1', 'mid'): _at(10),
+            ('p1', 'head'): _at(20),
+        }
+        a, b = self._patch(times, {'p1': []})
+        with a, b as actionable:
+            await projects._evaluate_environment_drift([project])
+        actionable.assert_awaited_once_with({'p1': (_at(5), _at(20))})
+
     async def test_no_ranges_skips_both_queries(self) -> None:
         a, b = self._patch({}, {})
-        with a as times, b as drifting:
+        with a as times, b as actionable:
             result = await projects._evaluate_environment_drift(
                 [{'id': 'p1', 'environments': [], 'current_releases': {}}]
             )
         self.assertEqual({}, result)
         times.assert_not_awaited()
-        drifting.assert_not_awaited()
+        actionable.assert_not_awaited()
