@@ -333,6 +333,56 @@ RETURN p.id AS project_id,
 """
 
 
+_LATEST_RELEASED_BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)-[:TARGETS]->(e:Environment)
+WHERE p.id IN {project_ids}
+MATCH (:Release)-[:HAS_DEPLOYMENT]->(d)
+WITH p, e, max(COALESCE(d.updated_at, d.created_at)) AS ts
+MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
+WHERE COALESCE(d2.updated_at, d2.created_at) = ts
+MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d2)
+RETURN p.id AS project_id,
+       e{{.slug, .name, .sort_order}} AS env,
+       r{{.*}} AS release,
+       d2 AS deployment
+"""
+
+
+async def latest_released_deployments_by_project(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+) -> list[ProjectDeployment]:
+    """Newest ``Deployment`` per environment that carries a release.
+
+    For the callers that render "what release is in this environment"
+    and skip any row whose release is ``None``.  Taking the newest
+    deployment and then discarding it for having no release would show
+    the environment as empty while an older, perfectly good release sat
+    one row further down: an orphan is a deployment whose tag could not
+    be resolved to a ``Release``, not evidence that nothing is
+    deployed.
+
+    That matters because an orphan does not heal.  ``attach_release``
+    runs only from the deployment sweeper, and only over
+    :func:`stuck_deployments`, which selects aged ``pending`` and
+    ``in_progress`` runs -- so a deployment that arrives already
+    terminal with an unresolvable release keeps its environment blank
+    for good.
+
+    :func:`latest_deployments_by_project` stays the reader for callers
+    that want the newest deployment whatever its release, such as
+    scoring a project's deployment status.
+    """
+    if not project_ids:
+        return []
+    rows = await db.execute(
+        _LATEST_RELEASED_BY_PROJECT_QUERY,
+        {'project_ids': list(project_ids)},
+        ['project_id', 'env', 'release', 'deployment'],
+    )
+    return _to_project_deployments(_newest_per_environment(rows))
+
+
 async def latest_deployments_by_project(
     db: graph.Graph,
     project_ids: abc.Sequence[str],

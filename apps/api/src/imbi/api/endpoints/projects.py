@@ -774,7 +774,7 @@ async def _apply_deployment_nodes(
     best-effort.
     """
     try:
-        rows = await deployment_nodes.latest_deployments_by_project(
+        rows = await deployment_nodes.latest_released_deployments_by_project(
             db, project_ids
         )
     except Exception:  # noqa: BLE001

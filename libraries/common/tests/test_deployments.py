@@ -347,6 +347,51 @@ class ReadTests(DeploymentNodeTestCase):
             assert rows[0].release is not None
             self.assertEqual(expected, rows[0].release['id'])
 
+    async def test_latest_released_skips_a_newer_orphan(self) -> None:
+        """A newer release-less node must not blank the environment.
+
+        An orphan is a deployment whose tag could not be resolved to a
+        Release, not evidence that nothing is deployed -- and it never
+        heals, because ``attach_release`` runs only over aged in-flight
+        runs.  Taking the newest node and then discarding it for having
+        no release would leave the environment reading "not deployed"
+        for good with a perfectly good release one row down.
+        """
+        await self.upsert(
+            status='success', external_run_id=None, timestamp=NOW
+        )
+        await self.upsert(
+            status='in_progress',
+            release_id=None,
+            external_run_id=None,
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+
+        # The unfiltered reader still answers with the true newest, which
+        # is what scoring a deployment's status wants.
+        newest = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(newest))
+        self.assertIsNone(newest[0].release)
+        self.assertEqual('in_progress', newest[0].event.status)
+
+        rows = await deployments.latest_released_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        assert rows[0].release is not None
+        self.assertEqual(RELEASE_ID, rows[0].release['id'])
+        self.assertEqual('success', rows[0].event.status)
+
+    async def test_latest_released_empty_without_ids(self) -> None:
+        self.assertEqual(
+            [],
+            await deployments.latest_released_deployments_by_project(
+                self.graph, []
+            ),
+        )
+
     async def test_latest_by_project_carries_release(self) -> None:
         await self.upsert(status='success')
         rows = await deployments.latest_deployments_by_project(
