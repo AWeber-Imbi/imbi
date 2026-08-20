@@ -1173,7 +1173,14 @@ class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             b'"homepage":"https://imbi.example.com/projects/p"', body
         )
-        self.assertIsNone(ctx.link_writeback)
+        # Recorded even though nothing was renamed -- this assertion
+        # used to require the opposite, which is what left the repo link
+        # unwritten on the ordinary path (issue #254, defect 3).
+        assert ctx.link_writeback is not None
+        self.assertEqual(
+            ctx.link_writeback.new_url, 'https://github.com/octo/demo'
+        )
+        self.assertIsNone(ctx.link_writeback.old_owner_repo)
 
     @respx.mock
     async def test_update_omits_unknown_description_and_homepage(
@@ -1571,3 +1578,216 @@ class DescriptionClampTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, 'ok')
         body = json.loads(patch_route.calls.last.request.read())
         self.assertLessEqual(len(body['description']), _MAX_DESCRIPTION_CHARS)
+
+
+class UpdateUpsertTestCase(unittest.IsolatedAsyncioTestCase):
+    """``on_project_updated`` provisions a repo it finds missing.
+
+    ``on_project_created`` is reachable only from the project-create
+    endpoint, so before this an update was the sole event that could
+    repair a failed creation -- and it 404'd instead (issue #254,
+    defect 2).
+    """
+
+    @staticmethod
+    def _created_response() -> httpx.Response:
+        return httpx.Response(
+            201,
+            json={
+                'id': 7,
+                'name': 'demo',
+                'html_url': 'https://github.com/aweber-apis/demo',
+                'owner': {'login': 'aweber-apis'},
+            },
+        )
+
+    @respx.mock
+    async def test_creates_when_the_repo_is_missing(self) -> None:
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404)
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(return_value=self._created_response())
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={
+                'github-repository': 'https://github.com/aweber-apis/demo'
+            },
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(create_route.calls.call_count, 1)
+        self.assertEqual(
+            result.artifacts['repo_url'],
+            'https://github.com/aweber-apis/demo',
+        )
+        self.assertIsNotNone(ctx.link_writeback)
+
+    @respx.mock
+    async def test_refuses_when_the_link_disagrees_with_the_org(
+        self,
+    ) -> None:
+        # Creating at the configured org while the link still names the
+        # old one is an org migration, not a sync.
+        respx.get('https://api.github.com/repos/old-org/demo').mock(
+            return_value=httpx.Response(404)
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/new-org/repos'
+        ).mock(return_value=self._created_response())
+
+        ctx = _ctx(
+            options={'create_org': 'new-org'},
+            project_links={
+                'github-repository': 'https://github.com/old-org/demo'
+            },
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'failed')
+        self.assertEqual(create_route.calls.call_count, 0)
+        assert result.message is not None
+        self.assertIn('old-org/demo', result.message)
+        self.assertIn('new-org', result.message)
+
+    @respx.mock
+    async def test_creates_at_the_configured_org_not_the_type_slug(
+        self,
+    ) -> None:
+        # With no link the lookup owner is a *project type* slug read as
+        # a GitHub org.  It has no authority, so it must not veto
+        # provisioning -- and must not be provisioned into either.
+        respx.get('https://api.github.com/repos/api-service/demo').mock(
+            return_value=httpx.Response(404)
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(return_value=self._created_response())
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={},
+            project_type_slugs=['api-service'],
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(create_route.calls.call_count, 1)
+        # The type slug was read once, to look for the repo, and never
+        # used as a creation target.
+        self.assertEqual(
+            [
+                call.request.url.path
+                for call in respx.calls
+                if 'api-service' in call.request.url.path
+            ],
+            ['/repos/api-service/demo'],
+        )
+
+    @respx.mock
+    async def test_skips_when_no_org_is_configured(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(404)
+        )
+
+        ctx = _ctx(options={})
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        # Same status and message ``on_project_created`` gives, so one
+        # misconfiguration cannot read two ways.
+        self.assertEqual(result.status, 'skipped')
+        created = await plugin.on_project_created(_ctx(options={}), _CREDS)
+        self.assertEqual(result.message, created.message)
+
+    @respx.mock
+    async def test_non_404_lookup_does_not_provision(self) -> None:
+        # A 403 means "cannot see it", not "it is not there".
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(403, json={'message': 'nope'})
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(return_value=self._created_response())
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={
+                'github-repository': 'https://github.com/aweber-apis/demo'
+            },
+        )
+        plugin = GitHubLifecycle()
+        with self.assertRaises(httpx.HTTPStatusError):
+            await plugin.on_project_updated(ctx, _CREDS)
+        self.assertEqual(create_route.calls.call_count, 0)
+
+    @respx.mock
+    async def test_reconciles_a_create_race(self) -> None:
+        # Someone created the repo between the 404 and the POST.  GitHub
+        # answers 422; the repo is adopted rather than reported failed.
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            side_effect=[
+                httpx.Response(404),
+                httpx.Response(
+                    200,
+                    json={
+                        'id': 9,
+                        'name': 'demo',
+                        'html_url': 'https://github.com/aweber-apis/demo',
+                        'owner': {'login': 'aweber-apis'},
+                    },
+                ),
+            ]
+        )
+        respx.post('https://api.github.com/orgs/aweber-apis/repos').mock(
+            return_value=httpx.Response(
+                422, json={'message': 'Repository creation failed.'}
+            )
+        )
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={
+                'github-repository': 'https://github.com/aweber-apis/demo'
+            },
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(
+            result.artifacts['repo_url'],
+            'https://github.com/aweber-apis/demo',
+        )
+
+    @respx.mock
+    async def test_a_real_422_still_fails(self) -> None:
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404)
+        )
+        respx.post('https://api.github.com/orgs/aweber-apis/repos').mock(
+            return_value=httpx.Response(
+                422,
+                json={
+                    'message': 'Repository creation failed.',
+                    'errors': [{'message': 'name is invalid'}],
+                },
+            )
+        )
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={
+                'github-repository': 'https://github.com/aweber-apis/demo'
+            },
+        )
+        plugin = GitHubLifecycle()
+        with self.assertRaises(RuntimeError) as caught:
+            await plugin.on_project_updated(ctx, _CREDS)
+        self.assertIn('name is invalid', str(caught.exception))

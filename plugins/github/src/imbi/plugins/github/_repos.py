@@ -10,9 +10,14 @@ plugin agrees on what counts as a "real" repo URL.
 
 from __future__ import annotations
 
+import dataclasses
+import logging
+import typing
 import urllib.parse
 
 from imbi.common.plugins.base import PluginContext
+
+LOGGER = logging.getLogger(__name__)
 
 # Reserved GitHub URL prefixes that share the host with repository URLs
 # but never point at a real ``<owner>/<repo>`` pair.  Any link whose
@@ -99,14 +104,31 @@ def derive_owner_repo_from_links(
     return None
 
 
-def resolve_owner_repo(
+@dataclasses.dataclass(frozen=True, slots=True)
+class RepositoryTarget:
+    """A resolved ``<owner>/<repo>`` plus where it came from.
+
+    Provenance matters wherever the answer is used to decide something
+    other than "which repo do I read".  A ``'link'`` owner is what Imbi
+    believes about this project and carries authority; a
+    ``'type_slug_fallback'`` owner is a naming convention that happens
+    to resolve, and carries none -- it is a project *type* slug being
+    read as a GitHub org, which is very often not one.
+    """
+
+    owner: str
+    repo: str
+    source: typing.Literal['link', 'type_slug_fallback']
+
+
+def resolve_repository_target(
     ctx: PluginContext,
     host: str,
     plugin_label: str,
     *,
     prefer_previous_slug: bool = False,
-) -> tuple[str, str]:
-    """Resolve the repo for a plugin call from ``ctx``.
+) -> RepositoryTarget:
+    """Resolve the repo for a plugin call from ``ctx``, with provenance.
 
     First tries the project links; falls back to
     ``<project_type_slug>/<project_slug>`` as a convention.  Raises
@@ -118,6 +140,12 @@ def resolve_owner_repo(
     ``ctx.previous_project_slug`` (when set) over ``ctx.project_slug``
     so callers reacting to a slug rename (e.g. ``on_project_updated``)
     can still locate the pre-rename repo on GitHub.
+
+    Every fallback resolution is logged.  The fallback is load-bearing
+    today -- commit sync, PR sync and deployments all lean on it for
+    projects that never had their repo link recorded (issue #254,
+    defect 3) -- so it cannot be removed until that population is known
+    to be empty, and the log is how that gets measured.
     """
     derived = derive_owner_repo_from_links(
         ctx.project_links,
@@ -125,15 +153,43 @@ def resolve_owner_repo(
         preferred_key=ctx.integration_slug,
     )
     if derived is not None:
-        return derived
+        return RepositoryTarget(derived[0], derived[1], 'link')
     if ctx.project_type_slugs:
         slug = ctx.project_slug
         if prefer_previous_slug and ctx.previous_project_slug:
             slug = ctx.previous_project_slug
         if slug:
-            return ctx.project_type_slugs[0], slug
+            owner = ctx.project_type_slugs[0]
+            LOGGER.info(
+                'Repo target for project %s resolved by project-type '
+                'fallback to %s/%s (caller=%s); the project has no '
+                'usable GitHub link',
+                ctx.project_id,
+                owner,
+                slug,
+                plugin_label,
+            )
+            return RepositoryTarget(owner, slug, 'type_slug_fallback')
     raise ValueError(
         f'{plugin_label} could not determine the target repository: '
         "set the project's GitHub Repository link or tag the project "
         'with a ProjectType'
     )
+
+
+def resolve_owner_repo(
+    ctx: PluginContext,
+    host: str,
+    plugin_label: str,
+    *,
+    prefer_previous_slug: bool = False,
+) -> tuple[str, str]:
+    """Resolve ``(owner, repo)`` for a plugin call from ``ctx``.
+
+    Provenance-free shorthand for :func:`resolve_repository_target`, for
+    the read paths that only need to know which repo to talk to.
+    """
+    target = resolve_repository_target(
+        ctx, host, plugin_label, prefer_previous_slug=prefer_previous_slug
+    )
+    return target.owner, target.repo

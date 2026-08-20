@@ -60,8 +60,10 @@ from imbi.common.plugins.errors import PluginAuthenticationFailed
 from imbi.common.plugins.templates import expand_template
 from imbi.plugins.github._hosts import flavor_host, host_to_api_base
 from imbi.plugins.github._repos import (
+    RepositoryTarget,
     derive_owner_repo_from_links,
     resolve_owner_repo,
+    resolve_repository_target,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -78,6 +80,13 @@ _TRANSFER_ARCHIVE_BACKOFFS: tuple[float, ...] = (0.5, 1.0, 2.0)
 # Visibilities accepted by the ``create_visibility`` option.  ``internal``
 # is only meaningful on a GHEC tenant or GHES appliance.
 _VISIBILITIES = frozenset({'private', 'internal', 'public'})
+
+# Emitted identically by create and by the update-path upsert, so the
+# same misconfiguration reads the same way whichever event hit it.
+_NO_CREATE_ORG = (
+    'No target org configured for project creation; set the '
+    "plugin's ``create_org`` or ``org_mapping`` option"
+)
 
 # GitHub's cap on a repo description.  Imbi's own project description
 # field has no limit, and GitHub rejects the *whole* request when the
@@ -277,13 +286,7 @@ class GitHubLifecycle(LifecycleCapability):
     ) -> LifecycleResult:
         target_org = self._resolve_create_org(ctx)
         if not target_org:
-            return LifecycleResult(
-                status='skipped',
-                message=(
-                    'No target org configured for project creation; set '
-                    "the plugin's ``create_org`` or ``org_mapping`` option"
-                ),
-            )
+            return LifecycleResult(status='skipped', message=_NO_CREATE_ORG)
         host = self._resolve_host(ctx)
         async with self._client(ctx, credentials) as client:
             existing = await self._get_repo_or_none(
@@ -322,21 +325,24 @@ class GitHubLifecycle(LifecycleCapability):
         host = self._resolve_host(ctx)
         # ``prefer_previous_slug`` so a slug rename still locates the
         # pre-rename repo on GitHub when the project has no stored link.
-        owner, repo = resolve_owner_repo(
+        target = resolve_repository_target(
             ctx,
             host,
             'GitHub lifecycle plugin',
             prefer_previous_slug=True,
         )
         async with self._client(ctx, credentials) as client:
-            current = await self._get_repo(client, owner, repo)
-            current_owner = self._current_owner(current, owner)
-            current_repo = self._current_repo(current, repo)
-            # Surface an external rename even when there's nothing else
-            # to do, so the host can self-heal the link.
-            self._maybe_report_relocation(
-                ctx, host, current, owner, repo, current_owner, current_repo
+            # ``_get_repo_or_none`` rather than ``_get_repo``: a genuine
+            # 404 means the remote is missing and this call provisions
+            # it, while every other status still raises so an auth or
+            # permission failure can't be mistaken for absence.
+            current = await self._get_repo_or_none(
+                client, target.owner, target.repo
             )
+            if current is None:
+                return await self._provision_missing(ctx, client, host, target)
+            current_owner = self._current_owner(current, target.owner)
+            current_repo = self._current_repo(current, target.repo)
             patched = await self._patch_repo_attrs(
                 client,
                 current_owner,
@@ -346,28 +352,84 @@ class GitHubLifecycle(LifecycleCapability):
                 homepage=ctx.project_ui_url,
             )
             new_repo = str(patched.get('name') or current_repo)
-            # If the patch itself renamed the repo (we asked GitHub to
-            # set ``name`` to a new slug), record the writeback even when
-            # the external-rename check above didn't.
-            if new_repo != current_repo:
-                new_url = self._record_repo(
-                    ctx,
-                    host,
-                    current_owner,
-                    new_repo,
-                    patched,
-                    old_owner_repo=f'{current_owner}/{current_repo}',
-                    new_owner_repo=f'{current_owner}/{new_repo}',
-                )
-            else:
-                new_url = str(
-                    patched.get('html_url')
-                    or self._repo_html_url(host, current_owner, new_repo)
-                )
+            # Record on every success, not only on a rename.  Recording
+            # is idempotent, and skipping it on the ordinary path left
+            # the ``EXISTS_IN`` edge and the repo link permanently
+            # unwritten for any project not provisioned by
+            # ``on_project_created`` (issue #254, defect 3).
+            #
+            # One call, so the rename provenance can't be clobbered by a
+            # second: ``old`` is what Imbi believed, which covers both a
+            # rename we asked for and one that happened outside Imbi.
+            old_owner_repo = f'{target.owner}/{target.repo}'
+            new_owner_repo = f'{current_owner}/{new_repo}'
+            renamed = new_owner_repo.lower() != old_owner_repo.lower()
+            new_url = self._record_repo(
+                ctx,
+                host,
+                current_owner,
+                new_repo,
+                patched,
+                old_owner_repo=old_owner_repo if renamed else None,
+                new_owner_repo=new_owner_repo if renamed else None,
+            )
         return LifecycleResult(
             status='ok',
             message=f'Updated {current_owner}/{new_repo}',
             artifacts={'repo_url': new_url},
+        )
+
+    async def _provision_missing(
+        self,
+        ctx: PluginContext,
+        client: httpx.AsyncClient,
+        host: str,
+        target: RepositoryTarget,
+    ) -> LifecycleResult:
+        """Create the repo an update found missing, or refuse to.
+
+        ``on_project_created`` is dispatched from exactly one place -- the
+        project-create endpoint -- so a project whose creation failed had
+        no API-driven way back: every later update 404'd and never
+        created (issue #254, defect 2).  An update is the only event that
+        can repair it, which is what ``POST /lifecycle/sync`` documents.
+
+        The creation org comes from ``create_org`` / ``org_mapping``, the
+        same resolver ``on_project_created`` uses, and from nowhere else.
+        In particular never from ``target.owner`` on the fallback path:
+        that owner is a project-type slug read as a GitHub org, so
+        provisioning there would invent a repo in an org nobody
+        configured.
+
+        A stored link that disagrees with the configured org is refused
+        rather than reconciled.  Creating at the new org while the link
+        still names the old one is an org migration, which needs to be
+        someone's decision -- and silently making it would leave a
+        duplicate repo behind with automation still pointed at the
+        original.
+        """
+        create_org = self._resolve_create_org(ctx)
+        if not create_org:
+            return LifecycleResult(status='skipped', message=_NO_CREATE_ORG)
+        if target.source == 'link' and target.owner != create_org:
+            return LifecycleResult(
+                status='failed',
+                message=(
+                    f'Repository link points at {target.owner}/'
+                    f'{target.repo}, which does not exist, but '
+                    f'provisioning resolves to {create_org}. Refusing '
+                    'to create: changing orgs is a migration and needs '
+                    'to be done deliberately.'
+                ),
+            )
+        created = await self._create_repo(client, create_org, ctx)
+        html_url = self._record_repo(
+            ctx, host, create_org, ctx.project_slug, created
+        )
+        return LifecycleResult(
+            status='ok',
+            message=f'Created {create_org}/{ctx.project_slug}',
+            artifacts={'repo_url': html_url},
         )
 
     async def on_project_deleted(
@@ -722,6 +784,18 @@ class GitHubLifecycle(LifecycleCapability):
                 'private': visibility != 'public',
             },
         )
+        if resp.status_code == 422:
+            # 422 covers every validation failure, "name already exists"
+            # among them -- so ask about this exact repo instead of
+            # pattern-matching the message.  A repo created between the
+            # caller's 404 and this POST is reconciled rather than
+            # reported as a failure; anything else falls through to the
+            # error below with GitHub's own reason intact.
+            existing = await self._get_repo_or_none(
+                client, org, ctx.project_slug
+            )
+            if existing is not None:
+                return existing
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
