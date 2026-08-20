@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -94,6 +94,25 @@ describe('useReleaseInFlightState', () => {
     const { result } = renderTestHook()
     await waitFor(() => expect(result.current.phase).toBe('success'))
     expect(result.current.blocked).toBe(false)
+  })
+
+  it('retires the success banner on its own', async () => {
+    // Nothing on a green banner needs answering, so it should not sit
+    // pinned under the tabs waiting for the operator to close it.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      vi.mocked(endpoints.getPromoteStatus).mockResolvedValue(
+        status({ status: 'success' }) as never,
+      )
+      const { result } = renderTestHook()
+      await waitFor(() => expect(result.current.phase).toBe('success'))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      expect(result.current.phase).toBe('idle')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('ignores a settled promote from long ago', async () => {

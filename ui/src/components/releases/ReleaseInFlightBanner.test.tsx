@@ -12,6 +12,7 @@ const state = (
 ): ReleaseInFlightState => ({
   blocked: true,
   dismiss: vi.fn(),
+  endedAt: null,
   envName: 'Staging',
   error: null,
   phase: 'building',
@@ -111,6 +112,15 @@ describe('ReleaseInFlightBanner', () => {
     expect(screen.getByText('Released v6.5.0 to Staging')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(value.dismiss).toHaveBeenCalled()
+  })
+
+  it('freezes the clock at how long a finished release took', () => {
+    renderBanner({
+      blocked: false,
+      endedAt: new Date(Date.now() - 30_000).toISOString(),
+      phase: 'success',
+    })
+    expect(screen.getByText('1m 0s')).toBeInTheDocument()
   })
 
   it('offers no dismiss while a release is still running', () => {
