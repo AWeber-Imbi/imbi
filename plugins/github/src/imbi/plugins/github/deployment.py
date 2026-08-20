@@ -906,6 +906,23 @@ class GitHubDeployment(DeploymentCapability):
                 return None
             return await self._blob_text(client, blob_sha)
 
+    async def list_commit_notes(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        namespace: str,
+    ) -> dict[str, str | None]:
+        """Every note on ``refs/notes/<namespace>`` at its current tip.
+
+        Two Git Data calls to reach the tree, then one blob read per
+        note.  A missing ref answers ``{}``.
+        """
+        async with self._client(ctx, credentials) as client:
+            tip = await self._notes_ref_tip(client, namespace)
+            if tip is None:
+                return {}
+            return await self._all_notes(client, tip)
+
     async def diff_commit_notes(
         self,
         ctx: PluginContext,
@@ -997,17 +1014,26 @@ class GitHubDeployment(DeploymentCapability):
                 out[annotated] = body
             return out
 
-    async def _notes_tree(
-        self, client: httpx.AsyncClient, namespace: str
-    ) -> dict[str, str] | None:
-        """Map annotated full SHA -> note blob SHA, or ``None`` sans ref."""
+    @staticmethod
+    async def _notes_ref_tip(
+        client: httpx.AsyncClient, namespace: str
+    ) -> str | None:
+        """The commit ``refs/notes/<namespace>`` points at, or ``None``."""
         ref = await client.get(
             f'/git/ref/{urllib.parse.quote(f"notes/{namespace}", safe="/")}'
         )
         if ref.status_code == 404:
             return None
         ref.raise_for_status()
-        tip = str(ref.json()['object']['sha'])
+        return str(ref.json()['object']['sha'])
+
+    async def _notes_tree(
+        self, client: httpx.AsyncClient, namespace: str
+    ) -> dict[str, str] | None:
+        """Map annotated full SHA -> note blob SHA, or ``None`` sans ref."""
+        tip = await self._notes_ref_tip(client, namespace)
+        if tip is None:
+            return None
         return await self._tree_notes(client, tip)
 
     async def _tree_notes(

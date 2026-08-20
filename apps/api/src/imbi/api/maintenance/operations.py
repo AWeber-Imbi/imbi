@@ -342,17 +342,19 @@ async def execute_deployment_sweep(
 ) -> ExecuteOutcome:
     """Close out deployments the remote finished but nobody recorded.
 
-    Also backfills ``Release.drift_detected`` from git notes for
-    releases no note has answered yet -- the webhook-loss cover for
-    drift ingestion, the same way the sweep itself covers deployment
-    status.  Skipped means the project has no deployment capability
-    bound, or had nothing unfinished old enough to chase and no
-    unanswered releases.
+    Also backfills two things from git notes: the per-commit verdicts
+    in ``imbi.commit_drift``, once per project, and
+    ``Release.drift_detected`` for releases no note has answered yet --
+    the webhook-loss cover for drift ingestion, the same way the sweep
+    itself covers deployment status.  Skipped means the project has no
+    deployment capability bound, or had nothing unfinished old enough to
+    chase, no unanswered releases, and no notes to record.
     """
     from imbi.api import deployment_sweeper, drift
 
     summary = await deployment_sweeper.sweep_project(db, project_id)
     stamped: int | None = None
+    recorded: int | None = None
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is not None:
         try:
@@ -373,7 +375,28 @@ async def execute_deployment_sweep(
                 'drift-backfill',
                 'Drift backfill failed. See server logs for details.',
             )
-    if (summary is None or not summary.examined) and not stamped:
+        # Its own try: this one reads ClickHouse, and a ClickHouse
+        # problem must not cost the Release stamping above.
+        try:
+            recorded = await drift.backfill_verdicts(
+                db, org_slug=org_slug, project_id=project_id
+            )
+        except PluginRateLimited:
+            raise
+        except Exception:
+            LOGGER.exception(
+                'per-commit drift backfill failed for %s', project_id
+            )
+            ctx.log.record(
+                'failed',
+                'drift-verdicts',
+                'Recording drift verdicts failed. See server logs.',
+            )
+    if (
+        (summary is None or not summary.examined)
+        and not stamped
+        and not recorded
+    ):
         return _skip(
             ctx,
             'deployment-sweep',
@@ -396,6 +419,13 @@ async def execute_deployment_sweep(
             'drift-backfill',
             f'Stamped {stamped} release(s) from git notes.',
             stamped=stamped,
+        )
+    if recorded:
+        ctx.log.record(
+            'succeeded',
+            'drift-verdicts',
+            f'Recorded {recorded} per-commit drift verdict(s).',
+            recorded=recorded,
         )
     return 'succeeded'
 

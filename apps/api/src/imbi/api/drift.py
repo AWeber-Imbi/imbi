@@ -35,12 +35,26 @@ import fastapi
 
 from imbi.api.auth import principals
 from imbi.common import graph
+from imbi.common.clickhouse import client as ch_client
 from imbi.common.plugins import errors as plugin_errors
 
 LOGGER = logging.getLogger(__name__)
 
 #: Notes namespace CI writes drift verdicts to (``refs/notes/<this>``).
 NAMESPACE = 'imbi-drift'
+
+#: Per-commit verdict table.  The Release properties answer "did the
+#: commit this tag points at drift"; this answers the same for *every*
+#: commit, which is what OR-ing a range needs.
+VERDICT_TABLE = 'commit_drift'
+
+_VERDICT_COLUMNS = [
+    'project_id',
+    'sha',
+    'drift_detected',
+    'paths',
+    'recorded_at',
+]
 
 REQUESTED_BY = principals.DRIFT_SYNC
 
@@ -83,32 +97,103 @@ LIMIT {limit}
 """
 
 
-def parse_note(body: str | None) -> bool | None:
-    """Extract the drift verdict from one note body.
+class NoteVerdict(typing.NamedTuple):
+    """One note's verdict and the paths that caused it.
 
-    Strict JSON, reading only the ``drift_detected`` key and ignoring
-    unknown keys.  Anything else -- invalid JSON, a non-object, a
-    non-boolean value -- logs a warning and answers ``None`` so a bad
-    note never fails the webhook or the sweep.
+    ``drift_detected`` is ``None`` for a note that gave no usable
+    boolean.  ``paths`` explains a verdict but never implies one: it is
+    empty when nothing drifted, and empty for every note CI writes today
+    (``{"drift_detected": <bool>}`` and nothing else), even though
+    ``drift`` itself reports ``drift_paths``.
+    """
+
+    drift_detected: bool | None
+    paths: list[str]
+
+
+def parse_note_verdict(body: str | None) -> NoteVerdict:
+    """Extract the verdict and the drifting paths from one note body.
+
+    Strict JSON, reading only ``drift_detected`` and ``drift_paths`` and
+    ignoring unknown keys.  Anything else -- invalid JSON, a non-object,
+    a non-boolean verdict -- logs a warning and answers a ``None``
+    verdict so a bad note never fails the webhook or the sweep.
     """
     if body is None:
-        return None
+        return NoteVerdict(None, [])
     try:
         parsed: object = json.loads(body)
     except ValueError:
         LOGGER.warning('Ignoring invalid drift note: %.100r', body)
-        return None
+        return NoteVerdict(None, [])
     if not isinstance(parsed, dict):
         LOGGER.warning('Ignoring non-object drift note: %.100r', body)
-        return None
-    value: object = typing.cast('dict[str, object]', parsed).get(
-        'drift_detected'
-    )
-    if isinstance(value, bool):
-        return value
-    if value is not None:
-        LOGGER.warning('Ignoring non-boolean drift_detected: %r', value)
-    return None
+        return NoteVerdict(None, [])
+    note = typing.cast('dict[str, object]', parsed)
+    value: object = note.get('drift_detected')
+    if not isinstance(value, bool):
+        if value is not None:
+            LOGGER.warning('Ignoring non-boolean drift_detected: %r', value)
+        return NoteVerdict(None, [])
+    return NoteVerdict(value, _parse_paths(note.get('drift_paths')))
+
+
+def _parse_paths(value: object) -> list[str]:
+    """The note's ``drift_paths``, or ``[]`` when it has none usable.
+
+    A malformed path list must not discard an otherwise good verdict --
+    the paths only ever explain one.
+    """
+    if not isinstance(value, list):
+        return []
+    return [
+        item
+        for item in typing.cast('list[object]', value)
+        if isinstance(item, str)
+    ]
+
+
+def parse_note(body: str | None) -> bool | None:
+    """The verdict alone, for callers that do not need the paths."""
+    return parse_note_verdict(body).drift_detected
+
+
+async def record_verdicts(
+    project_id: str, verdicts: dict[str, NoteVerdict]
+) -> int:
+    """Persist per-commit verdicts, one insert for the whole batch.
+
+    Keyed by the annotated commit's full SHA to join ``imbi.commits``,
+    so only callers holding full SHAs write here -- the notes tree is
+    keyed that way, while a ``Release.committish`` is abbreviated and
+    would collide.
+
+    Notes with no usable verdict are skipped rather than written: a
+    missing row *is* the "no verdict" state.  Returns how many rows were
+    written.  Failures are logged, not raised -- the graph write has
+    already succeeded and the next push or backfill rewrites the row
+    anyway.
+    """
+    now = datetime.datetime.now(datetime.UTC)
+    rows = [
+        [project_id, sha.lower(), verdict.drift_detected, verdict.paths, now]
+        for sha, verdict in verdicts.items()
+        if verdict.drift_detected is not None
+    ]
+    if not rows:
+        return 0
+    try:
+        await ch_client.Clickhouse.get_instance().insert(
+            VERDICT_TABLE, rows, _VERDICT_COLUMNS
+        )
+    except Exception:
+        LOGGER.exception(
+            'could not record %d drift verdicts for project %s',
+            len(rows),
+            project_id,
+        )
+        return 0
+    return len(rows)
 
 
 async def _set_drift(
@@ -204,11 +289,17 @@ async def apply_notes_diff(
     """Ingest one push to the notes ref.
 
     Diffs the notes tree between ``before`` and ``after`` through the
-    project's deployment plugin, then applies each changed note to the
-    Releases on its annotated commit.  Raises
-    :class:`NotImplementedError` when the plugin has no git-notes
-    support, and lets plugin resolution's ``HTTPException`` propagate --
-    the endpoint turns both into an honest status.
+    project's deployment plugin, records every verdict against its
+    commit, then applies each changed note to the Releases on its
+    annotated commit.  Raises :class:`NotImplementedError` when the
+    plugin has no git-notes support, and lets plugin resolution's
+    ``HTTPException`` propagate -- the endpoint turns both into an
+    honest status.
+
+    A note the push *removed* arrives as a ``None`` body and leaves the
+    recorded verdict in place.  Deliberate: CI removes a drift note only
+    by rewriting the ref, and the alternative -- deleting the row -- would
+    silently turn a range clean on a force push.
     """
     from imbi.api.endpoints import project_deployments
     from imbi.api.plugins import call_with_timeout
@@ -228,6 +319,10 @@ async def apply_notes_diff(
             before=before,
             after=after,
         )
+    )
+    await record_verdicts(
+        project_id,
+        {sha: parse_note_verdict(body) for sha, body in changed.items()},
     )
     updated = 0
     for full_sha, body in changed.items():
@@ -249,6 +344,64 @@ async def apply_notes_diff(
                 project_id,
             )
     return updated
+
+
+_HAVE_VERDICTS = """
+SELECT count() AS n
+  FROM imbi.commit_drift
+ WHERE project_id = {project_id:String}
+"""
+
+
+async def backfill_verdicts(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+) -> int | None:
+    """Record every note in the namespace for a project with none.
+
+    The one-time cover for notes written before Imbi read them.  Reads
+    the whole notes tree in one pass, which is one Git Data call per note
+    body, so it runs only while the project has no recorded verdict at
+    all -- once the table holds a row, the webhook is the steady-state
+    writer and a repeat pass would re-read every note on every sweep.
+
+    Returns how many verdicts were recorded, or ``None`` when nothing
+    could answer -- no capability bound, or one without git notes.
+    Re-running after a truncation backfills again, which is the intended
+    repair path.
+    """
+    from imbi.api.endpoints import project_deployments
+    from imbi.api.plugins import call_with_timeout
+
+    rows = await ch_client.Clickhouse.get_instance().query(
+        _HAVE_VERDICTS, {'project_id': project_id}
+    )
+    if rows and int(rows[0]['n']):
+        return 0
+    try:
+        (
+            handler,
+            ctx,
+            credentials,
+        ) = await project_deployments.resolve_deployment_capability(
+            db, org_slug=org_slug, project_id=project_id
+        )
+    except fastapi.HTTPException as exc:
+        if exc.status_code in (400, 404):
+            return None
+        raise
+    try:
+        notes = await call_with_timeout(
+            handler.list_commit_notes(ctx, credentials, namespace=NAMESPACE)
+        )
+    except NotImplementedError:
+        return None
+    return await record_verdicts(
+        project_id,
+        {sha: parse_note_verdict(body) for sha, body in notes.items()},
+    )
 
 
 async def sweep_project(

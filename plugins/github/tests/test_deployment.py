@@ -3016,6 +3016,32 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({other_sha: '{"drift_detected":false}'}, changed)
 
     @respx.mock
+    async def test_list_commit_notes_reads_the_whole_ref(self) -> None:
+        fanout = f'{self.FULL_SHA[:2]}/{self.FULL_SHA[2:]}'
+        self._mock_tree(
+            [
+                {'type': 'blob', 'path': fanout, 'sha': 'b1'},
+                {'type': 'tree', 'path': 'ab', 'sha': 'sub'},
+            ]
+        )
+        self._blob('b1', '{"drift_detected":true}')
+        notes = await self.handler.list_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift'
+        )
+        # Fan-out subtree flattened back to the annotated full SHA.
+        self.assertEqual({self.FULL_SHA: '{"drift_detected":true}'}, notes)
+
+    @respx.mock
+    async def test_list_commit_notes_without_the_ref_is_empty(self) -> None:
+        respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
+            return_value=httpx.Response(404)
+        )
+        self.assertEqual(
+            {},
+            await self.handler.list_commit_notes(_ctx(), _CREDS, 'imbi-drift'),
+        )
+
+    @respx.mock
     async def test_diff_commit_notes_zero_before_lists_everything(
         self,
     ) -> None:

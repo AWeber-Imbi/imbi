@@ -1461,6 +1461,25 @@ class DeploymentCapability(CapabilityHandler):
         del ctx, credentials, namespace, committish
         raise NotImplementedError
 
+    async def list_commit_notes(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        namespace: str,
+    ) -> dict[str, str | None]:
+        """Return every note in ``namespace``, keyed by annotated SHA.
+
+        The whole-ref counterpart to :meth:`diff_commit_notes`, for a
+        host backfilling notes it never saw a push for.  Keys are full
+        SHAs with fan-out subtrees flattened, exactly as
+        :meth:`diff_commit_notes` returns them; a missing ref is an empty
+        map, not an error, because "no notes" is a real answer.
+
+        Optional -- same contract as :meth:`get_commit_note`.
+        """
+        del ctx, credentials, namespace
+        raise NotImplementedError
+
     async def diff_commit_notes(
         self,
         ctx: PluginContext,
