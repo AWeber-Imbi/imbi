@@ -37,6 +37,7 @@ import fastapi
 import nanoid
 import pydantic
 
+from imbi.api import component_facts
 from imbi.api.auth import permissions
 from imbi.common import clickhouse, graph, models
 
@@ -269,39 +270,25 @@ class ProblemPackagesResponse(pydantic.BaseModel):
 
 # ----- Cypher --------------------------------------------------------
 
-# The org-membership traversal shared by every read here: a component
-# is in scope when a non-archived project of the org depends on one of
-# its versions.  Mirrors the Component clause of
-# ``search._ORG_SCOPE_QUERIES``.
-_COMPONENT_IN_ORG: typing.LiteralString = """
-MATCH (c:Component {{id: {component_id}}})-[:HAS_RELEASE]->(:ComponentRelease)
-      <-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)
-      -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
-      (:Organization {{slug: {org_slug}}})
-WHERE coalesce(p.archived, false) = false
-RETURN c.id AS cid
-LIMIT 1
-"""
-
-_RELEASE_IN_ORG: typing.LiteralString = """
-MATCH (cr:ComponentRelease {{id: {component_release_id}}})
-      <-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)
-      -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
-      (:Organization {{slug: {org_slug}}})
-WHERE coalesce(p.archived, false) = false
-RETURN cr.id AS cid
+# Component identity for one version, so an authorization check can
+# seek on the ``release_components`` sort key. ``component_id`` leads
+# that key and ``component_release_id`` is its fourth column, so
+# resolving the parent through one ``HAS_RELEASE`` hop here turns a
+# ClickHouse scan into a prefix seek.
+_RELEASE_PARENT: typing.LiteralString = """
+MATCH (c:Component)-[:HAS_RELEASE]->
+      (:ComponentRelease {{id: {component_release_id}}})
+RETURN c.id AS component_id
 LIMIT 1
 """
 
 # Package search, phase one: which components match the typed text.
 #
-# The name test sits in its own clause ahead of the org traversal, and
-# the ``WITH`` barrier is what makes that ordering stick -- AGE compiles
-# each clause into a nested subquery, so the traversal runs over the
-# handful of components whose name matched rather than over every
-# component in the graph.  The pre-split query aggregated counts across
-# the whole cross-product before any name test applied, which is what
-# made a keystroke cost a full-catalog scan.
+# The org-membership test used to live here as a second clause, and it
+# was an unbounded ``USES_COMPONENT_RELEASE`` fan-in. Membership is now
+# a ClickHouse set intersection over the org project set, so this
+# clause does only what its name says: match a name against the
+# catalog, which is an indexed label scan.
 #
 # ``ecosystem`` has no null-safe equality in AGE, so the "match
 # everything" sentinel is the empty string rather than null.
@@ -309,44 +296,11 @@ _SEARCH_COMPONENTS: typing.LiteralString = """
 MATCH (c:Component)
 WHERE (toLower(c.purl_name) CONTAINS {q} OR toLower(c.name) CONTAINS {q})
   AND ({ecosystem} = '' OR c.ecosystem = {ecosystem})
-WITH c
-MATCH (c)-[:HAS_RELEASE]->(:ComponentRelease)
-      <-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)
-      -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
-      (:Organization {{slug: {org_slug}}})
-WHERE coalesce(p.archived, false) = false
-RETURN DISTINCT c.id AS id,
+RETURN c.id AS id,
        c.purl_name AS purl_name,
        c.name AS name,
        c.ecosystem AS ecosystem,
        c.status AS status
-"""
-
-# Phase two: version and project counts, for the page of components
-# phase one settled on.  Bounded by ``ids`` -- at most ``limit`` of
-# them -- so the aggregate runs over one page's cross-product instead
-# of the catalog's.
-_SEARCH_COMPONENT_COUNTS: typing.LiteralString = """
-MATCH (c:Component)-[:HAS_RELEASE]->(cr:ComponentRelease)
-      <-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)
-      -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->
-      (:Organization {{slug: {org_slug}}})
-WHERE c.id IN {ids}
-  AND coalesce(p.archived, false) = false
-RETURN c.id AS id,
-       count(DISTINCT cr) AS version_count,
-       count(DISTINCT p) AS project_count
-"""
-
-# Counts the catalog directly rather than traversing to the org.  The
-# traversal made this the slowest query on the page -- 36.5s against
-# 1.07s here -- for a number that only labels a filter chip.  The cost
-# is scope: this counts every component in the graph, not only those an
-# organization deploys.  ``docs/sbom-clickhouse-migration-plan.md``
-# restores the scoping with ``uniqExact`` once the usage facts move.
-_ECOSYSTEM_TOTALS: typing.LiteralString = """
-MATCH (c:Component)
-RETURN c.ecosystem AS ecosystem, count(c) AS total
 """
 
 _GET_COMPONENT: typing.LiteralString = """
@@ -363,37 +317,6 @@ RETURN c.id AS id,
        count(cr) AS version_count
 """
 
-# One row per (version, project, environment) currently running the
-# component.  ``d.current_release = r.id`` is the fast pointer -- the
-# alternative is replaying every DEPLOYED_TO event history.
-_COMPONENT_USAGE: typing.LiteralString = """
-MATCH (c:Component {{id: {component_id}}})-[:HAS_RELEASE]->
-      (cr:ComponentRelease)
-MATCH (r:Release)-[:USES_COMPONENT_RELEASE]->(cr)
-MATCH (p:Project)-[:HAS_RELEASE]->(r)
-MATCH (p)-[d:DEPLOYED_IN]->(e:Environment)
-MATCH (p)-[:OWNED_BY]->(t:Team)-[:BELONGS_TO]->
-      (:Organization {{slug: {org_slug}}})
-WHERE d.current_release = r.id
-  AND coalesce(p.archived, false) = false
-OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
-RETURN cr.id AS component_release_id,
-       cr.version AS version,
-       cr.status AS version_status,
-       cr.status_at AS version_status_at,
-       cr.status_by AS version_status_by,
-       cr.created_at AS first_seen,
-       p.id AS project_id,
-       p.name AS project_name,
-       p.slug AS project_slug,
-       t.name AS team_name,
-       t.slug AS team_slug,
-       e.name AS environment_name,
-       e.slug AS environment_slug,
-       e.label_color AS environment_color,
-       collect(DISTINCT pt.name) AS project_types
-"""
-
 # Every version of the component, deployed or not -- the header's
 # version count and the version rows for versions nothing runs today.
 _COMPONENT_VERSIONS: typing.LiteralString = """
@@ -407,22 +330,17 @@ RETURN cr.id AS component_release_id,
        cr.created_at AS first_seen
 """
 
-# Problem Packages: anchored on a non-null status or an advisory edge
-# so the scan starts from the (indexed, small) governed set rather than
-# from every component in the graph.
-_PROBLEM_PACKAGES: typing.LiteralString = """
+# Problem Packages, graph half: every governed component version, with
+# the display attributes the report renders. Anchored on a non-null
+# status or an advisory edge so it starts from the (indexed, small)
+# governed set rather than from every component in the catalog, and
+# followed outward only -- the deployment half is a separate, bounded
+# read, and ClickHouse intersects the two.
+_GOVERNED_VERSIONS: typing.LiteralString = """
 MATCH (c:Component)-[:HAS_RELEASE]->(cr:ComponentRelease)
 WHERE cr.status IS NOT NULL
    OR c.status IS NOT NULL
    OR EXISTS((cr)-[:HAS_ADVISORY]->(:Advisory))
-MATCH (r:Release)-[:USES_COMPONENT_RELEASE]->(cr)
-MATCH (p:Project)-[:HAS_RELEASE]->(r)
-MATCH (p)-[d:DEPLOYED_IN]->(e:Environment)
-MATCH (p)-[:OWNED_BY]->(t:Team)-[:BELONGS_TO]->
-      (:Organization {{slug: {org_slug}}})
-WHERE d.current_release = r.id
-  AND coalesce(p.archived, false) = false
-OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
 RETURN c.id AS component_id,
        c.purl_name AS purl_name,
        c.name AS component_name,
@@ -430,16 +348,7 @@ RETURN c.id AS component_id,
        c.status AS component_status,
        cr.id AS component_release_id,
        cr.version AS version,
-       cr.status AS version_status,
-       p.id AS project_id,
-       p.name AS project_name,
-       p.slug AS project_slug,
-       t.name AS team_name,
-       t.slug AS team_slug,
-       e.name AS environment_name,
-       e.slug AS environment_slug,
-       e.label_color AS environment_color,
-       collect(DISTINCT pt.name) AS project_types
+       cr.status AS version_status
 """
 
 _ADVISORIES_FOR_RELEASES: typing.LiteralString = """
@@ -677,12 +586,8 @@ async def _assert_component_in_org(
     component_id: str,
 ) -> None:
     """404 unless the org depends on ``component_id``."""
-    rows = await db.execute(
-        _COMPONENT_IN_ORG,
-        {'component_id': component_id, 'org_slug': org_slug},
-        ['cid'],
-    )
-    if not rows:
+    project_ids = await component_facts.org_project_ids(db, org_slug)
+    if not await component_facts.component_in_org(project_ids, component_id):
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'No component {component_id!r} in organization',
@@ -694,16 +599,27 @@ async def _assert_release_in_org(
     org_slug: str,
     component_release_id: str,
 ) -> None:
-    """404 unless the org depends on ``component_release_id``."""
-    rows = await db.execute(
-        _RELEASE_IN_ORG,
-        {
-            'component_release_id': component_release_id,
-            'org_slug': org_slug,
-        },
-        ['cid'],
+    """404 unless the org depends on ``component_release_id``.
+
+    Resolves the owning component first so the ClickHouse probe seeks
+    on the sort-key prefix. An unknown version fails here rather than
+    on an empty probe, which keeps "no such version" and "version you
+    cannot see" the same 404 they have always been.
+    """
+    project_ids, parent_rows = await asyncio.gather(
+        component_facts.org_project_ids(db, org_slug),
+        db.execute(
+            _RELEASE_PARENT,
+            {'component_release_id': component_release_id},
+            ['component_id'],
+        ),
     )
-    if not rows:
+    in_org = parent_rows and await component_facts.component_release_in_org(
+        project_ids,
+        _required(parent_rows[0], 'component_id'),
+        component_release_id,
+    )
+    if not in_org:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
@@ -746,24 +662,29 @@ async def search_components(
     capped = max(1, min(limit, MAX_SEARCH_LIMIT))
     query = q.strip().lower()
     selected_ecosystem = ecosystem.strip()
+    project_ids = await component_facts.org_project_ids(db, org_slug)
 
     results: list[ComponentSearchResult] = []
     total = 0
     if query:
+        # Name match against the catalog, then intersect with what the
+        # org actually depends on. The intersection has to precede
+        # ranking and paging, because ``total`` counts what the reader
+        # may see rather than what the catalog holds.
         matches = await db.execute(
             _SEARCH_COMPONENTS,
-            {
-                'org_slug': org_slug,
-                'q': query,
-                'ecosystem': selected_ecosystem,
-            },
+            {'q': query, 'ecosystem': selected_ecosystem},
             ['id', 'purl_name', 'name', 'ecosystem', 'status'],
         )
+        in_org = await component_facts.component_ids_in_org(
+            project_ids, [_required(row, 'id') for row in matches]
+        )
+        matches = [row for row in matches if _required(row, 'id') in in_org]
         total = len(matches)
         ranked = sorted(matches, key=lambda row: _match_rank(row, query))
         page = ranked[:capped]
-        counts = await _search_counts(
-            db, org_slug, [_required(row, 'id') for row in page]
+        counts = await component_facts.search_counts(
+            project_ids, [_required(row, 'id') for row in page]
         )
         results = [
             ComponentSearchResult(
@@ -778,24 +699,16 @@ async def search_components(
             for row in page
         ]
 
-    # The totals describe the catalog, not the result set, so they are
-    # computed only for the request with an empty box -- the one the
-    # screen makes on load. Recomputing a full org-wide scan on every
-    # keystroke would double the cost of a search to restate a
-    # constant. The ecosystem filter does not gate them: they are what
-    # the filter's own chips count, so dropping them the moment the
-    # reader picks a chip would empty the control they just used.
+    # The totals describe the org's catalog, not the result set, so
+    # they are computed only for the request with an empty box -- the
+    # one the screen makes on load. Recomputing on every keystroke
+    # would double the cost of a search to restate a constant. The
+    # ecosystem filter does not gate them: they are what the filter's
+    # own chips count, so dropping them the moment the reader picks a
+    # chip would empty the control they just used.
     totals: dict[str, int] = {}
     if not query:
-        totals = {
-            _required(row, 'ecosystem'): _count(row, 'total')
-            for row in await db.execute(
-                _ECOSYSTEM_TOTALS,
-                {},
-                ['ecosystem', 'total'],
-            )
-            if _text(row, 'ecosystem')
-        }
+        totals = await component_facts.ecosystem_totals(project_ids)
     return ComponentSearchResponse(
         data=results,
         ecosystem_totals=totals,
@@ -823,26 +736,45 @@ def _match_rank(
     return (tier, len(name), _required(row, 'purl_name'))
 
 
-async def _search_counts(
+async def _deployment_pointers(
     db: graph.Graph,
     org_slug: str,
-    component_ids: list[str],
-) -> dict[str, tuple[int, int]]:
-    """Return ``(version_count, project_count)`` per component id."""
-    if not component_ids:
-        return {}
+) -> dict[str, list[dict[str, typing.Any]]]:
+    """The deployment pointer set, indexed by release id.
+
+    One entry per release a non-archived project of the org currently
+    has deployed, holding the project/team/environment rows that
+    release is deployed as -- several, when a project runs the same
+    release in more than one environment. That fan-out is what the old
+    traversal's cross-product carried, and the report folding depends
+    on it.
+
+    Rows keep their agtype encoding: every consumer decodes with
+    ``_required``/``_text``, and the only value joined in from
+    ClickHouse is a nanoid, which decodes to itself.
+    """
     rows = await db.execute(
-        _SEARCH_COMPONENT_COUNTS,
-        {'ids': component_ids, 'org_slug': org_slug},
-        ['id', 'version_count', 'project_count'],
+        component_facts.ORG_DEPLOYED_RELEASES,
+        {'org_slug': org_slug},
+        [
+            'release_id',
+            'project_id',
+            'project_name',
+            'project_slug',
+            'team_name',
+            'team_slug',
+            'environment_name',
+            'environment_slug',
+            'environment_color',
+            'project_types',
+        ],
     )
-    return {
-        _required(row, 'id'): (
-            _count(row, 'version_count'),
-            _count(row, 'project_count'),
-        )
-        for row in rows
-    }
+    pointers: dict[str, list[dict[str, typing.Any]]] = {}
+    for row in rows:
+        release_id = _text(row, 'release_id')
+        if release_id:
+            pointers.setdefault(release_id, []).append(row)
+    return pointers
 
 
 # ----- Package usage -------------------------------------------------
@@ -982,16 +914,12 @@ async def get_component_usage(
     counts are over the same scope, except ``version_count``, which is
     every version Imbi has ever ingested for the package.
     """
-    # Four independent reads, and ``execute`` takes its own pooled
+    # Independent reads, and ``execute`` takes its own pooled
     # connection per call, so the screen waits on the slowest rather
     # than on their sum. The membership check is one of them: it is a
-    # guard on the response, not on whether the other three may run.
-    scope_rows, header_rows, usage_rows, version_rows = await asyncio.gather(
-        db.execute(
-            _COMPONENT_IN_ORG,
-            {'component_id': component_id, 'org_slug': org_slug},
-            ['cid'],
-        ),
+    # guard on the response, not on whether the others may run.
+    _scope, header_rows, version_rows, pointer_rows = await asyncio.gather(
+        _assert_component_in_org(db, org_slug, component_id),
         db.execute(
             _GET_COMPONENT,
             {'component_id': component_id},
@@ -1008,27 +936,6 @@ async def get_component_usage(
             ],
         ),
         db.execute(
-            _COMPONENT_USAGE,
-            {'component_id': component_id, 'org_slug': org_slug},
-            [
-                'component_release_id',
-                'version',
-                'version_status',
-                'version_status_at',
-                'version_status_by',
-                'first_seen',
-                'project_id',
-                'project_name',
-                'project_slug',
-                'team_name',
-                'team_slug',
-                'environment_name',
-                'environment_slug',
-                'environment_color',
-                'project_types',
-            ],
-        ),
-        db.execute(
             _COMPONENT_VERSIONS,
             {'component_id': component_id},
             [
@@ -1040,18 +947,26 @@ async def get_component_usage(
                 'first_seen',
             ],
         ),
+        _deployment_pointers(db, org_slug),
     )
-    if not scope_rows:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'No component {component_id!r} in organization',
-        )
     if not header_rows:
         raise fastapi.HTTPException(
             status_code=404, detail=f'No component {component_id!r}'
         )
     header = header_rows[0]
     component_status = _status(_text(header, 'status'))
+    # ClickHouse says which of the deployed releases carry a version of
+    # this package; the pointer rows say what those releases are
+    # deployed as. Re-joining here reproduces the cross-product the
+    # traversal used to return, so the folding below is unchanged.
+    usage = await component_facts.component_usage(
+        list(pointer_rows), component_id
+    )
+    usage_rows = [
+        {**pointer, 'component_release_id': component_release_id}
+        for release_id, component_release_id, _version in usage
+        for pointer in pointer_rows.get(release_id, ())
+    ]
     versions = _usage_versions(usage_rows, version_rows, component_status)
 
     release_ids = [v.id for v in versions]
@@ -1553,29 +1468,40 @@ async def get_problem_packages(
     counting, and CSV export are the client's job; this returns the
     whole (capped) set.
     """
-    rows = await db.execute(
-        _PROBLEM_PACKAGES,
-        {'org_slug': org_slug},
-        [
-            'component_id',
-            'purl_name',
-            'component_name',
-            'ecosystem',
-            'component_status',
-            'component_release_id',
-            'version',
-            'version_status',
-            'project_id',
-            'project_name',
-            'project_slug',
-            'team_name',
-            'team_slug',
-            'environment_name',
-            'environment_slug',
-            'environment_color',
-            'project_types',
-        ],
+    # The graph supplies the governed set and every attribute the
+    # report renders; ClickHouse supplies only the intersection --
+    # which of those versions the deployed releases actually carry.
+    # Both bounds are small, so the scan the traversal could not avoid
+    # never happens.
+    governed_rows, pointer_rows = await asyncio.gather(
+        db.execute(
+            _GOVERNED_VERSIONS,
+            {},
+            [
+                'component_id',
+                'purl_name',
+                'component_name',
+                'ecosystem',
+                'component_status',
+                'component_release_id',
+                'version',
+                'version_status',
+            ],
+        ),
+        _deployment_pointers(db, org_slug),
     )
+    governed = {
+        _required(row, 'component_release_id'): row for row in governed_rows
+    }
+    usages = await component_facts.governed_usage(
+        list(pointer_rows), list(governed)
+    )
+    rows = [
+        {**pointer, **governed[usage['component_release_id']]}
+        for usage in usages
+        for pointer in pointer_rows.get(usage['release_id'], ())
+        if usage['component_release_id'] in governed
+    ]
     findings = _problem_rows(rows)
     release_ids = sorted({f.component_release_id for f in findings.values()})
     advisories = await _advisories_by_release(db, release_ids)
@@ -1593,7 +1519,17 @@ async def get_problem_packages(
         for finding in findings.values()
         if finding.status is not None or finding.advisories
     ]
-    kept.sort(key=lambda f: (f.project_name, f.purl_name, f.version))
+    # ``version`` sorts on a real version key, not lexically: a string
+    # sort puts ``4.9.0`` above ``4.23.0``, which is backwards for a
+    # report whose whole job is telling an operator which version they
+    # are running.
+    kept.sort(
+        key=lambda f: (
+            f.project_name,
+            f.purl_name,
+            _version_sort_key(f.version),
+        )
+    )
     return ProblemPackagesResponse(
         rows=kept[:MAX_PROBLEM_ROWS],
         truncated=len(kept) > MAX_PROBLEM_ROWS,

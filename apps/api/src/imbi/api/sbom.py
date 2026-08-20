@@ -49,6 +49,7 @@ from cyclonedx.model import component as cdx_component
 from cyclonedx.model import license as cdx_license
 from packageurl import PackageURL
 
+from imbi.api import component_facts
 from imbi.common import clickhouse, graph, models
 
 LOGGER = logging.getLogger(__name__)
@@ -424,23 +425,23 @@ MERGE (c)-[:IDENTIFIED_BY]->(ci)
 # attribution off of the ``USES_COMPONENT_RELEASE`` edge.
 # ``OPTIONAL MATCH`` on identifiers keeps a component visible even
 # when no identifier nodes have been attached yet.
-_LIST_RELEASE_COMPONENTS: typing.LiteralString = """
-MATCH (:Release {{id: {release_id}}})
-      -[e:USES_COMPONENT_RELEASE]->(cr:ComponentRelease)
-MATCH (c:Component)-[:HAS_RELEASE]->(cr)
+#: Governance attributes for a bounded set of component versions.
+#: The usage fact -- which versions a release uses -- now comes from
+#: ClickHouse, but ``license``, ``supplier``, ``hashes``, and the
+#: identifiers were never copied there: they describe the component
+#: version itself, not one release's use of it. Anchored on the ids
+#: ClickHouse returned, so this is a bounded ``IN`` over one release's
+#: components rather than a traversal.
+_HYDRATE_COMPONENT_RELEASES: typing.LiteralString = """
+MATCH (c:Component)-[:HAS_RELEASE]->(cr:ComponentRelease)
+WHERE cr.id IN {ids}
 OPTIONAL MATCH (c)-[:IDENTIFIED_BY]->(ci:ComponentIdentifier)
-RETURN c.id AS component_id,
-       c.purl_name AS purl_name,
+RETURN cr.id AS component_release_id,
        c.name AS name,
-       c.ecosystem AS ecosystem,
        c.description AS description,
-       cr.id AS component_release_id,
-       cr.version AS version,
        cr.license AS license,
        cr.supplier AS supplier,
        cr.hashes AS hashes,
-       e.scope AS scope,
-       e.groups AS groups,
        collect(DISTINCT {{kind: ci.kind, value: ci.value}}) AS identifiers
 """
 
@@ -783,28 +784,34 @@ async def list_release_components(
     "no SBoM yet" from "unknown release" via a separate
     ``_fetch_release`` precondition check.
     """
-    rows = await db.execute(
-        _LIST_RELEASE_COMPONENTS,
-        {'release_id': release_id},
-        [
-            'component_id',
-            'purl_name',
-            'name',
-            'ecosystem',
-            'description',
-            'component_release_id',
-            'version',
-            'license',
-            'supplier',
-            'hashes',
-            'scope',
-            'groups',
-            'identifiers',
-        ],
-    )
+    facts = await component_facts.release_components(release_id)
+    if not facts:
+        return []
+    hydrated = {
+        str(graph.parse_agtype(row['component_release_id'])): row
+        for row in await db.execute(
+            _HYDRATE_COMPONENT_RELEASES,
+            {'ids': [str(fact['component_release_id']) for fact in facts]},
+            [
+                'component_release_id',
+                'name',
+                'description',
+                'license',
+                'supplier',
+                'hashes',
+                'identifiers',
+            ],
+        )
+    }
     out: list[ListedComponent] = []
-    for row in rows:
-        hashes_raw = graph.parse_agtype(row['hashes'])
+    for fact in facts:
+        # A version present in the snapshot but absent from the graph
+        # would mean the two stores disagree, which
+        # ``sbom-backfill-report`` exists to surface. Rendering the
+        # snapshot's own columns and leaving the governance ones empty
+        # keeps the listing honest about what it knows.
+        row = hydrated.get(str(fact['component_release_id']), {})
+        hashes_raw = graph.parse_agtype(row.get('hashes'))
         if isinstance(hashes_raw, str):
             hashes_decoded = typing.cast(
                 dict[str, str], json.loads(hashes_raw)
@@ -813,7 +820,7 @@ async def list_release_components(
             hashes_decoded = typing.cast(dict[str, str], hashes_raw)
         else:
             hashes_decoded = {}
-        identifiers_raw = graph.parse_agtype(row['identifiers'])
+        identifiers_raw = graph.parse_agtype(row.get('identifiers'))
         identifiers: list[ListedIdentifier] = []
         if isinstance(identifiers_raw, list):
             for entry in identifiers_raw:
@@ -830,46 +837,20 @@ async def list_release_components(
                     )
         out.append(
             ListedComponent(
-                purl_name=str(graph.parse_agtype(row['purl_name'])),
-                name=str(graph.parse_agtype(row['name'])),
-                ecosystem=str(graph.parse_agtype(row['ecosystem'])),
+                purl_name=str(fact['purl_name']),
+                name=str(graph.parse_agtype(row.get('name')) or ''),
+                ecosystem=str(fact['ecosystem']),
                 description=_optional_str(row.get('description')),
-                version=str(graph.parse_agtype(row['version'])),
+                version=str(fact['version']),
                 license=_optional_str(row.get('license')),
                 supplier=_optional_str(row.get('supplier')),
                 hashes=hashes_decoded,
                 identifiers=identifiers,
-                scope=_optional_str(row.get('scope')),
-                groups=_decode_groups(row.get('groups')),
+                scope=str(fact['scope']) or None,
+                groups=[str(group) for group in fact['groups']],
             ),
         )
     return out
-
-
-def _decode_groups(raw: typing.Any) -> list[str]:
-    """Decode the JSON-encoded ``e.groups`` edge property into a list.
-
-    AGE stores list-of-string edge properties as JSON strings the
-    same way it stores dicts. ``None`` and unparseable values
-    collapse to an empty list rather than propagating ``None`` —
-    the empty-list case is by far the most common (a release with
-    no scoped group info).
-    """
-    if raw is None:
-        return []
-    value = graph.parse_agtype(raw)
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(g) for g in value]
-    if isinstance(value, str):
-        try:
-            decoded = json.loads(value)
-        except (TypeError, ValueError):
-            return []
-        if isinstance(decoded, list):
-            return [str(g) for g in decoded]
-    return []
 
 
 def _optional_str(raw: typing.Any) -> str | None:
