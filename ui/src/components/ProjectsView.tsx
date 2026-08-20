@@ -931,6 +931,7 @@ function DriftCell({
       string,
       { committish?: null | string; tag?: null | string }
     >
+    drift_ranges?: Record<string, boolean>
     environments?:
       | null
       | {
@@ -943,6 +944,7 @@ function DriftCell({
     project_types?: null | object[]
     release_summary?: null | {
       commits_since_tag: number
+      drift_detected?: boolean
       head_sha: null | string
     }
   }
@@ -958,11 +960,13 @@ function DriftCell({
     : 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs'
   const fallbackCls = 'border-amber-border bg-amber-bg text-amber-text border'
 
+  // Same predicate the count and the filter use, so a badge never
+  // appears for a project the "Drifted" tally does not include.
   const deployDrifted: DriftPair[] = isProjectDeployable(project)
     ? computeDriftPairs(
         project.environments ?? [],
         project.current_releases ?? {},
-      ).filter((p) => p.drifted)
+      ).filter((p) => p.drifted && rangeNeedsAction(project.drift_ranges, p))
     : []
 
   const releaseDrifted =
@@ -1038,7 +1042,9 @@ function driftSlugsFor(project: ProjectListItem): string[] {
       project.current_releases ?? {},
     )
     for (const pair of pairs) {
-      if (pair.drifted) slugs.push(`${pair.from}->${pair.to}`)
+      if (pair.drifted && rangeNeedsAction(project.drift_ranges, pair)) {
+        slugs.push(`${pair.from}->${pair.to}`)
+      }
     }
   }
   if (isProjectReleasable(project) && projectReleaseDrifted(project)) {
@@ -1209,15 +1215,31 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
   return next
 }
 
+// Same rule as `rangeNeedsAction`, over the tag..HEAD range: commits
+// past the latest tag only count when CI says one of them matters.
 function projectReleaseDrifted(project: {
   release_summary?: null | {
     commits_since_tag: number
+    drift_detected?: boolean
     head_sha: null | string
   }
 }): boolean {
   const s = project.release_summary
   if (!s?.head_sha) return false
-  return s.commits_since_tag > 0
+  return s.commits_since_tag > 0 && s.drift_detected === true
+}
+
+// Whether CI called anything in this promotion step worth acting on.
+// A version difference alone is not the signal: a range of docs and
+// CI-config commits differs but needs no promotion. The rule is one
+// question over the range -- any commit marked `true` means act; all
+// `false`, or nothing checked, means leave it alone.
+function rangeNeedsAction(
+  ranges: Record<string, boolean> | undefined,
+  pair: DriftPair,
+): boolean {
+  if (!pair.baseSha || !pair.headSha) return false
+  return ranges?.[`${pair.baseSha}..${pair.headSha}`] === true
 }
 
 function ReleaseCards({

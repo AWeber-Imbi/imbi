@@ -10,8 +10,13 @@ export interface DriftEnvironment {
 }
 
 export interface DriftPair {
+  /** The two endpoints, when both sides have one. The range that would
+   *  need promoting runs from `baseSha` (what the later environment
+   *  runs) up to `headSha` (what the earlier one runs). */
+  baseSha: null | string
   drifted: boolean
   from: string
+  headSha: null | string
   to: string
   toLabelColor?: null | string
   toSlug: string
@@ -41,8 +46,10 @@ export function computeDriftPairs(
     const drifted =
       aSha && bSha ? aSha !== bSha : (aTag ?? aSha) !== (bTag ?? bSha)
     pairs.push({
+      baseSha: bSha,
       drifted,
       from: a.name,
+      headSha: aSha,
       to: b.name,
       toLabelColor: b.label_color ?? null,
       toSlug: b.slug,

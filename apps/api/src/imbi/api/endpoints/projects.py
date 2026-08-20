@@ -7,6 +7,7 @@ belong to multiple project types.  See ADR-0006 for rationale.
 import asyncio
 import contextlib
 import datetime
+import itertools
 import json
 import logging
 import math
@@ -213,7 +214,7 @@ class ReleaseSummary(pydantic.BaseModel):
 
     head_sha is the latest commit on main; latest_tag is the most recent
     semver release tag; commits_since_tag is the number of unreleased
-    commits.
+    commits, and drift_detected says whether any of them matters.
     """
 
     head_sha: str | None = None
@@ -226,6 +227,15 @@ class ReleaseSummary(pydantic.BaseModel):
     latest_tag_at: datetime.datetime | None = None
     latest_tag_author: str | None = None
     commits_since_tag: int = 0
+    #: True when at least one commit since the tag carries a CI drift
+    #: verdict of ``true``.  This -- not ``commits_since_tag`` -- is what
+    #: says the project needs releasing: a range of ignorable commits
+    #: (docs, CI config) counts toward the tally but not toward this.
+    drift_detected: bool = False
+    #: How many commits in that range carry a verdict at all.  Zero means
+    #: nothing has been checked, which reads the same as clean but for a
+    #: very different reason.
+    drift_answered: int = 0
 
 
 class ProjectListTeamRef(pydantic.BaseModel):
@@ -283,6 +293,12 @@ class ProjectListItem(pydantic.BaseModel):
         default_factory=dict
     )
     release_summary: ReleaseSummary | None = None
+    #: ``"<base>..<head>"`` -> whether any commit in that range carries a
+    #: CI drift verdict of ``true``.  Keyed by the two committishes so
+    #: the client needs no agreement about environment naming: it already
+    #: knows both endpoints of every pair it draws.  A pair with no entry
+    #: was never evaluated, which the rule reads as nothing to do.
+    drift_ranges: dict[str, bool] = pydantic.Field(default_factory=dict)
 
 
 class ProjectResponse(pydantic.BaseModel):
@@ -906,6 +922,177 @@ async def _fetch_current_releases(
     return result
 
 
+async def _fetch_drifting_commit_times(
+    project_ids: list[str],
+) -> dict[str, list[datetime.datetime]]:
+    """Return {project_id: [time of each commit CI called drift]}.
+
+    Only commits whose verdict is ``true``.  That is all the rule needs
+    for an environment pair -- "does this range contain one" -- and it
+    keeps the set small enough to evaluate every pair in Python instead
+    of a windowed query per pair.
+
+    ``committed_at`` for the same reason as
+    :func:`_fetch_release_summaries`: a rebase or cherry-pick leaves the
+    author date pointing before the release it landed after.
+
+    Errors are swallowed; a missing verdict reads as "nothing to do",
+    which is what the rule says anyway.
+    """
+    if not project_ids:
+        return {}
+    try:
+        rows = await clickhouse.query(
+            'SELECT c.project_id AS project_id,'
+            ' COALESCE(c.committed_at, c.authored_at) AS at'
+            ' FROM commits AS c FINAL'
+            ' INNER JOIN (SELECT project_id, sha FROM commit_drift FINAL'
+            ' WHERE drift_detected) AS d'
+            ' ON d.project_id = c.project_id AND d.sha = c.sha'
+            ' WHERE c.project_id IN {project_ids:Array(String)}',
+            {'project_ids': project_ids},
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('Failed to fetch drifting commits', exc_info=True)
+        return {}
+    out: dict[str, list[datetime.datetime]] = {}
+    for row in rows:
+        pid = str(row.get('project_id') or '')
+        at = clickhouse.as_utc_or_none(row.get('at'))
+        if pid and at is not None:
+            out.setdefault(pid, []).append(at)
+    return out
+
+
+async def _fetch_commit_times(
+    project_ids: list[str], short_shas: list[str]
+) -> dict[tuple[str, str], datetime.datetime]:
+    """Return {(project_id, short_sha): when that commit landed}.
+
+    Resolves the endpoints of an environment pair.  Keyed on
+    ``short_sha`` because a ``Release.committish`` is the 7-char form.
+    """
+    if not project_ids or not short_shas:
+        return {}
+    try:
+        rows = await clickhouse.query(
+            'SELECT project_id, short_sha,'
+            ' COALESCE(committed_at, authored_at) AS at'
+            ' FROM commits FINAL'
+            ' WHERE project_id IN {project_ids:Array(String)}'
+            ' AND short_sha IN {short_shas:Array(String)}',
+            {'project_ids': project_ids, 'short_shas': short_shas},
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning('Failed to resolve commit times', exc_info=True)
+        return {}
+    out: dict[tuple[str, str], datetime.datetime] = {}
+    for row in rows:
+        pid = str(row.get('project_id') or '')
+        sha = str(row.get('short_sha') or '')
+        at = clickhouse.as_utc_or_none(row.get('at'))
+        if pid and sha and at is not None:
+            out[(pid, sha)] = at
+    return out
+
+
+def _environment_ranges(
+    project_data: dict[str, typing.Any],
+) -> list[tuple[str, str]]:
+    """The (base, head) committish pairs a project's pipeline implies.
+
+    Environments sort the way the UI sorts them, and each adjacent pair
+    is one promotion step.  The *lower* ``sort_order`` runs the newer
+    code -- testing tracks HEAD while staging and production run tags --
+    so the range runs from the later environment's commit up to the
+    earlier one's.
+
+    Only pairs where both sides have a committish and the two differ: a
+    pair with nothing to compare has no range, and an identical pair has
+    an empty one.
+    """
+    envs = [
+        e
+        for e in typing.cast(
+            list[dict[str, typing.Any]], project_data.get('environments') or []
+        )
+        if e.get('slug')
+    ]
+    envs.sort(
+        key=lambda e: (e.get('sort_order') or 0, str(e.get('name') or ''))
+    )
+    releases = typing.cast(
+        'dict[str, ReleaseInfo]',
+        project_data.get('current_releases') or {},
+    )
+    out: list[tuple[str, str]] = []
+    for head_env, base_env in itertools.pairwise(envs):
+        head = releases.get(str(head_env['slug']))
+        base = releases.get(str(base_env['slug']))
+        head_sha = head.committish or '' if head else ''
+        base_sha = base.committish or '' if base else ''
+        if head_sha and base_sha and head_sha != base_sha:
+            out.append((base_sha, head_sha))
+    return out
+
+
+def _range_key(base: str, head: str) -> str:
+    """The wire key for one range, as the UI reconstructs it."""
+    return f'{base}..{head}'
+
+
+async def _evaluate_environment_drift(
+    project_data_list: list[dict[str, typing.Any]],
+) -> dict[str, dict[str, bool]]:
+    """Apply the rule to every project's promotion steps.
+
+    Two reads -- the endpoint commit times and the drifting commit times
+    -- then the ranges are evaluated here rather than in SQL.  A drifting
+    commit is rare enough per project that a windowed query per pair
+    would cost more than the comparison saves.
+
+    A range whose endpoints cannot both be dated is left out entirely
+    rather than reported clean: the caller cannot tell those apart, but
+    the rule treats them the same way, and an absent key says plainly
+    that nothing was evaluated.
+    """
+    ranges_by_pid: dict[str, list[tuple[str, str]]] = {}
+    for project_data in project_data_list:
+        pid = str(project_data.get('id', ''))
+        if not pid:
+            continue
+        found = _environment_ranges(project_data)
+        if found:
+            ranges_by_pid[pid] = found
+    if not ranges_by_pid:
+        return {}
+    pids = list(ranges_by_pid)
+    shas = sorted(
+        {
+            sha
+            for pairs in ranges_by_pid.values()
+            for pair in pairs
+            for sha in pair
+        }
+    )
+    times, drifting = await asyncio.gather(
+        _fetch_commit_times(pids, shas),
+        _fetch_drifting_commit_times(pids),
+    )
+    out: dict[str, dict[str, bool]] = {}
+    for pid, pairs in ranges_by_pid.items():
+        marks = drifting.get(pid, [])
+        for base, head in pairs:
+            lo = times.get((pid, base))
+            hi = times.get((pid, head))
+            if lo is None or hi is None:
+                continue
+            out.setdefault(pid, {})[_range_key(base, head)] = any(
+                lo < at <= hi for at in marks
+            )
+    return out
+
+
 async def _fetch_release_summaries(
     project_ids: list[str],
 ) -> dict[str, ReleaseSummary]:
@@ -971,13 +1158,19 @@ async def _fetch_release_summaries(
         pid for pid, tag in latest_by_pid.items() if tag is not None
     ]
     counts_since_tag: dict[str, int] = {}
+    drift_by_pid: dict[str, tuple[bool, int]] = {}
     if tagged_pids:
         try:
-            # For each project, count commits authored after the tag's
-            # recorded_at/tagged_at (the closest proxy we have to when
-            # the tag commit landed without a separate sha→authored_at
-            # look-up).  This mirrors what the per-project drift endpoint
-            # does via a base-commit authored_at lookup.
+            # For each project, count commits that landed after the
+            # tag's recorded_at/tagged_at (the closest proxy we have to
+            # when the tag commit landed without a separate sha→time
+            # look-up).
+            #
+            # ``committed_at``, not ``authored_at``: a cherry-pick or a
+            # rebase keeps the original author date but resets the
+            # committer date, so the author date would date those
+            # commits before a tag they actually landed after.  15% of
+            # synced commits have the two disagreeing.
             tag_times = [
                 (latest_by_pid[pid] or {}).get('tagged_at')
                 or (latest_by_pid[pid] or {}).get('recorded_at')
@@ -999,23 +1192,43 @@ async def _fetch_release_summaries(
                 # JSON (double-quoted), but ClickHouse's Map text parser
                 # requires single-quoted strings (CANNOT_PARSE_QUOTED_STRING).
                 # Arrays serialize correctly, so mapFromArrays sidesteps it.
+                # The verdict join rides along on the same scan.  A
+                # LEFT JOIN cannot distinguish "no verdict row" from a
+                # real ``false`` -- Bool defaults to 0 -- so the
+                # subquery carries an explicit ``answered`` marker.
                 count_rows = await clickhouse.query(
-                    'SELECT project_id,'
-                    ' countIf(authored_at > mapFromArrays('
-                    '{pids:Array(String)},'
-                    ' {cuts:Array(DateTime64(3))})'
-                    '[project_id]) AS c'
-                    ' FROM commits FINAL'
-                    ' WHERE project_id'
-                    ' IN {pids:Array(String)}'
-                    ' GROUP BY project_id',
+                    'SELECT c.project_id AS project_id,'
+                    ' count() AS c,'
+                    ' countIf(d.answered = 1 AND d.drift_detected)'
+                    ' AS drifted,'
+                    ' countIf(d.answered = 1) AS answered'
+                    ' FROM commits AS c FINAL'
+                    ' LEFT JOIN (SELECT project_id, sha, drift_detected,'
+                    ' toUInt8(1) AS answered FROM commit_drift FINAL) AS d'
+                    ' ON d.project_id = c.project_id AND d.sha = c.sha'
+                    ' WHERE c.project_id IN {pids:Array(String)}'
+                    ' AND COALESCE(c.committed_at, c.authored_at) >'
+                    ' mapFromArrays({pids:Array(String)},'
+                    ' {cuts:Array(DateTime64(3))})[c.project_id]'
+                    ' GROUP BY c.project_id',
                     {
                         'pids': list(cutoff_map.keys()),
                         'cuts': list(cutoff_map.values()),
                     },
                 )
+                # Projects whose range is empty drop out of the result
+                # rather than returning a zero row; both callers below
+                # default to "nothing there".
                 counts_since_tag = {
                     str(row['project_id']): int(row['c'])
+                    for row in count_rows
+                    if row.get('project_id') is not None
+                }
+                drift_by_pid = {
+                    str(row['project_id']): (
+                        int(row['drifted']) > 0,
+                        int(row['answered']),
+                    )
                     for row in count_rows
                     if row.get('project_id') is not None
                 }
@@ -1066,6 +1279,8 @@ async def _fetch_release_summaries(
             latest_tag_at=latest_tag_at,
             latest_tag_author=latest_tag_author,
             commits_since_tag=counts_since_tag.get(pid, 0),
+            drift_detected=drift_by_pid.get(pid, (False, 0))[0],
+            drift_answered=drift_by_pid.get(pid, (False, 0))[1],
         )
     return release_result
 
@@ -1925,6 +2140,15 @@ async def list_projects(
 
     await _resolve_release_display_names(db, releases)
 
+    # Environment-pair verdicts.  ``current_releases`` has to be on each
+    # project before the ranges can be derived, so this runs after the
+    # gather rather than inside it.
+    for project_data in project_data_list:
+        project_data['current_releases'] = releases.get(
+            str(project_data.get('id', '')), {}
+        )
+    drift_ranges = await _evaluate_environment_drift(project_data_list)
+
     for project_data in project_data_list:
         pid = str(project_data.get('id', ''))
         open_count, closed_count, viewer_open, viewer_closed = pr_counts.get(
@@ -1934,7 +2158,7 @@ async def list_projects(
         project_data['closed_pr_count'] = closed_count
         project_data['viewer_open_pr_count'] = viewer_open
         project_data['viewer_closed_pr_count'] = viewer_closed
-        project_data['current_releases'] = releases.get(pid, {})
+        project_data['drift_ranges'] = drift_ranges.get(pid, {})
         summary = release_summaries.get(pid)
         if summary is not None:
             project_data['release_summary'] = summary.model_dump()
