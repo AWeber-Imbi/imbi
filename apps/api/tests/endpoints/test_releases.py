@@ -2536,12 +2536,38 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
 
 
 class GetReleaseDependenciesTestCase(_ReleasesTestBase):
-    """GET /releases/{release_id}/dependencies"""
+    """GET /releases/{release_id}/dependencies
+
+    The dependency set is a ClickHouse snapshot now. The graph is read
+    only to hydrate the governance attributes -- license, supplier,
+    hashes, identifiers -- which describe the component version itself
+    rather than one release's use of it, and were never copied there.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.mock_ch = mock.AsyncMock(return_value=[])
+        ch_patcher = mock.patch('imbi.common.clickhouse.query', self.mock_ch)
+        ch_patcher.start()
+        self.addCleanup(ch_patcher.stop)
+
+    def _fact(self, **overrides: typing.Any) -> dict[str, typing.Any]:
+        """A row shaped like the published snapshot returns."""
+        row: dict[str, typing.Any] = {
+            'component_id': 'comp-1',
+            'component_release_id': 'cr-1',
+            'purl_name': 'pkg:npm/express',
+            'ecosystem': 'npm',
+            'version': '4.18.2',
+            'scope': 'optional',
+            'groups': ['dev', 'test'],
+        }
+        row.update(overrides)
+        return row
 
     def test_get_empty_release_returns_empty_components(self) -> None:
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
-            [],
             [],  # deployments_by_project: no Deployment nodes
         ]
         with mock.patch(
@@ -2556,6 +2582,21 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
         self.assertEqual(body['release_id'], RELEASE_ID)
         self.assertEqual(body['components'], [])
 
+    def test_an_empty_snapshot_skips_the_hydration(self) -> None:
+        """Nothing to hydrate means no graph read to hydrate it with."""
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            self.client.get(self._url(f'/{RELEASE_ID}/dependencies'))
+        # Only the release precondition read -- no hydration, and no
+        # deployment read for a release with nothing to deploy.
+        self.assertEqual(self.mock_db.execute.await_count, 1)
+
     def test_get_unknown_release_returns_404(self) -> None:
         self.mock_db.execute.side_effect = [[]]
         response = self.client.get(
@@ -2564,22 +2605,17 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 404)
 
     def test_get_populated_release_returns_components(self) -> None:
+        self.mock_ch.return_value = [self._fact()]
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [
                 {
-                    'component_id': 'comp-1',
-                    'purl_name': 'pkg:npm/express',
-                    'name': 'express',
-                    'ecosystem': 'npm',
-                    'description': None,
                     'component_release_id': 'cr-1',
-                    'version': '4.18.2',
+                    'name': 'express',
+                    'description': None,
                     'license': 'MIT',
                     'supplier': 'OpenJS Foundation',
                     'hashes': '{}',
-                    'scope': 'optional',
-                    'groups': '["dev","test"]',
                     'identifiers': [
                         {'kind': 'purl', 'value': 'pkg:npm/express'},
                     ],
@@ -2600,61 +2636,81 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
         component = body['components'][0]
         self.assertEqual(component['purl_name'], 'pkg:npm/express')
         self.assertEqual(component['version'], '4.18.2')
+        self.assertEqual(component['name'], 'express')
         self.assertEqual(component['license'], 'MIT')
         self.assertEqual(component['supplier'], 'OpenJS Foundation')
         self.assertEqual(
             component['identifiers'],
             [{'kind': 'purl', 'value': 'pkg:npm/express'}],
         )
-        # ReleaseComponentEdge round-trip — these are per-release
-        # usage facts that the UI keys off to render scope/group
-        # chips.
+        # Per-release usage facts the UI keys off to render scope and
+        # group chips. They come from the snapshot rather than the
+        # edge, which is the point of the migration.
         self.assertEqual(component['scope'], 'optional')
         self.assertEqual(component['groups'], ['dev', 'test'])
         # AGE ``cypher()`` requires the SELECT AS column list to match
-        # the RETURN clause column count. The second execute call (the
-        # dependency listing) must pass the 13-column ``columns``
-        # parameter — without it AGE raises a DatatypeMismatch at run
-        # time even though our mock-based tests would still pass.
-        list_call = self.mock_db.execute.call_args_list[1]
+        # the RETURN clause column count. The hydration call must pass
+        # its 7-column ``columns`` parameter -- without it AGE raises a
+        # DatatypeMismatch at run time even though our mock-based tests
+        # would still pass.
+        hydrate_call = self.mock_db.execute.call_args_list[1]
         self.assertEqual(
-            list_call.args[2],
+            hydrate_call.args[2],
             [
-                'component_id',
-                'purl_name',
-                'name',
-                'ecosystem',
-                'description',
                 'component_release_id',
-                'version',
+                'name',
+                'description',
                 'license',
                 'supplier',
                 'hashes',
-                'scope',
-                'groups',
                 'identifiers',
             ],
         )
+        # The hydration is bounded by the ids the snapshot named, not
+        # by a traversal from the release.
+        self.assertEqual(hydrate_call.args[1], {'ids': ['cr-1']})
+
+    def test_a_version_missing_from_the_graph_still_renders(self) -> None:
+        """The two stores disagreeing is a report, not a 500.
+
+        ``sbom-backfill-report`` exists to surface that. Here the
+        snapshot's own columns render and the governance ones stay
+        empty, which is honest about what is known.
+        """
+        self.mock_ch.return_value = [self._fact()]
+        self.mock_db.execute.side_effect = [
+            [{'release': _release_row()}],
+            [],
+            [],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                self._url(f'/{RELEASE_ID}/dependencies'),
+            )
+        self.assertEqual(response.status_code, 200)
+        component = response.json()['components'][0]
+        self.assertEqual(component['purl_name'], 'pkg:npm/express')
+        self.assertEqual(component['name'], '')
+        self.assertIsNone(component['license'])
+        self.assertEqual(component['identifiers'], [])
 
     def test_get_release_with_missing_edge_attrs(self) -> None:
         """Releases ingested before scope/groups were tracked must
-        still render — defaulting to null/empty rather than 500."""
+        still render -- defaulting to null/empty rather than 500."""
+        self.mock_ch.return_value = [self._fact(scope='', groups=[])]
         self.mock_db.execute.side_effect = [
             [{'release': _release_row()}],
             [
                 {
-                    'component_id': 'comp-1',
-                    'purl_name': 'pkg:npm/express',
-                    'name': 'express',
-                    'ecosystem': 'npm',
-                    'description': None,
                     'component_release_id': 'cr-1',
-                    'version': '4.18.2',
+                    'name': 'express',
+                    'description': None,
                     'license': None,
                     'supplier': None,
                     'hashes': '{}',
-                    'scope': None,
-                    'groups': None,
                     'identifiers': [],
                 },
             ],

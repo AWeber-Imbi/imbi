@@ -47,6 +47,13 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
             self.mock_db
         )
+        # The Component clause of the org scope is a ClickHouse
+        # aggregate now rather than a Cypher traversal, so building the
+        # scope takes one read from each store.
+        self.mock_ch = mock.AsyncMock(return_value=[])
+        ch_patcher = mock.patch('imbi.common.clickhouse.query', self.mock_ch)
+        ch_patcher.start()
+        self.addCleanup(ch_patcher.stop)
 
         # Enrichment issues its own db.execute calls after the scope/search
         # loop; stub it out so these tests can keep a fixed execute sequence
@@ -85,20 +92,26 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         Positions are named ``q0``, ``q1``, ... matching the order of
         ``search._ORG_SCOPE_QUERIES``, so adding a traversal to the
         endpoint does not mean renumbering every test.
+
+        The org project set follows them: it is not a scope query --
+        its ids never become search results -- but it is the graph read
+        that scopes the ClickHouse component clause, so it comes off
+        the same mock in the same order.
         """
         rows: list[list[dict[str, str]]] = [
             [] for _ in search_endpoint._ORG_SCOPE_QUERIES
         ]
         for name, value in rows_by_position.items():
             rows[int(name.removeprefix('q'))] = value
-        return rows
+        return [*rows, [{'project_id': '"proj-1"'}]]
 
     def _setup_org(self, node_ids: list[str] | None = None) -> None:
         """Configure mock_db.execute for the org-membership queries.
 
         The org lookup runs first, then one query per entry in
-        ``search._ORG_SCOPE_QUERIES``. Only the Project query (q1)
-        returns anything here.
+        ``search._ORG_SCOPE_QUERIES``, then the org project set that
+        scopes the ClickHouse component read. Only the Project query
+        (q1) returns anything here.
         """
         if node_ids is None:
             node_ids = ['proj-1']
@@ -342,7 +355,9 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         """parse_agtype returning falsy for org_id or any nid skips it."""
         # org_id is falsy ('') so org node is not added to the set,
         # but the org IS found (non-empty list returned). Every scope
-        # query but the Project one yields a falsy nid, which is skipped.
+        # query but the Project one yields a falsy nid, which is
+        # skipped -- as is a falsy project id, which would otherwise
+        # reach ClickHouse as an empty string that matches nothing.
         scope_rows = [
             [{'nid': '""'}] for _ in search_endpoint._ORG_SCOPE_QUERIES
         ]
@@ -350,6 +365,7 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [{'org_id': '""'}],  # org found but parse_agtype -> ''
             *scope_rows,
+            [{'project_id': '""'}],
         ]
         self.mock_db.search.return_value = [
             self._make_result(node_id='proj-1'),
@@ -359,6 +375,7 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['node_id'], 'proj-1')
+        self.mock_ch.assert_not_awaited()
 
     def test_belongs_to_node_ids_included(self) -> None:
         """Nodes returned by the BELONGS_TO query are included in org scope."""
@@ -455,11 +472,18 @@ class SearchEndpointTestCase(support.SharedAppTestCase):
                 self.assertEqual(data[0]['node_id'], comment_id)
 
     def test_component_node_ids_included(self) -> None:
-        """Component dependency-graph query nodes are in org scope."""
+        """Components the org depends on are in scope, from ClickHouse.
+
+        This clause used to be a Cypher traversal alongside the others,
+        and it was an unbounded ``USES_COMPONENT_RELEASE`` fan-in run
+        on every global search. It is an aggregate over the org project
+        set now, so it arrives outside the scope-query loop.
+        """
         self.mock_db.execute.side_effect = [
             [{'org_id': '"org-abc"'}],
-            *self._scope_rows(q9=[{'nid': '"comp-1"'}]),  # q9: Components
+            *self._scope_rows(),
         ]
+        self.mock_ch.return_value = [{'component_id': 'comp-1'}]
         self.mock_db.search.return_value = [
             self._make_result(node_id='comp-1', node_label='Component'),
         ]

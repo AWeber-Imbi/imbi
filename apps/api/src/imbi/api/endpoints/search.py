@@ -6,6 +6,7 @@ import typing
 import fastapi
 import pydantic
 
+from imbi.api import component_facts
 from imbi.api.auth import permissions
 from imbi.common import graph
 
@@ -74,12 +75,6 @@ _ORG_SCOPE_QUERIES: tuple[str, ...] = (
     '(:Document)-[:ATTACHED_TO]->(:User)-[:MEMBER_OF]->'
     '(:Organization {{slug: {org_slug}}})'
     ' RETURN c.id AS nid',
-    'MATCH (comp:Component)-[:HAS_RELEASE]->(:ComponentRelease)'
-    '<-[:USES_COMPONENT_RELEASE]-(:Release)<-[:HAS_RELEASE]-(p:Project)'
-    '-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->'
-    '(:Organization {{slug: {org_slug}}})'
-    ' WHERE coalesce(p.archived, false) = false'
-    ' RETURN comp.id AS nid',
 )
 
 
@@ -91,10 +86,16 @@ async def _get_org_node_ids(
 
     Covers: the org itself, direct BELONGS_TO children (Team, Environment,
     ProjectType, Integration, Tag, DocumentTemplate, LinkDefinition),
-    Projects, Documents, Releases, Comments, and the Components reachable
-    through the org's release dependency graph. Components are shared,
-    cross-org identities, so they are scoped to those an org actually
-    depends on rather than enumerated globally.
+    Projects, Documents, Releases, Comments, and the Components the org
+    depends on. Components are shared, cross-org identities, so they are
+    scoped to those an org actually depends on rather than enumerated
+    globally.
+
+    That component clause used to be a Cypher traversal alongside the
+    others, and it was an unbounded ``USES_COMPONENT_RELEASE`` fan-in
+    run on every global search -- the same shape that made the package
+    reports unusable. It is now a ClickHouse aggregate over the org
+    project set, which is why it sits outside the query loop.
 
     Documents are reached through all three attachment kinds — Project,
     ProjectType, and User — so an org-scoped search sees every document
@@ -127,6 +128,9 @@ async def _get_org_node_ids(
             nid = graph.parse_agtype(row['nid'])
             if nid:
                 node_ids.add(nid)
+
+    project_ids = await component_facts.org_project_ids(db, org_slug)
+    node_ids |= await component_facts.component_ids_in_org(project_ids)
 
     return node_ids
 
