@@ -381,13 +381,15 @@ def _newest_per_environment(
     pair, so an unresolved tie lets the current release and status
     differ between two identical requests.
 
-    Newest ``created_at`` wins, then the highest ``id``.  The ids are
-    nanoids, so that second key is stable rather than meaningful --
-    which of two simultaneous rollouts is "current" has no answer, only
-    a need for the same answer every time.
+    Newest ``created_at`` wins, then the highest deployment ``id``, then
+    the highest release ``id`` -- the last because one node carrying two
+    ``HAS_DEPLOYMENT`` edges fans out into rows the first two keys
+    cannot separate.  The ids are nanoids, so those keys are stable
+    rather than meaningful: which of two simultaneous rollouts is
+    "current" has no answer, only a need for the same answer every time.
     """
     best: dict[
-        tuple[str, str], tuple[tuple[str, str], dict[str, typing.Any]]
+        tuple[str, str], tuple[tuple[str, str, str], dict[str, typing.Any]]
     ] = {}
     for row in rows:
         project_id = graph.parse_agtype(row.get('project_id'))
@@ -399,8 +401,13 @@ def _newest_per_environment(
             or not isinstance(props, dict)
         ):
             continue
+        release = graph.parse_agtype(row.get('release'))
         key = (project_id, str(env.get('slug') or ''))
-        rank = (str(props.get('created_at') or ''), str(props.get('id') or ''))
+        rank = (
+            str(props.get('created_at') or ''),
+            str(props.get('id') or ''),
+            str(release.get('id') or '') if isinstance(release, dict) else '',
+        )
         current = best.get(key)
         if current is None or rank > current[0]:
             best[key] = (rank, row)
