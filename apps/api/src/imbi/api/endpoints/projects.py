@@ -774,7 +774,9 @@ async def _apply_deployment_nodes(
     best-effort.
     """
     try:
-        rows = await deployment_nodes.deployments_by_project(db, project_ids)
+        rows = await deployment_nodes.latest_released_deployments_by_project(
+            db, project_ids
+        )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
             'Failed to fetch deployment nodes for projects', exc_info=True

@@ -4930,7 +4930,7 @@ async def list_promotion_options(  # noqa: C901
     # Union the ``Deployment`` nodes over the legacy array entries the
     # loop above read; environments the project no longer deploys in
     # stay out, as they always have.
-    for entry in await deployment_nodes.deployments_by_project(
+    for entry in await deployment_nodes.latest_released_deployments_by_project(
         db, [project_id]
     ):
         slug = str(entry.environment.get('slug') or '')

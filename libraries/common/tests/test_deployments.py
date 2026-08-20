@@ -20,6 +20,7 @@ dotenv.load_dotenv()
 ORG = 'test-deployments-org'
 PROJECT_ID = 'test-deployments-project'
 RELEASE_ID = 'test-deployments-release'
+OTHER_RELEASE_ID = 'test-deployments-release-2'
 ENV = 'test-deployments-env'
 OTHER_ENV = 'test-deployments-env-2'
 NOW = datetime.datetime(2026, 8, 18, tzinfo=datetime.UTC)
@@ -69,6 +70,7 @@ class DeploymentNodeTestCase(unittest.IsolatedAsyncioTestCase):
         for label, key, value in (
             ('Project', 'id', PROJECT_ID),
             ('Release', 'id', RELEASE_ID),
+            ('Release', 'id', OTHER_RELEASE_ID),
             ('Environment', 'slug', ENV),
             ('Environment', 'slug', OTHER_ENV),
             ('Organization', 'slug', ORG),
@@ -224,6 +226,184 @@ class ReadTests(DeploymentNodeTestCase):
     async def test_deployments_by_project_empty_without_ids(self) -> None:
         self.assertEqual(
             [], await deployments.deployments_by_project(self.graph, [])
+        )
+
+    async def _add_other_env(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{slug: {org}}})
+            MERGE (e:Environment {{slug: {env}}})
+            MERGE (e)-[:BELONGS_TO]->(o)
+            RETURN e.slug AS slug
+            """,
+            {'org': ORG, 'env': OTHER_ENV},
+            ['slug'],
+        )
+
+    async def test_latest_by_project_keeps_quiet_environments(self) -> None:
+        """A busy environment must not crowd out a quiet one.
+
+        The set-wide cap on :func:`deployments_by_project` is what made
+        the projects list report staging and production as "not
+        deployed": testing deploys far more often, so its rows filled
+        the window and the older -- but still current -- staging and
+        production rows fell outside it.
+        """
+        await self._add_other_env()
+        await self.upsert(
+            status='success',
+            env_slug=OTHER_ENV,
+            external_run_id=None,
+            timestamp=NOW,
+        )
+        for offset in range(1, 4):
+            await self.upsert(
+                status='success',
+                external_run_id=None,
+                timestamp=NOW + datetime.timedelta(hours=offset),
+            )
+
+        capped = await deployments.deployments_by_project(
+            self.graph, [PROJECT_ID], limit=2
+        )
+        self.assertEqual({ENV}, {row.environment['slug'] for row in capped})
+
+        rows = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(
+            {ENV, OTHER_ENV}, {row.environment['slug'] for row in rows}
+        )
+
+    async def test_latest_by_project_is_newest_per_environment(self) -> None:
+        await self.upsert(status='failed', external_run_id=None, timestamp=NOW)
+        await self.upsert(
+            status='success',
+            external_run_id=None,
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        rows = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        self.assertEqual('success', rows[0].event.status)
+
+    async def test_latest_by_project_breaks_timestamp_ties(self) -> None:
+        """A tie must not leave the answer up to AGE's row order.
+
+        Two rollouts can share an environment's newest timestamp, and
+        every caller keeps the first row it sees for an environment, so
+        an unresolved tie would let the current release and status
+        change between two identical requests.
+        """
+        await self.upsert(status='failed', external_run_id=None, timestamp=NOW)
+        await self.upsert(
+            status='success', external_run_id=None, timestamp=NOW
+        )
+        nodes = await self.nodes()
+        self.assertEqual(2, len(nodes))
+        expected = max(nodes, key=lambda node: node['id'])
+        for _ in range(2):
+            rows = await deployments.latest_deployments_by_project(
+                self.graph, [PROJECT_ID]
+            )
+            self.assertEqual(1, len(rows))
+            self.assertEqual(expected['status'], rows[0].event.status)
+
+    async def test_latest_by_project_breaks_release_fan_out(self) -> None:
+        """Two releases on one node must not fan out into two rows.
+
+        The ``OPTIONAL MATCH`` for the release multiplies a deployment
+        carrying two ``HAS_DEPLOYMENT`` edges, and neither the
+        timestamp nor the deployment id separates those rows -- they
+        are the same node.  Unlike a timestamp tie this is not
+        hypothetical: 37 projects' current deployments have two
+        releases attached in production.
+        """
+        result = await self.upsert(status='success')
+        assert result is not None
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project_id}}})
+            MATCH (d:Deployment {{id: {deployment_id}}})
+            MERGE (r:Release {{id: {release_id}}})
+            MERGE (p)-[:HAS_RELEASE]->(r)
+            MERGE (r)-[:HAS_DEPLOYMENT]->(d)
+            RETURN r.id AS id
+            """,
+            {
+                'project_id': PROJECT_ID,
+                'deployment_id': result.id,
+                'release_id': OTHER_RELEASE_ID,
+            },
+            ['id'],
+        )
+        expected = max(RELEASE_ID, OTHER_RELEASE_ID)
+        for _ in range(2):
+            rows = await deployments.latest_deployments_by_project(
+                self.graph, [PROJECT_ID]
+            )
+            self.assertEqual(1, len(rows))
+            assert rows[0].release is not None
+            self.assertEqual(expected, rows[0].release['id'])
+
+    async def test_latest_released_skips_a_newer_orphan(self) -> None:
+        """A newer release-less node must not blank the environment.
+
+        An orphan is a deployment whose tag could not be resolved to a
+        Release, not evidence that nothing is deployed -- and it never
+        heals, because ``attach_release`` runs only over aged in-flight
+        runs.  Taking the newest node and then discarding it for having
+        no release would leave the environment reading "not deployed"
+        for good with a perfectly good release one row down.
+        """
+        await self.upsert(
+            status='success', external_run_id=None, timestamp=NOW
+        )
+        await self.upsert(
+            status='in_progress',
+            release_id=None,
+            external_run_id=None,
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+
+        # The unfiltered reader still answers with the true newest, which
+        # is what scoring a deployment's status wants.
+        newest = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(newest))
+        self.assertIsNone(newest[0].release)
+        self.assertEqual('in_progress', newest[0].event.status)
+
+        rows = await deployments.latest_released_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        assert rows[0].release is not None
+        self.assertEqual(RELEASE_ID, rows[0].release['id'])
+        self.assertEqual('success', rows[0].event.status)
+
+    async def test_latest_released_empty_without_ids(self) -> None:
+        self.assertEqual(
+            [],
+            await deployments.latest_released_deployments_by_project(
+                self.graph, []
+            ),
+        )
+
+    async def test_latest_by_project_carries_release(self) -> None:
+        await self.upsert(status='success')
+        rows = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        assert rows[0].release is not None
+        self.assertEqual(RELEASE_ID, rows[0].release['id'])
+
+    async def test_latest_by_project_empty_without_ids(self) -> None:
+        self.assertEqual(
+            [], await deployments.latest_deployments_by_project(self.graph, [])
         )
 
 

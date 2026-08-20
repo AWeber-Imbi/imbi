@@ -146,7 +146,7 @@ async def _load_deployment_statuses(
     # Union the ``Deployment`` nodes over the legacy array entries: a
     # project deployed since the node cutover has no array entry to
     # score, and would otherwise fall through to the ``'missing'`` key.
-    for entry in await deployments.deployments_by_project(
+    for entry in await deployments.latest_deployments_by_project(
         database, [project_id]
     ):
         slug = str(entry.environment.get('slug') or '')
