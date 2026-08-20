@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 from imbi.api.endpoints import projects
+from imbi.common import clickhouse
 
 
 def _at(day: int) -> datetime.datetime:
@@ -228,3 +229,38 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({}, result)
         times.assert_not_awaited()
         actionable.assert_not_awaited()
+
+
+class FetchActionableCommitTimesTests(unittest.IsolatedAsyncioTestCase):
+    async def test_the_lower_bound_is_inclusive_and_carries_the_sha(
+        self,
+    ) -> None:
+        # The tied-with-base regression test above patches this function
+        # away, so it alone cannot catch the SQL quietly reverting from
+        # ``>=`` to ``>`` -- the tied commit would be dropped before the
+        # caller's predicate could see it. Pin the operator and the sha
+        # column in the rendered query, and the window parameters.
+        query = mock.AsyncMock(return_value=[])
+        with mock.patch.object(clickhouse, 'query', query):
+            await projects._fetch_actionable_commit_times(
+                {'p1': (_at(10), _at(20))}
+            )
+        sql, params = query.await_args.args
+        self.assertIn('COALESCE(c.committed_at, c.authored_at) >=', sql)
+        self.assertIn('c.short_sha AS short_sha', sql)
+        self.assertEqual(
+            {'project_ids': ['p1'], 'los': [_at(10)], 'his': [_at(20)]},
+            params,
+        )
+
+    async def test_rows_come_back_as_sha_time_pairs(self) -> None:
+        query = mock.AsyncMock(
+            return_value=[
+                {'project_id': 'p1', 'short_sha': 'twin', 'at': _at(10)}
+            ]
+        )
+        with mock.patch.object(clickhouse, 'query', query):
+            result = await projects._fetch_actionable_commit_times(
+                {'p1': (_at(10), _at(20))}
+            )
+        self.assertEqual({'p1': [('twin', _at(10))]}, result)
