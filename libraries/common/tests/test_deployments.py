@@ -286,6 +286,28 @@ class ReadTests(DeploymentNodeTestCase):
         self.assertEqual(1, len(rows))
         self.assertEqual('success', rows[0].event.status)
 
+    async def test_latest_by_project_breaks_timestamp_ties(self) -> None:
+        """A tie must not leave the answer up to AGE's row order.
+
+        Two rollouts can share an environment's newest timestamp, and
+        every caller keeps the first row it sees for an environment, so
+        an unresolved tie would let the current release and status
+        change between two identical requests.
+        """
+        await self.upsert(status='failed', external_run_id=None, timestamp=NOW)
+        await self.upsert(
+            status='success', external_run_id=None, timestamp=NOW
+        )
+        nodes = await self.nodes()
+        self.assertEqual(2, len(nodes))
+        expected = max(nodes, key=lambda node: node['id'])
+        for _ in range(2):
+            rows = await deployments.latest_deployments_by_project(
+                self.graph, [PROJECT_ID]
+            )
+            self.assertEqual(1, len(rows))
+            self.assertEqual(expected['status'], rows[0].event.status)
+
     async def test_latest_by_project_carries_release(self) -> None:
         await self.upsert(status='success')
         rows = await deployments.latest_deployments_by_project(

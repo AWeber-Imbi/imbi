@@ -350,9 +350,10 @@ async def latest_deployments_by_project(
 
     The aggregate is per ``(project, environment)`` instead, so the row
     count is bounded by the environments a project deploys in rather
-    than by recency, and no caller has to guess a limit.  Two
-    ``Deployment`` nodes sharing an environment's newest timestamp both
-    come back; callers already rank by ``timestamp`` and keep one.
+    than by recency, and no caller has to guess a limit.  Exactly one
+    row comes back per pair: the query returns every node holding an
+    environment's newest timestamp, and :func:`_newest_per_environment`
+    picks one of a tie.
 
     ``ORDER BY`` inside ``WITH`` does not survive AGE's aggregation, so
     the newest timestamp is taken with ``max()`` and matched back
@@ -365,7 +366,45 @@ async def latest_deployments_by_project(
         {'project_ids': list(project_ids)},
         ['project_id', 'env', 'release', 'deployment'],
     )
-    return _to_project_deployments(rows)
+    return _to_project_deployments(_newest_per_environment(rows))
+
+
+def _newest_per_environment(
+    rows: abc.Iterable[dict[str, typing.Any]],
+) -> list[dict[str, typing.Any]]:
+    """Keep one row per ``(project, environment)``.
+
+    Two rollouts can share an environment's newest timestamp -- one run
+    reported twice with no run id to correlate on, or a batch of nodes
+    written with a single ``created_at``.  AGE returns tied rows in an
+    arbitrary order and every caller keeps the first row it sees for a
+    pair, so an unresolved tie lets the current release and status
+    differ between two identical requests.
+
+    Newest ``created_at`` wins, then the highest ``id``.  The ids are
+    nanoids, so that second key is stable rather than meaningful --
+    which of two simultaneous rollouts is "current" has no answer, only
+    a need for the same answer every time.
+    """
+    best: dict[
+        tuple[str, str], tuple[tuple[str, str], dict[str, typing.Any]]
+    ] = {}
+    for row in rows:
+        project_id = graph.parse_agtype(row.get('project_id'))
+        env = graph.parse_agtype(row.get('env'))
+        props = graph.parse_agtype(row.get('deployment'))
+        if (
+            not isinstance(project_id, str)
+            or not isinstance(env, dict)
+            or not isinstance(props, dict)
+        ):
+            continue
+        key = (project_id, str(env.get('slug') or ''))
+        rank = (str(props.get('created_at') or ''), str(props.get('id') or ''))
+        current = best.get(key)
+        if current is None or rank > current[0]:
+            best[key] = (rank, row)
+    return [row for _, row in best.values()]
 
 
 async def deployments_by_project(
