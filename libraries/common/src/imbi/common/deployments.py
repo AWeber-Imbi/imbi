@@ -310,13 +310,62 @@ LIMIT {limit}
 
 
 #: Newest-first rows one call will read.  A deployment is a node per
-#: rollout now, so a long-lived project's set only grows; every request
-#: path here wants the newest state per environment, and reading the
-#: whole history to compute it would get slower forever.  Generous
-#: enough that the "latest per environment" answer is unaffected in
-#: practice -- an environment whose newest deployment falls outside
-#: this window has had hundreds of newer ones elsewhere in the project.
+#: rollout now, so a long-lived project's set only grows, and reading
+#: the whole history would get slower forever.  This is a cap on the
+#: whole result set, not per project or per environment, so it can hide
+#: an environment whose newest deployment is older than *limit* others
+#: in the same call -- use :func:`latest_deployments_by_project` for
+#: "what is deployed right now" rather than raising this.
 DEFAULT_READ_LIMIT = 500
+
+
+_LATEST_BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
+MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)-[:TARGETS]->(e:Environment)
+WHERE p.id IN {project_ids}
+WITH p, e, max(COALESCE(d.updated_at, d.created_at)) AS ts
+MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
+WHERE COALESCE(d2.updated_at, d2.created_at) = ts
+OPTIONAL MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d2)
+RETURN p.id AS project_id,
+       e{{.slug, .name, .sort_order}} AS env,
+       CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
+       d2 AS deployment
+"""
+
+
+async def latest_deployments_by_project(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+) -> list[ProjectDeployment]:
+    """Return the newest ``Deployment`` node per project and environment.
+
+    What every "what is deployed right now" caller wants, and the reason
+    it cannot use :func:`deployments_by_project`: that function's
+    ``limit`` is a cap on the *whole* result set, so the newest rows
+    across the requested projects crowd out quieter environments.  The
+    projects list asks about every project at once, and testing deploys
+    far more often than staging or production, so staging and production
+    fell outside the window and read as "not deployed" even though their
+    nodes were right there.
+
+    The aggregate is per ``(project, environment)`` instead, so the row
+    count is bounded by the environments a project deploys in rather
+    than by recency, and no caller has to guess a limit.  Two
+    ``Deployment`` nodes sharing an environment's newest timestamp both
+    come back; callers already rank by ``timestamp`` and keep one.
+
+    ``ORDER BY`` inside ``WITH`` does not survive AGE's aggregation, so
+    the newest timestamp is taken with ``max()`` and matched back
+    rather than read off a sorted ``collect()``.
+    """
+    if not project_ids:
+        return []
+    rows = await db.execute(
+        _LATEST_BY_PROJECT_QUERY,
+        {'project_ids': list(project_ids)},
+        ['project_id', 'env', 'release', 'deployment'],
+    )
+    return _to_project_deployments(rows)
 
 
 async def deployments_by_project(
@@ -331,6 +380,13 @@ async def deployments_by_project(
     union these with the legacy ``DEPLOYED_TO`` array entries; ordering
     beyond that is the caller's business because every one of them
     ranks by ``timestamp``.
+
+    For the newest deployment *per environment* use
+    :func:`latest_deployments_by_project`: the cap here is set-wide, so
+    a busy environment's rows can push a quieter one out of the window
+    entirely.  This function is for callers that want a slice of
+    history -- picking out one release's deployments, say -- rather than
+    current state.
     """
     if not project_ids:
         return []
@@ -339,6 +395,13 @@ async def deployments_by_project(
         {'project_ids': list(project_ids), 'limit': limit},
         ['project_id', 'env', 'release', 'deployment'],
     )
+    return _to_project_deployments(rows)
+
+
+def _to_project_deployments(
+    rows: abc.Iterable[dict[str, typing.Any]],
+) -> list[ProjectDeployment]:
+    """Decode ``(project_id, env, release, deployment)`` rows."""
     out: list[ProjectDeployment] = []
     for row in rows:
         project_id = graph.parse_agtype(row.get('project_id'))

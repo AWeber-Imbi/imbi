@@ -226,6 +226,80 @@ class ReadTests(DeploymentNodeTestCase):
             [], await deployments.deployments_by_project(self.graph, [])
         )
 
+    async def _add_other_env(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (o:Organization {{slug: {org}}})
+            MERGE (e:Environment {{slug: {env}}})
+            MERGE (e)-[:BELONGS_TO]->(o)
+            RETURN e.slug AS slug
+            """,
+            {'org': ORG, 'env': OTHER_ENV},
+            ['slug'],
+        )
+
+    async def test_latest_by_project_keeps_quiet_environments(self) -> None:
+        """A busy environment must not crowd out a quiet one.
+
+        The set-wide cap on :func:`deployments_by_project` is what made
+        the projects list report staging and production as "not
+        deployed": testing deploys far more often, so its rows filled
+        the window and the older -- but still current -- staging and
+        production rows fell outside it.
+        """
+        await self._add_other_env()
+        await self.upsert(
+            status='success',
+            env_slug=OTHER_ENV,
+            external_run_id=None,
+            timestamp=NOW,
+        )
+        for offset in range(1, 4):
+            await self.upsert(
+                status='success',
+                external_run_id=None,
+                timestamp=NOW + datetime.timedelta(hours=offset),
+            )
+
+        capped = await deployments.deployments_by_project(
+            self.graph, [PROJECT_ID], limit=2
+        )
+        self.assertEqual({ENV}, {row.environment['slug'] for row in capped})
+
+        rows = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(
+            {ENV, OTHER_ENV}, {row.environment['slug'] for row in rows}
+        )
+
+    async def test_latest_by_project_is_newest_per_environment(self) -> None:
+        await self.upsert(status='failed', external_run_id=None, timestamp=NOW)
+        await self.upsert(
+            status='success',
+            external_run_id=None,
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        rows = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        self.assertEqual('success', rows[0].event.status)
+
+    async def test_latest_by_project_carries_release(self) -> None:
+        await self.upsert(status='success')
+        rows = await deployments.latest_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        assert rows[0].release is not None
+        self.assertEqual(RELEASE_ID, rows[0].release['id'])
+
+    async def test_latest_by_project_empty_without_ids(self) -> None:
+        self.assertEqual(
+            [], await deployments.latest_deployments_by_project(self.graph, [])
+        )
+
 
 class LifecycleTests(DeploymentNodeTestCase):
     async def test_close_in_flight_marks_terminal(self) -> None:

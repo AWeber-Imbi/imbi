@@ -897,7 +897,7 @@ async def list_current_releases(
     # Union the ``Deployment`` nodes over the legacy array entries the
     # loop above read.  Environments the project no longer deploys in
     # are skipped: the response has always enumerated ``DEPLOYED_IN``.
-    for entry in await deployment_nodes.deployments_by_project(
+    for entry in await deployment_nodes.latest_deployments_by_project(
         db, [project_id]
     ):
         slug = str(entry.environment.get('slug') or '')
