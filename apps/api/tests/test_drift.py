@@ -217,16 +217,18 @@ class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(2, recorded)
         self.assertFalse(self._marked())
 
-    async def test_a_failed_write_leaves_the_project_unmarked(self) -> None:
+    async def test_a_failed_write_raises_and_leaves_it_unmarked(
+        self,
+    ) -> None:
         # The listing was whole, but nothing reached ClickHouse. Marking
-        # here would lose every one of these verdicts permanently.
+        # here would lose every one of these verdicts permanently, and
+        # returning zero would report the outage as "nothing to do".
         self.handler.list_commit_notes.return_value = self._listing()
         self.record.return_value = None
-        with self.assertLogs(drift.LOGGER, level='WARNING'):
-            recorded = await drift.backfill_verdicts(
+        with self.assertRaises(RuntimeError):
+            await drift.backfill_verdicts(
                 self.db, org_slug='org', project_id='p1'
             )
-        self.assertEqual(0, recorded)
         self.assertFalse(self._marked())
 
     async def test_a_ref_with_no_notes_is_still_finished(self) -> None:

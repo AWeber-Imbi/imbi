@@ -350,6 +350,30 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
                     mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
 
+    async def test_a_lost_verdict_write_becomes_a_failed_item(self) -> None:
+        # End to end for the raise in backfill_verdicts: a ClickHouse
+        # outage must reach the attempt row as a failure, not as
+        # "nothing unfinished to chase".
+        sweep, org, drift, _unused = self._run(None)
+        failing = mock.patch(
+            'imbi.api.drift.backfill_verdicts',
+            mock.AsyncMock(side_effect=RuntimeError('clickhouse is down')),
+        )
+        ctx = _ctx()
+        with (
+            sweep,
+            org,
+            drift,
+            failing,
+            self.assertLogs(operations.LOGGER, level='ERROR'),
+            self.assertRaises(operations.MaintenanceItemFailed) as raised,
+        ):
+            await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertIn('recording drift verdicts', str(raised.exception))
+        self.assertIn(('drift-verdicts', 'failed'), _actions(ctx))
+
     async def test_verdict_backfill_rate_limit_propagates(self) -> None:
         # The verdict backfill gets its own except-clause, so it needs
         # its own proof that a rate limit still reaches the worker and

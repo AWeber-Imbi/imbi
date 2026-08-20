@@ -393,6 +393,9 @@ async def backfill_verdicts(
 
     Returns how many verdicts were recorded, or ``None`` when nothing
     could answer -- no capability bound, or one without git notes.
+    Raises when the verdicts could not be stored: the maintenance
+    operation turns that into a failed item, where returning zero would
+    have reported a ClickHouse outage as "nothing to do".
     """
     from imbi.api.endpoints import project_deployments
     from imbi.api.plugins import call_with_timeout
@@ -424,10 +427,19 @@ async def backfill_verdicts(
         project_id,
         {sha: parse_note_verdict(body) for sha, body in listing.notes.items()},
     )
-    # Both conditions, and neither is ``recorded > 0``: a ref with no
-    # notes writes nothing and is still finished, while a failed write
-    # also writes nothing and is not.
-    if listing.complete and recorded is not None:
+    if recorded is None:
+        # Raised rather than returned as zero: the caller cannot tell a
+        # lost write from an empty ref, and reporting a ClickHouse
+        # outage as "nothing to do" hides the one pass this project
+        # gets.  The marker stays unset either way, so a later sweep
+        # retries.
+        raise RuntimeError(
+            f'could not store drift verdicts for project {project_id}'
+        )
+    # Not ``recorded > 0``: a ref with no notes writes nothing and is
+    # still finished, and gating on the count would re-read its tree on
+    # every sweep forever.
+    if listing.complete:
         await db.execute(
             _MARK_BACKFILLED,
             {
@@ -438,14 +450,11 @@ async def backfill_verdicts(
         )
     else:
         LOGGER.warning(
-            'drift backfill for project %s did not finish (%s); '
-            'leaving it unmarked so a later sweep retries',
+            'drift notes for project %s were incomplete; leaving the '
+            'backfill unmarked so a later sweep retries',
             project_id,
-            'notes were incomplete'
-            if not listing.complete
-            else 'the verdicts could not be stored',
         )
-    return recorded or 0
+    return recorded
 
 
 async def sweep_project(
