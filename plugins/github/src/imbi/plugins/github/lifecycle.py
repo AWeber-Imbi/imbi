@@ -775,8 +775,13 @@ class GitHubLifecycle(LifecycleCapability):
     ) -> dict[str, typing.Any] | None:
         """Read a repo, returning ``None`` on 404 instead of raising.
 
-        Used by :meth:`on_project_created` for the idempotency check —
-        any other status is treated as a real failure and re-raised.
+        Only a genuine 404 answers ``None``; any other status is a real
+        failure and is re-raised, so "cannot see it" is never mistaken
+        for "it is not there".  Three callers depend on that:
+        :meth:`on_project_created` for its idempotency check,
+        :meth:`on_project_updated` to detect a remote it must
+        provision, and :meth:`_create_repo` to reconcile a 422 that
+        turns out to be a create race.
         """
         resp = await client.get(f'/repos/{owner}/{repo}')
         if resp.status_code == 404:
