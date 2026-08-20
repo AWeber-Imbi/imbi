@@ -85,7 +85,7 @@ _VISIBILITIES = frozenset({'private', 'internal', 'public'})
 # same misconfiguration reads the same way whichever event hit it.
 _NO_CREATE_ORG = (
     'No target org configured for project creation; set the '
-    "plugin's ``create_org`` or ``org_mapping`` option"
+    "plugin's create_org or org_mapping option"
 )
 
 # GitHub's cap on a repo description.  Imbi's own project description
