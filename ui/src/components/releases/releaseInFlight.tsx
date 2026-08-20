@@ -171,7 +171,7 @@ export function cutBlockedReason(
     case 'adopting':
       return 'Checking for a release in flight…'
     case 'build_failed':
-      return `${label} is blocked — unblock it or fix the build first`
+      return `${label} is blocked — unblock it, or dismiss to cut anew`
     case 'deploy_failed':
       return `${label} did not deploy — redeploy it, or dismiss the notice`
     case 'failed':
