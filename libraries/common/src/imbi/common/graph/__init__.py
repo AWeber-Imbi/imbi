@@ -58,6 +58,7 @@ __all__ = [
     'SearchResult',
     'embeddable_node_types',
     'graph_lifespan',
+    'initialize',
     'parse_agtype',
     'set_on_startup',
 ]

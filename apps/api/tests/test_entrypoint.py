@@ -590,6 +590,62 @@ class SetupClickhouseTestCase(unittest.TestCase):
         self.mock_ch_close.assert_awaited_once()
 
 
+class SetupPostgresTestCase(unittest.TestCase):
+    """Test cases for the ``setup-postgres`` command.
+
+    Uses regular TestCase because the command calls asyncio.run() which
+    creates its own event loop.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.runner = typer.testing.CliRunner()
+        self.mock_graph_cls = self.enterContext(
+            mock.patch.object(entrypoint.graph, 'Graph')
+        )
+        self.mock_ch_init = self.enterContext(
+            mock.patch.object(
+                entrypoint.clickhouse,
+                'initialize',
+                new_callable=mock.AsyncMock,
+            )
+        )
+        self.mock_initialize = self.enterContext(
+            mock.patch.object(
+                entrypoint.graph,
+                'initialize',
+                new_callable=mock.AsyncMock,
+            )
+        )
+
+    def test_applies_schema(self) -> None:
+        """The graph initializer runs and success is reported."""
+        result = self.runner.invoke(entrypoint.main, ['setup-postgres'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('PostgreSQL graph schema is up to date', result.output)
+        self.mock_initialize.assert_awaited_once()
+
+    def test_does_not_touch_clickhouse_or_prompt(self) -> None:
+        """No ClickHouse connection is opened and no input is requested."""
+        result = self.runner.invoke(entrypoint.main, ['setup-postgres'])
+
+        self.assertEqual(result.exit_code, 0)
+        self.mock_ch_init.assert_not_awaited()
+        self.mock_graph_cls.assert_not_called()
+
+    def test_initializer_failure(self) -> None:
+        """An initializer failure exits non-zero with the error."""
+        self.mock_initialize.side_effect = ConnectionError('refused')
+
+        result = self.runner.invoke(entrypoint.main, ['setup-postgres'])
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn(
+            'Failed to set up PostgreSQL graph schema', result.output
+        )
+
+
 class SetupPermissionsTestCase(unittest.TestCase):
     """Test cases for the ``setup-permissions`` command.
 
