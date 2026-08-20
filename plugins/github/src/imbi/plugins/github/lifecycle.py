@@ -79,6 +79,34 @@ _TRANSFER_ARCHIVE_BACKOFFS: tuple[float, ...] = (0.5, 1.0, 2.0)
 # is only meaningful on a GHEC tenant or GHES appliance.
 _VISIBILITIES = frozenset({'private', 'internal', 'public'})
 
+# GitHub's cap on a repo description.  Imbi's own project description
+# field has no limit, and GitHub rejects the *whole* request when the
+# value is longer -- so an over-long description cost the repo entirely
+# until this was clamped (issue #254).
+_MAX_DESCRIPTION_CHARS = 350
+_DESCRIPTION_ELLIPSIS = '\u2026'
+
+
+def _normalize_description(value: str | None) -> str | None:
+    """Clamp a project description to GitHub's repo-description limit.
+
+    Truncates on a word boundary where one exists in the last word of
+    the budget, and marks the cut with an ellipsis.  Losing the tail is
+    acceptable because the full text stays in Imbi and the repo's
+    ``homepage`` links back to it; losing the repo is not.
+
+    ``None`` passes through unchanged so the caller can still tell
+    "unknown" from "empty" -- see :meth:`_patch_repo_attrs`.
+    """
+    if value is None or len(value) <= _MAX_DESCRIPTION_CHARS:
+        return value
+    budget = _MAX_DESCRIPTION_CHARS - len(_DESCRIPTION_ELLIPSIS)
+    candidate = value[:budget]
+    head, separator, _ = candidate.rpartition(' ')
+    if separator and head.strip():
+        candidate = head
+    return candidate.rstrip() + _DESCRIPTION_ELLIPSIS
+
 
 def _error_detail(response: httpx.Response) -> str:
     """Flatten a GitHub error body into one operator-facing string.
@@ -683,7 +711,8 @@ class GitHubLifecycle(LifecycleCapability):
             f'/orgs/{org}/repos',
             json={
                 'name': ctx.project_slug,
-                'description': ctx.project_description or '',
+                'description': _normalize_description(ctx.project_description)
+                or '',
                 'homepage': ctx.project_ui_url or '',
                 # ``visibility`` is authoritative where it's supported;
                 # ``private`` rides along so a host that only honors the
@@ -725,11 +754,13 @@ class GitHubLifecycle(LifecycleCapability):
         key, so a dispatch path that never populated
         ``ctx.project_description`` leaves the repo's own description
         alone instead of clearing it.  An empty string still rides
-        along, because that is a deliberate clear.
+        along, because that is a deliberate clear.  The description is
+        clamped here rather than at the call site so create and update
+        cannot disagree about the limit.
         """
         payload: dict[str, typing.Any] = {'name': name}
         if description is not None:
-            payload['description'] = description
+            payload['description'] = _normalize_description(description)
         if homepage is not None:
             payload['homepage'] = homepage
         resp = await client.patch(f'/repos/{owner}/{repo}', json=payload)

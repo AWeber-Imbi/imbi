@@ -19,7 +19,11 @@ from imbi.common.plugins.base import (
     PluginContext,
 )
 from imbi.common.plugins.errors import PluginAuthenticationFailed
-from imbi.plugins.github.lifecycle import GitHubLifecycle
+from imbi.plugins.github.lifecycle import (
+    _MAX_DESCRIPTION_CHARS,
+    GitHubLifecycle,
+    _normalize_description,
+)
 from imbi.plugins.github.plugin import GitHubPlugin
 
 
@@ -1449,3 +1453,121 @@ class ResolveRelocationTargetTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubLifecycle()
         target = await plugin.resolve_relocation_target(ctx, _CREDS)
         self.assertIsNone(target)
+
+
+class NormalizeDescriptionTestCase(unittest.TestCase):
+    """``_normalize_description`` clamps to GitHub's 350-char cap."""
+
+    def test_none_passes_through(self) -> None:
+        # ``None`` is "unknown", not "empty" -- collapsing the two is
+        # what wiped repo descriptions in issue #254.
+        self.assertIsNone(_normalize_description(None))
+
+    def test_empty_string_passes_through(self) -> None:
+        self.assertEqual(_normalize_description(''), '')
+
+    def test_exactly_at_the_limit_is_untouched(self) -> None:
+        value = 'a' * _MAX_DESCRIPTION_CHARS
+        self.assertEqual(_normalize_description(value), value)
+
+    def test_one_over_the_limit_is_clamped(self) -> None:
+        value = 'a' * (_MAX_DESCRIPTION_CHARS + 1)
+        result = _normalize_description(value)
+        assert result is not None
+        self.assertEqual(len(result), _MAX_DESCRIPTION_CHARS)
+        self.assertTrue(result.endswith('\u2026'))
+
+    def test_clamps_on_a_word_boundary(self) -> None:
+        value = ('word ' * 100).strip()
+        result = _normalize_description(value)
+        assert result is not None
+        self.assertLessEqual(len(result), _MAX_DESCRIPTION_CHARS)
+        self.assertTrue(result.endswith('word\u2026'))
+        self.assertNotIn('wor\u2026', result)
+
+    def test_single_token_longer_than_the_limit_is_hard_cut(self) -> None:
+        # No space to break on, so the ellipsis lands mid-token rather
+        # than the function returning nothing.
+        value = 'x' * 500
+        result = _normalize_description(value)
+        self.assertEqual(result, 'x' * (_MAX_DESCRIPTION_CHARS - 1) + '\u2026')
+
+    def test_counts_characters_not_bytes(self) -> None:
+        # GitHub's limit is on characters; a multi-byte description at
+        # the limit must survive untouched.
+        value = '\u00e9' * _MAX_DESCRIPTION_CHARS
+        self.assertEqual(_normalize_description(value), value)
+
+    def test_strips_whitespace_before_the_ellipsis(self) -> None:
+        value = 'a' * 340 + '          ' + 'b' * 50
+        result = _normalize_description(value)
+        assert result is not None
+        self.assertEqual(result, 'a' * 340 + '\u2026')
+
+
+class DescriptionClampTestCase(unittest.IsolatedAsyncioTestCase):
+    """Both the create and the update path clamp the description."""
+
+    @respx.mock
+    async def test_create_clamps_an_over_long_description(self) -> None:
+        # An 817-char description used to fail the whole POST with
+        # "description cannot be more than 350 characters", costing the
+        # repo over a cosmetic field (issue #254, defect 1).
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    'id': 42,
+                    'name': 'demo',
+                    'html_url': 'https://github.com/aweber-apis/demo',
+                    'owner': {'login': 'aweber-apis'},
+                },
+            )
+        )
+        respx.get('https://api.github.com/repos/aweber-apis/demo').mock(
+            return_value=httpx.Response(404)
+        )
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={},
+            project_description='word ' * 200,
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_created(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        body = json.loads(create_route.calls.last.request.read())
+        self.assertLessEqual(len(body['description']), _MAX_DESCRIPTION_CHARS)
+        self.assertTrue(body['description'].endswith('\u2026'))
+
+    @respx.mock
+    async def test_update_clamps_an_over_long_description(self) -> None:
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={'name': 'demo', 'owner': {'login': 'octo'}},
+            )
+        )
+        patch_route = respx.patch(
+            'https://api.github.com/repos/octo/demo'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/octo/demo',
+                    'owner': {'login': 'octo'},
+                },
+            )
+        )
+
+        ctx = _ctx(project_description='word ' * 200)
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        body = json.loads(patch_route.calls.last.request.read())
+        self.assertLessEqual(len(body['description']), _MAX_DESCRIPTION_CHARS)
