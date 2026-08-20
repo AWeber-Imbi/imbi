@@ -11,6 +11,7 @@ import fastapi
 
 from imbi.api import drift
 from imbi.common import graph
+from imbi.common.plugins import base
 from imbi.common.plugins import errors as plugin_errors
 
 FULL_SHA = 'abc1234' + 'f' * 33
@@ -72,6 +73,15 @@ class ParseNoteVerdictTests(unittest.TestCase):
         )
         self.assertEqual(['a.py'], verdict.paths)
 
+    def test_a_false_verdict_carries_no_paths(self) -> None:
+        # Nothing worth acting on has no drifting paths, so a false note
+        # carrying some is malformed and its paths mean nothing.
+        verdict = drift.parse_note_verdict(
+            '{"drift_detected": false, "drift_paths": ["a.py"]}'
+        )
+        self.assertIs(False, verdict.drift_detected)
+        self.assertEqual([], verdict.paths)
+
     def test_no_verdict_carries_no_paths(self) -> None:
         verdict = drift.parse_note_verdict('{"drift_paths": ["a.py"]}')
         self.assertIsNone(verdict.drift_detected)
@@ -124,6 +134,8 @@ class RecordVerdictsTests(unittest.IsolatedAsyncioTestCase):
 class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.db = mock.AsyncMock(spec=graph.Graph)
+        # Not yet backfilled.
+        self.db.execute.return_value = [{'at': None}]
         self.handler = mock.AsyncMock()
         self.resolve = mock.AsyncMock(
             return_value=(self.handler, mock.Mock(), {'access_token': 't'})
@@ -135,19 +147,33 @@ class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.ch = mock.AsyncMock()
-        self.ch.query.return_value = [{'n': 0}]
-        ch_patcher = mock.patch.object(
-            drift.ch_client.Clickhouse, 'get_instance', return_value=self.ch
+        self.record = mock.AsyncMock(return_value=2)
+        record_patcher = mock.patch.object(
+            drift, 'record_verdicts', self.record
         )
-        ch_patcher.start()
-        self.addCleanup(ch_patcher.stop)
+        record_patcher.start()
+        self.addCleanup(record_patcher.stop)
 
-    async def test_records_every_note_when_none_are_stored(self) -> None:
-        self.handler.list_commit_notes.return_value = {
-            FULL_SHA: '{"drift_detected": true, "drift_paths": ["a.py"]}',
-            'e' * 40: '{"drift_detected": false}',
-        }
+    @staticmethod
+    def _listing(complete: bool = True) -> base.NotesListing:
+        return base.NotesListing(
+            {
+                FULL_SHA: '{"drift_detected": true, "drift_paths": ["a.py"]}',
+                'e' * 40: '{"drift_detected": false}',
+            },
+            complete,
+        )
+
+    def _marked(self) -> bool:
+        """Whether the run stamped ``Project.drift_verdicts_at``."""
+        return any(
+            'drift_verdicts_at' in str(call.args[0])
+            and 'SET' in str(call.args[0])
+            for call in self.db.execute.await_args_list
+        )
+
+    async def test_records_every_note_and_marks_the_project(self) -> None:
+        self.handler.list_commit_notes.return_value = self._listing()
         recorded = await drift.backfill_verdicts(
             self.db, org_slug='org', project_id='p1'
         )
@@ -156,14 +182,38 @@ class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
             'imbi-drift',
             self.handler.list_commit_notes.await_args.kwargs['namespace'],
         )
+        self.assertTrue(self._marked())
 
-    async def test_existing_rows_short_circuit_the_read(self) -> None:
-        self.ch.query.return_value = [{'n': 3}]
+    async def test_a_marked_project_is_not_read_again(self) -> None:
+        self.db.execute.return_value = [{'at': '2026-08-20T00:00:00+00:00'}]
         recorded = await drift.backfill_verdicts(
             self.db, org_slug='org', project_id='p1'
         )
         self.assertEqual(0, recorded)
         self.handler.list_commit_notes.assert_not_awaited()
+
+    async def test_a_webhook_row_does_not_pass_for_a_backfill(self) -> None:
+        # The webhook writes a verdict on the first push after deploy, so
+        # a stored row says nothing about whether history was read. Only
+        # the marker does, and it is absent here.
+        self.handler.list_commit_notes.return_value = self._listing()
+        recorded = await drift.backfill_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        self.assertEqual(2, recorded)
+        self.handler.list_commit_notes.assert_awaited_once()
+
+    async def test_an_incomplete_listing_still_records_but_is_unmarked(
+        self,
+    ) -> None:
+        self.handler.list_commit_notes.return_value = self._listing(False)
+        with self.assertLogs(drift.LOGGER, level='WARNING'):
+            recorded = await drift.backfill_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        # What was read is kept; the job is simply not called done.
+        self.assertEqual(2, recorded)
+        self.assertFalse(self._marked())
 
     async def test_no_capability_is_none(self) -> None:
         self.resolve.side_effect = fastapi.HTTPException(status_code=404)
@@ -180,6 +230,7 @@ class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
                 self.db, org_slug='org', project_id='p1'
             )
         )
+        self.assertFalse(self._marked())
 
     async def test_other_http_errors_propagate(self) -> None:
         self.resolve.side_effect = fastapi.HTTPException(status_code=500)

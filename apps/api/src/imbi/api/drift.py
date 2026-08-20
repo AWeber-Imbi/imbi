@@ -135,7 +135,12 @@ def parse_note_verdict(body: str | None) -> NoteVerdict:
         if value is not None:
             LOGGER.warning('Ignoring non-boolean drift_detected: %r', value)
         return NoteVerdict(None, [])
-    return NoteVerdict(value, _parse_paths(note.get('drift_paths')))
+    # Paths only ever accompany a ``true``: a range with nothing worth
+    # acting on has no drifting paths by construction, so a ``false``
+    # note carrying some is malformed and its paths mean nothing.
+    if not value:
+        return NoteVerdict(False, [])
+    return NoteVerdict(True, _parse_paths(note.get('drift_paths')))
 
 
 def _parse_paths(value: object) -> list[str]:
@@ -346,10 +351,15 @@ async def apply_notes_diff(
     return updated
 
 
-_HAVE_VERDICTS = """
-SELECT count() AS n
-  FROM imbi.commit_drift
- WHERE project_id = {project_id:String}
+_BACKFILLED_AT: typing.Final[typing.LiteralString] = """
+MATCH (p:Project {{id: {project_id}}})
+RETURN p.drift_verdicts_at AS at
+"""
+
+_MARK_BACKFILLED: typing.Final[typing.LiteralString] = """
+MATCH (p:Project {{id: {project_id}}})
+SET p.drift_verdicts_at = {now}
+RETURN p.id AS id
 """
 
 
@@ -359,26 +369,34 @@ async def backfill_verdicts(
     org_slug: str,
     project_id: str,
 ) -> int | None:
-    """Record every note in the namespace for a project with none.
+    """Record every note in the namespace, once per project.
 
-    The one-time cover for notes written before Imbi read them.  Reads
-    the whole notes tree in one pass, which is one Git Data call per note
-    body, so it runs only while the project has no recorded verdict at
-    all -- once the table holds a row, the webhook is the steady-state
-    writer and a repeat pass would re-read every note on every sweep.
+    The cover for notes written before Imbi read them.  Reading the whole
+    notes tree costs one Git Data call per note body, so this runs once
+    and then stops, guarded by ``Project.drift_verdicts_at``.
+
+    That marker, rather than "does the table hold a row for this
+    project": the webhook writes a row on the first push after deploy, so
+    a row-count guard would declare the backfill done for exactly the
+    active projects whose history most needs it, and their older notes
+    would never be read.
+
+    The marker is set only after a *complete* enumeration.  A listing
+    that could not read every note leaves it unset so the next sweep
+    tries again -- recording a partial pass as finished would leave those
+    commits permanently unanswered, which the rule reads as "nothing to
+    do".
 
     Returns how many verdicts were recorded, or ``None`` when nothing
     could answer -- no capability bound, or one without git notes.
-    Re-running after a truncation backfills again, which is the intended
-    repair path.
     """
     from imbi.api.endpoints import project_deployments
     from imbi.api.plugins import call_with_timeout
 
-    rows = await ch_client.Clickhouse.get_instance().query(
-        _HAVE_VERDICTS, {'project_id': project_id}
+    marked = await db.execute(
+        _BACKFILLED_AT, {'project_id': project_id}, ['at']
     )
-    if rows and int(rows[0]['n']):
+    if marked and graph.parse_agtype(marked[0]['at']) is not None:
         return 0
     try:
         (
@@ -393,15 +411,31 @@ async def backfill_verdicts(
             return None
         raise
     try:
-        notes = await call_with_timeout(
+        listing = await call_with_timeout(
             handler.list_commit_notes(ctx, credentials, namespace=NAMESPACE)
         )
     except NotImplementedError:
         return None
-    return await record_verdicts(
+    recorded = await record_verdicts(
         project_id,
-        {sha: parse_note_verdict(body) for sha, body in notes.items()},
+        {sha: parse_note_verdict(body) for sha, body in listing.notes.items()},
     )
+    if listing.complete:
+        await db.execute(
+            _MARK_BACKFILLED,
+            {
+                'project_id': project_id,
+                'now': datetime.datetime.now(datetime.UTC).isoformat(),
+            },
+            ['id'],
+        )
+    else:
+        LOGGER.warning(
+            'drift notes for project %s were incomplete; '
+            'leaving the backfill unmarked so a later sweep retries',
+            project_id,
+        )
+    return recorded
 
 
 async def sweep_project(

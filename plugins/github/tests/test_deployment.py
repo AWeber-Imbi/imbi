@@ -3025,21 +3025,51 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
             ]
         )
         self._blob('b1', '{"drift_detected":true}')
-        notes = await self.handler.list_commit_notes(
+        listing = await self.handler.list_commit_notes(
             _ctx(), _CREDS, 'imbi-drift'
         )
         # Fan-out subtree flattened back to the annotated full SHA.
-        self.assertEqual({self.FULL_SHA: '{"drift_detected":true}'}, notes)
+        self.assertEqual(
+            {self.FULL_SHA: '{"drift_detected":true}'}, listing.notes
+        )
+        self.assertTrue(listing.complete)
+
+    @respx.mock
+    async def test_list_commit_notes_reports_an_unreadable_blob(self) -> None:
+        # The readable note still comes back, but the listing says it is
+        # not the whole ref, so a caller cannot record a finished
+        # backfill over a note it never saw.
+        other_sha = 'e' * 40
+        self._mock_tree(
+            [
+                {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'bad'},
+                {'type': 'blob', 'path': other_sha, 'sha': 'b2'},
+            ]
+        )
+        respx.get(f'{self.REPO}/git/blobs/bad').mock(
+            return_value=httpx.Response(500)
+        )
+        self._blob('b2', '{"drift_detected":false}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            listing = await self.handler.list_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift'
+            )
+        self.assertEqual(
+            {other_sha: '{"drift_detected":false}'}, listing.notes
+        )
+        self.assertFalse(listing.complete)
 
     @respx.mock
     async def test_list_commit_notes_without_the_ref_is_empty(self) -> None:
         respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
             return_value=httpx.Response(404)
         )
-        self.assertEqual(
-            {},
-            await self.handler.list_commit_notes(_ctx(), _CREDS, 'imbi-drift'),
+        listing = await self.handler.list_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift'
         )
+        # Empty but complete: "no notes" is the whole truth here.
+        self.assertEqual({}, listing.notes)
+        self.assertTrue(listing.complete)
 
     @respx.mock
     async def test_diff_commit_notes_zero_before_lists_everything(

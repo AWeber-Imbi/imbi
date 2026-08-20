@@ -947,7 +947,8 @@ async def _fetch_drifting_commit_times(
             ' COALESCE(c.committed_at, c.authored_at) AS at'
             ' FROM commits AS c FINAL'
             ' INNER JOIN (SELECT project_id, sha FROM commit_drift FINAL'
-            ' WHERE drift_detected) AS d'
+            ' WHERE drift_detected'
+            ' AND project_id IN {project_ids:Array(String)}) AS d'
             ' ON d.project_id = c.project_id AND d.sha = c.sha'
             ' WHERE c.project_id IN {project_ids:Array(String)}',
             {'project_ids': project_ids},
@@ -1204,7 +1205,8 @@ async def _fetch_release_summaries(
                     ' countIf(d.answered = 1) AS answered'
                     ' FROM commits AS c FINAL'
                     ' LEFT JOIN (SELECT project_id, sha, drift_detected,'
-                    ' toUInt8(1) AS answered FROM commit_drift FINAL) AS d'
+                    ' toUInt8(1) AS answered FROM commit_drift FINAL'
+                    ' WHERE project_id IN {pids:Array(String)}) AS d'
                     ' ON d.project_id = c.project_id AND d.sha = c.sha'
                     ' WHERE c.project_id IN {pids:Array(String)}'
                     ' AND COALESCE(c.committed_at, c.authored_at) >'

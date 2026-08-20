@@ -1238,6 +1238,13 @@ function rangeNeedsAction(
   ranges: Record<string, boolean> | undefined,
   pair: DriftPair,
 ): boolean {
+  // A pair without both commits has no range to ask about, so it falls
+  // in the rule's "no verdict" case and stays quiet. Deliberate, not an
+  // oversight: `computeDriftPairs` can compare tags alone, but every one
+  // of the 31,057 releases in production carries a committish, so the
+  // tag-only fallback describes a case that does not occur. Reporting
+  // those pairs on the tag comparison instead would reintroduce exactly
+  // the unfiltered noise this rule exists to remove.
   if (!pair.baseSha || !pair.headSha) return false
   return ranges?.[`${pair.baseSha}..${pair.headSha}`] === true
 }

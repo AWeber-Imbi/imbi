@@ -54,6 +54,7 @@ from imbi.common.plugins.base import (
     DeploymentEventStatus,
     DeploymentRun,
     LinkWriteback,
+    NotesListing,
     PluginContext,
     Ref,
     RefInfo,
@@ -911,17 +912,25 @@ class GitHubDeployment(DeploymentCapability):
         ctx: PluginContext,
         credentials: dict[str, str],
         namespace: str,
-    ) -> dict[str, str | None]:
+    ) -> NotesListing:
         """Every note on ``refs/notes/<namespace>`` at its current tip.
 
         Two Git Data calls to reach the tree, then one blob read per
-        note.  A missing ref answers ``{}``.
+        note.  A missing ref answers an empty, complete listing.
+
+        ``complete`` compares what the tree holds against what came
+        back: :meth:`_all_notes` drops a note whose blob it cannot read
+        (logging why), and a truncated tree listing hides notes before
+        that.  Either way the caller must not treat the result as the
+        whole ref.
         """
         async with self._client(ctx, credentials) as client:
             tip = await self._notes_ref_tip(client, namespace)
             if tip is None:
-                return {}
-            return await self._all_notes(client, tip)
+                return NotesListing({}, True)
+            tree = await self._tree_notes(client, tip)
+            notes = await self._all_notes(client, tip)
+            return NotesListing(notes, len(notes) == len(tree))
 
     async def diff_commit_notes(
         self,

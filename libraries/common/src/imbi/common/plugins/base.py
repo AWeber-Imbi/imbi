@@ -1466,14 +1466,20 @@ class DeploymentCapability(CapabilityHandler):
         ctx: PluginContext,
         credentials: dict[str, str],
         namespace: str,
-    ) -> dict[str, str | None]:
+    ) -> NotesListing:
         """Return every note in ``namespace``, keyed by annotated SHA.
 
         The whole-ref counterpart to :meth:`diff_commit_notes`, for a
         host backfilling notes it never saw a push for.  Keys are full
         SHAs with fan-out subtrees flattened, exactly as
         :meth:`diff_commit_notes` returns them; a missing ref is an empty
-        map, not an error, because "no notes" is a real answer.
+        listing, not an error, because "no notes" is a real answer.
+
+        ``complete`` says whether every note the ref holds is in the map.
+        It has to be reported rather than inferred: a host cannot tell a
+        ref with three notes from a ref with four whose fourth could not
+        be read, and treating the second as the whole truth would record
+        a partial backfill as a finished one.
 
         Optional -- same contract as :meth:`get_commit_note`.
         """
@@ -1501,6 +1507,18 @@ class DeploymentCapability(CapabilityHandler):
         """
         del ctx, credentials, namespace, before, after
         raise NotImplementedError
+
+
+class NotesListing(typing.NamedTuple):
+    """Every git note on one ref, and whether that is all of them.
+
+    ``notes`` maps annotated full SHA to note body.  ``complete`` is
+    ``False`` when the ref holds notes this listing could not read, so a
+    caller persisting the result knows not to call the job done.
+    """
+
+    notes: dict[str, str | None]
+    complete: bool
 
 
 class LifecycleCapability(CapabilityHandler):
