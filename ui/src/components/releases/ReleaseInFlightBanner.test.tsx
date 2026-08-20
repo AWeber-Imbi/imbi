@@ -11,7 +11,9 @@ const state = (
   over: Partial<ReleaseInFlightState> = {},
 ): ReleaseInFlightState => ({
   blocked: true,
+  cutBlocked: true,
   dismiss: vi.fn(),
+  endedAt: null,
   envName: 'Staging',
   error: null,
   phase: 'building',
@@ -111,6 +113,19 @@ describe('ReleaseInFlightBanner', () => {
     expect(screen.getByText('Released v6.5.0 to Staging')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(value.dismiss).toHaveBeenCalled()
+  })
+
+  it('freezes the clock at how long a finished release took', () => {
+    // Both stamps off one reading: two `Date.now()` calls can straddle a
+    // millisecond and turn the expected 60s into 59.
+    const base = Date.now()
+    renderBanner({
+      blocked: false,
+      endedAt: new Date(base - 30_000).toISOString(),
+      phase: 'success',
+      startedAt: new Date(base - 90_000).toISOString(),
+    })
+    expect(screen.getByText('1m 0s')).toBeInTheDocument()
   })
 
   it('offers no dismiss while a release is still running', () => {

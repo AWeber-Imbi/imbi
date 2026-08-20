@@ -23,9 +23,10 @@ import type {
 } from '@/types'
 
 import { ReleaseCommitPicker } from './ReleaseCommitPicker'
-import type {
-  ReleaseInFlightPhase,
-  ReleaseInFlightState,
+import {
+  cutBlockedLabel,
+  cutBlockedReason,
+  type ReleaseInFlightState,
 } from './releaseInFlight'
 import { useCutReleaseMutation } from './useCutReleaseMutation'
 
@@ -155,7 +156,7 @@ export function ReleaseReadyCard({
     !!selectedSha &&
     !isPending &&
     !isDrafting &&
-    !inFlight.blocked &&
+    !inFlight.cutBlocked &&
     // Hold the button until CI has answered: an unresolved status cannot
     // be told apart from a green one, and releasing on it skips the
     // acknowledgement the server would then demand with a 409.
@@ -309,9 +310,9 @@ export function ReleaseReadyCard({
         </section>
 
         <div className="border-tertiary flex items-center justify-end gap-3 border-t pt-4">
-          {inFlight.blocked ? (
+          {inFlight.cutBlocked ? (
             <span className="text-tertiary mr-auto text-xs">
-              {blockedReason(inFlight.phase, inFlight.tag)}
+              {cutBlockedReason(inFlight.phase, inFlight.tag)}
             </span>
           ) : null}
           <Button onClick={reset} type="button" variant="ghost">
@@ -323,29 +324,14 @@ export function ReleaseReadyCard({
             ) : (
               <Rocket className="mr-1 size-4" />
             )}
-            {inFlight.phase === 'build_failed'
-              ? 'Release blocked'
-              : inFlight.blocked
-                ? 'Release in flight'
-                : `Tag ${tag || 'vX.Y.Z'} & release`}
+            {inFlight.cutBlocked
+              ? cutBlockedLabel(inFlight.phase)
+              : `Tag ${tag || 'vX.Y.Z'} & release`}
           </Button>
         </div>
       </div>
     </div>
   )
-}
-
-/** Why the cut button is inert, said in the footer next to it. */
-function blockedReason(
-  phase: ReleaseInFlightPhase,
-  tag: null | string,
-): string {
-  const label = tag ?? 'the release in flight'
-  if (phase === 'adopting') return 'Checking for a release in flight…'
-  if (phase === 'build_failed') {
-    return `${label} is blocked — unblock it or fix the build first`
-  }
-  return `Blocked until ${label} finishes releasing`
 }
 
 /**

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -18,6 +18,7 @@ const OPTIONS = {
   envName: (slug: null | string) => (slug === 'staging' ? 'Staging' : slug),
   orgSlug: 'acme',
   projectId: 'p1',
+  watching: false,
 }
 
 const status = (over: Record<string, unknown> = {}) => ({
@@ -96,6 +97,118 @@ describe('useReleaseInFlightState', () => {
     expect(result.current.blocked).toBe(false)
   })
 
+  it('retires the success banner on its own', async () => {
+    // Nothing on a green banner needs answering, so it should not sit
+    // pinned under the tabs waiting for the operator to close it.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      vi.mocked(endpoints.getPromoteStatus).mockResolvedValue(
+        status({ status: 'success' }) as never,
+      )
+      const { result } = renderTestHook()
+      await waitFor(() => expect(result.current.phase).toBe('success'))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      expect(result.current.phase).toBe('idle')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('refreshes the page on a failure, not only on a success', async () => {
+    // A failed deploy still cut the tag and still moved the pipeline, so
+    // a page left showing the pre-release view offers the next version
+    // over drift that is no longer true.
+    vi.mocked(endpoints.getPromoteStatus).mockResolvedValue(
+      status({ status: 'deploy_failed' }) as never,
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { gcTime: 0, retry: false } },
+    })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(
+      () => useReleaseInFlightState({ ...OPTIONS, watching: false }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    )
+    await waitFor(() => expect(result.current.phase).toBe('deploy_failed'))
+    await waitFor(() => expect(invalidate).toHaveBeenCalled())
+  })
+
+  it('holds the cut after a failure, but not the redeploy', async () => {
+    vi.mocked(endpoints.getPromoteStatus).mockResolvedValue(
+      status({ status: 'deploy_failed' }) as never,
+    )
+    const { result } = renderTestHook()
+    await waitFor(() => expect(result.current.phase).toBe('deploy_failed'))
+    expect(result.current.cutBlocked).toBe(true)
+    expect(result.current.blocked).toBe(false)
+  })
+
+  it('restarts the clock for a cut that follows a settled release', async () => {
+    // A settled promote stays inside its freshness window, so the next
+    // cut can arrive as `building` with no intervening `idle` reading.
+    // Anchoring only on the first in-flight observation would count the
+    // new release's elapsed time from the previous release's start.
+    const earlier = new Date(Date.now() - 300_000).toISOString()
+    const later = new Date().toISOString()
+    let next = status({ status: 'building', updated_at: earlier })
+    vi.mocked(endpoints.getPromoteStatus).mockImplementation(
+      () => Promise.resolve(next) as never,
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { gcTime: 0, retry: false } },
+    })
+    const { result } = renderHook(() => useReleaseInFlightState(OPTIONS), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() => expect(result.current.startedAt).toBe(earlier))
+
+    next = status({ status: 'success', updated_at: earlier })
+    await act(async () => {
+      await client.refetchQueries()
+    })
+    await waitFor(() => expect(result.current.phase).toBe('success'))
+
+    next = status({ status: 'building', tag: 'v6.6.0', updated_at: later })
+    await act(async () => {
+      await client.refetchQueries()
+    })
+    await waitFor(() => expect(result.current.tag).toBe('v6.6.0'))
+    expect(result.current.startedAt).toBe(later)
+  })
+
+  it('picks up a cut dispatched while the page is open', async () => {
+    // The reported bug: an idle first poll turns the refetch interval
+    // off, so a release cut a minute later never reached the banner and
+    // the operator saw only the toast until they reloaded.
+    vi.mocked(endpoints.getPromoteStatus)
+      .mockResolvedValueOnce(status({ status: 'idle' }) as never)
+      .mockResolvedValue(status() as never)
+    const client = new QueryClient({
+      defaultOptions: { queries: { gcTime: 0, retry: false } },
+    })
+    const { rerender, result } = renderHook(
+      ({ watching }: { watching: boolean }) =>
+        useReleaseInFlightState({ ...OPTIONS, watching }),
+      {
+        initialProps: { watching: false },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    )
+    await waitFor(() => expect(result.current.phase).toBe('idle'))
+    rerender({ watching: true })
+    await waitFor(() => expect(result.current.phase).toBe('building'))
+  })
+
   it('ignores a settled promote from long ago', async () => {
     // `promote-status` reports the last promote forever. Without the
     // freshness window every page load would raise a banner for a release
@@ -129,13 +242,16 @@ describe('useReleaseInFlightState', () => {
 })
 
 /** `renderHook` under a throwaway QueryClient, retries off. */
-function renderTestHook(enabled = true) {
+function renderTestHook(enabled = true, watching = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { gcTime: 0, retry: false } },
   })
-  return renderHook(() => useReleaseInFlightState({ ...OPTIONS, enabled }), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    ),
-  })
+  return renderHook(
+    () => useReleaseInFlightState({ ...OPTIONS, enabled, watching }),
+    {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  )
 }

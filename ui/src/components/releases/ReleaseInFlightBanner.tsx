@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import {
   type ReleaseInFlightPhase,
   type ReleaseInFlightState,
+  TERMINAL,
 } from './releaseInFlight'
 
 /** The train the banner walks while a release runs. */
@@ -34,6 +35,8 @@ interface ReleaseInFlightBannerProps {
   state: ReleaseInFlightState
   unblockPending: boolean
 }
+
+type Tone = 'amber' | 'danger' | 'muted' | 'success'
 
 /**
  * Page-level notice that a release is running, pinned under the tabs.
@@ -74,7 +77,7 @@ export function ReleaseInFlightBanner({
           <span className="text-sm font-semibold">
             {headline(phase, label, envName)}
           </span>
-          <Elapsed since={state.startedAt} />
+          <Elapsed since={state.startedAt} until={state.endedAt} />
         </div>
         <span className="text-xs leading-relaxed opacity-90">
           {error ?? DETAIL[phase]}
@@ -134,15 +137,6 @@ export function ReleaseInFlightBanner({
   )
 }
 
-const TERMINAL: ReadonlySet<ReleaseInFlightPhase> = new Set([
-  'build_failed',
-  'deploy_failed',
-  'failed',
-  'success',
-])
-
-type Tone = 'amber' | 'danger' | 'muted' | 'success'
-
 const TONE: Record<ReleaseInFlightPhase, Tone> = {
   adopting: 'muted',
   build_failed: 'danger',
@@ -198,17 +192,36 @@ function BannerShell({
   )
 }
 
-/** Live "for 4m 12s" counter, ticking once a second. */
-function Elapsed({ since }: { since: null | string }) {
+/**
+ * "4m 12s", ticking once a second while the release runs.
+ *
+ * `until` freezes it: once the release has stopped the number is how long
+ * it took, not a clock still running on a finished thing.
+ */
+function Elapsed({
+  since,
+  until,
+}: {
+  since: null | string
+  until: null | string
+}) {
   const started = since ? Date.parse(since) : Number.NaN
+  const ended = until ? Date.parse(until) : Number.NaN
+  const frozen = Number.isFinite(ended)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!Number.isFinite(started)) return
+    if (!Number.isFinite(started) || frozen) return
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [started])
+  }, [started, frozen])
   if (!Number.isFinite(started)) return null
-  const seconds = Math.max(0, Math.floor((now - started) / 1000))
+  const seconds = Math.max(
+    0,
+    Math.floor(((frozen ? ended : now) - started) / 1000),
+  )
+  // Adopted after the fact: start and end are the same reading, and "0s"
+  // for a release that took minutes is worse than no number at all.
+  if (frozen && seconds === 0) return null
   const minutes = Math.floor(seconds / 60)
   return (
     <span className="font-mono text-xs opacity-75">
