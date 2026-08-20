@@ -325,13 +325,24 @@ class GitHubLifecycle(LifecycleCapability):
         host = self._resolve_host(ctx)
         # ``prefer_previous_slug`` so a slug rename still locates the
         # pre-rename repo on GitHub when the project has no stored link.
-        target = resolve_repository_target(
-            ctx,
-            host,
-            'GitHub lifecycle plugin',
-            prefer_previous_slug=True,
-        )
+        try:
+            target = resolve_repository_target(
+                ctx,
+                host,
+                'GitHub lifecycle plugin',
+                prefer_previous_slug=True,
+            )
+        except ValueError:
+            # No link and no project type: there is nothing to look up,
+            # so provisioning from configuration is the only action left.
+            # This is the state a project whose first repository creation
+            # failed is left in when it carries no ProjectType either --
+            # the very case ``POST /lifecycle/sync`` has to repair
+            # (issue #254, defect 2).
+            target = None
         async with self._client(ctx, credentials) as client:
+            if target is None:
+                return await self._provision_missing(ctx, client, host, None)
             # ``_get_repo_or_none`` rather than ``_get_repo``: a genuine
             # 404 means the remote is missing and this call provisions
             # it, while every other status still raises so an auth or
@@ -384,7 +395,7 @@ class GitHubLifecycle(LifecycleCapability):
         ctx: PluginContext,
         client: httpx.AsyncClient,
         host: str,
-        target: RepositoryTarget,
+        target: RepositoryTarget | None,
     ) -> LifecycleResult:
         """Create the repo an update found missing, or refuse to.
 
@@ -406,12 +417,23 @@ class GitHubLifecycle(LifecycleCapability):
         still names the old one is an org migration, which needs to be
         someone's decision -- and silently making it would leave a
         duplicate repo behind with automation still pointed at the
-        original.
+        original.  The comparison folds case, as every other org
+        comparison here does, because GitHub org names are
+        case-insensitive: ``Aweber-APIs`` and ``aweber-apis`` are one
+        org, not a migration.
+
+        ``target`` is ``None`` when nothing resolved at all -- no link
+        and no project type.  There is no stored belief to disagree
+        with, so the org check has nothing to check.
         """
         create_org = self._resolve_create_org(ctx)
         if not create_org:
             return LifecycleResult(status='skipped', message=_NO_CREATE_ORG)
-        if target.source == 'link' and target.owner != create_org:
+        if (
+            target is not None
+            and target.source == 'link'
+            and target.owner.lower() != create_org.lower()
+        ):
             return LifecycleResult(
                 status='failed',
                 message=(

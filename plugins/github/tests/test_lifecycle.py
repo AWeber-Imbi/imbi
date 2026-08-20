@@ -1691,6 +1691,62 @@ class UpdateUpsertTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     @respx.mock
+    async def test_creates_when_nothing_resolves_at_all(self) -> None:
+        # No usable link and no project type, so there is no repo to
+        # look up at all.  This is where a failed first creation leaves
+        # an untyped project, and the sync has to repair it rather than
+        # report failed on an unresolvable target.
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(return_value=self._created_response())
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={},
+            project_type_slugs=[],
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(create_route.calls.call_count, 1)
+        # Nothing was looked up, because there was no candidate to look
+        # up -- not a 404 that happened to be tolerated.
+        self.assertEqual(
+            [
+                call.request.method
+                for call in respx.calls
+                if call.request.method == 'GET'
+            ],
+            [],
+        )
+        self.assertIsNotNone(ctx.link_writeback)
+
+    @respx.mock
+    async def test_org_comparison_folds_case(self) -> None:
+        # GitHub org names are case-insensitive, so a link recording
+        # ``Aweber-APIs`` against a ``aweber-apis`` config names one org,
+        # not a migration to refuse.
+        respx.get('https://api.github.com/repos/Aweber-APIs/demo').mock(
+            return_value=httpx.Response(404)
+        )
+        create_route = respx.post(
+            'https://api.github.com/orgs/aweber-apis/repos'
+        ).mock(return_value=self._created_response())
+
+        ctx = _ctx(
+            options={'create_org': 'aweber-apis'},
+            project_links={
+                'github-repository': 'https://github.com/Aweber-APIs/demo'
+            },
+        )
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(create_route.calls.call_count, 1)
+
+    @respx.mock
     async def test_skips_when_no_org_is_configured(self) -> None:
         respx.get('https://api.github.com/repos/octo/demo').mock(
             return_value=httpx.Response(404)

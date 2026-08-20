@@ -204,9 +204,9 @@ async def dispatch_lifecycle(
     previous_project_slug: str | None = None,
     previous_project_type_slugs: list[str] | None = None,
     previous_team_slug: str | None = None,
-    project_name: str | None | _Unset = _UNSET,
-    project_description: str | None | _Unset = _UNSET,
-    project_ui_url: str | None | _Unset = _UNSET,
+    project_name: str | _Unset | None = _UNSET,
+    project_description: str | _Unset | None = _UNSET,
+    project_ui_url: str | _Unset | None = _UNSET,
 ) -> list[LifecycleInvocation]:
     """Invoke every lifecycle plugin assigned to ``project_id``.
 
