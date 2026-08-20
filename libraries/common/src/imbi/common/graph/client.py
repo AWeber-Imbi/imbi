@@ -31,6 +31,7 @@ GraphModelT = typing.TypeVar(
     'GraphModelT',
     bound=models.GraphModel,
 )
+RunResultT = typing.TypeVar('RunResultT')
 
 
 _IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
@@ -335,7 +336,8 @@ class Graph:
         """
         self._require_open()
         stmt = cypher.delete(node)
-        async with self.pool.connection() as conn:
+
+        async def run(conn: psycopg.AsyncConnection[typing.Any]) -> None:
             await self._execute_on(
                 conn,
                 stmt.cypher,
@@ -347,6 +349,8 @@ class Graph:
                     node_label=type(node).__name__,
                     node_id=node.id,
                 )
+
+        await self._run_retrying_poisoned(run)
 
     @staticmethod
     def _row_to_model(
@@ -806,6 +810,57 @@ class Graph:
     # Cypher execution
     # ----------------------------------------------------------
 
+    async def _run_discarding_poisoned(
+        self,
+        run: collections.abc.Callable[
+            [psycopg.AsyncConnection[typing.Any]],
+            collections.abc.Awaitable[RunResultT],
+        ],
+    ) -> RunResultT:
+        """Run *run* on a pooled connection; discard it on 42P01.
+
+        AGE 1.7.0 backends corrupt their per-backend label cache
+        under concurrent MERGE/DELETE load: a cached label name
+        dangles into freed memory, and from then on every edge
+        DELETE on that backend fails with ``UndefinedTable`` naming
+        a garbage relation.  The backend never recovers, so the
+        connection must not go back into the pool -- closing it
+        inside the ``pool.connection()`` block makes the pool
+        replace it instead of reusing it.
+
+        """
+        async with self.pool.connection() as conn:
+            try:
+                return await run(conn)
+            except psycopg.errors.UndefinedTable:
+                await conn.close()
+                raise
+
+    async def _run_retrying_poisoned(
+        self,
+        run: collections.abc.Callable[
+            [psycopg.AsyncConnection[typing.Any]],
+            collections.abc.Awaitable[RunResultT],
+        ],
+    ) -> RunResultT:
+        """Run *run*, retrying once on a fresh connection on 42P01.
+
+        The retry cannot double a write: with autocommit on, a
+        statement that raised committed nothing, and the batch path
+        retries only after its transaction rolled back.  A genuine
+        ``UndefinedTable`` fails again on the retry and propagates.
+
+        """
+        try:
+            return await self._run_discarding_poisoned(run)
+        except psycopg.errors.UndefinedTable as err:
+            LOGGER.warning(
+                'graph query failed with UndefinedTable (%s); '
+                'discarded the connection and retrying once',
+                err,
+            )
+            return await self._run_discarding_poisoned(run)
+
     async def _execute_batch(
         self,
         statements: list[cypher.Statement],
@@ -824,7 +879,8 @@ class Graph:
 
         """
         self._require_open()
-        async with self.pool.connection() as conn:
+
+        async def run(conn: psycopg.AsyncConnection[typing.Any]) -> None:
             async with conn.transaction():
                 for stmt in statements:
                     await self._execute_on(
@@ -832,6 +888,8 @@ class Graph:
                         stmt.cypher,
                         stmt.params,
                     )
+
+        await self._run_retrying_poisoned(run)
 
     @staticmethod
     def _cypher_param(value: typing.Any) -> sql.Composable:
@@ -974,7 +1032,9 @@ class Graph:
         """
         self._require_open()
 
-        async with self.pool.connection() as conn:
+        async def run(
+            conn: psycopg.AsyncConnection[typing.Any],
+        ) -> list[dict[str, typing.Any]]:
             return await self._execute_on(
                 conn,
                 query_template,
@@ -982,3 +1042,5 @@ class Graph:
                 columns,
                 raw,
             )
+
+        return await self._run_retrying_poisoned(run)

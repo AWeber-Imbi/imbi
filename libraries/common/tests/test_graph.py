@@ -11,6 +11,7 @@ from unittest import mock
 import dotenv
 import fastapi
 import fastapi.testclient
+import psycopg
 
 from imbi.common import graph, lifespan, models
 from imbi.common.graph import client
@@ -460,6 +461,104 @@ class GraphModelCreateDeleteTests(
         mock_exec.assert_awaited_once()
         # _delete_embeddings should NOT be called for non-Node
         mock_conn.execute.assert_not_awaited()
+
+
+def _mock_pool_conns(
+    count: int,
+) -> tuple[mock.MagicMock, list[mock.AsyncMock]]:
+    """Build a mock pool that hands out *count* distinct connections."""
+    conns: list[mock.AsyncMock] = []
+    ctxs: list[mock.AsyncMock] = []
+    for _ in range(count):
+        conn = mock.AsyncMock()
+        ctx = mock.AsyncMock()
+        ctx.__aenter__ = mock.AsyncMock(return_value=conn)
+        ctx.__aexit__ = mock.AsyncMock(return_value=False)
+        conns.append(conn)
+        ctxs.append(ctx)
+    pool = mock.MagicMock()
+    pool.connection.side_effect = ctxs
+    return pool, conns
+
+
+class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
+    """The 42P01 discard-and-retry path for poisoned AGE backends."""
+
+    async def test_retries_once_on_fresh_connection(self) -> None:
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+        seen: list[typing.Any] = []
+
+        async def run(conn: typing.Any) -> str:
+            seen.append(conn)
+            if len(seen) == 1:
+                raise psycopg.errors.UndefinedTable(
+                    'relation "imbi.\x7f" does not exist'
+                )
+            return 'ok'
+
+        with self.assertLogs(client.LOGGER, level='WARNING'):
+            result = await g._run_retrying_poisoned(run)
+        self.assertEqual('ok', result)
+        self.assertEqual([conns[0], conns[1]], seen)
+        # The poisoned connection was closed inside the pool block so
+        # the pool replaces it instead of handing the backend back out.
+        conns[0].close.assert_awaited_once()
+        conns[1].close.assert_not_awaited()
+
+    async def test_second_failure_propagates(self) -> None:
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+
+        async def run(conn: typing.Any) -> str:
+            raise psycopg.errors.UndefinedTable(
+                'relation "imbi.missing" does not exist'
+            )
+
+        with self.assertLogs(client.LOGGER, level='WARNING'):
+            with self.assertRaises(psycopg.errors.UndefinedTable):
+                await g._run_retrying_poisoned(run)
+        conns[0].close.assert_awaited_once()
+        conns[1].close.assert_awaited_once()
+
+    async def test_other_errors_do_not_retry(self) -> None:
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+
+        async def run(conn: typing.Any) -> str:
+            raise psycopg.errors.SyntaxError('bad cypher')
+
+        with self.assertRaises(psycopg.errors.SyntaxError):
+            await g._run_retrying_poisoned(run)
+        self.assertEqual(1, pool.connection.call_count)
+        conns[0].close.assert_not_awaited()
+
+    @mock.patch.object(graph.Graph, '_execute_on')
+    async def test_execute_retries_poisoned_connection(
+        self,
+        mock_exec: mock.AsyncMock,
+    ) -> None:
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+        mock_exec.side_effect = [
+            psycopg.errors.UndefinedTable(
+                'relation "imbi.\x7f" does not exist'
+            ),
+            [{'n': '1'}],
+        ]
+        with self.assertLogs(client.LOGGER, level='WARNING'):
+            result = await g.execute('MATCH (n) RETURN n')
+        self.assertEqual([{'n': '1'}], result)
+        self.assertEqual(2, mock_exec.await_count)
+        conns[0].close.assert_awaited_once()
 
 
 class EmbeddableFieldsTests(unittest.TestCase):
