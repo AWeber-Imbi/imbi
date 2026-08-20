@@ -90,6 +90,52 @@ class BatchJoinTestCase(unittest.IsolatedAsyncioTestCase):
                 )
 
 
+class EmptyScopeTestCase(unittest.IsolatedAsyncioTestCase):
+    """An empty scope denies without asking ClickHouse.
+
+    An org with no projects has no components, and the two authorization
+    reads must say so rather than send an empty ``IN`` list -- which
+    matches nothing today, but reads as "unfiltered" to anyone editing
+    the query later. Denying in the guard keeps that a property of the
+    Python rather than of ClickHouse's array semantics.
+    """
+
+    async def asyncSetUp(self) -> None:
+        self.query = mock.AsyncMock(return_value=[])
+        patcher = mock.patch('imbi.common.clickhouse.query', self.query)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_no_projects_denies_every_read(self) -> None:
+        self.assertFalse(await component_facts.component_in_org([], 'cmp-1'))
+        self.assertFalse(
+            await component_facts.component_release_in_org(
+                [], 'cmp-1', 'crel-1'
+            )
+        )
+        self.assertFalse(await component_facts.component_ids_in_org([]))
+        self.assertFalse(await component_facts.ecosystem_totals([]))
+        self.assertFalse(await component_facts.search_counts([], ['cmp-1']))
+        self.query.assert_not_awaited()
+
+    async def test_no_candidates_is_not_the_whole_catalog(self) -> None:
+        """``None`` means the org's whole set, ``[]`` means none of it."""
+        self.assertFalse(
+            await component_facts.component_ids_in_org(['proj-1'], [])
+        )
+        self.query.assert_not_awaited()
+        await component_facts.component_ids_in_org(['proj-1'], None)
+        self.assertEqual(1, self.query.await_count)
+        self.assertNotIn('component_ids', self.query.await_args.args[1])
+
+    async def test_empty_report_scope_reads_nothing(self) -> None:
+        """The deployment pointer set can legitimately be empty."""
+        self.assertFalse(await component_facts.component_usage([], 'cmp-1'))
+        self.assertFalse(await component_facts.governed_usage([], ['crel-1']))
+        self.assertFalse(await component_facts.governed_usage(['rel-1'], []))
+        self.query.assert_not_awaited()
+
+
 class ComponentFactsSqlTestCase(unittest.IsolatedAsyncioTestCase):
     """Executes every read for real, against filters matching nothing."""
 
