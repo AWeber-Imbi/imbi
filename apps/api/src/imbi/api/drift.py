@@ -165,7 +165,7 @@ def parse_note(body: str | None) -> bool | None:
 
 async def record_verdicts(
     project_id: str, verdicts: dict[str, NoteVerdict]
-) -> int:
+) -> int | None:
     """Persist per-commit verdicts, one insert for the whole batch.
 
     Keyed by the annotated commit's full SHA to join ``imbi.commits``,
@@ -174,10 +174,14 @@ async def record_verdicts(
     would collide.
 
     Notes with no usable verdict are skipped rather than written: a
-    missing row *is* the "no verdict" state.  Returns how many rows were
-    written.  Failures are logged, not raised -- the graph write has
-    already succeeded and the next push or backfill rewrites the row
-    anyway.
+    missing row *is* the "no verdict" state.
+
+    Returns how many rows were written, or ``None`` when the write
+    failed.  Zero and ``None`` have to stay distinguishable: a repo with
+    no notes legitimately writes nothing, while a ClickHouse outage
+    writes nothing and must not let a caller record the work as done.
+    Failures are logged rather than raised -- the graph write has already
+    succeeded, and the next push or backfill rewrites the rows.
     """
     now = datetime.datetime.now(datetime.UTC)
     rows = [
@@ -197,7 +201,7 @@ async def record_verdicts(
             len(rows),
             project_id,
         )
-        return 0
+        return None
     return len(rows)
 
 
@@ -420,7 +424,10 @@ async def backfill_verdicts(
         project_id,
         {sha: parse_note_verdict(body) for sha, body in listing.notes.items()},
     )
-    if listing.complete:
+    # Both conditions, and neither is ``recorded > 0``: a ref with no
+    # notes writes nothing and is still finished, while a failed write
+    # also writes nothing and is not.
+    if listing.complete and recorded is not None:
         await db.execute(
             _MARK_BACKFILLED,
             {
@@ -431,11 +438,14 @@ async def backfill_verdicts(
         )
     else:
         LOGGER.warning(
-            'drift notes for project %s were incomplete; '
-            'leaving the backfill unmarked so a later sweep retries',
+            'drift backfill for project %s did not finish (%s); '
+            'leaving it unmarked so a later sweep retries',
             project_id,
+            'notes were incomplete'
+            if not listing.complete
+            else 'the verdicts could not be stored',
         )
-    return recorded
+    return recorded or 0
 
 
 async def sweep_project(

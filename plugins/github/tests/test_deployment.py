@@ -3060,6 +3060,40 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(listing.complete)
 
     @respx.mock
+    async def test_list_commit_notes_reports_a_truncated_tree(self) -> None:
+        # Every note in the (partial) tree read fine, so blob-read
+        # completeness alone would call this whole. The tree itself says
+        # otherwise.
+        respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
+            return_value=httpx.Response(
+                200, json={'object': {'sha': 'notes-tip'}}
+            )
+        )
+        respx.get(f'{self.REPO}/git/commits/notes-tip').mock(
+            return_value=httpx.Response(200, json={'tree': {'sha': 't1'}})
+        )
+        respx.get(f'{self.REPO}/git/trees/t1').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'tree': [
+                        {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b1'}
+                    ],
+                    'truncated': True,
+                },
+            )
+        )
+        self._blob('b1', '{"drift_detected":true}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            listing = await self.handler.list_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift'
+            )
+        self.assertEqual(
+            {self.FULL_SHA: '{"drift_detected":true}'}, listing.notes
+        )
+        self.assertFalse(listing.complete)
+
+    @respx.mock
     async def test_list_commit_notes_without_the_ref_is_empty(self) -> None:
         respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
             return_value=httpx.Response(404)

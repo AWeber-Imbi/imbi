@@ -350,6 +350,23 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
                     mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
 
+    async def test_verdict_backfill_rate_limit_propagates(self) -> None:
+        # The verdict backfill gets its own except-clause, so it needs
+        # its own proof that a rate limit still reaches the worker and
+        # leaves the project requeue-able.
+        sweep, org, drift, _unused = self._run(None)
+        limited = mock.patch(
+            'imbi.api.drift.backfill_verdicts',
+            mock.AsyncMock(
+                side_effect=operations.PluginRateLimited(retry_at=1.0)
+            ),
+        )
+        with sweep, org, drift, limited:
+            with self.assertRaises(operations.PluginRateLimited):
+                await operations.execute_deployment_sweep(
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+                )
+
     async def test_both_backfills_failing_is_not_a_quiet_skip(self) -> None:
         # Nothing to sweep and both backfills broken: the attempt must
         # not claim there was nothing to do.

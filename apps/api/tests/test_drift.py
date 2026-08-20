@@ -122,13 +122,15 @@ class RecordVerdictsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, written)
         self.ch.insert.assert_not_awaited()
 
-    async def test_a_clickhouse_failure_is_logged_not_raised(self) -> None:
+    async def test_a_clickhouse_failure_answers_none_not_zero(self) -> None:
+        # None, not 0: a caller must be able to tell a failed write from
+        # a ref that legitimately had nothing to write.
         self.ch.insert.side_effect = RuntimeError('boom')
         with self.assertLogs(drift.LOGGER, level='ERROR'):
             written = await drift.record_verdicts(
                 'p1', {FULL_SHA: drift.NoteVerdict(True, [])}
             )
-        self.assertEqual(0, written)
+        self.assertIsNone(written)
 
 
 class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
@@ -214,6 +216,31 @@ class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
         # What was read is kept; the job is simply not called done.
         self.assertEqual(2, recorded)
         self.assertFalse(self._marked())
+
+    async def test_a_failed_write_leaves_the_project_unmarked(self) -> None:
+        # The listing was whole, but nothing reached ClickHouse. Marking
+        # here would lose every one of these verdicts permanently.
+        self.handler.list_commit_notes.return_value = self._listing()
+        self.record.return_value = None
+        with self.assertLogs(drift.LOGGER, level='WARNING'):
+            recorded = await drift.backfill_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        self.assertEqual(0, recorded)
+        self.assertFalse(self._marked())
+
+    async def test_a_ref_with_no_notes_is_still_finished(self) -> None:
+        # Zero rows written, but nothing failed: mark it, or the tree is
+        # re-read on every sweep forever.
+        self.handler.list_commit_notes.return_value = base.NotesListing(
+            {}, True
+        )
+        self.record.return_value = 0
+        recorded = await drift.backfill_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        self.assertEqual(0, recorded)
+        self.assertTrue(self._marked())
 
     async def test_no_capability_is_none(self) -> None:
         self.resolve.side_effect = fastapi.HTTPException(status_code=404)

@@ -928,9 +928,7 @@ class GitHubDeployment(DeploymentCapability):
             tip = await self._notes_ref_tip(client, namespace)
             if tip is None:
                 return NotesListing({}, True)
-            tree = await self._tree_notes(client, tip)
-            notes = await self._all_notes(client, tip)
-            return NotesListing(notes, len(notes) == len(tree))
+            return await self._all_notes(client, tip)
 
     async def diff_commit_notes(
         self,
@@ -960,14 +958,14 @@ class GitHubDeployment(DeploymentCapability):
         """
         async with self._client(ctx, credentials) as client:
             if before == _ZERO_SHA:
-                return await self._all_notes(client, after)
+                return (await self._all_notes(client, after)).notes
             quoted = urllib.parse.quote(f'{before}...{after}', safe='.')
             resp = await client.get(f'/compare/{quoted}')
             if resp.status_code == 404:
                 # ``before`` was garbage-collected or the ref history
                 # was rewritten; fall back to the full tree at ``after``
                 # so the push still lands rather than being dropped.
-                return await self._all_notes(client, after)
+                return (await self._all_notes(client, after)).notes
             resp.raise_for_status()
             payload = typing.cast('dict[str, typing.Any]', resp.json())
             files: list[dict[str, typing.Any]] = payload.get('files') or []
@@ -985,7 +983,7 @@ class GitHubDeployment(DeploymentCapability):
                     after,
                     _COMPARE_FILES_CAP,
                 )
-                return await self._all_notes(client, after)
+                return (await self._all_notes(client, after)).notes
             out: dict[str, str | None] = {}
             for item in files:
                 status = str(item.get('status') or '')
@@ -1043,19 +1041,30 @@ class GitHubDeployment(DeploymentCapability):
         tip = await self._notes_ref_tip(client, namespace)
         if tip is None:
             return None
-        return await self._tree_notes(client, tip)
+        # A truncated tree can only cost this caller a note it then
+        # reports as absent, which is already its answer for "no note".
+        notes, _complete = await self._tree_notes(client, tip)
+        return notes
 
     async def _tree_notes(
         self, client: httpx.AsyncClient, commit_sha: str
-    ) -> dict[str, str]:
-        """Flatten one notes-ref commit's tree to annotated SHA -> blob."""
+    ) -> tuple[dict[str, str], bool]:
+        """Flatten one notes-ref commit's tree to annotated SHA -> blob.
+
+        Also answers whether the tree listing was whole.  GitHub
+        truncates a large recursive tree, and the truncated map is
+        indistinguishable from a small complete one, so the flag has to
+        travel with it -- a caller that persists "backfill finished"
+        would otherwise do so over notes it never saw.
+        """
         commit = await client.get(f'/git/commits/{commit_sha}')
         commit.raise_for_status()
         tree_sha = str(commit.json()['tree']['sha'])
         tree = await client.get(f'/git/trees/{tree_sha}?recursive=1')
         tree.raise_for_status()
         payload = typing.cast('dict[str, typing.Any]', tree.json())
-        if payload.get('truncated'):
+        truncated = bool(payload.get('truncated'))
+        if truncated:
             LOGGER.warning(
                 'Notes tree %s is truncated; some notes will be missed',
                 tree_sha,
@@ -1068,18 +1077,22 @@ class GitHubDeployment(DeploymentCapability):
             annotated = _note_sha(entry.get('path'))
             if annotated is not None:
                 out[annotated] = str(entry['sha'])
-        return out
+        return out, not truncated
 
     async def _all_notes(
         self, client: httpx.AsyncClient, commit_sha: str
-    ) -> dict[str, str | None]:
+    ) -> NotesListing:
         """Every note at one notes-ref commit, bodies included.
 
         Blob reads run a few at a time (one request per note) and an
         unreadable note is skipped rather than failing the batch or
         recording a false "removed".
+
+        ``complete`` combines the two ways this can fall short: a
+        truncated tree listing, and a blob that would not read.  Either
+        means the map is not the whole ref.
         """
-        notes = await self._tree_notes(client, commit_sha)
+        notes, tree_complete = await self._tree_notes(client, commit_sha)
         gate = asyncio.Semaphore(_NOTE_BLOB_CONCURRENCY)
 
         async def _read(blob_sha: str) -> str | BaseException | None:
@@ -1107,7 +1120,7 @@ class GitHubDeployment(DeploymentCapability):
                 # a ``None`` here would read as "note removed".
                 continue
             out[annotated] = body
-        return out
+        return NotesListing(out, tree_complete and len(out) == len(notes))
 
     @staticmethod
     async def _blob_text(
