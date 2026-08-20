@@ -1202,33 +1202,31 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
 }
 
 // Same rule as `rangeNeedsAction`, over the tag..HEAD range: commits
-// past the latest tag only count when CI says one of them matters.
+// past the latest tag are suppressed only when the server positively
+// answered `false` -- a `true` verdict or an unanswered commit both
+// keep the range in the queue, and an absent field cannot hide it.
 function projectReleaseDrifted(
   project: Pick<DriftProject, 'release_summary'>,
 ): boolean {
   const s = project.release_summary
   if (!s?.head_sha) return false
-  return s.commits_since_tag > 0 && s.drift_detected === true
+  return s.commits_since_tag > 0 && s.drift_detected !== false
 }
 
-// Whether CI called anything in this promotion step worth acting on.
-// A version difference alone is not the signal: a range of docs and
-// CI-config commits differs but needs no promotion. The rule is one
-// question over the range -- any commit marked `true` means act; all
-// `false`, or nothing checked, means leave it alone.
+// Whether this promotion step needs acting on. Only proven clean is
+// clean: the pair is suppressed when the server evaluated its range and
+// every commit carried a `false` verdict. A `true` verdict, an
+// unanswered commit, or a range the server could not evaluate at all
+// (absent key, missing committish) each mean show it -- an unverified
+// difference is still work someone must look at. Only called for pairs
+// `computeDriftPairs` marked drifted, so equal pairs never reach the
+// fail-closed branches.
 function rangeNeedsAction(
   ranges: Record<string, boolean> | undefined,
   pair: DriftPair,
 ): boolean {
-  // A pair without both commits has no range to ask about, so it falls
-  // in the rule's "no verdict" case and stays quiet. Deliberate, not an
-  // oversight: `computeDriftPairs` can compare tags alone, but every one
-  // of the 31,057 releases in production carries a committish, so the
-  // tag-only fallback describes a case that does not occur. Reporting
-  // those pairs on the tag comparison instead would reintroduce exactly
-  // the unfiltered noise this rule exists to remove.
-  if (!pair.baseSha || !pair.headSha) return false
-  return ranges?.[`${pair.baseSha}..${pair.headSha}`] === true
+  if (!pair.baseSha || !pair.headSha) return true
+  return ranges?.[`${pair.baseSha}..${pair.headSha}`] !== false
 }
 
 function ReleaseCards({

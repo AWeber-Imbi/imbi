@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 from imbi.api.endpoints import projects
+from imbi.common import clickhouse
 
 
 def _at(day: int) -> datetime.datetime:
@@ -89,7 +90,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     def _patch(
         self,
         times: dict[tuple[str, str], datetime.datetime],
-        drifting: dict[str, list[datetime.datetime]],
+        actionable: dict[str, list[tuple[str, datetime.datetime]]] | None,
     ) -> typing.Any:
         return (
             mock.patch.object(
@@ -99,14 +100,14 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 projects,
-                '_fetch_drifting_commit_times',
-                mock.AsyncMock(return_value=drifting),
+                '_fetch_actionable_commit_times',
+                mock.AsyncMock(return_value=actionable),
             ),
         )
 
     async def _run(
         self,
-        drifting: list[datetime.datetime],
+        actionable: list[tuple[str, datetime.datetime]] | None,
         times: dict[tuple[str, str], datetime.datetime] | None = None,
     ) -> dict[str, dict[str, bool]]:
         resolved = (
@@ -114,7 +115,9 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
             if times is None
             else times
         )
-        a, b = self._patch(resolved, {'p1': drifting})
+        a, b = self._patch(
+            resolved, {'p1': actionable} if actionable is not None else None
+        )
         with a, b:
             return await projects._evaluate_environment_drift([self.PROJECT])
 
@@ -122,7 +125,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         self.assertEqual(
-            {'p1': {'base..head': True}}, await self._run([_at(15)])
+            {'p1': {'base..head': True}}, await self._run([('mid', _at(15))])
         )
 
     async def test_all_quiet_in_range_is_nothing_to_do(self) -> None:
@@ -133,7 +136,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         # Already promoted; it is behind the base endpoint.
         self.assertEqual(
-            {'p1': {'base..head': False}}, await self._run([_at(5)])
+            {'p1': {'base..head': False}}, await self._run([('old', _at(5))])
         )
 
     async def test_a_drifting_commit_after_the_range_is_ignored(
@@ -141,32 +144,123 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         # Not yet in the lower environment either.
         self.assertEqual(
-            {'p1': {'base..head': False}}, await self._run([_at(25)])
+            {'p1': {'base..head': False}}, await self._run([('new', _at(25))])
         )
 
     async def test_the_base_endpoint_itself_is_excluded(self) -> None:
         # The base commit is what the higher environment already runs.
         self.assertEqual(
-            {'p1': {'base..head': False}}, await self._run([_at(10)])
+            {'p1': {'base..head': False}}, await self._run([('base', _at(10))])
+        )
+
+    async def test_a_commit_tied_with_the_base_is_actionable(self) -> None:
+        # Git timestamps have one-second precision, so a distinct commit
+        # can share the base commit's time. Only the base commit itself
+        # is excluded from the range, by sha.
+        self.assertEqual(
+            {'p1': {'base..head': True}},
+            await self._run([('base', _at(10)), ('twin', _at(10))]),
         )
 
     async def test_the_head_endpoint_itself_is_included(self) -> None:
         self.assertEqual(
-            {'p1': {'base..head': True}}, await self._run([_at(20)])
+            {'p1': {'base..head': True}}, await self._run([('head', _at(20))])
         )
 
     async def test_an_undatable_endpoint_yields_no_key(self) -> None:
-        # Absent, not False: nothing was evaluated.
+        # Absent, not False: nothing was evaluated, and the client
+        # fails closed on an absent key.
         self.assertEqual(
-            {}, await self._run([_at(15)], times={('p1', 'base'): _at(10)})
+            {},
+            await self._run(
+                [('mid', _at(15))], times={('p1', 'base'): _at(10)}
+            ),
         )
+
+    async def test_tied_endpoint_times_are_actionable(self) -> None:
+        # Different shas whose commits share a one-second timestamp:
+        # order cannot be established, so the range must not read clean.
+        self.assertEqual(
+            {'p1': {'base..head': True}},
+            await self._run(
+                [], times={('p1', 'base'): _at(10), ('p1', 'head'): _at(10)}
+            ),
+        )
+
+    async def test_reversed_endpoint_times_are_actionable(self) -> None:
+        self.assertEqual(
+            {'p1': {'base..head': True}},
+            await self._run(
+                [], times={('p1', 'base'): _at(20), ('p1', 'head'): _at(10)}
+            ),
+        )
+
+    async def test_a_failed_verdict_fetch_fails_closed(self) -> None:
+        # None means the verdict store could not answer; an unavailable
+        # store must not read as proof of cleanliness.
+        self.assertEqual({'p1': {'base..head': True}}, await self._run(None))
+
+    async def test_the_window_spans_every_orderable_range(self) -> None:
+        project = {
+            'id': 'p1',
+            'environments': PIPELINE,
+            'current_releases': {
+                'testing': _release('head'),
+                'staging': _release('mid'),
+                'production': _release('base'),
+            },
+        }
+        times = {
+            ('p1', 'base'): _at(5),
+            ('p1', 'mid'): _at(10),
+            ('p1', 'head'): _at(20),
+        }
+        a, b = self._patch(times, {'p1': []})
+        with a, b as actionable:
+            await projects._evaluate_environment_drift([project])
+        actionable.assert_awaited_once_with({'p1': (_at(5), _at(20))})
 
     async def test_no_ranges_skips_both_queries(self) -> None:
         a, b = self._patch({}, {})
-        with a as times, b as drifting:
+        with a as times, b as actionable:
             result = await projects._evaluate_environment_drift(
                 [{'id': 'p1', 'environments': [], 'current_releases': {}}]
             )
         self.assertEqual({}, result)
         times.assert_not_awaited()
-        drifting.assert_not_awaited()
+        actionable.assert_not_awaited()
+
+
+class FetchActionableCommitTimesTests(unittest.IsolatedAsyncioTestCase):
+    async def test_the_lower_bound_is_inclusive_and_carries_the_sha(
+        self,
+    ) -> None:
+        # The tied-with-base regression test above patches this function
+        # away, so it alone cannot catch the SQL quietly reverting from
+        # ``>=`` to ``>`` -- the tied commit would be dropped before the
+        # caller's predicate could see it. Pin the operator and the sha
+        # column in the rendered query, and the window parameters.
+        query = mock.AsyncMock(return_value=[])
+        with mock.patch.object(clickhouse, 'query', query):
+            await projects._fetch_actionable_commit_times(
+                {'p1': (_at(10), _at(20))}
+            )
+        sql, params = query.await_args.args
+        self.assertIn('COALESCE(c.committed_at, c.authored_at) >=', sql)
+        self.assertIn('c.short_sha AS short_sha', sql)
+        self.assertEqual(
+            {'project_ids': ['p1'], 'los': [_at(10)], 'his': [_at(20)]},
+            params,
+        )
+
+    async def test_rows_come_back_as_sha_time_pairs(self) -> None:
+        query = mock.AsyncMock(
+            return_value=[
+                {'project_id': 'p1', 'short_sha': 'twin', 'at': _at(10)}
+            ]
+        )
+        with mock.patch.object(clickhouse, 'query', query):
+            result = await projects._fetch_actionable_commit_times(
+                {'p1': (_at(10), _at(20))}
+            )
+        self.assertEqual({'p1': [('twin', _at(10))]}, result)
