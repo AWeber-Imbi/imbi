@@ -401,6 +401,11 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         ).json()
         self.assertEqual(body['data'], [])
         self.assertEqual(body['total'], 0)
+        # Asserting the name match ran is the half that keeps the
+        # docstring honest: a handler returning early on the empty
+        # project set would satisfy everything else here.
+        self.assertEqual(self.mock_db.execute.await_count, 2)
+        self.assertEqual(self._params(1)['q'], 'express')
         self.mock_ch.assert_not_awaited()
 
     def test_query_is_lowercased_for_case_insensitive_match(self) -> None:
@@ -994,7 +999,10 @@ class ProblemPackagesTestCase(_ComponentsTestBase):
         pointers: list[dict[str, typing.Any]] = []
         usages: dict[tuple[str, str], dict[str, typing.Any]] = {}
         for row in rows:
-            release_id = _synthetic_release_id(row)
+            # Honour an explicit id the way ``_respond``'s setdefault
+            # does, so a test can model two releases that share a
+            # project and a version.
+            release_id = row.get('release_id') or _synthetic_release_id(row)
             governed[row['component_release_id']] = {
                 key: value
                 for key, value in row.items()
