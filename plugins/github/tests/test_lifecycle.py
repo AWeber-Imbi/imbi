@@ -1172,6 +1172,74 @@ class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(ctx.link_writeback)
 
     @respx.mock
+    async def test_update_omits_unknown_description_and_homepage(
+        self,
+    ) -> None:
+        # The ``/lifecycle/sync`` dispatch path leaves
+        # ``project_description`` / ``project_ui_url`` unpopulated.  An
+        # unknown value must be absent from the PATCH body -- sending
+        # ``""`` would wipe whatever the repo had (issue #254, defect 4).
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={'name': 'demo', 'owner': {'login': 'octo'}},
+            )
+        )
+        patch_route = respx.patch(
+            'https://api.github.com/repos/octo/demo'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/octo/demo',
+                    'owner': {'login': 'octo'},
+                },
+            )
+        )
+
+        ctx = _ctx(project_description=None, project_ui_url=None)
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        body = json.loads(patch_route.calls.last.request.read())
+        self.assertEqual(body, {'name': 'demo'})
+
+    @respx.mock
+    async def test_update_sends_empty_description_when_cleared(self) -> None:
+        # An explicit empty string is a deliberate clear and must still
+        # reach GitHub -- only ``None`` (unknown) is omitted.
+        respx.get('https://api.github.com/repos/octo/demo').mock(
+            return_value=httpx.Response(
+                200,
+                json={'name': 'demo', 'owner': {'login': 'octo'}},
+            )
+        )
+        patch_route = respx.patch(
+            'https://api.github.com/repos/octo/demo'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'name': 'demo',
+                    'html_url': 'https://github.com/octo/demo',
+                    'owner': {'login': 'octo'},
+                },
+            )
+        )
+
+        ctx = _ctx(project_description='', project_ui_url='')
+        plugin = GitHubLifecycle()
+        result = await plugin.on_project_updated(ctx, _CREDS)
+
+        self.assertEqual(result.status, 'ok')
+        body = json.loads(patch_route.calls.last.request.read())
+        self.assertEqual(
+            body, {'name': 'demo', 'description': '', 'homepage': ''}
+        )
+
+    @respx.mock
     async def test_update_records_writeback_when_slug_changes(self) -> None:
         # A slug rename PATCHes ``name`` to the new value; the response
         # carries the new ``html_url`` and the plugin stashes the

@@ -314,8 +314,8 @@ class GitHubLifecycle(LifecycleCapability):
                 current_owner,
                 current_repo,
                 name=ctx.project_slug,
-                description=ctx.project_description or '',
-                homepage=ctx.project_ui_url or '',
+                description=ctx.project_description,
+                homepage=ctx.project_ui_url,
             )
             new_repo = str(patched.get('name') or current_repo)
             # If the patch itself renamed the repo (we asked GitHub to
@@ -712,23 +712,27 @@ class GitHubLifecycle(LifecycleCapability):
         repo: str,
         *,
         name: str,
-        description: str,
-        homepage: str,
+        description: str | None,
+        homepage: str | None,
     ) -> dict[str, typing.Any]:
         """Sync name / description / homepage via a single PATCH.
 
         One call covers all three sync fields so an update that touches
         several is still a single GitHub round trip.  ``raise_for_status``
         on any non-2xx so the dispatcher captures the failure.
+
+        ``None`` means "the caller doesn't know this value" and omits the
+        key, so a dispatch path that never populated
+        ``ctx.project_description`` leaves the repo's own description
+        alone instead of clearing it.  An empty string still rides
+        along, because that is a deliberate clear.
         """
-        resp = await client.patch(
-            f'/repos/{owner}/{repo}',
-            json={
-                'name': name,
-                'description': description,
-                'homepage': homepage,
-            },
-        )
+        payload: dict[str, typing.Any] = {'name': name}
+        if description is not None:
+            payload['description'] = description
+        if homepage is not None:
+            payload['homepage'] = homepage
+        resp = await client.patch(f'/repos/{owner}/{repo}', json=payload)
         resp.raise_for_status()
         return typing.cast(dict[str, typing.Any], resp.json())
 
