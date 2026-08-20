@@ -38,6 +38,20 @@ def _usage_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     return row
 
 
+def _synthetic_release_id(row: dict[str, typing.Any]) -> str:
+    """The release a pointer row would really name.
+
+    A release belongs to one project and pins one version of a given
+    component, so two pointer rows agreeing on both are the same
+    project running the same release in two environments -- one
+    release id, two pointers. Keying on the row's position instead
+    would give every pointer its own release, and the fan-out the
+    handler performs when ClickHouse returns its ``DISTINCT`` row per
+    release would never run under test.
+    """
+    return f'rel-{row["project_id"]}-{row["component_release_id"]}'
+
+
 def _version_row(**overrides: typing.Any) -> dict[str, typing.Any]:
     row: dict[str, typing.Any] = {
         'component_release_id': RELEASE_A,
@@ -376,7 +390,11 @@ class SearchComponentsTestCase(_ComponentsTestBase):
         self.assertEqual(self.mock_db.execute.await_count, 2)
 
     def test_an_org_with_no_projects_finds_nothing(self) -> None:
-        """No project set means no membership, so no rows and no reads."""
+        """No project set means no membership, so no ClickHouse read.
+
+        The catalog name match still runs -- the query is non-empty --
+        and the intersection it feeds is what comes back empty.
+        """
         self.mock_db.execute.side_effect = [[], self._hits('express')]
         body = self.client.get(
             self._components('/'), params={'q': 'express'}
@@ -432,8 +450,8 @@ class ComponentUsageTestCase(_ComponentsTestBase):
         unchanged.
         """
         pointers = usage_rows if usage_rows is not None else [_usage_row()]
-        for index, row in enumerate(pointers):
-            row.setdefault('release_id', f'rel-{index}')
+        for row in pointers:
+            row.setdefault('release_id', _synthetic_release_id(row))
         self.mock_db.execute.side_effect = [
             self._projects('proj-1'),
             [
@@ -458,17 +476,19 @@ class ComponentUsageTestCase(_ComponentsTestBase):
             advisories or [],
             note_counts or [],
         ]
-        self._ch_results(
-            [{'hit': 1}],
-            [
-                {
-                    'release_id': row['release_id'],
-                    'component_release_id': row['component_release_id'],
-                    'version': row['version'],
-                }
-                for row in pointers
-            ],
-        )
+        # ``component_usage`` selects DISTINCT, so a release deployed
+        # to two environments yields one row however many pointers
+        # name it. Emitting one per pointer would hand the handler a
+        # pre-expanded cross-product and hide the re-join.
+        usage = {
+            (row['release_id'], row['component_release_id']): {
+                'release_id': row['release_id'],
+                'component_release_id': row['component_release_id'],
+                'version': row['version'],
+            }
+            for row in pointers
+        }
+        self._ch_results([{'hit': 1}], list(usage.values()))
 
     def test_groups_projects_and_environments_by_version(self) -> None:
         self._respond(
@@ -972,9 +992,9 @@ class ProblemPackagesTestCase(_ComponentsTestBase):
         """
         governed: dict[str, dict[str, typing.Any]] = {}
         pointers: list[dict[str, typing.Any]] = []
-        usages: list[dict[str, typing.Any]] = []
-        for index, row in enumerate(rows):
-            release_id = f'rel-{index}'
+        usages: dict[tuple[str, str], dict[str, typing.Any]] = {}
+        for row in rows:
+            release_id = _synthetic_release_id(row)
             governed[row['component_release_id']] = {
                 key: value
                 for key, value in row.items()
@@ -988,21 +1008,22 @@ class ProblemPackagesTestCase(_ComponentsTestBase):
                 }
                 | {'release_id': release_id}
             )
-            usages.append(
-                {
-                    'release_id': release_id,
-                    'component_id': row['component_id'],
-                    'component_release_id': row['component_release_id'],
-                    'version': row['version'],
-                }
-            )
+            # ``governed_usage`` selects DISTINCT, so the two findings
+            # a release deployed to two environments produces collapse
+            # to one ClickHouse row and the handler fans them back out.
+            usages[release_id, row['component_release_id']] = {
+                'release_id': release_id,
+                'component_id': row['component_id'],
+                'component_release_id': row['component_release_id'],
+                'version': row['version'],
+            }
         self.mock_db.execute.side_effect = [
             list(governed.values()),
             pointers,
             advisories or [],
             note_counts or [],
         ]
-        self._ch_results(usages)
+        self._ch_results(list(usages.values()))
 
     def test_environments_collapse_into_one_row(self) -> None:
         self._queue(
