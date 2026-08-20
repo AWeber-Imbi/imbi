@@ -119,6 +119,31 @@ async def _apply_clickhouse_schema() -> None:
         raise typer.Exit(code=1) from e
 
 
+@main.command('setup-postgres')
+def setup_postgres() -> None:
+    """Apply the PostgreSQL graph schema without running the full setup.
+
+    Runs the graph initializer from the packaged ``schemata.toml`` — the
+    same work the API performs at startup — so a deployment that adds
+    vertex labels, indexes, or functions can roll them out without
+    starting the server or re-seeding auth. Idempotent: existing labels
+    are left untouched and only missing ones are created.
+    """
+    asyncio.run(_setup_postgres_async())
+
+
+async def _setup_postgres_async() -> None:
+    """Async body of ``setup-postgres``."""
+    try:
+        await graph.initialize()
+    except Exception as e:
+        typer.echo(
+            f'✗ Failed to set up PostgreSQL graph schema: {e}', err=True
+        )
+        raise typer.Exit(code=1) from e
+    typer.echo('  ✓ PostgreSQL graph schema is up to date')
+
+
 @main.command('setup-permissions')
 def setup_permissions() -> None:
     """Seed permissions and default roles without running the full setup.
