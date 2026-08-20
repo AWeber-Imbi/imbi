@@ -18,6 +18,7 @@ const OPTIONS = {
   envName: (slug: null | string) => (slug === 'staging' ? 'Staging' : slug),
   orgSlug: 'acme',
   projectId: 'p1',
+  watching: false,
 }
 
 const status = (over: Record<string, unknown> = {}) => ({
@@ -115,6 +116,31 @@ describe('useReleaseInFlightState', () => {
     }
   })
 
+  it('picks up a cut dispatched while the page is open', async () => {
+    // The reported bug: an idle first poll turns the refetch interval
+    // off, so a release cut a minute later never reached the banner and
+    // the operator saw only the toast until they reloaded.
+    vi.mocked(endpoints.getPromoteStatus)
+      .mockResolvedValueOnce(status({ status: 'idle' }) as never)
+      .mockResolvedValue(status() as never)
+    const client = new QueryClient({
+      defaultOptions: { queries: { gcTime: 0, retry: false } },
+    })
+    const { rerender, result } = renderHook(
+      ({ watching }: { watching: boolean }) =>
+        useReleaseInFlightState({ ...OPTIONS, watching }),
+      {
+        initialProps: { watching: false },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    )
+    await waitFor(() => expect(result.current.phase).toBe('idle'))
+    rerender({ watching: true })
+    await waitFor(() => expect(result.current.phase).toBe('building'))
+  })
+
   it('ignores a settled promote from long ago', async () => {
     // `promote-status` reports the last promote forever. Without the
     // freshness window every page load would raise a banner for a release
@@ -148,13 +174,16 @@ describe('useReleaseInFlightState', () => {
 })
 
 /** `renderHook` under a throwaway QueryClient, retries off. */
-function renderTestHook(enabled = true) {
+function renderTestHook(enabled = true, watching = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { gcTime: 0, retry: false } },
   })
-  return renderHook(() => useReleaseInFlightState({ ...OPTIONS, enabled }), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    ),
-  })
+  return renderHook(
+    () => useReleaseInFlightState({ ...OPTIONS, enabled, watching }),
+    {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  )
 }

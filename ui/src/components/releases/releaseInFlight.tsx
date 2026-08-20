@@ -108,6 +108,16 @@ interface ReleaseInFlightOptions {
   envName: (slug: null | string) => null | string
   orgSlug: string
   projectId: string
+  /**
+   * True while a promote dispatched from this page is being followed.
+   *
+   * Without it the banner only ever catches a release that was already
+   * running when the page mounted: an idle poll turns the refetch
+   * interval off, and the cut that happens a minute later never reaches
+   * this query — the operator sees the toast and no banner until they
+   * reload.
+   */
+  watching: boolean
 }
 
 /**
@@ -134,6 +144,7 @@ export function useReleaseInFlightState({
   envName,
   orgSlug,
   projectId,
+  watching,
 }: ReleaseInFlightOptions): ReleaseInFlightState {
   const queryClient = useQueryClient()
   const { data, isLoading } = useQuery<PromoteStatus>({
@@ -141,6 +152,7 @@ export function useReleaseInFlightState({
     queryFn: ({ signal }) => getPromoteStatus(orgSlug, projectId, signal),
     queryKey: ['release-in-flight', orgSlug, projectId],
     refetchInterval: (q) =>
+      watching ||
       IN_FLIGHT.has((q.state.data?.status ?? 'idle') as ReleaseInFlightPhase)
         ? 6000
         : false,
@@ -159,6 +171,15 @@ export function useReleaseInFlightState({
     () => setDismissed(data?.updated_at ?? 'dismissed'),
     [data?.updated_at],
   )
+
+  // A dispatch is news now, not in six seconds, so ask as soon as one is
+  // being followed rather than waiting for the first interval tick.
+  useEffect(() => {
+    if (!watching) return
+    void queryClient.invalidateQueries({
+      queryKey: ['release-in-flight', orgSlug, projectId],
+    })
+  }, [watching, orgSlug, projectId, queryClient])
 
   // Pinned to the first in-flight observation: `updated_at` advances on
   // every phase change, so reading elapsed time off it would restart the

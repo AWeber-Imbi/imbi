@@ -480,6 +480,11 @@ export function ProjectDetail({
         : null,
     [sortedEnvironments],
   )
+  // A promote this page is already following, either from the click that
+  // dispatched it or from the mount-time adopt below.
+  const watchingBuild = activeBuilds.some(
+    (b) => b.originProjectId === project.id,
+  )
   // A promote outlives the page that started it, so ask on mount whether
   // one is already running rather than only learning about it from the
   // click that dispatched it. Without this a reload mid-promote loses
@@ -487,7 +492,7 @@ export function ProjectDetail({
   useAdoptInFlightPromote({
     enabled: !!orgSlug && !!project.id,
     envName: envNameForSlug,
-    hasActiveBuild: activeBuilds.some((b) => b.originProjectId === project.id),
+    hasActiveBuild: watchingBuild,
     onBuildStarted: handleBuildStarted,
     orgSlug,
     projectId: project.id,
@@ -508,6 +513,10 @@ export function ProjectDetail({
     envName: envNameForSlug,
     orgSlug,
     projectId: project.id,
+    // A cut dispatched from this page has to reach the banner without a
+    // reload: an idle status turns the poll off, so the watcher's own
+    // knowledge that something is running is what turns it back on.
+    watching: watchingBuild,
   })
   const { isPending: unblockPending, unblock } = useReleaseBlockMutation({
     // The banner's `build_failed` comes from `promote-status`, which the
