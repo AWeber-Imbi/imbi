@@ -89,7 +89,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     def _patch(
         self,
         times: dict[tuple[str, str], datetime.datetime],
-        actionable: dict[str, list[datetime.datetime]] | None,
+        actionable: dict[str, list[tuple[str, datetime.datetime]]] | None,
     ) -> typing.Any:
         return (
             mock.patch.object(
@@ -106,7 +106,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
 
     async def _run(
         self,
-        actionable: list[datetime.datetime] | None,
+        actionable: list[tuple[str, datetime.datetime]] | None,
         times: dict[tuple[str, str], datetime.datetime] | None = None,
     ) -> dict[str, dict[str, bool]]:
         resolved = (
@@ -124,7 +124,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
         self,
     ) -> None:
         self.assertEqual(
-            {'p1': {'base..head': True}}, await self._run([_at(15)])
+            {'p1': {'base..head': True}}, await self._run([('mid', _at(15))])
         )
 
     async def test_all_quiet_in_range_is_nothing_to_do(self) -> None:
@@ -135,7 +135,7 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         # Already promoted; it is behind the base endpoint.
         self.assertEqual(
-            {'p1': {'base..head': False}}, await self._run([_at(5)])
+            {'p1': {'base..head': False}}, await self._run([('old', _at(5))])
         )
 
     async def test_a_drifting_commit_after_the_range_is_ignored(
@@ -143,25 +143,37 @@ class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         # Not yet in the lower environment either.
         self.assertEqual(
-            {'p1': {'base..head': False}}, await self._run([_at(25)])
+            {'p1': {'base..head': False}}, await self._run([('new', _at(25))])
         )
 
     async def test_the_base_endpoint_itself_is_excluded(self) -> None:
         # The base commit is what the higher environment already runs.
         self.assertEqual(
-            {'p1': {'base..head': False}}, await self._run([_at(10)])
+            {'p1': {'base..head': False}}, await self._run([('base', _at(10))])
+        )
+
+    async def test_a_commit_tied_with_the_base_is_actionable(self) -> None:
+        # Git timestamps have one-second precision, so a distinct commit
+        # can share the base commit's time. Only the base commit itself
+        # is excluded from the range, by sha.
+        self.assertEqual(
+            {'p1': {'base..head': True}},
+            await self._run([('base', _at(10)), ('twin', _at(10))]),
         )
 
     async def test_the_head_endpoint_itself_is_included(self) -> None:
         self.assertEqual(
-            {'p1': {'base..head': True}}, await self._run([_at(20)])
+            {'p1': {'base..head': True}}, await self._run([('head', _at(20))])
         )
 
     async def test_an_undatable_endpoint_yields_no_key(self) -> None:
         # Absent, not False: nothing was evaluated, and the client
         # fails closed on an absent key.
         self.assertEqual(
-            {}, await self._run([_at(15)], times={('p1', 'base'): _at(10)})
+            {},
+            await self._run(
+                [('mid', _at(15))], times={('p1', 'base'): _at(10)}
+            ),
         )
 
     async def test_tied_endpoint_times_are_actionable(self) -> None:

@@ -913,8 +913,8 @@ async def _fetch_current_releases(
 
 async def _fetch_actionable_commit_times(
     windows: dict[str, tuple[datetime.datetime, datetime.datetime]],
-) -> dict[str, list[datetime.datetime]] | None:
-    """Return {project_id: [time of each commit not proven clean]}.
+) -> dict[str, list[tuple[str, datetime.datetime]]] | None:
+    """Return {project_id: [(short_sha, time) of commits not proven clean]}.
 
     Actionable means the verdict is ``true`` or there is no verdict at
     all -- the rule suppresses a commit only when CI positively said
@@ -923,9 +923,12 @@ async def _fetch_actionable_commit_times(
     semantics.
 
     Unanswered commits are most commits, so the scan is bounded to one
-    ``(min lo, max hi]`` window per project -- the union of that
+    ``[min lo, max hi]`` window per project -- the union of that
     project's promotion ranges.  Commits in gaps between ranges come
-    back too; the caller's per-pair check discards them.
+    back too; the caller's per-pair check discards them.  The lower
+    bound is inclusive and the short sha rides along because a distinct
+    commit can share the base commit's one-second timestamp: the caller
+    excludes exactly the base commit, not everything at its time.
 
     ``committed_at`` for the same reason as
     :func:`_fetch_release_summaries`: a rebase or cherry-pick leaves the
@@ -941,7 +944,7 @@ async def _fetch_actionable_commit_times(
     project_ids = list(windows)
     try:
         rows = await clickhouse.query(
-            'SELECT c.project_id AS project_id,'
+            'SELECT c.project_id AS project_id, c.short_sha AS short_sha,'
             ' COALESCE(c.committed_at, c.authored_at) AS at'
             ' FROM commits AS c FINAL'
             ' LEFT ANTI JOIN (SELECT project_id, sha'
@@ -950,7 +953,7 @@ async def _fetch_actionable_commit_times(
             ' AND project_id IN {project_ids:Array(String)}) AS d'
             ' ON d.project_id = c.project_id AND d.sha = c.sha'
             ' WHERE c.project_id IN {project_ids:Array(String)}'
-            ' AND COALESCE(c.committed_at, c.authored_at) >'
+            ' AND COALESCE(c.committed_at, c.authored_at) >='
             ' mapFromArrays({project_ids:Array(String)},'
             ' {los:Array(DateTime64(3))})[c.project_id]'
             ' AND COALESCE(c.committed_at, c.authored_at) <='
@@ -965,12 +968,13 @@ async def _fetch_actionable_commit_times(
     except Exception:  # noqa: BLE001
         LOGGER.warning('Failed to fetch actionable commits', exc_info=True)
         return None
-    out: dict[str, list[datetime.datetime]] = {}
+    out: dict[str, list[tuple[str, datetime.datetime]]] = {}
     for row in rows:
         pid = str(row.get('project_id') or '')
+        sha = str(row.get('short_sha') or '')
         at = clickhouse.as_utc_or_none(row.get('at'))
         if pid and at is not None:
-            out.setdefault(pid, []).append(at)
+            out.setdefault(pid, []).append((sha, at))
     return out
 
 
@@ -1072,7 +1076,9 @@ async def _evaluate_environment_drift(
     Differing shas whose endpoint times tie or reverse (``hi <= lo``,
     possible at git's one-second timestamp precision) are actionable:
     timestamp order could not establish the range, and an unorderable
-    range must not read as clean.
+    range must not read as clean.  The same precision means a distinct
+    commit can share the *base* commit's timestamp, so the lower bound
+    is inclusive and only the base commit itself is excluded, by sha.
     """
     ranges_by_pid: dict[str, list[tuple[str, str]]] = {}
     for project_data in project_data_list:
@@ -1124,7 +1130,8 @@ async def _evaluate_environment_drift(
                 out.setdefault(pid, {})[key] = True
             else:
                 out.setdefault(pid, {})[key] = any(
-                    lo < at <= hi for at in marks
+                    (lo < at <= hi) or (at == lo and sha != base)
+                    for sha, at in marks
                 )
     return out
 
