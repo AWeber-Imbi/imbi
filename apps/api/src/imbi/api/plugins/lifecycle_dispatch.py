@@ -31,6 +31,7 @@ from imbi.api.plugins.resolution import (
     ResolvedCapability,
     resolve_all_capabilities,
 )
+from imbi.api.settings import get_server_config
 from imbi.common import graph
 from imbi.common.clickhouse import client as ch_client
 from imbi.common.plugins import decrypt_integration_credentials
@@ -75,6 +76,45 @@ _EVENT_METHOD: dict[LifecycleEvent, str] = {
 }
 
 
+def build_project_ui_url(org_slug: str, project_id: str) -> str | None:
+    """Resolve the canonical UI deep link for a project.
+
+    Returns ``None`` when ``IMBI_UI_URL`` is unset so lifecycle plugins
+    can skip writing the equivalent of a GitHub repo ``homepage``
+    without falling back to a localhost URL that would point at
+    nothing meaningful for a third party.
+
+    Lives here rather than in the endpoint module because
+    :func:`dispatch_lifecycle` derives the value for every event; it is
+    pure -- configuration plus two arguments -- so it needs no lookup
+    and has no place in :class:`LifecycleContextBundle`.
+    """
+    base = get_server_config().ui_url
+    if not base:
+        return None
+    return f'{base}/organizations/{org_slug}/projects/{project_id}'
+
+
+class _Unset:
+    """Marker for a dispatch argument the caller did not supply.
+
+    ``None`` is a real value on the context -- it means "not set on the
+    project", which plugins read as "leave the remote field alone".  So
+    an omitted argument cannot be spelled ``None`` without collapsing
+    the two, which is how a sync came to clear repo metadata it had no
+    value for (issue #254, defect 4).  A caller that supplies ``None``
+    explicitly still overrides the hydrated value.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return '<unset>'
+
+
+_UNSET = _Unset()
+
+
 @dataclasses.dataclass(slots=True)
 class LifecycleContextBundle:
     """Pre-fetched project context for the lifecycle dispatcher.
@@ -96,6 +136,8 @@ class LifecycleContextBundle:
     service_connections: list[ServiceConnection] = dataclasses.field(
         default_factory=list
     )
+    project_name: str | None = None
+    project_description: str | None = None
 
 
 async def build_lifecycle_context_bundle(
@@ -109,6 +151,7 @@ async def build_lifecycle_context_bundle(
     from imbi.api.endpoints._helpers import (
         lookup_project_exists_in,
         lookup_project_links,
+        lookup_project_name_description,
         lookup_project_slugs,
         lookup_project_type_slugs,
     )
@@ -120,11 +163,13 @@ async def build_lifecycle_context_bundle(
         project_links,
         project_type_slugs,
         service_connections,
+        (project_name, project_description),
     ) = await asyncio.gather(
         lookup_project_slugs(db, project_id),
         lookup_project_links(db, project_id),
         lookup_project_type_slugs(db, project_id),
         lookup_project_exists_in(db, project_id),
+        lookup_project_name_description(db, project_id),
     )
     return LifecycleContextBundle(
         project_slug=project_slug,
@@ -132,6 +177,8 @@ async def build_lifecycle_context_bundle(
         project_links=project_links,
         project_type_slugs=project_type_slugs,
         service_connections=service_connections,
+        project_name=project_name,
+        project_description=project_description,
     )
 
 
@@ -157,9 +204,9 @@ async def dispatch_lifecycle(
     previous_project_slug: str | None = None,
     previous_project_type_slugs: list[str] | None = None,
     previous_team_slug: str | None = None,
-    project_name: str | None = None,
-    project_description: str | None = None,
-    project_ui_url: str | None = None,
+    project_name: str | _Unset | None = _UNSET,
+    project_description: str | _Unset | None = _UNSET,
+    project_ui_url: str | _Unset | None = _UNSET,
 ) -> list[LifecycleInvocation]:
     """Invoke every lifecycle plugin assigned to ``project_id``.
 
@@ -189,6 +236,28 @@ async def dispatch_lifecycle(
     if bundle is None:
         bundle = await build_lifecycle_context_bundle(db, project_id)
 
+    # Hydrated from the project unless the caller supplied a value.
+    # Every event gets them this way, so a handler can no longer see a
+    # populated field on one dispatch path and an empty one on another.
+    resolved_name = (
+        bundle.project_name
+        if isinstance(project_name, _Unset)
+        else project_name
+    )
+    resolved_description = (
+        bundle.project_description
+        if isinstance(project_description, _Unset)
+        else project_description
+    )
+    # Derived from configuration plus two arguments this function
+    # already has, so it needs no lookup and does not belong in the
+    # bundle (which carries graph state read before a destructive write).
+    resolved_ui_url = (
+        build_project_ui_url(org_slug, project_id)
+        if isinstance(project_ui_url, _Unset)
+        else project_ui_url
+    )
+
     results: list[LifecycleInvocation] = []
     for resolved in resolved_list:
         ctx = PluginContext(
@@ -202,9 +271,9 @@ async def dispatch_lifecycle(
             previous_project_slug=previous_project_slug,
             previous_project_type_slugs=previous_project_type_slugs or [],
             previous_team_slug=previous_team_slug,
-            project_name=project_name,
-            project_description=project_description,
-            project_ui_url=project_ui_url,
+            project_name=resolved_name,
+            project_description=resolved_description,
+            project_ui_url=resolved_ui_url,
             integration_slug=resolved.integration_slug,
             integration_options=resolved.integration_options,
             capability_options=resolved.capability_options,

@@ -1,5 +1,6 @@
 """Tests for the PagerDuty lifecycle plugin."""
 
+import json
 import os
 import typing
 import unittest
@@ -27,12 +28,14 @@ def _ctx(
     team_slug: str | None = 'platform',
     previous_team_slug: str | None = None,
     links: dict[str, str] | None = None,
+    project_description: str | None = None,
 ) -> PluginContext:
     return PluginContext(
         project_id='p',
         project_slug='demo',
         org_slug='org',
         team_slug=team_slug,
+        project_description=project_description,
         previous_team_slug=previous_team_slug,
         integration_options=options
         if options is not None
@@ -140,12 +143,28 @@ class UpdateTestCase(unittest.IsolatedAsyncioTestCase):
         route = respx.put('https://api.pagerduty.com/services/PSVC1').mock(
             return_value=httpx.Response(200, json={'service': _SERVICE})
         )
-        ctx = _ctx(links=_LINK)
+        ctx = _ctx(links=_LINK, project_description='A description')
         result = await PagerDutyLifecycle().on_project_updated(ctx, _CREDS)
         self.assertEqual(result.status, 'ok')
         self.assertTrue(route.called)
         assert ctx.service_writeback is not None
         self.assertEqual(ctx.service_writeback.identifier, 'PSVC1')
+        body = json.loads(route.calls.last.request.read())
+        self.assertEqual(body['service']['description'], 'A description')
+
+    @respx.mock
+    async def test_update_omits_an_unknown_description(self) -> None:
+        # A PUT only touches the keys it carries, so an unknown value
+        # must be absent rather than sent as ``''`` -- the same
+        # coercion cleared GitHub repo descriptions (issue #254).
+        route = respx.put('https://api.pagerduty.com/services/PSVC1').mock(
+            return_value=httpx.Response(200, json={'service': _SERVICE})
+        )
+        ctx = _ctx(links=_LINK, project_description=None)
+        result = await PagerDutyLifecycle().on_project_updated(ctx, _CREDS)
+        self.assertEqual(result.status, 'ok')
+        body = json.loads(route.calls.last.request.read())
+        self.assertEqual(body['service'], {'name': 'demo'})
 
 
 class DeleteTestCase(unittest.IsolatedAsyncioTestCase):

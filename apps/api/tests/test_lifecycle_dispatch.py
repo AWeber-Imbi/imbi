@@ -166,6 +166,10 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_name_description',
+                mock.AsyncMock(return_value=(None, None)),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
@@ -389,6 +393,10 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_name_description',
+                mock.AsyncMock(return_value=(None, None)),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
@@ -553,6 +561,10 @@ class WidenedEventNotImplementedTestCase(unittest.TestCase):
                 mock.AsyncMock(return_value=[]),
             ),
             mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_name_description',
+                mock.AsyncMock(return_value=(None, None)),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
@@ -658,6 +670,10 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
                 exists_in_lookup,
             ),
             mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_name_description',
+                mock.AsyncMock(return_value=(None, None)),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
@@ -759,6 +775,10 @@ class BuildLifecycleContextBundleTestCase(unittest.TestCase):
                 'imbi.api.endpoints._helpers.lookup_project_exists_in',
                 mock.AsyncMock(return_value=[]),
             ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_name_description',
+                mock.AsyncMock(return_value=(None, None)),
+            ),
         ):
             bundle = asyncio.run(
                 build_lifecycle_context_bundle(mock_db, 'proj-1')
@@ -771,3 +791,165 @@ class BuildLifecycleContextBundleTestCase(unittest.TestCase):
         self.assertEqual(
             bundle.project_type_slugs, ['api-service', 'consumer']
         )
+
+
+class _CapturingLifecycle(LifecycleCapability):
+    """Records the context it was handed so a test can assert on it."""
+
+    seen: typing.ClassVar[list[PluginContext]] = []
+
+    async def on_project_archived(
+        self, ctx: PluginContext, credentials: dict[str, str]
+    ) -> LifecycleResult:
+        # The only required hook; unused here.
+        return LifecycleResult(status='skipped', message='n/a')
+
+    async def on_project_updated(
+        self, ctx: PluginContext, credentials: dict[str, str]
+    ) -> LifecycleResult:
+        type(self).seen.append(ctx)
+        return LifecycleResult(status='ok', message='done')
+
+
+class ContextHydrationTestCase(unittest.TestCase):
+    """The dispatcher hydrates name / description / UI URL itself.
+
+    Before this, only the create, update and relocate endpoints passed
+    them; every other path -- ``/lifecycle/sync`` included -- handed
+    plugins ``None``, and the GitHub plugin turned that into ``''`` and
+    cleared the repo's metadata (issue #254, defect 4).
+    """
+
+    def setUp(self) -> None:
+        _CapturingLifecycle.seen = []
+
+    def _dispatch(self, **kwargs: object) -> PluginContext:
+        entry = _entry('cap', _CapturingLifecycle)
+        mock_db = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi.api.plugins.lifecycle_dispatch.resolve_all_capabilities',
+                mock.AsyncMock(return_value=[_resolved(entry)]),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
+                mock.AsyncMock(return_value=('p-slug', 't-slug')),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_links',
+                mock.AsyncMock(return_value={}),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_type_slugs',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_exists_in',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_name_description',
+                mock.AsyncMock(return_value=('Stored Name', 'Stored desc')),
+            ),
+            mock.patch(
+                'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
+                new=_passthrough_identity_retry,
+            ),
+            mock.patch(
+                'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
+                mock.Mock(return_value={'access_token': 'tok'}),
+            ),
+            mock.patch(
+                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
+                'get_instance'
+            ) as ch_get,
+        ):
+            ch_get.return_value.insert = mock.AsyncMock()
+            asyncio.run(
+                dispatch_lifecycle(
+                    mock_db,
+                    'proj-1',
+                    'org-1',
+                    'updated',
+                    _make_auth(),
+                    **kwargs,  # pyright: ignore[reportArgumentType]
+                )
+            )
+        self.assertEqual(len(_CapturingLifecycle.seen), 1)
+        return _CapturingLifecycle.seen[0]
+
+    def test_hydrates_from_the_project_when_caller_omits(self) -> None:
+        # This is the ``/lifecycle/sync`` shape: no kwargs at all.
+        ctx = self._dispatch()
+        self.assertEqual(ctx.project_name, 'Stored Name')
+        self.assertEqual(ctx.project_description, 'Stored desc')
+
+    def test_caller_value_overrides_the_hydrated_one(self) -> None:
+        # The PATCH endpoint holds the post-update value, which is
+        # fresher than anything read back here.
+        ctx = self._dispatch(project_description='Fresher desc')
+        self.assertEqual(ctx.project_description, 'Fresher desc')
+
+    def test_explicit_none_overrides_the_hydrated_value(self) -> None:
+        # Presence, not truthiness, decides: a caller that means "this
+        # project has no description" must be able to say so.
+        ctx = self._dispatch(project_description=None)
+        self.assertIsNone(ctx.project_description)
+
+    def test_explicit_empty_string_survives(self) -> None:
+        ctx = self._dispatch(project_description='')
+        self.assertEqual(ctx.project_description, '')
+
+    def test_derives_the_ui_url_from_configuration(self) -> None:
+        with mock.patch(
+            'imbi.api.plugins.lifecycle_dispatch.get_server_config'
+        ) as config:
+            config.return_value.ui_url = 'https://imbi.example.com'
+            ctx = self._dispatch()
+        self.assertEqual(
+            ctx.project_ui_url,
+            'https://imbi.example.com/organizations/org-1/projects/proj-1',
+        )
+
+    def test_ui_url_is_none_when_unconfigured(self) -> None:
+        # ``None`` omits the GitHub ``homepage`` rather than clearing it.
+        with mock.patch(
+            'imbi.api.plugins.lifecycle_dispatch.get_server_config'
+        ) as config:
+            config.return_value.ui_url = ''
+            ctx = self._dispatch()
+        self.assertIsNone(ctx.project_ui_url)
+
+
+class BundleHydrationTestCase(unittest.TestCase):
+    """``build_lifecycle_context_bundle`` carries name and description."""
+
+    def test_bundle_reads_name_and_description(self) -> None:
+        mock_db = mock.AsyncMock()
+        with (
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_slugs',
+                mock.AsyncMock(return_value=('p-slug', 't-slug')),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_links',
+                mock.AsyncMock(return_value={}),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_type_slugs',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_exists_in',
+                mock.AsyncMock(return_value=[]),
+            ),
+            mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_name_description',
+                mock.AsyncMock(return_value=('Name', 'Desc')),
+            ),
+        ):
+            bundle = asyncio.run(
+                build_lifecycle_context_bundle(mock_db, 'proj-1')
+            )
+        self.assertEqual(bundle.project_name, 'Name')
+        self.assertEqual(bundle.project_description, 'Desc')

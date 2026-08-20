@@ -26,7 +26,10 @@ async def lifecycle_sync_for_project(
 
     Reconciles every assigned lifecycle plugin's remote with current
     Imbi state -- creating the remote when missing, updating it
-    otherwise.  Each plugin's :class:`LifecycleResult` status rolls up
+    otherwise.  Whether a plugin can create is the plugin's call: the
+    GitHub handler needs a ``create_org`` / ``org_mapping`` to provision
+    into and reports ``skipped`` without one.  Each plugin's
+    :class:`LifecycleResult` status rolls up
     into the summary: ``ok`` -> ``synced``, ``skipped`` -> ``skipped``,
     ``failed`` -> ``failed`` (with the plugin message captured in
     ``errors``).  ``dispatch_lifecycle`` already catches per-plugin
@@ -68,9 +71,10 @@ async def sync_project_lifecycle(
     """Push current Imbi state to the remote for one project.
 
     Re-dispatches each assigned lifecycle plugin's ``on_project_updated``
-    upsert, so a sync both provisions a missing remote and updates an
-    existing one.  Returns aggregate per-plugin counts; a project with
-    no lifecycle plugins returns a zeroed summary.
+    upsert, so a sync both provisions a missing remote -- where the
+    plugin has somewhere to provision it -- and updates an existing one.
+    Returns aggregate per-plugin counts; a project with no lifecycle
+    plugins returns a zeroed summary.
     """
     return await lifecycle_sync_for_project(
         db, org_slug=org_slug, project_id=project_id, auth=auth

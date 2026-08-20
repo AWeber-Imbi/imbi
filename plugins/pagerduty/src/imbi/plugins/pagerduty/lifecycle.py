@@ -121,13 +121,18 @@ class PagerDutyLifecycle(LifecycleCapability):
             if service_id is None:
                 # Upsert: nothing on the remote yet -> create it.
                 return await self.on_project_created(ctx, credentials)
-            body = {
-                'service': {
-                    'name': ctx.project_slug,
-                    'description': ctx.project_description or '',
-                }
-            }
-            response = await client.put(f'/services/{service_id}', json=body)
+            # ``description`` is omitted when unknown rather than sent
+            # as ``''``: a PUT only touches the keys it carries, so a
+            # dispatch path that never populated the context leaves the
+            # service description alone instead of clearing it.  The
+            # same coercion cleared GitHub repo descriptions on every
+            # sync (issue #254, defect 4).
+            service: dict[str, typing.Any] = {'name': ctx.project_slug}
+            if ctx.project_description is not None:
+                service['description'] = ctx.project_description
+            response = await client.put(
+                f'/services/{service_id}', json={'service': service}
+            )
             response.raise_for_status()
             payload: dict[str, typing.Any] = response.json()
             _provisioning.build_writeback(ctx, payload.get('service') or {})
