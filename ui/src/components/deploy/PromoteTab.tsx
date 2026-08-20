@@ -11,7 +11,11 @@ import {
   listCurrentReleases,
   promoteDeployment,
 } from '@/api/endpoints'
-import type { ReleaseInFlightState } from '@/components/releases/releaseInFlight'
+import {
+  cutBlockedLabel,
+  cutBlockedReason,
+  type ReleaseInFlightState,
+} from '@/components/releases/releaseInFlight'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -317,8 +321,8 @@ export function PromoteTab({
     !promoteMutation.isPending &&
     // A promote cuts a tag and dispatches a build, so it is the same
     // move the release form makes -- and must be just as inert while one
-    // is already running.
-    !inFlight.blocked &&
+    // is already running, or while the last one is still unanswered.
+    !inFlight.cutBlocked &&
     // Hold the button until CI has answered: an unresolved status cannot
     // be told apart from a green one, and promoting on it skips the
     // acknowledgement the server would then demand with a 409.
@@ -548,11 +552,9 @@ export function PromoteTab({
         that build runs first and must succeed before anything ships.
       </p>
       <div className="border-tertiary bg-secondary/30 -mx-6 mt-2 -mb-4 flex items-center justify-end gap-3 border-t px-6 py-4">
-        {inFlight.blocked ? (
+        {inFlight.cutBlocked ? (
           <span className="text-tertiary mr-auto text-xs">
-            {inFlight.tag
-              ? `Blocked until ${inFlight.tag} finishes releasing`
-              : 'Blocked until the release in flight finishes'}
+            {cutBlockedReason(inFlight.phase, inFlight.tag)}
           </span>
         ) : null}
         <Button onClick={onClose} type="button" variant="ghost">
@@ -568,8 +570,8 @@ export function PromoteTab({
           ) : (
             <Rocket className="mr-1 size-4" />
           )}
-          {inFlight.blocked
-            ? 'Release in flight'
+          {inFlight.cutBlocked
+            ? cutBlockedLabel(inFlight.phase)
             : `Tag ${tag || 'vX.Y.Z'} & deploy to ${toEnvironment}`}
         </Button>
       </div>

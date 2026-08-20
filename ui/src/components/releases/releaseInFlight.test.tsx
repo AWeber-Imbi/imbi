@@ -116,6 +116,39 @@ describe('useReleaseInFlightState', () => {
     }
   })
 
+  it('refreshes the page on a failure, not only on a success', async () => {
+    // A failed deploy still cut the tag and still moved the pipeline, so
+    // a page left showing the pre-release view offers the next version
+    // over drift that is no longer true.
+    vi.mocked(endpoints.getPromoteStatus).mockResolvedValue(
+      status({ status: 'deploy_failed' }) as never,
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { gcTime: 0, retry: false } },
+    })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(
+      () => useReleaseInFlightState({ ...OPTIONS, watching: false }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    )
+    await waitFor(() => expect(result.current.phase).toBe('deploy_failed'))
+    await waitFor(() => expect(invalidate).toHaveBeenCalled())
+  })
+
+  it('holds the cut after a failure, but not the redeploy', async () => {
+    vi.mocked(endpoints.getPromoteStatus).mockResolvedValue(
+      status({ status: 'deploy_failed' }) as never,
+    )
+    const { result } = renderTestHook()
+    await waitFor(() => expect(result.current.phase).toBe('deploy_failed'))
+    expect(result.current.cutBlocked).toBe(true)
+    expect(result.current.blocked).toBe(false)
+  })
+
   it('picks up a cut dispatched while the page is open', async () => {
     // The reported bug: an idle first poll turns the refetch interval
     // off, so a release cut a minute later never reached the banner and

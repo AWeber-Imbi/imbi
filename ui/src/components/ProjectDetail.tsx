@@ -1593,6 +1593,10 @@ export function ProjectDetail({
           orgSlug={build.originOrgSlug}
           projectId={build.originProjectId}
           runUrl={build.runUrl}
+          // This project's promotes are already on screen in the banner;
+          // a promote for another project has no banner here, so it keeps
+          // its toast.
+          silent={build.originProjectId === project.id}
           tag={build.tag}
           toastId={build.toastId}
         />

@@ -286,7 +286,12 @@ describe('ReleaseReadyCard — a release already in flight', () => {
     // drift and the same suggested tag.
     renderCard(
       FIRST_RELEASE,
-      inFlight({ blocked: true, phase: 'building', tag: 'v0.1.0' }),
+      inFlight({
+        blocked: true,
+        cutBlocked: true,
+        phase: 'building',
+        tag: 'v0.1.0',
+      }),
     )
     expect(
       screen.getByRole('button', { name: /Release in flight/ }),
@@ -299,7 +304,10 @@ describe('ReleaseReadyCard — a release already in flight', () => {
   it('stays inert before the first poll answers', () => {
     // Guessing "idle" for one tick after a reload is exactly the window
     // the double cut lands in.
-    renderCard(FIRST_RELEASE, inFlight({ blocked: true, phase: 'adopting' }))
+    renderCard(
+      FIRST_RELEASE,
+      inFlight({ blocked: true, cutBlocked: true, phase: 'adopting' }),
+    )
     expect(
       screen.getByRole('button', { name: /Release in flight/ }),
     ).toBeDisabled()
@@ -311,7 +319,12 @@ describe('ReleaseReadyCard — a release already in flight', () => {
   it('says the tag is blocked when the build failed', () => {
     renderCard(
       FIRST_RELEASE,
-      inFlight({ blocked: true, phase: 'build_failed', tag: 'v0.1.0' }),
+      inFlight({
+        blocked: true,
+        cutBlocked: true,
+        phase: 'build_failed',
+        tag: 'v0.1.0',
+      }),
     )
     expect(
       screen.getByRole('button', { name: /Release blocked/ }),
@@ -319,6 +332,19 @@ describe('ReleaseReadyCard — a release already in flight', () => {
     expect(
       screen.getByText(/v0\.1\.0 is blocked — unblock it/),
     ).toBeInTheDocument()
+  })
+
+  it('stays inert after a failed deploy, so no second tag is cut', () => {
+    // The tag is not blocked -- it can be redeployed -- but cutting the
+    // *next* version over an unresolved failure is the move to stop.
+    renderCard(
+      FIRST_RELEASE,
+      inFlight({ cutBlocked: true, phase: 'deploy_failed', tag: 'v0.1.0' }),
+    )
+    expect(
+      screen.getByRole('button', { name: /Last release unresolved/ }),
+    ).toBeDisabled()
+    expect(screen.getByText(/v0\.1\.0 did not deploy/)).toBeInTheDocument()
   })
 
   it('re-enables once the release settles', async () => {

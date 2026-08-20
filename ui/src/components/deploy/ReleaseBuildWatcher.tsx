@@ -13,6 +13,21 @@ import { toast } from 'sonner'
 import { getPromoteStatus, type PromoteStatus } from '@/api/endpoints'
 import { sanitizeHttpUrl } from '@/lib/utils'
 
+/**
+ * `toast`, minus the talking, for a promote the page already banners.
+ *
+ * Swapped in for the real thing so silence cannot skip the settling:
+ * every branch below still stops the poll and tells the parent, it just
+ * says nothing while doing it.
+ */
+const SILENT: Pick<typeof toast, 'error' | 'loading' | 'message' | 'success'> =
+  {
+    error: () => '',
+    loading: () => '',
+    message: () => '',
+    success: () => '',
+  }
+
 /** States the watcher stops polling on. */
 const TERMINAL_STATES: ReadonlySet<PromoteStatus['status']> = new Set([
   'build_failed',
@@ -29,6 +44,15 @@ interface ReleaseBuildWatcherProps {
   projectId: string
   /** Workflow run URL known at dispatch time. */
   runUrl?: null | string
+  /**
+   * True when the page already carries a banner for this promote.
+   *
+   * The banner says everything the toasts say, stays put for as long as
+   * it is true, and sits above the affordances it disables — so a toast
+   * stack repeating it in the corner is noise. Polling and the terminal
+   * refresh are unaffected; only the narration goes away.
+   */
+  silent?: boolean
   tag: string
   toastId: number | string
 }
@@ -54,10 +78,19 @@ interface ReleaseBuildWatcherProps {
  * in-flight promote.
  */
 export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
-  const { envName, onTerminal, orgSlug, projectId, runUrl, tag, toastId } =
-    props
+  const {
+    envName,
+    onTerminal,
+    orgSlug,
+    projectId,
+    runUrl,
+    silent,
+    tag,
+    toastId,
+  } = props
 
   const settledRef = useRef(false)
+  const notify = silent ? SILENT : toast
 
   const query = useQuery<PromoteStatus>({
     enabled: !settledRef.current,
@@ -76,6 +109,12 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
     refetchIntervalInBackground: false,
     retry: 3,
   })
+
+  // The dispatch toast was raised by the mutation, before this watcher
+  // and the banner existed, so silence means clearing it too.
+  useEffect(() => {
+    if (silent) toast.dismiss(toastId)
+  }, [silent, toastId])
 
   useEffect(() => {
     if (settledRef.current) return
@@ -97,7 +136,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
     const target = envName ? ` to ${envName}` : ''
 
     if (data.status === 'building') {
-      toast.loading(`Building release ${tag}…`, {
+      notify.loading(`Building release ${tag}…`, {
         action,
         description: 'The release workflow is cutting the tag and building.',
         icon: <Loader2 className="size-4 animate-spin" />,
@@ -109,7 +148,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
       // The build is green: the tag and the remote Release now exist and
       // Imbi has created the Deployment. Keep polling — the rollout's
       // outcome arrives on this same status.
-      toast.loading(`Deploying ${tag}${target}…`, {
+      notify.loading(`Deploying ${tag}${target}…`, {
         action,
         icon: <Loader2 className="size-4 animate-spin" />,
         id: toastId,
@@ -120,7 +159,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
       settledRef.current = true
       // The build was green, so unlike `build_failed` the release is not
       // blocked — the same tag can be redeployed once the cause is fixed.
-      toast.error(`Deploying ${tag}${target} failed`, {
+      notify.error(`Deploying ${tag}${target} failed`, {
         action,
         description:
           data.error ??
@@ -134,7 +173,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
     }
     if (data.status === 'success') {
       settledRef.current = true
-      toast.success(envName ? `Released ${tag}${target}` : `Released ${tag}`, {
+      notify.success(envName ? `Released ${tag}${target}` : `Released ${tag}`, {
         action,
         icon: <CheckCircle2 className="size-4 text-emerald-500" />,
         id: toastId,
@@ -144,7 +183,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
     }
     if (data.status === 'build_failed') {
       settledRef.current = true
-      toast.error(`Release build for ${tag} failed`, {
+      notify.error(`Release build for ${tag} failed`, {
         action,
         description:
           data.error ??
@@ -162,7 +201,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
       // not finish after it went green — which now covers losing the
       // rollout too, so this says "promote" rather than "build". The tag
       // is deliberately left shippable either way.
-      toast.message(`Lost track of the promote for ${tag}`, {
+      notify.message(`Lost track of the promote for ${tag}`, {
         action,
         description:
           data.error ??
@@ -174,13 +213,13 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
       onTerminal()
     }
     // `idle` — nothing recorded yet; keep polling.
-  }, [query.data, envName, onTerminal, runUrl, tag, toastId])
+  }, [query.data, envName, notify, onTerminal, runUrl, tag, toastId])
 
   useEffect(() => {
     if (!query.isError || settledRef.current) return
     settledRef.current = true
     const url = sanitizeHttpUrl(runUrl)
-    toast.message(`Lost track of the release build for ${tag}`, {
+    notify.message(`Lost track of the release build for ${tag}`, {
       action: url
         ? {
             label: 'View build',
@@ -192,7 +231,7 @@ export function ReleaseBuildWatcher(props: ReleaseBuildWatcherProps): null {
       id: toastId,
     })
     onTerminal()
-  }, [query.isError, onTerminal, runUrl, tag, toastId])
+  }, [query.isError, notify, onTerminal, runUrl, tag, toastId])
 
   return null
 }

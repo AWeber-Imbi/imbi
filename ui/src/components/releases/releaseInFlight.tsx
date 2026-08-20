@@ -27,6 +27,17 @@ export type ReleaseInFlightPhase =
 export interface ReleaseInFlightState {
   /** True while every release / deploy affordance must stay inert. */
   blocked: boolean
+  /**
+   * True while cutting a *new* tag must stay inert.
+   *
+   * Wider than {@link blocked}: a settled failure leaves the page in a
+   * state the operator has not answered yet, and offering the next
+   * version straight away — over drift that still counts the commits the
+   * failed release was meant to ship — invites cutting a second tag on
+   * top of an unresolved first. Redeploying the tag that failed stays
+   * available, since that is the fix the banner points at.
+   */
+  cutBlocked: boolean
   /** Hides a settled banner. Terminal states only. */
   dismiss: () => void
   /** When a settled release stopped, so the elapsed clock can freeze. */
@@ -45,6 +56,7 @@ export interface ReleaseInFlightState {
 /** No release running: the value every surface treats as "carry on". */
 export const RELEASE_IDLE: ReleaseInFlightState = {
   blocked: false,
+  cutBlocked: false,
   dismiss: () => {},
   endedAt: null,
   envName: null,
@@ -61,6 +73,21 @@ const BLOCKING: ReadonlySet<ReleaseInFlightPhase> = new Set([
   'build_failed',
   'building',
   'deploying',
+])
+
+/**
+ * Phases during which no new tag may be cut.
+ *
+ * Everything but `idle` and `success`: a release that finished cleanly is
+ * the one settled outcome that leaves nothing to answer.
+ */
+const CUT_BLOCKING: ReadonlySet<ReleaseInFlightPhase> = new Set([
+  'adopting',
+  'build_failed',
+  'building',
+  'deploy_failed',
+  'deploying',
+  'failed',
 ])
 
 /** Phases in which a release has stopped, for better or worse. */
@@ -118,6 +145,40 @@ interface ReleaseInFlightOptions {
    * reload.
    */
   watching: boolean
+}
+
+/** Cut-button text while {@link ReleaseInFlightState.cutBlocked} holds. */
+export function cutBlockedLabel(phase: ReleaseInFlightPhase): string {
+  if (phase === 'build_failed') return 'Release blocked'
+  if (phase === 'deploy_failed' || phase === 'failed') {
+    return 'Last release unresolved'
+  }
+  return 'Release in flight'
+}
+
+/**
+ * Why a cut button is inert, said next to it.
+ *
+ * Lives here rather than in either form so the release card and the
+ * promote tab cannot drift apart on the same fact.
+ */
+export function cutBlockedReason(
+  phase: ReleaseInFlightPhase,
+  tag: null | string,
+): string {
+  const label = tag ?? 'the release in flight'
+  switch (phase) {
+    case 'adopting':
+      return 'Checking for a release in flight…'
+    case 'build_failed':
+      return `${label} is blocked — unblock it or fix the build first`
+    case 'deploy_failed':
+      return `${label} did not deploy — redeploy it, or dismiss the notice`
+    case 'failed':
+      return `${label} ended unknown — check the run, or dismiss the notice`
+    default:
+      return `Blocked until ${label} finishes releasing`
+  }
 }
 
 /**
@@ -200,14 +261,19 @@ export function useReleaseInFlightState({
     return () => clearTimeout(id)
   }, [phase, data?.updated_at])
 
-  // A finished release moved the drift baseline, so the form must not
-  // re-enable over the tag that was just cut. Refetching here rather than
-  // letting the card go stale is what makes the released-then-released-
-  // again sequence impossible.
+  // A settled release moved the drift baseline, so the forms must not
+  // re-enable over the state that was true before it ran. Refetching here
+  // rather than letting the cards go stale is what makes the released-
+  // then-released-again sequence impossible.
+  //
+  // Every terminal phase, not just `success`: a failed deploy still cut
+  // the tag, still wrote a deployment, and still moved the pipeline, so a
+  // page that keeps showing the pre-release view is wrong in exactly the
+  // way that gets a second tag cut.
   const refreshedRef = useRef<null | string>(null)
   useEffect(() => {
-    if (phase !== 'success') return
-    const at = data?.updated_at ?? 'success'
+    if (!TERMINAL.has(phase)) return
+    const at = data?.updated_at ?? phase
     if (refreshedRef.current === at) return
     refreshedRef.current = at
     void queryClient.invalidateQueries({
@@ -219,6 +285,7 @@ export function useReleaseInFlightState({
   if (phase === 'idle' || dismissed === key) return RELEASE_IDLE
   return {
     blocked: BLOCKING.has(phase),
+    cutBlocked: CUT_BLOCKING.has(phase),
     dismiss,
     endedAt: TERMINAL.has(phase) ? (data?.updated_at ?? null) : null,
     envName: envName(data?.environment ?? null),

@@ -341,6 +341,7 @@ describe('PromoteTab — a release already in flight', () => {
     renderPromoteTab({
       ...RELEASE_IDLE,
       blocked: true,
+      cutBlocked: true,
       phase: 'building',
       tag: 'v2.7.0',
     })
@@ -352,6 +353,23 @@ describe('PromoteTab — a release already in flight', () => {
     expect(
       screen.getByText('Blocked until v2.7.0 finishes releasing'),
     ).toBeInTheDocument()
+  })
+
+  it('stays inert after a failed deploy, so no second tag is cut', async () => {
+    // The screen this fixes: a red "deploy failed" banner over a promote
+    // form happily offering the next version.
+    renderPromoteTab({
+      ...RELEASE_IDLE,
+      cutBlocked: true,
+      phase: 'deploy_failed',
+      tag: 'v2.7.0',
+    })
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Last release unresolved/ }),
+      ).toBeDisabled()
+    })
+    expect(screen.getByText(/v2\.7\.0 did not deploy/)).toBeInTheDocument()
   })
 })
 

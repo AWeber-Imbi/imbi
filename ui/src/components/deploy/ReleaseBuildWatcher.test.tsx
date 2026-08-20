@@ -18,6 +18,7 @@ vi.mock('@/api/endpoints', async () => {
 
 vi.mock('sonner', () => ({
   toast: {
+    dismiss: vi.fn(),
     error: vi.fn(),
     loading: vi.fn(),
     message: vi.fn(),
@@ -30,6 +31,7 @@ function renderWatcher(
     envName: null | string
     onTerminal: () => void
     runUrl: null | string
+    silent: boolean
     tag: string
     toastId: string
   }> = {},
@@ -46,6 +48,7 @@ function renderWatcher(
         orgSlug="acme"
         projectId="p1"
         runUrl={props.runUrl ?? null}
+        silent={props.silent ?? false}
         tag={props.tag ?? '0.1.5'}
         toastId={props.toastId ?? 'toast-1'}
       />
@@ -75,6 +78,7 @@ function status(
 describe('ReleaseBuildWatcher', () => {
   let getPromoteStatus: ReturnType<typeof vi.fn>
   let toast: {
+    dismiss: ReturnType<typeof vi.fn>
     error: ReturnType<typeof vi.fn>
     loading: ReturnType<typeof vi.fn>
     message: ReturnType<typeof vi.fn>
@@ -86,6 +90,7 @@ describe('ReleaseBuildWatcher', () => {
     const sonner = await import('sonner')
     toast = sonner.toast as unknown as typeof toast
     getPromoteStatus.mockReset()
+    toast.dismiss.mockReset()
     toast.error.mockReset()
     toast.loading.mockReset()
     toast.message.mockReset()
@@ -110,6 +115,19 @@ describe('ReleaseBuildWatcher', () => {
     })
     expect(onTerminal).not.toHaveBeenCalled()
     expect(toast.loading.mock.calls[0][0]).toMatch(/Building release 0\.1\.5/)
+  })
+
+  it('says nothing while the page banners the same promote', async () => {
+    // The banner is on screen for as long as the promote runs, sits above
+    // the affordances it disables, and says all of this already — so the
+    // corner toast is a second copy of a fact that is not in doubt.
+    getPromoteStatus.mockResolvedValue(status({ status: 'deploy_failed' }))
+    const { onTerminal } = renderWatcher({ silent: true })
+    await waitFor(() => expect(onTerminal).toHaveBeenCalled())
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(toast.loading).not.toHaveBeenCalled()
+    // The dispatch toast predates both this watcher and the banner.
+    expect(toast.dismiss).toHaveBeenCalledWith('toast-1')
   })
 
   it('keeps watching through the deploy phase', async () => {
