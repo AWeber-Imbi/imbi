@@ -20,6 +20,7 @@ dotenv.load_dotenv()
 ORG = 'test-deployments-org'
 PROJECT_ID = 'test-deployments-project'
 RELEASE_ID = 'test-deployments-release'
+OTHER_RELEASE_ID = 'test-deployments-release-2'
 ENV = 'test-deployments-env'
 OTHER_ENV = 'test-deployments-env-2'
 NOW = datetime.datetime(2026, 8, 18, tzinfo=datetime.UTC)
@@ -69,6 +70,7 @@ class DeploymentNodeTestCase(unittest.IsolatedAsyncioTestCase):
         for label, key, value in (
             ('Project', 'id', PROJECT_ID),
             ('Release', 'id', RELEASE_ID),
+            ('Release', 'id', OTHER_RELEASE_ID),
             ('Environment', 'slug', ENV),
             ('Environment', 'slug', OTHER_ENV),
             ('Organization', 'slug', ORG),
@@ -307,6 +309,43 @@ class ReadTests(DeploymentNodeTestCase):
             )
             self.assertEqual(1, len(rows))
             self.assertEqual(expected['status'], rows[0].event.status)
+
+    async def test_latest_by_project_breaks_release_fan_out(self) -> None:
+        """Two releases on one node must not fan out into two rows.
+
+        The ``OPTIONAL MATCH`` for the release multiplies a deployment
+        carrying two ``HAS_DEPLOYMENT`` edges, and neither the
+        timestamp nor the deployment id separates those rows -- they
+        are the same node.  Unlike a timestamp tie this is not
+        hypothetical: 37 projects' current deployments have two
+        releases attached in production.
+        """
+        result = await self.upsert(status='success')
+        assert result is not None
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project_id}}})
+            MATCH (d:Deployment {{id: {deployment_id}}})
+            MERGE (r:Release {{id: {release_id}}})
+            MERGE (p)-[:HAS_RELEASE]->(r)
+            MERGE (r)-[:HAS_DEPLOYMENT]->(d)
+            RETURN r.id AS id
+            """,
+            {
+                'project_id': PROJECT_ID,
+                'deployment_id': result.id,
+                'release_id': OTHER_RELEASE_ID,
+            },
+            ['id'],
+        )
+        expected = max(RELEASE_ID, OTHER_RELEASE_ID)
+        for _ in range(2):
+            rows = await deployments.latest_deployments_by_project(
+                self.graph, [PROJECT_ID]
+            )
+            self.assertEqual(1, len(rows))
+            assert rows[0].release is not None
+            self.assertEqual(expected, rows[0].release['id'])
 
     async def test_latest_by_project_carries_release(self) -> None:
         await self.upsert(status='success')
