@@ -40,7 +40,6 @@ from imbi.api.plugins.resolution import resolve_all_capabilities
 from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
-from imbi.api.settings import get_server_config
 from imbi.common import blueprints, clickhouse, graph, models
 from imbi.common import deployments as deployment_nodes
 from imbi.common import patch as json_patch
@@ -459,20 +458,6 @@ class LifecyclePreviewResponse(pydantic.BaseModel):
     """
 
     previews: list[LifecyclePreviewEntry] = []
-
-
-def _build_project_ui_url(org_slug: str, project_id: str) -> str | None:
-    """Resolve the canonical UI deep link for a project.
-
-    Returns ``None`` when ``IMBI_UI_URL`` is unset so lifecycle plugins
-    can skip writing the equivalent of a GitHub repo ``homepage``
-    without falling back to a localhost URL that would point at
-    nothing meaningful for a third party.
-    """
-    base = get_server_config().ui_url
-    if not base:
-        return None
-    return f'{base}/organizations/{org_slug}/projects/{project_id}'
 
 
 # -- Helpers ------------------------------------------------------------
@@ -1699,7 +1684,6 @@ async def create_project(
             auth,
             project_name=project.name,
             project_description=project.description,
-            project_ui_url=_build_project_ui_url(org_slug, project_id),
         )
     except Exception:
         LOGGER.exception(
@@ -3320,7 +3304,6 @@ async def patch_project(
                 previous_project_slug=previous_slug if slug_changed else None,
                 project_name=response.name,
                 project_description=response.description,
-                project_ui_url=_build_project_ui_url(org_slug, project_id),
             )
         except Exception:
             LOGGER.exception(
@@ -3360,7 +3343,6 @@ async def patch_project(
                 previous_team_slug=current_team_slug if team_changed else None,
                 project_name=response.name,
                 project_description=response.description,
-                project_ui_url=_build_project_ui_url(org_slug, project_id),
             )
             lifecycle_results = [*lifecycle_results, *relocate_results]
         except Exception:

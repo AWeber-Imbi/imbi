@@ -284,6 +284,45 @@ async def lookup_project_slugs(
     )
 
 
+async def lookup_project_name_description(
+    db: graph.Graph,
+    project_id: str,
+) -> tuple[str | None, str | None]:
+    """Look up the project's display name and description.
+
+    Returns ``(None, None)`` on lookup failure or missing project, and
+    ``None`` for either field the project does not set.  The lifecycle
+    dispatcher hydrates :class:`PluginContext` from this so a plugin
+    sees the same values on every event, instead of only on the paths
+    whose endpoint remembered to pass them (issue #254, defect 4).
+
+    ``None`` here means "not set on the project", which plugins are
+    expected to treat as "leave the remote field alone" rather than
+    "clear it" -- a distinction the empty string cannot carry.
+    """
+    query: typing.LiteralString = (
+        'MATCH (p:Project {{id: {project_id}}}) '
+        'RETURN p.name AS name, p.description AS description'
+    )
+    try:
+        records = await db.execute(
+            query,
+            {'project_id': project_id},
+            ['name', 'description'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug('Project name/description lookup failed', exc_info=True)
+        return None, None
+    if not records:
+        return None, None
+    name_raw = graph.parse_agtype(records[0]['name'])
+    description_raw = graph.parse_agtype(records[0].get('description'))
+    return (
+        str(name_raw) if name_raw is not None else None,
+        str(description_raw) if description_raw is not None else None,
+    )
+
+
 async def lookup_project_links(
     db: graph.Graph,
     project_id: str,
