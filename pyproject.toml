@@ -1,6 +1,6 @@
 [project]
 name = "imbi"
-version = "2.26.2"
+version = "2.27.0"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -21,20 +21,20 @@ classifiers = [
 ]
 # Meta-distribution: installing `imbi` installs the whole platform.
 dependencies = [
-  "imbi-api==2.26.2",
-  "imbi-assistant==2.26.2",
-  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.26.2",
-  "imbi-gateway==2.26.2",
-  "imbi-mcp==2.26.2",
-  "imbi-plugin-aws==2.26.2",
-  "imbi-plugin-github==2.26.2",
-  "imbi-plugin-google==2.26.2",
-  "imbi-plugin-logzio==2.26.2",
-  "imbi-plugin-oidc==2.26.2",
-  "imbi-plugin-pagerduty==2.26.2",
-  "imbi-plugin-sonarqube==2.26.2",
-  "imbi-scheduler==2.26.2",
-  "imbi-slackbot==2.26.2",
+  "imbi-api==2.27.0",
+  "imbi-assistant==2.27.0",
+  "imbi-common[databases,llm,mcp,otel,sentry,server]==2.27.0",
+  "imbi-gateway==2.27.0",
+  "imbi-mcp==2.27.0",
+  "imbi-plugin-aws==2.27.0",
+  "imbi-plugin-github==2.27.0",
+  "imbi-plugin-google==2.27.0",
+  "imbi-plugin-logzio==2.27.0",
+  "imbi-plugin-oidc==2.27.0",
+  "imbi-plugin-pagerduty==2.27.0",
+  "imbi-plugin-sonarqube==2.27.0",
+  "imbi-scheduler==2.27.0",
+  "imbi-slackbot==2.27.0",
 ]
 
 [dependency-groups]
