@@ -245,12 +245,22 @@ export function useReleaseInFlightState({
   // Pinned to the first in-flight observation: `updated_at` advances on
   // every phase change, so reading elapsed time off it would restart the
   // clock when `building` becomes `deploying`.
+  //
+  // Re-anchored on every *entry* into flight rather than only after an
+  // `idle` reading, because a new cut can follow a settled one with no
+  // idle poll in between — the settled phase is still inside its
+  // freshness window — and the new release would otherwise show an
+  // elapsed time counting from the previous one. A terminal phase keeps
+  // the anchor: that is what freezes the clock at how long it took.
   const startedAtRef = useRef<null | string>(null)
-  if (IN_FLIGHT.has(phase)) {
-    startedAtRef.current ??= data?.updated_at ?? null
+  const inFlightRef = useRef(false)
+  const inFlight = IN_FLIGHT.has(phase)
+  if (inFlight && !inFlightRef.current) {
+    startedAtRef.current = data?.updated_at ?? null
   } else if (phase === 'idle') {
     startedAtRef.current = null
   }
+  inFlightRef.current = inFlight
 
   // A success settles nothing the operator has to answer, so it stops
   // being news shortly after it lands.

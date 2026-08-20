@@ -149,6 +149,41 @@ describe('useReleaseInFlightState', () => {
     expect(result.current.blocked).toBe(false)
   })
 
+  it('restarts the clock for a cut that follows a settled release', async () => {
+    // A settled promote stays inside its freshness window, so the next
+    // cut can arrive as `building` with no intervening `idle` reading.
+    // Anchoring only on the first in-flight observation would count the
+    // new release's elapsed time from the previous release's start.
+    const earlier = new Date(Date.now() - 300_000).toISOString()
+    const later = new Date().toISOString()
+    let next = status({ status: 'building', updated_at: earlier })
+    vi.mocked(endpoints.getPromoteStatus).mockImplementation(
+      () => Promise.resolve(next) as never,
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { gcTime: 0, retry: false } },
+    })
+    const { result } = renderHook(() => useReleaseInFlightState(OPTIONS), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() => expect(result.current.startedAt).toBe(earlier))
+
+    next = status({ status: 'success', updated_at: earlier })
+    await act(async () => {
+      await client.refetchQueries()
+    })
+    await waitFor(() => expect(result.current.phase).toBe('success'))
+
+    next = status({ status: 'building', tag: 'v6.6.0', updated_at: later })
+    await act(async () => {
+      await client.refetchQueries()
+    })
+    await waitFor(() => expect(result.current.tag).toBe('v6.6.0'))
+    expect(result.current.startedAt).toBe(later)
+  })
+
   it('picks up a cut dispatched while the page is open', async () => {
     // The reported bug: an idle first poll turns the refetch interval
     // off, so a release cut a minute later never reached the banner and
