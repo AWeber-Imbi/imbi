@@ -3016,6 +3016,96 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({other_sha: '{"drift_detected":false}'}, changed)
 
     @respx.mock
+    async def test_list_commit_notes_reads_the_whole_ref(self) -> None:
+        fanout = f'{self.FULL_SHA[:2]}/{self.FULL_SHA[2:]}'
+        self._mock_tree(
+            [
+                {'type': 'blob', 'path': fanout, 'sha': 'b1'},
+                {'type': 'tree', 'path': 'ab', 'sha': 'sub'},
+            ]
+        )
+        self._blob('b1', '{"drift_detected":true}')
+        listing = await self.handler.list_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift'
+        )
+        # Fan-out subtree flattened back to the annotated full SHA.
+        self.assertEqual(
+            {self.FULL_SHA: '{"drift_detected":true}'}, listing.notes
+        )
+        self.assertTrue(listing.complete)
+
+    @respx.mock
+    async def test_list_commit_notes_reports_an_unreadable_blob(self) -> None:
+        # The readable note still comes back, but the listing says it is
+        # not the whole ref, so a caller cannot record a finished
+        # backfill over a note it never saw.
+        other_sha = 'e' * 40
+        self._mock_tree(
+            [
+                {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'bad'},
+                {'type': 'blob', 'path': other_sha, 'sha': 'b2'},
+            ]
+        )
+        respx.get(f'{self.REPO}/git/blobs/bad').mock(
+            return_value=httpx.Response(500)
+        )
+        self._blob('b2', '{"drift_detected":false}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            listing = await self.handler.list_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift'
+            )
+        self.assertEqual(
+            {other_sha: '{"drift_detected":false}'}, listing.notes
+        )
+        self.assertFalse(listing.complete)
+
+    @respx.mock
+    async def test_list_commit_notes_reports_a_truncated_tree(self) -> None:
+        # Every note in the (partial) tree read fine, so blob-read
+        # completeness alone would call this whole. The tree itself says
+        # otherwise.
+        respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
+            return_value=httpx.Response(
+                200, json={'object': {'sha': 'notes-tip'}}
+            )
+        )
+        respx.get(f'{self.REPO}/git/commits/notes-tip').mock(
+            return_value=httpx.Response(200, json={'tree': {'sha': 't1'}})
+        )
+        respx.get(f'{self.REPO}/git/trees/t1').mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'tree': [
+                        {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b1'}
+                    ],
+                    'truncated': True,
+                },
+            )
+        )
+        self._blob('b1', '{"drift_detected":true}')
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            listing = await self.handler.list_commit_notes(
+                _ctx(), _CREDS, 'imbi-drift'
+            )
+        self.assertEqual(
+            {self.FULL_SHA: '{"drift_detected":true}'}, listing.notes
+        )
+        self.assertFalse(listing.complete)
+
+    @respx.mock
+    async def test_list_commit_notes_without_the_ref_is_empty(self) -> None:
+        respx.get(f'{self.REPO}/git/ref/notes/imbi-drift').mock(
+            return_value=httpx.Response(404)
+        )
+        listing = await self.handler.list_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift'
+        )
+        # Empty but complete: "no notes" is the whole truth here.
+        self.assertEqual({}, listing.notes)
+        self.assertTrue(listing.complete)
+
+    @respx.mock
     async def test_diff_commit_notes_zero_before_lists_everything(
         self,
     ) -> None:

@@ -39,7 +39,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { deriveChipColors } from '@/lib/chip-colors'
-import { computeDriftPairs, type DriftPair } from '@/lib/deployment-drift'
+import {
+  computeDriftPairs,
+  type DriftPair,
+  type DriftProject,
+} from '@/lib/deployment-drift'
 
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -926,25 +930,9 @@ function DriftCell({
   project,
 }: {
   inline?: boolean
-  project: {
-    current_releases?: null | Record<
-      string,
-      { committish?: null | string; tag?: null | string }
-    >
-    environments?:
-      | null
-      | {
-          label_color?: null | string
-          name: string
-          slug: string
-          sort_order?: null | number
-        }[]
+  project: DriftProject & {
     id: string
     project_types?: null | object[]
-    release_summary?: null | {
-      commits_since_tag: number
-      head_sha: null | string
-    }
   }
 }) {
   const { isDarkMode } = useTheme()
@@ -958,11 +946,13 @@ function DriftCell({
     : 'inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs'
   const fallbackCls = 'border-amber-border bg-amber-bg text-amber-text border'
 
+  // Same predicate the count and the filter use, so a badge never
+  // appears for a project the "Drifted" tally does not include.
   const deployDrifted: DriftPair[] = isProjectDeployable(project)
     ? computeDriftPairs(
         project.environments ?? [],
         project.current_releases ?? {},
-      ).filter((p) => p.drifted)
+      ).filter((p) => p.drifted && rangeNeedsAction(project.drift_ranges, p))
     : []
 
   const releaseDrifted =
@@ -1038,7 +1028,9 @@ function driftSlugsFor(project: ProjectListItem): string[] {
       project.current_releases ?? {},
     )
     for (const pair of pairs) {
-      if (pair.drifted) slugs.push(`${pair.from}->${pair.to}`)
+      if (pair.drifted && rangeNeedsAction(project.drift_ranges, pair)) {
+        slugs.push(`${pair.from}->${pair.to}`)
+      }
     }
   }
   if (isProjectReleasable(project) && projectReleaseDrifted(project)) {
@@ -1209,15 +1201,34 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
   return next
 }
 
-function projectReleaseDrifted(project: {
-  release_summary?: null | {
-    commits_since_tag: number
-    head_sha: null | string
-  }
-}): boolean {
+// Same rule as `rangeNeedsAction`, over the tag..HEAD range: commits
+// past the latest tag only count when CI says one of them matters.
+function projectReleaseDrifted(
+  project: Pick<DriftProject, 'release_summary'>,
+): boolean {
   const s = project.release_summary
   if (!s?.head_sha) return false
-  return s.commits_since_tag > 0
+  return s.commits_since_tag > 0 && s.drift_detected === true
+}
+
+// Whether CI called anything in this promotion step worth acting on.
+// A version difference alone is not the signal: a range of docs and
+// CI-config commits differs but needs no promotion. The rule is one
+// question over the range -- any commit marked `true` means act; all
+// `false`, or nothing checked, means leave it alone.
+function rangeNeedsAction(
+  ranges: Record<string, boolean> | undefined,
+  pair: DriftPair,
+): boolean {
+  // A pair without both commits has no range to ask about, so it falls
+  // in the rule's "no verdict" case and stays quiet. Deliberate, not an
+  // oversight: `computeDriftPairs` can compare tags alone, but every one
+  // of the 31,057 releases in production carries a committish, so the
+  // tag-only fallback describes a case that does not occur. Reporting
+  // those pairs on the tag comparison instead would reintroduce exactly
+  // the unfiltered noise this rule exists to remove.
+  if (!pair.baseSha || !pair.headSha) return false
+  return ranges?.[`${pair.baseSha}..${pair.headSha}`] === true
 }
 
 function ReleaseCards({

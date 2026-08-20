@@ -10,11 +10,34 @@ export interface DriftEnvironment {
 }
 
 export interface DriftPair {
+  /** The two endpoints, when both sides have one. The range that would
+   *  need promoting runs from `baseSha` (what the later environment
+   *  runs) up to `headSha` (what the earlier one runs). */
+  baseSha: null | string
   drifted: boolean
   from: string
+  headSha: null | string
   to: string
   toLabelColor?: null | string
   toSlug: string
+}
+
+// The project fields the drift rule reads, in one place. Declared here
+// rather than inline at each call site so a field added to the rule
+// cannot reach some consumers and miss others.
+export interface DriftProject {
+  current_releases?: null | Record<
+    string,
+    { committish?: null | string; tag?: null | string }
+  >
+  /** `"<base>..<head>"` -> whether CI flagged any commit in that range. */
+  drift_ranges?: Record<string, boolean>
+  environments?: DriftEnvironment[] | null
+  release_summary?: null | {
+    commits_since_tag: number
+    drift_detected?: boolean
+    head_sha: null | string
+  }
 }
 
 export function computeDriftPairs(
@@ -41,8 +64,10 @@ export function computeDriftPairs(
     const drifted =
       aSha && bSha ? aSha !== bSha : (aTag ?? aSha) !== (bTag ?? bSha)
     pairs.push({
+      baseSha: bSha,
       drifted,
       from: a.name,
+      headSha: aSha,
       to: b.name,
       toLabelColor: b.label_color ?? null,
       toSlug: b.slug,

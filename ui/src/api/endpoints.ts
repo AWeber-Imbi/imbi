@@ -198,6 +198,10 @@ export interface ProjectListItem {
     }
   >
   description: null | string
+  // `"<base>..<head>"` -> whether CI flagged any commit in that range.
+  // Keyed by the two committishes of one promotion step; a step with no
+  // entry was never evaluated.
+  drift_ranges?: Record<string, boolean>
   environments: {
     label_color?: null | string
     name: string
@@ -215,6 +219,8 @@ export interface ProjectListItem {
   }[]
   release_summary: null | {
     commits_since_tag: number
+    drift_answered?: number
+    drift_detected?: boolean
     head_author: null | string
     head_author_login: null | string
     head_authored_at: null | string

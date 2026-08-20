@@ -1055,6 +1055,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/maintenance/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Maintenance Log
+         * @description The maintenance activity log, newest first, keyset paginated.
+         *
+         *     Defaults to ``event_type=attempt`` -- one row per work item per
+         *     claim, which is the view the Activity tab opens on. Pass
+         *     ``event_type=activity`` with an ``attempt_id`` to expand one of
+         *     those, or an empty ``event_type`` for the raw stream.
+         *
+         *     ``counts`` is computed for the whole filter set with the
+         *     ``disposition`` filter left out, so the filter chips can show totals
+         *     without a second request. It is returned on the first page only:
+         *     recomputing ninety days of counts on every "load more" buys nothing.
+         */
+        get: operations["list_maintenance_log_api_maintenance_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mcp-servers/": {
         parameters: {
             query?: never;
@@ -4009,6 +4039,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/drift-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Drift Notes
+         * @description Ingest one push to ``refs/notes/imbi-drift``.
+         *
+         *     The gateway's ``update_release_drift`` action forwards the push's
+         *     ``before``/``after`` here; the plugin diffs the notes tree between
+         *     them and each changed note lands on the Releases whose committish
+         *     it annotates (see :mod:`imbi.api.drift`).  ``updated`` counts the
+         *     Releases stamped -- zero is normal for notes on commits no Release
+         *     points at.
+         */
+        post: operations["ingest_drift_notes_api_organizations__org_slug__projects__project_id__deployments_drift_notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/environments/{env_slug}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Unattached Deployment
+         * @description Record a deployment against a project and environment.
+         *
+         *     The release-scoped endpoint cannot express a deployment whose
+         *     release is unknown, and dropping such an event is how a real
+         *     rollout went unrecorded whenever release identity drifted.  This
+         *     records it anyway: the tag and committish the caller could not
+         *     resolve are stored on the node, and the sweeper attaches
+         *     ``HAS_DEPLOYMENT`` when the Release turns up.
+         *
+         *     A release that *is* resolvable is attached immediately, so a caller
+         *     that only lacks the lookup does not create a correlation backlog.
+         */
+        post: operations["record_unattached_deployment_api_organizations__org_slug__projects__project_id__deployments_environments__env_slug__deployments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/deployments/resync": {
         parameters: {
             query?: never;
@@ -4236,6 +4323,12 @@ export interface paths {
         /**
          * Get Release History
          * @description Release history: ClickHouse tags joined to their ``Release`` nodes.
+         *
+         *     ``ci_status`` comes from the synced ``commits`` table, which the
+         *     deployment sync fills by walking ``DEPLOYED_TO`` edges.  A project
+         *     with no environments has none, so every release read ``'unknown'``
+         *     even with a green build in GitHub (#211); those projects get the
+         *     fallback chain in :func:`_fallback_ci_statuses` instead.
          */
         get: operations["get_release_history_api_organizations__org_slug__projects__project_id__deployments_release_history_get"];
         put?: never;
@@ -4304,6 +4397,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/{tag}/blockers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Release Blockers
+         * @description Blockers on ``tag``, newest first.
+         *
+         *     Filtering by ``external_ref`` is how an outside process finds the
+         *     blocker it filed earlier so it can resolve it.
+         */
+        get: operations["list_release_blockers_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers_get"];
+        put?: never;
+        /**
+         * Add Release Blocker
+         * @description File a blocker against ``tag``, refusing deploys and promotes.
+         */
+        post: operations["add_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/{tag}/blockers/{blocker_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Release Blocker
+         * @description Erase a blocker filed by mistake -- admin only.
+         *
+         *     Deleting throws away the record of what held the release up, which
+         *     is what blockers exist to keep, so the ordinary way to end one is
+         *     :func:`resolve_release_blocker`.  The deletion is written to the
+         *     operations log so the erasure itself stays visible.
+         */
+        delete: operations["delete_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers__blocker_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Release Blocker
+         * @description Correct a blocker's type or wording.
+         */
+        patch: operations["update_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers__blocker_id__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/{tag}/blockers/{blocker_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Release Blocker
+         * @description Resolve one blocker, keeping the record of it.
+         *
+         *     Resolving an already-resolved blocker is a no-op rather than an
+         *     error; a 404 means no such blocker on the tag.
+         */
+        post: operations["resolve_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers__blocker_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/{tag}/block": {
         parameters: {
             query?: never;
@@ -4317,19 +4489,25 @@ export interface paths {
          * Block Release
          * @description Block ``tag`` from being deployed or promoted, with a reason.
          *
-         *     Blocking is idempotent and re-blocking overwrites the reason and
-         *     re-stamps the actor.  A tag that has been synced but never cut
-         *     through Imbi has no ``Release`` node yet; one is created from the
-         *     synced tag so the block still holds.  A tag Imbi has never seen is
-         *     a 404.
+         *     Kept for the callers written against it (the gateway's
+         *     ``block_release`` action among them); it files a ``manual`` blocker.
+         *     Re-blocking a release already blocked this way overwrites the reason
+         *     and re-stamps the actor rather than stacking a second blocker, which
+         *     is what it did when the state was a flag on the ``Release``.
+         *
+         *     A tag that has been synced but never cut through Imbi has no
+         *     ``Release`` node yet; one is created from the synced tag so the
+         *     block still holds.  A tag Imbi has never seen is a 404.
          */
         post: operations["block_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__block_post"];
         /**
          * Unblock Release
-         * @description Clear the block on ``tag``, letting it ship again.
+         * @description Clear every open blocker on ``tag``, letting it ship again.
          *
-         *     Unblocking an unblocked release is a no-op, not an error; a 404 only
-         *     means no ``Release`` node exists for the tag.
+         *     The flag this replaced was one bit, so its one caller meant "make
+         *     this release shippable" -- which is now every open blocker, not just
+         *     the manual one.  Unblocking an unblocked release is a no-op, not an
+         *     error; a 404 only means no ``Release`` node exists for the tag.
          */
         delete: operations["unblock_release_api_organizations__org_slug__projects__project_id__deployments_releases__tag__block_delete"];
         options?: never;
@@ -4591,10 +4769,18 @@ export interface paths {
          * Search Components
          * @description Search the packages the organization depends on.
          *
-         *     ``q`` matches the purl or the display name, case-insensitively;
-         *     empty returns the whole catalog (capped by ``limit``). Results sort
-         *     by project count descending — the packages worth governing are the
-         *     widely-used ones — then by purl for a stable order.
+         *     ``q`` matches the purl or the display name, case-insensitively.
+         *     Ranking is by how the name matched -- exact, then prefix, then
+         *     substring, then alphabetical -- rather than by project count: the
+         *     counts belong to the page this returns, not to the catalog it
+         *     picked the page from, and computing them catalog-wide is what made
+         *     the pre-split query slow.
+         *
+         *     An empty ``q`` returns ``ecosystem_totals`` and no rows. The screen
+         *     shows the reader's recently-viewed packages rather than a slice of
+         *     the catalog when the box is empty, so listing every package it
+         *     depends on would be a full-catalog traversal whose result is
+         *     discarded.
          */
         get: operations["search_components_api_organizations__org_slug__components__get"];
         put?: never;
@@ -4649,8 +4835,11 @@ export interface paths {
         post?: never;
         /**
          * Clear Component Status
-         * @description Return a package to current. Clearing an unmarked package is a
-         *     no-op, not an error.
+         * @description Return a package to current.
+         *
+         *     Clearing an unmarked package is a no-op, not an error. The clear is
+         *     as global as the mark was — every organization depending on this
+         *     package stops seeing it.
          */
         delete: operations["clear_component_status_api_organizations__org_slug__components__component_id__status_delete"];
         options?: never;
@@ -6671,6 +6860,42 @@ export interface components {
              */
             default_redirect: string;
         };
+        /**
+         * BlockerCreateRequest
+         * @description Body for ``POST /deployments/releases/{tag}/blockers``.
+         */
+        BlockerCreateRequest: {
+            /**
+             * Type
+             * @default manual
+             * @enum {string}
+             */
+            type: "build-failure" | "drift" | "product-review" | "qa" | "deploy-order" | "dependency" | "manual";
+            /** Description */
+            description: string;
+            /** External Ref */
+            external_ref?: string | null;
+        };
+        /**
+         * BlockerResolveRequest
+         * @description Body for ``POST .../blockers/{blocker_id}/resolve``.
+         */
+        BlockerResolveRequest: {
+            /** Resolution Note */
+            resolution_note?: string | null;
+        };
+        /**
+         * BlockerUpdateRequest
+         * @description Body for ``PATCH .../releases/{tag}/blockers/{blocker_id}``.
+         *
+         *     Both fields are optional; omitting one leaves it as it stands.
+         */
+        BlockerUpdateRequest: {
+            /** Type */
+            type?: ("build-failure" | "drift" | "product-review" | "qa" | "deploy-order" | "dependency" | "manual") | null;
+            /** Description */
+            description?: string | null;
+        };
         /** Blueprint */
         "Blueprint-Input": {
             /** Id */
@@ -7236,6 +7461,10 @@ export interface components {
         /**
          * ComponentNoteRequest
          * @description Body for ``POST .../notes``.
+         *
+         *     The body is stripped before the length check, so a whitespace-only
+         *     note is a 422 rather than a blank line in the audit trail. The cap
+         *     matches the ``maxLength`` the notes dialog puts on its textarea.
          */
         ComponentNoteRequest: {
             /** Body */
@@ -7742,6 +7971,11 @@ export interface components {
             inputs?: {
                 [key: string]: string;
             } | null;
+            /**
+             * Acknowledge Ci Failure
+             * @default false
+             */
+            acknowledge_ci_failure: boolean;
         };
         /**
          * DeploymentEvent
@@ -8305,6 +8539,28 @@ export interface components {
              * @default 0
              */
             commits_considered: number;
+        };
+        /**
+         * DriftNotesPushBody
+         * @description A push to the drift-notes ref: two commits *of the notes ref*.
+         *
+         *     The annotated commits whose notes changed are not in the push
+         *     payload -- the notes tree has to be diffed between these to find
+         *     them, which the deployment plugin does.
+         */
+        DriftNotesPushBody: {
+            /** Before */
+            before: string;
+            /** After */
+            after: string;
+        };
+        /**
+         * DriftNotesResponse
+         * @description How many Releases the push's notes stamped.
+         */
+        DriftNotesResponse: {
+            /** Updated */
+            updated: number;
         };
         /**
          * EdgePutBody
@@ -9662,6 +9918,82 @@ export interface components {
             code: string;
         };
         /**
+         * MaintenanceLogCounts
+         * @description Attempt outcomes across the whole filter set, not just this page.
+         */
+        MaintenanceLogCounts: {
+            /**
+             * Succeeded
+             * @default 0
+             */
+            succeeded: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Deferred
+             * @default 0
+             */
+            deferred: number;
+        };
+        /**
+         * MaintenanceLogEntry
+         * @description One row of the maintenance activity log.
+         */
+        MaintenanceLogEntry: {
+            /** Id */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Run Id */
+            run_id: string;
+            /** Attempt Id */
+            attempt_id: string;
+            /** Item Id */
+            item_id: string;
+            /** Slug */
+            slug: string;
+            /** Event Type */
+            event_type: string;
+            /** Disposition */
+            disposition: string;
+            /** Action */
+            action: string;
+            /** Project Id */
+            project_id: string;
+            /** Project Slug */
+            project_slug: string;
+            /** Message */
+            message: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Duration Ms */
+            duration_ms: number;
+            /** Started By */
+            started_by: string;
+        };
+        /**
+         * MaintenanceLogResponse
+         * @description A page of log rows plus the counts the filter chips render.
+         */
+        MaintenanceLogResponse: {
+            counts?: components["schemas"]["MaintenanceLogCounts"] | null;
+            /** Data */
+            data: components["schemas"]["MaintenanceLogEntry"][];
+        };
+        /**
          * MaintenanceOperation
          * @description One registry operation merged with its run state.
          */
@@ -10635,6 +10967,10 @@ export interface components {
                 [key: string]: components["schemas"]["ReleaseInfo"];
             };
             release_summary?: components["schemas"]["ReleaseSummary"] | null;
+            /** Drift Ranges */
+            drift_ranges?: {
+                [key: string]: boolean;
+            };
         };
         /**
          * ProjectListProjectTypeRef
@@ -11346,6 +11682,40 @@ export interface components {
             blocked_at?: string | null;
         };
         /**
+         * ReleaseBlocker
+         * @description One thing standing between a release and shipping.
+         */
+        ReleaseBlocker: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @default manual
+             * @enum {string}
+             */
+            type: "build-failure" | "drift" | "product-review" | "qa" | "deploy-order" | "dependency" | "manual";
+            /** Description */
+            description: string;
+            /** External Ref */
+            external_ref?: string | null;
+            /**
+             * Status
+             * @default open
+             * @enum {string}
+             */
+            status: "open" | "resolved";
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolved By */
+            resolved_by?: string | null;
+            /** Resolution Note */
+            resolution_note?: string | null;
+        };
+        /**
          * ReleaseCreate
          * @description Request body for creating a release.
          */
@@ -11591,10 +11961,17 @@ export interface components {
             blocked_by?: string | null;
             /** Blocked At */
             blocked_at?: string | null;
+            /**
+             * Blockers
+             * @default []
+             */
+            blockers: components["schemas"]["ReleaseBlocker"][];
             /** Ci Override By */
             ci_override_by?: string | null;
             /** Ci Override At */
             ci_override_at?: string | null;
+            /** Drift Detected */
+            drift_detected?: boolean | null;
         };
         /**
          * ReleaseInfo
@@ -11697,6 +12074,10 @@ export interface components {
             updated_at?: string | null;
             /** Created By */
             created_by: string;
+            /** Drift Detected */
+            drift_detected?: boolean | null;
+            /** Drift Checked At */
+            drift_checked_at?: string | null;
         };
         /**
          * ReleaseSummary
@@ -11704,7 +12085,7 @@ export interface components {
          *
          *     head_sha is the latest commit on main; latest_tag is the most recent
          *     semver release tag; commits_since_tag is the number of unreleased
-         *     commits.
+         *     commits, and drift_detected says whether any of them matters.
          */
         ReleaseSummary: {
             /** Head Sha */
@@ -11730,6 +12111,16 @@ export interface components {
              * @default 0
              */
             commits_since_tag: number;
+            /**
+             * Drift Detected
+             * @default false
+             */
+            drift_detected: boolean;
+            /**
+             * Drift Answered
+             * @default 0
+             */
+            drift_answered: number;
         };
         /**
          * RelocationTarget
@@ -12557,6 +12948,37 @@ export interface components {
             views: number;
             /** Readers */
             readers: number;
+        };
+        /**
+         * UnattachedDeploymentBody
+         * @description A deployment observed for a project whose release is unknown.
+         */
+        UnattachedDeploymentBody: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "in_progress" | "success" | "failed" | "rolled_back";
+            /** Note */
+            note?: string | null;
+            /** External Run Id */
+            external_run_id?: string | null;
+            /** External Run Url */
+            external_run_url?: string | null;
+            /** Tag */
+            tag?: string | null;
+            /** Committish */
+            committish?: string | null;
+        };
+        /**
+         * UnattachedDeploymentResponse
+         * @description Identity of the recorded deployment.
+         */
+        UnattachedDeploymentResponse: {
+            /** Deployment Id */
+            deployment_id: string;
+            /** Release Id */
+            release_id?: string | null;
         };
         /**
          * UploadResponse
@@ -15077,6 +15499,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaintenanceOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_maintenance_log_api_maintenance_log_get: {
+        parameters: {
+            query?: {
+                event_type?: string | null;
+                disposition?: string[] | null;
+                slug?: string | null;
+                run_id?: string | null;
+                attempt_id?: string | null;
+                project_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceLogResponse"];
                 };
             };
             /** @description Validation Error */
@@ -20583,6 +21045,79 @@ export interface operations {
             };
         };
     };
+    ingest_drift_notes_api_organizations__org_slug__projects__project_id__deployments_drift_notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriftNotesPushBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriftNotesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_unattached_deployment_api_organizations__org_slug__projects__project_id__deployments_environments__env_slug__deployments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                env_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnattachedDeploymentBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnattachedDeploymentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resync_project_deployments_api_organizations__org_slug__projects__project_id__deployments_resync_post: {
         parameters: {
             query?: {
@@ -20954,6 +21489,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReleasePublishResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_release_blockers_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "resolved") | null;
+                external_ref?: string | null;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBlocker"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockerCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBlocker"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers__blocker_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+                blocker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers__blocker_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+                blocker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockerUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBlocker"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_release_blocker_api_organizations__org_slug__projects__project_id__deployments_releases__tag__blockers__blocker_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                project_id: string;
+                tag: string;
+                blocker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockerResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBlocker"];
                 };
             };
             /** @description Validation Error */

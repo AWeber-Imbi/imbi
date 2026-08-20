@@ -154,6 +154,40 @@ ORDER BY (project_id, sha);
 """
 enabled = true
 
+# One CI drift verdict per commit, read from the git notes on
+# `refs/notes/imbi-drift`. The Projects page asks "does this range need
+# promoting or releasing", and answers it by OR-ing these verdicts across
+# the commits between two endpoints.
+#
+# A row exists only where a note gave a boolean. Absence is the "no
+# verdict" state, which the rule treats as nothing to do -- so there is
+# nothing to tombstone and no third value to store.
+#
+# Separate from `imbi.commits` rather than a column on it: that table is
+# `ReplacingMergeTree(recorded_at) ORDER BY (project_id, sha)`, so a
+# verdict-only insert would replace the row and blank every commit field.
+# Sharing its key means a join, not a subquery.
+#
+# `paths` is the note's `drift_paths` -- what a UI would show to explain
+# why a range drifted. Empty for every note written so far: CI currently
+# writes `{"drift_detected": <bool>}` and nothing else, so populating it
+# needs a workflow change, not an Imbi one. The column exists now anyway
+# because `setup_schema` only runs `CREATE TABLE IF NOT EXISTS` and has
+# no ALTER path, so adding a column later means a hand-run migration.
+
+[commit_drift]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.commit_drift {on_cluster}(
+  project_id      LowCardinality(String),
+  sha             String,
+  drift_detected  Bool,
+  paths           Array(String),
+  recorded_at     DateTime64(3, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree(recorded_at)
+ORDER BY (project_id, sha);
+"""
+enabled = true
+
 [document_versions]
 query = """
 CREATE TABLE IF NOT EXISTS imbi.document_versions {on_cluster}(

@@ -35,6 +35,26 @@ describe('computeDriftPairs', () => {
     expect(pairs[0].drifted).toBe(true)
   })
 
+  it('carries the range endpoints, base being the later env', () => {
+    // Testing runs the newer code, so it is the head of the range even
+    // though it sorts first; staging's commit is the base.
+    const pairs = computeDriftPairs(ENVS, {
+      staging: { committish: 'bbb' },
+      testing: { committish: 'aaa' },
+    })
+    expect(pairs[0].baseSha).toBe('bbb')
+    expect(pairs[0].headSha).toBe('aaa')
+  })
+
+  it('leaves the endpoints null when a side has no commit', () => {
+    const pairs = computeDriftPairs(ENVS, {
+      staging: { tag: '3.5.4' },
+      testing: { tag: '3.5.5' },
+    })
+    expect(pairs[0].baseSha).toBeNull()
+    expect(pairs[0].headSha).toBeNull()
+  })
+
   it('orders envs by sort_order, not object key order', () => {
     const pairs = computeDriftPairs(
       [

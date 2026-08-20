@@ -11,6 +11,7 @@ import fastapi
 
 from imbi.api import drift
 from imbi.common import graph
+from imbi.common.plugins import base
 from imbi.common.plugins import errors as plugin_errors
 
 FULL_SHA = 'abc1234' + 'f' * 33
@@ -44,6 +45,228 @@ class ParseNoteTests(unittest.TestCase):
 
     def test_no_note_is_none(self) -> None:
         self.assertIsNone(drift.parse_note(None))
+
+
+class ParseNoteVerdictTests(unittest.TestCase):
+    def test_paths_ride_along_with_the_verdict(self) -> None:
+        verdict = drift.parse_note_verdict(
+            '{"drift_detected": true, "drift_paths": ["a.py", "b.py"]}'
+        )
+        self.assertIs(True, verdict.drift_detected)
+        self.assertEqual(['a.py', 'b.py'], verdict.paths)
+
+    def test_absent_paths_are_empty(self) -> None:
+        self.assertEqual(
+            [], drift.parse_note_verdict('{"drift_detected": true}').paths
+        )
+
+    def test_malformed_paths_do_not_discard_the_verdict(self) -> None:
+        verdict = drift.parse_note_verdict(
+            '{"drift_detected": true, "drift_paths": "a.py"}'
+        )
+        self.assertIs(True, verdict.drift_detected)
+        self.assertEqual([], verdict.paths)
+
+    def test_non_string_path_entries_are_dropped(self) -> None:
+        verdict = drift.parse_note_verdict(
+            '{"drift_detected": true, "drift_paths": ["a.py", 7, null]}'
+        )
+        self.assertEqual(['a.py'], verdict.paths)
+
+    def test_a_false_verdict_carries_no_paths(self) -> None:
+        # Nothing worth acting on has no drifting paths, so a false note
+        # carrying some is malformed and its paths mean nothing.
+        verdict = drift.parse_note_verdict(
+            '{"drift_detected": false, "drift_paths": ["a.py"]}'
+        )
+        self.assertIs(False, verdict.drift_detected)
+        self.assertEqual([], verdict.paths)
+
+    def test_no_verdict_carries_no_paths(self) -> None:
+        verdict = drift.parse_note_verdict('{"drift_paths": ["a.py"]}')
+        self.assertIsNone(verdict.drift_detected)
+        self.assertEqual([], verdict.paths)
+
+
+class RecordVerdictsTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.ch = mock.AsyncMock()
+        patcher = mock.patch.object(
+            drift.ch_client.Clickhouse,
+            'get_instance',
+            return_value=self.ch,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_writes_one_row_per_verdict(self) -> None:
+        written = await drift.record_verdicts(
+            'p1',
+            {
+                FULL_SHA.upper(): drift.NoteVerdict(True, ['a.py']),
+                'e' * 40: drift.NoteVerdict(False, []),
+            },
+        )
+        self.assertEqual(2, written)
+        table, rows, columns = self.ch.insert.await_args.args
+        self.assertEqual(drift.VERDICT_TABLE, table)
+        self.assertEqual(drift._VERDICT_COLUMNS, columns)
+        # The SHA is lowercased so it joins ``imbi.commits``.
+        self.assertEqual(FULL_SHA, rows[0][1])
+        self.assertEqual([True, ['a.py']], rows[0][2:4])
+
+    async def test_absent_verdict_writes_no_row(self) -> None:
+        written = await drift.record_verdicts(
+            'p1', {FULL_SHA: drift.NoteVerdict(None, [])}
+        )
+        self.assertEqual(0, written)
+        self.ch.insert.assert_not_awaited()
+
+    async def test_a_clickhouse_failure_answers_none_not_zero(self) -> None:
+        # None, not 0: a caller must be able to tell a failed write from
+        # a ref that legitimately had nothing to write.
+        self.ch.insert.side_effect = RuntimeError('boom')
+        with self.assertLogs(drift.LOGGER, level='ERROR'):
+            written = await drift.record_verdicts(
+                'p1', {FULL_SHA: drift.NoteVerdict(True, [])}
+            )
+        self.assertIsNone(written)
+
+
+class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.db = mock.AsyncMock(spec=graph.Graph)
+        # Not yet backfilled.
+        self.db.execute.return_value = [{'at': None}]
+        self.handler = mock.AsyncMock()
+        self.resolve = mock.AsyncMock(
+            return_value=(self.handler, mock.Mock(), {'access_token': 't'})
+        )
+        patcher = mock.patch(
+            'imbi.api.endpoints.project_deployments'
+            '.resolve_deployment_capability',
+            self.resolve,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.record = mock.AsyncMock(return_value=2)
+        record_patcher = mock.patch.object(
+            drift, 'record_verdicts', self.record
+        )
+        record_patcher.start()
+        self.addCleanup(record_patcher.stop)
+
+    @staticmethod
+    def _listing(complete: bool = True) -> base.NotesListing:
+        return base.NotesListing(
+            {
+                FULL_SHA: '{"drift_detected": true, "drift_paths": ["a.py"]}',
+                'e' * 40: '{"drift_detected": false}',
+            },
+            complete,
+        )
+
+    def _marked(self) -> bool:
+        """Whether the run stamped ``Project.drift_verdicts_at``."""
+        return any(
+            'drift_verdicts_at' in str(call.args[0])
+            and 'SET' in str(call.args[0])
+            for call in self.db.execute.await_args_list
+        )
+
+    async def test_records_every_note_and_marks_the_project(self) -> None:
+        self.handler.list_commit_notes.return_value = self._listing()
+        recorded = await drift.backfill_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        self.assertEqual(2, recorded)
+        self.assertEqual(
+            'imbi-drift',
+            self.handler.list_commit_notes.await_args.kwargs['namespace'],
+        )
+        self.assertTrue(self._marked())
+
+    async def test_a_marked_project_is_not_read_again(self) -> None:
+        self.db.execute.return_value = [{'at': '2026-08-20T00:00:00+00:00'}]
+        recorded = await drift.backfill_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        self.assertEqual(0, recorded)
+        self.handler.list_commit_notes.assert_not_awaited()
+
+    async def test_a_webhook_row_does_not_pass_for_a_backfill(self) -> None:
+        # The webhook writes a verdict on the first push after deploy, so
+        # a stored row says nothing about whether history was read. Only
+        # the marker does, and it is absent here.
+        self.handler.list_commit_notes.return_value = self._listing()
+        recorded = await drift.backfill_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        self.assertEqual(2, recorded)
+        self.handler.list_commit_notes.assert_awaited_once()
+
+    async def test_an_incomplete_listing_still_records_but_is_unmarked(
+        self,
+    ) -> None:
+        self.handler.list_commit_notes.return_value = self._listing(False)
+        with self.assertLogs(drift.LOGGER, level='WARNING'):
+            recorded = await drift.backfill_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        # What was read is kept; the job is simply not called done.
+        self.assertEqual(2, recorded)
+        self.assertFalse(self._marked())
+
+    async def test_a_failed_write_raises_and_leaves_it_unmarked(
+        self,
+    ) -> None:
+        # The listing was whole, but nothing reached ClickHouse. Marking
+        # here would lose every one of these verdicts permanently, and
+        # returning zero would report the outage as "nothing to do".
+        self.handler.list_commit_notes.return_value = self._listing()
+        self.record.return_value = None
+        with self.assertRaises(RuntimeError):
+            await drift.backfill_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        self.assertFalse(self._marked())
+
+    async def test_a_ref_with_no_notes_is_still_finished(self) -> None:
+        # Zero rows written, but nothing failed: mark it, or the tree is
+        # re-read on every sweep forever.
+        self.handler.list_commit_notes.return_value = base.NotesListing(
+            {}, True
+        )
+        self.record.return_value = 0
+        recorded = await drift.backfill_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        self.assertEqual(0, recorded)
+        self.assertTrue(self._marked())
+
+    async def test_no_capability_is_none(self) -> None:
+        self.resolve.side_effect = fastapi.HTTPException(status_code=404)
+        self.assertIsNone(
+            await drift.backfill_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        )
+
+    async def test_notes_unsupported_is_none(self) -> None:
+        self.handler.list_commit_notes.side_effect = NotImplementedError
+        self.assertIsNone(
+            await drift.backfill_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        )
+        self.assertFalse(self._marked())
+
+    async def test_other_http_errors_propagate(self) -> None:
+        self.resolve.side_effect = fastapi.HTTPException(status_code=500)
+        with self.assertRaises(fastapi.HTTPException):
+            await drift.backfill_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
 
 
 class ApplyNoteTests(unittest.IsolatedAsyncioTestCase):
@@ -137,6 +360,30 @@ class ApplyNotesDiffTests(unittest.IsolatedAsyncioTestCase):
         )
         self.resolve = patcher.start()
         self.addCleanup(patcher.stop)
+        self.record = mock.AsyncMock(return_value=0)
+        record_patcher = mock.patch.object(
+            drift, 'record_verdicts', self.record
+        )
+        record_patcher.start()
+        self.addCleanup(record_patcher.stop)
+
+    async def test_records_the_verdicts_it_diffed(self) -> None:
+        self.handler.diff_commit_notes.return_value = {
+            FULL_SHA: '{"drift_detected": true, "drift_paths": ["a.py"]}',
+        }
+        with mock.patch.object(
+            drift, 'apply_note', new_callable=mock.AsyncMock, return_value=0
+        ):
+            await drift.apply_notes_diff(
+                self.db,
+                org_slug='org',
+                project_id='p1',
+                before='a' * 40,
+                after='b' * 40,
+            )
+        project_id, verdicts = self.record.await_args.args
+        self.assertEqual('p1', project_id)
+        self.assertEqual(drift.NoteVerdict(True, ['a.py']), verdicts[FULL_SHA])
 
     async def test_applies_each_changed_note(self) -> None:
         self.handler.diff_commit_notes.return_value = {

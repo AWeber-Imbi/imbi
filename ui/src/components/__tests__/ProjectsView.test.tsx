@@ -49,6 +49,8 @@ async function openFilter(user: UserEvent, buttonLabel: RegExp) {
   return within(await screen.findByRole('dialog'))
 }
 
+const DEPLOYED_AT = '2026-08-01T00:00:00Z'
+
 function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
   return {
     archived: false,
@@ -72,6 +74,27 @@ function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
   }
 }
 
+// The full `release_summary` shape, so a fixture cannot drift out of
+// the interface. `tsconfig.json` excludes test files from `tsc`, so
+// nothing else would catch a missing field here.
+function releaseSummary(
+  overrides: Partial<NonNullable<ProjectListItem['release_summary']>> = {},
+): NonNullable<ProjectListItem['release_summary']> {
+  return {
+    commits_since_tag: 0,
+    head_author: null,
+    head_author_login: null,
+    head_authored_at: null,
+    head_sha: null,
+    head_short_sha: null,
+    latest_tag: null,
+    latest_tag_at: null,
+    latest_tag_author: null,
+    latest_tag_sha: null,
+    ...overrides,
+  }
+}
+
 const PROJECTS: ProjectListItem[] = [
   project({ id: 'p1', name: 'Alpha', score: 90 }),
   project({ id: 'p2', name: 'Bravo', score: 60 }),
@@ -83,12 +106,16 @@ const PROJECTS: ProjectListItem[] = [
   }),
   // Drifts on both axes (staging behind production, commits past the
   // latest tag) and carries no score, so it exercises the drift facet
-  // and the unscored bucket.
+  // and the unscored bucket. Both axes also need a CI verdict saying
+  // the range matters, or the rule suppresses them.
   project({
     current_releases: {
-      production: { committish: 'bbb', tag: 'v2' },
-      staging: { committish: 'aaa', tag: 'v1' },
+      production: { committish: 'bbb', deployed_at: DEPLOYED_AT, tag: 'v2' },
+      staging: { committish: 'aaa', deployed_at: DEPLOYED_AT, tag: 'v1' },
     },
+    // Staging sorts first and so runs the newer code: production's
+    // commit is the base of the range, staging's the head.
+    drift_ranges: { 'bbb..aaa': true },
     environments: [
       { name: 'Staging', slug: 'staging', sort_order: 1 },
       { name: 'Production', slug: 'production', sort_order: 2 },
@@ -98,8 +125,39 @@ const PROJECTS: ProjectListItem[] = [
     project_types: [
       { deployable: true, name: 'Service', releasable: true, slug: 'service' },
     ],
-    release_summary: { commits_since_tag: 2, head_sha: 'ccc' },
+    release_summary: releaseSummary({
+      commits_since_tag: 2,
+      drift_detected: true,
+      head_sha: 'ccc',
+    }),
     score: null,
+    team: { name: 'Delivery', slug: 'delivery' },
+  }),
+]
+
+// Same shape as Delta, but CI called every commit in both ranges
+// ignorable -- a docs-only promotion step.
+const QUIET_PROJECTS: ProjectListItem[] = [
+  project({
+    current_releases: {
+      production: { committish: 'bbb', deployed_at: DEPLOYED_AT, tag: 'v2' },
+      staging: { committish: 'aaa', deployed_at: DEPLOYED_AT, tag: 'v1' },
+    },
+    drift_ranges: { 'bbb..aaa': false },
+    environments: [
+      { name: 'Staging', slug: 'staging', sort_order: 1 },
+      { name: 'Production', slug: 'production', sort_order: 2 },
+    ],
+    id: 'p9',
+    name: 'Quiet',
+    project_types: [
+      { deployable: true, name: 'Service', releasable: true, slug: 'service' },
+    ],
+    release_summary: releaseSummary({
+      commits_since_tag: 2,
+      drift_detected: false,
+      head_sha: 'ccc',
+    }),
     team: { name: 'Delivery', slug: 'delivery' },
   }),
 ]
@@ -159,6 +217,18 @@ describe('ProjectsView filter counts', () => {
     const panel = await openFilter(userEvent.setup(), /filter by drift/i)
     expect(countFor(panel, /S → P/)).toBe('1')
     expect(countFor(panel, /C → R/)).toBe('1')
+  })
+
+  it('ignores a version difference CI called ignorable', async () => {
+    // Same commits differ as Delta's, but every commit in the range is
+    // marked false, so nothing needs promoting or releasing and the
+    // drift filter has no options to offer at all.
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue(QUIET_PROJECTS)
+    renderView()
+    await waitFor(() => expect(screen.getByText('Quiet')).toBeInTheDocument())
+    const panel = await openFilter(userEvent.setup(), /filter by drift/i)
+    expect(panel.queryByText(/S → P/)).not.toBeInTheDocument()
+    expect(panel.queryByText(/C → R/)).not.toBeInTheDocument()
   })
 
   it('offers an unscored option for projects with no score', async () => {
