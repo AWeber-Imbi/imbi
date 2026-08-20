@@ -350,6 +350,56 @@ class ExecuteDeploymentSweepTests(unittest.IsolatedAsyncioTestCase):
                     mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
                 )
 
+    async def test_both_backfills_failing_is_not_a_quiet_skip(self) -> None:
+        # Nothing to sweep and both backfills broken: the attempt must
+        # not claim there was nothing to do.
+        sweep, org, _drift, _verdicts = self._run(None)
+        failing_stamp = mock.patch(
+            'imbi.api.drift.sweep_project',
+            mock.AsyncMock(side_effect=RuntimeError('boom')),
+        )
+        failing_verdicts = mock.patch(
+            'imbi.api.drift.backfill_verdicts',
+            mock.AsyncMock(side_effect=RuntimeError('boom')),
+        )
+        with (
+            sweep,
+            org,
+            failing_stamp,
+            failing_verdicts,
+            self.assertLogs(operations.LOGGER, level='ERROR'),
+            self.assertRaises(operations.MaintenanceItemFailed) as raised,
+        ):
+            await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+            )
+        self.assertIn('drift backfill', str(raised.exception))
+        self.assertIn('recording drift verdicts', str(raised.exception))
+
+    async def test_a_failure_alongside_real_work_still_succeeds(self) -> None:
+        from imbi.api import deployment_sweeper
+
+        # The sweep did something, so the item is not a failure even
+        # though a backfill broke; the failed action row carries that.
+        sweep, org, _drift, verdicts = self._run(
+            deployment_sweeper.SweepSummary(examined=2)
+        )
+        failing = mock.patch(
+            'imbi.api.drift.sweep_project',
+            mock.AsyncMock(side_effect=RuntimeError('boom')),
+        )
+        with (
+            sweep,
+            org,
+            failing,
+            verdicts,
+            self.assertLogs(operations.LOGGER, level='ERROR'),
+        ):
+            outcome = await operations.execute_deployment_sweep(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+            )
+        self.assertEqual('succeeded', outcome)
+
     async def test_recorded_verdicts_alone_succeed(self) -> None:
         sweep, org, drift, verdicts = self._run(None, 0, 5)
         with sweep, org, drift, verdicts:

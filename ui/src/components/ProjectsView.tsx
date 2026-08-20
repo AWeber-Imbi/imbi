@@ -39,7 +39,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
 import { deriveChipColors } from '@/lib/chip-colors'
-import { computeDriftPairs, type DriftPair } from '@/lib/deployment-drift'
+import {
+  computeDriftPairs,
+  type DriftPair,
+  type DriftProject,
+} from '@/lib/deployment-drift'
 
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -926,27 +930,9 @@ function DriftCell({
   project,
 }: {
   inline?: boolean
-  project: {
-    current_releases?: null | Record<
-      string,
-      { committish?: null | string; tag?: null | string }
-    >
-    drift_ranges?: Record<string, boolean>
-    environments?:
-      | null
-      | {
-          label_color?: null | string
-          name: string
-          slug: string
-          sort_order?: null | number
-        }[]
+  project: DriftProject & {
     id: string
     project_types?: null | object[]
-    release_summary?: null | {
-      commits_since_tag: number
-      drift_detected?: boolean
-      head_sha: null | string
-    }
   }
 }) {
   const { isDarkMode } = useTheme()
@@ -1217,13 +1203,9 @@ function nextSortParams(prev: URLSearchParams, key: SortKey): URLSearchParams {
 
 // Same rule as `rangeNeedsAction`, over the tag..HEAD range: commits
 // past the latest tag only count when CI says one of them matters.
-function projectReleaseDrifted(project: {
-  release_summary?: null | {
-    commits_since_tag: number
-    drift_detected?: boolean
-    head_sha: null | string
-  }
-}): boolean {
+function projectReleaseDrifted(
+  project: Pick<DriftProject, 'release_summary'>,
+): boolean {
   const s = project.release_summary
   if (!s?.head_sha) return false
   return s.commits_since_tag > 0 && s.drift_detected === true

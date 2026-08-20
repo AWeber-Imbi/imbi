@@ -355,6 +355,7 @@ async def execute_deployment_sweep(
     summary = await deployment_sweeper.sweep_project(db, project_id)
     stamped: int | None = None
     recorded: int | None = None
+    failures: list[str] = []
     org_slug = await _org_slug_for(db, project_id)
     if org_slug is not None:
         try:
@@ -367,6 +368,7 @@ async def execute_deployment_sweep(
         except Exception:
             # Best-effort backfill: the deployment sweep already
             # completed and its result stands.
+            failures.append('drift backfill')
             LOGGER.exception(
                 'maintenance drift backfill failed for %s', project_id
             )
@@ -384,6 +386,7 @@ async def execute_deployment_sweep(
         except PluginRateLimited:
             raise
         except Exception:
+            failures.append('recording drift verdicts')
             LOGGER.exception(
                 'per-commit drift backfill failed for %s', project_id
             )
@@ -397,6 +400,16 @@ async def execute_deployment_sweep(
         and not stamped
         and not recorded
     ):
+        if failures:
+            # Nothing succeeded *and* something broke, so this is not a
+            # quiet no-op.  Raising is how an operation reports a failed
+            # item -- ``ExecuteOutcome`` has no ``'failed'`` member --
+            # and it stops the attempt row claiming there was nothing to
+            # do when in fact the work could not be done.
+            raise MaintenanceItemFailed(
+                f'{" and ".join(failures)} failed. '
+                'See server logs for details.'
+            )
         return _skip(
             ctx,
             'deployment-sweep',
