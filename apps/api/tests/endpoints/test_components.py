@@ -49,7 +49,9 @@ def _synthetic_release_id(row: dict[str, typing.Any]) -> str:
     handler performs when ClickHouse returns its ``DISTINCT`` row per
     release would never run under test.
     """
-    return f'rel-{row["project_id"]}-{row["component_release_id"]}'
+    project_id = row['project_id']
+    component_release_id = row['component_release_id']
+    return f'rel-{project_id}-{component_release_id}'
 
 
 def _version_row(**overrides: typing.Any) -> dict[str, typing.Any]:
