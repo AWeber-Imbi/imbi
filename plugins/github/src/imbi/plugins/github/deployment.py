@@ -2165,6 +2165,13 @@ class GitHubDeployment(DeploymentCapability):
         credits with the release and ``author_subject`` its numeric user
         id, which the host resolves to an Imbi user through the identity
         plugins on the same service.
+
+        A 401 degrades here too, like every other failure, rather than
+        propagating: release notes are *enrichment*, so losing them must
+        never fail the caller -- the same rule
+        :meth:`_resolve_triggering_actor` applies to attribution.  The
+        status read is deliberately not treated this way, because there
+        the answer itself is what a 401 hides.
         """
         if _releases_forbidden(client):
             return None
@@ -2172,7 +2179,7 @@ class GitHubDeployment(DeploymentCapability):
             resp = await client.get(
                 f'/releases/tags/{urllib.parse.quote(ref, safe="")}'
             )
-        except httpx.HTTPError:
+        except (httpx.HTTPError, PluginAuthenticationFailed):
             return None
         if resp.status_code == 403:
             _record_releases_forbidden(client)

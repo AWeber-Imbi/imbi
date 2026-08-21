@@ -2641,6 +2641,69 @@ class AuthenticationFailureTestCase(unittest.IsolatedAsyncioTestCase):
             await plugin.list_refs(_ctx(), _CREDS, kind='default')
 
     @respx.mock
+    async def test_401_on_release_lookup_degrades(self) -> None:
+        # Release notes are enrichment, so a 401 fetching them degrades
+        # to "no notes" instead of propagating -- the same rule
+        # attribution follows.  The status read is deliberately NOT
+        # treated this way; see the test below.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 1,
+                        'sha': 'sha1',
+                        'ref': 'v1.2.3',
+                        'created_at': '2026-05-13T15:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v1.2.3'
+        ).mock(
+            return_value=httpx.Response(401, json={'message': 'token expired'})
+        )
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        self.assertEqual(state.active.external_run_id, '1')
+        self.assertIsNone(state.active.release_notes)
+
+    @respx.mock
+    async def test_401_on_status_read_still_propagates(self) -> None:
+        # The counterpart guarantee: a 401 on the status read must reach
+        # the host, because ``call_with_identity_retry`` is what refreshes
+        # the identity and retries the scan.  Swallowing it here would
+        # leave every environment resolving ``error`` on an expired token
+        # with no refresh ever attempted.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(401, json={'message': 'token expired'})
+        )
+        plugin = GitHubDeployment()
+        with self.assertRaises(PluginAuthenticationFailed):
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+
+    @respx.mock
     async def test_401_on_deployment_raises_authentication_failed(
         self,
     ) -> None:
