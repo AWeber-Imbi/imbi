@@ -682,6 +682,314 @@ class CompareTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result.commits[1].body)
 
 
+class DiffDependenciesTestCase(unittest.TestCase):
+    def test_added_dependency(self) -> None:
+        from imbi.plugins.github.deployment import _diff_dependencies
+
+        changes = _diff_dependencies({}, {'react': '^18.0.0'})
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0].name, 'react')
+        self.assertEqual(changes[0].kind, 'added')
+        self.assertEqual(changes[0].new_version, '^18.0.0')
+        self.assertIsNone(changes[0].old_version)
+
+    def test_removed_dependency(self) -> None:
+        from imbi.plugins.github.deployment import _diff_dependencies
+
+        changes = _diff_dependencies({'react': '^18.0.0'}, {})
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0].name, 'react')
+        self.assertEqual(changes[0].kind, 'removed')
+        self.assertEqual(changes[0].old_version, '^18.0.0')
+        self.assertIsNone(changes[0].new_version)
+
+    def test_changed_dependency(self) -> None:
+        from imbi.plugins.github.deployment import _diff_dependencies
+
+        changes = _diff_dependencies(
+            {'react': '^17.0.0'}, {'react': '^18.0.0'}
+        )
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0].name, 'react')
+        self.assertEqual(changes[0].kind, 'changed')
+        self.assertEqual(changes[0].old_version, '^17.0.0')
+        self.assertEqual(changes[0].new_version, '^18.0.0')
+
+    def test_unchanged_dependency_excluded(self) -> None:
+        from imbi.plugins.github.deployment import _diff_dependencies
+
+        changes = _diff_dependencies(
+            {'react': '^18.0.0'}, {'react': '^18.0.0'}
+        )
+        self.assertEqual(len(changes), 0)
+
+    def test_mixed_changes(self) -> None:
+        from imbi.plugins.github.deployment import _diff_dependencies
+
+        changes = _diff_dependencies(
+            {'react': '^17.0.0', 'lodash': '^4.0.0'},
+            {'react': '^18.0.0', 'axios': '^1.0.0'},
+        )
+        self.assertEqual(len(changes), 3)
+        by_name = {c.name: c for c in changes}
+        self.assertEqual(by_name['axios'].kind, 'added')
+        self.assertEqual(by_name['lodash'].kind, 'removed')
+        self.assertEqual(by_name['react'].kind, 'changed')
+
+
+class ParsePackageJsonDependencyChangesTestCase(
+    unittest.IsolatedAsyncioTestCase,
+):
+    @respx.mock
+    async def test_no_package_json_returns_empty(self) -> None:
+        from imbi.plugins.github.deployment import (
+            _parse_package_json_dependency_changes,
+        )
+
+        files = [{'filename': 'src/index.ts', 'status': 'modified'}]
+        async with httpx.AsyncClient() as client:
+            changes = await _parse_package_json_dependency_changes(
+                client, files, 'base', 'head'
+            )
+        self.assertEqual(changes, [])
+
+    @respx.mock
+    async def test_parses_dependency_changes(self) -> None:
+        from imbi.plugins.github.deployment import (
+            _parse_package_json_dependency_changes,
+        )
+
+        base_pkg = json.dumps({'dependencies': {'@lingui/react': '5.6.0'}})
+        head_pkg = json.dumps({'dependencies': {'@lingui/react': '5.6.1'}})
+        respx.get(
+            'https://api.github.com/repos/octo/demo/contents/package.json',
+            params={'ref': 'base-sha'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'content': base64.b64encode(base_pkg.encode()).decode(),
+                    'encoding': 'base64',
+                },
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/contents/package.json',
+            params={'ref': 'head-sha'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'content': base64.b64encode(head_pkg.encode()).decode(),
+                    'encoding': 'base64',
+                },
+            )
+        )
+        files = [{'filename': 'package.json', 'status': 'modified'}]
+        async with httpx.AsyncClient(
+            base_url='https://api.github.com/repos/octo/demo',
+        ) as client:
+            changes = await _parse_package_json_dependency_changes(
+                client, files, 'base-sha', 'head-sha'
+            )
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0].name, '@lingui/react')
+        self.assertEqual(changes[0].old_version, '5.6.0')
+        self.assertEqual(changes[0].new_version, '5.6.1')
+        self.assertEqual(changes[0].kind, 'changed')
+
+    @respx.mock
+    async def test_compare_includes_dependency_changes(self) -> None:
+        base_pkg = json.dumps({'dependencies': {'@lingui/react': '5.6.0'}})
+        head_pkg = json.dumps({'dependencies': {'@lingui/react': '5.6.1'}})
+        respx.get(
+            'https://api.github.com/repos/octo/demo/compare/base...head'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'ahead_by': 1,
+                    'behind_by': 0,
+                    'base_commit': {'sha': 'base-sha'},
+                    'commits': [
+                        {
+                            'sha': 'c1',
+                            'commit': {
+                                'message': 'bump deps',
+                                'author': {
+                                    'name': 'bot',
+                                    'date': None,
+                                },
+                            },
+                        },
+                    ],
+                    'files': [
+                        {
+                            'filename': 'package.json',
+                            'status': 'modified',
+                            'additions': 1,
+                            'deletions': 1,
+                        },
+                    ],
+                },
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/contents/package.json',
+            params={'ref': 'base-sha'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'content': base64.b64encode(base_pkg.encode()).decode(),
+                    'encoding': 'base64',
+                },
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/contents/package.json',
+            params={'ref': 'c1'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'content': base64.b64encode(head_pkg.encode()).decode(),
+                    'encoding': 'base64',
+                },
+            )
+        )
+        plugin = GitHubDeployment()
+        result = await plugin.compare(_ctx(), _CREDS, 'base', 'head')
+        self.assertEqual(len(result.dependency_changes), 1)
+        self.assertEqual(result.dependency_changes[0].name, '@lingui/react')
+        self.assertEqual(result.dependency_changes[0].old_version, '5.6.0')
+        self.assertEqual(result.dependency_changes[0].new_version, '5.6.1')
+
+
+class StrDictTestCase(unittest.TestCase):
+    """Direct tests for ``_str_dict``."""
+
+    def test_valid_dict(self) -> None:
+        from imbi.plugins.github.deployment import _str_dict
+
+        content = {'dependencies': {'react': '^18.0.0'}}
+        self.assertEqual(
+            _str_dict(content, 'dependencies'),
+            {'react': '^18.0.0'},
+        )
+
+    def test_null_value(self) -> None:
+        from imbi.plugins.github.deployment import _str_dict
+
+        self.assertEqual(
+            _str_dict({'dependencies': None}, 'dependencies'),
+            {},
+        )
+
+    def test_list_value(self) -> None:
+        from imbi.plugins.github.deployment import _str_dict
+
+        self.assertEqual(
+            _str_dict({'dependencies': ['react']}, 'dependencies'),
+            {},
+        )
+
+    def test_non_string_entries_filtered(self) -> None:
+        from imbi.plugins.github.deployment import _str_dict
+
+        content = {
+            'dependencies': {
+                'react': '^18.0.0',
+                'bad': 123,
+                42: 'oops',
+            }
+        }
+        self.assertEqual(
+            _str_dict(content, 'dependencies'),
+            {'react': '^18.0.0'},
+        )
+
+    def test_missing_key(self) -> None:
+        from imbi.plugins.github.deployment import _str_dict
+
+        self.assertEqual(_str_dict({}, 'dependencies'), {})
+
+
+class RenamedPackageJsonTestCase(
+    unittest.IsolatedAsyncioTestCase,
+):
+    @respx.mock
+    async def test_renamed_package_json_compared(self) -> None:
+        from imbi.plugins.github.deployment import (
+            _parse_package_json_dependency_changes,
+        )
+
+        base_pkg = json.dumps({'dependencies': {'@lingui/react': '5.6.0'}})
+        head_pkg = json.dumps({'dependencies': {'@lingui/react': '5.6.1'}})
+        respx.get(
+            'https://api.github.com/repos/octo/demo/contents/old/package.json',
+            params={'ref': 'base-sha'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'content': base64.b64encode(base_pkg.encode()).decode(),
+                    'encoding': 'base64',
+                },
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/contents/new/package.json',
+            params={'ref': 'head-sha'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'content': base64.b64encode(head_pkg.encode()).decode(),
+                    'encoding': 'base64',
+                },
+            )
+        )
+        files = [
+            {
+                'filename': 'new/package.json',
+                'previous_filename': 'old/package.json',
+                'status': 'renamed',
+            },
+        ]
+        async with httpx.AsyncClient(
+            base_url='https://api.github.com/repos/octo/demo',
+        ) as client:
+            changes = await _parse_package_json_dependency_changes(
+                client, files, 'base-sha', 'head-sha'
+            )
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0].name, '@lingui/react')
+        self.assertEqual(changes[0].kind, 'changed')
+
+    @respx.mock
+    async def test_renamed_without_previous_filename_skipped(
+        self,
+    ) -> None:
+        from imbi.plugins.github.deployment import (
+            _parse_package_json_dependency_changes,
+        )
+
+        files = [
+            {
+                'filename': 'new/package.json',
+                'status': 'renamed',
+            },
+        ]
+        async with httpx.AsyncClient(
+            base_url='https://api.github.com/repos/octo/demo',
+        ) as client:
+            changes = await _parse_package_json_dependency_changes(
+                client, files, 'base-sha', 'head-sha'
+            )
+        self.assertEqual(changes, [])
+
+
 class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_trigger_creates_deployment(self) -> None:
