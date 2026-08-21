@@ -911,6 +911,15 @@ class RemoteDeployment(pydantic.BaseModel):
     #: used to resolve the deployer to an Imbi user via identity
     #: attribution. ``None`` when the remote doesn't expose it.
     creator_subject: str | None = None
+    #: The provider says this deployment has been retired -- GitHub's
+    #: ``inactive`` status on top of whatever the deployment itself last
+    #: reported.  ``status`` deliberately looks *past* that notice to the
+    #: deployment's own outcome, so a superseded rollout still reads as
+    #: the ``success`` it was; this flag is how a caller asking "what is
+    #: serving *now*" tells the two apart.  ``False`` also means "the
+    #: capability does not report retirement", so no caller may read it
+    #: as positive evidence of currency.
+    superseded: bool = False
 
 
 class EnvironmentDeploymentState(pydantic.BaseModel):

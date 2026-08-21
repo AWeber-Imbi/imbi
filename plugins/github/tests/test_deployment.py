@@ -2031,6 +2031,74 @@ class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.latest.status, 'in_progress')
 
     @respx.mock
+    async def test_retired_success_is_not_active(self) -> None:
+        # GitHub wrote ``inactive`` on top of the success, so nothing is
+        # serving this environment any more.  ``status`` still reads
+        # ``success`` -- the rollout did succeed -- which is exactly why
+        # the scan cannot answer from ``status`` alone.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T14:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[{'state': 'inactive'}, {'state': 'success'}]
+            )
+        )
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'none')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertEqual(state.latest.status, 'success')
+        self.assertTrue(state.latest.superseded)
+
+    @respx.mock
+    async def test_scan_walks_past_a_retired_success(self) -> None:
+        # The newest deployment was retired; the one below it is what
+        # the environment is actually serving.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[{'state': 'inactive'}, {'state': 'success'}]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        self.assertEqual(state.active.external_run_id, '2')
+        self.assertFalse(state.active.superseded)
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '1')
+
+    @respx.mock
     async def test_scan_cap_reached_is_unknown_never_none(self) -> None:
         # A full page with no success means an older active deployment
         # may sit just past the cap — reporting 'none' would have the

@@ -1679,9 +1679,10 @@ class GitHubDeployment(DeploymentCapability):
 
         Fans out one ``GET /deployments?environment={env}`` call per
         environment (newest-first, as GitHub orders them) and walks the
-        page fetching each deployment's latest status until one maps to
-        exactly ``success`` -- not ``pending``, not ``in_progress``, and
-        not merely "not inactive".  That deployment is the active one.
+        page fetching each deployment's statuses until one both maps to
+        exactly ``success`` -- not ``pending``, not ``in_progress`` -- and
+        carries no ``inactive`` notice on top.  That deployment is the
+        active one.
 
         Policy note: GitHub can leave several deployments active at once
         when automatic inactivation is disabled, so "active" cannot be
@@ -1771,7 +1772,15 @@ class GitHubDeployment(DeploymentCapability):
                 continue
             if latest is None:
                 latest = observed
-            if observed.status == 'success':
+            # ``status`` looks past GitHub's ``inactive`` notice on
+            # purpose, so a superseded rollout still reads as the
+            # ``success`` it was.  For "what is serving now" that notice
+            # is the answer, not noise: without the ``superseded`` test
+            # a deactivated environment reports its last success as
+            # active forever.  Walking on is safe -- an ``inactive``
+            # written because a later deployment took over has that
+            # deployment above it in this same newest-first page.
+            if observed.status == 'success' and not observed.superseded:
                 active = observed
                 break
         # The result set is exhausted only when the walk read every row
@@ -1890,7 +1899,7 @@ class GitHubDeployment(DeploymentCapability):
         created_at = _parse_iso(deployment.get('created_at')) or (
             datetime.datetime.now(datetime.UTC)
         )
-        status, status_url = await self._latest_status(
+        status, status_url, superseded = await self._latest_status(
             client, str(deployment_id)
         )
         ref_value = deployment.get('ref')
@@ -1941,6 +1950,7 @@ class GitHubDeployment(DeploymentCapability):
             release_notes=release_notes,
             creator=creator_login,
             creator_subject=creator_subject,
+            superseded=superseded,
         )
 
     async def _resolve_triggering_actor(
@@ -2107,8 +2117,15 @@ class GitHubDeployment(DeploymentCapability):
 
     async def _latest_status(
         self, client: httpx.AsyncClient, deployment_id: str
-    ) -> tuple[DeploymentEventStatus, str | None]:
-        """Return the canonical event status + workflow log URL.
+    ) -> tuple[DeploymentEventStatus, str | None, bool]:
+        """Return the canonical event status, log URL, and retirement.
+
+        The third element is ``True`` when the newest status entry is
+        ``inactive``: the deployment's own outcome (the first element)
+        looks past that notice, so this is the only place the caller can
+        learn that GitHub has since retired it.  Both readings are
+        needed and neither substitutes for the other -- "what did this
+        rollout do" is a different question from "is it serving now".
 
         Falls back to ``'pending'`` whenever the deploy workflow has
         not yet posted a status: a freshly-created deployment with no
@@ -2144,15 +2161,16 @@ class GitHubDeployment(DeploymentCapability):
                 params={'per_page': '10'},
             )
         except httpx.HTTPError:
-            return 'pending', None
+            return 'pending', None, False
         if resp.status_code != 200:
-            return 'pending', None
+            return 'pending', None, False
         try:
             statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
         except ValueError:
-            return 'pending', None
+            return 'pending', None, False
         if not statuses:
-            return 'pending', None
+            return 'pending', None, False
+        superseded = str(statuses[0].get('state') or '').lower() == 'inactive'
         latest = next(
             (
                 entry
@@ -2163,7 +2181,11 @@ class GitHubDeployment(DeploymentCapability):
         )
         state = str(latest.get('state') or '').lower()
         log_url = latest.get('log_url') or latest.get('target_url')
-        return _to_event_status(state), str(log_url) if log_url else None
+        return (
+            _to_event_status(state),
+            str(log_url) if log_url else None,
+            superseded,
+        )
 
 
 _RUN_ID_RE = re.compile(r'/actions/runs/(\d+)')
