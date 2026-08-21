@@ -3995,16 +3995,19 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         patcher = mock.patch(f'{_MODULE}.clickhouse.query', new=m)
         patcher.start()
         self.addCleanup(patcher.stop)
-        # The drift enrichment reads through the same shared
+        # The drift / tag enrichment reads through the same shared
         # ``imbi.common.clickhouse`` module object, so left alone it
-        # would consume entries from ``results``.  Stub it to "no
-        # verdicts"; a test about the enrichment re-patches it.
-        drift_patcher = mock.patch(
-            'imbi.api.drift.verdicts_by_sha',
-            new=mock.AsyncMock(return_value={}),
-        )
-        drift_patcher.start()
-        self.addCleanup(drift_patcher.stop)
+        # would consume entries from ``results``.  Stub both lookups to
+        # "nothing recorded"; a test about the enrichment re-patches.
+        for target, value in (
+            ('imbi.api.drift.verdicts_by_sha', {}),
+            (f'{_MODULE}._tags_by_sha', {}),
+        ):
+            enrich_patcher = mock.patch(
+                target, new=mock.AsyncMock(return_value=value)
+            )
+            enrich_patcher.start()
+            self.addCleanup(enrich_patcher.stop)
         return m
 
     @staticmethod
@@ -4059,6 +4062,49 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         # No recorded verdict stays null -- the UI fails closed on it.
         self.assertIsNone(data[1]['drift_detected'])
         self.assertEqual(['abc1234def', '999fff'], verdicts.await_args.args[1])
+
+    def test_recent_commits_stamps_direct_tags(self) -> None:
+        self._patch_query(
+            [[self._commit_row('abc1234def'), self._commit_row('999fff')]]
+        )
+        tags = mock.AsyncMock(return_value={'abc1234def': 'v2.6.1'})
+        with mock.patch(f'{_MODULE}._tags_by_sha', new=tags):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.get(f'{self._BASE}/recent-commits')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual('v2.6.1', data[0]['tag'])
+        # Most commits are not directly tagged and stay null (no badge).
+        self.assertIsNone(data[1]['tag'])
+
+    def test_tags_by_sha_picks_the_highest_release_per_commit(self) -> None:
+        when = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        rows = [
+            {'name': 'v1.2.0', 'sha': 'AAA111', 'tagged_at': when},
+            # Semver order, not string order: v1.10.0 beats v1.2.0.
+            {'name': 'v1.10.0', 'sha': 'aaa111', 'tagged_at': when},
+            {'name': 'v0.9.0', 'sha': 'bbb222', 'tagged_at': when},
+        ]
+        query = mock.AsyncMock(return_value=rows)
+        with mock.patch(f'{_MODULE}.clickhouse.query', new=query):
+            tags = asyncio.run(
+                project_deployments._tags_by_sha('p1', ['AAA111', 'bbb222'])
+            )
+        self.assertEqual({'aaa111': 'v1.10.0', 'bbb222': 'v0.9.0'}, tags)
+        # The queried shas are lowercased to match the table join side.
+        self.assertEqual(
+            ['aaa111', 'bbb222'], query.await_args.args[1]['shas']
+        )
+
+    def test_tags_by_sha_answers_empty_on_clickhouse_failure(self) -> None:
+        # {} means "no badges", never a failed commit list.
+        query = mock.AsyncMock(side_effect=RuntimeError('boom'))
+        with mock.patch(f'{_MODULE}.clickhouse.query', new=query):
+            with self.assertLogs(project_deployments.LOGGER, level='ERROR'):
+                tags = asyncio.run(
+                    project_deployments._tags_by_sha('p1', ['aaa111'])
+                )
+        self.assertEqual({}, tags)
 
     def test_recent_commits_clamps_limit_and_passes_ref(self) -> None:
         query = self._patch_query([[]])

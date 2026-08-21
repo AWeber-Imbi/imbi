@@ -11,6 +11,7 @@ import type { DeploymentCommitCiStatus } from '@/types'
 
 import { CiStatusDot } from './CiStatusDot'
 import { DriftIndicator } from './DriftIndicator'
+import { TagBadge } from './TagBadge'
 
 interface CommitRowProps {
   accent?: ChipColors | null
@@ -36,6 +37,7 @@ interface PickerCommit {
   message: string
   sha: string
   short_sha: string
+  tag?: null | string
   url?: null | string
 }
 
@@ -143,6 +145,7 @@ function CommitRow({
         <span className="text-secondary shrink-0 font-mono text-xs">
           {commit.short_sha}
         </span>
+        <TagBadge tag={commit.tag} />
         <span className="min-w-0 flex-1 truncate text-sm">{subject}</span>
         {/* Fixed-width columns, each rendered even when empty, so age /
             author / status line up down the list. */}

@@ -17,6 +17,7 @@ import {
   cutBlockedReason,
   type ReleaseInFlightState,
 } from '@/components/releases/releaseInFlight'
+import { TagBadge } from '@/components/releases/TagBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -404,6 +405,7 @@ export function PromoteTab({
                     <span className="shrink-0 font-mono text-xs">
                       {c.short_sha}
                     </span>
+                    <TagBadge tag={c.tag} />
                     <span className="min-w-0 flex-1 truncate text-sm">
                       {c.message}
                     </span>

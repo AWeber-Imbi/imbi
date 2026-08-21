@@ -736,6 +736,10 @@ class Commit(pydantic.BaseModel):
     #: plugin answers.  ``None`` means no verdict was recorded, which
     #: readers fail closed on (rendered as drifted).
     drift_detected: bool | None = None
+    #: Name of the tag pointing directly at this commit, if any.  Like
+    #: ``drift_detected``, plugins never set it: the API enriches commit
+    #: lists from the ClickHouse ``tags`` table after the plugin answers.
+    tag: str | None = None
 
 
 class CompareResult(pydantic.BaseModel):

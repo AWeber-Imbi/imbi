@@ -661,6 +661,8 @@ export interface DeploymentCommit {
   pr_number?: null | number
   sha: string
   short_sha: string
+  /** Name of the tag pointing directly at this commit, if any. */
+  tag?: null | string
   url?: null | string
 }
 
@@ -1259,6 +1261,8 @@ export interface RecentCommit {
   message: string
   sha: string
   short_sha: string
+  /** Name of the tag pointing directly at this commit, if any. */
+  tag?: null | string
   url?: null | string
 }
 export interface Release {

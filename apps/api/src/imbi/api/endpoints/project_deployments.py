@@ -309,6 +309,10 @@ class RecentCommit(pydantic.BaseModel):
     #: table; ``None`` when CI never answered for this commit.  Readers
     #: fail closed: only an explicit ``False`` renders as "no drift".
     drift_detected: bool | None = None
+    #: Name of the tag pointing directly at this commit (the highest
+    #: semver when several do), from the ClickHouse ``tags`` table;
+    #: ``None`` for the untagged majority of commits.
+    tag: str | None = None
 
 
 class ReleaseDriftResponse(pydantic.BaseModel):
@@ -1872,7 +1876,7 @@ async def list_commits(
         handler.list_commits(ctx, credentials, ref=ref, limit=limit)
     )
     await persist_link_writeback(db, ctx)
-    await _apply_drift_verdicts(project_id, commits)
+    await _annotate_commits(project_id, commits)
     return commits
 
 
@@ -1926,7 +1930,7 @@ async def compare_refs(
         handler.compare(ctx, credentials, base=base, head=head)
     )
     await persist_link_writeback(db, ctx)
-    await _apply_drift_verdicts(project_id, result.commits)
+    await _annotate_commits(project_id, result.commits)
     return result
 
 
@@ -5074,23 +5078,61 @@ def _recent_commit_from_row(row: dict[str, typing.Any]) -> RecentCommit:
     )
 
 
-async def _apply_drift_verdicts(
+async def _tags_by_sha(
+    project_id: str, shas: collections.abc.Iterable[str]
+) -> dict[str, str]:
+    """Name of the tag pointing directly at each sha, keyed lowercase.
+
+    A sha several tags point at answers the highest-ordered release tag
+    (same rule as :func:`_latest_release_tag`).  Untagged shas -- the
+    majority -- are simply absent.  A ClickHouse failure logs and
+    answers ``{}`` (no badges) rather than taking a plugin-sourced
+    commit list down with it.
+    """
+    wanted = sorted({sha.lower() for sha in shas if sha})
+    if not wanted:
+        return {}
+    try:
+        rows = await clickhouse.query(
+            'SELECT name, sha, tagged_at, recorded_at FROM tags FINAL '
+            'WHERE project_id = {project_id:String} '
+            'AND lower(sha) IN {shas:Array(String)}',
+            {'project_id': project_id, 'shas': wanted},
+        )
+    except Exception:
+        LOGGER.exception('could not read tags for project %s', project_id)
+        return {}
+    by_sha: dict[str, list[dict[str, typing.Any]]] = {}
+    for row in rows:
+        by_sha.setdefault(str(row['sha']).lower(), []).append(row)
+    return {
+        sha: str(latest['name'])
+        for sha, group in by_sha.items()
+        if (latest := _latest_release_tag(group)) is not None
+    }
+
+
+async def _annotate_commits(
     project_id: str, commits: collections.abc.Sequence[Commit | RecentCommit]
 ) -> None:
-    """Stamp each commit's ``drift_detected`` from the verdict table.
+    """Stamp drift verdicts and direct tags onto commit rows, in place.
 
-    Mutates in place.  A commit with no recorded verdict keeps ``None``,
-    which the UI fails closed on (rendered as drifted).
+    A commit with no recorded drift verdict keeps ``None``, which the UI
+    fails closed on (rendered as drifted); one no tag points at keeps
+    ``tag=None`` (no badge).
     """
     from imbi.api import drift
 
     if not commits:
         return
-    verdicts = await drift.verdicts_by_sha(
-        project_id, [c.sha for c in commits]
+    shas = [c.sha for c in commits]
+    verdicts, tags = await asyncio.gather(
+        drift.verdicts_by_sha(project_id, shas),
+        _tags_by_sha(project_id, shas),
     )
     for commit in commits:
         commit.drift_detected = verdicts.get(commit.sha.lower())
+        commit.tag = tags.get(commit.sha.lower())
 
 
 class _CommitFacts(typing.NamedTuple):
@@ -5239,7 +5281,7 @@ async def list_recent_commits(
         {'project_id': project_id, 'ref': ref or '', 'limit': capped},
     )
     commits = [_recent_commit_from_row(row) for row in rows]
-    await _apply_drift_verdicts(project_id, commits)
+    await _annotate_commits(project_id, commits)
     return commits
 
 
@@ -5327,7 +5369,7 @@ async def get_release_drift(
     )
     commits_since_tag = int(count_rows[0]['c']) if count_rows else 0
     commits = [_recent_commit_from_row(row) for row in commit_rows]
-    await _apply_drift_verdicts(project_id, commits)
+    await _annotate_commits(project_id, commits)
 
     classify_input = [
         Commit(sha=c.sha, short_sha=c.short_sha, message=c.message)

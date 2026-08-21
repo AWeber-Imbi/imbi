@@ -19,6 +19,7 @@ import {
 } from '@/components/deploy/CiFailureNotice'
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
 import { DriftIndicator } from '@/components/releases/DriftIndicator'
+import { TagBadge } from '@/components/releases/TagBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CommitSubject } from '@/components/ui/commit-subject'
@@ -401,6 +402,7 @@ function SingleReleaseChanges({
                 <DriftIndicator drift={c.drift_detected} />
               </span>
               <span className="shrink-0 font-mono text-xs">{c.short_sha}</span>
+              <TagBadge tag={c.tag} />
               <CommitSubject
                 className="min-w-0 flex-1 truncate text-sm"
                 commitUrl={c.url}
