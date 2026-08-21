@@ -1551,6 +1551,7 @@ class DeploymentCapability(CapabilityHandler):
         ctx: PluginContext,
         credentials: dict[str, str],
         namespace: str,
+        skip_shas: collections.abc.Collection[str] = (),
     ) -> NotesListing:
         """Return every note in ``namespace``, keyed by annotated SHA.
 
@@ -1560,15 +1561,25 @@ class DeploymentCapability(CapabilityHandler):
         :meth:`diff_commit_notes` returns them; a missing ref is an empty
         listing, not an error, because "no notes" is a real answer.
 
-        ``complete`` says whether every note the ref holds is in the map.
-        It has to be reported rather than inferred: a host cannot tell a
-        ref with three notes from a ref with four whose fourth could not
-        be read, and treating the second as the whole truth would record
-        a partial backfill as a finished one.
+        ``skip_shas`` names annotated commits the host already holds an
+        answer for.  Enumerating the ref is a call or two; reading the
+        bodies is one *per note*, so a host repairing a gap would pay for
+        the whole history to learn about the handful of notes it is
+        missing.  Implementations must still enumerate the ref -- the
+        skip applies to reading bodies, and skipped notes are absent from
+        the map rather than present with a ``None`` body, which means
+        "removed".
+
+        ``complete`` says whether every note the ref holds is either in
+        the map or was skipped on request.  It has to be reported rather
+        than inferred: a host cannot tell a ref with three notes from a
+        ref with four whose fourth could not be read, and treating the
+        second as the whole truth would record a partial backfill as a
+        finished one.
 
         Optional -- same contract as :meth:`get_commit_note`.
         """
-        del ctx, credentials, namespace
+        del ctx, credentials, namespace, skip_shas
         raise NotImplementedError
 
     async def diff_commit_notes(

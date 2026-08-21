@@ -13,6 +13,11 @@ never relying on a webhook as the only writer:
 2. :func:`sweep_project` -- the ``deployment-sweep`` maintenance
    operation backfills Releases whose ``drift_detected`` is still
    ``null``, covering webhook loss.
+3. :func:`resync_verdicts` -- the ``commit-sync`` operation re-reads the
+   whole ref for the commits it just recorded, skipping the ones already
+   answered.  The one repair for a *lost* notes push: (1) only ever
+   ingests its own range and :func:`backfill_verdicts` runs once per
+   project, so after that marker is set nothing else reads a note again.
 
 ``Release.drift_detected`` is ``bool | null`` where ``null`` means "no
 note seen yet" -- a real state, because CI pushes notes asynchronously
@@ -577,6 +582,221 @@ async def sweep_project(
             tag=graph.parse_agtype(row['tag']),
             committish=committish,
             value=parse_note(body),
+        )
+        stamped += 1
+    return stamped
+
+
+#: Unanswered Releases with no backoff filter, for the caller that
+#: already holds every answer the ref can give and so pays nothing per
+#: release to apply them.  :data:`_UNANSWERED_RELEASES` is the version
+#: for a caller that must ask the remote per release.
+_UNANSWERED_RELEASES_ALL: typing.Final[typing.LiteralString] = """
+MATCH (:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+WHERE r.drift_detected IS NULL
+  AND COALESCE(r.committish, '') <> ''
+RETURN r.id AS id, r.tag AS tag, r.committish AS committish
+ORDER BY r.created_at DESC
+LIMIT {limit}
+"""
+
+#: Ceiling on Releases one notes resync stamps.  Each stamp is a graph
+#: write plus a blocker sync, so a project with thousands of unanswered
+#: releases would otherwise turn a commit sync into a write storm.
+#: Newest-first, because those are the releases anyone is looking at.
+STAMP_LIMIT = 500
+
+
+class ResyncResult(typing.NamedTuple):
+    """What one notes resync read and applied."""
+
+    #: Notes read from the ref this run; already-answered commits are
+    #: skipped, so a project in steady state records zero.
+    recorded: int
+    #: Releases whose ``drift_detected`` this run filled in.
+    stamped: int
+
+
+async def known_verdicts(project_id: str) -> dict[str, bool] | None:
+    """Every commit this project already holds a verdict for.
+
+    Read before enumerating a notes ref, for two reasons.  Cost: the
+    bodies already answered for need not be fetched again, and fetching
+    one is a request per note.  Correctness: their rows are then not
+    rewritten, and a rewrite would carry a newer ``recorded_at`` than a
+    verdict a webhook landed in the meantime -- which, under
+    ``ReplacingMergeTree(recorded_at)``, is how a stale snapshot beats a
+    fresh push.
+
+    ``None`` when the store could not answer.  A caller must then read
+    every note rather than treat nothing as known: skipping on an
+    unavailable verdict store would report the ref as ingested while
+    ingesting none of it.
+    """
+    try:
+        rows = await clickhouse.query(
+            # Table name is a module constant; values are bound params.
+            f'SELECT sha, drift_detected FROM {VERDICT_TABLE} FINAL '  # noqa: S608
+            'WHERE project_id = {project_id:String}',
+            {'project_id': project_id},
+        )
+    except Exception:
+        LOGGER.exception(
+            'could not read known drift verdicts for project %s', project_id
+        )
+        return None
+    return {
+        str(row['sha']).lower(): bool(row['drift_detected']) for row in rows
+    }
+
+
+async def resync_verdicts(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+) -> ResyncResult | None:
+    """Re-read the notes ref and answer whatever it can answer.
+
+    The repair path for the gap between the two ordinary writers.  A
+    push webhook only ever ingests its own range, and
+    :func:`backfill_verdicts` runs once per project and then stops -- so
+    once that marker is set, a notes push whose webhook was never
+    delivered is never read again.  Commit sync is exactly what gets
+    reached for when commits went missing, and it was recovering them
+    without their verdicts, which readers fail closed on and show as
+    drift indefinitely.
+
+    Cost is bounded by what is *missing* rather than by history: the ref
+    is enumerated (a call or two) with every already-answered commit
+    skipped, so a project in steady state pays only the enumeration.
+    The verdicts then in hand -- freshly read and previously known
+    alike -- answer any Release naming one of their commits, capped by
+    :data:`STAMP_LIMIT`.
+
+    A Release no verdict answers is left untouched rather than stamped
+    "looked, no note".  That stamp is :func:`sweep_project`'s backoff,
+    and spending it here would silence the sweep's own re-check for a
+    day over a note this pass never asked the remote for.
+
+    Returns ``None`` when nothing can answer -- no capability bound, or
+    one without git notes.  Raises when the verdicts could not be
+    stored, so a caller reports a ClickHouse outage as a failure rather
+    than as "nothing to do".
+    """
+    from imbi.api.endpoints import project_deployments
+    from imbi.api.plugins import call_with_timeout
+
+    try:
+        (
+            handler,
+            ctx,
+            credentials,
+        ) = await project_deployments.resolve_deployment_capability(
+            db, org_slug=org_slug, project_id=project_id
+        )
+    except fastapi.HTTPException as exc:
+        # Same non-failure contract as the sweep: 404 is no capability
+        # bound, 400 a bound one that cannot answer.
+        if exc.status_code in (400, 404):
+            return None
+        raise
+    known = await known_verdicts(project_id)
+    try:
+        listing = await call_with_timeout(
+            handler.list_commit_notes(
+                ctx,
+                credentials,
+                namespace=NAMESPACE,
+                skip_shas=list(known) if known else [],
+            )
+        )
+    except NotImplementedError:
+        return None
+    verdicts = {
+        sha: parse_note_verdict(body) for sha, body in listing.notes.items()
+    }
+    recorded = await record_verdicts(project_id, verdicts)
+    if recorded is None:
+        raise RuntimeError(
+            f'could not store drift verdicts for project {project_id}'
+        )
+    # The ref has now been read end to end, which is the claim
+    # :func:`backfill_verdicts` marks -- so mark it and spare that pass.
+    # Only on a complete listing, for the same reason it is: a partial
+    # pass recorded as finished leaves those commits permanently
+    # unanswered, which the rule reads as "nothing to do".
+    if listing.complete:
+        await db.execute(
+            _MARK_BACKFILLED,
+            {
+                'project_id': project_id,
+                'now': datetime.datetime.now(datetime.UTC).isoformat(),
+            },
+            ['id'],
+        )
+    answers: dict[str, bool] = dict(known or {})
+    answers.update(
+        {
+            sha.lower(): verdict.drift_detected
+            for sha, verdict in verdicts.items()
+            if verdict.drift_detected is not None
+        }
+    )
+    stamped = await _stamp_releases_from(
+        db, org_slug=org_slug, project_id=project_id, answers=answers
+    )
+    return ResyncResult(recorded=recorded, stamped=stamped)
+
+
+async def _stamp_releases_from(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    answers: dict[str, bool],
+) -> int:
+    """Apply verdicts already in hand to unanswered Releases.
+
+    A ``Release.committish`` is the abbreviated SHA, so the match is by
+    prefix -- and only where exactly one full SHA carries that prefix.
+    Two commits sharing seven characters is unlikely but not impossible
+    in a long-lived repo, and stamping a release with another commit's
+    verdict is worse than leaving it to the sweep, which resolves the
+    committish through the remote.
+    """
+    if not answers:
+        return 0
+    by_prefix: dict[str, list[bool]] = {}
+    for sha, verdict in answers.items():
+        by_prefix.setdefault(sha[:7], []).append(verdict)
+    rows = await db.execute(
+        _UNANSWERED_RELEASES_ALL,
+        {'project_id': project_id, 'limit': STAMP_LIMIT},
+        ['id', 'tag', 'committish'],
+    )
+    stamped = 0
+    for row in rows:
+        committish = str(graph.parse_agtype(row['committish'])).lower()
+        candidates = by_prefix.get(committish[:7], [])
+        if len(candidates) != 1:
+            if candidates:
+                LOGGER.warning(
+                    'drift resync left %s on project %s alone: %d notes '
+                    'share that committish',
+                    committish,
+                    project_id,
+                    len(candidates),
+                )
+            continue
+        await _stamp_release(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            release_id=str(graph.parse_agtype(row['id'])),
+            tag=graph.parse_agtype(row['tag']),
+            committish=committish,
+            value=candidates[0],
         )
         stamped += 1
     return stamped

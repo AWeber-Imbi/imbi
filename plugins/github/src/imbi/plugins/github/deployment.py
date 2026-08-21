@@ -950,23 +950,26 @@ class GitHubDeployment(DeploymentCapability):
         ctx: PluginContext,
         credentials: dict[str, str],
         namespace: str,
+        skip_shas: collections.abc.Collection[str] = (),
     ) -> NotesListing:
         """Every note on ``refs/notes/<namespace>`` at its current tip.
 
         Two Git Data calls to reach the tree, then one blob read per
-        note.  A missing ref answers an empty, complete listing.
+        note the caller did not ask us to skip.  A missing ref answers
+        an empty, complete listing.
 
         ``complete`` compares what the tree holds against what came
         back: :meth:`_all_notes` drops a note whose blob it cannot read
         (logging why), and a truncated tree listing hides notes before
         that.  Either way the caller must not treat the result as the
-        whole ref.
+        whole ref.  A note skipped on request does not make the listing
+        incomplete -- the caller already has that answer.
         """
         async with self._client(ctx, credentials) as client:
             tip = await self._notes_ref_tip(client, namespace)
             if tip is None:
                 return NotesListing({}, True)
-            return await self._all_notes(client, tip)
+            return await self._all_notes(client, tip, skip_shas)
 
     async def diff_commit_notes(
         self,
@@ -1118,17 +1121,22 @@ class GitHubDeployment(DeploymentCapability):
         return out, not truncated
 
     async def _all_notes(
-        self, client: httpx.AsyncClient, commit_sha: str
+        self,
+        client: httpx.AsyncClient,
+        commit_sha: str,
+        skip_shas: collections.abc.Collection[str] = (),
     ) -> NotesListing:
         """Every note at one notes-ref commit, bodies included.
 
         Blob reads run a few at a time (one request per note) and an
         unreadable note is skipped rather than failing the batch or
-        recording a false "removed".
+        recording a false "removed".  A note whose annotated commit is
+        in ``skip_shas`` costs no request at all.
 
         ``complete`` combines the two ways this can fall short: a
         truncated tree listing, and a blob that would not read.  Either
-        means the map is not the whole ref.
+        means the map is not the whole ref.  Notes skipped on request do
+        not count against it.
         """
         notes, tree_complete = await self._tree_notes(client, commit_sha)
         gate = asyncio.Semaphore(_NOTE_BLOB_CONCURRENCY)
@@ -1140,7 +1148,12 @@ class GitHubDeployment(DeploymentCapability):
                 except httpx.HTTPError as exc:
                     return exc
 
-        items = list(notes.items())
+        skip = {sha.lower() for sha in skip_shas}
+        items = [
+            (annotated, blob_sha)
+            for annotated, blob_sha in notes.items()
+            if annotated.lower() not in skip
+        ]
         bodies = await asyncio.gather(
             *(_read(blob_sha) for _, blob_sha in items)
         )
@@ -1158,7 +1171,7 @@ class GitHubDeployment(DeploymentCapability):
                 # a ``None`` here would read as "note removed".
                 continue
             out[annotated] = body
-        return NotesListing(out, tree_complete and len(out) == len(notes))
+        return NotesListing(out, tree_complete and len(out) == len(items))
 
     @staticmethod
     async def _blob_text(

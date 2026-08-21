@@ -3436,6 +3436,33 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(listing.complete)
 
     @respx.mock
+    async def test_list_commit_notes_skips_answered_commits(self) -> None:
+        # Enumerating the ref is a call or two; every body is a request
+        # of its own, so a caller repairing a gap must be able to pay
+        # only for what it is missing.
+        other_sha = 'e' * 40
+        self._mock_tree(
+            [
+                {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b1'},
+                {'type': 'blob', 'path': other_sha, 'sha': 'b2'},
+            ]
+        )
+        skipped = respx.get(f'{self.REPO}/git/blobs/b1').mock(
+            return_value=httpx.Response(500)
+        )
+        self._blob('b2', '{"drift_detected":false}')
+        listing = await self.handler.list_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift', skip_shas=[self.FULL_SHA.upper()]
+        )
+        self.assertFalse(skipped.called)
+        self.assertEqual(
+            {other_sha: '{"drift_detected":false}'}, listing.notes
+        )
+        # A note skipped on request is not a note that could not be
+        # read: the caller already holds that answer.
+        self.assertTrue(listing.complete)
+
+    @respx.mock
     async def test_list_commit_notes_reports_an_unreadable_blob(self) -> None:
         # The readable note still comes back, but the listing says it is
         # not the whole ref, so a caller cannot record a finished
