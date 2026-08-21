@@ -905,20 +905,60 @@ class GetDeploymentStatusTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(run.status, 'failure')
 
     @respx.mock
-    async def test_status_inactive_maps_to_cancelled(self) -> None:
-        # ``inactive`` means a newer deployment for the same env
-        # superseded this one — Imbi treats it as cancelled, not failed.
+    async def test_status_skips_inactive_to_the_real_outcome(self) -> None:
+        """``inactive`` hides the success it was written on top of.
+
+        GitHub stamps ``inactive`` on a deployment when a *later* one
+        supersedes it, so it is newest-first but describes the wrong
+        rollout.  Reading it as the answer relabelled a succeeded
+        deployment as cancelled -> failed, and -- worse -- carried the
+        successor's ``updated_at`` as this deployment's completion, so
+        the close-out sorted after the release that replaced it.
+        """
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments/42/statuses'
         ).mock(
             return_value=httpx.Response(
                 200,
-                json=[{'state': 'inactive'}],
+                json=[
+                    {
+                        'state': 'inactive',
+                        'created_at': '2026-08-14T19:51:26Z',
+                        'updated_at': '2026-08-14T19:51:26Z',
+                        'log_url': 'https://gh/runs/stale',
+                    },
+                    {
+                        'state': 'success',
+                        'created_at': '2026-08-03T19:03:32Z',
+                        'updated_at': '2026-08-03T19:03:32Z',
+                        'log_url': 'https://gh/runs/real',
+                    },
+                    {'state': 'in_progress'},
+                ],
             )
         )
         plugin = GitHubDeployment()
         run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
-        self.assertEqual(run.status, 'cancelled')
+        self.assertEqual(run.status, 'success')
+        self.assertEqual(run.run_url, 'https://gh/runs/real')
+        assert run.completed_at is not None
+        self.assertEqual(
+            datetime.datetime(2026, 8, 3, 19, 3, 32, tzinfo=datetime.UTC),
+            run.completed_at,
+        )
+
+    @respx.mock
+    async def test_status_only_inactive_reads_as_queued(self) -> None:
+        # Superseded without ever reporting on itself: there is no
+        # outcome to read, so it stays unresolved and the sweeper
+        # expires it on age rather than inventing a terminal status.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/42/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'inactive'}]))
+        plugin = GitHubDeployment()
+        run = await plugin.get_deployment_status(_ctx(), _CREDS, '42')
+        self.assertEqual(run.status, 'queued')
+        self.assertIsNone(run.completed_at)
 
 
 class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -974,6 +1014,63 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(token_route.called)
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].sha, 'appsha')
+
+    @respx.mock
+    async def test_resync_skips_inactive_to_the_real_outcome(self) -> None:
+        """Resync must not relabel deployment history as rolled_back.
+
+        Every deployment except an environment's newest carries an
+        ``inactive`` status, written when its successor went live.
+        Reading the newest entry verbatim turned each of them into
+        ``rolled_back``, overwriting the ``success`` directly beneath
+        it -- ~14k nodes in the production graph, whose ``history``
+        records the success-then-rolled_back flip.
+        """
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '1'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 55,
+                        'sha': 'deadbeef',
+                        'ref': 'main',
+                        'created_at': '2026-05-13T14:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/55/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'state': 'inactive',
+                        'created_at': '2026-05-20T09:00:00Z',
+                        'log_url': 'https://gh/runs/successor',
+                    },
+                    {
+                        'state': 'success',
+                        'created_at': '2026-05-13T14:01:00Z',
+                        'log_url': 'https://gh/runs/real',
+                    },
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/main'
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        plugin = GitHubDeployment()
+        events = await plugin.list_recent_deployments(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].status, 'success')
+        self.assertEqual(events[0].run_url, 'https://gh/runs/real')
 
     @respx.mock
     async def test_one_env_one_deployment_success(self) -> None:

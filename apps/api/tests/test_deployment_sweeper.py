@@ -106,6 +106,38 @@ class SweeperTestCase(unittest.IsolatedAsyncioTestCase):
         await self._sweep()
         self.assertEqual(done, self.append.await_args.kwargs['timestamp'])
 
+    async def test_close_out_is_never_stamped_in_the_future(self) -> None:
+        """A remote may report an end time the sweep cannot have seen.
+
+        GitHub's ``inactive`` carries the moment a *later* deployment
+        superseded this one, so trusting it verbatim dated the close-out
+        after the release that replaced it -- and the derived
+        current-release readers, ranking on recency, handed the
+        environment back to the older one.  The plugin no longer selects
+        those statuses; this bound covers any remote that still reports
+        a completion in the future.
+        """
+        self.poll.return_value = _run(
+            'success', completed_at=NOW + datetime.timedelta(hours=3)
+        )
+        await self._sweep()
+        self.assertEqual(NOW, self.append.await_args.kwargs['timestamp'])
+
+    async def test_close_out_keeps_a_completion_older_than_creation(
+        self,
+    ) -> None:
+        """The bound is one-sided on purpose.
+
+        A node written by resync carries an ingest-time ``created_at``
+        that can postdate the rollout it describes, so raising a
+        close-out to meet it would push the timestamp later -- the very
+        direction the clamp exists to prevent.
+        """
+        done = _stuck().created_at - datetime.timedelta(days=1)
+        self.poll.return_value = _run('success', completed_at=done)
+        await self._sweep()
+        self.assertEqual(done, self.append.await_args.kwargs['timestamp'])
+
     async def test_close_out_falls_back_to_the_start_time(self) -> None:
         await self._sweep()
         self.assertEqual(
