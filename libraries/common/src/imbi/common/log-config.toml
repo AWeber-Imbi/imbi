@@ -16,6 +16,7 @@ uvicorn = { level = "INFO" }
 "uvicorn.asgi" = { level = "INFO" }
 "imbi.common.access" = { level = "INFO" }
 "imbi.plugins.logzio" = { level = "INFO" }
+httpx = { level = "WARNING" }
 
 [root]
 level = "INFO"
