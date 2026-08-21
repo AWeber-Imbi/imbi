@@ -1840,6 +1840,13 @@ class GitHubDeployment(DeploymentCapability):
                 # A row we could not even identify.  It is still a row
                 # newer than any success below it, so it has to count as
                 # uncertainty rather than be skipped silently.
+                LOGGER.warning(
+                    'Active deployment scan could not identify a row for '
+                    'env=%s (id=%r sha=%r); resolving it as unreadable',
+                    environment,
+                    deployment.get('id'),
+                    deployment.get('sha'),
+                )
                 unresolved = True
                 continue
             if latest is None:

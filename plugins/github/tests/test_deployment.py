@@ -2347,11 +2347,20 @@ class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
             'https://api.github.com/repos/octo/demo/deployments/2/statuses'
         ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
         plugin = GitHubDeployment()
-        state = (
-            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
-        )[0]
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            state = (
+                await plugin.get_environment_state(
+                    _ctx(), _CREDS, ['production']
+                )
+            )[0]
         self.assertEqual(state.active_resolution, 'error')
         self.assertIsNone(state.active)
+        # The malformed row cannot be reported at all, so ``latest``
+        # names the readable success below it even though nothing is
+        # claimed active.  That pairing is the surprising part of the
+        # contract, so pin it.
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '2')
 
     @respx.mock
     async def test_an_empty_status_list_is_not_unread(self) -> None:
