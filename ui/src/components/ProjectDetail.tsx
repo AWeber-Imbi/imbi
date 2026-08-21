@@ -46,6 +46,7 @@ import {
 import { getReleaseDrift } from '@/api/releases'
 import { DependenciesTab } from '@/components/dependencies/DependenciesTab'
 import { ConnectIdentityPrompt } from '@/components/deploy/ConnectIdentityPrompt'
+import { useDeployRunBanners } from '@/components/deploy/deployInFlight'
 import {
   type DeploymentRunStarted,
   type ReleaseBuildStarted,
@@ -395,11 +396,24 @@ export function ProjectDetail({
   // recorded ``DeploymentEvent.status`` flips out of ``in_progress``.
   const [activeRuns, setActiveRuns] = useState<DeploymentRunStarted[]>([])
   const queryClient = useQueryClient()
-  const handleRunStarted = useCallback((run: DeploymentRunStarted) => {
-    setActiveRuns((prev) =>
-      prev.some((r) => r.runId === run.runId) ? prev : [...prev, run],
-    )
-  }, [])
+  // Direct deploys carry no toast id: their progress shows in the
+  // in-flight banner instead, fed by the run watchers' onStatus. Scoped
+  // to the project being viewed — this component survives cross-project
+  // navigation, and project A's deploy must not banner on project B.
+  const {
+    banners: deployRunBanners,
+    onStatus: onDeployRunStatus,
+    start: startDeployBanner,
+  } = useDeployRunBanners(project.id)
+  const handleRunStarted = useCallback(
+    (run: DeploymentRunStarted) => {
+      if (run.toastId === undefined) startDeployBanner(run)
+      setActiveRuns((prev) =>
+        prev.some((r) => r.runId === run.runId) ? prev : [...prev, run],
+      )
+    },
+    [startDeployBanner],
+  )
   const [isRefreshing, setIsRefreshing] = useState(false)
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
@@ -1169,6 +1183,18 @@ export function ProjectDetail({
           </div>
         )}
 
+        {deployRunBanners.map(({ runId, state }) => (
+          <div className="mb-6" key={runId}>
+            <ReleaseInFlightBanner
+              kind="deploy"
+              onRedeploy={() => handleTabChange('deployments')}
+              onUnblock={unblock}
+              state={state}
+              unblockPending={unblockPending}
+            />
+          </div>
+        ))}
+
         <TabsContent className="space-y-6" value="overview">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
             {/* Left column: Details */}
@@ -1575,6 +1601,7 @@ export function ProjectDetail({
           envName={run.envName}
           initialStatus={run.initialStatus}
           key={run.runId}
+          onStatus={run.toastId === undefined ? onDeployRunStatus : undefined}
           onTerminal={handleRunTerminal}
           orgSlug={run.originOrgSlug}
           projectId={run.originProjectId}

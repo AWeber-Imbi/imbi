@@ -14,19 +14,22 @@ import { getPromoteStatus, type PromoteStatus } from '@/api/endpoints'
 import { sanitizeHttpUrl } from '@/lib/utils'
 
 /**
- * `toast`, minus the talking, for a promote the page already banners.
+ * `toast`, minus the talking, for a run the page already banners.
  *
  * Swapped in for the real thing so silence cannot skip the settling:
  * every branch below still stops the poll and tells the parent, it just
- * says nothing while doing it.
+ * says nothing while doing it. `DeploymentRunWatcher` shares it for its
+ * banner-only (toast-less) runs.
  */
-const SILENT: Pick<typeof toast, 'error' | 'loading' | 'message' | 'success'> =
-  {
-    error: () => '',
-    loading: () => '',
-    message: () => '',
-    success: () => '',
-  }
+export const SILENT: Pick<
+  typeof toast,
+  'error' | 'loading' | 'message' | 'success'
+> = {
+  error: () => '',
+  loading: () => '',
+  message: () => '',
+  success: () => '',
+}
 
 /** States the watcher stops polling on. */
 const TERMINAL_STATES: ReadonlySet<PromoteStatus['status']> = new Set([

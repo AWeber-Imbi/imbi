@@ -33,9 +33,11 @@ function renderWatcher(
     actionLabel: string
     actionUrl: null | string
     initialStatus: DeploymentRun['status']
+    onStatus: (id: string, status: 'lost' | DeploymentRun['status']) => void
     onTerminal: (id: string) => void
     runId: string
     runUrl: null | string
+    silent: boolean
     toastId: string
   }> = {},
 ) {
@@ -50,12 +52,13 @@ function renderWatcher(
         actionUrl={props.actionUrl ?? null}
         envName="staging"
         initialStatus={props.initialStatus}
+        onStatus={props.onStatus}
         onTerminal={onTerminal}
         orgSlug="acme"
         projectId="p1"
         runId={props.runId ?? 'run-42'}
         runUrl={props.runUrl ?? null}
-        toastId={props.toastId ?? 'toast-1'}
+        toastId={props.silent ? undefined : (props.toastId ?? 'toast-1')}
       />
     </QueryClientProvider>,
   )
@@ -156,6 +159,24 @@ describe('DeploymentRunWatcher', () => {
     const call = toast.loading.mock.calls[0]
     expect(call[0]).toMatch(/Deploying to staging/)
     expect(call[1].id).toBe('toast-1')
+  })
+
+  it('stays silent without a toastId and reports through onStatus', async () => {
+    getDeploymentRunStatus.mockResolvedValue({
+      run_id: 'run-42',
+      run_url: null,
+      status: 'success',
+    } satisfies DeploymentRun)
+    const onStatus = vi.fn()
+    const { onTerminal } = renderWatcher({ onStatus, silent: true })
+    await waitFor(() => {
+      expect(onStatus).toHaveBeenCalledWith('run-42', 'success')
+      expect(onTerminal).toHaveBeenCalledWith('run-42')
+    })
+    expect(toast.loading).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(toast.message).not.toHaveBeenCalled()
   })
 
   it('prefers actionUrl over runUrl for the toast action', async () => {

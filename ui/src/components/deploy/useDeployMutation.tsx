@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ApiError } from '@/api/client'
@@ -71,25 +70,15 @@ export function useDeployMutation({
           : (err as Error).message,
       )
     },
-    onSuccess: (data) => {
+    onSuccess: (data, payload) => {
       void queryClient.invalidateQueries({
         queryKey: ['currentReleases', orgSlug, projectId],
       })
       const url = data.run.run_url
       const envName = env?.name ?? envSlug
       if (onRunStarted && data.run.run_id) {
-        const toastId = toast.loading(`Deploying to ${envName}…`, {
-          action: url
-            ? {
-                label: 'View run',
-                onClick: () => window.open(url, '_blank', 'noopener'),
-              }
-            : undefined,
-          description: data.run.status
-            ? `status: ${data.run.status}`
-            : undefined,
-          icon: <Loader2 className="size-4 animate-spin" />,
-        })
+        // No toast: a direct deploy surfaces through the in-flight
+        // banner, which the parent raises from this callback.
         onRunStarted({
           actionLabel: url ? 'View run' : undefined,
           actionUrl: url,
@@ -97,9 +86,14 @@ export function useDeployMutation({
           initialStatus: data.run.status,
           originOrgSlug: orgSlug,
           originProjectId: projectId,
+          // First-env deploys ship a commit and label it with the
+          // branch name, which cannot tell two runs apart — the short
+          // sha can. Later envs deploy a tag, which already can.
+          refLabel: isFirstEnv
+            ? payload.sha.slice(0, 7)
+            : (payload.label ?? payload.sha.slice(0, 7)),
           runId: data.run.run_id,
           runUrl: url,
-          toastId,
         })
       } else {
         toast.success(

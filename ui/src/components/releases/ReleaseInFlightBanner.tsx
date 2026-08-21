@@ -19,16 +19,30 @@ import {
   TERMINAL,
 } from './releaseInFlight'
 
-/** The train the banner walks while a release runs. */
-const PHASES = ['Building', 'Deploying', 'Released'] as const
+/**
+ * What kind of operation the banner narrates. A release walks
+ * Building → Deploying → Released; a direct deploy has no build phase,
+ * so its train is just Deploying → Deployed.
+ */
+export type InFlightKind = 'deploy' | 'release'
 
-const PHASE_INDEX: Partial<Record<ReleaseInFlightPhase, number>> = {
-  building: 0,
-  deploying: 1,
-  success: 2,
+/** The train the banner walks while the operation runs. */
+const PHASES: Record<InFlightKind, readonly string[]> = {
+  deploy: ['Deploying', 'Deployed'],
+  release: ['Building', 'Deploying', 'Released'],
+}
+
+const PHASE_INDEX: Record<
+  InFlightKind,
+  Partial<Record<ReleaseInFlightPhase, number>>
+> = {
+  deploy: { deploying: 0, success: 1 },
+  release: { building: 0, deploying: 1, success: 2 },
 }
 
 interface ReleaseInFlightBannerProps {
+  /** Defaults to `'release'`; `'deploy'` narrates a direct deploy. */
+  kind?: InFlightKind
   /** Sends the operator to the tab where a redeploy can be dispatched. */
   onRedeploy: () => void
   onUnblock: (tag: string) => void
@@ -49,6 +63,7 @@ type Tone = 'amber' | 'danger' | 'muted' | 'success'
  * reason is on screen.
  */
 export function ReleaseInFlightBanner({
+  kind = 'release',
   onRedeploy,
   onUnblock,
   state,
@@ -57,7 +72,7 @@ export function ReleaseInFlightBanner({
   const { envName, error, phase, runUrl, tag } = state
   if (phase === 'idle') return null
 
-  const label = tag ?? 'this release'
+  const label = tag ?? (kind === 'deploy' ? 'this deployment' : 'this release')
   if (phase === 'adopting') {
     return (
       <BannerShell tone="muted">
@@ -75,15 +90,18 @@ export function ReleaseInFlightBanner({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="text-sm font-semibold">
-            {headline(phase, label, envName)}
+            {headline(kind, phase, label, envName)}
           </span>
           <Elapsed since={state.startedAt} until={state.endedAt} />
         </div>
         <span className="text-xs leading-relaxed opacity-90">
-          {error ?? DETAIL[phase]}
+          {error ?? DETAIL[kind][phase]}
         </span>
-        {PHASE_INDEX[phase] === undefined ? null : (
-          <PhaseTrain active={PHASE_INDEX[phase] ?? 0} />
+        {PHASE_INDEX[kind][phase] === undefined ? null : (
+          <PhaseTrain
+            active={PHASE_INDEX[kind][phase] ?? 0}
+            phases={PHASES[kind]}
+          />
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -119,7 +137,7 @@ export function ReleaseInFlightBanner({
             target="_blank"
           >
             <ExternalLink className="size-3.5" />
-            View build
+            {kind === 'deploy' ? 'View run' : 'View build'}
           </a>
         ) : null}
         {TERMINAL.has(phase) ? (
@@ -155,21 +173,34 @@ const TONE_CLASS: Record<Tone, string> = {
   success: 'border-success bg-success text-success',
 }
 
-const DETAIL: Record<ReleaseInFlightPhase, string> = {
-  adopting: '',
-  build_failed:
-    'The tag is blocked. Fix the build and release a new version, or ' +
-    'unblock this one to retry it.',
-  building: 'The release workflow is cutting the tag and building it.',
-  deploy_failed:
-    'The build was green, so the release is not blocked — redeploy this ' +
-    'tag once the cause is fixed.',
-  deploying: 'The build is green; Imbi is rolling the release out.',
-  failed:
-    'Last promote outcome unknown — confirm the run before cutting again. ' +
-    'The tag was not blocked, so it can still be deployed.',
-  idle: '',
-  success: 'Release complete. The drift below reflects the new baseline.',
+const DETAIL: Record<InFlightKind, Record<ReleaseInFlightPhase, string>> = {
+  deploy: {
+    adopting: '',
+    build_failed: '',
+    building: '',
+    deploy_failed:
+      'Check the workflow run, fix the cause, and redeploy the version.',
+    deploying: 'Imbi is rolling the deployment out.',
+    failed: 'Status polling failed; check the workflow run directly.',
+    idle: '',
+    success: 'Deployment complete.',
+  },
+  release: {
+    adopting: '',
+    build_failed:
+      'The tag is blocked. Fix the build and release a new version, or ' +
+      'unblock this one to retry it.',
+    building: 'The release workflow is cutting the tag and building it.',
+    deploy_failed:
+      'The build was green, so the release is not blocked — redeploy this ' +
+      'tag once the cause is fixed.',
+    deploying: 'The build is green; Imbi is rolling the release out.',
+    failed:
+      'Last promote outcome unknown — confirm the run before cutting ' +
+      'again. The tag was not blocked, so it can still be deployed.',
+    idle: '',
+    success: 'Release complete. The drift below reflects the new baseline.',
+  },
 }
 
 function BannerShell({
@@ -231,6 +262,7 @@ function Elapsed({
 }
 
 function headline(
+  kind: InFlightKind,
   phase: ReleaseInFlightPhase,
   label: string,
   envName: null | string,
@@ -246,9 +278,13 @@ function headline(
     case 'deploying':
       return `Deploying ${label}${target}…`
     case 'failed':
-      return `Lost track of the release for ${label}`
+      return kind === 'deploy'
+        ? `Lost track of deploying ${label}${target}`
+        : `Lost track of the release for ${label}`
     default:
-      return envName ? `Released ${label}${target}` : `Released ${label}`
+      return kind === 'deploy'
+        ? `Deployed ${label}${target}`
+        : `Released ${label}${target}`
   }
 }
 
@@ -265,11 +301,17 @@ function PhaseIcon({ phase }: { phase: ReleaseInFlightPhase }) {
   return <XCircle className="mt-0.5 size-4 shrink-0" />
 }
 
-/** Building → Deploying → Released, with everything before `active` done. */
-function PhaseTrain({ active }: { active: number }) {
+/** The kind's phase train, with everything before `active` done. */
+function PhaseTrain({
+  active,
+  phases,
+}: {
+  active: number
+  phases: readonly string[]
+}) {
   return (
     <ol className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
-      {PHASES.map((name, idx) => (
+      {phases.map((name, idx) => (
         <li className="flex items-center gap-1.5" key={name}>
           {idx > 0 ? <span aria-hidden="true">→</span> : null}
           <span
