@@ -70,6 +70,7 @@ import type {
   Integration,
   IntegrationCreate,
   IntegrationUpdate,
+  LatestDeployment,
   LifecyclePreviewResponse,
   LinkDefinition,
   LinkDefinitionCreate,
@@ -209,6 +210,9 @@ export interface ProjectListItem {
     sort_order: number
   }[]
   id: string
+  // Newer attempt than `current_releases` in the same environment, when
+  // one exists; see `LatestDeployment`.
+  latest_deployments?: Record<string, LatestDeployment>
   name: string
   open_pr_count: number
   project_types: {

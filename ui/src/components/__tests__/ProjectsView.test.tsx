@@ -264,3 +264,78 @@ describe('ProjectsView filter counts', () => {
     expect(countFor(panel, 'Unscored')).toBe('1')
   })
 })
+
+// `current_releases` says what an environment serves; `latest_deployments`
+// says what happened after that. The row shows both so a failed or
+// in-flight rollout never reads as the deployed release.
+describe('ProjectsView latest deployment', () => {
+  function deployable(
+    overrides: Partial<ProjectListItem> = {},
+  ): ProjectListItem {
+    return project({
+      current_releases: {
+        production: { committish: 'bbb', deployed_at: DEPLOYED_AT, tag: 'v2' },
+      },
+      environments: [{ name: 'Production', slug: 'production', sort_order: 1 }],
+      id: 'p11',
+      name: 'Echo',
+      project_types: [
+        {
+          deployable: true,
+          name: 'Service',
+          releasable: false,
+          slug: 'service',
+        },
+      ],
+      ...overrides,
+    })
+  }
+
+  it('shows a newer in-flight attempt beside the deployed release', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      deployable({
+        latest_deployments: {
+          production: {
+            committish: 'ccc',
+            deployed_at: DEPLOYED_AT,
+            status: 'in_progress',
+            tag: 'v3',
+          },
+        },
+      }),
+    ])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Echo')).toBeInTheDocument())
+    expect(screen.getByText('v2')).toBeInTheDocument()
+    expect(screen.getByText('v3')).toBeInTheDocument()
+    expect(screen.getByText('deploying')).toBeInTheDocument()
+  })
+
+  it('shows a failed attempt as failed, not as the deployed release', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([
+      deployable({
+        latest_deployments: {
+          production: {
+            committish: 'ccc',
+            deployed_at: DEPLOYED_AT,
+            status: 'failed',
+            tag: 'v3',
+          },
+        },
+      }),
+    ])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Echo')).toBeInTheDocument())
+    expect(screen.getByText('v2')).toBeInTheDocument()
+    expect(screen.getByText('failed')).toBeInTheDocument()
+  })
+
+  it('shows nothing extra when the deployed release is the newest', async () => {
+    vi.mocked(endpoints.getProjectsSlim).mockResolvedValue([deployable()])
+    renderView()
+    await waitFor(() => expect(screen.getByText('Echo')).toBeInTheDocument())
+    expect(screen.getByText('v2')).toBeInTheDocument()
+    expect(screen.queryByText('deploying')).not.toBeInTheDocument()
+    expect(screen.queryByText('failed')).not.toBeInTheDocument()
+  })
+})

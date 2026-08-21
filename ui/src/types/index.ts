@@ -141,6 +141,17 @@ export interface EnvironmentCreate {
 // predates v3). Includes ProjectServiceEdge / ProjectServiceEdgeCreate.
 export * from './integrations'
 
+// Newest deployment attempt in an environment, whatever its status --
+// mirror of the API's `LatestDeployment`. Only sent when it is *not*
+// the attempt serving traffic, so a value always means something
+// happened after the current release: a deploy in flight, or a failure.
+export interface LatestDeployment {
+  committish?: null | string
+  deployed_at: string
+  status: DeploymentStatus
+  tag?: null | string
+}
+
 // Per-plugin outcome returned by the archive / unarchive endpoints, one
 // entry per lifecycle plugin assigned to the project. `failed` is the
 // case worth surfacing — e.g. a GitHub repo transfer that left the repo
@@ -248,6 +259,7 @@ export interface Project {
   icon?: null | string
   id: string
   identifiers?: Record<string, number | string>
+  latest_deployments?: Record<string, LatestDeployment>
   links?: Record<string, string>
   name: string
   open_pr_count?: number
@@ -600,6 +612,8 @@ export interface CurrentReleaseEnvironment {
   environment: { name: string; slug: string }
   external_run_url: null | string
   last_event_at: null | string
+  // Newer attempt than `release`, when one exists; see `LatestDeployment`.
+  latest_deployment?: LatestDeployment | null
   // Deployer of the latest event, for display: an Imbi user's display
   // name when resolved, else the raw remote login; null for in-product
   // deploys with no recorded actor.

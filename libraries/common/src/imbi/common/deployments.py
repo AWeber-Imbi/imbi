@@ -333,39 +333,58 @@ RETURN p.id AS project_id,
 """
 
 
-# Only these statuses may name an environment's current release.
-# ``failed`` and ``rolled_back`` are excluded because neither puts a
-# release into an environment: a failed rollout left whatever was
-# already there running, and ``rolled_back`` says outright that this
-# release is no longer serving.  Without the exclusion the newest write
-# wins whatever it says, so closing out a *superseded* deployment --
-# which by construction happens after the deployment that superseded
-# it -- drags the environment back to the older release.
-#
-# ``pending``/``in_progress`` stay in: they are how the release train
-# shows a rollout under way, and ``_hydrate_release_train`` selects
-# exactly those events to poll and self-heal.
-#
-# The filter is repeated on purpose.  The first pass decides which
-# timestamp is the environment's newest; the second re-matches the node
-# holding it.  Filtering only the first would let ``max()`` land on a
-# timestamp no surviving node carries, and the environment would drop
-# out of the result entirely rather than fall back to its last success.
-_LATEST_RELEASED_BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
+#: The released-deployment read, with the status policy left open --
+#: :func:`_released_query` fills both placeholders.
+_RELEASED_BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
 MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)-[:TARGETS]->(e:Environment)
-WHERE p.id IN {project_ids}
-      AND d.status IN ['pending', 'in_progress', 'success']
+WHERE p.id IN {project_ids}{filter}
 MATCH (:Release)-[:HAS_DEPLOYMENT]->(d)
 WITH p, e, max(COALESCE(d.updated_at, d.created_at)) AS ts
 MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
-WHERE COALESCE(d2.updated_at, d2.created_at) = ts
-      AND d2.status IN ['pending', 'in_progress', 'success']
+WHERE COALESCE(d2.updated_at, d2.created_at) = ts{filter2}
 MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d2)
 RETURN p.id AS project_id,
        e{{.slug, .name, .sort_order}} AS env,
        r{{.*}} AS release,
        d2 AS deployment
 """
+
+
+#: Statuses that may name an environment's current release when the
+#: caller is not asking for provider-confirmed success.  ``failed`` and
+#: ``rolled_back`` are excluded because neither puts a release into an
+#: environment: a failed rollout left whatever was already there
+#: running, and ``rolled_back`` says outright that this release is no
+#: longer serving.  Without the exclusion the newest write wins whatever
+#: it says, so closing out a *superseded* deployment -- which by
+#: construction happens after the deployment that superseded it -- drags
+#: the environment back to the older release.
+#:
+#: ``pending``/``in_progress`` stay in: they are how the release train
+#: shows a rollout under way, and ``_hydrate_release_train`` selects
+#: exactly those events to poll and self-heal.
+_ATTEMPT_STATUSES: typing.Final[typing.LiteralString] = (
+    "['pending', 'in_progress', 'success']"
+)
+
+
+def _released_query(*, success_only: bool) -> typing.LiteralString:
+    """Assemble the released-deployment read for one status policy.
+
+    The status filter has to appear in both halves on purpose.  The
+    first pass decides which timestamp is the environment's newest; the
+    second re-matches the node holding it.  Filtering only the first
+    would let ``max()`` land on a timestamp no surviving node carries,
+    and the environment would drop out of the result entirely rather
+    than fall back to its last success.
+    """
+    if not success_only:
+        return _RELEASED_BY_PROJECT_QUERY.replace(
+            '{filter}', f' AND d.status IN {_ATTEMPT_STATUSES}'
+        ).replace('{filter2}', f' AND d2.status IN {_ATTEMPT_STATUSES}')
+    return _RELEASED_BY_PROJECT_QUERY.replace(
+        '{filter}', " AND d.status = 'success'"
+    ).replace('{filter2}', " AND d2.status = 'success'")
 
 
 async def latest_released_deployments_by_project(
@@ -383,7 +402,7 @@ async def latest_released_deployments_by_project(
     deployed.
 
     ``failed`` and ``rolled_back`` deployments are not candidates --
-    see :data:`_LATEST_RELEASED_BY_PROJECT_QUERY`.  Recency alone is the
+    see :data:`_ATTEMPT_STATUSES`.  Recency alone is the
     wrong test for "what is deployed": the close-out of a *superseded*
     deployment is always written after the deployment that superseded
     it, so ranking by timestamp with no regard to status hands the
@@ -406,11 +425,81 @@ async def latest_released_deployments_by_project(
     if not project_ids:
         return []
     rows = await db.execute(
-        _LATEST_RELEASED_BY_PROJECT_QUERY,
+        _released_query(success_only=False),
         {'project_ids': list(project_ids)},
         ['project_id', 'env', 'release', 'deployment'],
     )
     return _to_project_deployments(_newest_per_environment(rows))
+
+
+class EnvironmentReleaseState(typing.NamedTuple):
+    """What an environment serves, and what last happened to it."""
+
+    project_id: str
+    environment: dict[str, typing.Any]
+    #: Newest attempt whose stored status is ``success`` -- what the
+    #: provider is serving, absent when nothing has ever succeeded.
+    current: ProjectDeployment | None
+    #: Newest attempt whatever its status: an in-flight or failed
+    #: rollout that has not displaced *current*.  Equal to *current*
+    #: when the newest attempt is the one serving traffic; every state
+    #: has one, because a success is an attempt too.
+    latest: ProjectDeployment
+
+
+async def current_and_latest_by_project(
+    db: graph.Graph,
+    project_ids: abc.Sequence[str],
+) -> list[EnvironmentReleaseState]:
+    """Return both attempts a "current release" surface renders.
+
+    One reader for the projects list and the project-detail release
+    train, which derived "current" separately and had already drifted
+    apart.  Both questions are asked of ``Deployment`` nodes, one per
+    rollout carrying that rollout's latest status, so *current* is a
+    status filter on :func:`latest_released_deployments_by_project`
+    rather than a different traversal.
+
+    Filtering the *nodes* is the whole point.  Filtering deployment
+    *events* to ``success`` first would resurrect an attempt whose
+    later status was ``failed`` or ``rolled_back``: the success it
+    reported is still in the node's ``history``.
+
+    Ordering is by the provider timestamps the node records, never by
+    when Imbi ingested them, with the provider run id breaking a tie
+    (see :func:`_newest_per_environment`).
+    """
+    if not project_ids:
+        return []
+    params = {'project_ids': list(project_ids)}
+    columns = ['project_id', 'env', 'release', 'deployment']
+    latest = _by_environment(
+        await db.execute(_released_query(success_only=False), params, columns)
+    )
+    current = _by_environment(
+        await db.execute(_released_query(success_only=True), params, columns)
+    )
+    out: list[EnvironmentReleaseState] = []
+    for key, entry in latest.items():
+        out.append(
+            EnvironmentReleaseState(
+                entry.project_id,
+                entry.environment,
+                current.get(key),
+                entry,
+            )
+        )
+    return out
+
+
+def _by_environment(
+    rows: abc.Iterable[dict[str, typing.Any]],
+) -> dict[tuple[str, str], ProjectDeployment]:
+    """Key one deployment per ``(project_id, environment slug)``."""
+    return {
+        (entry.project_id, str(entry.environment.get('slug') or '')): entry
+        for entry in _to_project_deployments(_newest_per_environment(rows))
+    }
 
 
 async def latest_deployments_by_project(
@@ -461,15 +550,18 @@ def _newest_per_environment(
     pair, so an unresolved tie lets the current release and status
     differ between two identical requests.
 
-    Newest ``created_at`` wins, then the highest deployment ``id``, then
-    the highest release ``id`` -- the last because one node carrying two
-    ``HAS_DEPLOYMENT`` edges fans out into rows the first two keys
-    cannot separate.  The ids are nanoids, so those keys are stable
+    Newest ``created_at`` wins, then the highest provider run id, then
+    the highest deployment ``id``, then the highest release ``id`` --
+    the last because one node carrying two ``HAS_DEPLOYMENT`` edges fans
+    out into rows the first keys cannot separate.  The run id comes
+    first of the tie breakers because it is the only one the provider
+    assigned; the ids after it are nanoids, so those keys are stable
     rather than meaningful: which of two simultaneous rollouts is
     "current" has no answer, only a need for the same answer every time.
     """
     best: dict[
-        tuple[str, str], tuple[tuple[str, str, str], dict[str, typing.Any]]
+        tuple[str, str],
+        tuple[tuple[str, str, str, str], dict[str, typing.Any]],
     ] = {}
     for row in rows:
         project_id = graph.parse_agtype(row.get('project_id'))
@@ -485,6 +577,7 @@ def _newest_per_environment(
         key = (project_id, str(env.get('slug') or ''))
         rank = (
             str(props.get('created_at') or ''),
+            str(props.get('external_run_id') or ''),
             str(props.get('id') or ''),
             str(release.get('id') or '') if isinstance(release, dict) else '',
         )

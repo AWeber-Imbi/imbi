@@ -107,7 +107,12 @@ import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
-import type { LifecyclePreviewEntry, Project, ScoringPolicy } from '@/types'
+import type {
+  LatestDeployment,
+  LifecyclePreviewEntry,
+  Project,
+  ScoringPolicy,
+} from '@/types'
 
 interface ProjectDetailProps {
   initialSubAction?: string
@@ -201,6 +206,7 @@ export function ProjectDetail({
     {
       ciStatus: 'fail' | 'pass' | 'warn' | null
       committish: string
+      latest: LatestDeployment | null
       notes: null | string
       performedBy: null | string
       performedByEmail: null | string
@@ -216,6 +222,7 @@ export function ProjectDetail({
       {
         ciStatus: 'fail' | 'pass' | 'warn' | null
         committish: string
+        latest: LatestDeployment | null
         notes: null | string
         performedBy: null | string
         performedByEmail: null | string
@@ -234,6 +241,7 @@ export function ProjectDetail({
       out[row.environment.slug] = {
         ciStatus: ci,
         committish: row.release.committish,
+        latest: row.latest_deployment ?? null,
         notes: row.release.description ?? null,
         performedBy: row.performed_by ?? null,
         performedByEmail: row.performed_by_email ?? null,

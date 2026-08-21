@@ -7834,6 +7834,7 @@ export interface components {
         CurrentReleaseEnvironment: {
             environment: components["schemas"]["ReleaseEnvironmentRef"];
             release?: components["schemas"]["ReleaseResponse"] | null;
+            latest_deployment?: components["schemas"]["LatestDeployment"] | null;
             /** Current Status */
             current_status?: ("pending" | "in_progress" | "success" | "failed" | "rolled_back") | null;
             /** Last Event At */
@@ -9282,6 +9283,29 @@ export interface components {
             label: string;
             /** Count */
             count: number;
+        };
+        /**
+         * LatestDeployment
+         * @description Newest deployment attempt in an environment, whatever its state.
+         *
+         *     Reported only when it is *not* the attempt serving traffic -- when
+         *     the newest attempt is the current release the two would say the
+         *     same thing, so this is omitted rather than duplicated.  So a
+         *     present value always means "something happened here after the
+         *     release that is serving": a deploy in flight, or one that failed.
+         */
+        LatestDeployment: {
+            /** Status */
+            status: "pending" | "in_progress" | "success" | "failed" | "rolled_back";
+            /**
+             * Deployed At
+             * Format: date-time
+             */
+            deployed_at: string;
+            /** Tag */
+            tag?: string | null;
+            /** Committish */
+            committish?: string | null;
         };
         /**
          * LifecycleInvocation
@@ -10971,6 +10995,10 @@ export interface components {
             current_releases?: {
                 [key: string]: components["schemas"]["ReleaseInfo"];
             };
+            /** Latest Deployments */
+            latest_deployments?: {
+                [key: string]: components["schemas"]["LatestDeployment"];
+            };
             release_summary?: components["schemas"]["ReleaseSummary"] | null;
             /** Drift Ranges */
             drift_ranges?: {
@@ -11097,6 +11125,10 @@ export interface components {
             /** Current Releases */
             current_releases?: {
                 [key: string]: components["schemas"]["ReleaseInfo"];
+            };
+            /** Latest Deployments */
+            latest_deployments?: {
+                [key: string]: components["schemas"]["LatestDeployment"];
             };
             /**
              * Lifecycle Results
@@ -11264,6 +11296,10 @@ export interface components {
             /** Current Releases */
             current_releases?: {
                 [key: string]: components["schemas"]["ReleaseInfo"];
+            };
+            /** Latest Deployments */
+            latest_deployments?: {
+                [key: string]: components["schemas"]["LatestDeployment"];
             };
         } & {
             [key: string]: unknown;

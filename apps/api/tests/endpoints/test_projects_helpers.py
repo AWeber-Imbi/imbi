@@ -164,7 +164,7 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_empty_project_ids_short_circuits(self) -> None:
         db = mock.AsyncMock()
         result = await projects._fetch_current_releases(db, [])
-        self.assertEqual(result, {})
+        self.assertEqual(result, ({}, {}))
         db.execute.assert_not_called()
 
     async def test_returns_release_info_per_env(self) -> None:
@@ -214,8 +214,8 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await projects._fetch_current_releases(db, ['p1'])
 
-        prod = result['p1']['prod']
-        stage = result['p1']['stage']
+        prod = result.current['p1']['prod']
+        stage = result.current['p1']['stage']
         self.assertEqual(prod.tag, '1.0.0')
         self.assertEqual(prod.committish, 'abcdef0')
         self.assertEqual(prod.performed_by, 'alice@example.com')
@@ -261,7 +261,9 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await projects._fetch_current_releases(db, ['p1'])
 
-        self.assertEqual(result['p1']['prod'].performed_by, 'bob@example.com')
+        self.assertEqual(
+            result.current['p1']['prod'].performed_by, 'bob@example.com'
+        )
 
     async def test_enriches_performed_by_from_committish_when_tag_set(
         self,
@@ -306,7 +308,7 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
             result = await projects._fetch_current_releases(db, ['p1'])
 
         self.assertEqual(
-            result['p1']['prod'].performed_by, 'carol@example.com'
+            result.current['p1']['prod'].performed_by, 'carol@example.com'
         )
 
     async def test_skips_environments_with_no_events(self) -> None:
@@ -334,13 +336,13 @@ class FetchCurrentReleasesTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             result = await projects._fetch_current_releases(db, ['p1'])
-        self.assertEqual(result, {})
+        self.assertEqual(result, ({}, {}))
 
     async def test_swallows_graph_errors(self) -> None:
         db = mock.AsyncMock()
         db.execute.side_effect = RuntimeError('graph down')
         result = await projects._fetch_current_releases(db, ['p1'])
-        self.assertEqual(result, {})
+        self.assertEqual(result, ({}, {}))
 
 
 class LookupOpsLogPerformedByTestCase(unittest.IsolatedAsyncioTestCase):

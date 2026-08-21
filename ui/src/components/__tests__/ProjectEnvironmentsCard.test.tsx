@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { render, screen } from '@/test/utils'
-import type { Project } from '@/types'
+import type { LatestDeployment, Project } from '@/types'
 
 type Environment = NonNullable<Project['environments']>[number]
 
@@ -70,5 +70,55 @@ describe('ProjectEnvironmentsCard URL rendering', () => {
     expect(
       screen.queryByRole('link', { name: 'Open URL' }),
     ).not.toBeInTheDocument()
+  })
+})
+
+// The deployed release and the newest attempt are different facts, so
+// the card shows both: the served version with its status badge, and a
+// second badge for an attempt that has not replaced it.
+describe('ProjectEnvironmentsCard latest deployment', () => {
+  function renderCard(latest: LatestDeployment | null) {
+    return render(
+      <ThemeProvider>
+        <ProjectEnvironmentsCard
+          deploymentStatus={{
+            prod: {
+              committish: 'abc1234',
+              latest,
+              performedBy: null,
+              performedByEmail: null,
+              status: 'success',
+              tag: '1.2.0',
+              updated: '2 hours ago',
+            },
+          }}
+          environments={[env('prod', null)]}
+          orgSlug="acme"
+          projectId="1"
+        />
+      </ThemeProvider>,
+    )
+  }
+
+  it('shows a newer in-flight attempt beside the served release', () => {
+    renderCard({
+      committish: 'def5678',
+      deployed_at: '2026-08-01T00:00:00Z',
+      status: 'in_progress',
+      tag: '1.3.0',
+    })
+
+    expect(screen.getByText('1.2.0')).toBeInTheDocument()
+    expect(screen.getByText('Deployed')).toBeInTheDocument()
+    expect(screen.getByText('1.3.0')).toBeInTheDocument()
+    expect(screen.getByText('Deploying')).toBeInTheDocument()
+  })
+
+  it('shows only the served release when it is the newest attempt', () => {
+    renderCard(null)
+
+    expect(screen.getByText('1.2.0')).toBeInTheDocument()
+    expect(screen.getByText('Deployed')).toBeInTheDocument()
+    expect(screen.queryByText('Deploying')).not.toBeInTheDocument()
   })
 })

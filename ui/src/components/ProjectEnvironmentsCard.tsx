@@ -40,10 +40,13 @@ import { useLoginToEmail } from '@/hooks/useLoginToEmail'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { sanitizeUri } from '@/lib/utils'
-import type { DeploymentStatus, Project } from '@/types'
+import type { DeploymentStatus, LatestDeployment, Project } from '@/types'
 
 interface DeploymentInfo {
   committish: string
+  // Attempt newer than the release being served — a rollout in flight or
+  // one that failed; null when the served release is the newest attempt.
+  latest: LatestDeployment | null
   // Deployer of the latest deploy event (remote actor); null for in-product.
   performedBy: null | string
   // Email of the deployer when resolved to an Imbi user — drives Gravatar +
@@ -257,6 +260,17 @@ export function ProjectEnvironmentsCard({
                     {deployment?.updated ? (
                       <span className="text-tertiary text-sm">
                         {deployment.updated}
+                      </span>
+                    ) : null}
+                    {/* A newer attempt than the release above: what is
+                        deploying now, or what failed trying. */}
+                    {deployment?.latest ? (
+                      <span className="flex items-center gap-2">
+                        <ReleaseBadge status={deployment.latest.status} />
+                        <span className="text-secondary font-mono text-sm tabular-nums">
+                          {deployment.latest.tag ??
+                            deployment.latest.committish}
+                        </span>
                       </span>
                     ) : null}
                   </div>

@@ -511,6 +511,172 @@ class ReadTests(DeploymentNodeTestCase):
         )
 
 
+class CurrentAndLatestTests(DeploymentNodeTestCase):
+    """The reader both "current release" surfaces derive from.
+
+    Every case here is a row of the plan's test matrix: what the
+    provider serves is the newest attempt whose *latest* status is
+    success, and the newest attempt of any status is reported beside it
+    rather than in place of it.
+    """
+
+    async def _add_release(self) -> None:
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project_id}}})
+            MERGE (r:Release {{id: {release_id}}})
+            MERGE (p)-[:HAS_RELEASE]->(r)
+            RETURN r.id AS id
+            """,
+            {'project_id': PROJECT_ID, 'release_id': OTHER_RELEASE_ID},
+            ['id'],
+        )
+
+    async def _state(self) -> deployments.EnvironmentReleaseState:
+        rows = await deployments.current_and_latest_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        return rows[0]
+
+    async def test_failed_attempt_does_not_displace_a_success(self) -> None:
+        """Matrix 1: the newest attempt failed."""
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='failed',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('1', state.current.event.external_run_id)
+        self.assertEqual('success', state.current.event.status)
+        self.assertEqual('2', state.latest.event.external_run_id)
+        self.assertEqual('failed', state.latest.event.status)
+
+    async def test_pending_attempt_does_not_displace_a_success(self) -> None:
+        """Matrix 2: the newest attempt is still in flight."""
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='pending',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('1', state.current.event.external_run_id)
+        self.assertEqual('pending', state.latest.event.status)
+
+    async def test_newer_success_takes_over(self) -> None:
+        """Matrix 3: a success of B inactivates A."""
+        await self._add_release()
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='success',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='rolled_back',
+            external_run_id='1',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        state = await self._state()
+        assert state.current is not None
+        assert state.current.release is not None
+        self.assertEqual(OTHER_RELEASE_ID, state.current.release['id'])
+        self.assertEqual('rolled_back', state.latest.event.status)
+
+    async def test_rollback_is_a_new_success_of_the_old_release(self) -> None:
+        """Matrix 4: rolling back means deploying A again."""
+        await self._add_release()
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='success',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='success',
+            external_run_id='3',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        state = await self._state()
+        assert state.current is not None
+        assert state.current.release is not None
+        self.assertEqual(RELEASE_ID, state.current.release['id'])
+        self.assertEqual(state.current, state.latest)
+
+    async def test_late_inactive_does_not_demote_a_newer_attempt(
+        self,
+    ) -> None:
+        """Matrix 5: an old attempt of A goes inactive after a newer one."""
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='success',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='rolled_back',
+            external_run_id='1',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+        state = await self._state()
+        assert state.current is not None
+        assert state.current.release is not None
+        self.assertEqual('2', state.current.event.external_run_id)
+        self.assertEqual(RELEASE_ID, state.current.release['id'])
+
+    async def test_one_release_deployed_twice_is_stable(self) -> None:
+        """Matrix 6: two attempts, one release, current unchanged."""
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='success',
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        self.assertEqual(2, len(await self.nodes()))
+        state = await self._state()
+        assert state.current is not None
+        assert state.current.release is not None
+        self.assertEqual(RELEASE_ID, state.current.release['id'])
+        self.assertEqual(state.current, state.latest)
+
+    async def test_newest_of_two_active_deployments_wins(self) -> None:
+        """Matrix 11: the provider left both deployments active.
+
+        Imbi's policy is the newest attempt whose latest status is
+        success, whatever else the provider still calls active.
+        """
+        await self._add_release()
+        await self.upsert(status='success', external_run_id='1', timestamp=NOW)
+        await self.upsert(
+            status='success',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='2',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        state = await self._state()
+        assert state.current is not None
+        assert state.current.release is not None
+        self.assertEqual(OTHER_RELEASE_ID, state.current.release['id'])
+        self.assertEqual(state.current, state.latest)
+
+    async def test_no_success_leaves_current_unset(self) -> None:
+        await self.upsert(status='failed', external_run_id='1', timestamp=NOW)
+        state = await self._state()
+        self.assertIsNone(state.current)
+        self.assertEqual('failed', state.latest.event.status)
+
+    async def test_empty_without_ids(self) -> None:
+        self.assertEqual(
+            [], await deployments.current_and_latest_by_project(self.graph, [])
+        )
+
+
 class LifecycleTests(DeploymentNodeTestCase):
     async def test_close_in_flight_marks_terminal(self) -> None:
         await self.upsert(status='in_progress')

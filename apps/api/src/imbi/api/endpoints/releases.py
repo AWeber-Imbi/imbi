@@ -31,7 +31,10 @@ from imbi.api.domain.models import User
 from imbi.api.endpoints import _search_index
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.endpoints.operations_log import complete_opslog_entry
-from imbi.api.endpoints.projects import lookup_ops_log_performed_by
+from imbi.api.endpoints.projects import (
+    LatestDeployment,
+    lookup_ops_log_performed_by,
+)
 from imbi.api.plugins import call_with_timeout
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
@@ -163,7 +166,14 @@ class ReleaseEnvironmentEdgeResponse(pydantic.BaseModel):
 
 
 class CurrentReleaseEnvironment(pydantic.BaseModel):
-    """Latest deployment state for one environment of a project.
+    """Current deployment state for one environment of a project.
+
+    ``release`` is what the environment serves: the newest deployment
+    attempt whose latest status is ``success``.  ``latest_deployment``
+    is the newest attempt of any status, reported only when it is a
+    *different* attempt -- an in-flight or failed rollout that has not
+    replaced the current release.  When the newest attempt is the one
+    serving traffic it is omitted rather than repeated.
 
     ``release`` and ``current_status`` are ``None`` when the project is
     configured to deploy in the environment but has no recorded
@@ -178,6 +188,7 @@ class CurrentReleaseEnvironment(pydantic.BaseModel):
 
     environment: ReleaseEnvironmentRef
     release: ReleaseResponse | None = None
+    latest_deployment: LatestDeployment | None = None
     current_status: _DEPLOYMENT_STATUS | None = None
     last_event_at: datetime.datetime | None = None
     external_run_url: str | None = None
@@ -831,11 +842,11 @@ async def list_current_releases(
     """List the most-current release per environment for a project.
 
     For each environment the project is configured to deploy in
-    (``DEPLOYED_IN``), returns the release whose ``DEPLOYED_TO`` edge
-    contains the deployment event with the latest timestamp.
-    Environments with no deployment events are returned with
-    ``release=None``. Results are sorted by ``Environment.sort_order``
-    ascending, then by name.
+    (``DEPLOYED_IN``), returns the release of the newest deployment
+    attempt that succeeded, plus ``latest_deployment`` when a newer
+    attempt of another status exists.  Environments with no deployment
+    events are returned with ``release=None``. Results are sorted by
+    ``Environment.sort_order`` ascending, then by name.
 
     The deployment plugin (when bound) is consulted for live workflow
     run status on any in-flight ``DeploymentEvent`` and aggregate CI
@@ -895,15 +906,33 @@ async def list_current_releases(
         _keep_latest(by_env, slug, env, release_raw, latest)
 
     # Union the ``Deployment`` nodes over the legacy array entries the
-    # loop above read.  Environments the project no longer deploys in
-    # are skipped: the response has always enumerated ``DEPLOYED_IN``.
-    for entry in await deployment_nodes.latest_released_deployments_by_project(
+    # loop above read, through the reader the projects list uses so the
+    # two views agree on which attempt is current.  Environments the
+    # project no longer deploys in are skipped: the response has always
+    # enumerated ``DEPLOYED_IN``.
+    latest_by_slug: dict[str, LatestDeployment] = {}
+    for state in await deployment_nodes.current_and_latest_by_project(
         db, [project_id]
     ):
-        slug = str(entry.environment.get('slug') or '')
-        if entry.release is None or slug not in by_env:
+        slug = str(state.environment.get('slug') or '')
+        if slug not in by_env:
             continue
-        _keep_latest(by_env, slug, by_env[slug][0], entry.release, entry.event)
+        current = state.current
+        if current is not None and current.release is not None:
+            _keep_latest(
+                by_env, slug, by_env[slug][0], current.release, current.event
+            )
+        # The reader hands back the same node as both attempts when the
+        # newest one is the one serving traffic; only a different
+        # attempt is worth reporting.
+        newest = state.latest
+        if newest.release is not None and newest != current:
+            latest_by_slug[slug] = LatestDeployment(
+                status=newest.event.status,
+                deployed_at=newest.event.timestamp,
+                tag=newest.release.get('tag') or None,
+                committish=newest.release.get('committish') or None,
+            )
 
     ci_status_by_slug = await _hydrate_release_train(
         db, org_slug, project_id, auth, by_env
@@ -950,6 +979,7 @@ async def list_current_releases(
                 slug=env['slug'], name=env['name']
             ),
             release=release_resp,
+            latest_deployment=latest_by_slug.get(env['slug']),
             current_status=event.status if event else None,
             last_event_at=event.timestamp if event else None,
             external_run_url=event.external_run_url if event else None,

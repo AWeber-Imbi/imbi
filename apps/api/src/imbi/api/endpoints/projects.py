@@ -196,6 +196,11 @@ ProjectRelationships = models.ProjectRelationships
 class ReleaseInfo(pydantic.BaseModel):
     """Current release for a project in an environment.
 
+    The release the provider is serving: the newest deployment attempt
+    whose latest status is ``success``.  An in-flight or failed attempt
+    made since is reported separately, as ``LatestDeployment``, so a
+    failed rollout never reads as the deployed release.
+
     ``tag`` is the optional human-readable label (e.g. ``1.0.0``);
     ``committish`` is the 7-char short SHA. The UI displays
     ``tag ?? committish`` and uses ``committish`` equality to group
@@ -204,6 +209,22 @@ class ReleaseInfo(pydantic.BaseModel):
 
     deployed_at: datetime.datetime
     performed_by: str | None = None
+    tag: str | None = None
+    committish: str | None = None
+
+
+class LatestDeployment(pydantic.BaseModel):
+    """Newest deployment attempt in an environment, whatever its state.
+
+    Reported only when it is *not* the attempt serving traffic -- when
+    the newest attempt is the current release the two would say the
+    same thing, so this is omitted rather than duplicated.  So a
+    present value always means "something happened here after the
+    release that is serving": a deploy in flight, or one that failed.
+    """
+
+    status: deployment_nodes.DeploymentStatus
+    deployed_at: datetime.datetime
     tag: str | None = None
     committish: str | None = None
 
@@ -293,6 +314,12 @@ class ProjectListItem(pydantic.BaseModel):
     current_releases: dict[str, ReleaseInfo] = pydantic.Field(
         default_factory=dict
     )
+    #: Newest deployment attempt per environment slug, present only
+    #: where it is not the attempt serving traffic -- an in-flight or
+    #: failed rollout the current release has not been replaced by.
+    latest_deployments: dict[str, LatestDeployment] = pydantic.Field(
+        default_factory=dict
+    )
     release_summary: ReleaseSummary | None = None
     #: ``"<base>..<head>"`` -> whether that range needs action: any
     #: commit in it CI called ``true``, or any commit CI never answered.
@@ -337,6 +364,10 @@ class ProjectResponse(pydantic.BaseModel):
     viewer_open_pr_count: int = 0
     viewer_closed_pr_count: int = 0
     current_releases: dict[str, ReleaseInfo] = pydantic.Field(
+        default_factory=dict
+    )
+    #: See ``ProjectListItem.latest_deployments``.
+    latest_deployments: dict[str, LatestDeployment] = pydantic.Field(
         default_factory=dict
     )
 
@@ -766,56 +797,85 @@ async def lookup_ops_log_performed_by(
 async def _apply_deployment_nodes(
     db: graph.Graph,
     project_ids: list[str],
-    latest: dict[
+    current: dict[
         tuple[str, str],
         tuple[str | None, str | None, datetime.datetime, str | None],
     ],
-) -> None:
+) -> dict[tuple[str, str], LatestDeployment]:
     """Union the ``Deployment`` nodes over the legacy array entries.
 
     The array stopped growing at the node cutover, so anything deployed
-    since is only a node.  Failures are swallowed for the same reason
-    the query in :func:`_fetch_current_releases` is: release data is
-    best-effort.
+    since is only a node.  The shared reader answers with two attempts
+    per environment: only the newest *successful* one may displace a
+    legacy array entry as the current release, and the newest attempt of
+    any status becomes the returned ``LatestDeployment`` when it is a
+    different attempt.
+
+    Failures are swallowed for the same reason the query in
+    :func:`_fetch_current_releases` is: release data is best-effort.
     """
     try:
-        rows = await deployment_nodes.latest_released_deployments_by_project(
+        rows = await deployment_nodes.current_and_latest_by_project(
             db, project_ids
         )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
             'Failed to fetch deployment nodes for projects', exc_info=True
         )
-        return
+        return {}
+    latest_deployments: dict[tuple[str, str], LatestDeployment] = {}
     for entry in rows:
-        if entry.release is None:
-            continue
         key = (entry.project_id, str(entry.environment.get('slug') or ''))
-        existing = latest.get(key)
-        if existing is not None and deployment_nodes.as_utc(
-            entry.event.timestamp
-        ) <= deployment_nodes.as_utc(existing[2]):
-            continue
-        latest[key] = (
-            entry.release.get('tag') or None,
-            entry.release.get('committish') or None,
-            entry.event.timestamp,
-            entry.event.performed_by,
-        )
+        if entry.current is not None and entry.current.release is not None:
+            existing = current.get(key)
+            if existing is None or deployment_nodes.as_utc(
+                entry.current.event.timestamp
+            ) > deployment_nodes.as_utc(existing[2]):
+                current[key] = (
+                    entry.current.release.get('tag') or None,
+                    entry.current.release.get('committish') or None,
+                    entry.current.event.timestamp,
+                    entry.current.event.performed_by,
+                )
+        # The reader hands back the same node as both attempts when the
+        # newest one is the one serving traffic, so the two compare
+        # equal and there is nothing extra to report.
+        if entry.latest.release is not None and entry.latest != entry.current:
+            latest_deployments[key] = LatestDeployment(
+                status=entry.latest.event.status,
+                deployed_at=entry.latest.event.timestamp,
+                tag=entry.latest.release.get('tag') or None,
+                committish=entry.latest.release.get('committish') or None,
+            )
+    return latest_deployments
+
+
+class CurrentReleaseState(typing.NamedTuple):
+    """Per-project current releases and latest attempts, by env slug."""
+
+    current: dict[str, dict[str, ReleaseInfo]]
+    latest: dict[str, dict[str, LatestDeployment]]
 
 
 async def _fetch_current_releases(
     db: graph.Graph,
     project_ids: list[str],
-) -> dict[str, dict[str, ReleaseInfo]]:
-    """Return {project_id: {env_slug: ReleaseInfo}} for current releases.
+) -> CurrentReleaseState:
+    """Return the current release and latest attempt per environment.
 
-    Reads from the AGE graph — the same source the project-detail
-    ``/releases/current`` endpoint uses — so both views agree.  For
-    each project we walk every
+    Both keyed ``{project_id: {env_slug: ...}}``.  ``Deployment`` nodes
+    are read through ``current_and_latest_by_project`` — the same reader
+    the project-detail ``/releases/current`` endpoint uses — so both
+    views agree on which attempt is current.
+
+    The legacy ``DEPLOYED_TO`` array is still the only record of
+    anything deployed before the node cutover, so it is read here as
+    well: for each project we walk every
     ``(p)-[:HAS_RELEASE]->(r:Release)-[d:DEPLOYED_TO]->(e:Environment)``
-    edge and pick the release whose latest ``DeploymentEvent``
-    has the most recent ``timestamp`` per environment.
+    edge and pick the release whose latest ``DeploymentEvent`` has the
+    most recent ``timestamp`` per environment.  Those entries carry no
+    per-attempt identity to group by, so they cannot be status-filtered
+    the way the nodes are; a node only ever displaces one.
 
     ``performed_by`` on each ``DeploymentEvent`` is populated for
     resync-sourced events but is intentionally null for in-product
@@ -828,7 +888,7 @@ async def _fetch_current_releases(
     Errors are swallowed — release data is best-effort.
     """
     if not project_ids:
-        return {}
+        return CurrentReleaseState({}, {})
     query: typing.LiteralString = """
     MATCH (p:Project)-[:HAS_RELEASE]->(r:Release)
                     -[d:DEPLOYED_TO]->(e:Environment)
@@ -849,7 +909,7 @@ async def _fetch_current_releases(
         LOGGER.warning(
             'Failed to fetch current releases for projects', exc_info=True
         )
-        return {}
+        return CurrentReleaseState({}, {})
 
     # For each (project_id, env_slug), keep the (release, event) pair
     # with the latest event timestamp.
@@ -877,7 +937,7 @@ async def _fetch_current_releases(
         if existing is None or event_ts > existing[2]:
             latest[key] = (tag, committish, event_ts, performed_by)
 
-    await _apply_deployment_nodes(db, project_ids, latest)
+    latest_deployments = await _apply_deployment_nodes(db, project_ids, latest)
 
     # Backfill performed_by from operations_log for events whose
     # AGE edge left it null (in-product deploy/promote path).
@@ -900,15 +960,18 @@ async def _fetch_current_releases(
             if looked_up:
                 latest[key] = (tag, committish, ts, looked_up)
 
-    result: dict[str, dict[str, ReleaseInfo]] = {}
+    current: dict[str, dict[str, ReleaseInfo]] = {}
     for (pid, env_slug), (tag, committish, ts, performed_by) in latest.items():
-        result.setdefault(pid, {})[env_slug] = ReleaseInfo(
+        current.setdefault(pid, {})[env_slug] = ReleaseInfo(
             tag=tag,
             committish=committish,
             performed_by=performed_by,
             deployed_at=ts,
         )
-    return result
+    in_flight: dict[str, dict[str, LatestDeployment]] = {}
+    for (pid, env_slug), entry in latest_deployments.items():
+        in_flight.setdefault(pid, {})[env_slug] = entry
+    return CurrentReleaseState(current, in_flight)
 
 
 async def _fetch_actionable_commit_times(
@@ -2186,15 +2249,15 @@ async def list_projects(
         _fetch_release_summaries(releasable_ids),
     )
 
-    await _resolve_release_display_names(db, releases)
+    await _resolve_release_display_names(db, releases.current)
 
     # Environment-pair verdicts.  ``current_releases`` has to be on each
     # project before the ranges can be derived, so this runs after the
     # gather rather than inside it.
     for project_data in project_data_list:
-        project_data['current_releases'] = releases.get(
-            str(project_data.get('id', '')), {}
-        )
+        pid = str(project_data.get('id', ''))
+        project_data['current_releases'] = releases.current.get(pid, {})
+        project_data['latest_deployments'] = releases.latest.get(pid, {})
     # Only ``ProjectListItem`` carries ``drift_ranges``, so the two
     # reads behind it are pure waste on the full-response path.
     drift_ranges = (
