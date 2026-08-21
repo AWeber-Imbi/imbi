@@ -3888,9 +3888,10 @@ export interface paths {
          * @description Push current Imbi state to the remote for one project.
          *
          *     Re-dispatches each assigned lifecycle plugin's ``on_project_updated``
-         *     upsert, so a sync both provisions a missing remote and updates an
-         *     existing one.  Returns aggregate per-plugin counts; a project with
-         *     no lifecycle plugins returns a zeroed summary.
+         *     upsert, so a sync both provisions a missing remote -- where the
+         *     plugin has somewhere to provision it -- and updates an existing one.
+         *     Returns aggregate per-plugin counts; a project with no lifecycle
+         *     plugins returns a zeroed summary.
          */
         post: operations["sync_project_lifecycle_api_organizations__org_slug__projects__project_id__lifecycle_sync_post"];
         delete?: never;
@@ -13820,6 +13821,18 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Deprecated
+             * @description Indicates that the project should not be used
+             * @default false
+             */
+            deprecated: boolean;
+            /**
+             * Deprecation Reason
+             * @description Specify why the project is deprecated and what should be used instead.
+             * @default null
+             */
+            deprecation_reason: string | null;
         };
         /** ProjectResponse */
         ProjectBlueprintResponse: {
@@ -13881,6 +13894,18 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
+            /**
+             * Deprecated
+             * @description Indicates that the project should not be used
+             * @default false
+             */
+            deprecated: boolean;
+            /**
+             * Deprecation Reason
+             * @description Specify why the project is deprecated and what should be used instead.
+             * @default null
+             */
+            deprecation_reason: string | null;
         };
         /** ProjectType */
         ProjectTypeBlueprintRequest: {
@@ -14096,6 +14121,20 @@ export interface components {
              */
             can_promote: boolean;
             organization: components["schemas"]["Organization"];
+        };
+        /** ProjectDeployedInEnvironmentEdge */
+        Project_Environment_DEPLOYED_INEdgeProperties: {
+            /**
+             * Acceptance Test Status
+             * @default null
+             */
+            acceptance_test_status: ("pass" | "fail") | null;
+            /**
+             * Url
+             * @description The deployment URL for this project in this environment
+             * @default null
+             */
+            url: string | null;
         };
     };
     responses: never;
