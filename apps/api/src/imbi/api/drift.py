@@ -716,26 +716,33 @@ async def resync_verdicts(
     verdicts = {
         sha: parse_note_verdict(body) for sha, body in listing.notes.items()
     }
+    # The skip set was taken *before* the enumeration, so a verdict a
+    # push webhook landed while the ref was being read is not in it: its
+    # body would be read from the older tip this listing captured and
+    # re-inserted with a later ``recorded_at``, which under
+    # ``ReplacingMergeTree(recorded_at)`` is exactly the inversion the
+    # skip exists to prevent.  Re-reading the store closes the window --
+    # anything answered since is dropped from the write.
+    landed = await known_verdicts(project_id)
+    raced = set(landed or {}) - set(known or {})
+    if raced:
+        LOGGER.info(
+            '%d drift verdict(s) for project %s landed while the ref was '
+            'read; leaving the newer rows alone',
+            len(raced),
+            project_id,
+        )
+        verdicts = {
+            sha: verdict
+            for sha, verdict in verdicts.items()
+            if sha.lower() not in raced
+        }
     recorded = await record_verdicts(project_id, verdicts)
     if recorded is None:
         raise RuntimeError(
             f'could not store drift verdicts for project {project_id}'
         )
-    # The ref has now been read end to end, which is the claim
-    # :func:`backfill_verdicts` marks -- so mark it and spare that pass.
-    # Only on a complete listing, for the same reason it is: a partial
-    # pass recorded as finished leaves those commits permanently
-    # unanswered, which the rule reads as "nothing to do".
-    if listing.complete:
-        await db.execute(
-            _MARK_BACKFILLED,
-            {
-                'project_id': project_id,
-                'now': datetime.datetime.now(datetime.UTC).isoformat(),
-            },
-            ['id'],
-        )
-    answers: dict[str, bool] = dict(known or {})
+    answers: dict[str, bool] = dict(landed or known or {})
     answers.update(
         {
             sha.lower(): verdict.drift_detected
@@ -746,6 +753,21 @@ async def resync_verdicts(
     stamped = await _stamp_releases_from(
         db, org_slug=org_slug, project_id=project_id, answers=answers
     )
+    # Marked last, and only on a complete listing.  Last because the
+    # marker is what stops :func:`backfill_verdicts` from ever reading
+    # this ref again, so it must not be set while a later step of this
+    # pass can still fail.  Complete-only for the reason that function
+    # gives: a partial pass recorded as finished leaves those commits
+    # permanently unanswered, which the rule reads as "nothing to do".
+    if listing.complete:
+        await db.execute(
+            _MARK_BACKFILLED,
+            {
+                'project_id': project_id,
+                'now': datetime.datetime.now(datetime.UTC).isoformat(),
+            },
+            ['id'],
+        )
     return ResyncResult(recorded=recorded, stamped=stamped)
 
 
@@ -758,18 +780,23 @@ async def _stamp_releases_from(
 ) -> int:
     """Apply verdicts already in hand to unanswered Releases.
 
-    A ``Release.committish`` is the abbreviated SHA, so the match is by
-    prefix -- and only where exactly one full SHA carries that prefix.
-    Two commits sharing seven characters is unlikely but not impossible
-    in a long-lived repo, and stamping a release with another commit's
-    verdict is worse than leaving it to the sweep, which resolves the
-    committish through the remote.
+    A ``Release.committish`` is usually the abbreviated SHA, so the match
+    is by prefix -- and only where exactly one full SHA starts with the
+    whole committish.  Two commits sharing seven characters is unlikely
+    but not impossible in a long-lived repo, and stamping a release with
+    another commit's verdict is worse than leaving it to the sweep, which
+    resolves the committish through the remote.
+
+    Bucketing on seven characters is an index, not the test: a committish
+    longer than seven (some writers store the full SHA) would otherwise
+    be truncated to its bucket and matched against a note whose SHA
+    diverges after the seventh character.
     """
     if not answers:
         return 0
-    by_prefix: dict[str, list[bool]] = {}
+    by_prefix: dict[str, list[tuple[str, bool]]] = {}
     for sha, verdict in answers.items():
-        by_prefix.setdefault(sha[:7], []).append(verdict)
+        by_prefix.setdefault(sha[:7], []).append((sha, verdict))
     rows = await db.execute(
         _UNANSWERED_RELEASES_ALL,
         {'project_id': project_id, 'limit': STAMP_LIMIT},
@@ -778,7 +805,11 @@ async def _stamp_releases_from(
     stamped = 0
     for row in rows:
         committish = str(graph.parse_agtype(row['committish'])).lower()
-        candidates = by_prefix.get(committish[:7], [])
+        candidates = [
+            verdict
+            for sha, verdict in by_prefix.get(committish[:7], [])
+            if sha.startswith(committish)
+        ]
         if len(candidates) != 1:
             if candidates:
                 LOGGER.warning(
