@@ -525,6 +525,45 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
         conns[0].close.assert_awaited_once()
         conns[1].close.assert_awaited_once()
 
+    async def test_retries_a_lost_update_race(self) -> None:
+        """AGE reports a concurrent update instead of re-reading the row.
+
+        The connection stays in the pool -- the backend is healthy, it
+        just lost the race -- and the retry runs under a new snapshot.
+        """
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+        seen: list[typing.Any] = []
+
+        async def run(conn: typing.Any) -> str:
+            seen.append(conn)
+            if len(seen) == 1:
+                raise psycopg.errors.InternalError_(
+                    'Entity failed to be updated: 3'
+                )
+            return 'ok'
+
+        with self.assertLogs(client.LOGGER, level='WARNING'):
+            result = await g._run_retrying_poisoned(run)
+        self.assertEqual('ok', result)
+        self.assertEqual([conns[0], conns[1]], seen)
+        conns[0].close.assert_not_awaited()
+
+    async def test_other_internal_errors_do_not_retry(self) -> None:
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+
+        async def run(conn: typing.Any) -> str:
+            raise psycopg.errors.InternalError_('something else broke')
+
+        with self.assertRaises(psycopg.errors.InternalError_):
+            await g._run_retrying_poisoned(run)
+        self.assertEqual(1, pool.connection.call_count)
+
     async def test_other_errors_do_not_retry(self) -> None:
         g = graph.Graph()
         g.opened = True

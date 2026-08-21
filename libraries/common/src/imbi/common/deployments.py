@@ -113,6 +113,37 @@ _UPSERT_CREATE: typing.Final[typing.LiteralString] = """
     CREATE (d)-[:TARGETS]->(e)
 """
 
+# A deployment is one rollout, so it belongs to one release -- but
+# ``HAS_DEPLOYMENT`` only ever got ``MERGE``d, and two writers can
+# resolve the same rollout to different ``Release`` nodes: a deploy of an
+# untagged "Deploy <branch>" release, then the tagged release the
+# gateway creates seconds later for the tag that rollout actually
+# carries.  Both edges survived, every reader fanned out into two rows,
+# and the tie broke on the release nanoid -- so which release an
+# environment "runs" was arbitrary, and an environment served by a
+# tagged release displayed no tag at all.
+#
+# Attaching is therefore a move, the way ``TARGETS`` already is, with
+# one asymmetry: a tagged release outranks an untagged one whatever the
+# arrival order, because the untagged node is a placeholder for the
+# commit and the tagged one names the release.  So the incoming edge
+# displaces the others, except when it is untagged and a tagged edge is
+# already there -- then the incoming edge is the one that goes.
+# ``{carried}`` is substituted the same way as in ``_UPSERT_MERGE``.
+_ONE_RELEASE: typing.Final[typing.LiteralString] = """
+    MERGE (r)-[:HAS_DEPLOYMENT]->(d)
+    WITH DISTINCT {carried}
+    OPTIONAL MATCH (o:Release)-[dup:HAS_DEPLOYMENT]->(d)
+    WHERE id(o) <> id(r) AND (r.tag IS NOT NULL OR o.tag IS NULL)
+    DELETE dup
+    WITH DISTINCT {carried}
+    OPTIONAL MATCH (t:Release)-[:HAS_DEPLOYMENT]->(d)
+                   <-[mine:HAS_DEPLOYMENT]-(r)
+    WHERE id(t) <> id(r) AND t.tag IS NOT NULL AND r.tag IS NULL
+    DELETE mine
+    WITH DISTINCT d
+"""
+
 _UPSERT_TAIL: typing.Final[typing.LiteralString] = """
     WITH d,
          d.created_at AS prior_created,
@@ -166,9 +197,7 @@ def _upsert_query(
     else:
         query += _UPSERT_CREATE
     if release_id is not None:
-        query += """
-    MERGE (r)-[:HAS_DEPLOYMENT]->(d)
-    """
+        query += _ONE_RELEASE.replace('{carried}', 'd, r')
     return query + _UPSERT_TAIL
 
 
@@ -872,13 +901,17 @@ async def stuck_deployments(
     return out
 
 
-_ATTACH_QUERY: typing.Final[typing.LiteralString] = """
+_ATTACH_QUERY: typing.Final[typing.LiteralString] = (
+    """
 MATCH (p:Project {{id: {project_id}}})<-[:BELONGS_TO]-(d:Deployment
       {{id: {deployment_id}}})
 MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
-MERGE (r)-[:HAS_DEPLOYMENT]->(d)
+"""
+    + _ONE_RELEASE.replace('{carried}', 'd, r')
+    + """
 RETURN d.id AS id
 """
+)
 
 
 async def attach_release(
