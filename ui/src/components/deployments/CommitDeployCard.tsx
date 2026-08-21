@@ -269,9 +269,7 @@ function CommitRow({
       className="border-tertiary flex min-w-0 items-center gap-3 border-b px-3 py-1.5 last:border-b-0"
       style={isCurrent && accent ? { backgroundColor: accent.bg } : undefined}
     >
-      <span className="flex w-5 shrink-0 justify-center">
-        <DriftIndicator drift={commit.drift_detected} />
-      </span>
+      <DriftIndicator drift={commit.drift_detected} />
       <span className="shrink-0 font-mono text-xs">{commit.short_sha}</span>
       {isHead ? <Badge variant="outline">HEAD</Badge> : null}
       <TagBadge tag={commit.tag} />

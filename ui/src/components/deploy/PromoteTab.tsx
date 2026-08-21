@@ -399,9 +399,7 @@ export function PromoteTab({
                     onClick={() => setSelectedSha(c.sha)}
                     type="button"
                   >
-                    <span className="flex w-5 shrink-0 justify-center">
-                      <DriftIndicator drift={c.drift_detected} />
-                    </span>
+                    <DriftIndicator drift={c.drift_detected} />
                     <span className="shrink-0 font-mono text-xs">
                       {c.short_sha}
                     </span>

@@ -139,9 +139,7 @@ function CommitRow({
         >
           {active ? <Check size={10} strokeWidth={3} /> : null}
         </span>
-        <span className="flex w-5 shrink-0 justify-center">
-          <DriftIndicator drift={commit.drift_detected} />
-        </span>
+        <DriftIndicator drift={commit.drift_detected} />
         <span className="text-secondary shrink-0 font-mono text-xs">
           {commit.short_sha}
         </span>
