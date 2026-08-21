@@ -26,6 +26,7 @@ again (see ``sync_drift_blocker`` in the deployments endpoint module).
 
 from __future__ import annotations
 
+import collections.abc
 import datetime
 import json
 import logging
@@ -34,7 +35,7 @@ import typing
 import fastapi
 
 from imbi.api.auth import principals
-from imbi.common import graph
+from imbi.common import clickhouse, graph
 from imbi.common.clickhouse import client as ch_client
 from imbi.common.plugins import errors as plugin_errors
 
@@ -203,6 +204,37 @@ async def record_verdicts(
         )
         return None
     return len(rows)
+
+
+async def verdicts_by_sha(
+    project_id: str, shas: collections.abc.Iterable[str]
+) -> dict[str, bool]:
+    """Latest verdict per commit for a bounded sha set, keyed by
+    lowercase full sha.
+
+    A missing key *is* the "no verdict" state, which readers fail closed
+    on (an unanswered commit displays as drifted).  A ClickHouse failure
+    logs and answers ``{}`` -- indistinguishable from "no verdicts", and
+    therefore also fail-closed -- rather than taking the commit list that
+    asked down with it.
+    """
+    wanted = sorted({sha.lower() for sha in shas if sha})
+    if not wanted:
+        return {}
+    try:
+        rows = await clickhouse.query(
+            # Table name is a module constant; values are bound params.
+            f'SELECT sha, drift_detected FROM {VERDICT_TABLE} FINAL '  # noqa: S608
+            'WHERE project_id = {project_id:String} '
+            'AND sha IN {shas:Array(String)}',
+            {'project_id': project_id, 'shas': wanted},
+        )
+    except Exception:
+        LOGGER.exception(
+            'could not read drift verdicts for project %s', project_id
+        )
+        return {}
+    return {str(row['sha']): bool(row['drift_detected']) for row in rows}
 
 
 async def _set_drift(

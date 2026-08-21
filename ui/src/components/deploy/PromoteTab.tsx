@@ -11,11 +11,13 @@ import {
   listCurrentReleases,
   promoteDeployment,
 } from '@/api/endpoints'
+import { DriftIndicator } from '@/components/releases/DriftIndicator'
 import {
   cutBlockedLabel,
   cutBlockedReason,
   type ReleaseInFlightState,
 } from '@/components/releases/releaseInFlight'
+import { TagBadge } from '@/components/releases/TagBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -397,9 +399,11 @@ export function PromoteTab({
                     onClick={() => setSelectedSha(c.sha)}
                     type="button"
                   >
+                    <DriftIndicator drift={c.drift_detected} />
                     <span className="shrink-0 font-mono text-xs">
                       {c.short_sha}
                     </span>
+                    <TagBadge tag={c.tag} />
                     <span className="min-w-0 flex-1 truncate text-sm">
                       {c.message}
                     </span>

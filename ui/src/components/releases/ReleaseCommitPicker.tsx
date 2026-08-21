@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils'
 import type { DeploymentCommitCiStatus } from '@/types'
 
 import { CiStatusDot } from './CiStatusDot'
+import { DriftIndicator } from './DriftIndicator'
+import { TagBadge } from './TagBadge'
 
 interface CommitRowProps {
   accent?: ChipColors | null
@@ -31,9 +33,11 @@ interface PickerCommit {
   author_email?: null | string
   authored_at?: null | string
   ci_status: DeploymentCommitCiStatus
+  drift_detected?: boolean | null
   message: string
   sha: string
   short_sha: string
+  tag?: null | string
   url?: null | string
 }
 
@@ -135,9 +139,11 @@ function CommitRow({
         >
           {active ? <Check size={10} strokeWidth={3} /> : null}
         </span>
+        <DriftIndicator drift={commit.drift_detected} />
         <span className="text-secondary shrink-0 font-mono text-xs">
           {commit.short_sha}
         </span>
+        <TagBadge tag={commit.tag} />
         <span className="min-w-0 flex-1 truncate text-sm">{subject}</span>
         {/* Fixed-width columns, each rendered even when empty, so age /
             author / status line up down the list. */}

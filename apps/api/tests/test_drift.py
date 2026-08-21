@@ -133,6 +133,40 @@ class RecordVerdictsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(written)
 
 
+class VerdictsByShaTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.query = mock.AsyncMock(return_value=[])
+        patcher = mock.patch.object(drift.clickhouse, 'query', new=self.query)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_maps_verdicts_by_lowercase_sha(self) -> None:
+        self.query.return_value = [
+            {'sha': FULL_SHA, 'drift_detected': True},
+            {'sha': 'e' * 40, 'drift_detected': False},
+        ]
+        verdicts = await drift.verdicts_by_sha(
+            'p1', [FULL_SHA.upper(), 'e' * 40, 'unanswered' + 'a' * 30]
+        )
+        self.assertEqual({FULL_SHA: True, 'e' * 40: False}, verdicts)
+        # The queried shas are lowercased to join the verdict table.
+        params = self.query.await_args.args[1]
+        self.assertIn(FULL_SHA, params['shas'])
+
+    async def test_no_shas_asks_nothing(self) -> None:
+        self.assertEqual({}, await drift.verdicts_by_sha('p1', []))
+        self.assertEqual({}, await drift.verdicts_by_sha('p1', ['']))
+        self.query.assert_not_awaited()
+
+    async def test_a_clickhouse_failure_answers_empty(self) -> None:
+        # {} is the fail-closed default: every commit keeps "no verdict"
+        # and displays as drifted, rather than the commit list erroring.
+        self.query.side_effect = RuntimeError('boom')
+        with self.assertLogs(drift.LOGGER, level='ERROR'):
+            verdicts = await drift.verdicts_by_sha('p1', [FULL_SHA])
+        self.assertEqual({}, verdicts)
+
+
 class BackfillVerdictsTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.db = mock.AsyncMock(spec=graph.Graph)
