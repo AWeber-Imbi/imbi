@@ -443,6 +443,52 @@ async def execute_deployment_sweep(
     return 'succeeded'
 
 
+async def execute_deployment_status_repair(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Put back the ``success`` resync overwrote with ``rolled_back``.
+
+    Reads each mislabelled node's own ``history`` rather than the
+    remote, so it costs no API calls and cannot be rate-limited.
+    Skipped means the project has no ``rolled_back`` deployments.
+    """
+    from imbi.api import deployment_status_repair
+
+    summary = await deployment_status_repair.repair_project(db, project_id)
+    if not summary.examined:
+        return _skip(
+            ctx,
+            'deployment-status-repair',
+            'No deployments marked rolled back.',
+        )
+    if not summary.repaired:
+        # Everything examined lacked a recoverable ``success``.  Report
+        # it rather than claiming a repair: these nodes stay wrong and
+        # an operator should know the count is not shrinking.
+        return _skip(
+            ctx,
+            'deployment-status-repair',
+            f'{summary.unrepairable} rolled-back deployment(s) record no '
+            f'prior success to restore.',
+            examined=summary.examined,
+            unrepairable=summary.unrepairable,
+        )
+    ctx.log.record(
+        'succeeded',
+        'deployment-status-repair',
+        f'Restored {summary.repaired} deployment(s) to success; '
+        f'{summary.unrepairable} had no prior success recorded.',
+        examined=summary.examined,
+        repaired=summary.repaired,
+        unrepairable=summary.unrepairable,
+    )
+    return 'succeeded'
+
+
 async def execute_rescore(
     db: graph.Graph,
     client: valkey.Valkey,
