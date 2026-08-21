@@ -138,7 +138,19 @@ async def _record(
     *timestamp* is when the rollout actually ended, not when the sweep
     noticed.  It matters: the current-release pointer only moves
     forward, so closing a week-old success at sweep time would let it
-    supersede a release that shipped after it.
+    supersede a release that shipped after it.  See
+    :func:`_close_out_at` for the bound that keeps a remote from
+    reporting an end time the sweep could not have observed.
+
+    Only a ``success`` moves an environment's current-release pointer
+    (``_set_current_release``, reached through
+    ``append_deployment_event``), so a swept ``failed`` cannot promote
+    itself to "what is deployed" that way.  It used to arrive there by
+    the back door: the readers that *derive* the current release ranked
+    by timestamp alone, so any close-out written after a newer rollout
+    won regardless of status.  Those readers now exclude ``failed`` and
+    ``rolled_back`` -- see
+    :func:`imbi.common.deployments.latest_released_deployments_by_project`.
     """
     if release_id is None:
         await deployments.upsert_deployment(
@@ -176,6 +188,38 @@ async def _record(
             item.project_id,
             result,
         )
+
+
+def _close_out_at(
+    completed_at: datetime.datetime | None,
+    item: deployments.StuckDeployment,
+    now: datetime.datetime,
+) -> datetime.datetime:
+    """When a swept close-out should claim the rollout ended.
+
+    The remote's completion time, never later than ``now``.  Falls back
+    to when the deployment was created, as before, when the remote does
+    not say.
+
+    A remote status is not obliged to describe only the deployment it
+    hangs off: GitHub's ``inactive`` is stamped with the moment a
+    *later* deployment superseded this one, which is a real completion
+    time belonging to the wrong rollout.
+    :meth:`GitHubDeploymentPlugin.get_deployment_status` now skips
+    those, so this bound guards the general case rather than that one --
+    any remote reporting a completion the sweep could not have observed
+    is pulled back to sweep time instead of landing in the future, where
+    it would outrank every deployment that legitimately came after it.
+
+    Deliberately one-sided.  Clamping *up* to ``created_at`` would be
+    the wrong direction: a node created by resync carries an ingest-time
+    ``created_at`` that can postdate the rollout it describes, and
+    raising the close-out to meet it would push the timestamp later --
+    which is exactly the failure this bound exists to prevent.
+    """
+    if completed_at is None:
+        return item.created_at
+    return min(deployments.as_utc(completed_at), now)
 
 
 async def _expire_unpollable(
@@ -300,7 +344,7 @@ async def sweep_project(
                 status=status,
                 note=f'closed by sweeper: run {run.status}',
                 run_url=run.run_url,
-                timestamp=run.completed_at or item.created_at,
+                timestamp=_close_out_at(run.completed_at, item, now),
             )
             resolved += 1
         elif deployments.as_utc(item.created_at) < now - EXPIRE_AFTER:

@@ -305,6 +305,14 @@ class RecentCommit(pydantic.BaseModel):
     authored_at: datetime.datetime
     ci_status: str = 'unknown'
     url: str | None = None
+    #: Per-commit drift verdict from the ClickHouse ``commit_drift``
+    #: table; ``None`` when CI never answered for this commit.  Readers
+    #: fail closed: only an explicit ``False`` renders as "no drift".
+    drift_detected: bool | None = None
+    #: Name of the tag pointing directly at this commit (the highest
+    #: semver when several do), from the ClickHouse ``tags`` table;
+    #: ``None`` for the untagged majority of commits.
+    tag: str | None = None
 
 
 class ReleaseDriftResponse(pydantic.BaseModel):
@@ -1867,7 +1875,10 @@ async def list_commits(
     commits = await call_with_timeout(
         handler.list_commits(ctx, credentials, ref=ref, limit=limit)
     )
-    await persist_link_writeback(db, ctx)
+    await asyncio.gather(
+        persist_link_writeback(db, ctx),
+        _annotate_commits(project_id, commits),
+    )
     return commits
 
 
@@ -1920,7 +1931,10 @@ async def compare_refs(
     result = await call_with_timeout(
         handler.compare(ctx, credentials, base=base, head=head)
     )
-    await persist_link_writeback(db, ctx)
+    await asyncio.gather(
+        persist_link_writeback(db, ctx),
+        _annotate_commits(project_id, result.commits),
+    )
     return result
 
 
@@ -5068,6 +5082,79 @@ def _recent_commit_from_row(row: dict[str, typing.Any]) -> RecentCommit:
     )
 
 
+def _tags_from_rows(
+    rows: collections.abc.Iterable[dict[str, typing.Any]],
+) -> dict[str, str]:
+    """Name of the tag pointing directly at each sha, keyed lowercase.
+
+    A sha several tags point at answers the highest-ordered release tag
+    (same rule as :func:`_latest_release_tag`).  Untagged shas -- the
+    majority -- are simply absent.  Takes rows, not a project, so a
+    caller that already read the project's tags does not read them twice.
+    """
+    by_sha: dict[str, list[dict[str, typing.Any]]] = {}
+    for row in rows:
+        by_sha.setdefault(str(row['sha']).lower(), []).append(row)
+    return {
+        sha: str(latest['name'])
+        for sha, group in by_sha.items()
+        if (latest := _latest_release_tag(group)) is not None
+    }
+
+
+async def _tags_by_sha(
+    project_id: str, shas: collections.abc.Iterable[str]
+) -> dict[str, str]:
+    """Direct tag names for a bounded set of shas, keyed lowercase.
+
+    A ClickHouse failure logs and answers ``{}`` (no badges) rather than
+    taking a plugin-sourced commit list down with it.
+    """
+    wanted = sorted({sha.lower() for sha in shas if sha})
+    if not wanted:
+        return {}
+    try:
+        rows = await clickhouse.query(
+            _PROJECT_TAGS_SQL + ' AND lower(sha) IN {shas:Array(String)}',
+            {'project_id': project_id, 'shas': wanted},
+        )
+    except Exception:
+        LOGGER.exception('could not read tags for project %s', project_id)
+        return {}
+    return _tags_from_rows(rows)
+
+
+async def _annotate_commits(
+    project_id: str,
+    commits: collections.abc.Sequence[Commit | RecentCommit],
+    *,
+    tags: dict[str, str] | None = None,
+) -> None:
+    """Stamp drift verdicts and direct tags onto commit rows, in place.
+
+    A commit with no recorded drift verdict keeps ``None``, which the UI
+    fails closed on (rendered as drifted); one no tag points at keeps
+    ``tag=None`` (no badge).  A caller that already holds the project's
+    tags passes them in to save the lookup.
+    """
+    from imbi.api import drift
+
+    if not commits:
+        return
+    shas = [c.sha for c in commits]
+    if tags is None:
+        verdicts, tags = await asyncio.gather(
+            drift.verdicts_by_sha(project_id, shas),
+            _tags_by_sha(project_id, shas),
+        )
+    else:
+        verdicts = await drift.verdicts_by_sha(project_id, shas)
+    for commit in commits:
+        key = commit.sha.lower()
+        commit.drift_detected = verdicts.get(key)
+        commit.tag = tags.get(key)
+
+
 class _CommitFacts(typing.NamedTuple):
     """The synced-commit facts a release-history entry is built from."""
 
@@ -5213,7 +5300,9 @@ async def list_recent_commits(
         sql,
         {'project_id': project_id, 'ref': ref or '', 'limit': capped},
     )
-    return [_recent_commit_from_row(row) for row in rows]
+    commits = [_recent_commit_from_row(row) for row in rows]
+    await _annotate_commits(project_id, commits)
+    return commits
 
 
 _DRIFT_COMMIT_CAP = 100
@@ -5300,6 +5389,9 @@ async def get_release_drift(
     )
     commits_since_tag = int(count_rows[0]['c']) if count_rows else 0
     commits = [_recent_commit_from_row(row) for row in commit_rows]
+    await _annotate_commits(
+        project_id, commits, tags=_tags_from_rows(tag_rows)
+    )
 
     classify_input = [
         Commit(sha=c.sha, short_sha=c.short_sha, message=c.message)

@@ -43,6 +43,17 @@ export interface DriftProject {
   }
 }
 
+/**
+ * The per-commit drift rule, in one place: a commit is clean only when
+ * its verdict is explicitly `false`. A `true` verdict or an unanswered
+ * commit (`null`/absent) both fail closed as drifted.
+ */
+export function commitDrifted(commit: {
+  drift_detected?: boolean | null
+}): boolean {
+  return commit.drift_detected !== false
+}
+
 export function computeDriftPairs(
   environments: DriftEnvironment[],
   releases: Record<string, { committish?: null | string; tag?: null | string }>,

@@ -333,13 +333,33 @@ RETURN p.id AS project_id,
 """
 
 
+# Only these statuses may name an environment's current release.
+# ``failed`` and ``rolled_back`` are excluded because neither puts a
+# release into an environment: a failed rollout left whatever was
+# already there running, and ``rolled_back`` says outright that this
+# release is no longer serving.  Without the exclusion the newest write
+# wins whatever it says, so closing out a *superseded* deployment --
+# which by construction happens after the deployment that superseded
+# it -- drags the environment back to the older release.
+#
+# ``pending``/``in_progress`` stay in: they are how the release train
+# shows a rollout under way, and ``_hydrate_release_train`` selects
+# exactly those events to poll and self-heal.
+#
+# The filter is repeated on purpose.  The first pass decides which
+# timestamp is the environment's newest; the second re-matches the node
+# holding it.  Filtering only the first would let ``max()`` land on a
+# timestamp no surviving node carries, and the environment would drop
+# out of the result entirely rather than fall back to its last success.
 _LATEST_RELEASED_BY_PROJECT_QUERY: typing.Final[typing.LiteralString] = """
 MATCH (p:Project)<-[:BELONGS_TO]-(d:Deployment)-[:TARGETS]->(e:Environment)
 WHERE p.id IN {project_ids}
+      AND d.status IN ['pending', 'in_progress', 'success']
 MATCH (:Release)-[:HAS_DEPLOYMENT]->(d)
 WITH p, e, max(COALESCE(d.updated_at, d.created_at)) AS ts
 MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
 WHERE COALESCE(d2.updated_at, d2.created_at) = ts
+      AND d2.status IN ['pending', 'in_progress', 'success']
 MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d2)
 RETURN p.id AS project_id,
        e{{.slug, .name, .sort_order}} AS env,
@@ -352,7 +372,7 @@ async def latest_released_deployments_by_project(
     db: graph.Graph,
     project_ids: abc.Sequence[str],
 ) -> list[ProjectDeployment]:
-    """Newest ``Deployment`` per environment that carries a release.
+    """Newest non-failed ``Deployment`` per environment with a release.
 
     For the callers that render "what release is in this environment"
     and skip any row whose release is ``None``.  Taking the newest
@@ -361,6 +381,16 @@ async def latest_released_deployments_by_project(
     one row further down: an orphan is a deployment whose tag could not
     be resolved to a ``Release``, not evidence that nothing is
     deployed.
+
+    ``failed`` and ``rolled_back`` deployments are not candidates --
+    see :data:`_LATEST_RELEASED_BY_PROJECT_QUERY`.  Recency alone is the
+    wrong test for "what is deployed": the close-out of a *superseded*
+    deployment is always written after the deployment that superseded
+    it, so ranking by timestamp with no regard to status hands the
+    environment back to the older release.  That is not hypothetical --
+    it is how a production environment came to report a release that
+    had been replaced eleven days earlier, closed out by the sweeper
+    twenty-three seconds after its successor went green.
 
     That matters because an orphan does not heal.  ``attach_release``
     runs only from the deployment sweeper, and only over
