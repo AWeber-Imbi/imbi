@@ -900,277 +900,6 @@ class ExecuteRescoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('already queued', row.message)
 
 
-def _blocked_row(
-    node_id: str,
-    *,
-    scope: str | None = None,
-    reason: str | None = 'Rolled back',
-    blocked_by: str | None = 'gr@example.com',
-) -> dict[str, object]:
-    """One row as ``_BLOCKED_RELEASES_QUERY`` returns it."""
-    return {
-        'id': node_id,
-        'blocked_at': '2026-01-02T00:00:00+00:00',
-        'blocked_by': blocked_by,
-        'reason': reason,
-        'scope': scope,
-    }
-
-
-class ExecuteBlockerMigrationTests(unittest.IsolatedAsyncioTestCase):
-    """Old release-block flags become ``Blocker`` nodes."""
-
-    @staticmethod
-    def _db(
-        rows: list[dict[str, object]],
-        write_result: list[dict[str, object]] | None = None,
-    ) -> mock.AsyncMock:
-        db = mock.AsyncMock()
-        if write_result is None:
-            write_result = [{'id': 'r1'}]
-        db.execute = mock.AsyncMock(side_effect=[rows] + [write_result] * 20)
-        return db
-
-    async def test_skipped_when_nothing_is_flagged(self) -> None:
-        db = self._db([])
-        outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('skipped', outcome)
-        db.execute.assert_awaited_once()
-
-    async def test_a_manual_block_becomes_a_commit_wide_blocker(self) -> None:
-        db = self._db([_blocked_row('r1')])
-        outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('succeeded', outcome)
-        query, params, _ = db.execute.await_args_list[1].args
-        self.assertIn('CREATE (r)-[:BLOCKED_BY]', query)
-        self.assertEqual('manual', params['type'])
-        self.assertEqual('commit', params['scope'])
-        self.assertEqual('Rolled back', params['description'])
-        self.assertEqual('gr@example.com', params['created_by'])
-        # The blocker inherits when the block was made, not now.
-        self.assertEqual('2026-01-02T00:00:00+00:00', params['created_at'])
-        # And the flags go, which is what makes a re-run a no-op.
-        self.assertIn('SET r.blocked_at = NULL', query)
-
-    async def test_a_tag_scoped_block_becomes_a_build_failure(self) -> None:
-        db = self._db([_blocked_row('r1', scope='tag')])
-        await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        params = db.execute.await_args_list[1].args[1]
-        self.assertEqual('build-failure', params['type'])
-        self.assertEqual('tag', params['scope'])
-
-    async def test_a_block_with_no_reason_still_migrates(self) -> None:
-        db = self._db([_blocked_row('r1', reason=None, blocked_by=None)])
-        await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        params = db.execute.await_args_list[1].args[1]
-        self.assertEqual('Blocked', params['description'])
-        self.assertEqual('maintenance', params['created_by'])
-
-    async def test_every_flagged_release_is_migrated(self) -> None:
-        db = self._db([_blocked_row('r1'), _blocked_row('r2')])
-        outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('succeeded', outcome)
-        migrated = [
-            call.args[1]['id'] for call in db.execute.await_args_list[1:]
-        ]
-        self.assertEqual(['r1', 'r2'], migrated)
-
-    async def test_a_release_cleared_mid_run_does_not_double_migrate(
-        self,
-    ) -> None:
-        # Two overlapping runs read the same flagged release. The first
-        # one's write clears the flags, so the second one's write matches
-        # nothing: the query requires blocked_at to still be set, and a
-        # rowless write must not count as migrated.
-        db = self._db([_blocked_row('r1')], write_result=[])
-        outcome = await operations.execute_blocker_migration(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('skipped', outcome)
-        query = db.execute.await_args_list[1].args[0]
-        self.assertIn('WHERE r.blocked_at IS NOT NULL', query)
-
-
-def _release_row(
-    node_id: str,
-    tag: str | None,
-    committish: str,
-    edges: int = 0,
-    description: str | None = None,
-    created_at: str = '2026-01-01T00:00:00+00:00',
-) -> dict[str, object]:
-    """One row as ``_RELEASE_NODES_QUERY`` returns it (agtype-parsed)."""
-    return {
-        'id': node_id,
-        'tag': tag,
-        'committish': committish,
-        'description': description,
-        'links': None,
-        'created_at': created_at,
-        'edges': edges,
-    }
-
-
-class ExecuteReleaseRepairTests(unittest.IsolatedAsyncioTestCase):
-    """The release-identity repair, driven off stubbed graph rows."""
-
-    @staticmethod
-    def _db(rows: list[dict[str, object]]) -> mock.AsyncMock:
-        db = mock.AsyncMock()
-        db.execute = mock.AsyncMock(side_effect=[rows] + [[]] * 20)
-        return db
-
-    @staticmethod
-    def _queries(db: mock.AsyncMock) -> list[str]:
-        return [call.args[0] for call in db.execute.await_args_list[1:]]
-
-    async def test_skipped_without_releases(self) -> None:
-        outcome = await operations.execute_release_repair(
-            self._db([]), mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('skipped', outcome)
-
-    async def test_skipped_when_nothing_needs_repair(self) -> None:
-        db = self._db([_release_row('r1', '2.21.0', '287d291', edges=1)])
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('skipped', outcome)
-        self.assertEqual([], self._queries(db))
-
-    async def test_normalizes_a_full_length_committish(self) -> None:
-        db = self._db(
-            [
-                _release_row(
-                    'r1',
-                    '2.21.0',
-                    '287d2912fb7ae2086a9a25dd56a8369a1b2c3d4e',
-                )
-            ]
-        )
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('succeeded', outcome)
-        params = db.execute.await_args_list[1].args[1]
-        self.assertEqual('287d291', params['committish'])
-        self.assertEqual('r1', params['id'])
-
-    async def test_leaves_a_branch_committish_alone(self) -> None:
-        db = self._db([_release_row('r1', None, 'main', edges=1)])
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('skipped', outcome)
-
-    async def test_moves_the_tag_onto_the_node_owning_history(self) -> None:
-        # The reported break: the deploy attached to the untagged node, so
-        # the env showed a bare SHA while the tag sat on an edge-less node.
-        db = self._db(
-            [
-                _release_row('untagged', None, '287d291', edges=1),
-                _release_row(
-                    'tagged', '2.21.0', '287d291', description='notes'
-                ),
-            ]
-        )
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('succeeded', outcome)
-        queries = self._queries(db)
-        self.assertIn('SET r.tag', queries[0])
-        retag = db.execute.await_args_list[1].args[1]
-        self.assertEqual('untagged', retag['id'])
-        self.assertEqual('2.21.0', retag['tag'])
-        self.assertEqual('notes', retag['description'])
-        # ...and the now-redundant edge-less node is removed.
-        self.assertIn('DETACH DELETE', queries[1])
-        self.assertEqual('tagged', db.execute.await_args_list[2].args[1]['id'])
-
-    async def test_salvages_notes_from_the_deleted_duplicate(self) -> None:
-        # The target already carries the tag but no notes, while the
-        # edge-less duplicate about to be deleted holds them.
-        db = self._db(
-            [
-                _release_row('kept', '2.21.0', '287d291', edges=1),
-                _release_row('dupe', '2.21.0', '287d291', description='notes'),
-            ]
-        )
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('succeeded', outcome)
-        queries = self._queries(db)
-        self.assertIn('SET r.tag', queries[0])
-        salvage = db.execute.await_args_list[1].args[1]
-        self.assertEqual('kept', salvage['id'])
-        self.assertEqual('notes', salvage['description'])
-        self.assertIn('DETACH DELETE', queries[1])
-        self.assertEqual('dupe', db.execute.await_args_list[2].args[1]['id'])
-
-    async def test_no_salvage_write_when_the_target_has_the_notes(
-        self,
-    ) -> None:
-        # Nothing to move: the target already holds notes, so the duplicate
-        # is simply removed without a pointless write.
-        db = self._db(
-            [
-                _release_row(
-                    'kept', '2.21.0', '287d291', edges=1, description='mine'
-                ),
-                _release_row(
-                    'dupe', '2.21.0', '287d291', description='theirs'
-                ),
-            ]
-        )
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('succeeded', outcome)
-        queries = self._queries(db)
-        self.assertNotIn('SET r.tag', ' '.join(queries))
-        self.assertIn('DETACH DELETE', queries[0])
-        self.assertEqual('dupe', db.execute.await_args_list[1].args[1]['id'])
-
-    async def test_keeps_a_duplicate_that_carries_history(self) -> None:
-        db = self._db(
-            [
-                _release_row('a', None, '287d291', edges=2),
-                _release_row('b', '2.21.0', '287d291', edges=1),
-            ]
-        )
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('succeeded', outcome)
-        self.assertNotIn('DETACH DELETE', ' '.join(self._queries(db)))
-
-    async def test_leaves_a_retagged_commit_alone(self) -> None:
-        # Two tags on one commit is ambiguous — never guess which wins.
-        db = self._db(
-            [
-                _release_row('a', '2.21.0', '287d291', edges=1),
-                _release_row('b', '2.21.1', '287d291'),
-            ]
-        )
-        outcome = await operations.execute_release_repair(
-            db, mock.AsyncMock(), 'p1', ctx=_ctx()
-        )
-        self.assertEqual('skipped', outcome)
-        self.assertEqual([], self._queries(db))
-
-
 class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
     def _db(
         self,
@@ -1235,8 +964,8 @@ class SearchReindexTests(unittest.IsolatedAsyncioTestCase):
             )
 
 
-class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
-    """The phase-3 execute wrappers map summaries to run outcomes."""
+class OrphanWrapperTests(unittest.IsolatedAsyncioTestCase):
+    """The orphan execute wrappers map summaries to run outcomes."""
 
     def _patch(
         self, name: str, summary: object
@@ -1247,76 +976,9 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(operations, '_org_slug_for', _org_slug('org'))
         )
         stack.enter_context(
-            mock.patch(f'imbi.api.deployment_migration.{name}', call)
+            mock.patch(f'imbi.api.orphan_releases.{name}', call)
         )
         return stack, call
-
-    async def test_dup_merge_report_is_a_dry_run(self) -> None:
-        from imbi.api import deployment_migration
-
-        stack, call = self._patch(
-            'merge_duplicate_releases',
-            deployment_migration.DupMergeSummary(groups=2),
-        )
-        with stack:
-            outcome = await operations.execute_release_dup_merge_report(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
-            )
-        self.assertEqual('succeeded', outcome)
-        self.assertTrue(call.await_args.kwargs['dry_run'])
-
-    async def test_dup_merge_with_no_duplicates_is_skipped(self) -> None:
-        from imbi.api import deployment_migration
-
-        stack, call = self._patch(
-            'merge_duplicate_releases', deployment_migration.DupMergeSummary()
-        )
-        with stack:
-            outcome = await operations.execute_release_dup_merge(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
-            )
-        self.assertEqual('skipped', outcome)
-        self.assertFalse(call.await_args.kwargs['dry_run'])
-        self.assertEqual('org', call.await_args.kwargs['org_slug'])
-
-    async def test_dup_merge_without_an_org_is_skipped(self) -> None:
-        with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
-            outcome = await operations.execute_release_dup_merge(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
-            )
-        self.assertEqual('skipped', outcome)
-
-    async def test_migration_maps_edges_to_outcome(self) -> None:
-        from imbi.api import deployment_migration
-
-        for edges, expected in ((1, 'succeeded'), (0, 'skipped')):
-            call = mock.AsyncMock(
-                return_value=deployment_migration.MigrationSummary(edges=edges)
-            )
-            with mock.patch(
-                'imbi.api.deployment_migration.migrate_deployment_arrays',
-                call,
-            ):
-                outcome = await operations.execute_deployment_migration(
-                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
-                )
-            self.assertEqual(expected, outcome)
-            self.assertFalse(call.await_args.kwargs['dry_run'])
-
-    async def test_migration_report_is_a_dry_run(self) -> None:
-        from imbi.api import deployment_migration
-
-        call = mock.AsyncMock(
-            return_value=deployment_migration.MigrationSummary(edges=1)
-        )
-        with mock.patch(
-            'imbi.api.deployment_migration.migrate_deployment_arrays', call
-        ):
-            outcome = await operations.execute_deployment_migration_report(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
-            )
-        self.assertEqual('succeeded', outcome)
-        self.assertTrue(call.await_args.kwargs['dry_run'])
 
     async def test_orphan_check_skips_an_unanswerable_project(self) -> None:
         stack, call = self._patch('purge_orphan_releases', None)
@@ -1328,11 +990,11 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(call.await_args.kwargs['dry_run'])
 
     async def test_orphan_purge_succeeds_when_candidates_exist(self) -> None:
-        from imbi.api import deployment_migration
+        from imbi.api import orphan_releases
 
         stack, call = self._patch(
             'purge_orphan_releases',
-            deployment_migration.OrphanSummary(
+            orphan_releases.OrphanSummary(
                 tagged=3, candidates=1, orphans=1, deleted=1
             ),
         )
@@ -1348,11 +1010,11 @@ class Phase3WrapperTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         # A candidate whose tag lookup failed (or whose tag exists) is
         # not an orphan; succeeded would misread as "orphans handled".
-        from imbi.api import deployment_migration
+        from imbi.api import orphan_releases
 
         stack, _call = self._patch(
             'purge_orphan_releases',
-            deployment_migration.OrphanSummary(
+            orphan_releases.OrphanSummary(
                 tagged=3, candidates=1, unresolved=1, orphans=0
             ),
         )
@@ -1482,15 +1144,15 @@ class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(3, _rows(ctx)[1].detail['stamped'])
 
     async def test_an_unresolvable_orphan_candidate_is_recorded(self) -> None:
-        from imbi.api import deployment_migration
+        from imbi.api import orphan_releases
 
         ctx = _ctx()
         with (
             mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
             mock.patch(
-                'imbi.api.deployment_migration.purge_orphan_releases',
+                'imbi.api.orphan_releases.purge_orphan_releases',
                 mock.AsyncMock(
-                    return_value=deployment_migration.OrphanSummary(
+                    return_value=orphan_releases.OrphanSummary(
                         candidates=2, tagged=5, unresolved=2
                     )
                 ),
@@ -1509,53 +1171,6 @@ class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(2, _rows(ctx)[0].detail['unresolved'])
 
-    async def test_a_dry_run_says_it_was_one(self) -> None:
-        from imbi.api import deployment_migration
-
-        ctx = _ctx()
-        with (
-            mock.patch.object(operations, '_org_slug_for', _org_slug('org')),
-            mock.patch(
-                'imbi.api.deployment_migration.merge_duplicate_releases',
-                mock.AsyncMock(
-                    return_value=deployment_migration.DupMergeSummary(
-                        groups=2, merged=3
-                    )
-                ),
-            ),
-        ):
-            await operations.execute_release_dup_merge_report(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        row = _rows(ctx)[0]
-        self.assertEqual('release-dup-merge-report', row.action)
-        self.assertTrue(row.detail['dry_run'])
-        self.assertIn('dry run', row.message)
-
-    async def test_malformed_migration_entries_are_recorded(self) -> None:
-        from imbi.api import deployment_migration
-
-        ctx = _ctx()
-        with mock.patch(
-            'imbi.api.deployment_migration.migrate_deployment_arrays',
-            mock.AsyncMock(
-                return_value=deployment_migration.MigrationSummary(
-                    created=1, edges=2, entries=4, malformed=2
-                )
-            ),
-        ):
-            await operations.execute_deployment_migration(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual(
-            [
-                ('deployment-migration', 'failed'),
-                ('deployment-migration', 'succeeded'),
-            ],
-            _actions(ctx),
-        )
-        self.assertEqual(2, _rows(ctx)[0].detail['malformed'])
-
     async def test_a_reindex_of_a_retired_label_says_why(self) -> None:
         ctx = _ctx()
         outcome = await operations.execute_search_reindex(
@@ -1563,95 +1178,3 @@ class ActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual('skipped', outcome)
         self.assertEqual('Retired', _rows(ctx)[0].detail['label'])
-
-
-class SbomActivityLoggingTests(unittest.IsolatedAsyncioTestCase):
-    """The SBoM operations' rows.
-
-    The reconcile report is the sharpest case for the activity log: it
-    found its mismatches per release and told only the server log.
-    """
-
-    async def test_each_mismatched_release_gets_a_row(self) -> None:
-        from imbi.api import sbom_backfill
-
-        ctx = _ctx()
-        summary = sbom_backfill.ReconcileSummary(
-            matched=7,
-            mismatched={
-                'r-1': 'graph has 3, clickhouse has 2',
-                'r-2': 'drift',
-            },
-        )
-        with mock.patch(
-            'imbi.api.sbom_backfill.reconcile_project',
-            mock.AsyncMock(return_value=summary),
-        ):
-            outcome = await operations.execute_sbom_backfill_report(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('succeeded', outcome)
-        mismatches = [r for r in _rows(ctx) if r.action == 'sbom-mismatch']
-        self.assertEqual(
-            ['r-1', 'r-2'], [r.detail['release_id'] for r in mismatches]
-        )
-        self.assertEqual(
-            'graph has 3, clickhouse has 2', mismatches[0].message
-        )
-        summary_row = _rows(ctx)[-1]
-        self.assertEqual(2, summary_row.detail['mismatched'])
-        self.assertEqual(7, summary_row.detail['matched'])
-
-    async def test_agreeing_stores_say_how_much_was_checked(self) -> None:
-        from imbi.api import sbom_backfill
-
-        ctx = _ctx()
-        with mock.patch(
-            'imbi.api.sbom_backfill.reconcile_project',
-            mock.AsyncMock(
-                return_value=sbom_backfill.ReconcileSummary(matched=12)
-            ),
-        ):
-            outcome = await operations.execute_sbom_backfill_report(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('skipped', outcome)
-        self.assertEqual(12, _rows(ctx)[0].detail['matched'])
-
-    async def test_the_backfill_records_what_it_published(self) -> None:
-        from imbi.api import sbom_backfill
-
-        ctx = _ctx()
-        with mock.patch(
-            'imbi.api.sbom_backfill.backfill_project',
-            mock.AsyncMock(
-                return_value=sbom_backfill.BackfillSummary(
-                    components_written=40,
-                    releases_published=4,
-                    releases_skipped=6,
-                )
-            ),
-        ):
-            outcome = await operations.execute_sbom_backfill(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('succeeded', outcome)
-        row = _rows(ctx)[0]
-        self.assertEqual(4, row.detail['releases_published'])
-        self.assertEqual(40, row.detail['components_written'])
-
-    async def test_a_fully_batched_project_says_so(self) -> None:
-        from imbi.api import sbom_backfill
-
-        ctx = _ctx()
-        with mock.patch(
-            'imbi.api.sbom_backfill.backfill_project',
-            mock.AsyncMock(
-                return_value=sbom_backfill.BackfillSummary(releases_skipped=9)
-            ),
-        ):
-            outcome = await operations.execute_sbom_backfill(
-                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
-            )
-        self.assertEqual('skipped', outcome)
-        self.assertEqual(9, _rows(ctx)[0].detail['releases_skipped'])

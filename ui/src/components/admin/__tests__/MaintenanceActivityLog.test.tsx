@@ -28,7 +28,7 @@ const entry = (
   project_id: 'p1',
   project_slug: 'campaign-builder',
   run_id: 'run1abcdef',
-  slug: 'release-repair',
+  slug: 'deployment-sweep',
   started_by: 'admin',
   ...overrides,
 })
@@ -44,9 +44,9 @@ const page = (
 
 const operations: MaintenanceOperation[] = [
   {
-    label: 'Repair Release Identity',
+    label: 'Sweep Deployments',
     running: false,
-    slug: 'release-repair',
+    slug: 'deployment-sweep',
     state: 'idle',
   },
 ]
@@ -72,7 +72,7 @@ describe('MaintenanceActivityLog', () => {
       expect(screen.getByText('campaign-builder')).toBeInTheDocument(),
     )
     expect(screen.getByText('Tag resolution failed')).toBeInTheDocument()
-    expect(screen.getByText('release-repair')).toBeInTheDocument()
+    expect(screen.getByText('deployment-sweep')).toBeInTheDocument()
   })
 
   it('asks for attempt rows across every disposition by default', async () => {

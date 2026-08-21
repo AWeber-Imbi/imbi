@@ -2671,10 +2671,9 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
         self.assertEqual(hydrate_call.args[1], {'ids': ['cr-1']})
 
     def test_a_version_missing_from_the_graph_still_renders(self) -> None:
-        """The two stores disagreeing is a report, not a 500.
+        """The two stores disagreeing is not a 500.
 
-        ``sbom-backfill-report`` exists to surface that. Here the
-        snapshot's own columns render and the governance ones stay
+        The snapshot's own columns render and the governance ones stay
         empty, which is honest about what is known.
         """
         self.mock_ch.return_value = [self._fact()]

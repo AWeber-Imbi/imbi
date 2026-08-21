@@ -209,7 +209,7 @@ def _log_row(**overrides: object) -> dict[str, object]:
         'run_id': 'run1',
         'attempt_id': 'attempt1',
         'item_id': 'p1',
-        'slug': 'release-repair',
+        'slug': 'deployment-sweep',
         'event_type': 'attempt',
         'disposition': 'failed',
         'action': '',
@@ -249,7 +249,7 @@ class MaintenanceLogEndpointTests(MaintenanceEndpointTestCase):
         body = response.json()
         self.assertEqual(1, len(body['data']))
         entry = body['data'][0]
-        self.assertEqual('release-repair', entry['slug'])
+        self.assertEqual('deployment-sweep', entry['slug'])
         self.assertEqual('failed', entry['disposition'])
         self.assertEqual({'count': 2}, entry['detail'])
         self.assertTrue(entry['occurred_at'].endswith('Z'))
