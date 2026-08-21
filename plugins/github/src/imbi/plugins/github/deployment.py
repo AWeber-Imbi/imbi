@@ -1729,7 +1729,13 @@ class GitHubDeployment(DeploymentCapability):
         the walk unable to say what that deployment did -- throttling
         blinds every row at once -- and a 404 on the listing itself means
         the repo moved or the token lost access, not that the environment
-        is empty.  Only a clean, exhausted walk may answer ``none``.
+        is empty.  An *empty* listing resolves ``unknown``: GitHub says
+        ``[]`` both for an environment never deployed to and for a name
+        it does not recognise, and local slugs reach it unmapped.
+
+        So ``none`` requires positive evidence -- rows read, none of them
+        serving.  Everything else the host must read as "keep what you
+        have".
         """
         scan_limit = _active_scan_limit(ctx.integration_options)
         # Same memoisation as the resync sweep: one triggering-actor
@@ -1839,8 +1845,20 @@ class GitHubDeployment(DeploymentCapability):
                 break
         # The result set is exhausted only when the walk read every row
         # GitHub returned *and* GitHub returned fewer than we asked for
-        # (a full page means there is more history past the cap).
-        exhausted = scanned == len(deployments) and scanned < scan_limit
+        # (a full page means there is more history past the cap).  An
+        # empty listing does not count: GitHub answers 200 with ``[]``
+        # both for an environment that has never been deployed to and
+        # for an environment *name it has never heard of*, and the host
+        # passes local slugs through unmapped.  A project whose local
+        # slug is 'prod' against a remote 'production' would otherwise
+        # resolve ``none`` and have its pointer cleared on every sweep.
+        # Clearing needs positive evidence -- rows we read, none of them
+        # serving -- which is the deactivated-environment case.
+        exhausted = (
+            bool(deployments)
+            and scanned == len(deployments)
+            and scanned < scan_limit
+        )
         resolution: typing.Literal['found', 'none', 'unknown', 'error']
         if active is not None:
             # A success found above every unread row is still an answer:

@@ -43,7 +43,9 @@ import { sanitizeUri } from '@/lib/utils'
 import type { DeploymentStatus, LatestDeployment, Project } from '@/types'
 
 interface DeploymentInfo {
-  committish: string
+  // Null when nothing is serving the environment yet -- its first-ever
+  // deployment is in flight or failed, and only ``latest`` is set.
+  committish: null | string
   // Attempt newer than the release being served — a rollout in flight or
   // one that failed; null when the served release is the newest attempt.
   latest: LatestDeployment | null
@@ -54,7 +56,7 @@ interface DeploymentInfo {
   performedByEmail: null | string
   status: string
   tag: null | string
-  updated: string
+  updated: null | string
 }
 
 // Shared overline label style for the per-environment attribute cells.

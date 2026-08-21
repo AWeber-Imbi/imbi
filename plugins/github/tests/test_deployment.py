@@ -2127,7 +2127,13 @@ class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.latest.external_run_id, '1')
 
     @respx.mock
-    async def test_no_deployments_is_none(self) -> None:
+    async def test_no_deployments_is_unknown_not_none(self) -> None:
+        # GitHub answers 200 with ``[]`` both for an environment nothing
+        # has deployed to and for an environment name it has never heard
+        # of -- and local slugs reach it unmapped, so a project whose
+        # slug is 'prod' against a remote 'production' looks identical to
+        # an empty environment.  ``none`` clears the pointer, so an empty
+        # listing must not earn it.
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments',
             params={'environment': 'production', 'per_page': '10'},
@@ -2136,7 +2142,7 @@ class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
         state = (
             await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
         )[0]
-        self.assertEqual(state.active_resolution, 'none')
+        self.assertEqual(state.active_resolution, 'unknown')
         self.assertIsNone(state.active)
         self.assertIsNone(state.latest)
 

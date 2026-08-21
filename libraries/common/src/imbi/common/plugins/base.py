@@ -1474,15 +1474,23 @@ class DeploymentCapability(CapabilityHandler):
         ``supports_deployment_sync``: hosts probe by calling it and
         treating :class:`NotImplementedError` as "this provider cannot
         report currency", falling back to the attempt list alone.  Returns
-        one :class:`EnvironmentDeploymentState` per requested environment
-        -- including environments the remote does not know about, which
-        resolve ``none`` rather than being dropped, because the host has to
-        distinguish "not answered" from "nothing deployed".
+        one :class:`EnvironmentDeploymentState` per requested environment,
+        never dropping one, because the host has to distinguish "not
+        answered" from "nothing deployed".
+
+        An environment the remote does not recognise resolves ``unknown``,
+        NOT ``none``.  The host passes its own environment slugs through
+        unmapped, so a slug the provider has never heard of is
+        indistinguishable from one with no deployments -- and ``none``
+        authorizes the host to clear its current-release pointer.  Only
+        positive evidence earns it: deployments read, none of them
+        serving.
 
         Implementations walk the provider newest-first under a bounded cap
         and report ``unknown`` rather than ``none`` when the cap is reached
-        first; see :class:`EnvironmentDeploymentState` for the invariants
-        each resolution carries.
+        first, or when any part of the read failed; see
+        :class:`EnvironmentDeploymentState` for the invariants each
+        resolution carries.
         """
         del ctx, credentials, environments
         raise NotImplementedError

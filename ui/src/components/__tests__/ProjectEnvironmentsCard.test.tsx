@@ -121,4 +121,40 @@ describe('ProjectEnvironmentsCard latest deployment', () => {
     expect(screen.getByText('Deployed')).toBeInTheDocument()
     expect(screen.queryByText('Deploying')).not.toBeInTheDocument()
   })
+
+  // An environment whose first-ever deployment is in flight (or failed)
+  // has no serving release at all. It still has something to show, and
+  // the projects list shows it -- the detail page rendered nothing.
+  it('shows an attempt for an environment with nothing serving yet', () => {
+    render(
+      <ThemeProvider>
+        <ProjectEnvironmentsCard
+          deploymentStatus={{
+            prod: {
+              committish: null,
+              latest: {
+                committish: 'def5678',
+                deployed_at: '2026-08-01T00:00:00Z',
+                status: 'in_progress',
+                tag: '1.3.0',
+              },
+              performedBy: null,
+              performedByEmail: null,
+              status: '',
+              tag: null,
+              updated: null,
+            },
+          }}
+          environments={[env('prod', null)]}
+          orgSlug="acme"
+          projectId="1"
+        />
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByText('1.3.0')).toBeInTheDocument()
+    expect(screen.getByText('Deploying')).toBeInTheDocument()
+    // Nothing is serving, so no release badge claims otherwise.
+    expect(screen.queryByText('Deployed')).not.toBeInTheDocument()
+  })
 })
