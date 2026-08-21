@@ -1502,12 +1502,23 @@ class GitHubDeployment(DeploymentCapability):
         replaced it.  That is what taught a production environment it
         was running a release eleven days stale.
 
-        Note that ``inactive`` reaches Imbi only here.  GitHub creates
-        the status but emits no ``deployment_status`` webhook for it --
-        verified 2026-08-21 against a repo hook subscribed to ``*``,
-        which saw the successor's ``success`` and nothing for the
-        auto-inactive written in the same second.  So this poll is the
-        one place the state has to be handled correctly.
+        Note that ``inactive`` reaches Imbi only by polling -- here and
+        in :meth:`_latest_status`.  GitHub creates the status but emits no
+        ``deployment_status`` webhook for it, which its own docs state
+        outright: "A webhook event is not fired for deployment statuses
+        with an inactive state."  Confirmed 2026-08-21 against a repo
+        hook subscribed to ``*``, which saw the successor's ``success``
+        and nothing for the auto-inactive written in the same second.
+        So a poll is the only place the state can be handled correctly,
+        and there is no upstream fix to wait for.
+
+        Suppressing the state at source is not the alternative it looks
+        like: ``auto_inactive`` is documented as affecting only
+        "non-transient, non-production" deployments, yet the deployments
+        observed here carry ``production_environment=true`` and were
+        auto-inactivated anyway.  The documented carve-out does not
+        describe them, so setting ``auto_inactive=false`` would need an
+        experiment rather than a reading.
 
         A deployment superseded while still in flight has no terminal
         entry left once ``inactive`` is skipped, so it reads as whatever
