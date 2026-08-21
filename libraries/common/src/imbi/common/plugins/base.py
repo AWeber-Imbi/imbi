@@ -979,7 +979,8 @@ class EnvironmentDeploymentState(pydantic.BaseModel):
         """
         if self.active_resolution == 'found' and self.active is None:
             raise ValueError(
-                "active_resolution='found' requires an active deployment"
+                f'active_resolution={self.active_resolution!r} requires '
+                'an active deployment'
             )
         if self.active_resolution != 'found' and self.active is not None:
             raise ValueError(
@@ -1509,9 +1510,14 @@ class DeploymentCapability(CapabilityHandler):
         positive evidence earns it: deployments read, none of them
         serving.
 
-        Implementations walk the provider newest-first under a bounded cap
-        and report ``unknown`` rather than ``none`` when the cap is reached
-        first, or when any part of the read failed; see
+        Implementations walk the provider newest-first under a bounded
+        cap.  Reaching the cap without an answer is ``unknown``; a read
+        that *failed* -- the listing errored, or a row's status would not
+        load -- is ``error``.  Both retain the host's pointer, so the
+        distinction is not about safety but about diagnosis: reporting a
+        provider outage as ``unknown`` files it as a scan-limit result
+        and hides it from the operator, and only ``error`` reaches
+        ``summary.errors``.  Neither may be reported as ``none``.  See
         :class:`EnvironmentDeploymentState` for the invariants each
         resolution carries.
         """

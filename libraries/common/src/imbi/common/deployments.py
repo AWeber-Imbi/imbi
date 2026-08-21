@@ -350,12 +350,17 @@ RETURN p.id AS project_id,
 """
 
 
-def _run_id_rank(value: object) -> tuple[int, str]:
+def run_id_rank(value: object) -> tuple[int, str]:
     """Sortable form of a provider run id, numeric where it can be.
 
     ``(digits, text)``: an all-digit id ranks by its value so 10 beats 9,
     and anything else ranks after every number by its text, which keeps
     the comparison total for providers that do not use integers.
+
+    Public because it is a *shared* tie-break: every reader that picks
+    "the newest successful attempt" has to break a timestamp tie the
+    same way, or two readers disagree about which attempt is current and
+    the reconciliation stage reports a difference that is not there.
 
     The guard is ``isdecimal`` rather than ``isdigit``: the latter also
     accepts superscripts and similar digit characters that ``int()``
@@ -622,7 +627,7 @@ def _newest_per_environment(
         key = (project_id, str(env.get('slug') or ''))
         rank = (
             str(props.get('created_at') or ''),
-            _run_id_rank(props.get('external_run_id')),
+            run_id_rank(props.get('external_run_id')),
             str(props.get('id') or ''),
             str(release.get('id') or '') if isinstance(release, dict) else '',
         )

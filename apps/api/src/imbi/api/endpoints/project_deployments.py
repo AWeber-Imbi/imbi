@@ -2300,13 +2300,20 @@ async def _derived_success_deployments(
     return newest
 
 
-def _derived_rank(entry: _DerivedDeployment) -> tuple[str, str]:
+def _derived_rank(entry: _DerivedDeployment) -> tuple[str, tuple[int, str]]:
     """Sort key for tied attempts: newest first, then the run id.
 
     The tuple itself cannot be compared -- ``external_run_id`` is
     nullable and ``None`` does not order against a string.
+
+    The run id goes through the same
+    :func:`~imbi.common.deployments.run_id_rank` the current-release
+    reader uses, so a tied timestamp breaks identically in both.
+    Ranking it as plain text here sorted ``'9'`` above ``'10'`` and let
+    the two readers pick different attempts, which then surfaced as a
+    ``derived_disagrees_with_remote`` that was not real.
     """
-    return entry.timestamp, entry.external_run_id or ''
+    return entry.timestamp, deployment_nodes.run_id_rank(entry.external_run_id)
 
 
 async def _known_deployment_run_ids(

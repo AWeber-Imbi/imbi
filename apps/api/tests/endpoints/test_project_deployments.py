@@ -6285,3 +6285,46 @@ class IngestDriftNotesTests(ProjectDeploymentsTestCase):
                 self.URL, json={'before': 'nope', 'after': 'b' * 40}
             )
         self.assertEqual(422, response.status_code)
+
+
+class DerivedRankTestCase(unittest.TestCase):
+    """The tie-break shared with the current-release reader.
+
+    Both readers answer "which is the newest successful attempt", so a
+    tied timestamp has to break the same way in each.  It did not: this
+    one compared the run id as text, so ``'9'`` outranked ``'10'`` and
+    the two readers could name different attempts -- reported as a
+    ``derived_disagrees_with_remote`` that was not real.
+    """
+
+    @staticmethod
+    def _entry(run_id: str | None) -> project_deployments._DerivedDeployment:
+        return project_deployments._DerivedDeployment(
+            timestamp='2026-05-13T15:00:00+00:00',
+            external_run_id=run_id,
+            release_id='release-id',
+        )
+
+    def test_numeric_run_ids_rank_by_value(self) -> None:
+        self.assertGreater(
+            project_deployments._derived_rank(self._entry('10')),
+            project_deployments._derived_rank(self._entry('9')),
+        )
+
+    def test_matches_the_current_release_reader(self) -> None:
+        # The two must agree, so pin them against each other rather than
+        # against a copy of the expected ordering.
+        for run_id in ('9', '10', 'abc', ''):
+            with self.subTest(run_id=run_id):
+                self.assertEqual(
+                    project_deployments._derived_rank(self._entry(run_id))[1],
+                    common_deployments.run_id_rank(run_id),
+                )
+
+    def test_a_null_run_id_still_orders(self) -> None:
+        # ``None`` does not compare against a string, which is why the
+        # rank exists at all.
+        self.assertGreater(
+            project_deployments._derived_rank(self._entry('1')),
+            project_deployments._derived_rank(self._entry(None)),
+        )
