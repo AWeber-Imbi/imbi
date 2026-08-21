@@ -302,7 +302,14 @@ async def execute_deployment_resync(
     *,
     ctx: log.MaintenanceContext,
 ) -> ExecuteOutcome:
-    """Backfill recent remote deployments via the deployment plugin."""
+    """Backfill recent remote deployments via the deployment plugin.
+
+    Also reconciles the ``current_release`` pointer against the
+    deployment the provider reports as active, when the plugin can
+    report one. This is the only caller that reconciles: repairing a
+    pointer is a background correction, and the webhook-lapse queue and
+    the operator-triggered resync both stay observation-only.
+    """
     from imbi.api.endpoints import project_deployments
 
     org_slug = await _org_slug_for(db, project_id)
@@ -315,6 +322,7 @@ async def execute_deployment_resync(
             project_id=project_id,
             auth=_system_auth(),
             limit=1,
+            reconcile=True,
         )
     except fastapi.HTTPException as exc:
         # 404: no deployment capability bound; 400: the plugin doesn't

@@ -53,6 +53,7 @@ from imbi.common.plugins.base import (
     DeploymentCapability,
     DeploymentEventStatus,
     DeploymentRun,
+    EnvironmentDeploymentState,
     LinkWriteback,
     NotesListing,
     PluginContext,
@@ -150,6 +151,21 @@ _COMPARE_FILES_CAP = 300
 _NOTE_BLOB_CONCURRENCY = 10
 
 _FULL_SHA_PATTERN = re.compile(r'^[0-9a-f]{40}$')
+
+
+class _StatusRead(typing.NamedTuple):
+    """One deployment's status history, as far as it could be read."""
+
+    status: DeploymentEventStatus
+    log_url: str | None
+    #: The newest entry is GitHub's ``inactive`` notice, so this
+    #: deployment has been retired whatever ``status`` says it did.
+    superseded: bool
+    #: Nothing was read -- ``status`` is the ``pending`` fallback rather
+    #: than an observation.  Resync wants that fallback (a noisy row must
+    #: not fail a whole project); anything deciding what an environment
+    #: serves has to know the difference.
+    unreadable: bool
 
 
 def _note_sha(path: object) -> str | None:
@@ -433,6 +449,43 @@ def _mainline_branches(
         return _DEFAULT_MAINLINE_BRANCHES
     configured = frozenset(raw.replace(',', ' ').split())
     return configured or _DEFAULT_MAINLINE_BRANCHES
+
+
+# How many deployments per environment ``get_environment_state`` walks
+# before it stops looking for the active one.  GitHub returns
+# deployments newest-first, and the active deployment is normally the
+# first or second row; a deeper walk only pays off on an environment
+# whose recent history is a run of failures.  Each row costs one status
+# request, so the cap bounds the request count per environment rather
+# than the wall time of one call.
+_DEFAULT_ACTIVE_SCAN_LIMIT = 10
+# One page holds the whole scan -- GitHub caps ``per_page`` at 100.
+_MAX_ACTIVE_SCAN_LIMIT = 100
+
+
+def _active_scan_limit(
+    integration_options: dict[str, typing.Any],
+) -> int:
+    """Resolve the ``active_scan_limit`` integration option.
+
+    Declared integration-level beside ``mainline_branches`` because how
+    deep the scan has to go is a property of the org's deploy habits, not
+    of one capability.  Operator-entered values arrive as strings from the
+    admin form as often as integers, so both are accepted; anything absent,
+    unparseable, or below 1 resolves to
+    :data:`_DEFAULT_ACTIVE_SCAN_LIMIT`, and the value is clamped to what a
+    single GitHub page can carry.
+    """
+    raw = integration_options.get('active_scan_limit')
+    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+        return _DEFAULT_ACTIVE_SCAN_LIMIT
+    try:
+        limit = int(raw)
+    except ValueError:
+        return _DEFAULT_ACTIVE_SCAN_LIMIT
+    if limit < 1:
+        return _DEFAULT_ACTIVE_SCAN_LIMIT
+    return min(limit, _MAX_ACTIVE_SCAN_LIMIT)
 
 
 def _commit_from_payload(payload: dict[str, typing.Any]) -> Commit:
@@ -912,23 +965,26 @@ class GitHubDeployment(DeploymentCapability):
         ctx: PluginContext,
         credentials: dict[str, str],
         namespace: str,
+        skip_shas: collections.abc.Collection[str] = (),
     ) -> NotesListing:
         """Every note on ``refs/notes/<namespace>`` at its current tip.
 
         Two Git Data calls to reach the tree, then one blob read per
-        note.  A missing ref answers an empty, complete listing.
+        note the caller did not ask us to skip.  A missing ref answers
+        an empty, complete listing.
 
         ``complete`` compares what the tree holds against what came
         back: :meth:`_all_notes` drops a note whose blob it cannot read
         (logging why), and a truncated tree listing hides notes before
         that.  Either way the caller must not treat the result as the
-        whole ref.
+        whole ref.  A note skipped on request does not make the listing
+        incomplete -- the caller already has that answer.
         """
         async with self._client(ctx, credentials) as client:
             tip = await self._notes_ref_tip(client, namespace)
             if tip is None:
                 return NotesListing({}, True)
-            return await self._all_notes(client, tip)
+            return await self._all_notes(client, tip, skip_shas)
 
     async def diff_commit_notes(
         self,
@@ -1080,17 +1136,22 @@ class GitHubDeployment(DeploymentCapability):
         return out, not truncated
 
     async def _all_notes(
-        self, client: httpx.AsyncClient, commit_sha: str
+        self,
+        client: httpx.AsyncClient,
+        commit_sha: str,
+        skip_shas: collections.abc.Collection[str] = (),
     ) -> NotesListing:
         """Every note at one notes-ref commit, bodies included.
 
         Blob reads run a few at a time (one request per note) and an
         unreadable note is skipped rather than failing the batch or
-        recording a false "removed".
+        recording a false "removed".  A note whose annotated commit is
+        in ``skip_shas`` costs no request at all.
 
         ``complete`` combines the two ways this can fall short: a
         truncated tree listing, and a blob that would not read.  Either
-        means the map is not the whole ref.
+        means the map is not the whole ref.  Notes skipped on request do
+        not count against it.
         """
         notes, tree_complete = await self._tree_notes(client, commit_sha)
         gate = asyncio.Semaphore(_NOTE_BLOB_CONCURRENCY)
@@ -1102,7 +1163,12 @@ class GitHubDeployment(DeploymentCapability):
                 except httpx.HTTPError as exc:
                     return exc
 
-        items = list(notes.items())
+        skip = {sha.lower() for sha in skip_shas}
+        items = [
+            (annotated, blob_sha)
+            for annotated, blob_sha in notes.items()
+            if annotated.lower() not in skip
+        ]
         bodies = await asyncio.gather(
             *(_read(blob_sha) for _, blob_sha in items)
         )
@@ -1120,7 +1186,7 @@ class GitHubDeployment(DeploymentCapability):
                 # a ``None`` here would read as "note removed".
                 continue
             out[annotated] = body
-        return NotesListing(out, tree_complete and len(out) == len(notes))
+        return NotesListing(out, tree_complete and len(out) == len(items))
 
     @staticmethod
     async def _blob_text(
@@ -1631,6 +1697,235 @@ class GitHubDeployment(DeploymentCapability):
             )
         return [observed for group in per_env for observed in group]
 
+    async def get_environment_state(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        environments: list[str],
+    ) -> list[EnvironmentDeploymentState]:
+        """Report the active deployment per environment.
+
+        Fans out one ``GET /deployments?environment={env}`` call per
+        environment (newest-first, as GitHub orders them) and walks the
+        page fetching each deployment's statuses until one both maps to
+        exactly ``success`` -- not ``pending``, not ``in_progress`` -- and
+        carries no ``inactive`` notice on top.  That deployment is the
+        active one.
+
+        Policy note: GitHub can leave several deployments active at once
+        when automatic inactivation is disabled, so "active" cannot be
+        read off the provider's own flag.  Imbi's policy is *active = the
+        newest deployment whose latest provider status is success*, which
+        is well-defined either way.
+
+        The walk is bounded by the ``active_scan_limit`` option (see
+        :func:`_active_scan_limit`).  Reaching the cap without a success
+        resolves ``unknown``, never ``none``: an older active deployment
+        may sit just past the cap, and reporting ``none`` would have the
+        host clear a pointer that is right.
+
+        Two degraded reads resolve ``error`` for the same reason.  A row
+        whose status history would not read (``status_unknown``), or one
+        too malformed to identify at all, leaves the walk unable to say
+        what that deployment did -- throttling blinds every row at once
+        -- and a 404 on the listing itself means the repo moved or the
+        token lost access, not that the environment is empty.  An *empty*
+        listing resolves ``unknown``: GitHub says ``[]`` both for an
+        environment never deployed to and for a name it does not
+        recognise, and local slugs reach it unmapped.
+
+        An unreadable row outranks a success found *below* it, so it wins
+        over ``found`` rather than being noted alongside it.  The walk
+        stops at the first clean success, which means every row it could
+        not read is newer than that success and may be the deployment
+        actually serving the environment; calling the older one active
+        would have the host write a stale pointer.
+
+        So ``none`` requires positive evidence -- rows read, none of them
+        serving.  Everything else the host must read as "keep what you
+        have".
+        """
+        scan_limit = _active_scan_limit(ctx.integration_options)
+        # Same memoisation as the resync sweep: one triggering-actor
+        # lookup per run and one release lookup per ref, shared across the
+        # parallel per-env fan-out.
+        run_cache: dict[str, tuple[str, str] | None] = {}
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]] = {}
+        mainline = _mainline_branches(ctx.integration_options)
+        async with self._client(ctx, credentials) as client:
+            return list(
+                await asyncio.gather(
+                    *(
+                        self._environment_state(
+                            client,
+                            env,
+                            scan_limit,
+                            run_cache,
+                            release_lookups,
+                            mainline,
+                        )
+                        for env in environments
+                    )
+                )
+            )
+
+    async def _environment_state(
+        self,
+        client: httpx.AsyncClient,
+        environment: str,
+        scan_limit: int,
+        run_cache: dict[str, tuple[str, str] | None],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]],
+        mainline: frozenset[str],
+    ) -> EnvironmentDeploymentState:
+        """Resolve one environment's active deployment."""
+        try:
+            resp = await client.get(
+                '/deployments',
+                params={
+                    'environment': environment,
+                    'per_page': str(scan_limit),
+                },
+            )
+            if resp.status_code == 404:
+                # NOT ``none``, though the listing path treats a 404 as
+                # "nothing to import".  Here ``none`` authorizes the host
+                # to clear the environment's current-release pointer, and
+                # GitHub answers 404 for a repo that was renamed or
+                # transferred, or one this installation lost access to --
+                # the very conditions link writeback exists to self-heal.
+                # An unknown *environment* is a 200 with an empty list, so
+                # nothing legitimate is lost by refusing to read a 404 as
+                # an answer.
+                LOGGER.warning(
+                    'Active deployment scan got 404 for env=%s; treating '
+                    'it as unreadable rather than as "nothing deployed"',
+                    environment,
+                )
+                return EnvironmentDeploymentState(
+                    environment=environment, active_resolution='error'
+                )
+            resp.raise_for_status()
+            deployments = typing.cast(list[dict[str, typing.Any]], resp.json())
+        except (httpx.HTTPError, ValueError):
+            LOGGER.warning(
+                'Failed to resolve active deployment for env=%s',
+                environment,
+                exc_info=True,
+            )
+            return EnvironmentDeploymentState(
+                environment=environment, active_resolution='error'
+            )
+        active: RemoteDeployment | None = None
+        latest: RemoteDeployment | None = None
+        scanned = 0
+        # Set by any row above the walk's stopping point that we could
+        # not read: a malformed listing entry, or one whose status
+        # history would not load.  Because the walk stops at the first
+        # clean success, every such row is *newer* than whatever success
+        # we go on to find, so it may itself be the deployment actually
+        # serving the environment.
+        unresolved = False
+        for deployment in deployments:
+            scanned += 1
+            observed = await self._observe_deployment(
+                client,
+                environment,
+                deployment,
+                run_cache,
+                release_lookups,
+                mainline,
+            )
+            if observed is None:
+                # A row we could not even identify.  It is still a row
+                # newer than any success below it, so it has to count as
+                # uncertainty rather than be skipped silently.
+                LOGGER.warning(
+                    'Active deployment scan could not identify a row for '
+                    'env=%s (id=%r sha=%r); resolving it as unreadable',
+                    environment,
+                    deployment.get('id'),
+                    deployment.get('sha'),
+                )
+                unresolved = True
+                continue
+            if latest is None:
+                latest = observed
+            if observed.status_unknown:
+                # Its status read failed, so this row's ``pending`` is a
+                # fallback.  Keep walking -- an older row may still
+                # answer -- but remember that the walk passed something
+                # it could not see.
+                unresolved = True
+            # ``status`` looks past GitHub's ``inactive`` notice on
+            # purpose, so a superseded rollout still reads as the
+            # ``success`` it was.  For "what is serving now" that notice
+            # is the answer, not noise: without the ``superseded`` test
+            # a deactivated environment reports its last success as
+            # active forever.  Walking on is safe -- an ``inactive``
+            # written because a later deployment took over has that
+            # deployment above it in this same newest-first page.
+            if observed.status == 'success' and not observed.superseded:
+                if unresolved:
+                    # A newer row we could not read sits above this
+                    # success, so we cannot claim this one is serving.
+                    # Stop here and report the uncertainty: the walk has
+                    # nothing older left to learn from.
+                    break
+                active = observed
+                break
+        # The result set is exhausted only when the walk read every row
+        # GitHub returned *and* GitHub returned fewer than we asked for
+        # (a full page means there is more history past the cap).  An
+        # empty listing does not count: GitHub answers 200 with ``[]``
+        # both for an environment that has never been deployed to and
+        # for an environment *name it has never heard of*, and the host
+        # passes local slugs through unmapped.  A project whose local
+        # slug is 'prod' against a remote 'production' would otherwise
+        # resolve ``none`` and have its pointer cleared on every sweep.
+        # Clearing needs positive evidence -- rows we read, none of them
+        # serving -- which is the deactivated-environment case.
+        exhausted = (
+            bool(deployments)
+            and scanned == len(deployments)
+            and scanned < scan_limit
+        )
+        resolution: typing.Literal['found', 'none', 'unknown', 'error']
+        if unresolved:
+            # Tested BEFORE ``found`` on purpose.  The walk stops at the
+            # first clean success, so every row it could not read is
+            # newer than that success -- and a 403 on the newest
+            # deployment's status hides exactly the deployment most
+            # likely to be serving.  Reporting ``found`` here would name
+            # an older release as current and have the host write that
+            # stale pointer.  ``error``, not ``none`` and not
+            # ``unknown``: the scan was not capped, it was blinded --
+            # most often by throttling, where every status read fails
+            # and ``none`` would clear every pointer on the project.
+            resolution = 'error'
+        elif active is not None:
+            resolution = 'found'
+        elif exhausted:
+            resolution = 'none'
+        else:
+            resolution = 'unknown'
+        LOGGER.info(
+            'Active deployment scan env=%s deployments_scanned=%d '
+            'unresolved_above_success=%s scan_exhausted=%s '
+            'active_resolution=%s',
+            environment,
+            scanned,
+            unresolved,
+            exhausted,
+            resolution,
+        )
+        return EnvironmentDeploymentState(
+            environment=environment,
+            active=active,
+            latest=latest,
+            active_resolution=resolution,
+        )
+
     async def get_release_notes(
         self,
         ctx: PluginContext,
@@ -1721,9 +2016,8 @@ class GitHubDeployment(DeploymentCapability):
         created_at = _parse_iso(deployment.get('created_at')) or (
             datetime.datetime.now(datetime.UTC)
         )
-        status, status_url = await self._latest_status(
-            client, str(deployment_id)
-        )
+        read = await self._latest_status(client, str(deployment_id))
+        status, status_url = read.status, read.log_url
         ref_value = deployment.get('ref')
         description = deployment.get('description')
         release_notes = (
@@ -1772,6 +2066,8 @@ class GitHubDeployment(DeploymentCapability):
             release_notes=release_notes,
             creator=creator_login,
             creator_subject=creator_subject,
+            superseded=read.superseded,
+            status_unknown=read.unreadable,
         )
 
     async def _resolve_triggering_actor(
@@ -1869,6 +2165,13 @@ class GitHubDeployment(DeploymentCapability):
         credits with the release and ``author_subject`` its numeric user
         id, which the host resolves to an Imbi user through the identity
         plugins on the same service.
+
+        A 401 degrades here too, like every other failure, rather than
+        propagating: release notes are *enrichment*, so losing them must
+        never fail the caller -- the same rule
+        :meth:`_resolve_triggering_actor` applies to attribution.  The
+        status read is deliberately not treated this way, because there
+        the answer itself is what a 401 hides.
         """
         if _releases_forbidden(client):
             return None
@@ -1876,7 +2179,7 @@ class GitHubDeployment(DeploymentCapability):
             resp = await client.get(
                 f'/releases/tags/{urllib.parse.quote(ref, safe="")}'
             )
-        except httpx.HTTPError:
+        except (httpx.HTTPError, PluginAuthenticationFailed):
             return None
         if resp.status_code == 403:
             _record_releases_forbidden(client)
@@ -1938,8 +2241,15 @@ class GitHubDeployment(DeploymentCapability):
 
     async def _latest_status(
         self, client: httpx.AsyncClient, deployment_id: str
-    ) -> tuple[DeploymentEventStatus, str | None]:
-        """Return the canonical event status + workflow log URL.
+    ) -> _StatusRead:
+        """Return the canonical event status, log URL, and retirement.
+
+        The third element is ``True`` when the newest status entry is
+        ``inactive``: the deployment's own outcome (the first element)
+        looks past that notice, so this is the only place the caller can
+        learn that GitHub has since retired it.  Both readings are
+        needed and neither substitutes for the other -- "what did this
+        rollout do" is a different question from "is it serving now".
 
         Falls back to ``'pending'`` whenever the deploy workflow has
         not yet posted a status: a freshly-created deployment with no
@@ -1975,15 +2285,35 @@ class GitHubDeployment(DeploymentCapability):
                 params={'per_page': '10'},
             )
         except httpx.HTTPError:
-            return 'pending', None
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=True
+            )
         if resp.status_code != 200:
-            return 'pending', None
+            # 403/429 land here, which is how a throttled scan used to
+            # read every row as ``pending`` and conclude that nothing was
+            # deployed.  The status is still ``pending`` for resync; the
+            # flag is what stops a currency decision resting on it.
+            LOGGER.warning(
+                'Deployment %s statuses answered %d; status unread',
+                deployment_id,
+                resp.status_code,
+            )
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=True
+            )
         try:
             statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
         except ValueError:
-            return 'pending', None
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=True
+            )
         if not statuses:
-            return 'pending', None
+            # Read fine and there is genuinely nothing: a deployment
+            # whose workflow has not posted yet.  Not unreadable.
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=False
+            )
+        superseded = str(statuses[0].get('state') or '').lower() == 'inactive'
         latest = next(
             (
                 entry
@@ -1994,7 +2324,12 @@ class GitHubDeployment(DeploymentCapability):
         )
         state = str(latest.get('state') or '').lower()
         log_url = latest.get('log_url') or latest.get('target_url')
-        return _to_event_status(state), str(log_url) if log_url else None
+        return _StatusRead(
+            _to_event_status(state),
+            str(log_url) if log_url else None,
+            superseded=superseded,
+            unreadable=False,
+        )
 
 
 _RUN_ID_RE = re.compile(r'/actions/runs/(\d+)')

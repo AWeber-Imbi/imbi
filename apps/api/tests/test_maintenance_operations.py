@@ -525,6 +525,9 @@ class ExecuteDeploymentResyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             'maintenance', resync.await_args.kwargs['auth'].principal_name
         )
+        # The maintenance sweep is the caller that repairs the
+        # current_release pointer; every other one observes only.
+        self.assertTrue(resync.await_args.kwargs['reconcile'])
 
     async def test_no_capability_is_skipped(self) -> None:
         for status_code in (400, 404):

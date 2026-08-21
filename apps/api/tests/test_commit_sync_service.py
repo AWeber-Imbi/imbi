@@ -63,6 +63,61 @@ class RunSyncTests(unittest.IsolatedAsyncioTestCase):
             result = await service.run_sync(db, 'octo', 'p1')
         self.assertEqual((5, 1), result)
 
+    async def test_reads_the_drift_notes_for_the_synced_history(self) -> None:
+        # Recording commits without their verdicts shows them as
+        # drifted, because readers fail closed on a missing verdict.
+        resync = mock.AsyncMock(return_value=None)
+        db = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                service,
+                'resolve_capability',
+                mock.AsyncMock(return_value=_resolved(_FakeCommitSync)),
+            ),
+            mock.patch.object(
+                service,
+                '_build_context',
+                mock.AsyncMock(return_value=mock.Mock()),
+            ),
+            mock.patch.object(
+                service, '_backfill_release_notes', mock.AsyncMock()
+            ),
+            mock.patch('imbi.api.drift.resync_verdicts', resync),
+        ):
+            result = await service.run_sync(db, 'octo', 'p1')
+        self.assertEqual((5, 1), result)
+        self.assertEqual('p1', resync.await_args.kwargs['project_id'])
+
+    async def test_a_failed_drift_read_leaves_the_sync_successful(
+        self,
+    ) -> None:
+        # The commits and tags are already recorded, which is what was
+        # asked for; an unread verdict leaves those commits reading as
+        # drifted, the same as before this ran at all.
+        db = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                service,
+                'resolve_capability',
+                mock.AsyncMock(return_value=_resolved(_FakeCommitSync)),
+            ),
+            mock.patch.object(
+                service,
+                '_build_context',
+                mock.AsyncMock(return_value=mock.Mock()),
+            ),
+            mock.patch.object(
+                service, '_backfill_release_notes', mock.AsyncMock()
+            ),
+            mock.patch(
+                'imbi.api.drift.resync_verdicts',
+                mock.AsyncMock(side_effect=RuntimeError('clickhouse down')),
+            ),
+            self.assertLogs(service.LOGGER, level='WARNING'),
+        ):
+            result = await service.run_sync(db, 'octo', 'p1')
+        self.assertEqual((5, 1), result)
+
     async def test_unresolved_raises_unavailable(self) -> None:
         db = mock.AsyncMock()
         with mock.patch.object(

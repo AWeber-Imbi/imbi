@@ -35,6 +35,7 @@ from imbi.common.plugins.base import (
     CompareResult,
     DeploymentCapability,
     DeploymentRun,
+    EnvironmentDeploymentState,
     LinkWriteback,
     Plugin,
     PluginManifest,
@@ -1371,7 +1372,9 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
             creator_subject=creator_subject,
         )
 
-    def _run_resync(self, limit: int = 1) -> project_deployments.ResyncSummary:
+    def _run_resync(
+        self, limit: int = 1, *, reconcile: bool = False
+    ) -> project_deployments.ResyncSummary:
         return asyncio.run(
             project_deployments.resync_for_project(
                 self.mock_db,
@@ -1379,6 +1382,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
                 project_id='proj1',
                 auth=self.auth_context,
                 limit=limit,
+                reconcile=reconcile,
             )
         )
 
@@ -1635,6 +1639,348 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         with self.assertRaises(fastapi.HTTPException) as cm:
             self._run_resync()
         self.assertEqual(cm.exception.status_code, 503)
+
+
+class ResyncActiveStateShadowTestCase(ResyncProjectDeploymentsTestCase):
+    """The read-only active-state comparison a resync ends with.
+
+    Every case drives ``resync_for_project`` with a plugin that reports
+    currency, then reads the categories off ``summary.active_state`` --
+    which is the aggregate of the per-environment log lines.  Nothing
+    here may write, and nothing here may change the resync outcome.
+    """
+
+    def _arm_state(
+        self,
+        state: EnvironmentDeploymentState | Exception,
+        *,
+        pointer: str | None = None,
+        derived_release_id: str | None = None,
+        known_run_ids: tuple[str, ...] = (),
+        release_exists: bool = True,
+        edge_status: typing.Literal['append', 'dedupe', 'missing'] = 'append',
+    ) -> None:
+        self._arm(
+            [self._observed()],
+            release_exists=release_exists,
+            edge_status=edge_status,
+        )
+        plugin = self.mocks['handler'].return_value
+        if isinstance(state, Exception):
+            plugin.get_environment_state = mock.AsyncMock(side_effect=state)
+        else:
+            plugin.get_environment_state = mock.AsyncMock(return_value=[state])
+        env = 'infrastructure-testing'
+
+        def _execute(query, *_args, **_kwargs):
+            if 'DEPLOYED_IN' in query:
+                return (
+                    [
+                        {
+                            'slug': json.dumps(env),
+                            'current_release': json.dumps(pointer),
+                        }
+                    ]
+                    if pointer is not None
+                    else []
+                )
+            if "d.status = 'success'" in query:
+                return (
+                    [
+                        {
+                            'slug': json.dumps(env),
+                            'ts': json.dumps('2026-05-13T14:00:00+00:00'),
+                            'external_run_id': json.dumps('12345'),
+                            'release_id': json.dumps(derived_release_id),
+                        }
+                    ]
+                    if derived_release_id is not None
+                    else []
+                )
+            if 'd.external_run_id IN' in query:
+                return [
+                    {'external_run_id': json.dumps(run_id)}
+                    for run_id in known_run_ids
+                ]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+
+    def _state(
+        self,
+        resolution: typing.Literal['found', 'none', 'unknown', 'error'],
+        *,
+        active: RemoteDeployment | None = None,
+    ) -> EnvironmentDeploymentState:
+        return EnvironmentDeploymentState(
+            environment='infrastructure-testing',
+            active=active,
+            latest=active,
+            active_resolution=resolution,
+        )
+
+    def test_shadow_reports_pointer_missing(self) -> None:
+        # The remote's active deployment is recorded locally and resolves
+        # to a Release, but nothing ever set the pointer -- the case the
+        # dedupe noop path can never repair.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            derived_release_id='existing-release-id',
+            known_run_ids=('12345',),
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'pointer_missing': 1})
+
+    def test_shadow_reports_pointer_stale(self) -> None:
+        # The pointer names a different release than the one the remote
+        # says is serving the environment.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            pointer='older-release-id',
+            derived_release_id='existing-release-id',
+            known_run_ids=('12345',),
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'pointer_stale': 1})
+
+    def test_shadow_reports_remote_unknown(self) -> None:
+        # A bounded scan that stopped before exhaustion carries no
+        # opinion, so the pointer is never compared against it.
+        self._arm_state(
+            self._state('unknown'),
+            pointer='older-release-id',
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'remote_unknown': 1})
+
+    def test_shadow_reports_deployment_missing_locally(self) -> None:
+        # The active deployment's run id has no local Deployment node:
+        # missing data rather than a wrong pointer, which is what the
+        # active deployment falling outside the recent window looks like.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            pointer='older-release-id',
+        )
+        summary = self._run_resync()
+        self.assertEqual(
+            summary.active_state, {'deployment_missing_locally': 1}
+        )
+
+    def test_shadow_reports_agreement(self) -> None:
+        # Pointer, event-derived candidate and remote all name the same
+        # release: the healthy case reconciliation aims for.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            pointer='existing-release-id',
+            derived_release_id='existing-release-id',
+            known_run_ids=('12345',),
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'pointer_matches_remote': 1})
+
+    def test_shadow_failure_leaves_resync_successful(self) -> None:
+        # Observation is diagnostic: a provider failure degrades to a
+        # warning and the backfill's own result stands.
+        self._arm_state(RuntimeError('GitHub returned 503'))
+        with self.assertLogs(_MODULE, level='WARNING'):
+            summary = self._run_resync()
+        self.assertEqual(summary.observed, 1)
+        self.assertEqual(summary.events_recorded, 1)
+        self.assertEqual(summary.errors, [])
+        self.assertIsNone(summary.active_state)
+
+    def test_shadow_skipped_when_plugin_cannot_report(self) -> None:
+        # ``get_environment_state`` is optional; the capability default
+        # raises ``NotImplementedError`` and the resync carries on.
+        self._arm([self._observed()], release_exists=True)
+        summary = self._run_resync()
+        self.assertEqual(summary.events_recorded, 1)
+        self.assertIsNone(summary.active_state)
+
+
+class ResyncActiveStateReconcileTestCase(ResyncActiveStateShadowTestCase):
+    """The pointer repair a reconciling resync performs (phase 3).
+
+    Armed exactly like the observation cases; ``reconcile=True`` turns
+    the comparison into a write.  The guarded write itself is covered
+    against its Cypher in the release tests -- what these assert is
+    which action each resolution asks for, and that the comparison
+    keeps reporting while it happens.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.mocks['reconcile'] = self._start(
+            mock.patch(
+                f'{_MODULE}.reconcile_current_release',
+                return_value=True,
+            )
+        )
+
+    def test_reconcile_repairs_pointer_after_deduped_success(self) -> None:
+        # Row 7: the remote's success is already recorded, so the event
+        # path is a noop that returns before it could advance the
+        # pointer.  Reconciliation is what repairs it.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            derived_release_id='existing-release-id',
+            known_run_ids=('12345',),
+            edge_status='dedupe',
+        )
+        summary = self._run_resync(reconcile=True)
+        self.assertEqual(summary.events_skipped, 1)
+        self.assertEqual(summary.events_recorded, 0)
+        self.assertEqual(summary.active_state, {'pointer_missing': 1})
+        kwargs = self.mocks['reconcile'].await_args.kwargs
+        self.assertEqual(kwargs['release_id'], 'existing-release-id')
+        self.assertEqual(kwargs['external_deployment_id'], '12345')
+        self.assertEqual(kwargs['env_slug'], 'infrastructure-testing')
+        # The provider's own timestamp, not when Imbi saw it.
+        self.assertEqual(kwargs['release_at'], self._observed().created_at)
+
+    def test_reconcile_does_not_resurrect_inactive_success(self) -> None:
+        # Row 8: replaying a historical success must not point the
+        # pointer back at it.  The remote names a different deployment
+        # as the active one and that is what the pointer ends up at.
+        active = self._observed(external_run_id='777', sha='beefcafe1234')
+        self._arm_state(
+            self._state('found', active=active),
+            pointer='historical-release-id',
+            derived_release_id='historical-release-id',
+            known_run_ids=('12345', '777'),
+            edge_status='dedupe',
+        )
+        self.mocks['release_exists'].side_effect = (
+            lambda *_args, **kwargs: 'active-release-id'
+            if kwargs['committish'] == 'beefcaf'
+            else 'historical-release-id'
+        )
+        summary = self._run_resync(reconcile=True)
+        self.assertEqual(summary.active_state, {'pointer_stale': 1})
+        kwargs = self.mocks['reconcile'].await_args.kwargs
+        self.assertEqual(kwargs['release_id'], 'active-release-id')
+        self.assertEqual(kwargs['external_deployment_id'], '777')
+
+    def test_reconcile_clears_pointer_when_nothing_is_active(self) -> None:
+        # Row 9: the provider exhausted its result set with no active
+        # deployment, which is the one case that clears.
+        self._arm_state(self._state('none'), pointer='existing-release-id')
+        summary = self._run_resync(reconcile=True)
+        self.assertEqual(summary.active_state, {'remote_none': 1})
+        kwargs = self.mocks['reconcile'].await_args.kwargs
+        self.assertIsNone(kwargs['release_id'])
+        self.assertIsNone(kwargs['external_deployment_id'])
+        self.assertIsNone(kwargs['release_at'])
+
+    def test_reconcile_retains_pointer_when_scan_was_capped(self) -> None:
+        # Row 10: a scan that stopped at its cap knows nothing about
+        # what is active, so it must never be read as "nothing active".
+        self._arm_state(self._state('unknown'), pointer='existing-release-id')
+        summary = self._run_resync(reconcile=True)
+        self.assertEqual(summary.active_state, {'remote_unknown': 1})
+        self.mocks['reconcile'].assert_not_awaited()
+        self.assertEqual(summary.errors, [])
+
+    def test_reconcile_records_a_provider_error(self) -> None:
+        # An outage retains the pointer like ``unknown`` does, but the
+        # run reports it: a reconciliation that could not read the
+        # provider is not a clean pass.
+        self._arm_state(self._state('error'), pointer='existing-release-id')
+        summary = self._run_resync(reconcile=True)
+        self.assertEqual(summary.active_state, {'remote_error': 1})
+        self.mocks['reconcile'].assert_not_awaited()
+        self.assertEqual(len(summary.errors), 1)
+        self.assertEqual(
+            summary.errors[0].environment, 'infrastructure-testing'
+        )
+
+    def test_reconcile_retains_when_no_local_release_resolves(self) -> None:
+        # Nothing to point the pointer at: the active deployment's
+        # version resolves to no Release, which is missing data rather
+        # than a reason to clear.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            pointer='existing-release-id',
+            known_run_ids=('12345',),
+            release_exists=False,
+        )
+        summary = self._run_resync(reconcile=True)
+        self.assertEqual(summary.active_state, {'release_missing_locally': 1})
+        self.mocks['reconcile'].assert_not_awaited()
+
+    def test_reconcile_imports_active_outside_the_window(self) -> None:
+        # Row 14: the active deployment is older than the recent-event
+        # window, so nothing in the observation list describes it.  It
+        # gets applied like any observation -- which is what makes its
+        # run id known locally -- and then pointed at.
+        active = self._observed(external_run_id='999', sha='0ldc0ffee123')
+        self._arm_state(
+            self._state('found', active=active),
+            known_run_ids=('999',),
+        )
+        summary = self._run_resync(reconcile=True)
+        appended = [
+            call.kwargs['external_run_id']
+            for call in self.mocks['append_deployment_event'].await_args_list
+        ]
+        self.assertIn('999', appended)
+        self.assertEqual(summary.active_state, {'pointer_missing': 1})
+        kwargs = self.mocks['reconcile'].await_args.kwargs
+        self.assertEqual(kwargs['external_deployment_id'], '999')
+        self.assertEqual(kwargs['release_id'], 'existing-release-id')
+
+    def test_reconcile_snapshot_predates_the_remote_read(self) -> None:
+        # Row 13's premise: the snapshot the compare-and-set guard
+        # carries is stamped before the provider is asked, so a pointer
+        # write that lands while the provider is answering is newer than
+        # the snapshot and survives it.
+        read_at: list[datetime.datetime] = []
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            known_run_ids=('12345',),
+        )
+
+        async def _get_environment_state(
+            *_args: typing.Any, **_kwargs: typing.Any
+        ) -> list[EnvironmentDeploymentState]:
+            read_at.append(datetime.datetime.now(datetime.UTC))
+            return [self._state('found', active=self._observed())]
+
+        plugin = self.mocks['handler'].return_value
+        plugin.get_environment_state = _get_environment_state
+        self._run_resync(reconcile=True)
+        observed_at = self.mocks['reconcile'].await_args.kwargs['observed_at']
+        self.assertLessEqual(observed_at, read_at[0])
+
+    def test_observation_only_run_writes_nothing(self) -> None:
+        # The default: the comparison still runs, but nothing is
+        # imported and no pointer is touched.
+        active = self._observed(external_run_id='999', sha='0ldc0ffee123')
+        self._arm_state(
+            self._state('found', active=active),
+            known_run_ids=('999',),
+        )
+        summary = self._run_resync()
+        appended = [
+            call.kwargs['external_run_id']
+            for call in self.mocks['append_deployment_event'].await_args_list
+        ]
+        self.assertNotIn('999', appended)
+        self.assertEqual(summary.active_state, {'pointer_missing': 1})
+        self.mocks['reconcile'].assert_not_awaited()
+
+    def test_reconcile_failure_is_reported_not_raised(self) -> None:
+        # A failed pointer write is a write the operator asked for, so
+        # it lands on the summary rather than degrading to a log line.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            known_run_ids=('12345',),
+        )
+        self.mocks['reconcile'].side_effect = RuntimeError('deadlock')
+        summary = self._run_resync(reconcile=True)
+        self.assertEqual(summary.active_state, {'pointer_missing': 1})
+        self.assertEqual(len(summary.errors), 1)
+        self.assertIn('reconcile failed', summary.errors[0].detail)
 
 
 class ResyncEndpointTestCase(ProjectDeploymentsTestCase):
@@ -6044,3 +6390,46 @@ class IngestDriftNotesTests(ProjectDeploymentsTestCase):
                 self.URL, json={'before': 'nope', 'after': 'b' * 40}
             )
         self.assertEqual(422, response.status_code)
+
+
+class DerivedRankTestCase(unittest.TestCase):
+    """The tie-break shared with the current-release reader.
+
+    Both readers answer "which is the newest successful attempt", so a
+    tied timestamp has to break the same way in each.  It did not: this
+    one compared the run id as text, so ``'9'`` outranked ``'10'`` and
+    the two readers could name different attempts -- reported as a
+    ``derived_disagrees_with_remote`` that was not real.
+    """
+
+    @staticmethod
+    def _entry(run_id: str | None) -> project_deployments._DerivedDeployment:
+        return project_deployments._DerivedDeployment(
+            timestamp='2026-05-13T15:00:00+00:00',
+            external_run_id=run_id,
+            release_id='release-id',
+        )
+
+    def test_numeric_run_ids_rank_by_value(self) -> None:
+        self.assertGreater(
+            project_deployments._derived_rank(self._entry('10')),
+            project_deployments._derived_rank(self._entry('9')),
+        )
+
+    def test_matches_the_current_release_reader(self) -> None:
+        # The two must agree, so pin them against each other rather than
+        # against a copy of the expected ordering.
+        for run_id in ('9', '10', 'abc', ''):
+            with self.subTest(run_id=run_id):
+                self.assertEqual(
+                    project_deployments._derived_rank(self._entry(run_id))[1],
+                    common_deployments.run_id_rank(run_id),
+                )
+
+    def test_a_null_run_id_still_orders(self) -> None:
+        # ``None`` does not compare against a string, which is why the
+        # rank exists at all.
+        self.assertGreater(
+            project_deployments._derived_rank(self._entry('1')),
+            project_deployments._derived_rank(self._entry(None)),
+        )

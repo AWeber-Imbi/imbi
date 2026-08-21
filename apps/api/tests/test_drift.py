@@ -592,3 +592,217 @@ class SweepProjectTests(unittest.IsolatedAsyncioTestCase):
                 self.db, org_slug='org', project_id='p1'
             )
         self.assertEqual(1, stamped)
+
+
+class ResyncVerdictsTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.db = mock.AsyncMock(spec=graph.Graph)
+        self.db.execute.return_value = []
+        self.handler = mock.AsyncMock()
+        self.resolve = mock.AsyncMock(
+            return_value=(self.handler, mock.Mock(), {'access_token': 't'})
+        )
+        self.known = mock.AsyncMock(return_value={})
+        self.record = mock.AsyncMock(return_value=1)
+        for target, replacement in (
+            (
+                'imbi.api.endpoints.project_deployments'
+                '.resolve_deployment_capability',
+                self.resolve,
+            ),
+            (
+                'imbi.api.endpoints.project_deployments.sync_drift_blocker',
+                mock.AsyncMock(),
+            ),
+        ):
+            patcher = mock.patch(target, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        for attr, replacement in (
+            ('known_verdicts', self.known),
+            ('record_verdicts', self.record),
+        ):
+            patcher = mock.patch.object(drift, attr, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.handler.list_commit_notes.return_value = base.NotesListing(
+            {FULL_SHA: '{"drift_detected": true}'}, True
+        )
+
+    def _marked(self) -> bool:
+        return any(
+            'drift_verdicts_at' in str(call.args[0])
+            and 'SET' in str(call.args[0])
+            for call in self.db.execute.await_args_list
+        )
+
+    def _release_rows(
+        self, committish: str = 'abc1234'
+    ) -> list[dict[str, typing.Any]]:
+        return [
+            {
+                'id': '"rel-1"',
+                'tag': '"v1.0.0"',
+                'committish': f'"{committish}"',
+            }
+        ]
+
+    async def test_answered_commits_are_not_read_again(self) -> None:
+        # The cost that matters is one request per note body, so a
+        # project whose verdicts are already stored must pay nothing but
+        # the enumeration.
+        self.known.return_value = {FULL_SHA: True}
+        self.handler.list_commit_notes.return_value = base.NotesListing(
+            {}, True
+        )
+        self.record.return_value = 0
+        self.db.execute.side_effect = [
+            self._release_rows(),
+            [{'id': '"rel-1"'}],
+            [{'id': '"p1"'}],
+        ]
+        result = await drift.resync_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        assert result is not None
+        self.assertEqual(0, result.recorded)
+        # The stored verdict still answers the release: nothing was read
+        # this run, and the release was unanswered until now.
+        self.assertEqual(1, result.stamped)
+        self.assertEqual(
+            [FULL_SHA],
+            self.handler.list_commit_notes.await_args.kwargs['skip_shas'],
+        )
+
+    async def test_an_unavailable_store_reads_every_note(self) -> None:
+        # Skipping on a failed verdict read would report the ref as
+        # ingested while ingesting nothing.
+        self.known.return_value = None
+        await drift.resync_verdicts(self.db, org_slug='org', project_id='p1')
+        self.assertEqual(
+            [], self.handler.list_commit_notes.await_args.kwargs['skip_shas']
+        )
+
+    async def test_records_and_stamps_a_new_note(self) -> None:
+        self.db.execute.side_effect = [
+            self._release_rows(),
+            [{'id': '"rel-1"'}],
+            [{'id': '"p1"'}],
+        ]
+        result = await drift.resync_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        assert result is not None
+        self.assertEqual(drift.ResyncResult(recorded=1, stamped=1), result)
+        self.assertTrue(self._marked())
+        # The verdict reached the release, not just ClickHouse.
+        self.assertIs(
+            True, self.db.execute.await_args_list[1].args[1]['value']
+        )
+
+    async def test_an_incomplete_listing_is_not_marked(self) -> None:
+        self.handler.list_commit_notes.return_value = base.NotesListing(
+            {FULL_SHA: '{"drift_detected": false}'}, False
+        )
+        await drift.resync_verdicts(self.db, org_slug='org', project_id='p1')
+        self.assertFalse(self._marked())
+
+    async def test_an_ambiguous_committish_is_left_for_the_sweep(self) -> None:
+        # Two notes sharing the release's seven-character committish:
+        # stamping either would be a guess.
+        self.known.return_value = {FULL_SHA: True, 'abc1234' + 'e' * 33: False}
+        self.handler.list_commit_notes.return_value = base.NotesListing(
+            {}, True
+        )
+        self.record.return_value = 0
+        self.db.execute.side_effect = [
+            self._release_rows(),
+            [{'id': '"p1"'}],
+        ]
+        with self.assertLogs(drift.LOGGER, level='WARNING'):
+            result = await drift.resync_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        assert result is not None
+        self.assertEqual(0, result.stamped)
+
+    async def test_a_verdict_that_landed_mid_read_is_left_alone(
+        self,
+    ) -> None:
+        # The skip set was taken before the enumeration, so a webhook's
+        # verdict written during it is not in ``skip_shas``.  Re-writing
+        # it from the older tip would carry a newer ``recorded_at`` and
+        # beat the fresher row.
+        self.known.side_effect = [{}, {FULL_SHA: False}]
+        self.db.execute.side_effect = [
+            self._release_rows(),
+            [{'id': '"rel-1"'}],
+            [{'id': '"p1"'}],
+        ]
+        with self.assertLogs(drift.LOGGER, level='INFO'):
+            result = await drift.resync_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        assert result is not None
+        self.assertEqual({}, self.record.await_args.args[1])
+        # The landed verdict still answers the release.
+        self.assertEqual(1, result.stamped)
+
+    async def test_the_backfill_marker_is_written_last(self) -> None:
+        # The marker is what stops ``backfill_verdicts`` ever reading
+        # this ref again, so it must not land while a later step of this
+        # pass can still fail.
+        self.db.execute.side_effect = [
+            self._release_rows(),
+            [{'id': '"rel-1"'}],
+            [{'id': '"p1"'}],
+        ]
+        await drift.resync_verdicts(self.db, org_slug='org', project_id='p1')
+        queries = [
+            str(call.args[0]) for call in self.db.execute.await_args_list
+        ]
+        self.assertIn('drift_verdicts_at', queries[-1])
+
+    async def test_a_longer_committish_is_not_truncated(self) -> None:
+        # A committish longer than the seven-character bucket must match
+        # the note's full SHA, not just the bucket.
+        self.known.return_value = {FULL_SHA: True}
+        self.handler.list_commit_notes.return_value = base.NotesListing(
+            {}, True
+        )
+        self.record.return_value = 0
+        self.db.execute.side_effect = [
+            self._release_rows('abc1234ffff9999'),
+            [{'id': '"p1"'}],
+        ]
+        result = await drift.resync_verdicts(
+            self.db, org_slug='org', project_id='p1'
+        )
+        assert result is not None
+        self.assertEqual(0, result.stamped)
+
+    async def test_a_failed_write_raises(self) -> None:
+        self.record.return_value = None
+        with self.assertRaises(RuntimeError):
+            await drift.resync_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        self.assertFalse(self._marked())
+
+    async def test_nothing_can_answer_is_none(self) -> None:
+        for status_code in (400, 404):
+            self.resolve.side_effect = fastapi.HTTPException(
+                status_code=status_code, detail='nope'
+            )
+            self.assertIsNone(
+                await drift.resync_verdicts(
+                    self.db, org_slug='org', project_id='p1'
+                )
+            )
+        self.resolve.side_effect = None
+        self.handler.list_commit_notes.side_effect = NotImplementedError
+        self.assertIsNone(
+            await drift.resync_verdicts(
+                self.db, org_slug='org', project_id='p1'
+            )
+        )

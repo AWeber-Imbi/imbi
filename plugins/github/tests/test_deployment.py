@@ -17,6 +17,7 @@ from imbi.common.plugins.base import (
 from imbi.common.plugins.errors import PluginAuthenticationFailed
 from imbi.plugins.github.deployment import (
     GitHubDeployment,
+    _active_scan_limit,
     _artifact_status,
     _mainline_branches,
     _repo_root_from_redirect,
@@ -55,6 +56,25 @@ def _ctx(
 
 
 _CREDS = {'access_token': 'gho_test'}
+
+
+def _deployment(deployment_id: int, created_at: str) -> dict[str, object]:
+    """A minimal ``GET /deployments`` row deploying a mainline branch."""
+    return {
+        'id': deployment_id,
+        'sha': f'sha{deployment_id}',
+        'ref': 'main',
+        'created_at': created_at,
+    }
+
+
+def _statuses(*states: str) -> None:
+    """Mock ``/deployments/{id}/statuses`` for ids 1..len(states)."""
+    for offset, state in enumerate(states, start=1):
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/'
+            f'{offset}/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': state}]))
 
 
 class ManifestTestCase(unittest.TestCase):
@@ -107,6 +127,14 @@ class ManifestTestCase(unittest.TestCase):
         self.assertNotIn(
             'mainline_branches', {opt.name for opt in cap.options}
         )
+
+    def test_active_scan_limit_declared_integration_level(self) -> None:
+        # Scan depth follows the org's deploy habits, like mainline
+        # branch naming, so it sits beside flavor/host on the Integration.
+        options = {opt.name: opt for opt in GitHubPlugin.manifest.options}
+        self.assertIn('active_scan_limit', options)
+        self.assertEqual(options['active_scan_limit'].default, 10)
+        self.assertFalse(options['active_scan_limit'].required)
 
     def test_no_legacy_deploys_via_edge_declared(self) -> None:
         # Promote behaviour is inferred from the ref shape and per-env
@@ -1920,6 +1948,460 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[0].creator_subject, '583231')
 
 
+class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_newest_success_is_active(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T14:00:00Z')]
+            )
+        )
+        _statuses('success')
+        plugin = GitHubDeployment()
+        states = await plugin.get_environment_state(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(len(states), 1)
+        state = states[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        assert state.latest is not None
+        self.assertEqual(state.active.external_run_id, '1')
+        # The newest attempt is also the active one here, and both carry
+        # the same ``RemoteDeployment`` shape resync records.
+        self.assertEqual(state.latest.external_run_id, '1')
+        self.assertEqual(state.active.status, 'success')
+
+    @respx.mock
+    async def test_newest_failed_older_success_stays_active(self) -> None:
+        # The original bug: the newest attempt failed, so the deployment
+        # actually serving the environment is the older success.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        _statuses('failure', 'success')
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        assert state.latest is not None
+        self.assertEqual(state.active.external_run_id, '2')
+        self.assertEqual(state.latest.external_run_id, '1')
+        self.assertEqual(state.latest.status, 'failed')
+
+    @respx.mock
+    async def test_newest_pending_older_success_stays_active(self) -> None:
+        # An in-flight deploy is activity, not currency: the older
+        # success is still what serves traffic.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        _statuses('in_progress', 'success')
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        assert state.latest is not None
+        self.assertEqual(state.active.external_run_id, '2')
+        self.assertEqual(state.latest.status, 'in_progress')
+
+    @respx.mock
+    async def test_retired_success_is_not_active(self) -> None:
+        # GitHub wrote ``inactive`` on top of the success, so nothing is
+        # serving this environment any more.  ``status`` still reads
+        # ``success`` -- the rollout did succeed -- which is exactly why
+        # the scan cannot answer from ``status`` alone.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T14:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[{'state': 'inactive'}, {'state': 'success'}]
+            )
+        )
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'none')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertEqual(state.latest.status, 'success')
+        self.assertTrue(state.latest.superseded)
+
+    @respx.mock
+    async def test_scan_walks_past_a_retired_success(self) -> None:
+        # The newest deployment was retired; the one below it is what
+        # the environment is actually serving.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[{'state': 'inactive'}, {'state': 'success'}]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        self.assertEqual(state.active.external_run_id, '2')
+        self.assertFalse(state.active.superseded)
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '1')
+
+    @respx.mock
+    async def test_scan_cap_reached_is_unknown_never_none(self) -> None:
+        # A full page with no success means an older active deployment
+        # may sit just past the cap — reporting 'none' would have the
+        # host clear a pointer that is right.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '2'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        _statuses('failure', 'failure')
+        plugin = GitHubDeployment()
+        ctx = _ctx(connection=_connection() | {'active_scan_limit': 2})
+        state = (
+            await plugin.get_environment_state(ctx, _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'unknown')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '1')
+
+    @respx.mock
+    async def test_no_deployments_is_unknown_not_none(self) -> None:
+        # GitHub answers 200 with ``[]`` both for an environment nothing
+        # has deployed to and for an environment name it has never heard
+        # of -- and local slugs reach it unmapped, so a project whose
+        # slug is 'prod' against a remote 'production' looks identical to
+        # an empty environment.  ``none`` clears the pointer, so an empty
+        # listing must not earn it.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'unknown')
+        self.assertIsNone(state.active)
+        self.assertIsNone(state.latest)
+
+    @respx.mock
+    async def test_short_page_without_success_is_none(self) -> None:
+        # Fewer rows than the cap means the history is exhausted, so
+        # "nothing is deployed" is a real answer.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        _statuses('failure')
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'none')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertEqual(state.latest.status, 'failed')
+
+    @respx.mock
+    async def test_provider_failure_is_error_not_none(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(503, json={'message': 'unavailable'})
+        )
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+        self.assertIsNone(state.latest)
+
+    @respx.mock
+    async def test_a_404_listing_is_error_not_none(self) -> None:
+        # NOT ``none``, unlike ``list_recent_deployments``: here ``none``
+        # authorizes clearing the pointer, and a 404 is what a renamed or
+        # transferred repo -- or a token that lost access -- answers.  An
+        # unknown *environment* is a 200 with an empty list.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'never-deployed', 'per_page': '10'},
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        _statuses('success')
+        plugin = GitHubDeployment()
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            states = await plugin.get_environment_state(
+                _ctx(), _CREDS, ['production', 'never-deployed']
+            )
+        by_env = {s.environment: s for s in states}
+        self.assertEqual(by_env['production'].active_resolution, 'found')
+        missing = by_env['never-deployed']
+        self.assertEqual(missing.active_resolution, 'error')
+        self.assertIsNone(missing.active)
+        self.assertIsNone(missing.latest)
+
+    @respx.mock
+    async def test_an_unread_status_is_error_not_none(self) -> None:
+        # A throttled scan reads every status as the ``pending``
+        # fallback.  Answering ``none`` there would clear a pointer that
+        # is right, on every environment of the project at once.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                403, json={'message': 'API rate limit exceeded'}
+            )
+        )
+        plugin = GitHubDeployment()
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            state = (
+                await plugin.get_environment_state(
+                    _ctx(), _CREDS, ['production']
+                )
+            )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertTrue(state.latest.status_unknown)
+
+    @respx.mock
+    async def test_a_success_above_an_unread_status_still_answers(
+        self,
+    ) -> None:
+        # The walk stops at the first live success, so rows it never
+        # reached cannot outrank it -- reading them is not required.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        unread = respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(500))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        self.assertEqual(state.active.external_run_id, '1')
+        self.assertFalse(unread.called)
+
+    @respx.mock
+    async def test_an_unread_row_above_a_success_is_error(self) -> None:
+        # The mirror of the test above, and the case that matters: the
+        # unread row is NEWER than the success.  The walk stops at the
+        # first clean success, so anything it could not read sits above
+        # that success and may be the deployment actually serving the
+        # environment.  Answering ``found`` here would name the older
+        # release as current and have the host write a stale pointer.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                403, json={'message': 'API rate limit exceeded'}
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        plugin = GitHubDeployment()
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            state = (
+                await plugin.get_environment_state(
+                    _ctx(), _CREDS, ['production']
+                )
+            )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+        # ``latest`` still reports the newest attempt, unread status and
+        # all -- it is activity, never currency.
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '1')
+        self.assertTrue(state.latest.status_unknown)
+
+    @respx.mock
+    async def test_a_malformed_row_above_a_success_is_error(self) -> None:
+        # A row too malformed to identify is just as unreadable as one
+        # whose status would not load, and it is newer than the success
+        # below it.  Skipping it silently would report that success as
+        # active.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {'id': None, 'sha': None, 'created_at': None},
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        plugin = GitHubDeployment()
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            state = (
+                await plugin.get_environment_state(
+                    _ctx(), _CREDS, ['production']
+                )
+            )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+        # The malformed row cannot be reported at all, so ``latest``
+        # names the readable success below it even though nothing is
+        # claimed active.  That pairing is the surprising part of the
+        # contract, so pin it.
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '2')
+
+    @respx.mock
+    async def test_an_empty_status_list_is_not_unread(self) -> None:
+        # Read fine, nothing posted yet: that is a real ``pending``, and
+        # an exhausted page of them is a real "nothing deployed".
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'none')
+        assert state.latest is not None
+        self.assertFalse(state.latest.status_unknown)
+
+
+class ActiveScanLimitTestCase(unittest.TestCase):
+    def test_absent_option_uses_default(self) -> None:
+        self.assertEqual(_active_scan_limit({}), 10)
+
+    def test_string_option_parsed(self) -> None:
+        # The admin form hands scalar options back as strings.
+        self.assertEqual(_active_scan_limit({'active_scan_limit': '25'}), 25)
+
+    def test_invalid_or_out_of_range_values_fall_back(self) -> None:
+        self.assertEqual(_active_scan_limit({'active_scan_limit': 'ten'}), 10)
+        self.assertEqual(_active_scan_limit({'active_scan_limit': 0}), 10)
+        self.assertEqual(_active_scan_limit({'active_scan_limit': True}), 10)
+        # One GitHub page is the ceiling.
+        self.assertEqual(_active_scan_limit({'active_scan_limit': 500}), 100)
+
+
 class GetReleaseNotesTestCase(unittest.IsolatedAsyncioTestCase):
     @respx.mock
     async def test_returns_release_body_for_tag(self) -> None:
@@ -2157,6 +2639,69 @@ class AuthenticationFailureTestCase(unittest.IsolatedAsyncioTestCase):
         plugin = GitHubDeployment()
         with self.assertRaises(PluginAuthenticationFailed):
             await plugin.list_refs(_ctx(), _CREDS, kind='default')
+
+    @respx.mock
+    async def test_401_on_release_lookup_degrades(self) -> None:
+        # Release notes are enrichment, so a 401 fetching them degrades
+        # to "no notes" instead of propagating -- the same rule
+        # attribution follows.  The status read is deliberately NOT
+        # treated this way; see the test below.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        'id': 1,
+                        'sha': 'sha1',
+                        'ref': 'v1.2.3',
+                        'created_at': '2026-05-13T15:00:00Z',
+                    }
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        respx.get(
+            'https://api.github.com/repos/octo/demo/releases/tags/v1.2.3'
+        ).mock(
+            return_value=httpx.Response(401, json={'message': 'token expired'})
+        )
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        self.assertEqual(state.active.external_run_id, '1')
+        self.assertIsNone(state.active.release_notes)
+
+    @respx.mock
+    async def test_401_on_status_read_still_propagates(self) -> None:
+        # The counterpart guarantee: a 401 on the status read must reach
+        # the host, because ``call_with_identity_retry`` is what refreshes
+        # the identity and retries the scan.  Swallowing it here would
+        # leave every environment resolving ``error`` on an expired token
+        # with no refresh ever attempted.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(401, json={'message': 'token expired'})
+        )
+        plugin = GitHubDeployment()
+        with self.assertRaises(PluginAuthenticationFailed):
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
 
     @respx.mock
     async def test_401_on_deployment_raises_authentication_failed(
@@ -3129,6 +3674,33 @@ class GitNotesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             {self.FULL_SHA: '{"drift_detected":true}'}, listing.notes
         )
+        self.assertTrue(listing.complete)
+
+    @respx.mock
+    async def test_list_commit_notes_skips_answered_commits(self) -> None:
+        # Enumerating the ref is a call or two; every body is a request
+        # of its own, so a caller repairing a gap must be able to pay
+        # only for what it is missing.
+        other_sha = 'e' * 40
+        self._mock_tree(
+            [
+                {'type': 'blob', 'path': self.FULL_SHA, 'sha': 'b1'},
+                {'type': 'blob', 'path': other_sha, 'sha': 'b2'},
+            ]
+        )
+        skipped = respx.get(f'{self.REPO}/git/blobs/b1').mock(
+            return_value=httpx.Response(500)
+        )
+        self._blob('b2', '{"drift_detected":false}')
+        listing = await self.handler.list_commit_notes(
+            _ctx(), _CREDS, 'imbi-drift', skip_shas=[self.FULL_SHA.upper()]
+        )
+        self.assertFalse(skipped.called)
+        self.assertEqual(
+            {other_sha: '{"drift_detected":false}'}, listing.notes
+        )
+        # A note skipped on request is not a note that could not be
+        # read: the caller already holds that answer.
         self.assertTrue(listing.complete)
 
     @respx.mock

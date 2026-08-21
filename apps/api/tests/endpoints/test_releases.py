@@ -1,5 +1,6 @@
 """Tests for release CRUD and deployment-edge endpoints."""
 
+import asyncio
 import datetime
 import json
 import typing
@@ -9,6 +10,8 @@ import fastapi.testclient
 
 from apps.api.tests import support
 from imbi.api import models
+from imbi.api.endpoints import projects, releases
+from imbi.common import deployments as deployment_nodes
 from imbi.common import graph
 
 PROJECT_ID = 'proj123nanoid'
@@ -1451,7 +1454,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': None,
                 }
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1487,7 +1491,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1527,7 +1532,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1560,7 +1566,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': events,
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1588,7 +1595,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': None,
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1617,7 +1625,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': deployments,
                 }
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         lookup = mock.AsyncMock(
             return_value={(PROJECT_ID, 'production'): 'deployer'}
@@ -1663,7 +1672,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': deployments,
                 }
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         kevin = models.User(
             email='kevin@example.com',
@@ -1711,7 +1721,8 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
                     'deployments': deployments,
                 }
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -1722,6 +1733,144 @@ class CurrentReleasesTestCase(_ReleasesTestBase):
         row = response.json()[0]
         self.assertEqual(row['performed_by'], 'octocat')
         self.assertIsNone(row['performed_by_email'])
+
+
+#: The one environment the shared-reader tests deploy in.
+_PRODUCTION: dict[str, typing.Any] = {
+    'slug': 'production',
+    'name': 'Production',
+    'sort_order': 30,
+}
+
+
+def _project_deployment(
+    *,
+    status: str,
+    timestamp: str,
+    release: dict[str, typing.Any],
+    external_run_id: str,
+) -> deployment_nodes.ProjectDeployment:
+    """One row of what the shared current/latest reader answers with."""
+    return deployment_nodes.ProjectDeployment(
+        PROJECT_ID,
+        _PRODUCTION,
+        release,
+        models.DeploymentEvent(
+            timestamp=datetime.datetime.fromisoformat(timestamp),
+            status=typing.cast('typing.Any', status),
+            external_run_id=external_run_id,
+        ),
+    )
+
+
+class SharedCurrentReaderTestCase(_ReleasesTestBase):
+    """Matrix 12: the projects list and project detail agree.
+
+    Both surfaces read ``Deployment`` nodes through
+    ``current_and_latest_by_project``, so one stubbed reader answer has
+    to produce the same current release and the same
+    ``latest_deployment`` in both responses.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.state = deployment_nodes.EnvironmentReleaseState(
+            PROJECT_ID,
+            _PRODUCTION,
+            _project_deployment(
+                status='success',
+                timestamp='2026-04-20T10:00:00+00:00',
+                release=_release_row(tag='1.0.0', id='r1'),
+                external_run_id='1',
+            ),
+            _project_deployment(
+                status='failed',
+                timestamp='2026-04-22T10:00:00+00:00',
+                release=_release_row(tag='1.1.0', committish='9999999'),
+                external_run_id='2',
+            ),
+        )
+
+    def test_both_surfaces_report_the_same_state(self) -> None:
+        reader = mock.AsyncMock(return_value=[self.state])
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': _PRODUCTION,
+                    'release': None,
+                    'deployments': None,
+                }
+            ],
+        ]
+        ch = mock.MagicMock()
+        ch.query = mock.AsyncMock(return_value=[])
+        # The projects list reads the same nodes; its own legacy
+        # ``DEPLOYED_TO`` query has nothing to add here.
+        legacy_db = mock.AsyncMock()
+        legacy_db.execute.return_value = []
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                reader,
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
+                'get_instance',
+                return_value=ch,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+            listed = asyncio.run(
+                projects._fetch_current_releases(legacy_db, [PROJECT_ID])
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = response.json()[0]
+        current = listed.current[PROJECT_ID]['production']
+        latest = listed.latest[PROJECT_ID]['production']
+        self.assertEqual('1.0.0', detail['release']['tag'])
+        self.assertEqual(current.tag, detail['release']['tag'])
+        self.assertEqual(current.committish, detail['release']['committish'])
+        self.assertEqual('failed', detail['latest_deployment']['status'])
+        self.assertEqual(latest.status, detail['latest_deployment']['status'])
+        self.assertEqual(latest.tag, detail['latest_deployment']['tag'])
+        self.assertEqual(
+            latest.committish, detail['latest_deployment']['committish']
+        )
+
+    def test_latest_is_omitted_when_it_is_the_current_release(self) -> None:
+        """The newest attempt succeeded, so there is nothing extra."""
+        assert self.state.current is not None
+        state = self.state._replace(latest=self.state.current)
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'env': _PRODUCTION,
+                    'release': None,
+                    'deployments': None,
+                }
+            ],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.deployments.current_and_latest_by_project',
+                mock.AsyncMock(return_value=[state]),
+            ),
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.get(self._url('/current'))
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = response.json()[0]
+        self.assertEqual('1.0.0', detail['release']['tag'])
+        self.assertIsNone(detail['latest_deployment'])
 
 
 class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
@@ -1813,7 +1962,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
             [],  # resolve_plugin → no plugin → HTTPException(404)
         ]
         with mock.patch(
@@ -1853,7 +2003,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
             # The persistence path does additional db.execute calls
             # (re-fetch release, edge MATCH, SET).  Provide enough
             # truthy results so append_deployment_event can land.
@@ -1910,7 +2061,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -1965,7 +2117,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2020,7 +2173,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2075,7 +2229,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2126,7 +2281,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         append_mock = mock.AsyncMock(return_value='no_release')
         with (
@@ -2158,7 +2314,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2191,7 +2348,8 @@ class CurrentReleasesHydrationTestCase(_ReleasesTestBase):
                     ),
                 },
             ],
-            [],  # deployments_by_project: no Deployment nodes
+            [],  # current_and_latest_by_project: no latest nodes
+            [],  # current_and_latest_by_project: no current nodes
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -2726,3 +2884,115 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
         component = response.json()['components'][0]
         self.assertIsNone(component['scope'])
         self.assertEqual(component['groups'], [])
+
+
+class ReconcileCurrentReleaseTestCase(_ReleasesTestBase):
+    """The guarded pointer write reconciliation performs (phase 3).
+
+    ``reconcile_current_release`` writes what the provider says is
+    active, so its whole contract is the compare-and-set: what it
+    stores, and when it refuses.
+    """
+
+    observed_at = datetime.datetime(2026, 5, 13, 15, 0, tzinfo=datetime.UTC)
+
+    def _reconcile(self, **overrides: typing.Any) -> bool:
+        kwargs: dict[str, typing.Any] = {
+            'org_slug': ORG,
+            'project_id': PROJECT_ID,
+            'env_slug': 'production',
+            'release_id': RELEASE_ID,
+            'external_deployment_id': '12345',
+            'release_at': datetime.datetime(
+                2026, 5, 13, 14, 0, tzinfo=datetime.UTC
+            ),
+            'observed_at': self.observed_at,
+        }
+        kwargs.update(overrides)
+        return asyncio.run(
+            releases.reconcile_current_release(self.mock_db, **kwargs)
+        )
+
+    def _returns(self, observed_at: str | None) -> None:
+        self.mock_db.execute.return_value = (
+            [{'observed_at': json.dumps(observed_at)}]
+            if observed_at is not None
+            else []
+        )
+
+    def test_reconcile_sets_pointer_with_provenance(self) -> None:
+        self._returns(self.observed_at.isoformat())
+        self.assertTrue(self._reconcile())
+        query, params, _ = self.mock_db.execute.await_args.args
+        self.assertEqual(params['release_id'], RELEASE_ID)
+        self.assertEqual(params['external_deployment_id'], '12345')
+        self.assertEqual(params['observed_at'], self.observed_at.isoformat())
+        # ``current_release_at`` carries the provider's timestamp for the
+        # active deployment, which is what the fast path's own guard
+        # compares against -- never the time of this observation.
+        self.assertEqual(params['release_at'], '2026-05-13T14:00:00+00:00')
+        self.assertIn('d.current_state_source = CASE', query)
+        self.assertIn('d.current_deployment_external_id = CASE', query)
+
+    def test_reconcile_never_lowers_the_fast_path_ratchet(self) -> None:
+        # ``current_release_at`` is what stops ``_set_current_release``
+        # from installing an older release.  The provider timestamp
+        # written here is the deployment's *creation*, earlier than the
+        # success event the fast path stores, so writing it verbatim
+        # disarmed that guard.
+        self._returns(self.observed_at.isoformat())
+        self._reconcile()
+        query = self.mock_db.execute.await_args.args[0]
+        self.assertIn('d.current_release_at IS NULL', query)
+        self.assertIn('d.current_release_at < {release_at}', query)
+
+    def test_reconcile_clear_keeps_the_ratchet(self) -> None:
+        # Clearing the pointer must not clear the bar with it: a NULL
+        # here let any replayed success install whatever it named.
+        self._returns(self.observed_at.isoformat())
+        self._reconcile(
+            release_id=None, external_deployment_id=None, release_at=None
+        )
+        query = self.mock_db.execute.await_args.args[0]
+        self.assertIn('{release_at} IS NOT NULL', query)
+
+    def test_reconcile_clears_pointer(self) -> None:
+        self._returns(self.observed_at.isoformat())
+        self.assertTrue(
+            self._reconcile(
+                release_id=None,
+                external_deployment_id=None,
+                release_at=None,
+            )
+        )
+        _query, params, _ = self.mock_db.execute.await_args.args
+        self.assertIsNone(params['release_id'])
+        self.assertIsNone(params['release_at'])
+
+    def test_reconcile_guards_on_both_kinds_of_newer_state(self) -> None:
+        # A newer reconcile snapshot is one limb of the guard; the other
+        # is a pointer the success fast path advanced with a provider
+        # timestamp after this snapshot was taken -- the fast path
+        # records no provenance, so that timestamp is all there is to
+        # order it by.
+        self._returns(self.observed_at.isoformat())
+        self._reconcile()
+        query = self.mock_db.execute.await_args.args[0]
+        self.assertIn(
+            'd.current_state_observed_at < {observed_at}',
+            query,
+        )
+        self.assertIn('d.current_release_at <= {observed_at}', query)
+
+    def test_reconcile_rejected_when_edge_is_newer(self) -> None:
+        # A success webhook advanced the pointer while the provider was
+        # answering: the edge's observation is newer than this snapshot,
+        # the CASE guards leave every property alone, and the read-back
+        # says so.
+        self._returns('2026-05-13T15:00:01+00:00')
+        self.assertFalse(self._reconcile())
+
+    def test_reconcile_missing_edge_is_not_applied(self) -> None:
+        self._returns(None)
+        with self.assertLogs('imbi.api.endpoints.releases', level='WARNING'):
+            self.assertFalse(self._reconcile())

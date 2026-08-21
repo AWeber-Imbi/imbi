@@ -44,6 +44,7 @@ import {
   type DriftPair,
   type DriftProject,
 } from '@/lib/deployment-drift'
+import type { DeploymentStatus, LatestDeployment } from '@/types'
 
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -717,6 +718,9 @@ export function ProjectsView() {
                           <EnvDeploymentHover
                             env={env}
                             key={env.slug}
+                            latest={
+                              (project.latest_deployments ?? {})[env.slug]
+                            }
                             release={(project.current_releases ?? {})[env.slug]}
                           />
                         ))}
@@ -859,6 +863,7 @@ function abbreviateEnvName(name: string): string {
 
 function DeploymentCards({
   environments,
+  latest,
   releases,
 }: {
   environments: {
@@ -867,6 +872,7 @@ function DeploymentCards({
     slug: string
     sort_order?: null | number
   }[]
+  latest: Record<string, LatestDeployment>
   releases: Record<
     string,
     {
@@ -916,6 +922,7 @@ function DeploymentCards({
                 <ReleaseLabel release={release} />
               </p>
               <ReleaseStamp release={release} />
+              <LatestDeploymentPill latest={latest[env.slug]} />
             </span>
           </span>
         )
@@ -1042,6 +1049,7 @@ function driftSlugsFor(project: ProjectListItem): string[] {
 // fallow-ignore-next-line complexity
 function EnvDeploymentHover({
   env,
+  latest,
   release,
 }: {
   env: {
@@ -1050,6 +1058,7 @@ function EnvDeploymentHover({
     slug: string
     sort_order?: null | number
   }
+  latest?: LatestDeployment | null
   release?: {
     committish?: null | string
     deployed_at: string
@@ -1095,6 +1104,7 @@ function EnvDeploymentHover({
             )}
           </p>
           <ReleaseStamp release={release} />
+          <LatestDeploymentPill latest={latest} />
         </div>
       </HoverCardContent>
     </HoverCard>
@@ -1333,6 +1343,41 @@ function ReleaseStamp({
   )
 }
 
+// Wording for an attempt newer than the release being served, keyed by
+// the API's `DeploymentStatus`. `success` cannot occur -- the newest
+// success *is* the current release -- but the map stays exhaustive.
+const LATEST_LABEL: Record<DeploymentStatus, string> = {
+  failed: 'failed',
+  in_progress: 'deploying',
+  pending: 'queued',
+  rolled_back: 'rolled back',
+  success: 'deployed',
+}
+
+// Status affordance for a deployment attempt newer than the release the
+// environment serves: a rollout in flight, or one that failed. Absent
+// (and so nothing rendered) when the newest attempt is the current
+// release.
+function LatestDeploymentPill({
+  latest,
+}: {
+  latest?: LatestDeployment | null
+}) {
+  if (!latest) return null
+  const tone =
+    latest.status === 'failed' || latest.status === 'rolled_back'
+      ? 'border-danger bg-danger text-danger'
+      : 'border-warning bg-warning text-warning'
+  return (
+    <p
+      className={`mt-1 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-xs ${tone}`}
+    >
+      <span>{latest.tag ?? latest.committish ?? '—'}</span>
+      <span>{LATEST_LABEL[latest.status]}</span>
+    </p>
+  )
+}
+
 // fallow-ignore-next-line complexity
 function resolveViewMode(
   raw: null | string,
@@ -1354,6 +1399,7 @@ function scoreBucket(score: null | number | undefined): string {
 
 function ScrollableDeployments({
   environments,
+  latest,
   releases,
 }: {
   environments: {
@@ -1362,6 +1408,7 @@ function ScrollableDeployments({
     slug: string
     sort_order?: null | number
   }[]
+  latest: Record<string, LatestDeployment>
   releases: Record<
     string,
     {
@@ -1418,7 +1465,11 @@ function ScrollableDeployments({
         ref={scrollRef}
         style={{ scrollbarWidth: 'none' }}
       >
-        <DeploymentCards environments={environments} releases={releases} />
+        <DeploymentCards
+          environments={environments}
+          latest={latest}
+          releases={releases}
+        />
       </div>
       {canScrollRight && (
         <button
@@ -1603,6 +1654,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
           project.environments.length > 0 && (
             <ScrollableDeployments
               environments={project.environments}
+              latest={project.latest_deployments ?? {}}
               releases={project.current_releases ?? {}}
             />
           )}

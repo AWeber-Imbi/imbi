@@ -107,7 +107,12 @@ import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
-import type { LifecyclePreviewEntry, Project, ScoringPolicy } from '@/types'
+import type {
+  LatestDeployment,
+  LifecyclePreviewEntry,
+  Project,
+  ScoringPolicy,
+} from '@/types'
 
 interface ProjectDetailProps {
   initialSubAction?: string
@@ -200,14 +205,17 @@ export function ProjectDetail({
     string,
     {
       ciStatus: 'fail' | 'pass' | 'warn' | null
-      committish: string
+      // Null when the environment has no serving release yet: its
+      // first-ever deployment is still in flight, or it failed.
+      committish: null | string
+      latest: LatestDeployment | null
       notes: null | string
       performedBy: null | string
       performedByEmail: null | string
       runUrl: null | string
       status: string
       tag: null | string
-      updated: string
+      updated: null | string
     }
     // fallow-ignore-next-line complexity
   > = useMemo(() => {
@@ -215,34 +223,47 @@ export function ProjectDetail({
       string,
       {
         ciStatus: 'fail' | 'pass' | 'warn' | null
-        committish: string
+        committish: null | string
+        latest: LatestDeployment | null
         notes: null | string
         performedBy: null | string
         performedByEmail: null | string
         runUrl: null | string
         status: string
         tag: null | string
-        updated: string
+        updated: null | string
       }
     > = {}
     for (const row of currentReleases) {
-      if (!row.release || !row.last_event_at) continue
+      // A serving release is not required: an environment whose
+      // first-ever deployment is in flight or failed has no current
+      // release, and dropping it here rendered nothing at all for it
+      // while the projects list showed the attempt.
+      const serving = row.release && row.last_event_at ? row.release : null
+      if (!serving && !row.latest_deployment) continue
       // ``ci_status === 'unknown'`` is the API's null-equivalent;
       // collapse it so we don't render a useless gray dot.
       const ci =
         row.ci_status && row.ci_status !== 'unknown' ? row.ci_status : null
       out[row.environment.slug] = {
         ciStatus: ci,
-        committish: row.release.committish,
-        notes: row.release.description ?? null,
+        committish: serving?.committish ?? null,
+        latest: row.latest_deployment ?? null,
+        notes: serving?.description ?? null,
         performedBy: row.performed_by ?? null,
         performedByEmail: row.performed_by_email ?? null,
         runUrl: row.external_run_url,
-        status: row.current_status ?? '',
-        tag: row.release.tag ?? null,
-        updated: formatDistanceToNow(new Date(row.last_event_at), {
-          addSuffix: true,
-        }),
+        // Only the serving release's status: an environment with only an
+        // attempt has no release lifecycle state to show, and the
+        // attempt carries its own badge.
+        status: serving ? (row.current_status ?? '') : '',
+        tag: serving?.tag ?? null,
+        updated:
+          serving && row.last_event_at
+            ? formatDistanceToNow(new Date(row.last_event_at), {
+                addSuffix: true,
+              })
+            : null,
       }
     }
     return out

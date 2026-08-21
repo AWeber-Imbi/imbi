@@ -911,6 +911,83 @@ class RemoteDeployment(pydantic.BaseModel):
     #: used to resolve the deployer to an Imbi user via identity
     #: attribution. ``None`` when the remote doesn't expose it.
     creator_subject: str | None = None
+    #: The provider says this deployment has been retired -- GitHub's
+    #: ``inactive`` status on top of whatever the deployment itself last
+    #: reported.  ``status`` deliberately looks *past* that notice to the
+    #: deployment's own outcome, so a superseded rollout still reads as
+    #: the ``success`` it was; this flag is how a caller asking "what is
+    #: serving *now*" tells the two apart.  ``False`` also means "the
+    #: capability does not report retirement", so no caller may read it
+    #: as positive evidence of currency.
+    superseded: bool = False
+    #: The provider's status history for this deployment could not be
+    #: read (transport error, throttling, an unparseable body), so
+    #: ``status`` is a fallback rather than an observation.  A caller
+    #: deciding what an environment serves MUST treat a row carrying
+    #: this as unresolved: reading the fallback as fact is how a
+    #: throttled scan concludes "nothing is deployed" and clears a
+    #: pointer that was right.
+    status_unknown: bool = False
+
+
+class EnvironmentDeploymentState(pydantic.BaseModel):
+    """What the remote says is deployed to one environment *now*.
+
+    Returned by :meth:`DeploymentCapability.get_environment_state` so the
+    host can reconcile its "current release" pointer against the provider
+    instead of inferring currency from the newest deployment attempt it
+    happens to have observed.
+
+    ``active_resolution`` is what makes the answer actionable, and its
+    four outcomes are deliberately distinct:
+
+    * ``found`` -- ``active`` is not ``None``: the provider reports this
+      deployment as the one serving the environment.
+    * ``none`` -- the provider's result set was exhausted and no
+      deployment qualifies; ``active`` is ``None``.  The host may clear
+      its pointer.
+    * ``unknown`` -- the bounded scan stopped before exhausting the
+      result set, so an older active deployment may exist unseen;
+      ``active`` is ``None`` but the host MUST retain its pointer.
+    * ``error`` -- the provider call failed.  Also "retain the pointer",
+      but it needs a different operational response than ``unknown``:
+      "we scanned the cap" and "the remote returned 503" are not the
+      same problem.
+
+    ``latest`` -- the newest attempt of any status -- may be populated
+    for every outcome, ``error`` included when the failure happened after
+    the listing was read.  It is never a substitute for ``active``: an
+    in-flight or failed attempt is activity, not currency.
+    """
+
+    environment: str
+    active: RemoteDeployment | None = None
+    latest: RemoteDeployment | None = None
+    active_resolution: typing.Literal['found', 'none', 'unknown', 'error']
+
+    @pydantic.model_validator(mode='after')
+    def _check_active_matches_resolution(self) -> EnvironmentDeploymentState:
+        """Hold the ``active``/``active_resolution`` pair to the contract.
+
+        The pairing is what makes the host's decision safe, so it is
+        enforced here rather than left to each plugin's care: a ``found``
+        with no ``active`` would have the host write a pointer it has no
+        deployment for, and an ``active`` attached to ``none`` would
+        offer a deployment on the one resolution that authorizes
+        *clearing* the pointer.  Third-party capabilities get the check
+        for free.
+        """
+        if self.active_resolution == 'found' and self.active is None:
+            raise ValueError(
+                f'active_resolution={self.active_resolution!r} requires '
+                'an active deployment'
+            )
+        if self.active_resolution != 'found' and self.active is not None:
+            raise ValueError(
+                f'active_resolution={self.active_resolution!r} requires '
+                'active to be None'
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -1403,6 +1480,50 @@ class DeploymentCapability(CapabilityHandler):
         del ctx, credentials, environments, limit
         raise NotImplementedError
 
+    async def get_environment_state(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        environments: list[str],
+    ) -> list[EnvironmentDeploymentState]:
+        """Report which deployment is *active* per environment.
+
+        The currency counterpart to :meth:`list_recent_deployments`: that
+        method answers "what happened recently", this one answers "what is
+        serving the environment now", which an attempt list cannot -- the
+        newest attempt may have failed, still be in flight, or have been
+        superseded, leaving an older deployment as the live one.
+
+        Optional even for capabilities that advertise
+        ``supports_deployment_sync``: hosts probe by calling it and
+        treating :class:`NotImplementedError` as "this provider cannot
+        report currency", falling back to the attempt list alone.  Returns
+        one :class:`EnvironmentDeploymentState` per requested environment,
+        never dropping one, because the host has to distinguish "not
+        answered" from "nothing deployed".
+
+        An environment the remote does not recognise resolves ``unknown``,
+        NOT ``none``.  The host passes its own environment slugs through
+        unmapped, so a slug the provider has never heard of is
+        indistinguishable from one with no deployments -- and ``none``
+        authorizes the host to clear its current-release pointer.  Only
+        positive evidence earns it: deployments read, none of them
+        serving.
+
+        Implementations walk the provider newest-first under a bounded
+        cap.  Reaching the cap without an answer is ``unknown``; a read
+        that *failed* -- the listing errored, or a row's status would not
+        load -- is ``error``.  Both retain the host's pointer, so the
+        distinction is not about safety but about diagnosis: reporting a
+        provider outage as ``unknown`` files it as a scan-limit result
+        and hides it from the operator, and only ``error`` reaches
+        ``summary.errors``.  Neither may be reported as ``none``.  See
+        :class:`EnvironmentDeploymentState` for the invariants each
+        resolution carries.
+        """
+        del ctx, credentials, environments
+        raise NotImplementedError
+
     async def get_release_notes(
         self,
         ctx: PluginContext,
@@ -1475,6 +1596,7 @@ class DeploymentCapability(CapabilityHandler):
         ctx: PluginContext,
         credentials: dict[str, str],
         namespace: str,
+        skip_shas: collections.abc.Collection[str] = (),
     ) -> NotesListing:
         """Return every note in ``namespace``, keyed by annotated SHA.
 
@@ -1484,15 +1606,25 @@ class DeploymentCapability(CapabilityHandler):
         :meth:`diff_commit_notes` returns them; a missing ref is an empty
         listing, not an error, because "no notes" is a real answer.
 
-        ``complete`` says whether every note the ref holds is in the map.
-        It has to be reported rather than inferred: a host cannot tell a
-        ref with three notes from a ref with four whose fourth could not
-        be read, and treating the second as the whole truth would record
-        a partial backfill as a finished one.
+        ``skip_shas`` names annotated commits the host already holds an
+        answer for.  Enumerating the ref is a call or two; reading the
+        bodies is one *per note*, so a host repairing a gap would pay for
+        the whole history to learn about the handful of notes it is
+        missing.  Implementations must still enumerate the ref -- the
+        skip applies to reading bodies, and skipped notes are absent from
+        the map rather than present with a ``None`` body, which means
+        "removed".
+
+        ``complete`` says whether every note the ref holds is either in
+        the map or was skipped on request.  It has to be reported rather
+        than inferred: a host cannot tell a ref with three notes from a
+        ref with four whose fourth could not be read, and treating the
+        second as the whole truth would record a partial backfill as a
+        finished one.
 
         Optional -- same contract as :meth:`get_commit_note`.
         """
-        del ctx, credentials, namespace
+        del ctx, credentials, namespace, skip_shas
         raise NotImplementedError
 
     async def diff_commit_notes(

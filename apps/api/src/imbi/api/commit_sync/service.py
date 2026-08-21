@@ -146,8 +146,11 @@ async def run_sync(
 
     Once the tags are in, enriches any that carry no release notes -- a tag
     cut outside imbi has no ``Release`` node, so this is what gives it a
-    title and body to show.  Best-effort: a failure there is logged and
-    leaves the sync itself successful.
+    title and body to show.  Then re-reads the drift notes ref, because
+    the commits this just recorded have no verdicts and readers fail
+    closed on that: recovering a commit without its verdict shows it as
+    drifted.  Both are best-effort: a failure there is logged and leaves
+    the sync itself successful.
     """
     try:
         resolved = await resolve_capability(
@@ -162,6 +165,7 @@ async def run_sync(
     handler = typing.cast('CommitSyncCapability', resolved.capability_cls())
     counts = await handler.sync_all_history(ctx=ctx, credentials=credentials)
     await _backfill_release_notes(db, org_slug, project_id)
+    await _resync_drift_verdicts(db, org_slug, project_id)
     return counts
 
 
@@ -222,6 +226,45 @@ async def _backfill_release_notes(
         LOGGER.info(
             'commit-sync enriched %d release(s) with notes for project %s',
             enriched,
+            project_id,
+        )
+
+
+async def _resync_drift_verdicts(
+    db: graph.Graph, org_slug: str, project_id: str
+) -> None:
+    """Re-read the drift notes ref for the synced history (best-effort).
+
+    Deliberately not fatal to the sync.  The commits and tags are
+    already recorded and that is what the caller asked for; a drift
+    verdict that could not be read leaves the affected commits reading
+    as drifted, which is the conservative direction and what they read
+    as before this ran at all.
+    """
+    from imbi.api import drift
+
+    try:
+        result = await drift.resync_verdicts(
+            db, org_slug=org_slug, project_id=project_id
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'drift verdict resync failed for project %s',
+            project_id,
+            exc_info=True,
+        )
+        return
+    if result is None:
+        LOGGER.debug(
+            'no capability can read drift notes for project %s', project_id
+        )
+        return
+    if result.recorded or result.stamped:
+        LOGGER.info(
+            'commit-sync recorded %d drift verdict(s) and answered %d '
+            'release(s) for project %s',
+            result.recorded,
+            result.stamped,
             project_id,
         )
 

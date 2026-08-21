@@ -31,7 +31,10 @@ from imbi.api.domain.models import User
 from imbi.api.endpoints import _search_index
 from imbi.api.endpoints._helpers import fetch_or_404
 from imbi.api.endpoints.operations_log import complete_opslog_entry
-from imbi.api.endpoints.projects import lookup_ops_log_performed_by
+from imbi.api.endpoints.projects import (
+    LatestDeployment,
+    lookup_ops_log_performed_by,
+)
 from imbi.api.plugins import call_with_timeout
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
@@ -163,7 +166,14 @@ class ReleaseEnvironmentEdgeResponse(pydantic.BaseModel):
 
 
 class CurrentReleaseEnvironment(pydantic.BaseModel):
-    """Latest deployment state for one environment of a project.
+    """Current deployment state for one environment of a project.
+
+    ``release`` is what the environment serves: the newest deployment
+    attempt whose latest status is ``success``.  ``latest_deployment``
+    is the newest attempt of any status, reported only when it is a
+    *different* attempt -- an in-flight or failed rollout that has not
+    replaced the current release.  When the newest attempt is the one
+    serving traffic it is omitted rather than repeated.
 
     ``release`` and ``current_status`` are ``None`` when the project is
     configured to deploy in the environment but has no recorded
@@ -178,6 +188,7 @@ class CurrentReleaseEnvironment(pydantic.BaseModel):
 
     environment: ReleaseEnvironmentRef
     release: ReleaseResponse | None = None
+    latest_deployment: LatestDeployment | None = None
     current_status: _DEPLOYMENT_STATUS | None = None
     last_event_at: datetime.datetime | None = None
     external_run_url: str | None = None
@@ -462,6 +473,8 @@ async def _hydrate_release_train(
             models.DeploymentEvent | None,
         ],
     ],
+    also_in_flight: list[tuple[str, str, str, models.DeploymentEvent]]
+    | None = None,
 ) -> dict[str, CheckStatus | None]:
     """Hydrate live deploy run + CI check-runs status per env.
 
@@ -471,6 +484,15 @@ async def _hydrate_release_train(
     deploy workflow has posted a status -- replaces the in-memory event
     so the response reflects the live state.  Returns a slug →
     ``CheckStatus`` map that the caller folds into the response.
+
+    ``also_in_flight`` carries attempts to poll that are *not* what the
+    environment is showing as current.  Since the current-release read
+    became success-only, an in-flight attempt no longer appears in
+    ``by_env`` at all, and this pass -- the only thing that backfills a
+    run URL the first webhook could not carry, or closes out a run that
+    went terminal unheard -- would never see one again.  Those entries
+    are polled and persisted like any other, but they do not touch
+    ``by_env``: the response's current release stays the one serving.
 
     Failures are tolerated silently — the release train must keep
     rendering even if the plugin can't be resolved or its calls hiccup.
@@ -500,6 +522,11 @@ async def _hydrate_release_train(
         ):
             in_flight.append((slug, release_id, committish, event))
 
+    # Appended after the ``by_env`` walk so the display entries keep the
+    # leading indices: everything from ``display_in_flight`` on is a
+    # poll-only attempt whose result must not replace a current release.
+    display_in_flight = len(in_flight)
+    in_flight.extend(also_in_flight or [])
     if not in_flight and not deployed:
         return {}
 
@@ -528,8 +555,8 @@ async def _hydrate_release_train(
         handler, ctx, credentials, in_flight, deployed
     )
 
-    for (slug, release_id, _committish, event), result in zip(
-        in_flight, run_results, strict=True
+    for index, ((slug, release_id, _committish, event), result) in enumerate(
+        zip(in_flight, run_results, strict=True)
     ):
         if isinstance(result, BaseException):
             continue
@@ -542,7 +569,7 @@ async def _hydrate_release_train(
             event=event,
             result=result,
         )
-        if new_event is None:
+        if new_event is None or index >= display_in_flight:
             continue
         env, release_raw, _ = by_env[slug]
         by_env[slug] = (env, release_raw, new_event)
@@ -831,11 +858,11 @@ async def list_current_releases(
     """List the most-current release per environment for a project.
 
     For each environment the project is configured to deploy in
-    (``DEPLOYED_IN``), returns the release whose ``DEPLOYED_TO`` edge
-    contains the deployment event with the latest timestamp.
-    Environments with no deployment events are returned with
-    ``release=None``. Results are sorted by ``Environment.sort_order``
-    ascending, then by name.
+    (``DEPLOYED_IN``), returns the release of the newest deployment
+    attempt that succeeded, plus ``latest_deployment`` when a newer
+    attempt of another status exists.  Environments with no deployment
+    events are returned with ``release=None``. Results are sorted by
+    ``Environment.sort_order`` ascending, then by name.
 
     The deployment plugin (when bound) is consulted for live workflow
     run status on any in-flight ``DeploymentEvent`` and aggregate CI
@@ -895,18 +922,53 @@ async def list_current_releases(
         _keep_latest(by_env, slug, env, release_raw, latest)
 
     # Union the ``Deployment`` nodes over the legacy array entries the
-    # loop above read.  Environments the project no longer deploys in
-    # are skipped: the response has always enumerated ``DEPLOYED_IN``.
-    for entry in await deployment_nodes.latest_released_deployments_by_project(
+    # loop above read, through the reader the projects list uses so the
+    # two views agree on which attempt is current.  Environments the
+    # project no longer deploys in are skipped: the response has always
+    # enumerated ``DEPLOYED_IN``.
+    latest_by_slug: dict[str, LatestDeployment] = {}
+    # In-flight attempts worth polling even though they are not what the
+    # environment serves -- see ``also_in_flight`` in
+    # :func:`_hydrate_release_train`.  Without this an in-flight node
+    # never reaches the self-heal at all, now that the current-release
+    # read is success-only.
+    in_flight_nodes: list[tuple[str, str, str, models.DeploymentEvent]] = []
+    for state in await deployment_nodes.current_and_latest_by_project(
         db, [project_id]
     ):
-        slug = str(entry.environment.get('slug') or '')
-        if entry.release is None or slug not in by_env:
+        slug = str(state.environment.get('slug') or '')
+        if slug not in by_env:
             continue
-        _keep_latest(by_env, slug, by_env[slug][0], entry.release, entry.event)
+        current = state.current
+        if current is not None and current.release is not None:
+            _keep_latest(
+                by_env, slug, by_env[slug][0], current.release, current.event
+            )
+        # The reader hands back the same node as both attempts when the
+        # newest one is the one serving traffic; only a different
+        # attempt is worth reporting.
+        newest = state.latest
+        if newest.release is not None and newest != current:
+            latest_by_slug[slug] = LatestDeployment(
+                status=newest.event.status,
+                deployed_at=newest.event.timestamp,
+                tag=newest.release.get('tag') or None,
+                committish=newest.release.get('committish') or None,
+            )
+            release_id = str(newest.release.get('id') or '')
+            committish = str(newest.release.get('committish') or '')
+            if (
+                newest.event.status in ('pending', 'in_progress')
+                and newest.event.external_run_id
+                and release_id
+                and committish
+            ):
+                in_flight_nodes.append(
+                    (slug, release_id, committish, newest.event)
+                )
 
     ci_status_by_slug = await _hydrate_release_train(
-        db, org_slug, project_id, auth, by_env
+        db, org_slug, project_id, auth, by_env, in_flight_nodes
     )
 
     # Backfill performed_by from operations_log for events whose AGE edge
@@ -950,6 +1012,7 @@ async def list_current_releases(
                 slug=env['slug'], name=env['name']
             ),
             release=release_resp,
+            latest_deployment=latest_by_slug.get(env['slug']),
             current_status=event.status if event else None,
             last_event_at=event.timestamp if event else None,
             external_run_url=event.external_run_url if event else None,
@@ -1429,6 +1492,127 @@ async def _set_current_release(
             env_slug,
             org_slug,
         )
+
+
+#: The compare-and-set guard :func:`reconcile_current_release` repeats on
+#: every property it writes.  Both halves matter: a newer reconcile
+#: snapshot must win over an older one, and a pointer the success fast
+#: path advanced with a *later* provider timestamp than this snapshot was
+#: taken at describes a deployment the snapshot could not have seen.
+_RECONCILE_GUARD: typing.Final[typing.LiteralString] = (
+    '(d.current_state_observed_at IS NULL '
+    'OR d.current_state_observed_at < {observed_at}) '
+    'AND (d.current_release_at IS NULL '
+    'OR d.current_release_at <= {observed_at})'
+)
+
+
+async def reconcile_current_release(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    release_id: str | None,
+    external_deployment_id: str | None,
+    release_at: datetime.datetime | None,
+    observed_at: datetime.datetime,
+) -> bool:
+    """Set or clear the pointer from an observation of the remote.
+
+    Where :func:`_set_current_release` advances the pointer from a single
+    ``success`` event, this writes what the provider says is *active*:
+    *release_id* names it, or ``None`` clears the pointer because the
+    provider reported nothing active.  Both cases also record provenance
+    -- ``current_deployment_external_id``, ``current_state_observed_at``
+    (when the snapshot was taken, before the remote was asked) and
+    ``current_state_source`` -- so a later writer can tell how old the
+    information behind the pointer is.  Returns whether the write took.
+
+    ``current_release_at`` is the fast path's ratchet, so this only ever
+    moves it *forward*: to the provider's timestamp for the active
+    deployment when that is newer than what is stored, and never
+    backwards or to ``NULL``.  Writing the provider timestamp verbatim
+    looked right -- it is the timestamp of the deployment the pointer
+    names -- but that value is the deployment's *creation*, earlier than
+    the success event the fast path would have stored, and clearing set
+    it to ``NULL`` outright.  Either write disarmed the ratchet, and
+    :func:`_set_current_release` would then let a replayed older success
+    install an older release.  What the pointer names is recorded in the
+    provenance fields instead; this field's one job is to stop a regress.
+
+    Still open (phase 5): a replay whose event timestamp falls inside the
+    named deployment's own window -- after it was created, before it
+    succeeded -- clears the ratchet's bar and can install the release it
+    names.  Closing that needs the guard to compare like clocks, which
+    is the wall-clock/provider-clock unification phase 5 owns.
+
+    The compare-and-set refuses to write when the edge already carries
+    information newer than this snapshot -- a reconcile that ran later,
+    or a success the fast path recorded with a provider timestamp after
+    the snapshot was taken (the race the plan names: this call reads
+    "nothing active", a success webhook lands, and the stale clear must
+    not undo it).
+
+    An edge with ``current_release_at`` set but no
+    ``current_state_observed_at`` is claimable: the fast path does not
+    write provenance, so the only thing that orders it against this
+    snapshot is its provider timestamp, and one older than the snapshot
+    means the remote had already published everything that pointer knows
+    about by the time the snapshot was taken.  Refusing instead would
+    make every pointer the fast path ever touched permanently
+    unrepairable, which is the bug phase 3 exists to fix.
+    """
+    ts = observed_at.astimezone(datetime.UTC).isoformat()
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+    MATCH (e:Environment {{slug: {env_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MERGE (p)-[d:DEPLOYED_IN]->(e)
+    SET d.current_release = CASE
+          WHEN {guard} THEN {release_id} ELSE d.current_release END,
+        d.current_release_at = CASE
+          WHEN {guard} AND {release_at} IS NOT NULL
+               AND (d.current_release_at IS NULL
+                    OR d.current_release_at < {release_at})
+          THEN {release_at} ELSE d.current_release_at END,
+        d.current_deployment_external_id = CASE
+          WHEN {guard} THEN {external_deployment_id}
+          ELSE d.current_deployment_external_id END,
+        d.current_state_source = CASE
+          WHEN {guard} THEN 'reconcile' ELSE d.current_state_source END,
+        d.current_state_observed_at = CASE
+          WHEN {guard} THEN {observed_at}
+          ELSE d.current_state_observed_at END
+    RETURN d.current_state_observed_at AS observed_at
+    """.replace('{guard}', _RECONCILE_GUARD)
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'env_slug': env_slug,
+            'org_slug': org_slug,
+            'release_id': release_id,
+            'release_at': (
+                release_at.astimezone(datetime.UTC).isoformat()
+                if release_at is not None
+                else None
+            ),
+            'external_deployment_id': external_deployment_id,
+            'observed_at': ts,
+        },
+        ['observed_at'],
+    )
+    if not rows:
+        LOGGER.warning(
+            'current_release reconcile skipped: project %r or environment '
+            '%r in organization %r no longer exists',
+            project_id,
+            env_slug,
+            org_slug,
+        )
+        return False
+    return bool(graph.parse_agtype(rows[0].get('observed_at')) == ts)
 
 
 @releases_router.post(
