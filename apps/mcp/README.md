@@ -76,6 +76,19 @@ imbi-mcp serve [OPTIONS]
 
 Supported transports: `stdio`, `http`, `sse`, `streamable-http`
 
+## Logging
+
+HTTP transports log through imbi-common: one access-log record per
+request on `imbi.mcp.access`, in the shared format, with the
+authenticated principal and the invoked tool name.
+
+```text
+2026-08-21T19:12:02.734 INFO  imbi.mcp.access: 10.32.132.108:0 - gavinr "POST /mcp HTTP/1.1" 200 (tool:list_projects)
+```
+
+Uvicorn's own access log is disabled so lines are not duplicated.
+Successful `/status` probes are not logged; failures still are.
+
 ## Docker
 
 ```bash

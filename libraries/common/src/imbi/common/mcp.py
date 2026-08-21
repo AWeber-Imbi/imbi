@@ -14,6 +14,9 @@ rather than being copied into each consumer:
 * :class:`PermissionFilterMiddleware` -- middleware that narrows
   ``tools/list`` per caller, dropping operations whose required
   permissions (``x-imbi-permission``) the caller does not hold.
+* :class:`AccessLogContextMiddleware` -- middleware that names the
+  invoked tool in the HTTP access log line, which otherwise records
+  every call as an indistinguishable ``POST /mcp``.
 
 The API mounts its routers under a deployment-specific path prefix (the
 path component of ``IMBI_API_URL``, e.g. ``/api``), which the spec's
@@ -56,8 +59,10 @@ import typing
 
 import fastmcp.server.middleware
 import httpx
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_http_headers, get_http_request
 from fastmcp.server.providers.openapi import MCPType, RouteMap
+
+from imbi.common import access_log
 
 if typing.TYPE_CHECKING:
     import collections.abc
@@ -210,6 +215,31 @@ def required_permissions(tool: Tool) -> list[str]:
     return value if isinstance(value, list) else []
 
 
+def _remember_api_key_owner(
+    credential: str | None, profile: collections.abc.Mapping[str, typing.Any]
+) -> None:
+    """Label an API key's owner in the HTTP access log.
+
+    :mod:`imbi.common.access_log` runs synchronously in the response
+    path, so it can only render the opaque ``ik_<id>`` it parses from
+    the ``Authorization`` header unless something resolves the owner
+    for it. The API does that during its own authentication; an MCP
+    server never authenticates the key itself, but it does fetch the
+    caller's profile to filter tools, so the owner is free here.
+
+    Only user-owned keys get a label: service-account keys receive
+    ``403`` from :data:`PROFILE_PATH` (it requires a human user), so
+    their log lines keep showing the key id.
+    """
+    if not credential or not credential.lower().startswith('bearer ik_'):
+        return
+    token = credential.split(' ', 1)[1]
+    parts = token.split('_', 2)
+    email = profile.get('email')
+    if len(parts) == 3 and isinstance(email, str):
+        access_log.remember_api_key_principal(f'ik_{parts[1]}', email)
+
+
 class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
     """Hide tools the calling principal cannot invoke.
 
@@ -333,6 +363,7 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
                 type(profile).__name__,
             )
             return None
+        _remember_api_key_owner(credential, profile)
         permissions = profile.get('permissions') or []
         resolved = (
             bool(profile.get('is_admin')),
@@ -381,3 +412,34 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
             len(kept),
         )
         return kept
+
+
+class AccessLogContextMiddleware(fastmcp.server.middleware.Middleware):
+    """Name the invoked tool in the HTTP access log line.
+
+    Every MCP call arrives as ``POST /mcp``, so the access log alone
+    cannot tell a project lookup from a deployment write. This records
+    the tool name in the request state
+    :mod:`imbi.common.access_log` reads, rendering it as
+    ``... 200 (tool:list_projects)``.
+
+    A no-op under the stdio transport, where there is no HTTP request
+    (and no access log) to annotate.
+    """
+
+    async def on_call_tool(
+        self,
+        context: fastmcp.server.middleware.MiddlewareContext[typing.Any],
+        call_next: typing.Any,
+    ) -> typing.Any:
+        """Record the tool name, then run the call."""
+        try:
+            request = get_http_request()
+        except RuntimeError:
+            return await call_next(context)
+        existing = getattr(request.state, 'imbi_common_access_log', None) or {}
+        request.state.imbi_common_access_log = {
+            **existing,
+            'tool': context.message.name,
+        }
+        return await call_next(context)

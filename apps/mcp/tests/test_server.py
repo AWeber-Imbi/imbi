@@ -11,6 +11,7 @@ from fastmcp.server.providers.openapi import MCPType
 from starlette import testclient as starlette_testclient
 
 import imbi.mcp
+from imbi.common import mcp as common_mcp
 from imbi.mcp import server
 
 
@@ -326,3 +327,27 @@ class CreateServerAuthTests(unittest.TestCase):
             auth_server_url='https://host',
         )
         self.assertIsInstance(mcp.auth, RemoteAuthProvider)
+
+
+class AccessLogContextWiringTests(unittest.TestCase):
+    """The tool-name access-log middleware is installed."""
+
+    @mock.patch('imbi.mcp.server.httpx.get')
+    def test_access_log_context_middleware_is_registered(
+        self, mock_get: mock.Mock
+    ) -> None:
+        spec = _minimal_openapi_spec()
+        mock_get.return_value = httpx.Response(
+            200,
+            content=json.dumps(spec).encode(),
+            headers={'content-type': 'application/json'},
+            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
+        )
+        mcp = server.create_server('http://localhost:8000')
+        self.assertTrue(
+            any(
+                isinstance(middleware, common_mcp.AccessLogContextMiddleware)
+                for middleware in mcp.middleware
+            ),
+            'AccessLogContextMiddleware was not installed',
+        )
