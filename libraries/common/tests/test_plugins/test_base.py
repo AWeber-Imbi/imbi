@@ -26,6 +26,7 @@ from imbi.common.plugins.base import (
     CredentialField,
     DeploymentCapability,
     DeploymentRun,
+    EnvironmentDeploymentState,
     IdentityCapability,
     IdentityCredentials,
     IdentityProfile,
@@ -550,6 +551,48 @@ class DeploymentModelsTestCase(unittest.TestCase):
             external_run_id='42',
         )
         self.assertIsNone(rd.creator)
+
+    @staticmethod
+    def _remote_deployment() -> RemoteDeployment:
+        return RemoteDeployment(
+            environment='prod',
+            sha='abc',
+            status='success',
+            created_at=datetime.datetime.now(datetime.UTC),
+            external_run_id='42',
+        )
+
+    def test_environment_state_found_requires_active(self) -> None:
+        # ``found`` is the host's authority to write a pointer, so it
+        # cannot arrive without the deployment to point at.
+        with self.assertRaises(pydantic.ValidationError):
+            EnvironmentDeploymentState(
+                environment='prod', active_resolution='found'
+            )
+
+    def test_environment_state_non_found_rejects_active(self) -> None:
+        # ``none`` authorizes *clearing* the pointer, so offering a
+        # deployment alongside it is a contradiction.
+        for resolution in ('none', 'unknown', 'error'):
+            with self.subTest(resolution=resolution):
+                with self.assertRaises(pydantic.ValidationError):
+                    EnvironmentDeploymentState(
+                        environment='prod',
+                        active=self._remote_deployment(),
+                        active_resolution=resolution,
+                    )
+
+    def test_environment_state_latest_is_free_of_the_rule(self) -> None:
+        # ``latest`` is activity, not currency: it may accompany any
+        # resolution, ``error`` included.
+        state = EnvironmentDeploymentState(
+            environment='prod',
+            latest=self._remote_deployment(),
+            active_resolution='error',
+        )
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '42')
 
 
 class LifecycleModelsTestCase(unittest.TestCase):

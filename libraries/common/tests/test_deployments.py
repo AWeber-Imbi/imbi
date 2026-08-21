@@ -521,16 +521,7 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
     """
 
     async def _add_release(self) -> None:
-        await self.graph.execute(
-            """
-            MATCH (p:Project {{id: {project_id}}})
-            MERGE (r:Release {{id: {release_id}}})
-            MERGE (p)-[:HAS_RELEASE]->(r)
-            RETURN r.id AS id
-            """,
-            {'project_id': PROJECT_ID, 'release_id': OTHER_RELEASE_ID},
-            ['id'],
-        )
+        await self.add_release(OTHER_RELEASE_ID)
 
     async def _state(self) -> deployments.EnvironmentReleaseState:
         rows = await deployments.current_and_latest_by_project(

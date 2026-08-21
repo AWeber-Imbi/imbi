@@ -107,8 +107,9 @@ _OPTIONS: list[PluginOption] = [
             'it for repos whose environments see long runs of failed or '
             'superseded deploys, where the live deployment sits deeper in '
             'the history; hitting the limit reports the active deployment '
-            'as unknown rather than as absent.  Leave blank for the '
-            'default of 10.'
+            'as unknown rather than as absent.  Values above 100 are '
+            'clamped to 100, the most a single GitHub page can carry.  '
+            'Leave blank for the default of 10.'
         ),
         type='integer',
         required=False,

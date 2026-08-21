@@ -2271,7 +2271,9 @@ class GitHubDeployment(DeploymentCapability):
                 params={'per_page': '10'},
             )
         except httpx.HTTPError:
-            return _StatusRead('pending', None, False, True)
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=True
+            )
         if resp.status_code != 200:
             # 403/429 land here, which is how a throttled scan used to
             # read every row as ``pending`` and conclude that nothing was
@@ -2282,15 +2284,21 @@ class GitHubDeployment(DeploymentCapability):
                 deployment_id,
                 resp.status_code,
             )
-            return _StatusRead('pending', None, False, True)
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=True
+            )
         try:
             statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
         except ValueError:
-            return _StatusRead('pending', None, False, True)
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=True
+            )
         if not statuses:
             # Read fine and there is genuinely nothing: a deployment
             # whose workflow has not posted yet.  Not unreadable.
-            return _StatusRead('pending', None, False, False)
+            return _StatusRead(
+                'pending', None, superseded=False, unreadable=False
+            )
         superseded = str(statuses[0].get('state') or '').lower() == 'inactive'
         latest = next(
             (
@@ -2305,8 +2313,8 @@ class GitHubDeployment(DeploymentCapability):
         return _StatusRead(
             _to_event_status(state),
             str(log_url) if log_url else None,
-            superseded,
-            False,
+            superseded=superseded,
+            unreadable=False,
         )
 
 

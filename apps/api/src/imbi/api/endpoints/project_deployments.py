@@ -1967,6 +1967,8 @@ async def _reconcile_active_state(
                 and state.active.external_run_id not in applied_run_ids
             ):
                 await apply(state.active)
+    # The three local reads are per-project, so losing them leaves
+    # nothing to compare against and the whole stage degrades.
     try:
         pointers = await _current_release_pointers(db, project_id=project_id)
         derived = await _derived_success_deployments(db, project_id=project_id)
@@ -1979,8 +1981,22 @@ async def _reconcile_active_state(
                 if state.active is not None
             ],
         )
-        counts: dict[str, int] = {}
-        for state in states:
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Active-state comparison could not read local state for '
+            'project=%s',
+            project_id,
+            exc_info=True,
+        )
+        return
+    counts: dict[str, int] = {}
+    for state in states:
+        # Per environment, not around the loop: a release lookup that
+        # fails for one environment used to abandon every environment
+        # after it and drop the counts already collected.  Each
+        # environment is an independent comparison, so one bad row
+        # degrades itself alone.
+        try:
             pointer = pointers.get(state.environment)
             candidate = derived.get(state.environment)
             tag: str | None = None
@@ -2040,13 +2056,14 @@ async def _reconcile_active_state(
                     observed_at=observed_at,
                     summary=summary,
                 )
-    except Exception:  # noqa: BLE001
-        LOGGER.warning(
-            'Active-state comparison failed for project=%s',
-            project_id,
-            exc_info=True,
-        )
-        return
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Active-state comparison failed for project=%s env=%s',
+                project_id,
+                state.environment,
+                exc_info=True,
+            )
+            continue
     summary.active_state = counts
 
 

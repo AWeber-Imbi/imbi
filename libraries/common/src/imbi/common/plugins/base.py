@@ -965,6 +965,29 @@ class EnvironmentDeploymentState(pydantic.BaseModel):
     latest: RemoteDeployment | None = None
     active_resolution: typing.Literal['found', 'none', 'unknown', 'error']
 
+    @pydantic.model_validator(mode='after')
+    def _check_active_matches_resolution(self) -> EnvironmentDeploymentState:
+        """Hold the ``active``/``active_resolution`` pair to the contract.
+
+        The pairing is what makes the host's decision safe, so it is
+        enforced here rather than left to each plugin's care: a ``found``
+        with no ``active`` would have the host write a pointer it has no
+        deployment for, and an ``active`` attached to ``none`` would
+        offer a deployment on the one resolution that authorizes
+        *clearing* the pointer.  Third-party capabilities get the check
+        for free.
+        """
+        if self.active_resolution == 'found' and self.active is None:
+            raise ValueError(
+                "active_resolution='found' requires an active deployment"
+            )
+        if self.active_resolution != 'found' and self.active is not None:
+            raise ValueError(
+                f'active_resolution={self.active_resolution!r} requires '
+                'active to be None'
+            )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Lifecycle data models

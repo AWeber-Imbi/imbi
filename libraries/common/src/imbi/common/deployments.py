@@ -356,9 +356,14 @@ def _run_id_rank(value: object) -> tuple[int, str]:
     ``(digits, text)``: an all-digit id ranks by its value so 10 beats 9,
     and anything else ranks after every number by its text, which keeps
     the comparison total for providers that do not use integers.
+
+    The guard is ``isdecimal`` rather than ``isdigit``: the latter also
+    accepts superscripts and similar digit characters that ``int()``
+    rejects, which would raise ``ValueError`` on a read path with no
+    handler.  ``isdecimal`` matches exactly what ``int()`` accepts.
     """
     text = str(value or '')
-    return (int(text), '') if text.isdigit() else (-1, text)
+    return (int(text), '') if text.isdecimal() else (-1, text)
 
 
 #: Statuses that can still be *serving* an environment.  ``failed`` and
