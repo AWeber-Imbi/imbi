@@ -7368,6 +7368,10 @@ export interface components {
              * @default false
              */
             is_head: boolean;
+            /** Drift Detected */
+            drift_detected?: boolean | null;
+            /** Tag */
+            tag?: string | null;
         };
         /**
          * CommitCheckStatus
@@ -11558,6 +11562,10 @@ export interface components {
             ci_status: string;
             /** Url */
             url?: string | null;
+            /** Drift Detected */
+            drift_detected?: boolean | null;
+            /** Tag */
+            tag?: string | null;
         };
         /**
          * Ref
