@@ -42,6 +42,7 @@ from imbi.api.endpoints.releases import (
     AppendOutcome,
     ReleaseEnvironmentEdgeResponse,
     append_deployment_event,
+    reconcile_current_release,
 )
 from imbi.api.identity import attribution
 from imbi.api.identity.host_integration import (
@@ -66,6 +67,7 @@ from imbi.common.plugins.base import (
     CompareResult,
     DeploymentCapability,
     DeploymentRun,
+    EnvironmentDeploymentState,
     PluginContext,
     Ref,
     RemoteDeployment,
@@ -1563,6 +1565,7 @@ async def resync_for_project(
     auth: permissions.AuthContext,
     source: str | None = None,
     limit: int = 1,
+    reconcile: bool = False,
 ) -> ResyncSummary:
     """Resync remote deployments for a single project.
 
@@ -1586,10 +1589,12 @@ async def resync_for_project(
     how stale actor attribution gets corrected.
 
     When the plugin can report which deployment is *active*
-    (``get_environment_state``) the run finishes with a read-only
-    comparison of the stored pointer, the event-derived candidate, and
-    the remote's answer -- see :func:`_log_active_state_shadow`.  It
-    writes nothing and cannot fail the resync.
+    (``get_environment_state``) the run finishes with a comparison of
+    the stored pointer, the event-derived candidate, and the remote's
+    answer -- see :func:`_reconcile_active_state`.  ``reconcile`` decides
+    whether that stage also repairs the pointer; with it unset the stage
+    only logs, which is what every caller but the maintenance sweep
+    wants while reconciliation is being proven out.
     """
     summary = ResyncSummary(projects=1)
     resolved, ctx, credentials = await _resolve_and_context(
@@ -1658,7 +1663,11 @@ async def resync_for_project(
     # ``(committish, tag)`` pair -- the same tag promoted across
     # multiple environments is one Release node, not N.
     seen_identities: set[tuple[str, str | None]] = set()
-    for observed in observations:
+
+    async def _apply(observed: RemoteDeployment) -> None:
+        # Also used to import an active deployment that fell outside the
+        # recent-event window, so failures are recorded the same way
+        # wherever the observation came from.
         try:
             await _apply_remote_deployment(
                 db,
@@ -1691,14 +1700,21 @@ async def resync_for_project(
                     ),
                 )
             )
-    await _log_active_state_shadow(
+
+    for observed in observations:
+        await _apply(observed)
+    await _reconcile_active_state(
         db,
+        org_slug=org_slug,
         project_id=project_id,
         handler=handler,
         ctx=ctx,
         credentials=credentials,
         environments=environments,
         summary=summary,
+        apply=_apply,
+        applied_run_ids={o.external_run_id for o in observations},
+        reconcile=reconcile,
     )
     return summary
 
@@ -1841,7 +1857,7 @@ async def _apply_remote_deployment(
 
 
 # ---------------------------------------------------------------------------
-# Active-state shadow observation
+# Active-state observation and reconciliation
 # ---------------------------------------------------------------------------
 
 
@@ -1872,32 +1888,50 @@ class _DerivedDeployment(typing.NamedTuple):
     release_id: str | None
 
 
-async def _log_active_state_shadow(
+async def _reconcile_active_state(
     db: graph.Graph,
     *,
+    org_slug: str,
     project_id: str,
     handler: DeploymentCapability,
     ctx: PluginContext,
     credentials: dict[str, str],
     environments: list[str],
     summary: ResyncSummary,
+    apply: collections.abc.Callable[
+        [RemoteDeployment], collections.abc.Awaitable[None]
+    ],
+    applied_run_ids: set[str],
+    reconcile: bool,
 ) -> None:
-    """Log what the remote says is active against what Imbi stores.
+    """Compare what the remote says is active with what Imbi stores.
 
-    Read-only: it writes no graph state, and it logs one line per
-    environment naming the stored pointer, the event-derived candidate
-    (the newest ``Deployment`` attempt whose latest status is
-    ``success``), the provider's active deployment, and the resulting
-    difference category.  The point is to measure how often -- and in
-    which direction -- the three disagree on production before any
-    reconciliation is allowed to write.
+    Logs one line per environment naming the stored pointer, the
+    event-derived candidate (the newest ``Deployment`` attempt whose
+    latest status is ``success``), the provider's active deployment, and
+    the resulting difference category -- which is how often, and in
+    which direction, the three disagree.
 
-    Every failure degrades to a warning: the observation is diagnostic,
-    so a provider outage or a bad comparison must leave the resync
-    outcome exactly as it was.  A plugin that does not implement
+    With *reconcile* set the stage also repairs the pointer: the active
+    deployment gets imported first when it fell outside the recent-event
+    window (``apply`` persists it exactly as an observation would, which
+    is the original bug -- the deployment actually serving the
+    environment was never recorded at all), and then each environment's
+    pointer is set, cleared, or retained once, after every event write,
+    per :func:`_reconcile_pointer`.  With it unset nothing is written
+    and the stage is the phase-2 observation on its own.
+
+    Every failure of the comparison itself degrades to a warning: it is
+    diagnostic, so a provider outage or a bad comparison must leave the
+    resync outcome exactly as it was.  A plugin that does not implement
     ``get_environment_state`` is not a failure at all -- the hook is
-    optional and the resync keeps its attempt-list-only behavior.
+    optional and the resync keeps its attempt-list-only behavior.  A
+    failed pointer write is different: it is a write the operator asked
+    for, so it lands on ``summary.errors``.
     """
+    # Taken before the remote is asked so the compare-and-set guard can
+    # never claim to know more than it did at this instant.
+    observed_at = datetime.datetime.now(datetime.UTC)
     try:
         states = await handler.get_environment_state(
             ctx, _resolve_credentials(ctx, credentials), environments
@@ -1911,6 +1945,13 @@ async def _log_active_state_shadow(
             exc_info=True,
         )
         return
+    if reconcile:
+        for state in states:
+            if (
+                state.active is not None
+                and state.active.external_run_id not in applied_run_ids
+            ):
+                await apply(state.active)
     try:
         pointers = await _current_release_pointers(db, project_id=project_id)
         derived = await _derived_success_deployments(db, project_id=project_id)
@@ -1974,6 +2015,16 @@ async def _log_active_state_shadow(
                 committish,
                 state.active.external_run_id if state.active else None,
             )
+            if reconcile:
+                await _reconcile_pointer(
+                    db,
+                    org_slug=org_slug,
+                    project_id=project_id,
+                    state=state,
+                    release_id=remote_release_id,
+                    observed_at=observed_at,
+                    summary=summary,
+                )
     except Exception:  # noqa: BLE001
         LOGGER.warning(
             'Active-state comparison failed for project=%s',
@@ -1982,6 +2033,111 @@ async def _log_active_state_shadow(
         )
         return
     summary.active_state = counts
+
+
+async def _reconcile_pointer(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    state: EnvironmentDeploymentState,
+    release_id: str | None,
+    observed_at: datetime.datetime,
+    summary: ResyncSummary,
+) -> None:
+    """Set, clear, or retain one environment's pointer.
+
+    The resolution decides which: ``found`` sets the pointer at the
+    active deployment's ``Release``, ``none`` clears it because the
+    provider exhausted its result set without an active deployment, and
+    ``unknown`` / ``error`` retain it -- a scan that stopped at its cap
+    and a provider that failed both know nothing about what is active,
+    and treating either as "nothing active" would clear a healthy
+    pointer.  ``error`` additionally lands on ``summary.errors`` so a
+    provider outage during a reconciliation run is visible rather than
+    read as a clean pass.
+
+    A ``found`` that resolves to no local ``Release`` also retains: the
+    import step above should have created one, so this is the
+    missing-data case the phase-2 categories name, and there is nothing
+    to point at.  The write itself is guarded --
+    :func:`reconcile_current_release` refuses when the edge already
+    carries newer information -- so a rejected write is logged, not an
+    error.
+    """
+    resolution = state.active_resolution
+    if resolution in ('unknown', 'error'):
+        LOGGER.info(
+            'Active-state reconcile retained project=%s env=%s resolution=%s',
+            project_id,
+            state.environment,
+            resolution,
+        )
+        if resolution == 'error':
+            summary.errors.append(
+                ResyncProjectError(
+                    project_id=project_id,
+                    environment=state.environment,
+                    detail=(
+                        'Provider could not report the active deployment; '
+                        'the current release pointer was left as it was.'
+                    ),
+                )
+            )
+        return
+    # ``none`` is the only resolution that clears.  A ``found`` missing
+    # either its active deployment (a broken contract invariant) or a
+    # local ``Release`` to point at has nothing to write, and must not
+    # be read as "nothing active".
+    active = None if resolution == 'none' else state.active
+    if resolution != 'none' and (active is None or release_id is None):
+        LOGGER.info(
+            'Active-state reconcile retained project=%s env=%s '
+            'resolution=%s reason=%s',
+            project_id,
+            state.environment,
+            resolution,
+            'no-active-deployment' if active is None else 'no-local-release',
+        )
+        return
+    try:
+        applied = await reconcile_current_release(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            env_slug=state.environment,
+            release_id=release_id if active is not None else None,
+            external_deployment_id=(
+                active.external_run_id if active is not None else None
+            ),
+            release_at=active.created_at if active is not None else None,
+            observed_at=observed_at,
+        )
+    except Exception as exc:
+        LOGGER.exception(
+            'Active-state reconcile failed for project=%s env=%s',
+            project_id,
+            state.environment,
+        )
+        summary.errors.append(
+            ResyncProjectError(
+                project_id=project_id,
+                environment=state.environment,
+                detail=(
+                    f'Current release reconcile failed '
+                    f'({type(exc).__name__}); see server logs.'
+                ),
+            )
+        )
+        return
+    LOGGER.info(
+        'Active-state reconcile %s project=%s env=%s action=%s release=%s',
+        'applied' if applied else 'rejected',
+        project_id,
+        state.environment,
+        'set' if active is not None else 'clear',
+        release_id if active is not None else None,
+    )
 
 
 def _classify_active_state(

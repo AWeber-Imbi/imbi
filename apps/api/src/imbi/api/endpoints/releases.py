@@ -1431,6 +1431,111 @@ async def _set_current_release(
         )
 
 
+#: The compare-and-set guard :func:`reconcile_current_release` repeats on
+#: every property it writes.  Both halves matter: a newer reconcile
+#: snapshot must win over an older one, and a pointer the success fast
+#: path advanced with a *later* provider timestamp than this snapshot was
+#: taken at describes a deployment the snapshot could not have seen.
+_RECONCILE_GUARD: typing.Final[typing.LiteralString] = (
+    '(d.current_state_observed_at IS NULL '
+    'OR d.current_state_observed_at < {observed_at}) '
+    'AND (d.current_release_at IS NULL '
+    'OR d.current_release_at <= {observed_at})'
+)
+
+
+async def reconcile_current_release(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    env_slug: str,
+    release_id: str | None,
+    external_deployment_id: str | None,
+    release_at: datetime.datetime | None,
+    observed_at: datetime.datetime,
+) -> bool:
+    """Set or clear the pointer from an observation of the remote.
+
+    Where :func:`_set_current_release` advances the pointer from a single
+    ``success`` event, this writes what the provider says is *active*:
+    *release_id* names it, or ``None`` clears the pointer because the
+    provider reported nothing active.  Both cases also record provenance
+    -- ``current_deployment_external_id``, ``current_state_observed_at``
+    (when the snapshot was taken, before the remote was asked) and
+    ``current_state_source`` -- so a later writer can tell how old the
+    information behind the pointer is.  Returns whether the write took.
+
+    ``current_release_at`` is set to the *provider's* timestamp for the
+    active deployment (``None`` when clearing), never to now: it means
+    "the provider timestamp of the deployment the pointer names", which
+    is what the fast path's own guard compares against.
+
+    The compare-and-set refuses to write when the edge already carries
+    information newer than this snapshot -- a reconcile that ran later,
+    or a success the fast path recorded with a provider timestamp after
+    the snapshot was taken (the race the plan names: this call reads
+    "nothing active", a success webhook lands, and the stale clear must
+    not undo it).
+
+    An edge with ``current_release_at`` set but no
+    ``current_state_observed_at`` is claimable: the fast path does not
+    write provenance, so the only thing that orders it against this
+    snapshot is its provider timestamp, and one older than the snapshot
+    means the remote had already published everything that pointer knows
+    about by the time the snapshot was taken.  Refusing instead would
+    make every pointer the fast path ever touched permanently
+    unrepairable, which is the bug phase 3 exists to fix.
+    """
+    ts = observed_at.astimezone(datetime.UTC).isoformat()
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+    MATCH (e:Environment {{slug: {env_slug}}})
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    MERGE (p)-[d:DEPLOYED_IN]->(e)
+    SET d.current_release = CASE
+          WHEN {guard} THEN {release_id} ELSE d.current_release END,
+        d.current_release_at = CASE
+          WHEN {guard} THEN {release_at} ELSE d.current_release_at END,
+        d.current_deployment_external_id = CASE
+          WHEN {guard} THEN {external_deployment_id}
+          ELSE d.current_deployment_external_id END,
+        d.current_state_source = CASE
+          WHEN {guard} THEN 'reconcile' ELSE d.current_state_source END,
+        d.current_state_observed_at = CASE
+          WHEN {guard} THEN {observed_at}
+          ELSE d.current_state_observed_at END
+    RETURN d.current_state_observed_at AS observed_at
+    """.replace('{guard}', _RECONCILE_GUARD)
+    rows = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'env_slug': env_slug,
+            'org_slug': org_slug,
+            'release_id': release_id,
+            'release_at': (
+                release_at.astimezone(datetime.UTC).isoformat()
+                if release_at is not None
+                else None
+            ),
+            'external_deployment_id': external_deployment_id,
+            'observed_at': ts,
+        },
+        ['observed_at'],
+    )
+    if not rows:
+        LOGGER.warning(
+            'current_release reconcile skipped: project %r or environment '
+            '%r in organization %r no longer exists',
+            project_id,
+            env_slug,
+            org_slug,
+        )
+        return False
+    return bool(graph.parse_agtype(rows[0].get('observed_at')) == ts)
+
+
 @releases_router.post(
     '/{release_id}/environments/{env_slug}',
     response_model=ReleaseEnvironmentEdgeResponse,

@@ -1,5 +1,6 @@
 """Tests for release CRUD and deployment-edge endpoints."""
 
+import asyncio
 import datetime
 import json
 import typing
@@ -9,6 +10,7 @@ import fastapi.testclient
 
 from apps.api.tests import support
 from imbi.api import models
+from imbi.api.endpoints import releases
 from imbi.common import graph
 
 PROJECT_ID = 'proj123nanoid'
@@ -2727,3 +2729,93 @@ class GetReleaseDependenciesTestCase(_ReleasesTestBase):
         component = response.json()['components'][0]
         self.assertIsNone(component['scope'])
         self.assertEqual(component['groups'], [])
+
+
+class ReconcileCurrentReleaseTestCase(_ReleasesTestBase):
+    """The guarded pointer write reconciliation performs (phase 3).
+
+    ``reconcile_current_release`` writes what the provider says is
+    active, so its whole contract is the compare-and-set: what it
+    stores, and when it refuses.
+    """
+
+    observed_at = datetime.datetime(2026, 5, 13, 15, 0, tzinfo=datetime.UTC)
+
+    def _reconcile(self, **overrides: typing.Any) -> bool:
+        kwargs: dict[str, typing.Any] = {
+            'org_slug': ORG,
+            'project_id': PROJECT_ID,
+            'env_slug': 'production',
+            'release_id': RELEASE_ID,
+            'external_deployment_id': '12345',
+            'release_at': datetime.datetime(
+                2026, 5, 13, 14, 0, tzinfo=datetime.UTC
+            ),
+            'observed_at': self.observed_at,
+        }
+        kwargs.update(overrides)
+        return asyncio.run(
+            releases.reconcile_current_release(self.mock_db, **kwargs)
+        )
+
+    def _returns(self, observed_at: str | None) -> None:
+        self.mock_db.execute.return_value = (
+            [{'observed_at': json.dumps(observed_at)}]
+            if observed_at is not None
+            else []
+        )
+
+    def test_reconcile_sets_pointer_with_provenance(self) -> None:
+        self._returns(self.observed_at.isoformat())
+        self.assertTrue(self._reconcile())
+        query, params, _ = self.mock_db.execute.await_args.args
+        self.assertEqual(params['release_id'], RELEASE_ID)
+        self.assertEqual(params['external_deployment_id'], '12345')
+        self.assertEqual(params['observed_at'], self.observed_at.isoformat())
+        # ``current_release_at`` carries the provider's timestamp for the
+        # active deployment, which is what the fast path's own guard
+        # compares against -- never the time of this observation.
+        self.assertEqual(params['release_at'], '2026-05-13T14:00:00+00:00')
+        self.assertIn('d.current_state_source = CASE', query)
+        self.assertIn('d.current_deployment_external_id = CASE', query)
+
+    def test_reconcile_clears_pointer(self) -> None:
+        self._returns(self.observed_at.isoformat())
+        self.assertTrue(
+            self._reconcile(
+                release_id=None,
+                external_deployment_id=None,
+                release_at=None,
+            )
+        )
+        _query, params, _ = self.mock_db.execute.await_args.args
+        self.assertIsNone(params['release_id'])
+        self.assertIsNone(params['release_at'])
+
+    def test_reconcile_guards_on_both_kinds_of_newer_state(self) -> None:
+        # A newer reconcile snapshot is one limb of the guard; the other
+        # is a pointer the success fast path advanced with a provider
+        # timestamp after this snapshot was taken -- the fast path
+        # records no provenance, so that timestamp is all there is to
+        # order it by.
+        self._returns(self.observed_at.isoformat())
+        self._reconcile()
+        query = self.mock_db.execute.await_args.args[0]
+        self.assertIn(
+            'd.current_state_observed_at < {observed_at}',
+            query,
+        )
+        self.assertIn('d.current_release_at <= {observed_at}', query)
+
+    def test_reconcile_rejected_when_edge_is_newer(self) -> None:
+        # A success webhook advanced the pointer while the provider was
+        # answering: the edge's observation is newer than this snapshot,
+        # the CASE guards leave every property alone, and the read-back
+        # says so.
+        self._returns('2026-05-13T15:00:01+00:00')
+        self.assertFalse(self._reconcile())
+
+    def test_reconcile_missing_edge_is_not_applied(self) -> None:
+        self._returns(None)
+        with self.assertLogs('imbi.api.endpoints.releases', level='WARNING'):
+            self.assertFalse(self._reconcile())
