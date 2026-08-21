@@ -2281,6 +2281,79 @@ class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(unread.called)
 
     @respx.mock
+    async def test_an_unread_row_above_a_success_is_error(self) -> None:
+        # The mirror of the test above, and the case that matters: the
+        # unread row is NEWER than the success.  The walk stops at the
+        # first clean success, so anything it could not read sits above
+        # that success and may be the deployment actually serving the
+        # environment.  Answering ``found`` here would name the older
+        # release as current and have the host write a stale pointer.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                403, json={'message': 'API rate limit exceeded'}
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        plugin = GitHubDeployment()
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            state = (
+                await plugin.get_environment_state(
+                    _ctx(), _CREDS, ['production']
+                )
+            )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+        # ``latest`` still reports the newest attempt, unread status and
+        # all -- it is activity, never currency.
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '1')
+        self.assertTrue(state.latest.status_unknown)
+
+    @respx.mock
+    async def test_a_malformed_row_above_a_success_is_error(self) -> None:
+        # A row too malformed to identify is just as unreadable as one
+        # whose status would not load, and it is newer than the success
+        # below it.  Skipping it silently would report that success as
+        # active.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {'id': None, 'sha': None, 'created_at': None},
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+
+    @respx.mock
     async def test_an_empty_status_list_is_not_unread(self) -> None:
         # Read fine, nothing posted yet: that is a real ``pending``, and
         # an exhausted page of them is a real "nothing deployed".

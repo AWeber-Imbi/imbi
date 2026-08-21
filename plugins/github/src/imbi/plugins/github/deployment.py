@@ -1725,13 +1725,21 @@ class GitHubDeployment(DeploymentCapability):
         host clear a pointer that is right.
 
         Two degraded reads resolve ``error`` for the same reason.  A row
-        whose status history would not read (``status_unknown``) leaves
-        the walk unable to say what that deployment did -- throttling
-        blinds every row at once -- and a 404 on the listing itself means
-        the repo moved or the token lost access, not that the environment
-        is empty.  An *empty* listing resolves ``unknown``: GitHub says
-        ``[]`` both for an environment never deployed to and for a name
-        it does not recognise, and local slugs reach it unmapped.
+        whose status history would not read (``status_unknown``), or one
+        too malformed to identify at all, leaves the walk unable to say
+        what that deployment did -- throttling blinds every row at once
+        -- and a 404 on the listing itself means the repo moved or the
+        token lost access, not that the environment is empty.  An *empty*
+        listing resolves ``unknown``: GitHub says ``[]`` both for an
+        environment never deployed to and for a name it does not
+        recognise, and local slugs reach it unmapped.
+
+        An unreadable row outranks a success found *below* it, so it wins
+        over ``found`` rather than being noted alongside it.  The walk
+        stops at the first clean success, which means every row it could
+        not read is newer than that success and may be the deployment
+        actually serving the environment; calling the older one active
+        would have the host write a stale pointer.
 
         So ``none`` requires positive evidence -- rows read, none of them
         serving.  Everything else the host must read as "keep what you
@@ -1811,7 +1819,13 @@ class GitHubDeployment(DeploymentCapability):
         active: RemoteDeployment | None = None
         latest: RemoteDeployment | None = None
         scanned = 0
-        unread = 0
+        # Set by any row above the walk's stopping point that we could
+        # not read: a malformed listing entry, or one whose status
+        # history would not load.  Because the walk stops at the first
+        # clean success, every such row is *newer* than whatever success
+        # we go on to find, so it may itself be the deployment actually
+        # serving the environment.
+        unresolved = False
         for deployment in deployments:
             scanned += 1
             observed = await self._observe_deployment(
@@ -1823,6 +1837,10 @@ class GitHubDeployment(DeploymentCapability):
                 mainline,
             )
             if observed is None:
+                # A row we could not even identify.  It is still a row
+                # newer than any success below it, so it has to count as
+                # uncertainty rather than be skipped silently.
+                unresolved = True
                 continue
             if latest is None:
                 latest = observed
@@ -1831,7 +1849,7 @@ class GitHubDeployment(DeploymentCapability):
                 # fallback.  Keep walking -- an older row may still
                 # answer -- but remember that the walk passed something
                 # it could not see.
-                unread += 1
+                unresolved = True
             # ``status`` looks past GitHub's ``inactive`` notice on
             # purpose, so a superseded rollout still reads as the
             # ``success`` it was.  For "what is serving now" that notice
@@ -1841,6 +1859,12 @@ class GitHubDeployment(DeploymentCapability):
             # written because a later deployment took over has that
             # deployment above it in this same newest-first page.
             if observed.status == 'success' and not observed.superseded:
+                if unresolved:
+                    # A newer row we could not read sits above this
+                    # success, so we cannot claim this one is serving.
+                    # Stop here and report the uncertainty: the walk has
+                    # nothing older left to learn from.
+                    break
                 active = observed
                 break
         # The result set is exhausted only when the walk read every row
@@ -1860,26 +1884,31 @@ class GitHubDeployment(DeploymentCapability):
             and scanned < scan_limit
         )
         resolution: typing.Literal['found', 'none', 'unknown', 'error']
-        if active is not None:
-            # A success found above every unread row is still an answer:
-            # the rows the walk never reached cannot outrank it.
-            resolution = 'found'
-        elif unread:
-            # ``error``, not ``none`` and not ``unknown``: the scan was
-            # not capped, it was blinded -- most often by throttling,
-            # where every status read fails, no success is found, and
-            # ``none`` would clear every pointer on the project.
+        if unresolved:
+            # Tested BEFORE ``found`` on purpose.  The walk stops at the
+            # first clean success, so every row it could not read is
+            # newer than that success -- and a 403 on the newest
+            # deployment's status hides exactly the deployment most
+            # likely to be serving.  Reporting ``found`` here would name
+            # an older release as current and have the host write that
+            # stale pointer.  ``error``, not ``none`` and not
+            # ``unknown``: the scan was not capped, it was blinded --
+            # most often by throttling, where every status read fails
+            # and ``none`` would clear every pointer on the project.
             resolution = 'error'
+        elif active is not None:
+            resolution = 'found'
         elif exhausted:
             resolution = 'none'
         else:
             resolution = 'unknown'
         LOGGER.info(
             'Active deployment scan env=%s deployments_scanned=%d '
-            'statuses_unread=%d scan_exhausted=%s active_resolution=%s',
+            'unresolved_above_success=%s scan_exhausted=%s '
+            'active_resolution=%s',
             environment,
             scanned,
-            unread,
+            unresolved,
             exhausted,
             resolution,
         )
