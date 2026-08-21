@@ -5143,16 +5143,17 @@ async def _annotate_commits(
         return
     shas = [c.sha for c in commits]
     if tags is None:
-        verdicts, tags = await asyncio.gather(
+        verdicts, resolved_tags = await asyncio.gather(
             drift.verdicts_by_sha(project_id, shas),
             _tags_by_sha(project_id, shas),
         )
     else:
         verdicts = await drift.verdicts_by_sha(project_id, shas)
+        resolved_tags = tags
     for commit in commits:
         key = commit.sha.lower()
         commit.drift_detected = verdicts.get(key)
-        commit.tag = tags.get(key)
+        commit.tag = resolved_tags.get(key)
 
 
 class _CommitFacts(typing.NamedTuple):
