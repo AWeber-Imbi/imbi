@@ -27,19 +27,11 @@ MaintenanceSlug = typing.Literal[
     'deployment-sweep',
     'deployment-status-repair',
     'opslog-backfill',
-    'release-repair',
-    'release-dup-merge-report',
-    'release-dup-merge',
-    'deployment-migration-report',
-    'deployment-migration',
     'orphan-release-check',
     'orphan-release-purge',
-    'blocker-migration',
     'commit-sync',
     'pr-sync',
     'search-reindex',
-    'sbom-backfill',
-    'sbom-backfill-report',
 ]
 
 
@@ -189,84 +181,6 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             execute=operations.execute_opslog_backfill,
         ),
         OperationDefinition(
-            slug='release-repair',
-            label='Repair Release Identity',
-            description=(
-                'Fix releases the Deployments tab cannot recognize: '
-                'normalize every release committish to the short form the '
-                'deploy path looks up, move a tag onto the release that '
-                'owns the deployment history for that commit, and drop the '
-                'duplicates left behind. Only duplicates with no '
-                'deployment history at all are removed; nothing else is '
-                'deleted and no history, block state, or attribution is '
-                'lost. Safe to re-run.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_release_repair,
-        ),
-        OperationDefinition(
-            slug='release-dup-merge-report',
-            label='Report Duplicate Releases (dry run)',
-            description=(
-                'Report duplicate releases sharing one tag without '
-                'changing anything: which node Merge Duplicate Releases '
-                'would keep (the one whose commit matches what the tag '
-                'points at on the remote, else the newest) and which it '
-                'would fold in. Details land in the server logs.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_release_dup_merge_report,
-        ),
-        OperationDefinition(
-            slug='release-dup-merge',
-            label='Merge Duplicate Releases',
-            description=(
-                'Fold releases sharing one tag into a single node: the '
-                'survivor is the one whose commit matches what the tag '
-                'points at on the remote (else the newest). Deployments, '
-                'blockers, deployment history, and current-release '
-                'pointers move to the survivor; notes and links it lacks '
-                'are filled in, never overwritten. Run this before '
-                'Migrate Deployment History so migrated deployments land '
-                'on surviving releases. Safe to re-run.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_release_dup_merge,
-        ),
-        OperationDefinition(
-            slug='deployment-migration-report',
-            label='Report Deployment History Migration (dry run)',
-            description=(
-                'Report what Migrate Deployment History would do without '
-                'changing anything: how many legacy per-release '
-                'deployment entries exist and how many Deployment '
-                'records they would become. Details land in the server '
-                'logs.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_deployment_migration_report,
-        ),
-        OperationDefinition(
-            slug='deployment-migration',
-            label='Migrate Deployment History',
-            description=(
-                'Move legacy per-release deployment history into '
-                'first-class Deployment records. Entries describing the '
-                'same workflow run collapse into one record that keeps '
-                'every status transition. Run this after Merge Duplicate '
-                'Releases, then run Close Out Stuck Deployments to drain '
-                'what it surfaces. Safe to re-run: migrated history is '
-                'cleared at the source.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_deployment_migration,
-        ),
-        OperationDefinition(
             slug='orphan-release-check',
             label='Report Orphaned Releases (dry run)',
             description=(
@@ -296,20 +210,6 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             execute=operations.execute_orphan_release_purge,
         ),
         OperationDefinition(
-            slug='blocker-migration',
-            label='Migrate Release Blocks to Blockers',
-            description=(
-                'Convert releases still carrying the old blocked_at / '
-                'blocked_reason flags into Blocker nodes, which is what '
-                'deploys and promotes now check. A release left on the '
-                'flags would read as shippable. Safe to re-run: migrated '
-                'releases no longer carry the flags.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_blocker_migration,
-        ),
-        OperationDefinition(
             slug='commit-sync',
             label='Sync Commits & Tags',
             description=(
@@ -332,35 +232,6 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=pr_sync_queue.PAUSE_KEY,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_pr_sync,
-        ),
-        OperationDefinition(
-            slug='sbom-backfill',
-            label='Backfill SBoM Components to ClickHouse',
-            description=(
-                'Publish a ClickHouse component batch for every release '
-                'whose SBoM was ingested before dual write, reading the '
-                'component set from the graph edges. Safe to run beside '
-                'live ingests: an ingest batch always outranks a '
-                'backfill one. Fills only -- a release whose batch is '
-                'already published keeps it, wrong or not.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_sbom_backfill,
-        ),
-        OperationDefinition(
-            slug='sbom-backfill-report',
-            label='Report SBoM Component Drift',
-            description=(
-                "Compare each release's component set in the graph "
-                'against the batch published in ClickHouse and report '
-                'the releases that disagree. Compares content rather '
-                'than row counts, so equal counts over different '
-                'components are caught. Writes nothing.'
-            ),
-            pause_key=None,
-            enumerate=operations.enumerate_all_projects,
-            execute=operations.execute_sbom_backfill_report,
         ),
         OperationDefinition(
             slug='search-reindex',
