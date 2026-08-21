@@ -731,6 +731,11 @@ class Commit(pydantic.BaseModel):
     ci_status: CheckStatus = 'unknown'
     pr_number: int | None = None
     is_head: bool = False
+    #: Per-commit drift verdict.  Plugins never set it: the API enriches
+    #: commit lists from the ClickHouse ``commit_drift`` table after the
+    #: plugin answers.  ``None`` means no verdict was recorded, which
+    #: readers fail closed on (rendered as drifted).
+    drift_detected: bool | None = None
 
 
 class CompareResult(pydantic.BaseModel):

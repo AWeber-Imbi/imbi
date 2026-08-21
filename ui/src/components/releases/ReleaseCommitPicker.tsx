@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import type { DeploymentCommitCiStatus } from '@/types'
 
 import { CiStatusDot } from './CiStatusDot'
+import { DriftIndicator } from './DriftIndicator'
 
 interface CommitRowProps {
   accent?: ChipColors | null
@@ -31,6 +32,7 @@ interface PickerCommit {
   author_email?: null | string
   authored_at?: null | string
   ci_status: DeploymentCommitCiStatus
+  drift_detected?: boolean | null
   message: string
   sha: string
   short_sha: string
@@ -134,6 +136,9 @@ function CommitRow({
           }
         >
           {active ? <Check size={10} strokeWidth={3} /> : null}
+        </span>
+        <span className="flex w-5 shrink-0 justify-center">
+          <DriftIndicator drift={commit.drift_detected} />
         </span>
         <span className="text-secondary shrink-0 font-mono text-xs">
           {commit.short_sha}

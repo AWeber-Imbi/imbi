@@ -18,6 +18,7 @@ import {
   useCommitCheckStatus,
 } from '@/components/deploy/CiFailureNotice'
 import { CiStatusDot } from '@/components/releases/CiStatusDot'
+import { DriftIndicator } from '@/components/releases/DriftIndicator'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CommitSubject } from '@/components/ui/commit-subject'
@@ -396,6 +397,9 @@ function SingleReleaseChanges({
               className="border-tertiary flex min-w-0 items-center gap-3 border-b px-3 py-1.5 last:border-b-0"
               key={c.sha}
             >
+              <span className="flex w-5 shrink-0 justify-center">
+                <DriftIndicator drift={c.drift_detected} />
+              </span>
               <span className="shrink-0 font-mono text-xs">{c.short_sha}</span>
               <CommitSubject
                 className="min-w-0 flex-1 truncate text-sm"

@@ -305,6 +305,10 @@ class RecentCommit(pydantic.BaseModel):
     authored_at: datetime.datetime
     ci_status: str = 'unknown'
     url: str | None = None
+    #: Per-commit drift verdict from the ClickHouse ``commit_drift``
+    #: table; ``None`` when CI never answered for this commit.  Readers
+    #: fail closed: only an explicit ``False`` renders as "no drift".
+    drift_detected: bool | None = None
 
 
 class ReleaseDriftResponse(pydantic.BaseModel):
@@ -1868,6 +1872,7 @@ async def list_commits(
         handler.list_commits(ctx, credentials, ref=ref, limit=limit)
     )
     await persist_link_writeback(db, ctx)
+    await _apply_drift_verdicts(project_id, commits)
     return commits
 
 
@@ -1921,6 +1926,7 @@ async def compare_refs(
         handler.compare(ctx, credentials, base=base, head=head)
     )
     await persist_link_writeback(db, ctx)
+    await _apply_drift_verdicts(project_id, result.commits)
     return result
 
 
@@ -5068,6 +5074,25 @@ def _recent_commit_from_row(row: dict[str, typing.Any]) -> RecentCommit:
     )
 
 
+async def _apply_drift_verdicts(
+    project_id: str, commits: collections.abc.Sequence[Commit | RecentCommit]
+) -> None:
+    """Stamp each commit's ``drift_detected`` from the verdict table.
+
+    Mutates in place.  A commit with no recorded verdict keeps ``None``,
+    which the UI fails closed on (rendered as drifted).
+    """
+    from imbi.api import drift
+
+    if not commits:
+        return
+    verdicts = await drift.verdicts_by_sha(
+        project_id, [c.sha for c in commits]
+    )
+    for commit in commits:
+        commit.drift_detected = verdicts.get(commit.sha.lower())
+
+
 class _CommitFacts(typing.NamedTuple):
     """The synced-commit facts a release-history entry is built from."""
 
@@ -5213,7 +5238,9 @@ async def list_recent_commits(
         sql,
         {'project_id': project_id, 'ref': ref or '', 'limit': capped},
     )
-    return [_recent_commit_from_row(row) for row in rows]
+    commits = [_recent_commit_from_row(row) for row in rows]
+    await _apply_drift_verdicts(project_id, commits)
+    return commits
 
 
 _DRIFT_COMMIT_CAP = 100
@@ -5300,6 +5327,7 @@ async def get_release_drift(
     )
     commits_since_tag = int(count_rows[0]['c']) if count_rows else 0
     commits = [_recent_commit_from_row(row) for row in commit_rows]
+    await _apply_drift_verdicts(project_id, commits)
 
     classify_input = [
         Commit(sha=c.sha, short_sha=c.short_sha, message=c.message)

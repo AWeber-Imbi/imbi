@@ -3995,6 +3995,16 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         patcher = mock.patch(f'{_MODULE}.clickhouse.query', new=m)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The drift enrichment reads through the same shared
+        # ``imbi.common.clickhouse`` module object, so left alone it
+        # would consume entries from ``results``.  Stub it to "no
+        # verdicts"; a test about the enrichment re-patches it.
+        drift_patcher = mock.patch(
+            'imbi.api.drift.verdicts_by_sha',
+            new=mock.AsyncMock(return_value={}),
+        )
+        drift_patcher.start()
+        self.addCleanup(drift_patcher.stop)
         return m
 
     @staticmethod
@@ -4034,6 +4044,21 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertIsNone(data[1]['author'])
         # Default limit clamps to 25.
         self.assertEqual(query.await_args.args[1]['limit'], 25)
+
+    def test_recent_commits_stamps_drift_verdicts(self) -> None:
+        self._patch_query(
+            [[self._commit_row('abc1234def'), self._commit_row('999fff')]]
+        )
+        verdicts = mock.AsyncMock(return_value={'abc1234def': False})
+        with mock.patch('imbi.api.drift.verdicts_by_sha', new=verdicts):
+            with testclient.TestClient(self.test_app) as client:
+                response = client.get(f'{self._BASE}/recent-commits')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data[0]['drift_detected'])
+        # No recorded verdict stays null -- the UI fails closed on it.
+        self.assertIsNone(data[1]['drift_detected'])
+        self.assertEqual(['abc1234def', '999fff'], verdicts.await_args.args[1])
 
     def test_recent_commits_clamps_limit_and_passes_ref(self) -> None:
         query = self._patch_query([[]])

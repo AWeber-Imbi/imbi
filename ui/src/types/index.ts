@@ -653,6 +653,9 @@ export interface DeploymentCommit {
   author?: null | string
   authored_at?: null | string
   ci_status: DeploymentCommitCiStatus
+  /** Per-commit drift verdict; `null`/absent means CI never answered,
+   *  which readers fail closed on (rendered as drifted). */
+  drift_detected?: boolean | null
   is_head: boolean
   message: string
   pr_number?: null | number
@@ -1250,6 +1253,9 @@ export interface RecentCommit {
   author_email?: null | string
   authored_at: string
   ci_status: DeploymentCommitCiStatus
+  /** Per-commit drift verdict; `null`/absent means CI never answered,
+   *  which readers fail closed on (rendered as drifted). */
+  drift_detected?: boolean | null
   message: string
   sha: string
   short_sha: string
