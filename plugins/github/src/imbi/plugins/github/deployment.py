@@ -1486,23 +1486,68 @@ class GitHubDeployment(DeploymentCapability):
 
         ``run_id`` is the GitHub deployment id returned by
         :meth:`trigger_deployment`.  GitHub returns status updates
-        newest-first; the latest entry wins.  An empty list means the
-        deploy workflow hasn't posted anything yet, which Imbi surfaces
-        as ``'queued'``.
+        newest-first; the newest entry that describes this deployment's
+        own lifecycle wins.  An empty list means the deploy workflow
+        hasn't posted anything yet, which Imbi surfaces as ``'queued'``.
 
-        ``log_url`` (and the legacy ``target_url``) on the latest status
-        is what the deploy workflow set to point at its own logs (e.g.
-        the Actions run URL).  We carry that as ``run_url`` so the UI
-        can deep-link without having to walk back to the workflow run
+        ``inactive`` entries are skipped rather than read as the answer.
+        Every other state is something this deployment's own run
+        reported about itself; ``inactive`` is written by GitHub *on
+        behalf of a later deployment* when that one supersedes this one.
+        Treating it as the outcome is wrong twice over: it relabels a
+        rollout that succeeded (the success is still in the list, one
+        entry further down), and its ``updated_at`` is the moment the
+        successor went live, so a caller stamping the close-out with
+        ``completed_at`` would date this deployment *after* the one that
+        replaced it.  That is what taught a production environment it
+        was running a release eleven days stale.
+
+        Note that ``inactive`` reaches Imbi only by polling -- here and
+        in :meth:`_latest_status`.  GitHub creates the status but emits no
+        ``deployment_status`` webhook for it, which its own docs state
+        outright: "A webhook event is not fired for deployment statuses
+        with an inactive state."  Confirmed 2026-08-21 against a repo
+        hook subscribed to ``*``, which saw the successor's ``success``
+        and nothing for the auto-inactive written in the same second.
+        So a poll is the only place the state can be handled correctly,
+        and there is no upstream fix to wait for.
+
+        Suppressing the state at source is not the alternative it looks
+        like: ``auto_inactive`` is documented as affecting only
+        "non-transient, non-production" deployments, yet the deployments
+        observed here carry ``production_environment=true`` and were
+        auto-inactivated anyway.  The documented carve-out does not
+        describe them, so setting ``auto_inactive=false`` would need an
+        experiment rather than a reading.
+
+        A deployment superseded while still in flight has no terminal
+        entry left once ``inactive`` is skipped, so it reads as whatever
+        it last genuinely reported and the sweeper expires it on age --
+        honest, because it never did finish.
+
+        ``log_url`` (and the legacy ``target_url``) on the selected
+        status is what the deploy workflow set to point at its own logs
+        (e.g. the Actions run URL).  We carry that as ``run_url`` so the
+        UI can deep-link without having to walk back to the workflow run
         through a check-suite join.
         """
         async with self._client(ctx, credentials) as client:
             resp = await client.get(f'/deployments/{run_id}/statuses')
             resp.raise_for_status()
             statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
-            if not statuses:
+            latest = next(
+                (
+                    entry
+                    for entry in statuses
+                    if str(entry.get('state') or '').lower() != 'inactive'
+                ),
+                None,
+            )
+            if latest is None:
+                # Either nothing posted yet, or every entry is an
+                # auto-inactive -- both mean this deployment has told us
+                # nothing about itself.
                 return DeploymentRun(run_id=str(run_id), status='queued')
-            latest = statuses[0]
             state = str(latest.get('state') or '').lower()
             status: typing.Literal[
                 'queued',
@@ -1520,10 +1565,6 @@ class GitHubDeployment(DeploymentCapability):
                 status = 'success'
             elif state in {'failure', 'error'}:
                 status = 'failure'
-            elif state == 'inactive':
-                # Deployment was superseded by a newer one for the same
-                # env — Imbi treats that as cancelled rather than failed.
-                status = 'cancelled'
             else:
                 status = 'unknown'
             log_url = latest.get('log_url') or latest.get('target_url')
@@ -1906,11 +1947,32 @@ class GitHubDeployment(DeploymentCapability):
         not started, and ``pending`` is the host's vocabulary for
         both.  Network / parse errors degrade the same way so resync
         is never blocked by a single noisy row.
+
+        An ``inactive`` entry is looked *past* when something sits
+        beneath it.  GitHub writes one on a deployment when a later one
+        supersedes it, so it reports the successor's arrival rather than
+        this deployment's outcome -- and every deployment except an
+        environment's newest carries one.  Reading it verbatim therefore
+        relabelled whole deployment histories as ``rolled_back``, each
+        node's ``history`` showing the ``success`` it overwrote; ~14k
+        nodes in the production graph were in that state before this
+        skip existed.
+
+        An ``inactive`` with nothing beneath it still reports
+        ``rolled_back``: that deployment was superseded without ever
+        reporting on itself, and ``rolled_back`` is the accurate
+        terminal for it.  The distinction is the whole point -- skip the
+        retirement notice when it is hiding a real outcome, keep it when
+        it is the only thing we know.
+
+        This is why the page size is not 1.  A single-status window
+        cannot see past an ``inactive`` to the ``success`` underneath,
+        which is what made the misread unavoidable.
         """
         try:
             resp = await client.get(
                 f'/deployments/{deployment_id}/statuses',
-                params={'per_page': '1'},
+                params={'per_page': '10'},
             )
         except httpx.HTTPError:
             return 'pending', None
@@ -1922,7 +1984,14 @@ class GitHubDeployment(DeploymentCapability):
             return 'pending', None
         if not statuses:
             return 'pending', None
-        latest = statuses[0]
+        latest = next(
+            (
+                entry
+                for entry in statuses
+                if str(entry.get('state') or '').lower() != 'inactive'
+            ),
+            statuses[0],
+        )
         state = str(latest.get('state') or '').lower()
         log_url = latest.get('log_url') or latest.get('target_url')
         return _to_event_status(state), str(log_url) if log_url else None

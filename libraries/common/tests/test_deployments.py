@@ -96,6 +96,25 @@ class DeploymentNodeTestCase(unittest.IsolatedAsyncioTestCase):
         kwargs.update(overrides)
         return await deployments.upsert_deployment(self.graph, **kwargs)
 
+    async def add_release(self, release_id: str) -> None:
+        """Attach a second ``Release`` to the fixture project.
+
+        ``asyncSetUp`` creates only ``RELEASE_ID``, and
+        ``upsert_deployment`` MATCHes the named release -- so an upsert
+        against an uncreated one writes nothing and returns ``None``
+        rather than failing loudly.
+        """
+        await self.graph.execute(
+            """
+            MATCH (p:Project {{id: {project_id}}})
+            MERGE (r:Release {{id: {release_id}}})
+            MERGE (p)-[:HAS_RELEASE]->(r)
+            RETURN r.id AS id
+            """,
+            {'project_id': PROJECT_ID, 'release_id': release_id},
+            ['id'],
+        )
+
     async def nodes(self) -> list[dict[str, typing.Any]]:
         rows = await self.graph.execute(
             """
@@ -383,6 +402,91 @@ class ReadTests(DeploymentNodeTestCase):
         assert rows[0].release is not None
         self.assertEqual(RELEASE_ID, rows[0].release['id'])
         self.assertEqual('success', rows[0].event.status)
+
+    async def test_latest_released_ignores_a_newer_failed_close_out(
+        self,
+    ) -> None:
+        """A superseded rollout's close-out must not win the pointer.
+
+        The exact production shape: a release goes out and succeeds,
+        a newer release supersedes it, and only then does the older
+        deployment get closed out -- by the sweeper, from a remote
+        status stamped when the *successor* went live.  That write is
+        the newest one in the environment, so ranking on recency alone
+        handed production back to the release it had already replaced.
+        """
+        await self.add_release(OTHER_RELEASE_ID)
+        await self.upsert(
+            status='success',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='newer-run',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='failed',
+            note='closed by sweeper: run cancelled',
+            external_run_id='older-run',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+
+        rows = await deployments.latest_released_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        assert rows[0].release is not None
+        self.assertEqual(OTHER_RELEASE_ID, rows[0].release['id'])
+        self.assertEqual('success', rows[0].event.status)
+
+    async def test_latest_released_ignores_a_newer_rolled_back(self) -> None:
+        """``rolled_back`` says outright that it is not serving."""
+        await self.add_release(OTHER_RELEASE_ID)
+        await self.upsert(
+            status='success',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='newer-run',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+        await self.upsert(
+            status='rolled_back',
+            external_run_id='older-run',
+            timestamp=NOW + datetime.timedelta(hours=2),
+        )
+
+        rows = await deployments.latest_released_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        assert rows[0].release is not None
+        self.assertEqual(OTHER_RELEASE_ID, rows[0].release['id'])
+
+    async def test_latest_released_still_surfaces_a_rollout_in_flight(
+        self,
+    ) -> None:
+        """Excluding failures must not also hide a live rollout.
+
+        ``_hydrate_release_train`` selects ``pending``/``in_progress``
+        events to poll and self-heal, so filtering the reader down to
+        ``success`` would strand every in-flight deployment with the
+        null ``external_run_url`` that pass exists to fill in.
+        """
+        await self.add_release(OTHER_RELEASE_ID)
+        await self.upsert(
+            status='success', external_run_id='older-run', timestamp=NOW
+        )
+        await self.upsert(
+            status='in_progress',
+            release_id=OTHER_RELEASE_ID,
+            external_run_id='newer-run',
+            timestamp=NOW + datetime.timedelta(hours=1),
+        )
+
+        rows = await deployments.latest_released_deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+        assert rows[0].release is not None
+        self.assertEqual(OTHER_RELEASE_ID, rows[0].release['id'])
+        self.assertEqual('in_progress', rows[0].event.status)
 
     async def test_latest_released_empty_without_ids(self) -> None:
         self.assertEqual(

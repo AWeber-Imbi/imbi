@@ -25,6 +25,7 @@ MaintenanceSlug = typing.Literal[
     'rescore',
     'deployment-resync',
     'deployment-sweep',
+    'deployment-status-repair',
     'opslog-backfill',
     'release-repair',
     'release-dup-merge-report',
@@ -150,6 +151,27 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_deployment_sweep,
+        ),
+        OperationDefinition(
+            slug='deployment-status-repair',
+            label='Repair Deployments Mislabelled Rolled Back',
+            description=(
+                'Restore deployments that resync marked rolled back over '
+                'a success. GitHub writes an inactive status on a '
+                'deployment when a later one supersedes it, and resync '
+                "read that as the outcome -- so most of a project's "
+                'deployment history could end up claiming a rollback that '
+                "never happened. Reads each node's own recorded history "
+                'rather than the remote, so it makes no API calls and '
+                'cannot be rate-limited. A node whose history holds no '
+                'earlier success is left alone: there is nothing to '
+                'restore. Does not change deployment timestamps, so it '
+                'cannot move which release an environment reports. Safe '
+                'to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_deployment_status_repair,
         ),
         OperationDefinition(
             slug='opslog-backfill',
