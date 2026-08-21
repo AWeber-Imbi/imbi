@@ -834,7 +834,11 @@ async def _orphan_release_check(
         + (
             ' found (dry run).'
             if dry_run
-            else f' deleted, with {summary.blockers_deleted} blocker(s).'
+            # deleted trails orphans when the delete's re-check declines
+            # -- the release gained history since the read. Reporting
+            # orphans here would claim a deletion that did not happen.
+            else f'; {summary.deleted} deleted, with '
+            f'{summary.blockers_deleted} blocker(s).'
         ),
         candidates=summary.candidates,
         orphans=summary.orphans,

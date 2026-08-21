@@ -19,9 +19,13 @@ class _OrphanGraphStub:
         usage: list[dict[str, typing.Any]],
         blockers: dict[str, list[str]] | None = None,
         delete_declined: bool = False,
+        still_attached: set[str] | None = None,
     ) -> None:
         self.usage = usage
         self.blockers = blockers or {}
+        #: Blocker ids that still hold an edge when the delete runs, so
+        #: the query's ``edges = 0`` guard passes over them.
+        self.still_attached = still_attached or set()
         #: Simulate the delete's re-check declining: the release gained
         #: history between the read and the write.
         self.delete_declined = delete_declined
@@ -51,6 +55,12 @@ class _OrphanGraphStub:
             if self.delete_declined:
                 return []
             return [{'rid': params['release_id']}]
+        if 'RETURN bid' in query:
+            return [
+                {'bid': blocker_id}
+                for blocker_id in params['blocker_ids']
+                if blocker_id not in self.still_attached
+            ]
         return []
 
 
@@ -114,7 +124,7 @@ class PurgeOrphanReleasesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, summary.orphans)
         self.assertEqual(1, summary.deleted)
         self.assertEqual(2, summary.blockers_deleted)
-        blocker_deletes = db.writes('DETACH DELETE b')
+        blocker_deletes = db.writes('RETURN bid')
         self.assertEqual(1, len(blocker_deletes))
         self.assertEqual(['b1', 'b2'], blocker_deletes[0]['blocker_ids'])
         deletes = db.writes('DETACH DELETE r')
@@ -126,9 +136,15 @@ class PurgeOrphanReleasesTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('WHERE edges = 0 AND nodes = 0', query)
         self.assertIn('RETURN rid', query)
         # The blockers come off only after the release delete happened.
-        order = [q for q, _ in db.calls if 'DETACH DELETE' in q]
+        order = [
+            q
+            for q, _ in db.calls
+            if 'DETACH DELETE r' in q or 'RETURN bid' in q
+        ]
         self.assertIn('DETACH DELETE r', order[0])
-        self.assertIn('DETACH DELETE b', order[1])
+        self.assertIn('DELETE b', order[1])
+        # Only a blocker left with no edges at all comes off.
+        self.assertIn('WHERE edges = 0', order[1])
 
     async def test_a_declined_recheck_keeps_release_and_blockers(
         self,
@@ -146,7 +162,7 @@ class PurgeOrphanReleasesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, summary.orphans)
         self.assertEqual(0, summary.deleted)
         self.assertEqual(0, summary.blockers_deleted)
-        self.assertEqual([], db.writes('DETACH DELETE b'))
+        self.assertEqual([], db.writes('RETURN bid'))
 
     async def test_an_existing_tag_is_not_an_orphan(self) -> None:
         db = _OrphanGraphStub([_usage_row('r1')])
@@ -171,3 +187,20 @@ class PurgeOrphanReleasesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, summary.deleted)
         self.assertEqual(0, summary.blockers_deleted)
         self.assertEqual([], db.writes('DETACH DELETE'))
+
+    async def test_a_blocker_that_kept_an_edge_is_not_counted(self) -> None:
+        # The delete query passes over a blocker something else took
+        # over between the read and the write. Counting the ids asked
+        # for rather than the ids removed would overstate the summary.
+        db = _OrphanGraphStub(
+            [_usage_row('r1')],
+            blockers={'r1': ['b1', 'b2']},
+            still_attached={'b2'},
+        )
+        summary = await self._purge(db, {'1.0.0': 'absent'})
+        assert summary is not None
+        self.assertEqual(1, summary.deleted)
+        self.assertEqual(1, summary.blockers_deleted)
+        self.assertEqual(
+            ['b1', 'b2'], db.writes('RETURN bid')[0]['blocker_ids']
+        )

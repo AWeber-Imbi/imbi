@@ -1005,6 +1005,29 @@ class OrphanWrapperTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('succeeded', outcome)
         self.assertFalse(call.await_args.kwargs['dry_run'])
 
+    async def test_a_declined_delete_is_not_reported_as_deleted(self) -> None:
+        # purge_orphan_releases re-checks each orphan before deleting
+        # it, so deleted trails orphans when a release gained history
+        # since the read. The message has to say what happened.
+        from imbi.api import orphan_releases
+
+        ctx = _ctx()
+        stack, _call = self._patch(
+            'purge_orphan_releases',
+            orphan_releases.OrphanSummary(
+                tagged=3, candidates=1, orphans=1, deleted=0
+            ),
+        )
+        with stack:
+            outcome = await operations.execute_orphan_release_purge(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('succeeded', outcome)
+        row = _rows(ctx)[0]
+        self.assertIn('0 deleted', row.message)
+        self.assertEqual(0, row.detail['deleted'])
+        self.assertEqual(1, row.detail['orphans'])
+
     async def test_orphan_purge_without_confirmed_orphans_is_skipped(
         self,
     ) -> None:

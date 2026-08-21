@@ -74,10 +74,21 @@ RETURN rid
 
 # Deleting the release detaches its BLOCKED_BY edges; this removes the
 # Blocker nodes it left behind, by the ids read before the delete.
+#
+# The edge count is what makes the name honest: a blocker still holding
+# an edge is one something else took over between the read and now, and
+# deleting it would take that other thing's data with it.  It also makes
+# the returned ids a count of what was actually removed rather than what
+# was asked for.
 _DELETE_DETACHED_BLOCKERS: typing.Final[typing.LiteralString] = """
 MATCH (b:Blocker)
 WHERE b.id IN {blocker_ids}
-DETACH DELETE b
+OPTIONAL MATCH (b)-[e]-()
+WITH b, count(e) AS edges
+WHERE edges = 0
+WITH b, b.id AS bid
+DELETE b
+RETURN bid
 """
 
 
@@ -211,12 +222,12 @@ async def purge_orphan_releases(
             continue
         deleted += 1
         if blocker_ids:
-            await db.execute(
+            removed_blockers = await db.execute(
                 _DELETE_DETACHED_BLOCKERS,
                 {'blocker_ids': blocker_ids},
-                [],
+                ['bid'],
             )
-            blockers_deleted += len(blocker_ids)
+            blockers_deleted += len(removed_blockers)
         LOGGER.info(
             'orphan-release-check: deleted release %s (tag %s) on '
             'project %s; the remote confirmed the tag does not exist',
