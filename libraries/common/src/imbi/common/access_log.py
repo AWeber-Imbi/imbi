@@ -1,7 +1,12 @@
 """ASGI middleware that replaces uvicorn's built-in access log.
 
-The middleware emits one record per HTTP request on the
-``imbi.common.access`` logger. Unlike uvicorn's default access log, it
+The middleware emits one record per HTTP request. The logger name
+defaults to the running service's package name plus an ``.access``
+suffix (``imbi.api.access``, ``imbi.gateway.access``, …), derived
+from the console script the process was started with, and to
+``imbi.common.access`` when the process was not started by an
+``imbi-*`` script. Unlike uvicorn's default
+access log, it
 can suppress records for specific paths *only* when the response was
 successful, so high-frequency endpoints (health checks, ``/status``)
 stay quiet without hiding failures.
@@ -32,6 +37,8 @@ to the middleware constructor.
 
 import collections
 import logging
+import os
+import sys
 import typing
 from collections import abc
 
@@ -40,7 +47,31 @@ import jwt
 from imbi.common import otel, settings
 from imbi.common.auth import core
 
-LOGGER = logging.getLogger('imbi.common.access')
+_FALLBACK_LOGGER_NAME = 'imbi.common.access'
+
+
+def _default_logger() -> logging.Logger:
+    """Return the logger new middleware instances default to.
+
+    Every Imbi service runs under its console script (``imbi-api``,
+    ``imbi-gateway``, …), so ``sys.argv[0]`` names the running
+    service. Every hyphen becomes a dot and ``.access`` is appended,
+    mapping the script to a child of the service's package
+    (``imbi.api.access``, ``imbi.gateway.access``, …), so each
+    service's access log is attributed to it and stays a dedicated
+    stream whose level can be pinned on its own. Per-process state,
+    so services sharing a pod (or host) can't affect each other, and
+    ``multiprocessing`` spawn restores ``sys.argv`` in uvicorn's
+    ``--reload`` worker. Falls back to ``imbi.common.access`` when
+    the process was not started by an ``imbi-*`` script (tests,
+    plain uvicorn).
+    """
+    script = os.path.basename(sys.argv[0]) if sys.argv else ''
+    if script.startswith('imbi-'):
+        dotted = script.replace('-', '.')
+        return logging.getLogger(f'{dotted}.access')
+    return logging.getLogger(_FALLBACK_LOGGER_NAME)
+
 
 # Bound the API-key owner cache so a long-lived process can't grow it
 # without limit; owners are stable, so a generous LRU is plenty.
@@ -101,8 +132,11 @@ class AccessLogMiddleware:
             ``range(200, 300)`` so 4xx/5xx on a quiet path is still
             logged (e.g. ``GET /status`` returning 404 because the
             endpoint isn't wired up).
-        logger: Logger to emit records on. Defaults to
-            ``imbi.common.access``.
+        logger: Logger to emit records on. Defaults to the running
+            service's package name plus an ``.access`` suffix
+            (``imbi.api.access``, ``imbi.gateway.access``, …)
+            derived from the console script the process was started
+            with, falling back to ``imbi.common.access``.
         include_principal: When ``True`` (the default), inspect the
             ``Authorization`` header on each request and render the
             authenticated principal in the log line. Set to ``False``
@@ -128,7 +162,7 @@ class AccessLogMiddleware:
         self.app = app
         self.quiet_paths = frozenset(quiet_paths)
         self.quiet_status_codes = quiet_status_codes
-        self.logger = logger or LOGGER
+        self.logger = logger or _default_logger()
         self.include_principal = include_principal
         self.include_trace_context = include_trace_context
 

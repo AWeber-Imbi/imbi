@@ -1,6 +1,7 @@
 """Unit tests for the access_log middleware."""
 
 import logging
+import sys
 import typing
 import unittest
 from collections import abc
@@ -8,6 +9,21 @@ from unittest import mock
 
 from imbi.common import access_log, otel
 from imbi.common.auth import core
+
+# The default logger name is derived from ``sys.argv[0]``, so pin it to
+# a non-``imbi-*`` script for the module: every test that does not patch
+# ``sys.argv`` itself expects the ``imbi.common.access`` fallback, and a
+# runner invoked through an ``imbi-*`` console script would otherwise
+# select a service logger instead.
+_argv_patch = mock.patch.object(sys, 'argv', ['pytest'])
+
+
+def setUpModule() -> None:
+    _argv_patch.start()
+
+
+def tearDownModule() -> None:
+    _argv_patch.stop()
 
 
 class _RecordingApp:
@@ -370,6 +386,38 @@ class AccessLogMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs(custom, level=logging.INFO) as cm:
             await middleware(_http_scope(), _noop_receive, _noop_send)
         self.assertEqual(cm.records[0].name, custom.name)
+
+    async def test_default_logger_name_from_console_script(self) -> None:
+        with mock.patch.object(
+            sys, 'argv', ['/usr/local/bin/imbi-gateway', 'serve']
+        ):
+            middleware = access_log.AccessLogMiddleware(_RecordingApp())
+        with self.assertLogs('imbi.gateway.access', level=logging.INFO) as cm:
+            await middleware(_http_scope(), _noop_receive, _noop_send)
+        self.assertEqual(cm.records[0].name, 'imbi.gateway.access')
+
+    async def test_default_logger_name_multi_hyphen_script(self) -> None:
+        with mock.patch.object(
+            sys, 'argv', ['/usr/local/bin/imbi-deploy-agent', 'serve']
+        ):
+            middleware = access_log.AccessLogMiddleware(_RecordingApp())
+        with self.assertLogs(
+            'imbi.deploy.agent.access', level=logging.INFO
+        ) as cm:
+            await middleware(_http_scope(), _noop_receive, _noop_send)
+        self.assertEqual(cm.records[0].name, 'imbi.deploy.agent.access')
+
+    async def test_default_logger_name_non_imbi_script(self) -> None:
+        with mock.patch.object(sys, 'argv', ['/usr/local/bin/uvicorn']):
+            middleware = access_log.AccessLogMiddleware(_RecordingApp())
+        with self.assertLogs('imbi.common.access', level=logging.INFO):
+            await middleware(_http_scope(), _noop_receive, _noop_send)
+
+    async def test_default_logger_name_empty_argv(self) -> None:
+        with mock.patch.object(sys, 'argv', []):
+            middleware = access_log.AccessLogMiddleware(_RecordingApp())
+        with self.assertLogs('imbi.common.access', level=logging.INFO):
+            await middleware(_http_scope(), _noop_receive, _noop_send)
 
 
 class PrincipalLoggingTests(unittest.IsolatedAsyncioTestCase):

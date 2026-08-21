@@ -281,7 +281,7 @@ def _groups(value: typing.Any) -> list[str]:
     hand-edited edge.
     """
     if isinstance(value, list):
-        return [str(item) for item in typing.cast('list[typing.Any]', value)]
+        return [str(item) for item in typing.cast('list[object]', value)]
     return []
 
 
