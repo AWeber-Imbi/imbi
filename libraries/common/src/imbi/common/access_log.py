@@ -68,7 +68,8 @@ def _default_logger() -> logging.Logger:
     """
     script = os.path.basename(sys.argv[0]) if sys.argv else ''
     if script.startswith('imbi-'):
-        return logging.getLogger(f'{script.replace("-", ".")}.access')
+        dotted = script.replace('-', '.')
+        return logging.getLogger(f'{dotted}.access')
     return logging.getLogger(_FALLBACK_LOGGER_NAME)
 
 

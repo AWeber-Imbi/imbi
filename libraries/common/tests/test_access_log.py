@@ -10,6 +10,21 @@ from unittest import mock
 from imbi.common import access_log, otel
 from imbi.common.auth import core
 
+# The default logger name is derived from ``sys.argv[0]``, so pin it to
+# a non-``imbi-*`` script for the module: every test that does not patch
+# ``sys.argv`` itself expects the ``imbi.common.access`` fallback, and a
+# runner invoked through an ``imbi-*`` console script would otherwise
+# select a service logger instead.
+_argv_patch = mock.patch.object(sys, 'argv', ['pytest'])
+
+
+def setUpModule() -> None:
+    _argv_patch.start()
+
+
+def tearDownModule() -> None:
+    _argv_patch.stop()
+
 
 class _RecordingApp:
     """ASGI app that records calls and replies with a configurable status."""
