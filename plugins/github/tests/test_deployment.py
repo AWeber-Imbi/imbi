@@ -2179,10 +2179,11 @@ class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(state.latest)
 
     @respx.mock
-    async def test_unknown_environment_is_none(self) -> None:
-        # Mirrors ``list_recent_deployments``: a 404 means the repo or
-        # environment is unknown, not that the provider failed.  Every
-        # requested environment still gets a row.
+    async def test_a_404_listing_is_error_not_none(self) -> None:
+        # NOT ``none``, unlike ``list_recent_deployments``: here ``none``
+        # authorizes clearing the pointer, and a 404 is what a renamed or
+        # transferred repo -- or a token that lost access -- answers.  An
+        # unknown *environment* is a 200 with an empty list.
         respx.get(
             'https://api.github.com/repos/octo/demo/deployments',
             params={'environment': 'production', 'per_page': '10'},
@@ -2197,15 +2198,104 @@ class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
         ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
         _statuses('success')
         plugin = GitHubDeployment()
-        states = await plugin.get_environment_state(
-            _ctx(), _CREDS, ['production', 'never-deployed']
-        )
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            states = await plugin.get_environment_state(
+                _ctx(), _CREDS, ['production', 'never-deployed']
+            )
         by_env = {s.environment: s for s in states}
         self.assertEqual(by_env['production'].active_resolution, 'found')
         missing = by_env['never-deployed']
-        self.assertEqual(missing.active_resolution, 'none')
+        self.assertEqual(missing.active_resolution, 'error')
         self.assertIsNone(missing.active)
         self.assertIsNone(missing.latest)
+
+    @respx.mock
+    async def test_an_unread_status_is_error_not_none(self) -> None:
+        # A throttled scan reads every status as the ``pending``
+        # fallback.  Answering ``none`` there would clear a pointer that
+        # is right, on every environment of the project at once.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(
+            return_value=httpx.Response(
+                403, json={'message': 'API rate limit exceeded'}
+            )
+        )
+        plugin = GitHubDeployment()
+        with self.assertLogs('imbi.plugins.github', level='WARNING'):
+            state = (
+                await plugin.get_environment_state(
+                    _ctx(), _CREDS, ['production']
+                )
+            )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertTrue(state.latest.status_unknown)
+
+    @respx.mock
+    async def test_a_success_above_an_unread_status_still_answers(
+        self,
+    ) -> None:
+        # The walk stops at the first live success, so rows it never
+        # reached cannot outrank it -- reading them is not required.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': 'success'}]))
+        unread = respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/2/statuses'
+        ).mock(return_value=httpx.Response(500))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        self.assertEqual(state.active.external_run_id, '1')
+        self.assertFalse(unread.called)
+
+    @respx.mock
+    async def test_an_empty_status_list_is_not_unread(self) -> None:
+        # Read fine, nothing posted yet: that is a real ``pending``, and
+        # an exhausted page of them is a real "nothing deployed".
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/1/statuses'
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'none')
+        assert state.latest is not None
+        self.assertFalse(state.latest.status_unknown)
 
 
 class ActiveScanLimitTestCase(unittest.TestCase):

@@ -473,6 +473,8 @@ async def _hydrate_release_train(
             models.DeploymentEvent | None,
         ],
     ],
+    also_in_flight: list[tuple[str, str, str, models.DeploymentEvent]]
+    | None = None,
 ) -> dict[str, CheckStatus | None]:
     """Hydrate live deploy run + CI check-runs status per env.
 
@@ -482,6 +484,15 @@ async def _hydrate_release_train(
     deploy workflow has posted a status -- replaces the in-memory event
     so the response reflects the live state.  Returns a slug →
     ``CheckStatus`` map that the caller folds into the response.
+
+    ``also_in_flight`` carries attempts to poll that are *not* what the
+    environment is showing as current.  Since the current-release read
+    became success-only, an in-flight attempt no longer appears in
+    ``by_env`` at all, and this pass -- the only thing that backfills a
+    run URL the first webhook could not carry, or closes out a run that
+    went terminal unheard -- would never see one again.  Those entries
+    are polled and persisted like any other, but they do not touch
+    ``by_env``: the response's current release stays the one serving.
 
     Failures are tolerated silently — the release train must keep
     rendering even if the plugin can't be resolved or its calls hiccup.
@@ -511,6 +522,11 @@ async def _hydrate_release_train(
         ):
             in_flight.append((slug, release_id, committish, event))
 
+    # Appended after the ``by_env`` walk so the display entries keep the
+    # leading indices: everything from ``display_in_flight`` on is a
+    # poll-only attempt whose result must not replace a current release.
+    display_in_flight = len(in_flight)
+    in_flight.extend(also_in_flight or [])
     if not in_flight and not deployed:
         return {}
 
@@ -539,8 +555,8 @@ async def _hydrate_release_train(
         handler, ctx, credentials, in_flight, deployed
     )
 
-    for (slug, release_id, _committish, event), result in zip(
-        in_flight, run_results, strict=True
+    for index, ((slug, release_id, _committish, event), result) in enumerate(
+        zip(in_flight, run_results, strict=True)
     ):
         if isinstance(result, BaseException):
             continue
@@ -553,7 +569,7 @@ async def _hydrate_release_train(
             event=event,
             result=result,
         )
-        if new_event is None:
+        if new_event is None or index >= display_in_flight:
             continue
         env, release_raw, _ = by_env[slug]
         by_env[slug] = (env, release_raw, new_event)
@@ -911,6 +927,12 @@ async def list_current_releases(
     # project no longer deploys in are skipped: the response has always
     # enumerated ``DEPLOYED_IN``.
     latest_by_slug: dict[str, LatestDeployment] = {}
+    # In-flight attempts worth polling even though they are not what the
+    # environment serves -- see ``also_in_flight`` in
+    # :func:`_hydrate_release_train`.  Without this an in-flight node
+    # never reaches the self-heal at all, now that the current-release
+    # read is success-only.
+    in_flight_nodes: list[tuple[str, str, str, models.DeploymentEvent]] = []
     for state in await deployment_nodes.current_and_latest_by_project(
         db, [project_id]
     ):
@@ -933,9 +955,20 @@ async def list_current_releases(
                 tag=newest.release.get('tag') or None,
                 committish=newest.release.get('committish') or None,
             )
+            release_id = str(newest.release.get('id') or '')
+            committish = str(newest.release.get('committish') or '')
+            if (
+                newest.event.status in ('pending', 'in_progress')
+                and newest.event.external_run_id
+                and release_id
+                and committish
+            ):
+                in_flight_nodes.append(
+                    (slug, release_id, committish, newest.event)
+                )
 
     ci_status_by_slug = await _hydrate_release_train(
-        db, org_slug, project_id, auth, by_env
+        db, org_slug, project_id, auth, by_env, in_flight_nodes
     )
 
     # Backfill performed_by from operations_log for events whose AGE edge
@@ -1496,10 +1529,23 @@ async def reconcile_current_release(
     ``current_state_source`` -- so a later writer can tell how old the
     information behind the pointer is.  Returns whether the write took.
 
-    ``current_release_at`` is set to the *provider's* timestamp for the
-    active deployment (``None`` when clearing), never to now: it means
-    "the provider timestamp of the deployment the pointer names", which
-    is what the fast path's own guard compares against.
+    ``current_release_at`` is the fast path's ratchet, so this only ever
+    moves it *forward*: to the provider's timestamp for the active
+    deployment when that is newer than what is stored, and never
+    backwards or to ``NULL``.  Writing the provider timestamp verbatim
+    looked right -- it is the timestamp of the deployment the pointer
+    names -- but that value is the deployment's *creation*, earlier than
+    the success event the fast path would have stored, and clearing set
+    it to ``NULL`` outright.  Either write disarmed the ratchet, and
+    :func:`_set_current_release` would then let a replayed older success
+    install an older release.  What the pointer names is recorded in the
+    provenance fields instead; this field's one job is to stop a regress.
+
+    Still open (phase 5): a replay whose event timestamp falls inside the
+    named deployment's own window -- after it was created, before it
+    succeeded -- clears the ratchet's bar and can install the release it
+    names.  Closing that needs the guard to compare like clocks, which
+    is the wall-clock/provider-clock unification phase 5 owns.
 
     The compare-and-set refuses to write when the edge already carries
     information newer than this snapshot -- a reconcile that ran later,
@@ -1526,7 +1572,10 @@ async def reconcile_current_release(
     SET d.current_release = CASE
           WHEN {guard} THEN {release_id} ELSE d.current_release END,
         d.current_release_at = CASE
-          WHEN {guard} THEN {release_at} ELSE d.current_release_at END,
+          WHEN {guard} AND {release_at} IS NOT NULL
+               AND (d.current_release_at IS NULL
+                    OR d.current_release_at < {release_at})
+          THEN {release_at} ELSE d.current_release_at END,
         d.current_deployment_external_id = CASE
           WHEN {guard} THEN {external_deployment_id}
           ELSE d.current_deployment_external_id END,

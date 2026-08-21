@@ -554,6 +554,21 @@ class CurrentAndLatestTests(DeploymentNodeTestCase):
         self.assertEqual('2', state.latest.event.external_run_id)
         self.assertEqual('failed', state.latest.event.status)
 
+    async def test_simultaneous_rollouts_rank_run_ids_numerically(
+        self,
+    ) -> None:
+        # Same timestamp, so the provider run id breaks the tie -- and
+        # GitHub's ids are decimal, so 10 has to outrank 9.  Sorted as
+        # text it did not, which made the one meaningful tie breaker no
+        # better than the nanoids after it.
+        await self.upsert(status='success', external_run_id='9', timestamp=NOW)
+        await self.upsert(
+            status='success', external_run_id='10', timestamp=NOW
+        )
+        state = await self._state()
+        assert state.current is not None
+        self.assertEqual('10', state.current.event.external_run_id)
+
     async def test_pending_attempt_does_not_displace_a_success(self) -> None:
         """Matrix 2: the newest attempt is still in flight."""
         await self.upsert(status='success', external_run_id='1', timestamp=NOW)

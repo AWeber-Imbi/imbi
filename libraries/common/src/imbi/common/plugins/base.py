@@ -920,6 +920,14 @@ class RemoteDeployment(pydantic.BaseModel):
     #: capability does not report retirement", so no caller may read it
     #: as positive evidence of currency.
     superseded: bool = False
+    #: The provider's status history for this deployment could not be
+    #: read (transport error, throttling, an unparseable body), so
+    #: ``status`` is a fallback rather than an observation.  A caller
+    #: deciding what an environment serves MUST treat a row carrying
+    #: this as unresolved: reading the fallback as fact is how a
+    #: throttled scan concludes "nothing is deployed" and clears a
+    #: pointer that was right.
+    status_unknown: bool = False
 
 
 class EnvironmentDeploymentState(pydantic.BaseModel):

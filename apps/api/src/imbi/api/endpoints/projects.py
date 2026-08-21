@@ -366,7 +366,12 @@ class ProjectResponse(pydantic.BaseModel):
     current_releases: dict[str, ReleaseInfo] = pydantic.Field(
         default_factory=dict
     )
-    #: See ``ProjectListItem.latest_deployments``.
+    #: See ``ProjectListItem.latest_deployments``.  Like
+    #: ``current_releases`` above, only the *list* endpoint fills this in:
+    #: the detail page reads both from ``/releases/current``, which
+    #: carries the release train it needs anyway, so a single-project GET
+    #: does not pay for the deployment read.  Clients must treat an empty
+    #: mapping here as "not asked", never as "nothing deployed".
     latest_deployments: dict[str, LatestDeployment] = pydantic.Field(
         default_factory=dict
     )
@@ -841,6 +846,16 @@ async def _apply_deployment_nodes(
         # newest one is the one serving traffic, so the two compare
         # equal and there is nothing extra to report.
         if entry.latest.release is not None and entry.latest != entry.current:
+            # And it has to be newer than whatever *won* as current,
+            # which may be a legacy array entry the node's success could
+            # not displace.  The pill means "something happened here
+            # after the release that is serving"; against a newer legacy
+            # entry an unguarded write made that sentence false.
+            serving = current.get(key)
+            if serving is not None and deployment_nodes.as_utc(
+                entry.latest.event.timestamp
+            ) <= deployment_nodes.as_utc(serving[2]):
+                continue
             latest_deployments[key] = LatestDeployment(
                 status=entry.latest.event.status,
                 deployed_at=entry.latest.event.timestamp,

@@ -1709,6 +1709,8 @@ async def resync_for_project(
         project_id=project_id,
         handler=handler,
         ctx=ctx,
+        resolved=resolved,
+        auth=auth,
         credentials=credentials,
         environments=environments,
         summary=summary,
@@ -1895,6 +1897,8 @@ async def _reconcile_active_state(
     project_id: str,
     handler: DeploymentCapability,
     ctx: PluginContext,
+    resolved: ResolvedCapability,
+    auth: permissions.AuthContext,
     credentials: dict[str, str],
     environments: list[str],
     summary: ResyncSummary,
@@ -1932,9 +1936,20 @@ async def _reconcile_active_state(
     # Taken before the remote is asked so the compare-and-set guard can
     # never claim to know more than it did at this instant.
     observed_at = datetime.datetime.now(datetime.UTC)
+
+    async def _observe(c: PluginContext) -> list[EnvironmentDeploymentState]:
+        # Wrapped like every other capability call on this path: a GitHub
+        # App installation token can expire mid-resync, and without the
+        # retry the scan 401s, every environment resolves ``error``, and
+        # reconciliation stays degraded for the project until some other
+        # code path happens to refresh the identity.
+        return await handler.get_environment_state(
+            c, _resolve_credentials(c, credentials), environments
+        )
+
     try:
-        states = await handler.get_environment_state(
-            ctx, _resolve_credentials(ctx, credentials), environments
+        states = await call_with_identity_retry(
+            db, ctx, resolved, auth, fn=_observe, attached=True
         )
     except NotImplementedError:
         return
@@ -5428,8 +5443,10 @@ async def list_promotion_options(  # noqa: C901
     # Union the ``Deployment`` nodes over the legacy array entries the
     # loop above read; environments the project no longer deploys in
     # stay out, as they always have.
+    # ``success`` only: a promote starts from the release an environment
+    # actually has, and a queued or in-flight attempt is not that yet.
     for entry in await deployment_nodes.latest_released_deployments_by_project(
-        db, [project_id]
+        db, [project_id], policy='success'
     ):
         slug = str(entry.environment.get('slug') or '')
         existing = by_slug.get(slug)

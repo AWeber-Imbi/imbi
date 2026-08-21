@@ -2935,6 +2935,28 @@ class ReconcileCurrentReleaseTestCase(_ReleasesTestBase):
         self.assertIn('d.current_state_source = CASE', query)
         self.assertIn('d.current_deployment_external_id = CASE', query)
 
+    def test_reconcile_never_lowers_the_fast_path_ratchet(self) -> None:
+        # ``current_release_at`` is what stops ``_set_current_release``
+        # from installing an older release.  The provider timestamp
+        # written here is the deployment's *creation*, earlier than the
+        # success event the fast path stores, so writing it verbatim
+        # disarmed that guard.
+        self._returns(self.observed_at.isoformat())
+        self._reconcile()
+        query = self.mock_db.execute.await_args.args[0]
+        self.assertIn('d.current_release_at IS NULL', query)
+        self.assertIn('d.current_release_at < {release_at}', query)
+
+    def test_reconcile_clear_keeps_the_ratchet(self) -> None:
+        # Clearing the pointer must not clear the bar with it: a NULL
+        # here let any replayed success install whatever it named.
+        self._returns(self.observed_at.isoformat())
+        self._reconcile(
+            release_id=None, external_deployment_id=None, release_at=None
+        )
+        query = self.mock_db.execute.await_args.args[0]
+        self.assertIn('{release_at} IS NOT NULL', query)
+
     def test_reconcile_clears_pointer(self) -> None:
         self._returns(self.observed_at.isoformat())
         self.assertTrue(

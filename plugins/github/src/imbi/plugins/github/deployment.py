@@ -153,6 +153,21 @@ _NOTE_BLOB_CONCURRENCY = 10
 _FULL_SHA_PATTERN = re.compile(r'^[0-9a-f]{40}$')
 
 
+class _StatusRead(typing.NamedTuple):
+    """One deployment's status history, as far as it could be read."""
+
+    status: DeploymentEventStatus
+    log_url: str | None
+    #: The newest entry is GitHub's ``inactive`` notice, so this
+    #: deployment has been retired whatever ``status`` says it did.
+    superseded: bool
+    #: Nothing was read -- ``status`` is the ``pending`` fallback rather
+    #: than an observation.  Resync wants that fallback (a noisy row must
+    #: not fail a whole project); anything deciding what an environment
+    #: serves has to know the difference.
+    unreadable: bool
+
+
 def _note_sha(path: object) -> str | None:
     """Annotated commit SHA for a notes-tree path, or ``None``.
 
@@ -1708,6 +1723,13 @@ class GitHubDeployment(DeploymentCapability):
         resolves ``unknown``, never ``none``: an older active deployment
         may sit just past the cap, and reporting ``none`` would have the
         host clear a pointer that is right.
+
+        Two degraded reads resolve ``error`` for the same reason.  A row
+        whose status history would not read (``status_unknown``) leaves
+        the walk unable to say what that deployment did -- throttling
+        blinds every row at once -- and a 404 on the listing itself means
+        the repo moved or the token lost access, not that the environment
+        is empty.  Only a clean, exhausted walk may answer ``none``.
         """
         scan_limit = _active_scan_limit(ctx.integration_options)
         # Same memoisation as the resync sweep: one triggering-actor
@@ -1752,10 +1774,22 @@ class GitHubDeployment(DeploymentCapability):
                 },
             )
             if resp.status_code == 404:
-                # Repo or environment unknown on the remote — nothing is
-                # deployed there, which is an answer, not a failure.
+                # NOT ``none``, though the listing path treats a 404 as
+                # "nothing to import".  Here ``none`` authorizes the host
+                # to clear the environment's current-release pointer, and
+                # GitHub answers 404 for a repo that was renamed or
+                # transferred, or one this installation lost access to --
+                # the very conditions link writeback exists to self-heal.
+                # An unknown *environment* is a 200 with an empty list, so
+                # nothing legitimate is lost by refusing to read a 404 as
+                # an answer.
+                LOGGER.warning(
+                    'Active deployment scan got 404 for env=%s; treating '
+                    'it as unreadable rather than as "nothing deployed"',
+                    environment,
+                )
                 return EnvironmentDeploymentState(
-                    environment=environment, active_resolution='none'
+                    environment=environment, active_resolution='error'
                 )
             resp.raise_for_status()
             deployments = typing.cast(list[dict[str, typing.Any]], resp.json())
@@ -1771,6 +1805,7 @@ class GitHubDeployment(DeploymentCapability):
         active: RemoteDeployment | None = None
         latest: RemoteDeployment | None = None
         scanned = 0
+        unread = 0
         for deployment in deployments:
             scanned += 1
             observed = await self._observe_deployment(
@@ -1785,6 +1820,12 @@ class GitHubDeployment(DeploymentCapability):
                 continue
             if latest is None:
                 latest = observed
+            if observed.status_unknown:
+                # Its status read failed, so this row's ``pending`` is a
+                # fallback.  Keep walking -- an older row may still
+                # answer -- but remember that the walk passed something
+                # it could not see.
+                unread += 1
             # ``status`` looks past GitHub's ``inactive`` notice on
             # purpose, so a superseded rollout still reads as the
             # ``success`` it was.  For "what is serving now" that notice
@@ -1800,18 +1841,27 @@ class GitHubDeployment(DeploymentCapability):
         # GitHub returned *and* GitHub returned fewer than we asked for
         # (a full page means there is more history past the cap).
         exhausted = scanned == len(deployments) and scanned < scan_limit
-        resolution: typing.Literal['found', 'none', 'unknown']
+        resolution: typing.Literal['found', 'none', 'unknown', 'error']
         if active is not None:
+            # A success found above every unread row is still an answer:
+            # the rows the walk never reached cannot outrank it.
             resolution = 'found'
+        elif unread:
+            # ``error``, not ``none`` and not ``unknown``: the scan was
+            # not capped, it was blinded -- most often by throttling,
+            # where every status read fails, no success is found, and
+            # ``none`` would clear every pointer on the project.
+            resolution = 'error'
         elif exhausted:
             resolution = 'none'
         else:
             resolution = 'unknown'
         LOGGER.info(
             'Active deployment scan env=%s deployments_scanned=%d '
-            'scan_exhausted=%s active_resolution=%s',
+            'statuses_unread=%d scan_exhausted=%s active_resolution=%s',
             environment,
             scanned,
+            unread,
             exhausted,
             resolution,
         )
@@ -1912,9 +1962,8 @@ class GitHubDeployment(DeploymentCapability):
         created_at = _parse_iso(deployment.get('created_at')) or (
             datetime.datetime.now(datetime.UTC)
         )
-        status, status_url, superseded = await self._latest_status(
-            client, str(deployment_id)
-        )
+        read = await self._latest_status(client, str(deployment_id))
+        status, status_url = read.status, read.log_url
         ref_value = deployment.get('ref')
         description = deployment.get('description')
         release_notes = (
@@ -1963,7 +2012,8 @@ class GitHubDeployment(DeploymentCapability):
             release_notes=release_notes,
             creator=creator_login,
             creator_subject=creator_subject,
-            superseded=superseded,
+            superseded=read.superseded,
+            status_unknown=read.unreadable,
         )
 
     async def _resolve_triggering_actor(
@@ -2130,7 +2180,7 @@ class GitHubDeployment(DeploymentCapability):
 
     async def _latest_status(
         self, client: httpx.AsyncClient, deployment_id: str
-    ) -> tuple[DeploymentEventStatus, str | None, bool]:
+    ) -> _StatusRead:
         """Return the canonical event status, log URL, and retirement.
 
         The third element is ``True`` when the newest status entry is
@@ -2174,15 +2224,26 @@ class GitHubDeployment(DeploymentCapability):
                 params={'per_page': '10'},
             )
         except httpx.HTTPError:
-            return 'pending', None, False
+            return _StatusRead('pending', None, False, True)
         if resp.status_code != 200:
-            return 'pending', None, False
+            # 403/429 land here, which is how a throttled scan used to
+            # read every row as ``pending`` and conclude that nothing was
+            # deployed.  The status is still ``pending`` for resync; the
+            # flag is what stops a currency decision resting on it.
+            LOGGER.warning(
+                'Deployment %s statuses answered %d; status unread',
+                deployment_id,
+                resp.status_code,
+            )
+            return _StatusRead('pending', None, False, True)
         try:
             statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
         except ValueError:
-            return 'pending', None, False
+            return _StatusRead('pending', None, False, True)
         if not statuses:
-            return 'pending', None, False
+            # Read fine and there is genuinely nothing: a deployment
+            # whose workflow has not posted yet.  Not unreadable.
+            return _StatusRead('pending', None, False, False)
         superseded = str(statuses[0].get('state') or '').lower() == 'inactive'
         latest = next(
             (
@@ -2194,10 +2255,11 @@ class GitHubDeployment(DeploymentCapability):
         )
         state = str(latest.get('state') or '').lower()
         log_url = latest.get('log_url') or latest.get('target_url')
-        return (
+        return _StatusRead(
             _to_event_status(state),
             str(log_url) if log_url else None,
             superseded,
+            False,
         )
 
 

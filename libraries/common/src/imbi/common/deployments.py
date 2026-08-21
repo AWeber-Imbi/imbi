@@ -350,6 +350,17 @@ RETURN p.id AS project_id,
 """
 
 
+def _run_id_rank(value: object) -> tuple[int, str]:
+    """Sortable form of a provider run id, numeric where it can be.
+
+    ``(digits, text)``: an all-digit id ranks by its value so 10 beats 9,
+    and anything else ranks after every number by its text, which keeps
+    the comparison total for providers that do not use integers.
+    """
+    text = str(value or '')
+    return (int(text), '') if text.isdigit() else (-1, text)
+
+
 #: Statuses that can still be *serving* an environment.  ``failed`` and
 #: ``rolled_back`` are excluded because neither puts a release into an
 #: environment: a failed rollout left whatever was already there
@@ -359,9 +370,11 @@ RETURN p.id AS project_id,
 #: construction happens after the deployment that superseded it -- drags
 #: the environment back to the older release.
 #:
-#: ``pending``/``in_progress`` stay in: they are how the release train
-#: shows a rollout under way, and ``_hydrate_release_train`` selects
-#: exactly those events to poll and self-heal.
+#: ``pending``/``in_progress`` stay in: they are how a single-answer
+#: surface shows a rollout under way.  Note that the release train no
+#: longer reads its current release through this policy -- it asks for
+#: ``success`` and carries the in-flight attempt separately, passing it
+#: to ``_hydrate_release_train`` to poll and self-heal.
 _SERVING_STATUSES: typing.Final[typing.LiteralString] = (
     "['pending', 'in_progress', 'success']"
 )
@@ -403,8 +416,10 @@ def _released_query(policy: StatusPolicy) -> typing.LiteralString:
 async def latest_released_deployments_by_project(
     db: graph.Graph,
     project_ids: abc.Sequence[str],
+    *,
+    policy: StatusPolicy = 'serving',
 ) -> list[ProjectDeployment]:
-    """Newest non-failed ``Deployment`` per environment with a release.
+    """Newest ``Deployment`` per environment with a release, by *policy*.
 
     For the callers that render "what release is in this environment"
     and skip any row whose release is ``None``.  Taking the newest
@@ -434,11 +449,19 @@ async def latest_released_deployments_by_project(
     :func:`latest_deployments_by_project` stays the reader for callers
     that want the newest deployment whatever its release, such as
     scoring a project's deployment status.
+
+    *policy* defaults to ``serving`` -- everything that could still be
+    serving, in-flight included -- which is right for a single-answer
+    surface with nowhere to show a rollout separately.  A caller acting
+    on "what is deployed here", such as choosing the release a promote
+    starts from, passes ``success`` instead: offering to promote out of
+    an environment whose deploy is still queued promotes something that
+    is not there.
     """
     if not project_ids:
         return []
     rows = await db.execute(
-        _released_query('serving'),
+        _released_query(policy),
         {'project_ids': list(project_ids)},
         ['project_id', 'env', 'release', 'deployment'],
     )
@@ -571,10 +594,14 @@ def _newest_per_environment(
     assigned; the ids after it are nanoids, so those keys are stable
     rather than meaningful: which of two simultaneous rollouts is
     "current" has no answer, only a need for the same answer every time.
+
+    An all-digit run id (GitHub's deployment ids are decimal) sorts
+    numerically, so 10 outranks 9.  Sorting it as text would have made
+    the one meaningful tie breaker no better than the nanoids after it.
     """
     best: dict[
         tuple[str, str],
-        tuple[tuple[str, str, str, str], dict[str, typing.Any]],
+        tuple[tuple[str, tuple[int, str], str, str], dict[str, typing.Any]],
     ] = {}
     for row in rows:
         project_id = graph.parse_agtype(row.get('project_id'))
@@ -590,7 +617,7 @@ def _newest_per_environment(
         key = (project_id, str(env.get('slug') or ''))
         rank = (
             str(props.get('created_at') or ''),
-            str(props.get('external_run_id') or ''),
+            _run_id_rank(props.get('external_run_id')),
             str(props.get('id') or ''),
             str(release.get('id') or '') if isinstance(release, dict) else '',
         )
