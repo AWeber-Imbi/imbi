@@ -246,6 +246,11 @@ class ResyncSummary(pydantic.BaseModel):
     events_recorded: int = 0
     events_skipped: int = 0
     errors: list[ResyncProjectError] = []
+    #: How many environments fell into each active-state difference
+    #: category (see :func:`_classify_active_state`).  ``None`` when the
+    #: plugin cannot report currency or the comparison itself failed.
+    #: Observation only -- nothing is written from it.
+    active_state: dict[str, int] | None = None
 
 
 class PromotionOption(pydantic.BaseModel):
@@ -1579,6 +1584,12 @@ async def resync_for_project(
     historical ``DeploymentEvent`` rows and re-resolves ``performed_by``
     on already-stored events (dedup'd by ``external_run_id``), which is
     how stale actor attribution gets corrected.
+
+    When the plugin can report which deployment is *active*
+    (``get_environment_state``) the run finishes with a read-only
+    comparison of the stored pointer, the event-derived candidate, and
+    the remote's answer -- see :func:`_log_active_state_shadow`.  It
+    writes nothing and cannot fail the resync.
     """
     summary = ResyncSummary(projects=1)
     resolved, ctx, credentials = await _resolve_and_context(
@@ -1680,6 +1691,15 @@ async def resync_for_project(
                     ),
                 )
             )
+    await _log_active_state_shadow(
+        db,
+        project_id=project_id,
+        handler=handler,
+        ctx=ctx,
+        credentials=credentials,
+        environments=environments,
+        summary=summary,
+    )
     return summary
 
 
@@ -1818,6 +1838,314 @@ async def _apply_remote_deployment(
     # ``DEPLOYED_TO`` edge already carries the original creator via
     # ``DeploymentEvent.performed_by``; in-product deploy/promote
     # actions still get their own audit row written by their handlers.
+
+
+# ---------------------------------------------------------------------------
+# Active-state shadow observation
+# ---------------------------------------------------------------------------
+
+
+#: What one environment's three answers -- the stored
+#: ``DEPLOYED_IN.current_release`` pointer, the newest successful
+#: ``Deployment`` attempt, and the provider's active deployment -- add up
+#: to.  ``pointer_matches_remote`` is the healthy case; every other value
+#: names one specific disagreement so a production run can be counted by
+#: category instead of read line by line.
+_ActiveStateCategory = typing.Literal[
+    'pointer_matches_remote',
+    'pointer_missing',
+    'pointer_stale',
+    'derived_disagrees_with_remote',
+    'remote_unknown',
+    'remote_none',
+    'remote_error',
+    'deployment_missing_locally',
+    'release_missing_locally',
+]
+
+
+class _DerivedDeployment(typing.NamedTuple):
+    """The newest successful ``Deployment`` attempt in one environment."""
+
+    timestamp: str
+    external_run_id: str | None
+    release_id: str | None
+
+
+async def _log_active_state_shadow(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    handler: DeploymentCapability,
+    ctx: PluginContext,
+    credentials: dict[str, str],
+    environments: list[str],
+    summary: ResyncSummary,
+) -> None:
+    """Log what the remote says is active against what Imbi stores.
+
+    Read-only: it writes no graph state, and it logs one line per
+    environment naming the stored pointer, the event-derived candidate
+    (the newest ``Deployment`` attempt whose latest status is
+    ``success``), the provider's active deployment, and the resulting
+    difference category.  The point is to measure how often -- and in
+    which direction -- the three disagree on production before any
+    reconciliation is allowed to write.
+
+    Every failure degrades to a warning: the observation is diagnostic,
+    so a provider outage or a bad comparison must leave the resync
+    outcome exactly as it was.  A plugin that does not implement
+    ``get_environment_state`` is not a failure at all -- the hook is
+    optional and the resync keeps its attempt-list-only behavior.
+    """
+    try:
+        states = await handler.get_environment_state(
+            ctx, _resolve_credentials(ctx, credentials), environments
+        )
+    except NotImplementedError:
+        return
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Active-state observation failed for project=%s',
+            project_id,
+            exc_info=True,
+        )
+        return
+    try:
+        pointers = await _current_release_pointers(db, project_id=project_id)
+        derived = await _derived_success_deployments(db, project_id=project_id)
+        known_run_ids = await _known_deployment_run_ids(
+            db,
+            project_id=project_id,
+            run_ids=[
+                state.active.external_run_id
+                for state in states
+                if state.active is not None
+            ],
+        )
+        counts: dict[str, int] = {}
+        for state in states:
+            pointer = pointers.get(state.environment)
+            candidate = derived.get(state.environment)
+            tag: str | None = None
+            committish: str | None = None
+            remote_release_id: str | None = None
+            if state.active is not None:
+                # Resolve the remote's active deployment the way
+                # ``_apply_remote_deployment`` would, so "no local
+                # Release" means the same thing in both paths.
+                tag, committish = _resync_release_identity(state.active)
+                if tag is None:
+                    tag = await _existing_tag_for_committish(
+                        db, project_id=project_id, committish=committish
+                    )
+                remote_release_id = await _release_id_for(
+                    db, project_id=project_id, committish=committish, tag=tag
+                )
+            category = _classify_active_state(
+                resolution=state.active_resolution,
+                pointer=pointer,
+                derived_release_id=(
+                    candidate.release_id if candidate else None
+                ),
+                remote_release_id=remote_release_id,
+                remote_run_id=(
+                    state.active.external_run_id
+                    if state.active is not None
+                    else None
+                ),
+                known_run_ids=known_run_ids,
+            )
+            counts[category] = counts.get(category, 0) + 1
+            LOGGER.info(
+                'Active-state shadow project=%s env=%s category=%s '
+                'resolution=%s pointer=%s derived_release=%s derived_run=%s '
+                'remote_release=%s remote_tag=%s remote_committish=%s '
+                'remote_run=%s',
+                project_id,
+                state.environment,
+                category,
+                state.active_resolution,
+                pointer,
+                candidate.release_id if candidate else None,
+                candidate.external_run_id if candidate else None,
+                remote_release_id,
+                tag,
+                committish,
+                state.active.external_run_id if state.active else None,
+            )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'Active-state comparison failed for project=%s',
+            project_id,
+            exc_info=True,
+        )
+        return
+    summary.active_state = counts
+
+
+def _classify_active_state(
+    *,
+    resolution: typing.Literal['found', 'none', 'unknown', 'error'],
+    pointer: str | None,
+    derived_release_id: str | None,
+    remote_release_id: str | None,
+    remote_run_id: str | None,
+    known_run_ids: set[str],
+) -> _ActiveStateCategory:
+    """Name the one disagreement an environment shows.
+
+    Resolution comes first: ``unknown`` (the bounded scan stopped early)
+    and ``error`` (the provider call failed) carry no opinion about
+    what is active, so comparing against them would manufacture drift.
+    ``remote_error`` is not one of the plan's categories -- the contract
+    grew the resolution after the phase list was written -- but folding
+    it into ``remote_unknown`` would hide a provider outage inside a
+    number that means "scan too shallow".
+
+    Then the local record: a remote active deployment Imbi never
+    recorded, or one whose version resolves to no ``Release``, is a
+    missing-data problem rather than a wrong pointer, and reporting it
+    as ``pointer_stale`` would point the repair at the wrong thing.
+    Only once both exist do the pointer and the event-derived candidate
+    get compared.
+    """
+    if resolution == 'error':
+        return 'remote_error'
+    if resolution == 'unknown':
+        return 'remote_unknown'
+    # ``found`` without an active deployment breaks the contract's
+    # invariant; read it as "nothing active" rather than trusting it.
+    if resolution == 'none' or remote_run_id is None:
+        return 'remote_none'
+    if remote_run_id not in known_run_ids:
+        return 'deployment_missing_locally'
+    if remote_release_id is None:
+        return 'release_missing_locally'
+    if pointer is None:
+        return 'pointer_missing'
+    if pointer != remote_release_id:
+        return 'pointer_stale'
+    if derived_release_id != remote_release_id:
+        return 'derived_disagrees_with_remote'
+    return 'pointer_matches_remote'
+
+
+async def _current_release_pointers(
+    db: graph.Graph,
+    *,
+    project_id: str,
+) -> dict[str, str]:
+    """Read ``DEPLOYED_IN.current_release`` per environment slug.
+
+    Environments whose pointer was never set are absent rather than
+    ``None``-valued, so the caller's ``.get`` says "missing" once.
+    """
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})-[d:DEPLOYED_IN]->(e:Environment)
+    RETURN e.slug AS slug, d.current_release AS current_release
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id},
+        ['slug', 'current_release'],
+    )
+    pointers: dict[str, str] = {}
+    for row in rows:
+        slug = graph.parse_agtype(row.get('slug'))
+        release_id = graph.parse_agtype(row.get('current_release'))
+        if isinstance(slug, str) and isinstance(release_id, str):
+            pointers[slug] = release_id
+    return pointers
+
+
+async def _derived_success_deployments(
+    db: graph.Graph,
+    *,
+    project_id: str,
+) -> dict[str, _DerivedDeployment]:
+    """Newest ``success`` ``Deployment`` per environment for the project.
+
+    The derivation the plan proposes for phase 4, computed here purely
+    to compare against: filtering on the node's latest status is what
+    keeps a failed or superseded newest attempt from claiming to be
+    current.  No existing reader changes.
+
+    ``ORDER BY`` inside ``WITH`` does not survive AGE's aggregation, so
+    the newest timestamp is taken with ``max()`` and matched back; ties
+    break on the run id here rather than in Cypher.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})<-[:BELONGS_TO]-(d:Deployment)
+          -[:TARGETS]->(e:Environment)
+    WHERE d.status = 'success'
+    WITH p, e, max(COALESCE(d.updated_at, d.created_at)) AS ts
+    MATCH (p)<-[:BELONGS_TO]-(d2:Deployment)-[:TARGETS]->(e)
+    WHERE d2.status = 'success'
+      AND COALESCE(d2.updated_at, d2.created_at) = ts
+    OPTIONAL MATCH (r:Release)-[:HAS_DEPLOYMENT]->(d2)
+    RETURN e.slug AS slug,
+           ts AS ts,
+           d2.external_run_id AS external_run_id,
+           CASE WHEN r IS NULL THEN null ELSE r.id END AS release_id
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id},
+        ['slug', 'ts', 'external_run_id', 'release_id'],
+    )
+    newest: dict[str, _DerivedDeployment] = {}
+    for row in rows:
+        slug = graph.parse_agtype(row.get('slug'))
+        if not isinstance(slug, str):
+            continue
+        run_id = graph.parse_agtype(row.get('external_run_id'))
+        release_id = graph.parse_agtype(row.get('release_id'))
+        entry = _DerivedDeployment(
+            str(graph.parse_agtype(row.get('ts')) or ''),
+            str(run_id) if run_id else None,
+            str(release_id) if release_id else None,
+        )
+        current = newest.get(slug)
+        if current is None or _derived_rank(entry) > _derived_rank(current):
+            newest[slug] = entry
+    return newest
+
+
+def _derived_rank(entry: _DerivedDeployment) -> tuple[str, str]:
+    """Sort key for tied attempts: newest first, then the run id.
+
+    The tuple itself cannot be compared -- ``external_run_id`` is
+    nullable and ``None`` does not order against a string.
+    """
+    return entry.timestamp, entry.external_run_id or ''
+
+
+async def _known_deployment_run_ids(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    run_ids: list[str],
+) -> set[str]:
+    """Which of *run_ids* the project already has a ``Deployment`` for."""
+    if not run_ids:
+        return set()
+    query: typing.LiteralString = """
+    MATCH (:Project {{id: {project_id}}})<-[:BELONGS_TO]-(d:Deployment)
+    WHERE d.external_run_id IN {run_ids}
+    RETURN d.external_run_id AS external_run_id
+    """
+    rows = await db.execute(
+        query,
+        {'project_id': project_id, 'run_ids': run_ids},
+        ['external_run_id'],
+    )
+    known: set[str] = set()
+    for row in rows:
+        run_id = graph.parse_agtype(row.get('external_run_id'))
+        if isinstance(run_id, str):
+            known.add(run_id)
+    return known
 
 
 # ---------------------------------------------------------------------------

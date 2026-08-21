@@ -35,6 +35,7 @@ from imbi.common.plugins.base import (
     CompareResult,
     DeploymentCapability,
     DeploymentRun,
+    EnvironmentDeploymentState,
     LinkWriteback,
     Plugin,
     PluginManifest,
@@ -1635,6 +1636,158 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         with self.assertRaises(fastapi.HTTPException) as cm:
             self._run_resync()
         self.assertEqual(cm.exception.status_code, 503)
+
+
+class ResyncActiveStateShadowTestCase(ResyncProjectDeploymentsTestCase):
+    """The read-only active-state comparison a resync ends with.
+
+    Every case drives ``resync_for_project`` with a plugin that reports
+    currency, then reads the categories off ``summary.active_state`` --
+    which is the aggregate of the per-environment log lines.  Nothing
+    here may write, and nothing here may change the resync outcome.
+    """
+
+    def _arm_state(
+        self,
+        state: EnvironmentDeploymentState | Exception,
+        *,
+        pointer: str | None = None,
+        derived_release_id: str | None = None,
+        known_run_ids: tuple[str, ...] = (),
+        release_exists: bool = True,
+    ) -> None:
+        self._arm([self._observed()], release_exists=release_exists)
+        plugin = self.mocks['handler'].return_value
+        if isinstance(state, Exception):
+            plugin.get_environment_state = mock.AsyncMock(side_effect=state)
+        else:
+            plugin.get_environment_state = mock.AsyncMock(return_value=[state])
+        env = 'infrastructure-testing'
+
+        def _execute(query, *_args, **_kwargs):
+            if 'DEPLOYED_IN' in query:
+                return (
+                    [
+                        {
+                            'slug': json.dumps(env),
+                            'current_release': json.dumps(pointer),
+                        }
+                    ]
+                    if pointer is not None
+                    else []
+                )
+            if "d.status = 'success'" in query:
+                return (
+                    [
+                        {
+                            'slug': json.dumps(env),
+                            'ts': json.dumps('2026-05-13T14:00:00+00:00'),
+                            'external_run_id': json.dumps('12345'),
+                            'release_id': json.dumps(derived_release_id),
+                        }
+                    ]
+                    if derived_release_id is not None
+                    else []
+                )
+            if 'd.external_run_id IN' in query:
+                return [
+                    {'external_run_id': json.dumps(run_id)}
+                    for run_id in known_run_ids
+                ]
+            return []
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_execute)
+
+    def _state(
+        self,
+        resolution: typing.Literal['found', 'none', 'unknown', 'error'],
+        *,
+        active: RemoteDeployment | None = None,
+    ) -> EnvironmentDeploymentState:
+        return EnvironmentDeploymentState(
+            environment='infrastructure-testing',
+            active=active,
+            latest=active,
+            active_resolution=resolution,
+        )
+
+    def test_shadow_reports_pointer_missing(self) -> None:
+        # The remote's active deployment is recorded locally and resolves
+        # to a Release, but nothing ever set the pointer -- the case the
+        # dedupe noop path can never repair.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            derived_release_id='existing-release-id',
+            known_run_ids=('12345',),
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'pointer_missing': 1})
+
+    def test_shadow_reports_pointer_stale(self) -> None:
+        # The pointer names a different release than the one the remote
+        # says is serving the environment.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            pointer='older-release-id',
+            derived_release_id='existing-release-id',
+            known_run_ids=('12345',),
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'pointer_stale': 1})
+
+    def test_shadow_reports_remote_unknown(self) -> None:
+        # A bounded scan that stopped before exhaustion carries no
+        # opinion, so the pointer is never compared against it.
+        self._arm_state(
+            self._state('unknown'),
+            pointer='older-release-id',
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'remote_unknown': 1})
+
+    def test_shadow_reports_deployment_missing_locally(self) -> None:
+        # The active deployment's run id has no local Deployment node:
+        # missing data rather than a wrong pointer, which is what the
+        # active deployment falling outside the recent window looks like.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            pointer='older-release-id',
+        )
+        summary = self._run_resync()
+        self.assertEqual(
+            summary.active_state, {'deployment_missing_locally': 1}
+        )
+
+    def test_shadow_reports_agreement(self) -> None:
+        # Pointer, event-derived candidate and remote all name the same
+        # release: the healthy case reconciliation aims for.
+        self._arm_state(
+            self._state('found', active=self._observed()),
+            pointer='existing-release-id',
+            derived_release_id='existing-release-id',
+            known_run_ids=('12345',),
+        )
+        summary = self._run_resync()
+        self.assertEqual(summary.active_state, {'pointer_matches_remote': 1})
+
+    def test_shadow_failure_leaves_resync_successful(self) -> None:
+        # Observation is diagnostic: a provider failure degrades to a
+        # warning and the backfill's own result stands.
+        self._arm_state(RuntimeError('GitHub returned 503'))
+        with self.assertLogs(_MODULE, level='WARNING'):
+            summary = self._run_resync()
+        self.assertEqual(summary.observed, 1)
+        self.assertEqual(summary.events_recorded, 1)
+        self.assertEqual(summary.errors, [])
+        self.assertIsNone(summary.active_state)
+
+    def test_shadow_skipped_when_plugin_cannot_report(self) -> None:
+        # ``get_environment_state`` is optional; the capability default
+        # raises ``NotImplementedError`` and the resync carries on.
+        self._arm([self._observed()], release_exists=True)
+        summary = self._run_resync()
+        self.assertEqual(summary.events_recorded, 1)
+        self.assertIsNone(summary.active_state)
 
 
 class ResyncEndpointTestCase(ProjectDeploymentsTestCase):
