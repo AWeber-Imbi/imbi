@@ -677,7 +677,7 @@ async def _attach_identity_best_effort(
             == 'identity_required'
         ):
             raise
-        LOGGER.info(
+        LOGGER.debug(
             'No identity connection for the deployment integration on '
             'project %s; falling back to service credentials',
             ctx.project_id,
