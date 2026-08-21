@@ -806,10 +806,9 @@ async def list_release_components(
     out: list[ListedComponent] = []
     for fact in facts:
         # A version present in the snapshot but absent from the graph
-        # would mean the two stores disagree, which
-        # ``sbom-backfill-report`` exists to surface. Rendering the
-        # snapshot's own columns and leaving the governance ones empty
-        # keeps the listing honest about what it knows.
+        # would mean the two stores disagree. Rendering the snapshot's
+        # own columns and leaving the governance ones empty keeps the
+        # listing honest about what it knows.
         row = hydrated.get(str(fact['component_release_id']), {})
         hashes_raw = graph.parse_agtype(row.get('hashes'))
         if isinstance(hashes_raw, str):

@@ -31,6 +31,7 @@ from starlette.responses import JSONResponse
 import imbi.mcp
 from imbi.common.auth import core
 from imbi.common.mcp import (
+    AccessLogContextMiddleware,
     PermissionFilterMiddleware,
     copy_permissions_to_meta,
     exclude_non_ai_tools,
@@ -149,6 +150,10 @@ def create_server(
     # principal making the request rather than a fixed identity. The
     # spec supplies the API's mount prefix, which ``base_url`` lacks.
     mcp.add_middleware(PermissionFilterMiddleware(client, spec))
+
+    # Every tool call is a ``POST /mcp``; this names the tool in the
+    # access log line so the log distinguishes them.
+    mcp.add_middleware(AccessLogContextMiddleware())
 
     @mcp.custom_route('/status', methods=['GET'])
     async def status(_request: Request) -> JSONResponse:
