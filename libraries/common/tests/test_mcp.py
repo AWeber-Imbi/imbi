@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import typing
 import unittest
@@ -10,10 +11,11 @@ import unittest.mock
 
 import fastmcp
 import httpx
+import starlette.middleware
 from fastmcp.server.providers.openapi import MCPType
 from fastmcp.utilities.openapi import HTTPRoute
 
-from imbi.common import mcp
+from imbi.common import access_log, mcp
 
 
 class ExcludeNonAiToolsTestCase(unittest.TestCase):
@@ -494,3 +496,202 @@ class RequiredPermissionsTests(unittest.IsolatedAsyncioTestCase):
         """A tool with no recorded meta yields an empty list."""
         not_a_tool = typing.cast(typing.Any, object())
         self.assertEqual([], mcp.required_permissions(not_a_tool))
+
+
+class _StubApp:
+    """ASGI app that answers 200 with an empty body."""
+
+    async def __call__(
+        self,
+        _scope: dict[str, typing.Any],
+        _receive: typing.Any,
+        send: typing.Any,
+    ) -> None:
+        await send(
+            {'type': 'http.response.start', 'status': 200, 'headers': []}
+        )
+        await send({'type': 'http.response.body', 'body': b''})
+
+
+async def _logged_principal(credential: bytes) -> str:
+    """Return the principal the access log renders for ``credential``.
+
+    Exercises the label cache through the middleware that reads it,
+    rather than reaching into its internals.
+    """
+
+    async def receive() -> typing.Any:  # pragma: no cover - not awaited
+        raise AssertionError('receive should not be called')
+
+    async def send(_message: typing.Any) -> None:
+        return None
+
+    middleware = access_log.AccessLogMiddleware(
+        _StubApp(), logger=logging.getLogger('imbi.common.tests.access')
+    )
+    scope: dict[str, typing.Any] = {
+        'type': 'http',
+        'http_version': '1.1',
+        'method': 'POST',
+        'path': '/mcp',
+        'query_string': b'',
+        'client': ('10.0.0.1', 0),
+        'headers': [(b'authorization', credential)],
+    }
+    with unittest.TestCase().assertLogs(
+        'imbi.common.tests.access', level=logging.INFO
+    ) as logs:
+        await middleware(scope, receive, send)
+    return logs.records[0].getMessage().split(' - ', 1)[1].split(' "', 1)[0]
+
+
+class RememberApiKeyOwnerTestCase(unittest.IsolatedAsyncioTestCase):
+    """The profile lookup labels an API key's owner for the access log."""
+
+    def setUp(self) -> None:
+        access_log.clear_api_key_principals()
+        self.addCleanup(access_log.clear_api_key_principals)
+
+    async def test_user_owned_key_logs_the_email(self) -> None:
+        """A user-owned key renders the owner, not the opaque key id."""
+        mcp._remember_api_key_owner(  # pyright: ignore[reportPrivateUsage]
+            'Bearer ik_abc123_secret', {'email': 'gavinr@aweber.com'}
+        )
+        self.assertEqual(
+            'gavinr@aweber.com',
+            await _logged_principal(b'Bearer ik_abc123_secret'),
+        )
+
+    async def test_profile_without_email_is_ignored(self) -> None:
+        """A profile with no email (service account) adds no label."""
+        mcp._remember_api_key_owner(  # pyright: ignore[reportPrivateUsage]
+            'Bearer ik_abc123_secret', {'is_admin': False}
+        )
+        self.assertEqual(
+            'ik_abc123',
+            await _logged_principal(b'Bearer ik_abc123_secret'),
+        )
+
+    async def test_jwt_credential_is_ignored(self) -> None:
+        """A JWT caller needs no label; the cache stays untouched."""
+        mcp._remember_api_key_owner(  # pyright: ignore[reportPrivateUsage]
+            'Bearer header.payload.signature', {'email': 'a@b.com'}
+        )
+        self.assertEqual(
+            'ik_abc123',
+            await _logged_principal(b'Bearer ik_abc123_secret'),
+        )
+
+    async def test_missing_credential_is_ignored(self) -> None:
+        """An unauthenticated lookup has no key to label."""
+        mcp._remember_api_key_owner(  # pyright: ignore[reportPrivateUsage]
+            None, {'email': 'a@b.com'}
+        )
+        self.assertEqual(
+            'ik_abc123',
+            await _logged_principal(b'Bearer ik_abc123_secret'),
+        )
+
+    async def test_labels_the_caller_from_the_profile_lookup(self) -> None:
+        """PermissionFilterMiddleware's own lookup populates the label."""
+        spec = _permission_spec()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    'email': 'gavinr@aweber.com',
+                    'is_admin': False,
+                    'permissions': ['project:read'],
+                },
+            )
+
+        client = httpx.AsyncClient(
+            base_url='http://localhost:8000',
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            server = fastmcp.FastMCP.from_openapi(
+                openapi_spec=spec,
+                client=client,
+                name='Imbi',
+                mcp_component_fn=mcp.copy_permissions_to_meta,
+            )
+            server.add_middleware(mcp.PermissionFilterMiddleware(client, spec))
+            with unittest.mock.patch.object(
+                mcp,
+                'get_http_headers',
+                return_value={'authorization': 'Bearer ik_abc123_secret'},
+            ):
+                async with fastmcp.Client(server) as connected:
+                    await connected.list_tools()
+        finally:
+            await client.aclose()
+        self.assertEqual(
+            'gavinr@aweber.com',
+            await _logged_principal(b'Bearer ik_abc123_secret'),
+        )
+
+
+class AccessLogContextMiddlewareTestCase(unittest.IsolatedAsyncioTestCase):
+    """The invoked tool name reaches the HTTP access log line."""
+
+    async def test_tool_name_is_logged(self) -> None:
+        """A tool call renders as ``(tool:<name>)`` on the log line."""
+        server = fastmcp.FastMCP(name='proto')
+
+        @server.tool
+        def ping(name: str) -> str:
+            """Ping."""
+            return f'hi {name}'
+
+        server.add_middleware(mcp.AccessLogContextMiddleware())
+        app = server.http_app(
+            middleware=[
+                starlette.middleware.Middleware(access_log.AccessLogMiddleware)
+            ],
+            stateless_http=True,
+        )
+        request = {
+            'jsonrpc': '2.0',
+            'id': 1,
+            'method': 'tools/call',
+            'params': {'name': 'ping', 'arguments': {'name': 'bob'}},
+        }
+        with self.assertLogs('imbi.common.access', level='INFO') as logs:
+            async with app.router.lifespan_context(app):
+                transport = httpx.ASGITransport(app=app)
+                async with httpx.AsyncClient(
+                    transport=transport, base_url='http://mcp'
+                ) as client:
+                    response = await client.post(
+                        '/mcp',
+                        json=request,
+                        headers={
+                            'accept': 'application/json, text/event-stream',
+                            'content-type': 'application/json',
+                        },
+                    )
+        self.assertEqual(200, response.status_code)
+        self.assertIn('(tool:ping)', logs.records[0].getMessage())
+
+    async def test_no_http_request_is_a_noop(self) -> None:
+        """Under stdio there is no request to annotate; the call runs."""
+        middleware = mcp.AccessLogContextMiddleware()
+        context = unittest.mock.Mock()
+        called = False
+
+        async def call_next(_context: typing.Any) -> str:
+            nonlocal called
+            called = True
+            return 'ok'
+
+        with unittest.mock.patch.object(
+            mcp,
+            'get_http_request',
+            side_effect=RuntimeError('No active HTTP request found.'),
+        ):
+            self.assertEqual(
+                'ok', await middleware.on_call_tool(context, call_next)
+            )
+        self.assertTrue(called)

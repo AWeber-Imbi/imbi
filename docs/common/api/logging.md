@@ -66,8 +66,9 @@ request, in NCSA-style format with the authenticated principal in the
 The logger name identifies the service. It comes from the console
 script that started the process: each hyphen becomes a dot and
 `.access` is added, so `imbi-api` logs on `imbi.api.access`,
-`imbi-gateway` on `imbi.gateway.access`, and `imbi-scheduler` on
-`imbi.scheduler.access`. When the process did not start from an
+`imbi-gateway` on `imbi.gateway.access`, `imbi-mcp` on
+`imbi.mcp.access`, and `imbi-scheduler` on `imbi.scheduler.access`.
+When the process did not start from an
 `imbi-*` console script (tests, plain uvicorn, a debugger), the
 middleware falls back to `imbi.common.access`. The bundled
 `log-config.toml` pins all of these loggers to INFO.

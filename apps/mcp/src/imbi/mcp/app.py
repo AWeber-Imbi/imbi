@@ -2,7 +2,10 @@ import logging
 import typing as t
 
 import typer
+from starlette.middleware import Middleware
 
+from imbi.common import access_log
+from imbi.common import logging as imbi_logging
 from imbi.common.sentry import init as init_sentry
 from imbi.mcp import server
 
@@ -69,7 +72,24 @@ def serve(  # noqa: PLR0913 - CLI options map 1:1 to parameters
             f'Failed to connect to Imbi API at {api_url}: {err}',
             param_hint='--api-url',
         ) from err
-    mcp.run(transport=transport, host=host, port=port)
+    if transport == 'stdio':
+        mcp.run(transport=transport)
+        return
+    # FastMCP runs its own uvicorn rather than going through
+    # ``imbi.common.server``, so the shared log config and the Imbi
+    # access log have to be handed to it here. Without this the process
+    # logs uvicorn's default access line, which has no principal and no
+    # tool name.
+    log_config = imbi_logging.get_log_config()
+    mcp.run(
+        transport=transport,
+        host=host,
+        port=port,
+        middleware=[
+            Middleware(access_log.AccessLogMiddleware, quiet_paths={'/status'})
+        ],
+        uvicorn_config={'access_log': False, 'log_config': log_config},
+    )
 
 
 @cli.callback()

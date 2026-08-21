@@ -22,6 +22,9 @@ place instead of being copied into each consumer:
 - **`PermissionFilterMiddleware`** — narrows `tools/list` per caller to
   the operations that caller has permission for. Requires
   `copy_permissions_to_meta`; advisory only, and fails open.
+- **`AccessLogContextMiddleware`** — names the invoked tool in the HTTP
+  access log line, which otherwise records every call as an
+  indistinguishable `POST /mcp`.
 - **`mount_prefix`** — the path prefix imbi-api mounts its routers under
   (the path of `IMBI_API_URL`, e.g. `/api`), read back off the spec.
   Spec paths carry it but a client's `base_url` does not, so anything
@@ -103,6 +106,34 @@ absent it returns `None` and changes nothing, so a consumer can adopt it
 before or after imbi-api ships the flag. `copy_permissions_to_meta` is
 likewise a no-op on operations with no `x-imbi-permission`.
 
+## Access log context
+
+Every MCP call arrives as `POST /mcp`, so the HTTP access log on its own
+cannot tell a project lookup from a deployment write. Adding
+`AccessLogContextMiddleware` records the tool name where
+[`AccessLogMiddleware`](logging.md#access-log-middleware) reads it:
+
+```python
+server.add_middleware(mcp.AccessLogContextMiddleware())
+```
+
+```text
+... - gavinr "POST /mcp HTTP/1.1" 200 (tool:list_projects)
+```
+
+It is a no-op under the stdio transport, where there is no HTTP request
+(and no access log) to annotate.
+
+The principal in that line comes from `AccessLogMiddleware` itself: JWT
+callers render from the verified token subject. An API key
+(`ik_<id>_<secret>`) cannot be verified outside the API, so
+`PermissionFilterMiddleware` labels the owner off the profile lookup it
+already makes — a user-owned key renders the owner's email, while a
+service-account key keeps showing `ik_<id>` because
+[`PROFILE_PATH`](#imbi.common.mcp.PROFILE_PATH) requires a human user.
+The label is cached per key, so it appears from the caller's first
+`tools/list` onward.
+
 ## API Reference
 
 ::: imbi.common.mcp.AI_TOOL_EXTENSION
@@ -124,3 +155,5 @@ likewise a no-op on operations with no `x-imbi-permission`.
 ::: imbi.common.mcp.required_permissions
 
 ::: imbi.common.mcp.PermissionFilterMiddleware
+
+::: imbi.common.mcp.AccessLogContextMiddleware
