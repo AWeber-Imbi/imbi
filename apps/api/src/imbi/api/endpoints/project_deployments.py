@@ -4696,10 +4696,10 @@ def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
     Falls back to ``v0.1.0`` when missing or not semver-shaped.
     """
     raw = last_tag or 'v0.0.0'
-    prefix = 'v' if raw.startswith('v') else ''
-    match = _SEMVER_RE.match(raw.lstrip('v'))
+    match = _SEMVER_RE.match(raw)
     if not match:
         return 'v0.1.0'
+    prefix = 'v' if raw.startswith('v') else ''
     major, minor, patch = (int(part) for part in match.groups())
     if bump == 'major':
         return f'{prefix}{major + 1}.0.0'

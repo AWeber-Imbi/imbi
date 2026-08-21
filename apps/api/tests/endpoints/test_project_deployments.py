@@ -4172,6 +4172,18 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['commits'], [])
         self.assertEqual(data['suggested_tag'], 'v2.0.1')
 
+    def test_bump_semver_rejects_a_double_v_prefix(self) -> None:
+        """``vv1.2.3`` is not semver-shaped -> the ``v0.1.0`` fallback."""
+        self.assertEqual(
+            'v0.1.0', project_deployments._bump_semver('vv1.2.3', 'patch')
+        )
+        self.assertEqual(
+            'v1.2.4', project_deployments._bump_semver('v1.2.3', 'patch')
+        )
+        self.assertEqual(
+            '1.2.4', project_deployments._bump_semver('1.2.3', 'patch')
+        )
+
     def test_release_drift_backport_cannot_outrank_latest(self) -> None:
         """A backported lower version must not out-rank the latest release.
 
