@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { getDeploymentRunStatus } from '@/api/endpoints'
 import type { DeploymentRun } from '@/types'
 
+import { SILENT } from './ReleaseBuildWatcher'
+
 const TERMINAL_STATUSES: ReadonlySet<DeploymentRun['status']> = new Set([
   'cancelled',
   'failure',
@@ -27,12 +29,22 @@ interface DeploymentRunWatcherProps {
   envName: string
   /** Initial status reported by `trigger_deployment`. */
   initialStatus?: DeploymentRun['status']
+  /**
+   * Reports every observed status flip, plus `'lost'` when polling
+   * gives up. Feeds the in-flight banner for toast-less runs.
+   */
+  onStatus?: (runId: string, status: 'lost' | DeploymentRun['status']) => void
   onTerminal: (runId: string) => void
   orgSlug: string
   projectId: string
   runId: string
   runUrl?: null | string
-  toastId: number | string
+  /**
+   * Sonner toast to keep updated. When absent the watcher stays
+   * silent and only reports through `onStatus` — direct deploys show
+   * in the in-flight banner instead of a toast.
+   */
+  toastId?: number | string
 }
 
 /**
@@ -49,6 +61,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
     actionUrl,
     envName,
     initialStatus,
+    onStatus,
     onTerminal,
     orgSlug,
     projectId,
@@ -56,6 +69,9 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
     runUrl,
     toastId,
   } = props
+  // Banner-only runs settle exactly like toasted ones; they just say
+  // nothing while doing it.
+  const notify = toastId === undefined ? SILENT : toast
   // Prefer the explicit action URL; fall back to the workflow run URL
   // so the toast still surfaces a deep-link for callers that only know
   // the run (legacy pre-Phase-3 behavior).
@@ -95,6 +111,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
     const data = query.data
     if (!data) return
     statusRef.current = data.status
+    onStatus?.(runId, data.status)
     const action =
       toastActionUrl && toastActionLabel
         ? {
@@ -104,7 +121,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
         : undefined
     if (data.status === 'success') {
       settledRef.current = true
-      toast.success(`Deployed to ${envName}`, {
+      notify.success(`Deployed to ${envName}`, {
         action,
         icon: <CheckCircle2 className="size-4 text-emerald-500" />,
         id: toastId,
@@ -113,7 +130,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
     } else if (data.status === 'failure' || data.status === 'cancelled') {
       settledRef.current = true
       const verb = data.status === 'cancelled' ? 'cancelled' : 'failed'
-      toast.error(`Deployment to ${envName} ${verb}`, {
+      notify.error(`Deployment to ${envName} ${verb}`, {
         action,
         icon: <XCircle className="size-4 text-rose-500" />,
         id: toastId,
@@ -121,7 +138,7 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
       onTerminal(runId)
     } else {
       // queued / in_progress — keep the loading toast fresh.
-      toast.loading(`Deploying to ${envName}…`, {
+      notify.loading(`Deploying to ${envName}…`, {
         action,
         description: data.status ? `status: ${data.status}` : undefined,
         icon: <Loader2 className="size-4 animate-spin" />,
@@ -131,6 +148,8 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
   }, [
     query.data,
     envName,
+    notify,
+    onStatus,
     onTerminal,
     runId,
     toastActionLabel,
@@ -143,7 +162,8 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
   useEffect(() => {
     if (!query.isError || settledRef.current) return
     settledRef.current = true
-    toast.message(`Lost track of deployment to ${envName}`, {
+    onStatus?.(runId, 'lost')
+    notify.message(`Lost track of deployment to ${envName}`, {
       action:
         toastActionUrl && toastActionLabel
           ? {
@@ -159,6 +179,8 @@ export function DeploymentRunWatcher(props: DeploymentRunWatcherProps): null {
   }, [
     query.isError,
     envName,
+    notify,
+    onStatus,
     onTerminal,
     runId,
     toastActionLabel,

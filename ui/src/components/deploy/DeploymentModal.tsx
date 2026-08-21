@@ -36,9 +36,19 @@ export interface DeploymentRunStarted {
   originOrgSlug: string
   /** Project id the run was triggered from. */
   originProjectId: string
+  /**
+   * Version label being deployed (tag, or a short sha for a first-env
+   * commit deploy). The in-flight banner leads with it.
+   */
+  refLabel?: null | string
   runId: string
   runUrl?: null | string
-  toastId: number | string
+  /**
+   * Sonner toast to keep updated while the run is watched. Absent for
+   * direct deploys, which surface through the in-flight banner instead
+   * of a toast.
+   */
+  toastId?: number | string
 }
 
 /**
