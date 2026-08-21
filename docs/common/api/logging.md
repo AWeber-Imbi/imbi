@@ -60,8 +60,17 @@ local development.
 
 `imbi.common.access_log.AccessLogMiddleware` is an ASGI middleware that
 replaces uvicorn's built-in access log. It emits one record per HTTP
-request on the `imbi.common.access` logger, in NCSA-style format with
-the authenticated principal in the `authuser` slot.
+request, in NCSA-style format with the authenticated principal in the
+`authuser` slot.
+
+The logger name identifies the service. It comes from the console
+script that started the process: each hyphen becomes a dot and
+`.access` is added, so `imbi-api` logs on `imbi.api.access`,
+`imbi-gateway` on `imbi.gateway.access`, and `imbi-scheduler` on
+`imbi.scheduler.access`. When the process did not start from an
+`imbi-*` console script (tests, plain uvicorn, a debugger), the
+middleware falls back to `imbi.common.access`. The bundled
+`log-config.toml` pins all of these loggers to INFO.
 
 ```python
 from fastapi import FastAPI

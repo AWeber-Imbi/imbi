@@ -14,7 +14,10 @@ formatter = "readable"
 [loggers]
 uvicorn = { level = "INFO" }
 "uvicorn.asgi" = { level = "INFO" }
+"imbi.api.access" = { level = "INFO" }
 "imbi.common.access" = { level = "INFO" }
+"imbi.gateway.access" = { level = "INFO" }
+"imbi.scheduler.access" = { level = "INFO" }
 "imbi.plugins.logzio" = { level = "INFO" }
 httpx = { level = "WARNING" }
 
