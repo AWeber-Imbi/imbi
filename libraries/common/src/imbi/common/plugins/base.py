@@ -913,6 +913,42 @@ class RemoteDeployment(pydantic.BaseModel):
     creator_subject: str | None = None
 
 
+class EnvironmentDeploymentState(pydantic.BaseModel):
+    """What the remote says is deployed to one environment *now*.
+
+    Returned by :meth:`DeploymentCapability.get_environment_state` so the
+    host can reconcile its "current release" pointer against the provider
+    instead of inferring currency from the newest deployment attempt it
+    happens to have observed.
+
+    ``active_resolution`` is what makes the answer actionable, and its
+    four outcomes are deliberately distinct:
+
+    * ``found`` -- ``active`` is not ``None``: the provider reports this
+      deployment as the one serving the environment.
+    * ``none`` -- the provider's result set was exhausted and no
+      deployment qualifies; ``active`` is ``None``.  The host may clear
+      its pointer.
+    * ``unknown`` -- the bounded scan stopped before exhausting the
+      result set, so an older active deployment may exist unseen;
+      ``active`` is ``None`` but the host MUST retain its pointer.
+    * ``error`` -- the provider call failed.  Also "retain the pointer",
+      but it needs a different operational response than ``unknown``:
+      "we scanned the cap" and "the remote returned 503" are not the
+      same problem.
+
+    ``latest`` -- the newest attempt of any status -- may be populated
+    for every outcome, ``error`` included when the failure happened after
+    the listing was read.  It is never a substitute for ``active``: an
+    in-flight or failed attempt is activity, not currency.
+    """
+
+    environment: str
+    active: RemoteDeployment | None = None
+    latest: RemoteDeployment | None = None
+    active_resolution: typing.Literal['found', 'none', 'unknown', 'error']
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle data models
 # ---------------------------------------------------------------------------
@@ -1401,6 +1437,37 @@ class DeploymentCapability(CapabilityHandler):
         it as the ``Release`` node's notes.
         """
         del ctx, credentials, environments, limit
+        raise NotImplementedError
+
+    async def get_environment_state(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        environments: list[str],
+    ) -> list[EnvironmentDeploymentState]:
+        """Report which deployment is *active* per environment.
+
+        The currency counterpart to :meth:`list_recent_deployments`: that
+        method answers "what happened recently", this one answers "what is
+        serving the environment now", which an attempt list cannot -- the
+        newest attempt may have failed, still be in flight, or have been
+        superseded, leaving an older deployment as the live one.
+
+        Optional even for capabilities that advertise
+        ``supports_deployment_sync``: hosts probe by calling it and
+        treating :class:`NotImplementedError` as "this provider cannot
+        report currency", falling back to the attempt list alone.  Returns
+        one :class:`EnvironmentDeploymentState` per requested environment
+        -- including environments the remote does not know about, which
+        resolve ``none`` rather than being dropped, because the host has to
+        distinguish "not answered" from "nothing deployed".
+
+        Implementations walk the provider newest-first under a bounded cap
+        and report ``unknown`` rather than ``none`` when the cap is reached
+        first; see :class:`EnvironmentDeploymentState` for the invariants
+        each resolution carries.
+        """
+        del ctx, credentials, environments
         raise NotImplementedError
 
     async def get_release_notes(

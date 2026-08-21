@@ -17,6 +17,7 @@ from imbi.common.plugins.base import (
 from imbi.common.plugins.errors import PluginAuthenticationFailed
 from imbi.plugins.github.deployment import (
     GitHubDeployment,
+    _active_scan_limit,
     _artifact_status,
     _mainline_branches,
     _repo_root_from_redirect,
@@ -55,6 +56,25 @@ def _ctx(
 
 
 _CREDS = {'access_token': 'gho_test'}
+
+
+def _deployment(deployment_id: int, created_at: str) -> dict[str, object]:
+    """A minimal ``GET /deployments`` row deploying a mainline branch."""
+    return {
+        'id': deployment_id,
+        'sha': f'sha{deployment_id}',
+        'ref': 'main',
+        'created_at': created_at,
+    }
+
+
+def _statuses(*states: str) -> None:
+    """Mock ``/deployments/{id}/statuses`` for ids 1..len(states)."""
+    for offset, state in enumerate(states, start=1):
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments/'
+            f'{offset}/statuses'
+        ).mock(return_value=httpx.Response(200, json=[{'state': state}]))
 
 
 class ManifestTestCase(unittest.TestCase):
@@ -107,6 +127,14 @@ class ManifestTestCase(unittest.TestCase):
         self.assertNotIn(
             'mainline_branches', {opt.name for opt in cap.options}
         )
+
+    def test_active_scan_limit_declared_integration_level(self) -> None:
+        # Scan depth follows the org's deploy habits, like mainline
+        # branch naming, so it sits beside flavor/host on the Integration.
+        options = {opt.name: opt for opt in GitHubPlugin.manifest.options}
+        self.assertIn('active_scan_limit', options)
+        self.assertEqual(options['active_scan_limit'].default, 10)
+        self.assertFalse(options['active_scan_limit'].required)
 
     def test_no_legacy_deploys_via_edge_declared(self) -> None:
         # Promote behaviour is inferred from the ref shape and per-env
@@ -1918,6 +1946,214 @@ class ListRecentDeploymentsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(run.called)
         self.assertEqual(events[0].creator, 'octocat')
         self.assertEqual(events[0].creator_subject, '583231')
+
+
+class GetEnvironmentStateTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_newest_success_is_active(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T14:00:00Z')]
+            )
+        )
+        _statuses('success')
+        plugin = GitHubDeployment()
+        states = await plugin.get_environment_state(
+            _ctx(), _CREDS, ['production']
+        )
+        self.assertEqual(len(states), 1)
+        state = states[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        assert state.latest is not None
+        self.assertEqual(state.active.external_run_id, '1')
+        # The newest attempt is also the active one here, and both carry
+        # the same ``RemoteDeployment`` shape resync records.
+        self.assertEqual(state.latest.external_run_id, '1')
+        self.assertEqual(state.active.status, 'success')
+
+    @respx.mock
+    async def test_newest_failed_older_success_stays_active(self) -> None:
+        # The original bug: the newest attempt failed, so the deployment
+        # actually serving the environment is the older success.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        _statuses('failure', 'success')
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        assert state.latest is not None
+        self.assertEqual(state.active.external_run_id, '2')
+        self.assertEqual(state.latest.external_run_id, '1')
+        self.assertEqual(state.latest.status, 'failed')
+
+    @respx.mock
+    async def test_newest_pending_older_success_stays_active(self) -> None:
+        # An in-flight deploy is activity, not currency: the older
+        # success is still what serves traffic.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        _statuses('in_progress', 'success')
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'found')
+        assert state.active is not None
+        assert state.latest is not None
+        self.assertEqual(state.active.external_run_id, '2')
+        self.assertEqual(state.latest.status, 'in_progress')
+
+    @respx.mock
+    async def test_scan_cap_reached_is_unknown_never_none(self) -> None:
+        # A full page with no success means an older active deployment
+        # may sit just past the cap — reporting 'none' would have the
+        # host clear a pointer that is right.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '2'},
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    _deployment(1, '2026-05-13T15:00:00Z'),
+                    _deployment(2, '2026-05-13T14:00:00Z'),
+                ],
+            )
+        )
+        _statuses('failure', 'failure')
+        plugin = GitHubDeployment()
+        ctx = _ctx(connection=_connection() | {'active_scan_limit': 2})
+        state = (
+            await plugin.get_environment_state(ctx, _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'unknown')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertEqual(state.latest.external_run_id, '1')
+
+    @respx.mock
+    async def test_no_deployments_is_none(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(return_value=httpx.Response(200, json=[]))
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'none')
+        self.assertIsNone(state.active)
+        self.assertIsNone(state.latest)
+
+    @respx.mock
+    async def test_short_page_without_success_is_none(self) -> None:
+        # Fewer rows than the cap means the history is exhausted, so
+        # "nothing is deployed" is a real answer.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        _statuses('failure')
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'none')
+        self.assertIsNone(state.active)
+        assert state.latest is not None
+        self.assertEqual(state.latest.status, 'failed')
+
+    @respx.mock
+    async def test_provider_failure_is_error_not_none(self) -> None:
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(503, json={'message': 'unavailable'})
+        )
+        plugin = GitHubDeployment()
+        state = (
+            await plugin.get_environment_state(_ctx(), _CREDS, ['production'])
+        )[0]
+        self.assertEqual(state.active_resolution, 'error')
+        self.assertIsNone(state.active)
+        self.assertIsNone(state.latest)
+
+    @respx.mock
+    async def test_unknown_environment_is_none(self) -> None:
+        # Mirrors ``list_recent_deployments``: a 404 means the repo or
+        # environment is unknown, not that the provider failed.  Every
+        # requested environment still gets a row.
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'production', 'per_page': '10'},
+        ).mock(
+            return_value=httpx.Response(
+                200, json=[_deployment(1, '2026-05-13T15:00:00Z')]
+            )
+        )
+        respx.get(
+            'https://api.github.com/repos/octo/demo/deployments',
+            params={'environment': 'never-deployed', 'per_page': '10'},
+        ).mock(return_value=httpx.Response(404, json={'message': 'Not Found'}))
+        _statuses('success')
+        plugin = GitHubDeployment()
+        states = await plugin.get_environment_state(
+            _ctx(), _CREDS, ['production', 'never-deployed']
+        )
+        by_env = {s.environment: s for s in states}
+        self.assertEqual(by_env['production'].active_resolution, 'found')
+        missing = by_env['never-deployed']
+        self.assertEqual(missing.active_resolution, 'none')
+        self.assertIsNone(missing.active)
+        self.assertIsNone(missing.latest)
+
+
+class ActiveScanLimitTestCase(unittest.TestCase):
+    def test_absent_option_uses_default(self) -> None:
+        self.assertEqual(_active_scan_limit({}), 10)
+
+    def test_string_option_parsed(self) -> None:
+        # The admin form hands scalar options back as strings.
+        self.assertEqual(_active_scan_limit({'active_scan_limit': '25'}), 25)
+
+    def test_invalid_or_out_of_range_values_fall_back(self) -> None:
+        self.assertEqual(_active_scan_limit({'active_scan_limit': 'ten'}), 10)
+        self.assertEqual(_active_scan_limit({'active_scan_limit': 0}), 10)
+        self.assertEqual(_active_scan_limit({'active_scan_limit': True}), 10)
+        # One GitHub page is the ceiling.
+        self.assertEqual(_active_scan_limit({'active_scan_limit': 500}), 100)
 
 
 class GetReleaseNotesTestCase(unittest.IsolatedAsyncioTestCase):

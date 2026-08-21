@@ -97,6 +97,23 @@ _OPTIONS: list[PluginOption] = [
         required=False,
         default='main master',
     ),
+    PluginOption(
+        name='active_scan_limit',
+        label='Active deployment scan limit',
+        description=(
+            'How many deployments per environment the active-state scan '
+            'walks, newest-first, looking for the newest one whose latest '
+            'status is success.  Each row costs one status request.  Raise '
+            'it for repos whose environments see long runs of failed or '
+            'superseded deploys, where the live deployment sits deeper in '
+            'the history; hitting the limit reports the active deployment '
+            'as unknown rather than as absent.  Leave blank for the '
+            'default of 10.'
+        ),
+        type='integer',
+        required=False,
+        default=10,
+    ),
 ]
 
 # The single credential store for the Integration. Every capability of

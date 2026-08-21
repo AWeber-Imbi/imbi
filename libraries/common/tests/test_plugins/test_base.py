@@ -664,6 +664,12 @@ class DeploymentDefaultsTestCase(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(NotImplementedError):
             await self.plugin.list_recent_deployments(self.ctx, {}, ['prod'])
 
+    async def test_get_environment_state_default_raises(self) -> None:
+        # Raising is how hosts detect that a provider cannot report
+        # currency at all, which is distinct from reporting 'unknown'.
+        with self.assertRaises(NotImplementedError):
+            await self.plugin.get_environment_state(self.ctx, {}, ['prod'])
+
     async def test_get_release_notes_default(self) -> None:
         result = await self.plugin.get_release_notes(self.ctx, {}, '1.0.0')
         self.assertIsNone(result)

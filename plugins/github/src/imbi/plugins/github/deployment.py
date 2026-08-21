@@ -53,6 +53,7 @@ from imbi.common.plugins.base import (
     DeploymentCapability,
     DeploymentEventStatus,
     DeploymentRun,
+    EnvironmentDeploymentState,
     LinkWriteback,
     NotesListing,
     PluginContext,
@@ -433,6 +434,43 @@ def _mainline_branches(
         return _DEFAULT_MAINLINE_BRANCHES
     configured = frozenset(raw.replace(',', ' ').split())
     return configured or _DEFAULT_MAINLINE_BRANCHES
+
+
+# How many deployments per environment ``get_environment_state`` walks
+# before it stops looking for the active one.  GitHub returns
+# deployments newest-first, and the active deployment is normally the
+# first or second row; a deeper walk only pays off on an environment
+# whose recent history is a run of failures.  Each row costs one status
+# request, so the cap bounds the request count per environment rather
+# than the wall time of one call.
+_DEFAULT_ACTIVE_SCAN_LIMIT = 10
+# One page holds the whole scan -- GitHub caps ``per_page`` at 100.
+_MAX_ACTIVE_SCAN_LIMIT = 100
+
+
+def _active_scan_limit(
+    integration_options: dict[str, typing.Any],
+) -> int:
+    """Resolve the ``active_scan_limit`` integration option.
+
+    Declared integration-level beside ``mainline_branches`` because how
+    deep the scan has to go is a property of the org's deploy habits, not
+    of one capability.  Operator-entered values arrive as strings from the
+    admin form as often as integers, so both are accepted; anything absent,
+    unparseable, or below 1 resolves to
+    :data:`_DEFAULT_ACTIVE_SCAN_LIMIT`, and the value is clamped to what a
+    single GitHub page can carry.
+    """
+    raw = integration_options.get('active_scan_limit')
+    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+        return _DEFAULT_ACTIVE_SCAN_LIMIT
+    try:
+        limit = int(raw)
+    except ValueError:
+        return _DEFAULT_ACTIVE_SCAN_LIMIT
+    if limit < 1:
+        return _DEFAULT_ACTIVE_SCAN_LIMIT
+    return min(limit, _MAX_ACTIVE_SCAN_LIMIT)
 
 
 def _commit_from_payload(payload: dict[str, typing.Any]) -> Commit:
@@ -1630,6 +1668,137 @@ class GitHubDeployment(DeploymentCapability):
                 )
             )
         return [observed for group in per_env for observed in group]
+
+    async def get_environment_state(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        environments: list[str],
+    ) -> list[EnvironmentDeploymentState]:
+        """Report the active deployment per environment.
+
+        Fans out one ``GET /deployments?environment={env}`` call per
+        environment (newest-first, as GitHub orders them) and walks the
+        page fetching each deployment's latest status until one maps to
+        exactly ``success`` -- not ``pending``, not ``in_progress``, and
+        not merely "not inactive".  That deployment is the active one.
+
+        Policy note: GitHub can leave several deployments active at once
+        when automatic inactivation is disabled, so "active" cannot be
+        read off the provider's own flag.  Imbi's policy is *active = the
+        newest deployment whose latest provider status is success*, which
+        is well-defined either way.
+
+        The walk is bounded by the ``active_scan_limit`` option (see
+        :func:`_active_scan_limit`).  Reaching the cap without a success
+        resolves ``unknown``, never ``none``: an older active deployment
+        may sit just past the cap, and reporting ``none`` would have the
+        host clear a pointer that is right.
+        """
+        scan_limit = _active_scan_limit(ctx.integration_options)
+        # Same memoisation as the resync sweep: one triggering-actor
+        # lookup per run and one release lookup per ref, shared across the
+        # parallel per-env fan-out.
+        run_cache: dict[str, tuple[str, str] | None] = {}
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]] = {}
+        mainline = _mainline_branches(ctx.integration_options)
+        async with self._client(ctx, credentials) as client:
+            return list(
+                await asyncio.gather(
+                    *(
+                        self._environment_state(
+                            client,
+                            env,
+                            scan_limit,
+                            run_cache,
+                            release_lookups,
+                            mainline,
+                        )
+                        for env in environments
+                    )
+                )
+            )
+
+    async def _environment_state(
+        self,
+        client: httpx.AsyncClient,
+        environment: str,
+        scan_limit: int,
+        run_cache: dict[str, tuple[str, str] | None],
+        release_lookups: dict[str, asyncio.Task[RemoteRelease | None]],
+        mainline: frozenset[str],
+    ) -> EnvironmentDeploymentState:
+        """Resolve one environment's active deployment."""
+        try:
+            resp = await client.get(
+                '/deployments',
+                params={
+                    'environment': environment,
+                    'per_page': str(scan_limit),
+                },
+            )
+            if resp.status_code == 404:
+                # Repo or environment unknown on the remote — nothing is
+                # deployed there, which is an answer, not a failure.
+                return EnvironmentDeploymentState(
+                    environment=environment, active_resolution='none'
+                )
+            resp.raise_for_status()
+            deployments = typing.cast(list[dict[str, typing.Any]], resp.json())
+        except (httpx.HTTPError, ValueError):
+            LOGGER.warning(
+                'Failed to resolve active deployment for env=%s',
+                environment,
+                exc_info=True,
+            )
+            return EnvironmentDeploymentState(
+                environment=environment, active_resolution='error'
+            )
+        active: RemoteDeployment | None = None
+        latest: RemoteDeployment | None = None
+        scanned = 0
+        for deployment in deployments:
+            scanned += 1
+            observed = await self._observe_deployment(
+                client,
+                environment,
+                deployment,
+                run_cache,
+                release_lookups,
+                mainline,
+            )
+            if observed is None:
+                continue
+            if latest is None:
+                latest = observed
+            if observed.status == 'success':
+                active = observed
+                break
+        # The result set is exhausted only when the walk read every row
+        # GitHub returned *and* GitHub returned fewer than we asked for
+        # (a full page means there is more history past the cap).
+        exhausted = scanned == len(deployments) and scanned < scan_limit
+        resolution: typing.Literal['found', 'none', 'unknown']
+        if active is not None:
+            resolution = 'found'
+        elif exhausted:
+            resolution = 'none'
+        else:
+            resolution = 'unknown'
+        LOGGER.info(
+            'Active deployment scan env=%s deployments_scanned=%d '
+            'scan_exhausted=%s active_resolution=%s',
+            environment,
+            scanned,
+            exhausted,
+            resolution,
+        )
+        return EnvironmentDeploymentState(
+            environment=environment,
+            active=active,
+            latest=latest,
+            active_resolution=resolution,
+        )
 
     async def get_release_notes(
         self,

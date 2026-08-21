@@ -122,6 +122,20 @@ These default to returning `'unknown'` or `None`, or raising
   GitHub release's "What's Changed" markdown); the host persists it as the
   `Release` node's notes, distinct from the short `description` deploy
   note.
+- **`get_environment_state`** — report which deployment is *active* per
+  environment, as the provider sees it. The currency counterpart to
+  `list_recent_deployments`, which only answers "what happened recently":
+  the newest attempt may have failed, still be in flight, or have been
+  superseded, leaving an older deployment live. Each returned
+  `EnvironmentDeploymentState` carries `active`, `latest` (the newest
+  attempt of any status), and an `active_resolution` of `found` / `none` /
+  `unknown` / `error`. `unknown` (a bounded scan stopped before
+  exhausting the result set) and `error` (the provider call failed) both
+  mean "retain the pointer", and neither may be reported as `none` —
+  clearing a correct pointer is the failure mode this method exists to
+  prevent. Optional even for capabilities that set
+  `supports_deployment_sync`; hosts probe by catching
+  `NotImplementedError`.
 - **`get_release_notes`** — return the remote release's notes body for a
   given tag. The tag-keyed counterpart to `list_recent_deployments`'
   `release_notes` field: it lets the host enrich a `Release` node's notes
@@ -165,3 +179,5 @@ self-heals the stored project link. See
 ::: imbi.common.plugins.DeploymentRun
 
 ::: imbi.common.plugins.RemoteDeployment
+
+::: imbi.common.plugins.EnvironmentDeploymentState
