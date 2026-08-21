@@ -109,10 +109,19 @@ def _restorable(history: object) -> bool:
     """
     if not isinstance(history, list):
         return False
-    return any(
-        isinstance(entry, dict) and entry.get('status') == _RESTORED
-        for entry in history
-    )
+    # Cast rather than lean on the ``isinstance`` narrowing: it leaves
+    # the element type unknown, which basedpyright rejects.  Casting to
+    # ``list[typing.Any]`` instead would be the same type mypy already
+    # inferred and it flags that as a redundant cast, so the two
+    # checkers only agree on a cast that genuinely narrows.  Same shape
+    # as the agtype decoding in ``imbi.common.deployments``.
+    for entry in typing.cast('list[object]', history):
+        if not isinstance(entry, dict):
+            continue
+        props = typing.cast('dict[str, typing.Any]', entry)
+        if props.get('status') == _RESTORED:
+            return True
+    return False
 
 
 async def repair_project(
