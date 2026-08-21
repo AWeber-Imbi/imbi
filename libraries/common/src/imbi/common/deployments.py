@@ -350,8 +350,7 @@ RETURN p.id AS project_id,
 """
 
 
-#: Statuses that may name an environment's current release when the
-#: caller is not asking for provider-confirmed success.  ``failed`` and
+#: Statuses that can still be *serving* an environment.  ``failed`` and
 #: ``rolled_back`` are excluded because neither puts a release into an
 #: environment: a failed rollout left whatever was already there
 #: running, and ``rolled_back`` says outright that this release is no
@@ -363,12 +362,29 @@ RETURN p.id AS project_id,
 #: ``pending``/``in_progress`` stay in: they are how the release train
 #: shows a rollout under way, and ``_hydrate_release_train`` selects
 #: exactly those events to poll and self-heal.
-_ATTEMPT_STATUSES: typing.Final[typing.LiteralString] = (
+_SERVING_STATUSES: typing.Final[typing.LiteralString] = (
     "['pending', 'in_progress', 'success']"
 )
 
+#: Which deployments may answer a released-deployment read.
+#:
+#: * ``any`` -- every attempt, failures included.  For "what last
+#:   happened here", which is activity, not currency.
+#: * ``serving`` -- anything that could still be serving
+#:   (:data:`_SERVING_STATUSES`).  For a single-answer "current release"
+#:   surface that has no separate place to show a failure.
+#: * ``success`` -- provider-confirmed only.  For "what is actually
+#:   running", beside a separate latest-attempt answer.
+StatusPolicy = typing.Literal['any', 'serving', 'success']
 
-def _released_query(*, success_only: bool) -> typing.LiteralString:
+_STATUS_FILTERS: typing.Final[dict[str, typing.LiteralString]] = {
+    'any': '',
+    'serving': f' AND {{alias}}.status IN {_SERVING_STATUSES}',
+    'success': " AND {alias}.status = 'success'",
+}
+
+
+def _released_query(policy: StatusPolicy) -> typing.LiteralString:
     """Assemble the released-deployment read for one status policy.
 
     The status filter has to appear in both halves on purpose.  The
@@ -378,13 +394,10 @@ def _released_query(*, success_only: bool) -> typing.LiteralString:
     and the environment would drop out of the result entirely rather
     than fall back to its last success.
     """
-    if not success_only:
-        return _RELEASED_BY_PROJECT_QUERY.replace(
-            '{filter}', f' AND d.status IN {_ATTEMPT_STATUSES}'
-        ).replace('{filter2}', f' AND d2.status IN {_ATTEMPT_STATUSES}')
+    clause = _STATUS_FILTERS[policy]
     return _RELEASED_BY_PROJECT_QUERY.replace(
-        '{filter}', " AND d.status = 'success'"
-    ).replace('{filter2}', " AND d2.status = 'success'")
+        '{filter}', clause.replace('{alias}', 'd')
+    ).replace('{filter2}', clause.replace('{alias}', 'd2'))
 
 
 async def latest_released_deployments_by_project(
@@ -402,7 +415,7 @@ async def latest_released_deployments_by_project(
     deployed.
 
     ``failed`` and ``rolled_back`` deployments are not candidates --
-    see :data:`_ATTEMPT_STATUSES`.  Recency alone is the
+    see :data:`_SERVING_STATUSES`.  Recency alone is the
     wrong test for "what is deployed": the close-out of a *superseded*
     deployment is always written after the deployment that superseded
     it, so ranking by timestamp with no regard to status hands the
@@ -425,7 +438,7 @@ async def latest_released_deployments_by_project(
     if not project_ids:
         return []
     rows = await db.execute(
-        _released_query(success_only=False),
+        _released_query('serving'),
         {'project_ids': list(project_ids)},
         ['project_id', 'env', 'release', 'deployment'],
     )
@@ -474,10 +487,10 @@ async def current_and_latest_by_project(
     params = {'project_ids': list(project_ids)}
     columns = ['project_id', 'env', 'release', 'deployment']
     latest = _by_environment(
-        await db.execute(_released_query(success_only=False), params, columns)
+        await db.execute(_released_query('any'), params, columns)
     )
     current = _by_environment(
-        await db.execute(_released_query(success_only=True), params, columns)
+        await db.execute(_released_query('success'), params, columns)
     )
     out: list[EnvironmentReleaseState] = []
     for key, entry in latest.items():
