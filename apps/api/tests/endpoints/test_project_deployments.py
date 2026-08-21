@@ -4122,8 +4122,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self._patch_query(
             [
                 [{'name': 'v1.0.0', 'sha': 'tagsha', 'tagged_at': when}],
+                [{'sha': 'tagsha', 'authored_at': when}],
                 [{'sha': 'headsha'}],
-                [{'authored_at': when}],
                 [self._commit_row('feat1', message='feat: new thing')],
                 [{'c': 1}],
             ]
@@ -4160,8 +4160,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self._patch_query(
             [
                 [{'name': 'v2.0.0', 'sha': 'missing', 'tagged_at': None}],
+                [],  # tag commit not in ClickHouse
                 [{'sha': 'headsha'}],
-                [],  # base commit not in ClickHouse
             ]
         )
         with testclient.TestClient(self.test_app) as client:
@@ -4172,15 +4172,33 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['commits'], [])
         self.assertEqual(data['suggested_tag'], 'v2.0.1')
 
-    def test_release_drift_picks_highest_semver_not_newest(self) -> None:
-        """A late-synced lower version must not out-rank the latest release."""
+    def test_bump_semver_rejects_a_double_v_prefix(self) -> None:
+        """``vv1.2.3`` is not semver-shaped -> the ``v0.1.0`` fallback."""
+        self.assertEqual(
+            'v0.1.0', project_deployments._bump_semver('vv1.2.3', 'patch')
+        )
+        self.assertEqual(
+            'v1.2.4', project_deployments._bump_semver('v1.2.3', 'patch')
+        )
+        self.assertEqual(
+            '1.2.4', project_deployments._bump_semver('1.2.3', 'patch')
+        )
+
+    def test_release_drift_backport_cannot_outrank_latest(self) -> None:
+        """A backported lower version must not out-rank the latest release.
+
+        The backport's commit lives on an unsynced release branch, so it
+        has no row in ``commits`` -- and a tag whose commit isn't synced
+        ranks below every tag whose commit is, however recently it was
+        tagged.
+        """
         older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
         self._patch_query(
             [
                 [
                     # v4.1.3 (a backport) was tagged most recently, but
-                    # v7.1.0 is the highest version -> the real base.
+                    # v7.1.0 sits on a synced commit -> the real base.
                     {
                         'name': 'v4.1.3',
                         'sha': 'sha413',
@@ -4194,8 +4212,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                         'recorded_at': older,
                     },
                 ],
+                [{'sha': 'sha710', 'authored_at': older}],
                 [{'sha': 'headsha'}],
-                [{'authored_at': older}],
                 [self._commit_row('feat1', message='feat: new thing')],
                 [{'c': 2}],
             ]
@@ -4208,6 +4226,50 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data['latest_tag_sha'], 'sha710')
         # A feat commit bumps the minor off v7.1.0, not off v4.1.3.
         self.assertEqual(data['suggested_tag'], 'v7.2.0')
+
+    def test_release_drift_follows_a_versioning_scheme_switch(self) -> None:
+        """The tag on the newest commit wins over a higher old-scheme tag.
+
+        A project that re-versioned (its own 9.0.0 down to a vendor's
+        2.32.7) must base drift and the suggestion off 2.32.7 -- the
+        highest-semver rule would suggest 9.1.0 and count everything
+        since 9.0.0, releases included, as drift.
+        """
+        older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': '9.0.0',
+                        'sha': 'sha900',
+                        'tagged_at': older,
+                        'recorded_at': older,
+                    },
+                    {
+                        'name': '2.32.7',
+                        'sha': 'sha2327',
+                        'tagged_at': newer,
+                        'recorded_at': newer,
+                    },
+                ],
+                [
+                    {'sha': 'sha900', 'authored_at': older},
+                    {'sha': 'sha2327', 'authored_at': newer},
+                ],
+                [{'sha': 'headsha'}],
+                [self._commit_row('fix1', message='fix: a thing')],
+                [{'c': 1}],
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-drift')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['latest_tag'], '2.32.7')
+        self.assertEqual(data['latest_tag_sha'], 'sha2327')
+        # The suggestion keeps the scheme's bare (un-``v``-prefixed) shape.
+        self.assertEqual(data['suggested_tag'], '2.32.8')
 
     def test_release_drift_latest_tag_at_falls_back_to_recorded_at(
         self,
@@ -4224,8 +4286,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
                         'recorded_at': recorded,
                     }
                 ],
+                [{'sha': 'tagsha', 'authored_at': recorded}],
                 [{'sha': 'headsha'}],
-                [{'authored_at': recorded}],
                 [self._commit_row('feat1', message='feat: new thing')],
                 [{'c': 1}],
             ]
@@ -4403,12 +4465,12 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(data[1]['ci_status'], 'not_applicable')
 
     def test_release_history_head_is_highest_semver_not_newest(self) -> None:
-        """The head of history is the highest semver, ignoring timestamps.
+        """With no synced commits, the head of history is the highest semver.
 
-        A late-synced lower version (newer timestamp) must not out-rank the
-        highest semver tag, mirroring the drift base selection.  This guards
-        against re-introducing a timestamp-limited candidate window that could
-        drop the highest version before the semver sort runs.
+        Neither tag's commit is in ``commits``, so the commit-history
+        ranking has nothing to go on and semver breaks the tie: a
+        late-synced lower version (newer timestamp) must not out-rank the
+        highest semver tag, mirroring the drift base selection.
         """
         older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
@@ -4442,6 +4504,49 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual([e['tag'] for e in data], ['v7.1.0', 'v4.1.3'])
+
+    def test_release_history_head_follows_the_commit_history(self) -> None:
+        """The tag on the newest synced commit heads the list.
+
+        After a versioning-scheme switch (9.0.0 re-versioned down to
+        2.32.7) the current release is the one on the newest commit, not
+        the highest number.
+        """
+        older = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        newer = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
+        self._patch_query(
+            [
+                [
+                    {
+                        'name': '9.0.0',
+                        'sha': 'sha900',
+                        'tagged_at': older,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': older,
+                    },
+                    {
+                        'name': '2.32.7',
+                        'sha': 'sha2327',
+                        'tagged_at': newer,
+                        'tagger_name': 'Rel Bot',
+                        'url': '',
+                        'recorded_at': newer,
+                    },
+                ],
+                # ci_status / authored_at lookup
+                [
+                    {'sha': 'sha900', 'authored_at': older},
+                    {'sha': 'sha2327', 'authored_at': newer},
+                ],
+            ]
+        )
+        self.mock_db.execute = mock.AsyncMock(return_value=[])
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-history')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual([e['tag'] for e in data], ['2.32.7', '9.0.0'])
 
     def test_release_history_limit_applies_after_semver_sort(self) -> None:
         """``limit`` slices the semver-sorted list, keeping top versions."""

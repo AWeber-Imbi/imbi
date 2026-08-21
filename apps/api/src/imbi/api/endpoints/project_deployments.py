@@ -89,8 +89,9 @@ _AUTHOR_EMAIL_SQL = (
 )
 
 #: Every synced tag for a project. Deliberately unfiltered by timestamp:
-#: callers rank the full candidate set by semver, so a late-synced or
-#: backported tag must still be able to reach the head of the list.
+#: callers rank the full candidate set by the tagged commit's place in
+#: the synced history, so a late-synced tag must still be able to reach
+#: the head of the list.
 _PROJECT_TAGS_SQL = (
     'SELECT name, sha, tagged_at, recorded_at FROM tags FINAL '
     'WHERE project_id = {project_id:String}'
@@ -4622,19 +4623,32 @@ def _semver_sort_key(name: str) -> tuple[int, int, int] | None:
 
 
 def _release_tag_order_key(
-    name: str, when: typing.Any
-) -> tuple[bool, tuple[int, int, int], str]:
+    name: str,
+    when: typing.Any,
+    authored_at: datetime.datetime | None = None,
+) -> tuple[str, bool, tuple[int, int, int], str]:
     """Sort key ranking the latest *release* first.
 
-    Semver-shaped tags outrank non-semver ones; within those, the highest
-    version wins, with the newer timestamp as a tie-break. This deliberately
-    ignores tag/commit *timestamps* for the primary ordering so a backported
-    or late-synced lower version (e.g. ``v4.1.3`` tagged after ``v7.1.0``)
-    can't masquerade as the latest release.
+    Primary order is the tagged commit's position in the synced history
+    (``authored_at``): the tag on the newest commit is the latest release
+    even when an earlier versioning scheme used higher numbers (a project
+    that re-versioned from ``9.0.0`` down to ``2.32.7`` must base off
+    ``2.32.7``, which highest-semver ordering would never pick).  A tag
+    whose commit isn't synced ranks below every tag whose commit is --
+    backports live on unsynced release branches, so a backported
+    ``v4.1.3`` tagged after ``v7.1.0`` still can't masquerade as the
+    latest release.  Semver then tag timestamp break the remaining ties:
+    several tags on one commit, or callers with no commit context at all
+    (who thereby keep the old highest-semver behavior).
     """
     key = _semver_sort_key(name)
     when_key = when.isoformat() if isinstance(when, datetime.datetime) else ''
-    return (key is not None, key or (0, 0, 0), when_key)
+    authored_key = (
+        authored_at.isoformat()
+        if isinstance(authored_at, datetime.datetime)
+        else ''
+    )
+    return (authored_key, key is not None, key or (0, 0, 0), when_key)
 
 
 def _tag_timestamp(
@@ -4653,30 +4667,45 @@ def _tag_timestamp(
 
 def _latest_release_tag(
     rows: list[dict[str, typing.Any]],
+    authored_by_sha: dict[str, datetime.datetime] | None = None,
 ) -> dict[str, typing.Any] | None:
-    """Pick the latest release tag (highest semver) from ``tags`` rows."""
+    """Pick the latest release tag from ``tags`` rows.
+
+    ``authored_by_sha`` maps each tag's commit sha (lowercase) to that
+    commit's authored time; with it the latest tag is the one on the
+    newest synced commit (see :func:`_release_tag_order_key`).  Without
+    it -- callers ranking several tags on a single commit -- semver alone
+    decides.
+    """
     if not rows:
         return None
+    authored = authored_by_sha or {}
     return max(
         rows,
         key=lambda r: _release_tag_order_key(
-            str(r['name']), r.get('tagged_at') or r.get('recorded_at')
+            str(r['name']),
+            r.get('tagged_at') or r.get('recorded_at'),
+            authored.get(str(r.get('sha') or '').lower()),
         ),
     )
 
 
 def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
-    """Bump a semver-shaped tag.  Falls back to ``v0.1.0`` when missing."""
-    raw = (last_tag or 'v0.0.0').lstrip('v')
+    """Bump a semver-shaped tag, keeping its ``v``-or-bare prefix.
+
+    Falls back to ``v0.1.0`` when missing or not semver-shaped.
+    """
+    raw = last_tag or 'v0.0.0'
     match = _SEMVER_RE.match(raw)
     if not match:
         return 'v0.1.0'
+    prefix = 'v' if raw.startswith('v') else ''
     major, minor, patch = (int(part) for part in match.groups())
     if bump == 'major':
-        return f'v{major + 1}.0.0'
+        return f'{prefix}{major + 1}.0.0'
     if bump == 'minor':
-        return f'v{major}.{minor + 1}.0'
-    return f'v{major}.{minor}.{patch + 1}'
+        return f'{prefix}{major}.{minor + 1}.0'
+    return f'{prefix}{major}.{minor}.{patch + 1}'
 
 
 def _classify_bump(commits: list[Commit]) -> SemverBump:
@@ -5162,6 +5191,7 @@ class _CommitFacts(typing.NamedTuple):
     ci_status: str
     author: str | None
     author_email: str | None
+    authored_at: datetime.datetime | None = None
 
 
 async def _commit_facts_by_sha(
@@ -5181,7 +5211,8 @@ async def _commit_facts_by_sha(
     placeholders = ', '.join(f'{{sha{i}:String}}' for i in range(len(shas)))
     # placeholders are generated indices; all values are bound params.
     sql = (
-        f'SELECT sha, ci_status, author_name, {_AUTHOR_EMAIL_SQL} AS email '  # noqa: S608
+        f'SELECT sha, ci_status, author_name, {_AUTHOR_EMAIL_SQL} AS email, '  # noqa: S608
+        'authored_at '
         'FROM commits FINAL '
         'WHERE project_id = {project_id:String} '
         f'AND sha IN ({placeholders})'
@@ -5194,8 +5225,20 @@ async def _commit_facts_by_sha(
             ci_status=str(r.get('ci_status') or 'unknown'),
             author=str(r['author_name']) if r.get('author_name') else None,
             author_email=str(r['email']) if r.get('email') else None,
+            authored_at=clickhouse.as_utc_or_none(r.get('authored_at')),
         )
         for r in rows
+    }
+
+
+def _authored_by_sha(
+    facts_by_sha: dict[str, _CommitFacts],
+) -> dict[str, datetime.datetime]:
+    """Lowercased ``sha -> authored_at`` map for release-tag ranking."""
+    return {
+        sha.lower(): facts.authored_at
+        for sha, facts in facts_by_sha.items()
+        if facts.authored_at is not None
     }
 
 
@@ -5326,14 +5369,21 @@ async def get_release_drift(
     the commits authored after the tag's commit.  With no prior tag the
     drift is the full (capped) history and the suggestion is ``v0.1.0``.
     """
-    # Fetch all tags and pick the latest *release* by semver (not by
-    # timestamp): a late-synced or backported lower version must not be
-    # treated as the base, or the "commits since the last tag" delta below
-    # is computed from the wrong tag.
+    # Fetch all tags and pick the latest *release* by its commit's place
+    # in the synced history (semver only breaks ties): a project that
+    # switched versioning schemes (9.0.0 -> 2.32.7) must base off the tag
+    # on the newest commit, and a late-synced or backported lower version
+    # -- whose commit is old or unsynced -- still can't be treated as the
+    # base, or the "commits since the last tag" delta below is computed
+    # from the wrong tag.
     tag_rows = await clickhouse.query(
         _PROJECT_TAGS_SQL, {'project_id': project_id}
     )
-    latest = _latest_release_tag(tag_rows)
+    facts_by_sha = await _commit_facts_by_sha(
+        project_id, [str(r['sha']) for r in tag_rows if r.get('sha')]
+    )
+    authored_by_sha = _authored_by_sha(facts_by_sha)
+    latest = _latest_release_tag(tag_rows, authored_by_sha)
     latest_tag = str(latest['name']) if latest else None
     latest_tag_sha = str(latest['sha']) if latest else None
     latest_tag_at = _tag_timestamp(latest) if latest else None
@@ -5348,15 +5398,11 @@ async def get_release_drift(
 
     since: datetime.datetime | None = None
     if latest_tag_sha:
-        base_rows = await clickhouse.query(
-            'SELECT authored_at FROM commits FINAL '
-            'WHERE project_id = {project_id:String} AND sha = {sha:String} '
-            'LIMIT 1',
-            {'project_id': project_id, 'sha': latest_tag_sha},
-        )
-        if not base_rows:
-            # Tag exists but its commit isn't synced -- we can't bound the
-            # delta, so report no drift rather than dumping all history.
+        since = authored_by_sha.get(latest_tag_sha.lower())
+        if since is None:
+            # Tags exist but none of their commits are synced -- we can't
+            # bound the delta, so report no drift rather than dumping all
+            # history.
             return ReleaseDriftResponse(
                 latest_tag=latest_tag,
                 latest_tag_sha=latest_tag_sha,
@@ -5367,7 +5413,6 @@ async def get_release_drift(
                 suggested_bump='patch',
                 suggested_tag=_bump_semver(latest_tag, 'patch'),
             )
-        since = base_rows[0]['authored_at']
 
     where = 'project_id = {project_id:String}'
     params: dict[str, typing.Any] = {'project_id': project_id}
@@ -5599,10 +5644,10 @@ async def get_release_history(
     fallback chain in :func:`_fallback_ci_statuses` instead.
     """
     capped = max(1, min(limit, 100))
-    # Fetch all tags (not a timestamp-limited window) so the semver sort
-    # below ranks the full candidate set: a high-semver tag with an old or
-    # late-synced timestamp must still be able to reach the head of the list,
-    # consistent with the drift base selection.
+    # Fetch all tags (not a timestamp-limited window) so the sort below
+    # ranks the full candidate set: a late-synced tag must still be able
+    # to reach the head of the list, consistent with the drift base
+    # selection.
     tag_rows = await clickhouse.query(
         'SELECT name, sha, tagged_at, tagger_name, url, recorded_at '
         'FROM tags FINAL WHERE project_id = {project_id:String}',
@@ -5649,11 +5694,14 @@ async def get_release_history(
                 drift_detected=node.get('drift_detected'),
             )
         )
-    # Order by released version (highest semver first) so the head of the
-    # list is the current release -- consistent with the drift base, which
-    # is also chosen by semver rather than timestamp.
+    # Order by the tagged commit's place in the synced history (semver as
+    # the tie-break) so the head of the list is the current release --
+    # consistent with the drift base, which is chosen the same way.
+    authored_by_sha = _authored_by_sha(facts_by_sha)
     entries.sort(
-        key=lambda e: _release_tag_order_key(e.tag, e.published_at),
+        key=lambda e: _release_tag_order_key(
+            e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
+        ),
         reverse=True,
     )
     entries = entries[:capped]
