@@ -859,6 +859,17 @@ class SingleReleaseTests(DeploymentNodeTestCase):
         self.assertIsNotNone(first)
         assert second is not None
         self.assertEqual([RELEASE_ID], await self.attached_releases(second.id))
+        # Losing the edge must not cost the writer its status write: the
+        # rollout still happened, and the tail's SET is what records it.
+        # A closing filter on the surviving edge (rather than
+        # ``attach_release``'s ``EXISTS``) would empty the pipeline here
+        # and drop the transition silently.
+        node = (await self.nodes())[0]
+        self.assertEqual('success', node['status'])
+        self.assertEqual(
+            ['in_progress', 'success'],
+            [entry['status'] for entry in node['history']],
+        )
 
     async def test_attach_release_moves_the_edge(self) -> None:
         await self.add_release(OTHER_RELEASE_ID, tag='2.0.0')
