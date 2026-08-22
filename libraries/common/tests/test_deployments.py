@@ -856,7 +856,7 @@ class SingleReleaseTests(DeploymentNodeTestCase):
         second = await self.upsert(
             status='success', release_id=OTHER_RELEASE_ID
         )
-        assert first is not None
+        self.assertIsNotNone(first)
         assert second is not None
         self.assertEqual([RELEASE_ID], await self.attached_releases(second.id))
 
@@ -881,11 +881,15 @@ class SingleReleaseTests(DeploymentNodeTestCase):
         await self.add_release(OTHER_RELEASE_ID)
         result = await self.upsert(status='in_progress')
         assert result is not None
-        await deployments.attach_release(
-            self.graph,
-            project_id=PROJECT_ID,
-            deployment_id=result.id,
-            release_id=OTHER_RELEASE_ID,
+        # A rejected attachment is not an attachment: the sweeper counts
+        # the return value, so it has to say the edge did not land.
+        self.assertFalse(
+            await deployments.attach_release(
+                self.graph,
+                project_id=PROJECT_ID,
+                deployment_id=result.id,
+                release_id=OTHER_RELEASE_ID,
+            )
         )
         self.assertEqual([RELEASE_ID], await self.attached_releases(result.id))
 

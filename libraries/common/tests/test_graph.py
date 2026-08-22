@@ -554,7 +554,7 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
     async def test_other_internal_errors_do_not_retry(self) -> None:
         g = graph.Graph()
         g.opened = True
-        pool, conns = _mock_pool_conns(2)
+        pool, _ = _mock_pool_conns(2)
         g.pool = pool
 
         async def run(conn: typing.Any) -> str:

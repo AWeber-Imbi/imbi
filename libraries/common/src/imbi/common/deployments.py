@@ -141,7 +141,7 @@ _ONE_RELEASE: typing.Final[typing.LiteralString] = """
                    <-[mine:HAS_DEPLOYMENT]-(r)
     WHERE id(t) <> id(r) AND t.tag IS NOT NULL AND r.tag IS NULL
     DELETE mine
-    WITH DISTINCT d
+    WITH DISTINCT {carried}
 """
 
 _UPSERT_TAIL: typing.Final[typing.LiteralString] = """
@@ -909,6 +909,7 @@ MATCH (p)-[:HAS_RELEASE]->(r:Release {{id: {release_id}}})
 """
     + _ONE_RELEASE.replace('{carried}', 'd, r')
     + """
+WITH d, r WHERE EXISTS((r)-[:HAS_DEPLOYMENT]->(d))
 RETURN d.id AS id
 """
 )
@@ -921,7 +922,21 @@ async def attach_release(
     deployment_id: str,
     release_id: str,
 ) -> bool:
-    """Attach a deployment recorded before its release resolved."""
+    """Attach a deployment recorded before its release resolved.
+
+    ``False`` when nothing was attached: no such deployment or
+    release, or tagged precedence discarded this edge because a tagged
+    release already holds the deployment.  ``_ONE_RELEASE`` carries
+    ``d`` through either way, so the closing ``EXISTS`` is what tells
+    the two apart -- without it a discarded edge still returns a row
+    and the sweeper counts an attachment it did not make.
+
+    That test has to be ``EXISTS``, not a closing ``MATCH
+    (r)-[:HAS_DEPLOYMENT]->(d)``: a non-optional ``MATCH`` after the
+    ``DELETE`` clauses does not see the edge ``MERGE``d earlier in the
+    same statement, and the emptied pipeline takes the write with it --
+    the attach silently stops happening at all.
+    """
     rows = await db.execute(
         _ATTACH_QUERY,
         {
