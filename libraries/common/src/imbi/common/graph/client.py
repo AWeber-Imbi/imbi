@@ -36,6 +36,21 @@ RunResultT = typing.TypeVar('RunResultT')
 
 _IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
+#: AGE's message when the vertex or edge a statement is updating was
+#: changed by a transaction that committed after the statement's
+#: snapshot.  PostgreSQL's own updates re-read the row (EvalPlanQual)
+#: and carry on; AGE has no such pass, so it reports the ``TM_Result``
+#: code and fails the statement -- ``3`` is ``TM_Updated``.  Two writers
+#: on one node is ordinary here (a webhook and the release-train
+#: hydration both close out the same deployment), and the loser's write
+#: is simply dropped, so the statement is retried.
+_CONCURRENT_UPDATE_MESSAGE = 'Entity failed to be updated'
+
+
+def _is_concurrent_update(err: BaseException) -> bool:
+    """Is *err* AGE refusing a write another writer got in first?"""
+    return _CONCURRENT_UPDATE_MESSAGE in str(err)
+
 
 def _dollar_quote_tag(body: str) -> str:
     """Return a dollar-quote delimiter not present in *body*.
@@ -843,12 +858,18 @@ class Graph:
             collections.abc.Awaitable[RunResultT],
         ],
     ) -> RunResultT:
-        """Run *run*, retrying once on a fresh connection on 42P01.
+        """Run *run*, retrying once on 42P01 or a lost update race.
 
         The retry cannot double a write: with autocommit on, a
         statement that raised committed nothing, and the batch path
         retries only after its transaction rolled back.  A genuine
         ``UndefinedTable`` fails again on the retry and propagates.
+
+        A concurrent-update failure (see
+        :data:`_CONCURRENT_UPDATE_MESSAGE`) is retried on the same
+        terms, and the connection is not discarded -- the backend is
+        healthy, it just lost a race.  The second attempt runs under a
+        new snapshot, so it reads the row the winner wrote.
 
         """
         try:
@@ -857,6 +878,14 @@ class Graph:
             LOGGER.warning(
                 'graph query failed with UndefinedTable (%s); '
                 'discarded the connection and retrying once',
+                err,
+            )
+            return await self._run_discarding_poisoned(run)
+        except psycopg.errors.InternalError as err:
+            if not _is_concurrent_update(err):
+                raise
+            LOGGER.warning(
+                'graph query lost an update race (%s); retrying once',
                 err,
             )
             return await self._run_discarding_poisoned(run)

@@ -96,24 +96,48 @@ class DeploymentNodeTestCase(unittest.IsolatedAsyncioTestCase):
         kwargs.update(overrides)
         return await deployments.upsert_deployment(self.graph, **kwargs)
 
-    async def add_release(self, release_id: str) -> None:
+    async def add_release(
+        self, release_id: str, tag: str | None = None
+    ) -> None:
         """Attach a second ``Release`` to the fixture project.
 
         ``asyncSetUp`` creates only ``RELEASE_ID``, and
         ``upsert_deployment`` MATCHes the named release -- so an upsert
         against an uncreated one writes nothing and returns ``None``
         rather than failing loudly.
+
+        *tag* names the release; leaving it ``None`` builds the untagged
+        placeholder the gateway creates for a branch deploy, which is
+        the losing side of the single-release rule.
         """
         await self.graph.execute(
             """
             MATCH (p:Project {{id: {project_id}}})
             MERGE (r:Release {{id: {release_id}}})
+            SET r.tag = COALESCE({tag}, r.tag)
             MERGE (p)-[:HAS_RELEASE]->(r)
             RETURN r.id AS id
             """,
-            {'project_id': PROJECT_ID, 'release_id': release_id},
+            {
+                'project_id': PROJECT_ID,
+                'release_id': release_id,
+                'tag': tag,
+            },
             ['id'],
         )
+
+    async def attached_releases(self, deployment_id: str) -> list[str]:
+        """Release ids holding ``HAS_DEPLOYMENT`` on *deployment_id*."""
+        rows = await self.graph.execute(
+            """
+            MATCH (r:Release)-[:HAS_DEPLOYMENT]->
+                  (d:Deployment {{id: {deployment_id}}})
+            RETURN r.id AS id
+            """,
+            {'deployment_id': deployment_id},
+            ['id'],
+        )
+        return sorted(str(graph.parse_agtype(row['id'])) for row in rows)
 
     async def nodes(self) -> list[dict[str, typing.Any]]:
         rows = await self.graph.execute(
@@ -786,6 +810,99 @@ class LifecycleTests(DeploymentNodeTestCase):
                 release_id='nope',
             )
         )
+
+
+class SingleReleaseTests(DeploymentNodeTestCase):
+    """One deployment belongs to one release, tagged for preference.
+
+    Two writers can resolve the same rollout to different ``Release``
+    nodes -- a deploy of the untagged "Deploy <branch>" placeholder, and
+    the tagged release the gateway creates for the tag that rollout
+    carries.  ``MERGE`` alone left both edges on the node, which fanned
+    every reader out into two rows and made "what does this environment
+    run" a coin flip on the release nanoid.
+    """
+
+    async def test_a_new_release_moves_the_edge(self) -> None:
+        await self.add_release(OTHER_RELEASE_ID, tag='2.0.0')
+        first = await self.upsert(status='in_progress')
+        second = await self.upsert(
+            status='success', release_id=OTHER_RELEASE_ID
+        )
+        assert first is not None
+        assert second is not None
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(
+            [OTHER_RELEASE_ID], await self.attached_releases(second.id)
+        )
+        rows = await deployments.deployments_by_project(
+            self.graph, [PROJECT_ID]
+        )
+        self.assertEqual(1, len(rows))
+
+    async def test_untagged_release_does_not_displace_a_tagged_one(
+        self,
+    ) -> None:
+        """Arrival order must not decide which release is reported.
+
+        The untagged placeholder is what the *commit* was deployed as;
+        the tagged release names it.  A late-arriving placeholder write
+        -- resync, or the sweeper attaching by committish -- would
+        otherwise blank the tag the UI shows for the environment.
+        """
+        await self.add_release(RELEASE_ID, tag='2.0.0')
+        await self.add_release(OTHER_RELEASE_ID)
+        first = await self.upsert(status='in_progress')
+        second = await self.upsert(
+            status='success', release_id=OTHER_RELEASE_ID
+        )
+        self.assertIsNotNone(first)
+        assert second is not None
+        self.assertEqual([RELEASE_ID], await self.attached_releases(second.id))
+        # Losing the edge must not cost the writer its status write: the
+        # rollout still happened, and the tail's SET is what records it.
+        # A closing filter on the surviving edge (rather than
+        # ``attach_release``'s ``EXISTS``) would empty the pipeline here
+        # and drop the transition silently.
+        node = (await self.nodes())[0]
+        self.assertEqual('success', node['status'])
+        self.assertEqual(
+            ['in_progress', 'success'],
+            [entry['status'] for entry in node['history']],
+        )
+
+    async def test_attach_release_moves_the_edge(self) -> None:
+        await self.add_release(OTHER_RELEASE_ID, tag='2.0.0')
+        result = await self.upsert(status='in_progress')
+        assert result is not None
+        self.assertTrue(
+            await deployments.attach_release(
+                self.graph,
+                project_id=PROJECT_ID,
+                deployment_id=result.id,
+                release_id=OTHER_RELEASE_ID,
+            )
+        )
+        self.assertEqual(
+            [OTHER_RELEASE_ID], await self.attached_releases(result.id)
+        )
+
+    async def test_attach_release_keeps_a_tagged_release(self) -> None:
+        await self.add_release(RELEASE_ID, tag='2.0.0')
+        await self.add_release(OTHER_RELEASE_ID)
+        result = await self.upsert(status='in_progress')
+        assert result is not None
+        # A rejected attachment is not an attachment: the sweeper counts
+        # the return value, so it has to say the edge did not land.
+        self.assertFalse(
+            await deployments.attach_release(
+                self.graph,
+                project_id=PROJECT_ID,
+                deployment_id=result.id,
+                release_id=OTHER_RELEASE_ID,
+            )
+        )
+        self.assertEqual([RELEASE_ID], await self.attached_releases(result.id))
 
 
 class OriginTests(DeploymentNodeTestCase):
