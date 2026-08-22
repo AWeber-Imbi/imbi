@@ -65,6 +65,7 @@ from imbi.common.plugins import errors as plugin_errors
 from imbi.common.plugins.base import (
     Commit,
     CompareResult,
+    DependencyChange,
     DeploymentCapability,
     DeploymentRun,
     EnvironmentDeploymentState,
@@ -5120,6 +5121,7 @@ async def complete_promote_build(
 
 _PROMPT_COMMIT_CAP = 150
 _PROMPT_BODY_CAP = 2000
+_DEPENDENCY_BULLET_CAP = 30
 _SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
 
 
@@ -5289,6 +5291,7 @@ def _build_release_notes_prompt(
     base_sha: str,
     head_sha: str,
     commits: list[Commit],
+    dependency_changes: list[DependencyChange] | None = None,
 ) -> str:
     capped = commits[:_PROMPT_COMMIT_CAP]
     omitted = len(commits) - len(capped)
@@ -5313,9 +5316,94 @@ def _build_release_notes_prompt(
                     _truncate_commit_body(commit.body), '    '
                 ).rstrip()
             )
+    if dependency_changes:
+        body_lines.append('')
+        body_lines.append(
+            'Dependency changes (pre-extracted facts — '
+            'include each as a bullet under Changed):'
+        )
+        for dep in dependency_changes[:_DEPENDENCY_BULLET_CAP]:
+            if dep.kind == 'added':
+                body_lines.append(f'- Added `{dep.name}` at {dep.new_version}')
+            elif dep.kind == 'removed':
+                body_lines.append(
+                    f'- Removed `{dep.name}` (was {dep.old_version})'
+                )
+            else:
+                body_lines.append(
+                    f'- Updated `{dep.name}` from '
+                    f'{dep.old_version} to {dep.new_version}'
+                )
+        if len(dependency_changes) > _DEPENDENCY_BULLET_CAP:
+            body_lines.append(
+                f'- … and '
+                f'{len(dependency_changes) - _DEPENDENCY_BULLET_CAP}'
+                f' more'
+            )
     body_lines.append('')
     body_lines.append('Return the JSON object described in the system prompt.')
     return '\n'.join(body_lines)
+
+
+def _render_dependency_bullets(
+    changes: list[DependencyChange],
+) -> list[str]:
+    """Format dependency changes as markdown bullet lines."""
+    bullets: list[str] = []
+    for dep in changes[:_DEPENDENCY_BULLET_CAP]:
+        if dep.kind == 'added':
+            bullets.append(f'- Added `{dep.name}` at {dep.new_version}')
+        elif dep.kind == 'removed':
+            bullets.append(f'- Removed `{dep.name}` (was {dep.old_version})')
+        else:
+            bullets.append(
+                f'- Updated `{dep.name}` from '
+                f'{dep.old_version} to {dep.new_version}'
+            )
+    if len(changes) > _DEPENDENCY_BULLET_CAP:
+        bullets.append(
+            f'- … and {len(changes) - _DEPENDENCY_BULLET_CAP} '
+            f'more dependency changes'
+        )
+    return bullets
+
+
+_DEPENDENCY_SECTION_RE = re.compile(
+    r'^#{1,3}\s+(?:changed|dependencies)\s*$',
+    re.IGNORECASE,
+)
+_HEADING_RE = re.compile(r'^#{1,3}\s+')
+
+
+def _merge_dependency_bullets(
+    notes_markdown: str,
+    bullets: list[str],
+) -> str:
+    """Merge dependency bullets into existing release notes.
+
+    Appends the bullets to a ``### Changed`` section if one exists;
+    otherwise inserts a new ``### Changed`` section at the end of the
+    ``## What's Changed`` block.
+    """
+    if not bullets:
+        return notes_markdown
+    lines = notes_markdown.split('\n')
+    bullets = [b for b in bullets if b not in lines]
+    if not bullets:
+        return notes_markdown
+    bullet_block = '\n'.join(bullets)
+    insert_idx: int | None = None
+    for i, line in enumerate(lines):
+        if _DEPENDENCY_SECTION_RE.match(line.strip()):
+            j = i + 1
+            while j < len(lines) and not _HEADING_RE.match(lines[j].strip()):
+                j += 1
+            insert_idx = j
+            break
+    if insert_idx is not None:
+        lines.insert(insert_idx, bullet_block)
+        return '\n'.join(lines)
+    return notes_markdown.rstrip() + '\n\n### Changed\n' + bullet_block
 
 
 @project_deployments_router.post('/draft-release-notes')
@@ -5352,7 +5440,15 @@ async def draft_release_notes(
         )
     )
     commits = compare_result.commits
+    dep_changes = compare_result.dependency_changes
+    dep_bullets = _render_dependency_bullets(dep_changes)
     fallback_bump = _classify_bump(commits)
+    fallback_md = _fallback_notes(commits)
+    if dep_bullets:
+        fallback_md = _merge_dependency_bullets(
+            fallback_md,
+            dep_bullets,
+        )
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
         version=_bump_semver(body.last_tag, fallback_bump),
@@ -5360,7 +5456,7 @@ async def draft_release_notes(
             'AI unavailable — bump and notes derived from '
             'conventional-commit prefixes.'
         ),
-        notes_markdown=_fallback_notes(commits),
+        notes_markdown=fallback_md,
     )
     completion = await anthropic.complete_json(
         _build_release_notes_prompt(
@@ -5369,6 +5465,7 @@ async def draft_release_notes(
             body.base_sha,
             body.head_sha,
             commits,
+            dependency_changes=dep_changes,
         ),
         schema=DraftReleaseNotes,
         fallback=fallback,
@@ -5387,6 +5484,15 @@ async def draft_release_notes(
     if not notes.notes_markdown.strip() and commits:
         notes = notes.model_copy(
             update={'notes_markdown': _fallback_notes(commits)}
+        )
+    if dep_bullets and not completion.degraded:
+        notes = notes.model_copy(
+            update={
+                'notes_markdown': _merge_dependency_bullets(
+                    notes.notes_markdown,
+                    dep_bullets,
+                ),
+            },
         )
     return DraftReleaseNotesResponse(
         bump=notes.bump,

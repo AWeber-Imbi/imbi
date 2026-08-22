@@ -37,6 +37,7 @@ import collections.abc
 import contextlib
 import datetime
 import hashlib
+import json
 import logging
 import re
 import time
@@ -50,6 +51,7 @@ from imbi.common.plugins.base import (
     CheckStatus,
     Commit,
     CompareResult,
+    DependencyChange,
     DeploymentCapability,
     DeploymentEventStatus,
     DeploymentRun,
@@ -531,6 +533,157 @@ def _check_runs_to_status(
     return 'unknown'
 
 
+def _diff_dependencies(
+    base_deps: dict[str, str],
+    head_deps: dict[str, str],
+) -> list[DependencyChange]:
+    """Compare two ``dependencies`` / ``devDependencies`` maps."""
+    changes: list[DependencyChange] = []
+    all_names = sorted(set(base_deps) | set(head_deps))
+    for name in all_names:
+        old = base_deps.get(name)
+        new = head_deps.get(name)
+        if old is None and new is not None:
+            changes.append(
+                DependencyChange(
+                    name=name,
+                    new_version=new,
+                    kind='added',
+                )
+            )
+        elif old is not None and new is None:
+            changes.append(
+                DependencyChange(
+                    name=name,
+                    old_version=old,
+                    kind='removed',
+                )
+            )
+        elif old != new:
+            changes.append(
+                DependencyChange(
+                    name=name,
+                    old_version=old,
+                    new_version=new,
+                    kind='changed',
+                )
+            )
+    return changes
+
+
+def _str_dict(
+    content: dict[str, typing.Any],
+    key: str,
+) -> dict[str, str]:
+    """Extract a string-to-string mapping, tolerating malformed data."""
+    raw = content.get(key)
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        k: v
+        for k, v in raw.items()
+        if isinstance(k, str) and isinstance(v, str)
+    }
+
+
+async def _parse_package_json_dependency_changes(
+    client: httpx.AsyncClient,
+    files: list[dict[str, typing.Any]],
+    base_sha: str,
+    head_sha: str,
+) -> list[DependencyChange]:
+    """Extract dependency version changes from ``package.json`` files.
+
+    Checks the compare response's file list for any ``package.json``
+    paths, fetches the file content at both the base and head SHAs via
+    the Contents API, and diffs ``dependencies`` and
+    ``devDependencies``.  Best-effort: any fetch or parse failure
+    yields an empty list rather than failing the compare call.
+    """
+    pkg_files = [
+        f
+        for f in files
+        if str(f.get('filename') or '').endswith('package.json')
+    ]
+    if not pkg_files:
+        return []
+
+    all_changes: list[DependencyChange] = []
+    for pkg_file in pkg_files:
+        path = str(pkg_file['filename'])
+        status = str(pkg_file.get('status') or '')
+        base_path = path
+        if status == 'renamed':
+            previous = pkg_file.get('previous_filename')
+            if not isinstance(previous, str) or not previous:
+                continue
+            base_path = previous
+        base_content: dict[str, typing.Any] = {}
+        head_content: dict[str, typing.Any] = {}
+        if status != 'added':
+            base_content = await _fetch_json_file(
+                client,
+                base_path,
+                base_sha,
+            )
+        if status != 'removed':
+            head_content = await _fetch_json_file(
+                client,
+                path,
+                head_sha,
+            )
+        if not base_content and not head_content:
+            continue
+        base_deps = _str_dict(base_content, 'dependencies')
+        head_deps = _str_dict(head_content, 'dependencies')
+        base_dev = _str_dict(base_content, 'devDependencies')
+        head_dev = _str_dict(head_content, 'devDependencies')
+        all_changes.extend(_diff_dependencies(base_deps, head_deps))
+        all_changes.extend(_diff_dependencies(base_dev, head_dev))
+    return all_changes
+
+
+async def _fetch_json_file(
+    client: httpx.AsyncClient,
+    path: str,
+    ref: str,
+) -> dict[str, typing.Any]:
+    """Fetch and parse a JSON file at a specific ref.
+
+    Returns an empty dict on any failure so callers can proceed
+    without the file content.
+    """
+    encoded = urllib.parse.quote(path, safe='/')
+    try:
+        resp = await client.get(
+            f'/contents/{encoded}',
+            params={'ref': ref},
+            headers=_accept_header(),
+        )
+    except httpx.HTTPError:
+        return {}
+    if resp.status_code != 200:
+        return {}
+    try:
+        payload = typing.cast(dict[str, typing.Any], resp.json())
+    except ValueError:
+        return {}
+    content = str(payload.get('content') or '')
+    if payload.get('encoding') != 'base64' or not content:
+        return {}
+    try:
+        decoded = base64.b64decode(
+            ''.join(content.split()),
+            validate=True,
+        ).decode('utf-8')
+        return typing.cast(
+            dict[str, typing.Any],
+            json.loads(decoded),
+        )
+    except (ValueError, UnicodeDecodeError):
+        return {}
+
+
 class GitHubDeployment(DeploymentCapability):
     """GitHub deployment capability handler.
 
@@ -918,6 +1071,12 @@ class GitHubDeployment(DeploymentCapability):
             )
             base_sha = str(base_commit.get('sha') or base)
             head_sha = commits[-1].sha if commits else head
+            dep_changes = await _parse_package_json_dependency_changes(
+                client,
+                files,
+                base_sha,
+                head_sha,
+            )
             return CompareResult(
                 base_sha=base_sha,
                 head_sha=head_sha,
@@ -927,6 +1086,7 @@ class GitHubDeployment(DeploymentCapability):
                 files_changed=len(files),
                 additions=additions,
                 deletions=deletions,
+                dependency_changes=dep_changes,
             )
 
     # -- Git notes ----------------------------------------------------------

@@ -2225,6 +2225,186 @@ class FallbackNotesTestCase(unittest.TestCase):
         self.assertIn('### other', body)
 
 
+class RenderDependencyBulletsTestCase(unittest.TestCase):
+    """Direct tests for ``_render_dependency_bullets``."""
+
+    def test_changed_dependency(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _render_dependency_bullets,
+        )
+        from imbi.common.plugins.base import DependencyChange
+
+        changes = [
+            DependencyChange(
+                name='@lingui/react',
+                old_version='5.6.0',
+                new_version='5.6.1',
+                kind='changed',
+            ),
+        ]
+        bullets = _render_dependency_bullets(changes)
+        self.assertEqual(len(bullets), 1)
+        self.assertIn('`@lingui/react`', bullets[0])
+        self.assertIn('5.6.0', bullets[0])
+        self.assertIn('5.6.1', bullets[0])
+
+    def test_added_dependency(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _render_dependency_bullets,
+        )
+        from imbi.common.plugins.base import DependencyChange
+
+        changes = [
+            DependencyChange(
+                name='react', new_version='^18.0.0', kind='added'
+            ),
+        ]
+        bullets = _render_dependency_bullets(changes)
+        self.assertEqual(len(bullets), 1)
+        self.assertIn('Added', bullets[0])
+        self.assertIn('`react`', bullets[0])
+
+    def test_removed_dependency(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _render_dependency_bullets,
+        )
+        from imbi.common.plugins.base import DependencyChange
+
+        changes = [
+            DependencyChange(
+                name='lodash', old_version='^4.0.0', kind='removed'
+            ),
+        ]
+        bullets = _render_dependency_bullets(changes)
+        self.assertEqual(len(bullets), 1)
+        self.assertIn('Removed', bullets[0])
+        self.assertIn('`lodash`', bullets[0])
+
+    def test_empty_returns_empty(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _render_dependency_bullets,
+        )
+
+        self.assertEqual(_render_dependency_bullets([]), [])
+
+    def test_cap_adds_overflow_line(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _DEPENDENCY_BULLET_CAP,
+            _render_dependency_bullets,
+        )
+        from imbi.common.plugins.base import DependencyChange
+
+        changes = [
+            DependencyChange(
+                name=f'pkg-{i}',
+                old_version='1.0.0',
+                new_version='2.0.0',
+                kind='changed',
+            )
+            for i in range(_DEPENDENCY_BULLET_CAP + 5)
+        ]
+        bullets = _render_dependency_bullets(changes)
+        self.assertEqual(len(bullets), _DEPENDENCY_BULLET_CAP + 1)
+        self.assertIn('5 more', bullets[-1])
+
+
+class MergeDependencyBulletsTestCase(unittest.TestCase):
+    """Direct tests for ``_merge_dependency_bullets``."""
+
+    def test_appends_to_existing_changed_section(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _merge_dependency_bullets,
+        )
+
+        notes = (
+            "## What's Changed\n\n"
+            '### Changed\n'
+            '- Some change\n'
+            '\n'
+            '### Fixed\n'
+            '- A fix\n'
+        )
+        bullets = ['- Updated `foo` from 1.0.0 to 2.0.0']
+        result = _merge_dependency_bullets(notes, bullets)
+        self.assertIn('- Updated `foo` from 1.0.0 to 2.0.0', result)
+        self.assertIn('- Some change', result)
+        idx_change = result.index('- Some change')
+        idx_dep = result.index('- Updated `foo`')
+        self.assertGreater(idx_dep, idx_change)
+
+    def test_creates_changed_section_when_absent(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _merge_dependency_bullets,
+        )
+
+        notes = "## What's Changed\n\n### Fixed\n- A fix\n"
+        bullets = ['- Updated `bar` from 1.0.0 to 2.0.0']
+        result = _merge_dependency_bullets(notes, bullets)
+        self.assertIn('### Changed', result)
+        self.assertIn('- Updated `bar`', result)
+
+    def test_empty_bullets_returns_unchanged(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _merge_dependency_bullets,
+        )
+
+        notes = '### Changed\n- Stuff\n'
+        result = _merge_dependency_bullets(notes, [])
+        self.assertEqual(result, notes)
+
+    def test_prompt_includes_dependency_facts(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _build_release_notes_prompt,
+        )
+        from imbi.common.plugins.base import DependencyChange
+
+        changes = [
+            DependencyChange(
+                name='@lingui/react',
+                old_version='5.6.0',
+                new_version='5.6.1',
+                kind='changed',
+            ),
+        ]
+        prompt = _build_release_notes_prompt(
+            'proj', 'v1.0.0', 'a', 'b', [], dependency_changes=changes
+        )
+        self.assertIn('Dependency changes', prompt)
+        self.assertIn('`@lingui/react`', prompt)
+        self.assertIn('5.6.0', prompt)
+        self.assertIn('5.6.1', prompt)
+
+
+class DuplicateBulletTestCase(unittest.TestCase):
+    """Verify bullets already in notes are not duplicated."""
+
+    def test_skips_bullets_already_present(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _merge_dependency_bullets,
+        )
+
+        bullet = '- Updated `@lingui/react` from 5.6.0 to 5.6.1'
+        notes = f"## What's Changed\n\n### Changed\n{bullet}\n"
+        result = _merge_dependency_bullets(notes, [bullet])
+        self.assertEqual(
+            result.count(bullet),
+            1,
+            'Bullet should not be duplicated',
+        )
+
+    def test_adds_only_missing_bullets(self) -> None:
+        from imbi.api.endpoints.project_deployments import (
+            _merge_dependency_bullets,
+        )
+
+        existing = '- Updated `@lingui/react` from 5.6.0 to 5.6.1'
+        new_bullet = '- Updated `zod` from 3.0.0 to 4.0.0'
+        notes = f"## What's Changed\n\n### Changed\n{existing}\n"
+        result = _merge_dependency_bullets(notes, [existing, new_bullet])
+        self.assertEqual(result.count(existing), 1)
+        self.assertIn(new_bullet, result)
+
+
 class LatestDeploymentTimestampTestCase(unittest.TestCase):
     """Direct tests for ``_latest_deployment_timestamp``."""
 
