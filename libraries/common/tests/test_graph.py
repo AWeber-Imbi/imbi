@@ -551,6 +551,28 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([conns[0], conns[1]], seen)
         conns[0].close.assert_not_awaited()
 
+    async def test_a_second_lost_race_propagates(self) -> None:
+        """One retry, not a loop: two writers can keep colliding."""
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+        seen: list[typing.Any] = []
+
+        async def run(conn: typing.Any) -> str:
+            seen.append(conn)
+            raise psycopg.errors.InternalError_(
+                'Entity failed to be updated: 3'
+            )
+
+        with self.assertLogs(client.LOGGER, level='WARNING'):
+            with self.assertRaises(psycopg.errors.InternalError_):
+                await g._run_retrying_poisoned(run)
+        self.assertEqual([conns[0], conns[1]], seen)
+        self.assertEqual(2, pool.connection.call_count)
+        conns[0].close.assert_not_awaited()
+        conns[1].close.assert_not_awaited()
+
     async def test_other_internal_errors_do_not_retry(self) -> None:
         g = graph.Graph()
         g.opened = True
