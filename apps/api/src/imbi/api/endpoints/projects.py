@@ -40,7 +40,7 @@ from imbi.api.plugins.resolution import resolve_all_capabilities
 from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
-from imbi.common import blueprints, clickhouse, graph, models
+from imbi.common import blueprints, clickhouse, graph, models, versioning
 from imbi.common import deployments as deployment_nodes
 from imbi.common import patch as json_patch
 from imbi.common.clickhouse import client as ch_client
@@ -53,52 +53,6 @@ from imbi.common.plugins.base import (
 from imbi.common.scoring import compute_score
 
 LOGGER = logging.getLogger(__name__)
-
-_RELEASE_SEMVER_RE = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
-
-
-def _release_semver_key(
-    name: str,
-) -> tuple[int, int, int] | None:
-    """Return ``(major, minor, patch)`` for semver tags; ``None`` if not."""
-    m = _RELEASE_SEMVER_RE.match(name)
-    if not m:
-        return None
-    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-
-
-def _pick_latest_tag(
-    rows: list[dict[str, typing.Any]],
-) -> dict[str, typing.Any] | None:
-    """Pick the latest release tag (highest semver) from ``tags`` rows.
-
-    Mirrors ``_latest_release_tag`` in ``project_deployments`` but is
-    local to avoid a circular import (project_deployments → releases →
-    projects).
-
-    Only semver tags are considered; non-semver rows are ignored so an
-    ad-hoc tag (e.g. ``deploy-20240101``) never wins over a real release.
-    """
-    semver_rows = [
-        row
-        for row in rows
-        if _release_semver_key(str(row.get('name', ''))) is not None
-    ]
-    if not semver_rows:
-        return None
-
-    def _key(
-        r: dict[str, typing.Any],
-    ) -> tuple[tuple[int, int, int], str]:
-        sv = _release_semver_key(str(r.get('name', '')))
-        when = r.get('tagged_at') or r.get('recorded_at')
-        when_key = (
-            when.isoformat() if isinstance(when, datetime.datetime) else ''
-        )
-        return (sv or (0, 0, 0), when_key)
-
-    return max(semver_rows, key=_key)
-
 
 projects_router = fastapi.APIRouter(tags=['Projects'])
 
@@ -232,8 +186,10 @@ class LatestDeployment(pydantic.BaseModel):
 class ReleaseSummary(pydantic.BaseModel):
     """Minimal release-drift summary for the projects-list view.
 
-    head_sha is the latest commit on main; latest_tag is the most recent
-    semver release tag; commits_since_tag is the number of unreleased
+    head_sha is the latest commit on main; latest_tag is the current
+    release tag, ranked by
+    :func:`~imbi.common.versioning.latest_release_tag` so it matches the
+    project's Releases tab; commits_since_tag is the number of unreleased
     commits, and drift_detected says whether any of them matters.
     """
 
@@ -1214,15 +1170,65 @@ async def _evaluate_environment_drift(
     return out
 
 
+def _release_range_cutoffs(
+    latest_by_pid: dict[str, dict[str, typing.Any] | None],
+    authored_by_project: dict[str, dict[str, datetime.datetime]],
+    tagged_pids: list[str],
+) -> list[tuple[str, datetime.datetime, int]]:
+    """Return ``(project_id, cutoff, mode)`` for the unreleased range.
+
+    The cutoff is the *selected tag commit's* ``authored_at``, the same
+    boundary the per-project release-drift endpoint filters on, so both
+    views report one ``commits_since_tag``.  Ranking the tag by its
+    commit but then measuring from when the tag was cut is what let a
+    delayed tag hide the commits in between: 1.0.0 naming a January
+    commit but pushed in February counted only commits after February,
+    dropping January's unreleased work from the count and from
+    ``drift_detected`` (#279).
+
+    ``mode`` picks the column to compare against.  Mode 1 compares
+    ``authored_at``, matching release-drift.  Mode 0 is the degraded
+    fallback for a tag whose commit never synced: with no authored time
+    to measure from it keeps the tag timestamp, compared against
+    ``COALESCE(committed_at, authored_at)`` -- against a tag *creation*
+    time the committer date is the better proxy for when a commit
+    landed, since a cherry-pick or a rebase keeps the original author
+    date but resets the committer date (15% of synced commits have the
+    two disagreeing).  A tag with neither is dropped rather than
+    counting all of history.
+    """
+    cutoffs: list[tuple[str, datetime.datetime, int]] = []
+    for pid in tagged_pids:
+        tag = latest_by_pid[pid] or {}
+        sha = str(tag.get('sha') or '').lower()
+        authored = authored_by_project.get(pid, {}).get(sha)
+        if authored is not None:
+            cutoffs.append((pid, authored, 1))
+            continue
+        fallback = clickhouse.as_utc_or_none(
+            tag.get('tagged_at') or tag.get('recorded_at')
+        )
+        if fallback is not None:
+            cutoffs.append((pid, fallback, 0))
+    return cutoffs
+
+
 async def _fetch_release_summaries(
     project_ids: list[str],
 ) -> dict[str, ReleaseSummary]:
     """Return {project_id: ReleaseSummary} for releasable projects.
 
-    Two ClickHouse queries: one for latest tags, one for latest commit
-    SHA.  Uses the same semver-max logic as the per-project
-    release-drift endpoint.  Errors are swallowed — release data is
-    best-effort.
+    Three ClickHouse queries: one for tags, one for each project's latest
+    commit, and one for the authored time of the commits those tags point
+    at.  That third query is what lets this rank tags with the shared
+    :func:`~imbi.common.versioning.latest_release_tag`, the same way the
+    per-project release-drift and release-history endpoints do -- so the
+    projects list and a project's Releases tab name the same current
+    release (#279).  It also bounds the unreleased-commit range, which
+    starts at the selected tag commit's authored time rather than at
+    whenever the tag itself was pushed, so ``commits_since_tag`` and
+    ``drift_detected`` agree with the Releases tab too.  Errors are
+    swallowed — release data is best-effort.
     """
     if not project_ids:
         return {}
@@ -1264,17 +1270,58 @@ async def _fetch_release_summaries(
         if row.get('project_id') and row.get('sha')
     }
 
-    # Resolve each project's latest semver tag and its timestamp so we
+    # Authored time of every tagged commit, grouped by project then sha
+    # since one sha can appear under several projects.  ``authored_at``
+    # -- not ``committed_at`` -- because this feeds the tag ranking, and the
+    # release-drift and release-history endpoints rank on ``authored_at``;
+    # ranking on a different column here is exactly how the two views
+    # came to disagree.  A failure yields an empty map, which degrades to
+    # highest-version ordering rather than dropping the summaries.
+    authored_by_project: dict[str, dict[str, datetime.datetime]] = {}
+    tagged_shas = sorted(
+        {
+            str(row['sha']).lower()
+            for row in tag_rows
+            if row.get('sha') and row.get('project_id')
+        }
+    )
+    if tagged_shas:
+        try:
+            authored_rows = await clickhouse.query(
+                'SELECT project_id, sha, authored_at'
+                ' FROM commits FINAL'
+                ' WHERE project_id IN {project_ids:Array(String)}'
+                ' AND lower(sha) IN {shas:Array(String)}',
+                {'project_ids': project_ids, 'shas': tagged_shas},
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                'Failed to fetch authored times for tagged commits',
+                exc_info=True,
+            )
+        else:
+            for row in authored_rows:
+                at = clickhouse.as_utc_or_none(row.get('authored_at'))
+                if not (row.get('project_id') and row.get('sha') and at):
+                    continue
+                by_sha = authored_by_project.setdefault(
+                    str(row['project_id']), {}
+                )
+                by_sha[str(row['sha']).lower()] = at
+
+    # Resolve each project's latest release tag and its timestamp so we
     # can query commit counts after that point.
     all_pids = set(tags_by_project.keys()) | set(head_by_project.keys())
     latest_by_pid: dict[str, dict[str, typing.Any] | None] = {
-        pid: _pick_latest_tag(tags_by_project.get(pid, [])) for pid in all_pids
+        pid: versioning.latest_release_tag(
+            tags_by_project.get(pid, []),
+            authored_by_project.get(pid, {}),
+        )
+        for pid in all_pids
     }
 
-    # Batch-fetch commit counts since each project's latest tag.
-    # Build a list of (project_id, tag_authored_at) tuples so a single
-    # ClickHouse query can count unreleased commits per project.
-    # Projects with no prior tag get a cutoff of epoch-start (count all).
+    # Batch-fetch commit counts since each project's latest tag, so a
+    # single ClickHouse query covers every project's unreleased range.
     tagged_pids = [
         pid for pid, tag in latest_by_pid.items() if tag is not None
     ]
@@ -1282,31 +1329,12 @@ async def _fetch_release_summaries(
     drift_by_pid: dict[str, tuple[bool, int]] = {}
     if tagged_pids:
         try:
-            # For each project, count commits that landed after the
-            # tag's recorded_at/tagged_at (the closest proxy we have to
-            # when the tag commit landed without a separate sha→time
-            # look-up).
-            #
-            # ``committed_at``, not ``authored_at``: a cherry-pick or a
-            # rebase keeps the original author date but resets the
-            # committer date, so the author date would date those
-            # commits before a tag they actually landed after.  15% of
-            # synced commits have the two disagreeing.
-            tag_times = [
-                (latest_by_pid[pid] or {}).get('tagged_at')
-                or (latest_by_pid[pid] or {}).get('recorded_at')
-                for pid in tagged_pids
-            ]
-            # Build per-project WHERE via countIf for a single scan.
-            # Rows without a valid tag timestamp are excluded from the
-            # list, so we can safely cast to datetime.
-            pid_cutoff: list[tuple[str, datetime.datetime]] = [
-                (pid, t)
-                for pid, t in zip(tagged_pids, tag_times, strict=True)
-                if isinstance(t, datetime.datetime)
-            ]
+            pid_cutoff = _release_range_cutoffs(
+                latest_by_pid, authored_by_project, tagged_pids
+            )
             if pid_cutoff:
-                cutoff_map = dict(pid_cutoff)
+                cutoff_map = {pid: cut for pid, cut, _ in pid_cutoff}
+                mode_map = {pid: mode for pid, _, mode in pid_cutoff}
                 # Build the per-project cutoff map server-side from two
                 # parallel arrays.  Passing a dict for a Map(...) parameter
                 # trips a clickhouse-connect binding bug: dicts serialize as
@@ -1329,13 +1357,17 @@ async def _fetch_release_summaries(
                     ' WHERE project_id IN {pids:Array(String)}) AS d'
                     ' ON d.project_id = c.project_id AND d.sha = c.sha'
                     ' WHERE c.project_id IN {pids:Array(String)}'
-                    ' AND COALESCE(c.committed_at, c.authored_at) >'
+                    ' AND if(mapFromArrays({pids:Array(String)},'
+                    ' {modes:Array(UInt8)})[c.project_id] = 1,'
+                    ' c.authored_at,'
+                    ' COALESCE(c.committed_at, c.authored_at)) >'
                     ' mapFromArrays({pids:Array(String)},'
                     ' {cuts:Array(DateTime64(3))})[c.project_id]'
                     ' GROUP BY c.project_id',
                     {
                         'pids': list(cutoff_map.keys()),
                         'cuts': list(cutoff_map.values()),
+                        'modes': [mode_map[pid] for pid in cutoff_map],
                     },
                 )
                 # Projects whose range is empty drop out of the result

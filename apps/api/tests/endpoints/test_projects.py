@@ -2738,9 +2738,11 @@ class ReleaseSummaryTimestampTestCase(unittest.IsolatedAsyncioTestCase):
                 'authored_at': self.NAIVE,
             }
         ]
+        # Four queries: tags, head commit, authored times for the tagged
+        # commits, then the commit counts since the tag.
         with mock.patch(
             'imbi.api.endpoints.projects.clickhouse.query',
-            mock.AsyncMock(side_effect=[tag_rows, head_rows, []]),
+            mock.AsyncMock(side_effect=[tag_rows, head_rows, [], []]),
         ):
             result = await projects._fetch_release_summaries(['p1'])
         return result['p1']
@@ -2793,3 +2795,171 @@ class ReleaseSummaryTimestampTestCase(unittest.IsolatedAsyncioTestCase):
             }
         )
         self.assertIsNone(summary.latest_tag_at)
+
+
+class ReleaseSummaryRankingTestCase(unittest.IsolatedAsyncioTestCase):
+    """The projects list must name the same release as the Releases tab.
+
+    Both rank the ClickHouse ``tags`` rows with
+    ``versioning.latest_release_tag``, keyed on the tagged commit's
+    authored time.  While this endpoint carried its own highest-semver
+    copy of that logic, a stray high-numbered tag from an abandoned
+    versioning scheme won here and lost there, so one project reported
+    two different current releases (#279).
+    """
+
+    def _tags(self) -> list[dict[str, typing.Any]]:
+        # Trimmed from the mcp-grafana tag set in #279: 1.0.0 is a
+        # leftover on the oldest commit, 0.17.0-2 is on HEAD.
+        return [
+            {
+                'project_id': 'p1',
+                'name': '1.0.0',
+                'sha': 'b' * 40,
+                'tagged_at': datetime.datetime(2025, 6, 4),  # noqa: DTZ001
+                'recorded_at': None,
+                'tagger_name': '',
+            },
+            {
+                'project_id': 'p1',
+                'name': '0.17.0-2',
+                'sha': 'c' * 40,
+                'tagged_at': datetime.datetime(2026, 8, 21),  # noqa: DTZ001
+                'recorded_at': None,
+                'tagger_name': 'Rel Bot',
+            },
+        ]
+
+    async def _latest_tag(
+        self, authored_rows: list[dict[str, typing.Any]]
+    ) -> typing.Any:
+        from imbi.api.endpoints import projects
+
+        head_rows = [
+            {
+                'project_id': 'p1',
+                'sha': 'c' * 40,
+                'short_sha': 'c' * 7,
+                'author_name': 'Alice',
+                'author_user': 'alice',
+                'authored_at': datetime.datetime(2026, 8, 19),  # noqa: DTZ001
+            }
+        ]
+        with mock.patch(
+            'imbi.api.endpoints.projects.clickhouse.query',
+            mock.AsyncMock(
+                side_effect=[self._tags(), head_rows, authored_rows, []]
+            ),
+        ):
+            result = await projects._fetch_release_summaries(['p1'])
+        return result['p1']
+
+    async def test_tag_on_newest_commit_wins(self) -> None:
+        summary = await self._latest_tag(
+            [
+                {
+                    'project_id': 'p1',
+                    'sha': 'b' * 40,
+                    'authored_at': datetime.datetime(2025, 6, 4),  # noqa: DTZ001
+                },
+                {
+                    'project_id': 'p1',
+                    'sha': 'c' * 40,
+                    'authored_at': datetime.datetime(2026, 8, 19),  # noqa: DTZ001
+                },
+            ]
+        )
+        self.assertEqual(summary.latest_tag, '0.17.0-2')
+        self.assertEqual(summary.latest_tag_sha, 'c' * 40)
+
+    async def test_falls_back_to_version_order_without_commits(self) -> None:
+        # The commits query answering nothing must not drop the summary;
+        # it degrades to highest-version ordering.
+        summary = await self._latest_tag([])
+        self.assertEqual(summary.latest_tag, '1.0.0')
+
+    async def test_commit_query_failure_is_swallowed(self) -> None:
+        from imbi.api.endpoints import projects
+
+        head_rows: list[dict[str, typing.Any]] = []
+        with (
+            mock.patch(
+                'imbi.api.endpoints.projects.clickhouse.query',
+                mock.AsyncMock(
+                    side_effect=[
+                        self._tags(),
+                        head_rows,
+                        RuntimeError('clickhouse down'),
+                        [],
+                    ]
+                ),
+            ),
+            self.assertLogs('imbi.api.endpoints.projects', level='WARNING'),
+        ):
+            result = await projects._fetch_release_summaries(['p1'])
+        # Still a summary, ranked without commit context.
+        self.assertEqual(result['p1'].latest_tag, '1.0.0')
+
+
+class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
+    """A tag cut after its commit must not hide the commits between.
+
+    ``latest_release_tag`` picks the tag by its commit's authored time,
+    so the unreleased range has to start there too -- release-drift
+    bounds its own range with exactly that value.  Measuring from
+    ``tagged_at`` instead dropped every commit authored between the
+    tagged commit and the moment the tag was pushed, so the projects
+    list reported fewer unreleased commits, and a cleaner
+    ``drift_detected``, than the same project's Releases tab (#279).
+    """
+
+    TAG_SHA = 'b' * 40
+    # The tag names a January commit but was not pushed until February.
+    COMMIT_AUTHORED = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    TAG_PUSHED = datetime.datetime(2026, 2, 1)  # noqa: DTZ001
+
+    async def _count_params(
+        self, authored_rows: list[dict[str, typing.Any]]
+    ) -> dict[str, typing.Any]:
+        from imbi.api.endpoints import projects
+
+        tag_rows = [
+            {
+                'project_id': 'p1',
+                'name': '1.0.0',
+                'sha': self.TAG_SHA,
+                'tagged_at': self.TAG_PUSHED,
+                'recorded_at': None,
+                'tagger_name': 'Rel Bot',
+            }
+        ]
+        # tags, head commit, authored times, then the counts query whose
+        # bound params carry the range boundary under test.
+        query = mock.AsyncMock(side_effect=[tag_rows, [], authored_rows, []])
+        with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
+            await projects._fetch_release_summaries(['p1'])
+        return query.await_args_list[-1].args[1]
+
+    async def test_cutoff_is_the_tagged_commits_authored_time(self) -> None:
+        params = await self._count_params(
+            [
+                {
+                    'project_id': 'p1',
+                    'sha': self.TAG_SHA,
+                    'authored_at': self.COMMIT_AUTHORED,
+                }
+            ]
+        )
+        self.assertEqual(params['cuts'], [self.COMMIT_AUTHORED])
+        # Mode 1 compares ``authored_at``, the column release-drift
+        # filters on, so both views bound the range identically.
+        self.assertEqual(params['modes'], [1])
+
+    async def test_cutoff_falls_back_when_tagged_commit_unsynced(self) -> None:
+        # No authored time to measure from, so the tag timestamp stands
+        # in and mode 0 keeps the committer-date comparison.
+        params = await self._count_params([])
+        self.assertEqual(
+            params['cuts'], [self.TAG_PUSHED.replace(tzinfo=datetime.UTC)]
+        )
+        self.assertEqual(params['modes'], [0])
