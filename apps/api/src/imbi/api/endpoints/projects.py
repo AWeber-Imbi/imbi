@@ -1302,6 +1302,7 @@ async def _fetch_authored_times(
     """
     authored_by_project: dict[str, dict[str, datetime.datetime]] = {}
     degraded: set[str] = set()
+    failure: Exception | None = None
     for batch_pids, batch_shas in _param_batches(shas_by_project):
         try:
             rows = await clickhouse.query(
@@ -1311,8 +1312,9 @@ async def _fetch_authored_times(
                 ' AND lower(sha) IN {shas:Array(String)}',
                 {'project_ids': batch_pids, 'shas': batch_shas},
             )
-        except Exception:  # noqa: BLE001 -- best-effort, see below
+        except Exception as exc:  # noqa: BLE001 -- best-effort, see below
             degraded.update(batch_pids)
+            failure = failure or exc
             continue
         for row in rows:
             at = clickhouse.as_utc_or_none(row.get('authored_at'))
@@ -1321,16 +1323,26 @@ async def _fetch_authored_times(
             by_sha = authored_by_project.setdefault(str(row['project_id']), {})
             by_sha[str(row['sha']).lower()] = at
     if degraded:
+        # A project straddling a batch boundary keeps whatever its
+        # surviving batches returned, and ranking from a *partial* tag
+        # set is worse than not ranking at all: the tags that resolved
+        # outrank the ones that didn't regardless of their commits, which
+        # is neither the right answer nor the documented fallback.  Drop
+        # them so these projects take the highest-version fallback whole.
+        for pid in degraded:
+            authored_by_project.pop(pid, None)
         # Not merely a failed query: these projects fall back to
         # highest-version ranking.  Say so, so a silent regression to the
         # pre-#280 behaviour is visible rather than reading like ordinary
-        # missing tag data.
+        # missing tag data.  ``exc_info`` takes the captured exception --
+        # this runs outside the ``except`` block, where a bare ``True``
+        # would find no active exception and log no traceback.
         LOGGER.error(
             'Failed to fetch authored times for %d of %d tagged projects; '
             'their release tags fall back to highest-version ranking',
             len(degraded),
             len(shas_by_project),
-            exc_info=True,
+            exc_info=failure,
         )
     return authored_by_project
 

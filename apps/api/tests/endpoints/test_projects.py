@@ -3092,6 +3092,47 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('1.0.0', ranked)
         self.assertIn('fall back to highest-version', logs.output[0])
 
+    async def test_partial_project_takes_the_fallback_whole(self) -> None:
+        # A project straddling a batch boundary must not rank from the
+        # half of its tags that happened to survive: the resolved tags
+        # would outrank the unresolved ones whatever their commits, which
+        # is neither correct nor the documented fallback.
+        from imbi.api.endpoints import projects
+
+        # One project big enough to span batches on its own.
+        shas = [f'{n:040d}' for n in range(4000)]
+        batches = projects._param_batches({'p1': shas})
+        self.assertGreater(len(batches), 1, 'expected a split project')
+
+        calls = {'n': 0}
+
+        async def dispatch(
+            sql: str, params: dict[str, typing.Any] | None = None
+        ) -> list[dict[str, typing.Any]]:
+            calls['n'] += 1
+            if calls['n'] > 1:
+                raise RuntimeError('Field value too long')
+            return [
+                {
+                    'project_id': 'p1',
+                    'sha': sha,
+                    'authored_at': datetime.datetime(2026, 8, 19),  # noqa: DTZ001
+                }
+                for sha in (params or {}).get('shas', [])
+            ]
+
+        with (
+            mock.patch(
+                'imbi.api.endpoints.projects.clickhouse.query',
+                mock.AsyncMock(side_effect=dispatch),
+            ),
+            self.assertLogs('imbi.api.endpoints.projects', level='ERROR'),
+        ):
+            authored = await projects._fetch_authored_times({'p1': shas})
+        # The first batch succeeded, but p1 is degraded overall, so it
+        # must carry no authored times at all rather than a partial set.
+        self.assertNotIn('p1', authored)
+
 
 class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
     """A tag cut after its commit must not hide the commits between.
