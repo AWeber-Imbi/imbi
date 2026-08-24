@@ -3005,7 +3005,9 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
                     'project_id': f'p{pid:03d}',
                     'name': '0.17.0-2',
                     'sha': f'{pid:03d}new'.ljust(40, 'b'),
-                    'tagged_at': datetime.datetime(2026, 8, 21),  # noqa: DTZ001
+                    'tagged_at': (
+                        datetime.datetime(2026, 8, 21)  # noqa: DTZ001
+                    ),
                     'recorded_at': None,
                     'tagger_name': 'Rel Bot',
                 }
@@ -3116,7 +3118,9 @@ class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
                 {
                     'project_id': 'p1',
                     'sha': sha,
-                    'authored_at': datetime.datetime(2026, 8, 19),  # noqa: DTZ001
+                    'authored_at': (
+                        datetime.datetime(2026, 8, 19)  # noqa: DTZ001
+                    ),
                 }
                 for sha in (params or {}).get('shas', [])
             ]
