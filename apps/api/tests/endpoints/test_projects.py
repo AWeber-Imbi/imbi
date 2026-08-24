@@ -2901,6 +2901,198 @@ class ReleaseSummaryRankingTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['p1'].latest_tag, '1.0.0')
 
 
+class ParamBatchTestCase(unittest.TestCase):
+    """The authored-times parameters must stay under the form-field cap.
+
+    ``clickhouse.query`` sends each bound parameter as an HTTP form
+    field, which ClickHouse caps at ``http_max_field_value_size``
+    (131072 bytes).  One query carrying every tagged sha in the org
+    breached it -- measured at 2979 shas against production -- and the
+    swallowed failure took the *whole* org's ranking back to
+    highest-version order, so the projects list named 1.0.0 while the
+    Releases tab named 0.17.0-2 (#281).
+    """
+
+    def _budget(self) -> int:
+        from imbi.api.endpoints import projects
+
+        return projects._PARAM_BYTE_BUDGET
+
+    def _batches(
+        self, shas_by_project: dict[str, list[str]]
+    ) -> list[tuple[list[str], list[str]]]:
+        from imbi.api.endpoints import projects
+
+        return projects._param_batches(shas_by_project)
+
+    def _assert_within_budget(
+        self, batches: list[tuple[list[str], list[str]]]
+    ) -> None:
+        budget = self._budget()
+        for pids, shas in batches:
+            for values in (pids, shas):
+                size = sum(len(value) + 3 for value in values)
+                self.assertLessEqual(size, budget)
+
+    def test_small_input_is_a_single_batch(self) -> None:
+        # The common case must not pay for extra round trips.
+        batches = self._batches({'p1': ['a' * 40, 'b' * 40]})
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(batches[0][0], ['p1'])
+        self.assertEqual(batches[0][1], ['a' * 40, 'b' * 40])
+
+    def test_org_scale_splits_and_covers_every_sha(self) -> None:
+        # 200 projects x 30 tags ~= the production shape that failed.
+        shas_by_project = {
+            f'p{pid:03d}': [
+                f'{pid:03d}{tag:03d}'.ljust(40, 'f') for tag in range(30)
+            ]
+            for pid in range(200)
+        }
+        batches = self._batches(shas_by_project)
+        self.assertGreater(len(batches), 1)
+        self._assert_within_budget(batches)
+
+        expected = {
+            (pid, sha) for pid, shas in shas_by_project.items() for sha in shas
+        }
+        seen = {
+            (pid, sha)
+            for pids, shas in batches
+            for pid in pids
+            for sha in shas
+        }
+        # Every pair is queryable; the batch it lands in doesn't matter
+        # because results merge by (project_id, sha).
+        self.assertTrue(expected <= seen)
+
+    def test_single_oversized_project_is_split(self) -> None:
+        # One project can exceed the budget on its own; it must not be
+        # emitted as an unsendable batch.
+        shas = [f'{n:040d}' for n in range(5000)]
+        batches = self._batches({'p1': shas})
+        self.assertGreater(len(batches), 1)
+        self._assert_within_budget(batches)
+        self.assertEqual(
+            {sha for _, batch_shas in batches for sha in batch_shas},
+            set(shas),
+        )
+
+
+class ReleaseSummaryBatchedAuthoredTestCase(unittest.IsolatedAsyncioTestCase):
+    """Batching must not change the ranking, and must fail narrowly."""
+
+    def setUp(self) -> None:
+        self.authored_calls: dict[str, int] = {'n': 0}
+
+    def _tags(self, count: int) -> list[dict[str, typing.Any]]:
+        # Every project carries the #279 shape: a leftover high 1.0.0 on
+        # an old commit, and the real release on the newest commit.
+        rows: list[dict[str, typing.Any]] = []
+        for pid in range(count):
+            rows.append(
+                {
+                    'project_id': f'p{pid:03d}',
+                    'name': '1.0.0',
+                    'sha': f'{pid:03d}old'.ljust(40, 'a'),
+                    'tagged_at': datetime.datetime(2025, 6, 4),  # noqa: DTZ001
+                    'recorded_at': None,
+                    'tagger_name': '',
+                }
+            )
+            rows.append(
+                {
+                    'project_id': f'p{pid:03d}',
+                    'name': '0.17.0-2',
+                    'sha': f'{pid:03d}new'.ljust(40, 'b'),
+                    'tagged_at': datetime.datetime(2026, 8, 21),  # noqa: DTZ001
+                    'recorded_at': None,
+                    'tagger_name': 'Rel Bot',
+                }
+            )
+        return rows
+
+    #: Enough projects that the tagged shas exceed the byte budget and
+    #: must split -- ~2000 x 2 x 43 bytes vs a 65536 budget, the same
+    #: shape as the 4710 shas production carries.
+    SCALE = 2000
+
+    def _query(
+        self, tag_rows: list[dict[str, typing.Any]], fail_after: int | None
+    ) -> mock.AsyncMock:
+        authored_calls = self.authored_calls
+
+        async def dispatch(
+            sql: str, params: dict[str, typing.Any] | None = None
+        ) -> list[dict[str, typing.Any]]:
+            params = params or {}
+            if 'FROM tags FINAL' in sql:
+                return tag_rows
+            if 'SELECT project_id, sha, authored_at' in sql:
+                authored_calls['n'] += 1
+                if fail_after is not None and authored_calls['n'] > fail_after:
+                    raise RuntimeError('Field value too long')
+                wanted = set(params.get('shas') or [])
+                return [
+                    {
+                        'project_id': row['project_id'],
+                        'sha': row['sha'],
+                        'authored_at': (
+                            datetime.datetime(2025, 6, 4)  # noqa: DTZ001
+                            if row['name'] == '1.0.0'
+                            else datetime.datetime(2026, 8, 19)  # noqa: DTZ001
+                        ),
+                    }
+                    for row in tag_rows
+                    if row['sha'] in wanted
+                    and row['project_id']
+                    in set(params.get('project_ids') or [])
+                ]
+            return []
+
+        return mock.AsyncMock(side_effect=dispatch)
+
+    async def test_ranking_survives_org_scale(self) -> None:
+        from imbi.api.endpoints import projects
+
+        tag_rows = self._tags(self.SCALE)
+        pids = sorted({str(row['project_id']) for row in tag_rows})
+        with mock.patch(
+            'imbi.api.endpoints.projects.clickhouse.query',
+            self._query(tag_rows, fail_after=None),
+        ):
+            result = await projects._fetch_release_summaries(pids)
+        # The batching is the point of the test, so assert it happened
+        # rather than trusting the payload stayed oversized.
+        self.assertGreater(self.authored_calls['n'], 1)
+        # Before #281 this returned 1.0.0 for every project, because the
+        # one oversized query failed and the map came back empty.
+        self.assertEqual(len(result), self.SCALE)
+        for pid in pids:
+            self.assertEqual(result[pid].latest_tag, '0.17.0-2')
+
+    async def test_one_failed_batch_degrades_only_its_projects(self) -> None:
+        from imbi.api.endpoints import projects
+
+        tag_rows = self._tags(self.SCALE)
+        pids = sorted({str(row['project_id']) for row in tag_rows})
+        with (
+            mock.patch(
+                'imbi.api.endpoints.projects.clickhouse.query',
+                self._query(tag_rows, fail_after=1),
+            ),
+            self.assertLogs(
+                'imbi.api.endpoints.projects', level='ERROR'
+            ) as logs,
+        ):
+            result = await projects._fetch_release_summaries(pids)
+        ranked = [s.latest_tag for s in result.values()]
+        # The first batch still ranks correctly; the rest fall back.
+        self.assertIn('0.17.0-2', ranked)
+        self.assertIn('1.0.0', ranked)
+        self.assertIn('fall back to highest-version', logs.output[0])
+
+
 class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
     """A tag cut after its commit must not hide the commits between.
 

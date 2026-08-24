@@ -1213,14 +1213,138 @@ def _release_range_cutoffs(
     return cutoffs
 
 
+#: Byte budget for a single ``Array(String)`` query parameter.
+#:
+#: ``clickhouse.query()`` binds parameters through clickhouse-connect,
+#: which sends each one as an HTTP *form field*.  ClickHouse caps a field
+#: value at ``http_max_field_value_size`` -- 131072 bytes by default --
+#: and rejects anything longer with ``HTML Form Exception: Field value
+#: too long``.  Note this is *half* of ``max_query_size``, so a payload
+#: that looks safe against the query limit still fails here: measured
+#: against production, 2978 forty-character shas (~131032 bytes) pass and
+#: 2979 fail.  The budget is set to half the server default so a cluster
+#: configured below the default, or one org's tag count growing between
+#: releases, still leaves headroom.
+_PARAM_BYTE_BUDGET = 65536
+
+
+def _param_batches(
+    shas_by_project: dict[str, list[str]],
+) -> list[tuple[list[str], list[str]]]:
+    """Split project shas into ``(project_ids, shas)`` query batches.
+
+    Both parameters of the authored-times query are unbounded arrays --
+    one entry per project, one per tagged commit -- and each rides in its
+    own form field, so each is bounded separately against
+    :data:`_PARAM_BYTE_BUDGET`.
+
+    Batching on *bytes* rather than a project count is deliberate: tag
+    counts per project vary by two orders of magnitude, so any fixed
+    project count is a proxy that drifts toward the limit as tags
+    accumulate.  A single project whose own shas exceed the budget is
+    split across several batches; results merge by ``(project_id, sha)``,
+    so a project spanning batches resolves exactly as one that fits.
+    """
+
+    def cost(value: str) -> int:
+        # Quotes, comma, and the value itself, as the array serializes.
+        return len(value) + 3
+
+    batches: list[tuple[list[str], list[str]]] = []
+    pids: list[str] = []
+    shas: list[str] = []
+    pid_bytes = sha_bytes = 0
+
+    def flush() -> None:
+        nonlocal pids, shas, pid_bytes, sha_bytes
+        if pids and shas:
+            batches.append((pids, shas))
+        pids, shas = [], []
+        pid_bytes = sha_bytes = 0
+
+    for pid in sorted(shas_by_project):
+        for sha in sorted(set(shas_by_project[pid])):
+            # Flush before the addition that would breach either budget,
+            # then re-attach the project so its remaining shas stay
+            # scoped to it.
+            if (
+                sha_bytes + cost(sha) > _PARAM_BYTE_BUDGET
+                or pid_bytes + cost(pid) > _PARAM_BYTE_BUDGET
+            ):
+                flush()
+            if pid not in pids:
+                pids.append(pid)
+                pid_bytes += cost(pid)
+            shas.append(sha)
+            sha_bytes += cost(sha)
+    flush()
+    return batches
+
+
+async def _fetch_authored_times(
+    shas_by_project: dict[str, list[str]],
+) -> dict[str, dict[str, datetime.datetime]]:
+    """Return {project_id: {sha: authored_at}} for tagged commits.
+
+    ``authored_at`` -- not ``committed_at`` -- because this feeds the tag
+    ranking, and the release-drift and release-history endpoints rank on
+    ``authored_at``; ranking on a different column here is exactly how
+    the two views came to disagree.  Grouped by project then sha since
+    one sha can appear under several projects.
+
+    Issued in size-bounded batches (see :func:`_param_batches`).  A
+    single query carrying every tagged sha in the org exceeds the
+    form-field limit, and because the caller degrades a missing authored
+    time to highest-version ordering, that one failure silently took
+    *every* project's ranking back to the behaviour #274/#280 replaced
+    (#281).  Batching also narrows the blast radius: a batch that fails
+    degrades only its own projects.
+    """
+    authored_by_project: dict[str, dict[str, datetime.datetime]] = {}
+    degraded: set[str] = set()
+    for batch_pids, batch_shas in _param_batches(shas_by_project):
+        try:
+            rows = await clickhouse.query(
+                'SELECT project_id, sha, authored_at'
+                ' FROM commits FINAL'
+                ' WHERE project_id IN {project_ids:Array(String)}'
+                ' AND lower(sha) IN {shas:Array(String)}',
+                {'project_ids': batch_pids, 'shas': batch_shas},
+            )
+        except Exception:  # noqa: BLE001 -- best-effort, see below
+            degraded.update(batch_pids)
+            continue
+        for row in rows:
+            at = clickhouse.as_utc_or_none(row.get('authored_at'))
+            if not (row.get('project_id') and row.get('sha') and at):
+                continue
+            by_sha = authored_by_project.setdefault(str(row['project_id']), {})
+            by_sha[str(row['sha']).lower()] = at
+    if degraded:
+        # Not merely a failed query: these projects fall back to
+        # highest-version ranking.  Say so, so a silent regression to the
+        # pre-#280 behaviour is visible rather than reading like ordinary
+        # missing tag data.
+        LOGGER.error(
+            'Failed to fetch authored times for %d of %d tagged projects; '
+            'their release tags fall back to highest-version ranking',
+            len(degraded),
+            len(shas_by_project),
+            exc_info=True,
+        )
+    return authored_by_project
+
+
 async def _fetch_release_summaries(
     project_ids: list[str],
 ) -> dict[str, ReleaseSummary]:
     """Return {project_id: ReleaseSummary} for releasable projects.
 
-    Three ClickHouse queries: one for tags, one for each project's latest
-    commit, and one for the authored time of the commits those tags point
-    at.  That third query is what lets this rank tags with the shared
+    ClickHouse queries: one for tags, one for each project's latest
+    commit, and one *per batch* for the authored time of the commits
+    those tags point at (see :func:`_param_batches` -- a single query
+    carrying the whole org's shas exceeds the form-field limit).  That
+    third query is what lets this rank tags with the shared
     :func:`~imbi.common.versioning.latest_release_tag`, the same way the
     per-project release-drift and release-history endpoints do -- so the
     projects list and a project's Releases tab name the same current
@@ -1270,44 +1394,13 @@ async def _fetch_release_summaries(
         if row.get('project_id') and row.get('sha')
     }
 
-    # Authored time of every tagged commit, grouped by project then sha
-    # since one sha can appear under several projects.  ``authored_at``
-    # -- not ``committed_at`` -- because this feeds the tag ranking, and the
-    # release-drift and release-history endpoints rank on ``authored_at``;
-    # ranking on a different column here is exactly how the two views
-    # came to disagree.  A failure yields an empty map, which degrades to
-    # highest-version ordering rather than dropping the summaries.
-    authored_by_project: dict[str, dict[str, datetime.datetime]] = {}
-    tagged_shas = sorted(
-        {
-            str(row['sha']).lower()
-            for row in tag_rows
-            if row.get('sha') and row.get('project_id')
-        }
-    )
-    if tagged_shas:
-        try:
-            authored_rows = await clickhouse.query(
-                'SELECT project_id, sha, authored_at'
-                ' FROM commits FINAL'
-                ' WHERE project_id IN {project_ids:Array(String)}'
-                ' AND lower(sha) IN {shas:Array(String)}',
-                {'project_ids': project_ids, 'shas': tagged_shas},
-            )
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                'Failed to fetch authored times for tagged commits',
-                exc_info=True,
-            )
-        else:
-            for row in authored_rows:
-                at = clickhouse.as_utc_or_none(row.get('authored_at'))
-                if not (row.get('project_id') and row.get('sha') and at):
-                    continue
-                by_sha = authored_by_project.setdefault(
-                    str(row['project_id']), {}
-                )
-                by_sha[str(row['sha']).lower()] = at
+    shas_by_project: dict[str, list[str]] = {}
+    for row in tag_rows:
+        pid = str(row.get('project_id') or '')
+        sha = str(row.get('sha') or '').lower()
+        if pid and sha:
+            shas_by_project.setdefault(pid, []).append(sha)
+    authored_by_project = await _fetch_authored_times(shas_by_project)
 
     # Resolve each project's latest release tag and its timestamp so we
     # can query commit counts after that point.
