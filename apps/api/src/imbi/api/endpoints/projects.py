@@ -1170,6 +1170,49 @@ async def _evaluate_environment_drift(
     return out
 
 
+def _release_range_cutoffs(
+    latest_by_pid: dict[str, dict[str, typing.Any] | None],
+    authored_by_project: dict[str, dict[str, datetime.datetime]],
+    tagged_pids: list[str],
+) -> list[tuple[str, datetime.datetime, int]]:
+    """Return ``(project_id, cutoff, mode)`` for the unreleased range.
+
+    The cutoff is the *selected tag commit's* ``authored_at``, the same
+    boundary the per-project release-drift endpoint filters on, so both
+    views report one ``commits_since_tag``.  Ranking the tag by its
+    commit but then measuring from when the tag was cut is what let a
+    delayed tag hide the commits in between: 1.0.0 naming a January
+    commit but pushed in February counted only commits after February,
+    dropping January's unreleased work from the count and from
+    ``drift_detected`` (#279).
+
+    ``mode`` picks the column to compare against.  Mode 1 compares
+    ``authored_at``, matching release-drift.  Mode 0 is the degraded
+    fallback for a tag whose commit never synced: with no authored time
+    to measure from it keeps the tag timestamp, compared against
+    ``COALESCE(committed_at, authored_at)`` -- against a tag *creation*
+    time the committer date is the better proxy for when a commit
+    landed, since a cherry-pick or a rebase keeps the original author
+    date but resets the committer date (15% of synced commits have the
+    two disagreeing).  A tag with neither is dropped rather than
+    counting all of history.
+    """
+    cutoffs: list[tuple[str, datetime.datetime, int]] = []
+    for pid in tagged_pids:
+        tag = latest_by_pid[pid] or {}
+        sha = str(tag.get('sha') or '').lower()
+        authored = authored_by_project.get(pid, {}).get(sha)
+        if authored is not None:
+            cutoffs.append((pid, authored, 1))
+            continue
+        fallback = clickhouse.as_utc_or_none(
+            tag.get('tagged_at') or tag.get('recorded_at')
+        )
+        if fallback is not None:
+            cutoffs.append((pid, fallback, 0))
+    return cutoffs
+
+
 async def _fetch_release_summaries(
     project_ids: list[str],
 ) -> dict[str, ReleaseSummary]:
@@ -1181,7 +1224,11 @@ async def _fetch_release_summaries(
     :func:`~imbi.common.versioning.latest_release_tag`, the same way the
     per-project release-drift and release-history endpoints do -- so the
     projects list and a project's Releases tab name the same current
-    release (#279).  Errors are swallowed — release data is best-effort.
+    release (#279).  It also bounds the unreleased-commit range, which
+    starts at the selected tag commit's authored time rather than at
+    whenever the tag itself was pushed, so ``commits_since_tag`` and
+    ``drift_detected`` agree with the Releases tab too.  Errors are
+    swallowed — release data is best-effort.
     """
     if not project_ids:
         return {}
@@ -1273,10 +1320,8 @@ async def _fetch_release_summaries(
         for pid in all_pids
     }
 
-    # Batch-fetch commit counts since each project's latest tag.
-    # Build a list of (project_id, tag_authored_at) tuples so a single
-    # ClickHouse query can count unreleased commits per project.
-    # Projects with no prior tag get a cutoff of epoch-start (count all).
+    # Batch-fetch commit counts since each project's latest tag, so a
+    # single ClickHouse query covers every project's unreleased range.
     tagged_pids = [
         pid for pid, tag in latest_by_pid.items() if tag is not None
     ]
@@ -1284,31 +1329,12 @@ async def _fetch_release_summaries(
     drift_by_pid: dict[str, tuple[bool, int]] = {}
     if tagged_pids:
         try:
-            # For each project, count commits that landed after the
-            # tag's recorded_at/tagged_at (the closest proxy we have to
-            # when the tag commit landed without a separate sha→time
-            # look-up).
-            #
-            # ``committed_at``, not ``authored_at``: a cherry-pick or a
-            # rebase keeps the original author date but resets the
-            # committer date, so the author date would date those
-            # commits before a tag they actually landed after.  15% of
-            # synced commits have the two disagreeing.
-            tag_times = [
-                (latest_by_pid[pid] or {}).get('tagged_at')
-                or (latest_by_pid[pid] or {}).get('recorded_at')
-                for pid in tagged_pids
-            ]
-            # Build per-project WHERE via countIf for a single scan.
-            # Rows without a valid tag timestamp are excluded from the
-            # list, so we can safely cast to datetime.
-            pid_cutoff: list[tuple[str, datetime.datetime]] = [
-                (pid, t)
-                for pid, t in zip(tagged_pids, tag_times, strict=True)
-                if isinstance(t, datetime.datetime)
-            ]
+            pid_cutoff = _release_range_cutoffs(
+                latest_by_pid, authored_by_project, tagged_pids
+            )
             if pid_cutoff:
-                cutoff_map = dict(pid_cutoff)
+                cutoff_map = {pid: cut for pid, cut, _ in pid_cutoff}
+                mode_map = {pid: mode for pid, _, mode in pid_cutoff}
                 # Build the per-project cutoff map server-side from two
                 # parallel arrays.  Passing a dict for a Map(...) parameter
                 # trips a clickhouse-connect binding bug: dicts serialize as
@@ -1331,13 +1357,17 @@ async def _fetch_release_summaries(
                     ' WHERE project_id IN {pids:Array(String)}) AS d'
                     ' ON d.project_id = c.project_id AND d.sha = c.sha'
                     ' WHERE c.project_id IN {pids:Array(String)}'
-                    ' AND COALESCE(c.committed_at, c.authored_at) >'
+                    ' AND if(mapFromArrays({pids:Array(String)},'
+                    ' {modes:Array(UInt8)})[c.project_id] = 1,'
+                    ' c.authored_at,'
+                    ' COALESCE(c.committed_at, c.authored_at)) >'
                     ' mapFromArrays({pids:Array(String)},'
                     ' {cuts:Array(DateTime64(3))})[c.project_id]'
                     ' GROUP BY c.project_id',
                     {
                         'pids': list(cutoff_map.keys()),
                         'cuts': list(cutoff_map.values()),
+                        'modes': [mode_map[pid] for pid in cutoff_map],
                     },
                 )
                 # Projects whose range is empty drop out of the result

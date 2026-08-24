@@ -2899,3 +2899,67 @@ class ReleaseSummaryRankingTestCase(unittest.IsolatedAsyncioTestCase):
             result = await projects._fetch_release_summaries(['p1'])
         # Still a summary, ranked without commit context.
         self.assertEqual(result['p1'].latest_tag, '1.0.0')
+
+
+class ReleaseSummaryDelayedTagTestCase(unittest.IsolatedAsyncioTestCase):
+    """A tag cut after its commit must not hide the commits between.
+
+    ``latest_release_tag`` picks the tag by its commit's authored time,
+    so the unreleased range has to start there too -- release-drift
+    bounds its own range with exactly that value.  Measuring from
+    ``tagged_at`` instead dropped every commit authored between the
+    tagged commit and the moment the tag was pushed, so the projects
+    list reported fewer unreleased commits, and a cleaner
+    ``drift_detected``, than the same project's Releases tab (#279).
+    """
+
+    TAG_SHA = 'b' * 40
+    # The tag names a January commit but was not pushed until February.
+    COMMIT_AUTHORED = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    TAG_PUSHED = datetime.datetime(2026, 2, 1)  # noqa: DTZ001
+
+    async def _count_params(
+        self, authored_rows: list[dict[str, typing.Any]]
+    ) -> dict[str, typing.Any]:
+        from imbi.api.endpoints import projects
+
+        tag_rows = [
+            {
+                'project_id': 'p1',
+                'name': '1.0.0',
+                'sha': self.TAG_SHA,
+                'tagged_at': self.TAG_PUSHED,
+                'recorded_at': None,
+                'tagger_name': 'Rel Bot',
+            }
+        ]
+        # tags, head commit, authored times, then the counts query whose
+        # bound params carry the range boundary under test.
+        query = mock.AsyncMock(side_effect=[tag_rows, [], authored_rows, []])
+        with mock.patch('imbi.api.endpoints.projects.clickhouse.query', query):
+            await projects._fetch_release_summaries(['p1'])
+        return query.await_args_list[-1].args[1]
+
+    async def test_cutoff_is_the_tagged_commits_authored_time(self) -> None:
+        params = await self._count_params(
+            [
+                {
+                    'project_id': 'p1',
+                    'sha': self.TAG_SHA,
+                    'authored_at': self.COMMIT_AUTHORED,
+                }
+            ]
+        )
+        self.assertEqual(params['cuts'], [self.COMMIT_AUTHORED])
+        # Mode 1 compares ``authored_at``, the column release-drift
+        # filters on, so both views bound the range identically.
+        self.assertEqual(params['modes'], [1])
+
+    async def test_cutoff_falls_back_when_tagged_commit_unsynced(self) -> None:
+        # No authored time to measure from, so the tag timestamp stands
+        # in and mode 0 keeps the committer-date comparison.
+        params = await self._count_params([])
+        self.assertEqual(
+            params['cuts'], [self.TAG_PUSHED.replace(tzinfo=datetime.UTC)]
+        )
+        self.assertEqual(params['modes'], [0])
