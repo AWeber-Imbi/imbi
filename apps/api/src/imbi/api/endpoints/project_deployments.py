@@ -1497,7 +1497,7 @@ async def backfill_release_notes(
     if not missing:
         return 0
     missing.sort(
-        key=lambda r: _release_tag_order_key(
+        key=lambda r: versioning.release_tag_order_key(
             str(r['name']), r.get('tagged_at') or r.get('recorded_at')
         ),
         reverse=True,
@@ -5132,48 +5132,6 @@ def _release_notes_system() -> str:
     )
 
 
-def _semver_sort_key(name: str) -> tuple[int, int, int] | None:
-    """``(major, minor, patch)`` for version ordering; ``None`` if not semver.
-
-    Pre-release / build metadata is ignored for ordering -- good enough to
-    pick the newest *released* version and to sort the history list.
-    """
-    match = _SEMVER_RE.match(name)
-    if not match:
-        return None
-    major, minor, patch = (int(part) for part in match.groups())
-    return (major, minor, patch)
-
-
-def _release_tag_order_key(
-    name: str,
-    when: typing.Any,
-    authored_at: datetime.datetime | None = None,
-) -> tuple[str, bool, tuple[int, int, int], str]:
-    """Sort key ranking the latest *release* first.
-
-    Primary order is the tagged commit's position in the synced history
-    (``authored_at``): the tag on the newest commit is the latest release
-    even when an earlier versioning scheme used higher numbers (a project
-    that re-versioned from ``9.0.0`` down to ``2.32.7`` must base off
-    ``2.32.7``, which highest-semver ordering would never pick).  A tag
-    whose commit isn't synced ranks below every tag whose commit is --
-    backports live on unsynced release branches, so a backported
-    ``v4.1.3`` tagged after ``v7.1.0`` still can't masquerade as the
-    latest release.  Semver then tag timestamp break the remaining ties:
-    several tags on one commit, or callers with no commit context at all
-    (who thereby keep the old highest-semver behavior).
-    """
-    key = _semver_sort_key(name)
-    when_key = when.isoformat() if isinstance(when, datetime.datetime) else ''
-    authored_key = (
-        authored_at.isoformat()
-        if isinstance(authored_at, datetime.datetime)
-        else ''
-    )
-    return (authored_key, key is not None, key or (0, 0, 0), when_key)
-
-
 def _tag_timestamp(
     row: dict[str, typing.Any],
 ) -> datetime.datetime | None:
@@ -5185,31 +5143,6 @@ def _tag_timestamp(
     """
     return clickhouse.as_utc_or_none(
         row.get('tagged_at') or row.get('recorded_at')
-    )
-
-
-def _latest_release_tag(
-    rows: list[dict[str, typing.Any]],
-    authored_by_sha: dict[str, datetime.datetime] | None = None,
-) -> dict[str, typing.Any] | None:
-    """Pick the latest release tag from ``tags`` rows.
-
-    ``authored_by_sha`` maps each tag's commit sha (lowercase) to that
-    commit's authored time; with it the latest tag is the one on the
-    newest synced commit (see :func:`_release_tag_order_key`).  Without
-    it -- callers ranking several tags on a single commit -- semver alone
-    decides.
-    """
-    if not rows:
-        return None
-    authored = authored_by_sha or {}
-    return max(
-        rows,
-        key=lambda r: _release_tag_order_key(
-            str(r['name']),
-            r.get('tagged_at') or r.get('recorded_at'),
-            authored.get(str(r.get('sha') or '').lower()),
-        ),
     )
 
 
@@ -5642,9 +5575,10 @@ def _tags_from_rows(
     """Name of the tag pointing directly at each sha, keyed lowercase.
 
     A sha several tags point at answers the highest-ordered release tag
-    (same rule as :func:`_latest_release_tag`).  Untagged shas -- the
-    majority -- are simply absent.  Takes rows, not a project, so a
-    caller that already read the project's tags does not read them twice.
+    (same rule as :func:`~imbi.common.versioning.latest_release_tag`).
+    Untagged shas -- the majority -- are simply absent.  Takes rows, not a
+    project, so a caller that already read the project's tags does not
+    read them twice.
     """
     by_sha: dict[str, list[dict[str, typing.Any]]] = {}
     for row in rows:
@@ -5652,7 +5586,7 @@ def _tags_from_rows(
     return {
         sha: str(latest['name'])
         for sha, group in by_sha.items()
-        if (latest := _latest_release_tag(group)) is not None
+        if (latest := versioning.latest_release_tag(group)) is not None
     }
 
 
@@ -5908,7 +5842,7 @@ async def get_release_drift(
         project_id, [str(r['sha']) for r in tag_rows if r.get('sha')]
     )
     authored_by_sha = _authored_by_sha(facts_by_sha)
-    latest = _latest_release_tag(tag_rows, authored_by_sha)
+    latest = versioning.latest_release_tag(tag_rows, authored_by_sha)
     latest_tag = str(latest['name']) if latest else None
     latest_tag_sha = str(latest['sha']) if latest else None
     latest_tag_at = _tag_timestamp(latest) if latest else None
@@ -6224,7 +6158,7 @@ async def get_release_history(
     # consistent with the drift base, which is chosen the same way.
     authored_by_sha = _authored_by_sha(facts_by_sha)
     entries.sort(
-        key=lambda e: _release_tag_order_key(
+        key=lambda e: versioning.release_tag_order_key(
             e.tag, e.published_at, authored_by_sha.get(e.sha.lower())
         ),
         reverse=True,
