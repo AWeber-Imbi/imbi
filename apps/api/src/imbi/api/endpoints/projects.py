@@ -1228,6 +1228,22 @@ def _release_range_cutoffs(
 _PARAM_BYTE_BUDGET = 65536
 
 
+def _param_entry_cost(value: str) -> int:
+    """Bytes one array entry adds to a bound query parameter.
+
+    clickhouse-connect serializes an array as ``['a', 'b']``, so an
+    entry costs its own bytes plus two quotes and the ``", "``
+    separator.  Measured in UTF-8 bytes because the server counts the
+    *decoded* field value: the observed failure threshold was 2979
+    forty-character shas (2979 * 44 = 131076 > 131072), which matches
+    the decoded length and rules out percent-encoding counting toward
+    the limit.  Counting the separator for the final entry too, and
+    ignoring the enclosing brackets, keeps the estimate on the safe side
+    of the encoder.
+    """
+    return len(value.encode()) + 4
+
+
 def _param_batches(
     shas_by_project: dict[str, list[str]],
 ) -> list[tuple[list[str], list[str]]]:
@@ -1246,9 +1262,7 @@ def _param_batches(
     so a project spanning batches resolves exactly as one that fits.
     """
 
-    def cost(value: str) -> int:
-        # Quotes, comma, and the value itself, as the array serializes.
-        return len(value) + 3
+    cost = _param_entry_cost
 
     batches: list[tuple[list[str], list[str]]] = []
     pids: list[str] = []

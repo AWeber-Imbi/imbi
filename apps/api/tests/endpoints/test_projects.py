@@ -2966,6 +2966,52 @@ class ParamBatchTestCase(unittest.TestCase):
         # because results merge by (project_id, sha).
         self.assertTrue(expected <= seen)
 
+    def test_batches_fit_the_server_field_limit(self) -> None:
+        # Boundary check against the real encoder and the real limit
+        # rather than against our own estimate: cost() is only useful if
+        # it bounds what clickhouse-connect actually puts on the wire.
+        from clickhouse_connect.driver.binding import format_query_value
+
+        # http_max_field_value_size, as read from production.
+        limit = 131072
+        shas_by_project = {
+            f'p{pid:03d}': [
+                f'{pid:03d}{tag:04d}'.ljust(40, 'f') for tag in range(40)
+            ]
+            for pid in range(250)
+        }
+        batches = self._batches(shas_by_project)
+        self.assertGreater(len(batches), 1)
+        for pids, shas in batches:
+            for values in (pids, shas):
+                encoded = format_query_value(values)
+                self.assertLessEqual(len(encoded.encode()), limit)
+
+    def test_cost_bounds_the_encoded_payload(self) -> None:
+        # The estimate must never come in under the encoder, or the
+        # budget's headroom is imaginary.  Uses the production estimator
+        # so a regression there fails here.
+        from clickhouse_connect.driver.binding import format_query_value
+
+        from imbi.api.endpoints import projects
+
+        shas = [f'{n:040d}' for n in range(1000)]
+        batches = self._batches({'p1': shas})
+        for _, batch_shas in batches:
+            estimated = sum(
+                projects._param_entry_cost(sha) for sha in batch_shas
+            )
+            actual = len(format_query_value(batch_shas).encode())
+            self.assertGreaterEqual(estimated, actual)
+
+    def test_cost_counts_multibyte_values_in_bytes(self) -> None:
+        # len() would undercount a non-ASCII value; the server counts
+        # bytes.
+        from imbi.api.endpoints import projects
+
+        self.assertEqual(projects._param_entry_cost('abc'), 7)
+        self.assertEqual(projects._param_entry_cost('é'), 6)
+
     def test_single_oversized_project_is_split(self) -> None:
         # One project can exceed the budget on its own; it must not be
         # emitted as an unsendable batch.
