@@ -449,6 +449,39 @@ class SyncCommitsCiStatusTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('fail', records[1].ci_status)
 
     @respx.mock
+    async def test_rerun_to_green_syncs_as_pass(self) -> None:
+        # The sync path shares the deployment plugin's rollup, so it
+        # inherits the re-run de-duplication -- without it the API and
+        # the ClickHouse table agree with each other while both report a
+        # green commit as 'fail' (issue #282).
+        self._mock_compare('c' * 40)
+        respx.get(_check_runs_url('c' * 40)).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'check_runs': [
+                        {
+                            'id': 1,
+                            'name': 'acceptance',
+                            'status': 'completed',
+                            'conclusion': 'failure',
+                            'app': {'id': 7},
+                        },
+                        {
+                            'id': 2,
+                            'name': 'acceptance',
+                            'status': 'completed',
+                            'conclusion': 'success',
+                            'app': {'id': 7},
+                        },
+                    ]
+                },
+            )
+        )
+        records = await self._run()
+        self.assertEqual('pass', records[0].ci_status)
+
+    @respx.mock
     async def test_403_degrades_and_caches(self) -> None:
         self._mock_compare('c' * 40, 'd' * 40)
         route = respx.get(url__regex=r'.+/commits/.+/check-runs$').mock(

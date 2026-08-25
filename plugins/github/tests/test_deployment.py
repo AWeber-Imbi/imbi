@@ -19,6 +19,7 @@ from imbi.plugins.github.deployment import (
     GitHubDeployment,
     _active_scan_limit,
     _artifact_status,
+    _check_runs_to_status,
     _mainline_branches,
     _repo_root_from_redirect,
 )
@@ -565,10 +566,17 @@ class CommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 json={
                     'check_runs': [
                         {
+                            'id': 1,
+                            'name': 'unit',
                             'status': 'completed',
                             'conclusion': 'success',
                         },
-                        {'status': 'in_progress', 'conclusion': None},
+                        {
+                            'id': 2,
+                            'name': 'acceptance',
+                            'status': 'in_progress',
+                            'conclusion': None,
+                        },
                     ]
                 },
             )
@@ -2567,6 +2575,144 @@ class CheckStatusTestCase(unittest.IsolatedAsyncioTestCase):
             _ctx(), _CREDS, 'refs/tags/v1.0.0'
         )
         self.assertEqual(status, 'unknown')
+
+
+def _run(
+    run_id: int,
+    conclusion: str | None,
+    *,
+    name: str = 'run / Run acceptance tests (testing)',
+    status: str = 'completed',
+    app_id: int = 15368,
+) -> dict[str, object]:
+    """One entry of a ``/check-runs`` payload."""
+    return {
+        'id': run_id,
+        'name': name,
+        'status': status,
+        'conclusion': conclusion,
+        'app': {'id': app_id},
+    }
+
+
+class CheckRunsRollupTestCase(unittest.TestCase):
+    """``_check_runs_to_status`` must judge a commit on its *current* runs.
+
+    GitHub returns every historical run for a commit, so a check that
+    failed and was re-run to green appears twice.  Rolling up the flat
+    set pinned such a commit at ``fail`` permanently -- see issue #282.
+    """
+
+    def test_superseded_failure_does_not_pin_fail(self) -> None:
+        # The reported case: two failures and a later success, all
+        # carrying the same check name.
+        status = _check_runs_to_status(
+            {
+                'check_runs': [
+                    _run(1, 'failure'),
+                    _run(2, 'failure'),
+                    _run(3, 'success'),
+                    _run(4, 'success', name='unit tests'),
+                    _run(5, 'skipped', name='deploy'),
+                ]
+            }
+        )
+        self.assertEqual(status, 'pass')
+
+    def test_latest_failure_still_fails(self) -> None:
+        # Don't over-correct: a check that went green and then red is
+        # red.  Payload order is deliberately not id order.
+        status = _check_runs_to_status(
+            {'check_runs': [_run(9, 'failure'), _run(3, 'success')]}
+        )
+        self.assertEqual(status, 'fail')
+
+    def test_same_name_from_two_apps_is_not_collapsed(self) -> None:
+        # Two apps publishing a same-named check are distinct checks;
+        # collapsing them would hide the failing one.
+        status = _check_runs_to_status(
+            {
+                'check_runs': [
+                    _run(1, 'failure', app_id=111),
+                    _run(2, 'success', app_id=222),
+                ]
+            }
+        )
+        self.assertEqual(status, 'fail')
+
+    def test_superseded_cancelled_does_not_warn(self) -> None:
+        # Cancel a hung job, re-run it green: the commit is green.
+        status = _check_runs_to_status(
+            {'check_runs': [_run(1, 'cancelled'), _run(2, 'success')]}
+        )
+        self.assertEqual(status, 'pass')
+
+    def test_latest_cancelled_still_warns(self) -> None:
+        status = _check_runs_to_status(
+            {'check_runs': [_run(1, 'success'), _run(2, 'cancelled')]}
+        )
+        self.assertEqual(status, 'warn')
+
+    def test_superseded_in_flight_run_is_not_unknown(self) -> None:
+        # A suite GitHub cancelled mid-flight can be left non-terminal
+        # forever.  Only the current run's status gates the rollup --
+        # otherwise this trades a stuck ``fail`` for a stuck ``unknown``.
+        status = _check_runs_to_status(
+            {
+                'check_runs': [
+                    _run(1, None, status='queued'),
+                    _run(2, 'success'),
+                ]
+            }
+        )
+        self.assertEqual(status, 'pass')
+
+    def test_current_run_in_flight_is_unknown(self) -> None:
+        status = _check_runs_to_status(
+            {
+                'check_runs': [
+                    _run(1, 'success'),
+                    _run(2, None, status='in_progress'),
+                ]
+            }
+        )
+        self.assertEqual(status, 'unknown')
+
+    def test_ordering_ignores_timestamps(self) -> None:
+        # ``skipped`` runs report ``completed_at`` before ``started_at``,
+        # so only the monotonic ``id`` is a safe sort key.
+        older = _run(1, 'failure')
+        older.update(
+            {
+                'started_at': '2026-08-20T19:56:25Z',
+                'completed_at': '2026-08-20T19:58:00Z',
+            }
+        )
+        newer = _run(2, 'success')
+        newer.update(
+            {
+                'started_at': '2026-08-20T16:40:02Z',
+                'completed_at': '2026-08-20T16:38:51Z',
+            }
+        )
+        self.assertEqual(
+            _check_runs_to_status({'check_runs': [older, newer]}), 'pass'
+        )
+
+    def test_runs_without_ids_are_not_collapsed(self) -> None:
+        # Nothing orders these, so neither may be dropped on a guess.
+        status = _check_runs_to_status(
+            {
+                'check_runs': [
+                    {'status': 'completed', 'conclusion': 'success'},
+                    {'status': 'completed', 'conclusion': 'failure'},
+                ]
+            }
+        )
+        self.assertEqual(status, 'fail')
+
+    def test_empty_payload_is_unknown(self) -> None:
+        self.assertEqual(_check_runs_to_status({'check_runs': []}), 'unknown')
 
 
 class TagAndReleaseTestCase(unittest.IsolatedAsyncioTestCase):
