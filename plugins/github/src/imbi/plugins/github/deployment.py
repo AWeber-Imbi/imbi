@@ -506,6 +506,44 @@ def _commit_from_payload(payload: dict[str, typing.Any]) -> Commit:
     )
 
 
+def _latest_runs(
+    raw_runs: list[dict[str, typing.Any]],
+) -> list[dict[str, typing.Any]]:
+    """Collapse ``check_runs`` to the current run for each check.
+
+    GitHub keeps every historical run for a commit in the
+    ``/commits/{sha}/check-runs`` payload, so a workflow that failed and
+    was re-run to green reports both.  Rolling up that flat set pins the
+    commit at ``fail`` forever -- no re-run can ever clear it.
+
+    ``filter=latest`` does not help: it de-duplicates re-run *attempts*
+    within a single check suite, and a re-run dispatched as a fresh
+    workflow run gets a suite (and a check run) of its own.  The
+    de-duplication has to happen here.
+
+    Runs are keyed on ``(app.id, name)`` rather than ``name`` alone so
+    two apps publishing a same-named check stay distinct, and ordered by
+    check-run ``id``, which is monotonic at creation.  Timestamps are not
+    usable as a sort key -- skipped runs report ``completed_at`` earlier
+    than ``started_at``.  A run carrying no integer ``id`` cannot be
+    ordered against anything, so it is passed through untouched rather
+    than being discarded on a guess.
+    """
+    latest: dict[tuple[str, str], tuple[int, dict[str, typing.Any]]] = {}
+    unordered: list[dict[str, typing.Any]] = []
+    for run in raw_runs:
+        run_id = run.get('id')
+        if isinstance(run_id, bool) or not isinstance(run_id, int):
+            unordered.append(run)
+            continue
+        app: dict[str, typing.Any] = run.get('app') or {}
+        key = (str(app.get('id') or ''), str(run.get('name') or ''))
+        current = latest.get(key)
+        if current is None or run_id > current[0]:
+            latest[key] = (run_id, run)
+    return [run for _, run in latest.values()] + unordered
+
+
 def _check_runs_to_status(
     payload: dict[str, typing.Any],
 ) -> typing.Literal['pass', 'fail', 'warn', 'unknown']:
@@ -513,12 +551,17 @@ def _check_runs_to_status(
     raw_runs: list[dict[str, typing.Any]] = payload.get('check_runs') or []
     if not raw_runs:
         return 'unknown'
+    runs = _latest_runs(raw_runs)
     # Don't roll up while any run is still in flight — a mix of one
     # ``success`` and one ``in_progress`` would otherwise surface as
-    # ``pass`` because the in-progress conclusion is ``None``.
-    if any(str(run.get('status') or '') != 'completed' for run in raw_runs):
+    # ``pass`` because the in-progress conclusion is ``None``.  Scan only
+    # the surviving runs: a *superseded* run left non-terminal (a suite
+    # GitHub cancelled mid-flight, which happens in the wild) would
+    # otherwise pin the commit at ``unknown`` just as permanently as the
+    # stale ``failure`` pinned it at ``fail``.
+    if any(str(run.get('status') or '') != 'completed' for run in runs):
         return 'unknown'
-    conclusions = {str(run.get('conclusion') or '') for run in raw_runs}
+    conclusions = {str(run.get('conclusion') or '') for run in runs}
     failed = {'failure', 'timed_out', 'action_required'}
     if conclusions & failed:
         return 'fail'
