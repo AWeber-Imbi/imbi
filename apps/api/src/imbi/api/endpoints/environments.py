@@ -397,7 +397,7 @@ async def patch_environment(
     current.pop('updated_at', None)
     current.pop('organization', None)
     current.setdefault('sort_order', 0)
-    current.setdefault('can_deploy', False)
+    current.setdefault('can_deploy', True)
     current.setdefault('can_promote', False)
 
     patched = json_patch.apply_patch(current, operations)
