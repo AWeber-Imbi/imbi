@@ -1040,13 +1040,13 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 },
                 {
                     'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 2}',
+                    '"sort_order": 2, "can_promote": true}',
                     'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
                     'deployments': None,
                 },
                 {
                     'env': '{"slug": "production", "name": "Production", '
-                    '"sort_order": 3}',
+                    '"sort_order": 3, "can_promote": true}',
                     'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
                     'deployments': None,
                 },
@@ -1099,7 +1099,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 },
                 {
                     'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 2}',
+                    '"sort_order": 2, "can_promote": true}',
                     'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
                     'deployments': None,
                 },
@@ -1139,7 +1139,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 },
                 {
                     'env': '{"slug": "staging", "name": "Staging", '
-                    '"sort_order": 2}',
+                    '"sort_order": 2, "can_promote": true}',
                     'release': '{"tag": "v0.9.0", "committish": "def0900"}',
                     'deployments': None,
                 },
@@ -1155,6 +1155,53 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         data = response.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['from_version'], 'v1.0.0')
+
+    def test_promotion_options_skips_no_promote_targets(self) -> None:
+        # A gap whose to-env has can_promote=false (or, for nodes
+        # persisted before the flag existed, no property at all) is a
+        # dead end -- the promote endpoint 400s on it -- so it must not
+        # be offered.  Of the three gaps here only dev->testing
+        # survives: testing->staging is explicitly disabled and
+        # staging->production lacks the property (treated as false).
+        def _mock_execute(query, params, columns):
+            del query, params, columns
+            return [
+                {
+                    'env': '{"slug": "dev", "name": "Dev", "sort_order": 1}',
+                    'release': '{"tag": "v6.5.0", "committish": "ddd6500"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "testing", "name": "Testing", '
+                    '"sort_order": 2, "can_promote": true}',
+                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "staging", "name": "Staging", '
+                    '"sort_order": 3, "can_promote": false}',
+                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "production", "name": "Production", '
+                    '"sort_order": 4}',
+                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
+                    'deployments': None,
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'promotion-options'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['from_environment'], 'dev')
+        self.assertEqual(data[0]['to_environment'], 'testing')
 
     def test_get_run_status_returns_plugin_status(self) -> None:
         with testclient.TestClient(self.test_app) as client:

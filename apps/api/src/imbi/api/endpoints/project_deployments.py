@@ -5343,7 +5343,7 @@ MATCH (p:Project {{id: {project_id}}})
 MATCH (p)-[:DEPLOYED_IN]->(e:Environment)
 OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release)
                -[d:DEPLOYED_TO]->(e)
-RETURN e{{.slug, .name, .sort_order}} AS env,
+RETURN e{{.slug, .name, .sort_order, .can_promote}} AS env,
        CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
        CASE WHEN d IS NULL THEN null ELSE d.deployments END
            AS deployments
@@ -5370,7 +5370,9 @@ async def list_promotion_options(  # noqa: C901
     the from-env's current version + SHA, the to-env's current
     version + SHA (when present), and the count of commits between
     them via ``plugin.compare()``.  Plugin failures are tolerated:
-    the entry returns ``commits_pending=None``.
+    the entry returns ``commits_pending=None``.  Gaps whose to-env
+    has ``can_promote`` false or unset are omitted: the promote
+    endpoint would reject them with a 400.
     """
     rows = await db.execute(
         _PROMOTION_OPTIONS_QUERY,
@@ -5471,6 +5473,11 @@ async def list_promotion_options(  # noqa: C901
     pairs: list[tuple[dict[str, typing.Any], dict[str, typing.Any]]] = []
     for from_item, to_item in itertools.pairwise(ordered):
         if not from_item['release']:
+            continue
+        # ``_handle_promote`` 400s on a to-env with can_promote=false,
+        # so offering that gap is a dead end.  Absent counts as false,
+        # matching the model default and ``_load_env_flags``.
+        if not to_item['env'].get('can_promote'):
             continue
         pairs.append((from_item, to_item))
 
