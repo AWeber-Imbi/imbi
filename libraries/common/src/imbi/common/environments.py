@@ -37,7 +37,12 @@ def split_chains[T](
     maps an item to its environment mapping, for callers whose items
     wrap the environment rather than being one.
     """
-    env_of = environment or (lambda item: typing.cast('Env', item))
+
+    def env_of(item: T) -> Env:
+        if environment is not None:
+            return environment(item)
+        return typing.cast('Env', item)
+
     ordered = sorted(items, key=lambda item: sort_key(env_of(item)))
     chains: list[list[T]] = []
     chain: list[T] = []
