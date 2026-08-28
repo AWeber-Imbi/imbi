@@ -85,11 +85,20 @@ _MAX_HISTORY_PAGES = 100
 # ``_MAX_HISTORY_PAGES``: this path exists to pick up the handful of
 # commits a release build pushed, not to stand in for a full backfill.
 _MAX_SINCE_PAGES = 10
-# CI status is hydrated with one ``/check-runs`` call per commit, which is
-# prohibitively expensive across a full-history backfill.  Bound it to the
-# most-recent commits (the only ones whose CI is still meaningful and
-# unexpired); older commits keep the ``'unknown'`` default.
-_BACKFILL_CI_LIMIT = 25
+# CI status is hydrated with one ``/check-runs`` call per commit (more
+# when it pages), which is prohibitively expensive across a full-history
+# backfill.  Bound it to the most-recent commits; older commits keep the
+# ``'unknown'`` default.
+#
+# 200 is where the gap actually closes -- the ``recent-commits`` endpoint
+# caps ``limit`` at 200 and the deployments tab asks for exactly that
+# (``COMMIT_WINDOW``), so hydrating past 200 cannot change what a reader
+# sees.  This deliberately stops at half of it: backfills are already
+# slow, and every commit here costs at least one ``/check-runs`` call, so
+# 25 -> 200 would have octupled the request count in one step.  100 buys
+# most of the visible window at 4x rather than 8x; rows 100-199 keep the
+# ``'unknown'`` default until this is raised or made configurable.
+_BACKFILL_CI_LIMIT = 100
 # Pages of ``/check-runs`` to walk per commit before giving up.  100 per
 # page * 5 = 500 runs, well past the busiest observed commit (50), so the
 # cap only bounds a pathological repo rather than shaping normal reads.

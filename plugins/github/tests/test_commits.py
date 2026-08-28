@@ -2045,7 +2045,9 @@ class SyncNewCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, written)
         params = history.calls.last.request.url.params
         self.assertNotIn('since', params)
-        self.assertEqual(str(commits._BACKFILL_CI_LIMIT), params['per_page'])
+        self.assertEqual(
+            str(commits._RECENT_FALLBACK_COMMITS), params['per_page']
+        )
 
     @respx.mock
     async def test_uncomparable_stored_sha_falls_back(self) -> None:
