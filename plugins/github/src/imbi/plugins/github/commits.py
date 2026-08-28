@@ -90,6 +90,10 @@ _MAX_SINCE_PAGES = 10
 # most-recent commits (the only ones whose CI is still meaningful and
 # unexpired); older commits keep the ``'unknown'`` default.
 _BACKFILL_CI_LIMIT = 25
+# Pages of ``/check-runs`` to walk per commit before giving up.  100 per
+# page * 5 = 500 runs, well past the busiest observed commit (50), so the
+# cap only bounds a pathological repo rather than shaping normal reads.
+_MAX_CHECK_RUN_PAGES = 5
 # Page size for ``sync_new_commits``' last-resort walk, used when nothing
 # is stored *and* no ``since`` was supplied. Sized to cover a release
 # build's handful of pushed commits, not to approximate a backfill.
@@ -618,22 +622,54 @@ async def _ci_status(
     non-200, a parse error, a network error, or a rate-limit pause -- CI
     status is best-effort metadata and must never fail the sync, mirroring
     the swallow-and-continue contract the rest of this module follows.
+
+    The whole run set has to be in hand before rolling up, so this pages
+    to the end rather than reading the first page: the endpoint defaults
+    to 30 per page and a busy commit carries far more (one observed
+    commit reports 50), which on a partial read drops whichever runs fall
+    past the cut -- silently turning a ``fail`` into a ``pass`` when the
+    failing run is the one left off.
     """
     if _checks_disabled(credentials, base, owner, repo):
         return 'unknown'
+    runs: list[dict[str, typing.Any]] = []
+    params: dict[str, str] = {'per_page': '100'}
     try:
-        resp = await _request(
-            client, 'GET', f'/commits/{sha}/check-runs', max_wait=max_wait
-        )
-        if resp.status_code == 403:
-            _record_checks_disabled(credentials, base, owner, repo)
-            return 'unknown'
-        if resp.status_code != 200:
-            return 'unknown'
-        payload = typing.cast('dict[str, typing.Any]', resp.json())
+        for page in range(1, _MAX_CHECK_RUN_PAGES + 1):
+            resp = await _request(
+                client,
+                'GET',
+                f'/commits/{sha}/check-runs',
+                params=params,
+                max_wait=max_wait,
+            )
+            if resp.status_code == 403:
+                _record_checks_disabled(credentials, base, owner, repo)
+                return 'unknown'
+            if resp.status_code != 200:
+                return 'unknown'
+            payload = typing.cast('dict[str, typing.Any]', resp.json())
+            runs.extend(payload.get('check_runs') or [])
+            next_url = _next_page_url(resp.headers.get('link'))
+            next_page = (
+                _query_param(next_url, 'page')
+                if next_url is not None
+                else None
+            )
+            if next_page is None:
+                break
+            params['page'] = next_page
+            if page == _MAX_CHECK_RUN_PAGES:
+                LOGGER.warning(
+                    'github-commit-sync truncated check-runs for %s at %d '
+                    'pages (%d runs); ci_status may be incomplete',
+                    _short_sha(sha),
+                    _MAX_CHECK_RUN_PAGES,
+                    len(runs),
+                )
     except Exception:  # noqa: BLE001 - CI status is best-effort metadata
         return 'unknown'
-    return _check_runs_to_status(payload)
+    return _check_runs_to_status({'check_runs': runs})
 
 
 async def _hydrate_ci(
