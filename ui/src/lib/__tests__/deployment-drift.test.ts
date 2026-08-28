@@ -65,4 +65,29 @@ describe('computeDriftPairs', () => {
     )
     expect(pairs[0].from).toBe('Testing')
   })
+
+  it('derives no pair across a terminal boundary (#285)', () => {
+    // Two independent pipelines in one list: the infra chain ends at
+    // its terminal env, testing starts a new one. Differing commits on
+    // either side of the seam must not register as a drift pair.
+    const pairs = computeDriftPairs(
+      [
+        { name: 'Infra Testing', slug: 'infra-testing', sort_order: 1 },
+        { name: 'Infra', slug: 'infra', sort_order: 2, terminal: true },
+        { name: 'Testing', slug: 'testing', sort_order: 3 },
+        { name: 'Staging', slug: 'staging', sort_order: 4 },
+      ],
+      {
+        infra: { committish: 'ccc' },
+        'infra-testing': { committish: 'ddd' },
+        staging: { committish: 'aaa' },
+        testing: { committish: 'bbb' },
+      },
+    )
+    expect(pairs.map((p) => `${p.from}->${p.to}`)).toEqual([
+      'Infra Testing->Infra',
+      'Testing->Staging',
+    ])
+    expect(pairs.every((p) => p.drifted)).toBe(true)
+  })
 })

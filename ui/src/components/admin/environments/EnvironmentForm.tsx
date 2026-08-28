@@ -6,6 +6,7 @@ import { AlertCircle } from 'lucide-react'
 import { getEnvironmentSchema } from '@/api/endpoints'
 import { FormHeader } from '@/components/admin/form-header'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ColorPicker } from '@/components/ui/color-picker'
 import {
   DynamicFormFields,
@@ -54,6 +55,7 @@ export function EnvironmentForm({
   const [sortOrder, setSortOrder] = useState(
     String(environment?.sort_order ?? 0),
   )
+  const [terminal, setTerminal] = useState(environment?.terminal ?? false)
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
   const handleIconChange = useIconWithCleanup(icon, setIcon)
@@ -107,6 +109,7 @@ export function EnvironmentForm({
       name: name.trim(),
       slug: slug.trim(),
       sort_order: parseInt(sortOrder, 10) || 0,
+      terminal,
       ...dynamicFormData,
     })
   }
@@ -265,6 +268,27 @@ export function EnvironmentForm({
               <p className="text-tertiary mt-1 text-xs">
                 Controls display order (lower numbers appear first)
               </p>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Checkbox
+                checked={terminal}
+                disabled={isLoading}
+                id="environment-terminal"
+                onCheckedChange={(value) => setTerminal(value === true)}
+              />
+              <div>
+                <Label
+                  className="text-secondary block text-sm"
+                  htmlFor="environment-terminal"
+                >
+                  Terminal Environment
+                </Label>
+                <p className="text-tertiary mt-1 text-xs">
+                  Ends the promotion pipeline: no promotion step is derived from
+                  this environment to the next one, which starts a new pipeline
+                </p>
+              </div>
             </div>
 
             <div>

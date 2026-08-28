@@ -24,6 +24,7 @@ export const ENVIRONMENT_BASE_FIELDS = [
   'sort_order',
   'can_deploy',
   'can_promote',
+  'terminal',
   'id',
 ]
 export const ENVIRONMENT_BASE_FIELDS_SET = new Set(ENVIRONMENT_BASE_FIELDS)

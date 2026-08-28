@@ -488,7 +488,7 @@ class ProjectEndpointsTestCase(support.SharedAppTestCase):
         env = item['environments'][0]
         self.assertEqual(
             set(env.keys()),
-            {'name', 'slug', 'label_color', 'sort_order'},
+            {'name', 'slug', 'label_color', 'sort_order', 'terminal'},
         )
         # PR counts default to 0 when no rows come back from
         # ClickHouse (we don't mock the helpers here).

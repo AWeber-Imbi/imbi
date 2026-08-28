@@ -7,7 +7,6 @@ belong to multiple project types.  See ADR-0006 for rationale.
 import asyncio
 import contextlib
 import datetime
-import itertools
 import json
 import logging
 import math
@@ -42,6 +41,7 @@ from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.common import blueprints, clickhouse, graph, models, versioning
 from imbi.common import deployments as deployment_nodes
+from imbi.common import environments as environment_chains
 from imbi.common import patch as json_patch
 from imbi.common.clickhouse import client as ch_client
 from imbi.common.graph import cypher as graph_cypher
@@ -239,6 +239,7 @@ class ProjectListEnvironmentRef(pydantic.BaseModel):
     slug: str
     label_color: str | None = None
     sort_order: int = 0
+    terminal: bool = False
 
 
 class ProjectListItem(pydantic.BaseModel):
@@ -1049,11 +1050,11 @@ def _environment_ranges(
 ) -> list[tuple[str, str]]:
     """The (base, head) committish pairs a project's pipeline implies.
 
-    Environments sort the way the UI sorts them, and each adjacent pair
-    is one promotion step.  The *lower* ``sort_order`` runs the newer
-    code -- testing tracks HEAD while staging and production run tags --
-    so the range runs from the later environment's commit up to the
-    earlier one's.
+    Promotion steps come from :mod:`imbi.common.environments`: adjacent
+    pairs within one pipeline, never across a ``terminal`` boundary.
+    The *lower* ``sort_order`` runs the newer code -- testing tracks
+    HEAD while staging and production run tags -- so the range runs
+    from the later environment's commit up to the earlier one's.
 
     Only pairs where both sides have a committish and the two differ: a
     pair with nothing to compare has no range, and an identical pair has
@@ -1066,15 +1067,12 @@ def _environment_ranges(
         )
         if e.get('slug')
     ]
-    envs.sort(
-        key=lambda e: (e.get('sort_order') or 0, str(e.get('name') or ''))
-    )
     releases = typing.cast(
         'dict[str, ReleaseInfo]',
         project_data.get('current_releases') or {},
     )
     out: list[tuple[str, str]] = []
-    for head_env, base_env in itertools.pairwise(envs):
+    for head_env, base_env in environment_chains.promotion_pairs(envs):
         head = releases.get(str(head_env['slug']))
         base = releases.get(str(base_env['slug']))
         head_sha = head.committish or '' if head else ''
@@ -1659,6 +1657,9 @@ _PROTECTED_ENV_KEYS = frozenset(
         'label_color',
         'description',
         'icon',
+        'can_deploy',
+        'can_promote',
+        'terminal',
     }
 )
 
@@ -1770,7 +1771,8 @@ _SLIM_RETURN_FRAGMENT: typing.LiteralString = """
     WITH p, t, pts,
          collect(CASE WHEN env IS NOT NULL
                       THEN env{{.slug, .name, .label_color,
-                                sort_order: coalesce(env.sort_order, 0)}}
+                                sort_order: coalesce(env.sort_order, 0),
+                                terminal: coalesce(env.terminal, false)}}
                       END) AS envs
     RETURN p{{.id, .name, .slug, .description, .score,
               archived: coalesce(p.archived, false),

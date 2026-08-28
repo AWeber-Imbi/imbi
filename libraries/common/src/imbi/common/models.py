@@ -374,6 +374,13 @@ class Environment(Node):
     # / create GitHub Releases) before an operator has wired one up.
     can_promote: bool = False
 
+    # Ends the promotion pipeline: no promotion step is derived from
+    # this environment to the next one by ``sort_order``; that next
+    # environment starts a new, independent pipeline. Lets one flat
+    # environment list hold several pipelines without inventing steps
+    # across the seam between them (#285).
+    terminal: bool = False
+
     organization: BelongsToOrganization
 
 

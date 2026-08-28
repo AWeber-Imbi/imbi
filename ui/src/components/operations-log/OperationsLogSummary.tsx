@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 
 import type { OperationsLogMetrics } from '@/api/endpoints'
 import { Skeleton } from '@/components/ui/skeleton'
-import { sortEnvironments } from '@/lib/utils'
+import { chainTerminals } from '@/lib/environment-chains'
 import type { Environment, OperationsLogRecord } from '@/types'
 
 import { type TimeRange, toMs } from './opsLogHelpers'
@@ -36,18 +36,23 @@ export function OperationsLogSummary({
   rangeLabel,
   serverMetrics,
 }: SummaryProps) {
-  // Terminal promotion target = highest sort_order env, matching the
-  // release train. Avoids a hard-coded "production" slug so custom
-  // pipelines with a final stage named e.g. "Live" pick up automatically.
-  const terminalEnv = useMemo<Environment | undefined>(() => {
-    const sorted = sortEnvironments(environments)
-    return sorted[sorted.length - 1]
-  }, [environments])
+  // Terminal promotion targets = the last env of each pipeline (a
+  // `terminal` env ends one, #285). Avoids a hard-coded "production"
+  // slug so custom pipelines with a final stage named e.g. "Live" pick
+  // up automatically, and counts the infra pipeline's end alongside the
+  // application one's.
+  const terminalEnvs = useMemo<Environment[]>(
+    () => chainTerminals(environments),
+    [environments],
+  )
   // Single-pass aggregation: counts, uniques, sparkline buckets, and the
   // earliest-timestamp scan (for 'all time') all read the entries array
   // exactly once. Previously we did 4 filter/map passes plus 3 Set
   // allocations per render, all running again on every auto-fetch page.
-  const terminalEnvSlug = terminalEnv?.slug
+  const terminalSlugs = useMemo(
+    () => new Set(terminalEnvs.map((env) => env.slug)),
+    [terminalEnvs],
+  )
   const stats = useMemo(() => {
     const now = Date.now()
     const windowMs =
@@ -74,7 +79,7 @@ export function OperationsLogSummary({
       if (performer) people.add(performer)
       if (e.entry_type === 'Deployed') {
         deploys += 1
-        if (terminalEnvSlug && e.environment_slug === terminalEnvSlug) {
+        if (e.environment_slug && terminalSlugs.has(e.environment_slug)) {
           terminalDeploys += 1
         }
       }
@@ -104,7 +109,7 @@ export function OperationsLogSummary({
       projects: projectSlugs.size,
       terminalDeploys,
     }
-  }, [entries, range, terminalEnvSlug])
+  }, [entries, range, terminalSlugs])
 
   const { buckets, max } = stats
   // Prefer server-computed metrics (which cover the full filter
@@ -114,9 +119,12 @@ export function OperationsLogSummary({
   const projects = serverMetrics?.projects ?? stats.projects
   const envCount = serverMetrics?.environments ?? stats.envCount
   const people = serverMetrics?.team_members ?? stats.people
-  const terminalDeploys = terminalEnvSlug
-    ? (serverMetrics?.deploys_by_environment?.[terminalEnvSlug] ??
-      stats.terminalDeploys)
+  const terminalDeploys = serverMetrics?.deploys_by_environment
+    ? terminalEnvs.reduce(
+        (sum, env) =>
+          sum + (serverMetrics.deploys_by_environment?.[env.slug] ?? 0),
+        0,
+      )
     : stats.terminalDeploys
 
   return (
@@ -180,8 +188,10 @@ export function OperationsLogSummary({
               {deploys.toLocaleString()}
             </span>
             <span className="text-secondary text-[11.5px]">
-              {terminalEnv
-                ? `${terminalDeploys.toLocaleString()} to ${terminalEnv.name}`
+              {terminalEnvs.length > 0
+                ? `${terminalDeploys.toLocaleString()} to ${terminalEnvs
+                    .map((env) => env.name)
+                    .join(' & ')}`
                 : `${deploys.toLocaleString()} total`}
             </span>
           </>

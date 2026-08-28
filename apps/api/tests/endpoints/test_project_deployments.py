@@ -1070,6 +1070,44 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(data[1]['from_environment'], 'staging')
         self.assertEqual(data[1]['to_environment'], 'production')
 
+    def test_promotion_options_stop_at_a_terminal_environment(self) -> None:
+        # staging ends its pipeline (#285): no staging->production gap
+        # is derived, even though both envs hold differing releases.
+        def _mock_execute(query, params, columns):
+            del query, params, columns
+            return [
+                {
+                    'env': '{"slug": "testing", "name": "Testing", '
+                    '"sort_order": 1}',
+                    'release': '{"tag": "v6.4.0", "committish": "aaa6400"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "staging", "name": "Staging", '
+                    '"sort_order": 2, "terminal": true}',
+                    'release': '{"tag": "v6.3.0", "committish": "bbb6300"}',
+                    'deployments': None,
+                },
+                {
+                    'env': '{"slug": "production", "name": "Production", '
+                    '"sort_order": 3}',
+                    'release': '{"tag": "v6.2.0", "committish": "ccc6200"}',
+                    'deployments': None,
+                },
+            ]
+
+        self.mock_db.execute = mock.AsyncMock(side_effect=_mock_execute)
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'promotion-options'
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['from_environment'], 'testing')
+        self.assertEqual(data[0]['to_environment'], 'staging')
+
     def test_promotion_options_picks_latest_release_per_env(self) -> None:
         # Two rows for the same env: an older v6.3.0 with an earlier
         # event timestamp and a newer v6.4.0.  The reducer should pick

@@ -134,6 +134,7 @@ export interface EnvironmentCreate {
   name: string
   slug: string
   sort_order?: null | number
+  terminal?: boolean
 }
 
 // Plugin Architecture v3 — Integration, plugin, capability, and

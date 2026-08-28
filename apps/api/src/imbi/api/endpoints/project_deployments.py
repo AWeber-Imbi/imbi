@@ -14,7 +14,6 @@ import collections.abc
 import datetime
 import functools
 import importlib.resources
-import itertools
 import json
 import logging
 import re
@@ -58,6 +57,7 @@ from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
 from imbi.common import clickhouse, graph, versioning
 from imbi.common import deployments as deployment_nodes
+from imbi.common import environments as environment_chains
 from imbi.common import models as common_models
 from imbi.common.plugins import base as plugin_base
 from imbi.common.plugins import decrypt_integration_credentials
@@ -5343,7 +5343,8 @@ MATCH (p:Project {{id: {project_id}}})
 MATCH (p)-[:DEPLOYED_IN]->(e:Environment)
 OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release)
                -[d:DEPLOYED_TO]->(e)
-RETURN e{{.slug, .name, .sort_order}} AS env,
+RETURN e{{.slug, .name, .sort_order,
+          terminal: coalesce(e.terminal, false)}} AS env,
        CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
        CASE WHEN d IS NULL THEN null ELSE d.deployments END
            AS deployments
@@ -5448,14 +5449,12 @@ async def list_promotion_options(  # noqa: C901
                 'latest': entry.event.timestamp,
             }
 
-    ordered = sorted(
-        by_slug.values(),
-        key=lambda item: (
-            item['env'].get('sort_order') or 0,
-            item['env'].get('name') or '',
-        ),
+    # Promotion steps are within-pipeline adjacent pairs -- a pair is
+    # never derived across a ``terminal`` environment (#285).
+    step_pairs = environment_chains.promotion_pairs(
+        by_slug.values(), environment=lambda item: item['env']
     )
-    if len(ordered) < 2:
+    if not step_pairs:
         return []
 
     # Resolve plugin once so we can issue compare() calls.
@@ -5464,12 +5463,12 @@ async def list_promotion_options(  # noqa: C901
     )
     handler = _handler(resolved)
 
-    # Collect every adjacent-env pair first so we can fan the
+    # Collect every promotion-step pair first so we can fan the
     # ``compare()`` calls out with ``asyncio.gather`` instead of
     # awaiting them serially — the popover blocks on this for the
     # length of the slowest plugin RTT times N envs.
     pairs: list[tuple[dict[str, typing.Any], dict[str, typing.Any]]] = []
-    for from_item, to_item in itertools.pairwise(ordered):
+    for from_item, to_item in step_pairs:
         if not from_item['release']:
             continue
         pairs.append((from_item, to_item))

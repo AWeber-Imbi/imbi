@@ -215,7 +215,17 @@ export function EnvironmentManagement() {
             headerAlign: 'center',
             key: 'order',
             render: (env) => (
-              <span className="text-secondary">{env.sort_order ?? 0}</span>
+              <span className="text-secondary">
+                {env.sort_order ?? 0}
+                {env.terminal ? (
+                  <span
+                    className="text-tertiary ml-1"
+                    title="Terminal environment — ends the promotion pipeline"
+                  >
+                    ⊣
+                  </span>
+                ) : null}
+              </span>
             ),
           },
           {

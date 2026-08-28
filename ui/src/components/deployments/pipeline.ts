@@ -2,9 +2,11 @@
 // detail pane per environment ("stage"); the stage *kind* decides which
 // card the pane shows:
 //
-//   'commit'  — the entry environment (no upstream). Deploys raw commits
-//               off the default branch; rolling back redeploys an older
-//               commit. Never promotes.
+//   'commit'  — an entry environment (no upstream in its pipeline; a
+//               `terminal` env ends a pipeline and the next env starts a
+//               new one, #285). Deploys raw commits off the default
+//               branch; rolling back redeploys an older commit. Never
+//               promotes.
 //   'promote' — the upstream environment runs an untagged commit, so
 //               moving it forward means cutting a new tag (promote).
 //   'release' — the upstream environment already runs a tagged release,
@@ -17,6 +19,7 @@
 // All commit/tag data comes from imbi's synced ClickHouse history
 // (``/deployments/recent-commits`` + ``/deployments/release-history``),
 // never the live source host — the sidebar's sync action refreshes it.
+import { upstreamBySlug } from '@/lib/environment-chains'
 import type {
   CurrentReleaseEnvironment,
   Environment,
@@ -102,9 +105,10 @@ export function buildPipeline(
     currentReleases.map((row) => [row.environment.slug, row]),
   )
   const latestTag = newestTag(history)
+  const upstreams = upstreamBySlug(environments)
   // fallow-ignore-next-line complexity
-  return environments.map((env, idx) => {
-    const upstream = idx > 0 ? environments[idx - 1] : null
+  return environments.map((env) => {
+    const upstream = upstreams.get(env.slug) ?? null
     const current = currentBySlug.get(env.slug) ?? null
     const upstreamCurrent = upstream
       ? (currentBySlug.get(upstream.slug) ?? null)
