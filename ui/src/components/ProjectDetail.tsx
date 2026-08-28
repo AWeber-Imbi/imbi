@@ -102,6 +102,7 @@ import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { computeDriftPairs } from '@/lib/deployment-drift'
+import { upstreamBySlug } from '@/lib/environment-chains'
 import { formatDateTime } from '@/lib/formatDate'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
@@ -299,11 +300,15 @@ export function ProjectDetail({
       }
       if (initialTab === 'promote') {
         const targetEnv = sortedEnvironments[idx]
-        if (idx <= 0 || !(targetEnv?.can_promote ?? false)) {
+        // Upstream within the target's own pipeline — a pipeline's
+        // entry env (none) has nothing to promote from (#285).
+        const upstream =
+          upstreamBySlug(sortedEnvironments).get(initialSubId) ?? null
+        if (!upstream || !(targetEnv?.can_promote ?? false)) {
           navigate(`/projects/${project.id}`, { replace: true })
           return
         }
-        const fromSlug = sortedEnvironments[idx - 1]?.slug
+        const fromSlug = upstream.slug
         const fromCommittish = fromSlug
           ? deploymentStatus[fromSlug]?.committish
           : undefined
@@ -1582,12 +1587,11 @@ export function ProjectDetail({
           // promote, so we resolve the source here when possible and just
           // omit the Promote tab when prerequisites are unmet.
           const fromSlug =
-            targetIdx > 0 ? sortedEnvironments[targetIdx - 1]?.slug : undefined
+            upstreamBySlug(sortedEnvironments).get(initialSubId)?.slug
           const fromCommittish = fromSlug
             ? deploymentStatus[fromSlug]?.committish
             : undefined
-          const promoteAvailable =
-            canPromote && !!fromSlug && !!fromCommittish && targetIdx > 0
+          const promoteAvailable = canPromote && !!fromSlug && !!fromCommittish
           if (!canDeploy && !promoteAvailable) return null
           return (
             <ReleaseModal

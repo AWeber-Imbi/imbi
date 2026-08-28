@@ -2744,11 +2744,11 @@ export interface paths {
          * @description List the most-current release per environment for a project.
          *
          *     For each environment the project is configured to deploy in
-         *     (``DEPLOYED_IN``), returns the release whose ``DEPLOYED_TO`` edge
-         *     contains the deployment event with the latest timestamp.
-         *     Environments with no deployment events are returned with
-         *     ``release=None``. Results are sorted by ``Environment.sort_order``
-         *     ascending, then by name.
+         *     (``DEPLOYED_IN``), returns the release of the newest deployment
+         *     attempt that succeeded, plus ``latest_deployment`` when a newer
+         *     attempt of another status exists.  Environments with no deployment
+         *     events are returned with ``release=None``. Results are sorted by
+         *     ``Environment.sort_order`` ascending, then by name.
          *
          *     The deployment plugin (when bound) is consulted for live workflow
          *     run status on any in-flight ``DeploymentEvent`` and aggregate CI
@@ -7819,7 +7819,14 @@ export interface components {
         };
         /**
          * CurrentReleaseEnvironment
-         * @description Latest deployment state for one environment of a project.
+         * @description Current deployment state for one environment of a project.
+         *
+         *     ``release`` is what the environment serves: the newest deployment
+         *     attempt whose latest status is ``success``.  ``latest_deployment``
+         *     is the newest attempt of any status, reported only when it is a
+         *     *different* attempt -- an in-flight or failed rollout that has not
+         *     replaced the current release.  When the newest attempt is the one
+         *     serving traffic it is omitted rather than repeated.
          *
          *     ``release`` and ``current_status`` are ``None`` when the project is
          *     configured to deploy in the environment but has no recorded
@@ -8702,6 +8709,11 @@ export interface components {
              * @default false
              */
             can_promote: boolean;
+            /**
+             * Terminal
+             * @default false
+             */
+            terminal: boolean;
             organization: components["schemas"]["Organization"];
         } & {
             [key: string]: unknown;
@@ -9295,7 +9307,10 @@ export interface components {
          *     release that is serving": a deploy in flight, or one that failed.
          */
         LatestDeployment: {
-            /** Status */
+            /**
+             * Status
+             * @enum {string}
+             */
             status: "pending" | "in_progress" | "success" | "failed" | "rolled_back";
             /**
              * Deployed At
@@ -10930,6 +10945,11 @@ export interface components {
              * @default 0
              */
             sort_order: number;
+            /**
+             * Terminal
+             * @default false
+             */
+            terminal: boolean;
         };
         /**
          * ProjectListItem
@@ -12022,6 +12042,11 @@ export interface components {
          * ReleaseInfo
          * @description Current release for a project in an environment.
          *
+         *     The release the provider is serving: the newest deployment attempt
+         *     whose latest status is ``success``.  An in-flight or failed attempt
+         *     made since is reported separately, as ``LatestDeployment``, so a
+         *     failed rollout never reads as the deployed release.
+         *
          *     ``tag`` is the optional human-readable label (e.g. ``1.0.0``);
          *     ``committish`` is the 7-char short SHA. The UI displays
          *     ``tag ?? committish`` and uses ``committish`` equality to group
@@ -12128,8 +12153,10 @@ export interface components {
          * ReleaseSummary
          * @description Minimal release-drift summary for the projects-list view.
          *
-         *     head_sha is the latest commit on main; latest_tag is the most recent
-         *     semver release tag; commits_since_tag is the number of unreleased
+         *     head_sha is the latest commit on main; latest_tag is the current
+         *     release tag, ranked by
+         *     :func:`~imbi.common.versioning.latest_release_tag` so it matches the
+         *     project's Releases tab; commits_since_tag is the number of unreleased
          *     commits, and drift_detected says whether any of them matters.
          */
         ReleaseSummary: {
@@ -13380,6 +13407,11 @@ export interface components {
              * @default false
              */
             can_promote: boolean;
+            /**
+             * Terminal
+             * @default false
+             */
+            terminal: boolean;
             organization: components["schemas"]["Organization"];
         };
         /** EnvironmentResponse */
@@ -13431,6 +13463,11 @@ export interface components {
              * @default false
              */
             can_promote: boolean;
+            /**
+             * Terminal
+             * @default false
+             */
+            terminal: boolean;
             organization: components["schemas"]["Organization"];
             /**
              * Relationships
@@ -13440,7 +13477,14 @@ export interface components {
                 [key: string]: components["schemas"]["RelationshipLink"];
             } | null;
         };
-        /** LinkDefinition */
+        /**
+         * LinkDefinition
+         * @description Defines available link types for projects in an org.
+         *
+         *     Each definition describes one kind of external link
+         *     (e.g. GitHub repository, Grafana dashboard) including
+         *     display metadata and an optional URL template.
+         */
         LinkDefinitionBlueprintRequest: {
             /** Id */
             id?: string;
@@ -13517,7 +13561,22 @@ export interface components {
                 [key: string]: components["schemas"]["RelationshipLink"];
             } | null;
         };
-        /** Integration */
+        /**
+         * Integration
+         * @description A configuration instance of a plugin.
+         *
+         *     An Integration is not a generic external-service record — it is one
+         *     configured instance of an installed plugin (identified by
+         *     :attr:`plugin`). One plugin (``github``) backs many Integrations
+         *     (``GitHub.com``, ``GHEC``), each with its own credentials, options,
+         *     and per-capability toggles.
+         *
+         *     ``encrypted_credentials`` is the ONLY credential store: a mapping of
+         *     credential field name to its Fernet-encrypted value (see
+         *     :mod:`imbi.common.auth.encryption`). Plaintext must never be assigned;
+         *     callers encrypt before persistence and decrypt on read via
+         *     :func:`imbi.common.plugins.credentials.decrypt_integration_credentials`.
+         */
         IntegrationBlueprintRequest: {
             /** Id */
             id?: string;
@@ -13857,18 +13916,6 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
-            /**
-             * Deprecated
-             * @description Indicates that the project should not be used
-             * @default false
-             */
-            deprecated: boolean;
-            /**
-             * Deprecation Reason
-             * @description Specify why the project is deprecated and what should be used instead.
-             * @default null
-             */
-            deprecation_reason: string | null;
         };
         /** ProjectResponse */
         ProjectBlueprintResponse: {
@@ -13930,18 +13977,6 @@ export interface components {
             score: number | null;
             /** @default null */
             relationships: components["schemas"]["ProjectRelationships"] | null;
-            /**
-             * Deprecated
-             * @description Indicates that the project should not be used
-             * @default false
-             */
-            deprecated: boolean;
-            /**
-             * Deprecation Reason
-             * @description Specify why the project is deprecated and what should be used instead.
-             * @default null
-             */
-            deprecation_reason: string | null;
         };
         /** ProjectType */
         ProjectTypeBlueprintRequest: {
@@ -14156,21 +14191,12 @@ export interface components {
              * @default false
              */
             can_promote: boolean;
+            /**
+             * Terminal
+             * @default false
+             */
+            terminal: boolean;
             organization: components["schemas"]["Organization"];
-        };
-        /** ProjectDeployedInEnvironmentEdge */
-        Project_Environment_DEPLOYED_INEdgeProperties: {
-            /**
-             * Acceptance Test Status
-             * @default null
-             */
-            acceptance_test_status: ("pass" | "fail") | null;
-            /**
-             * Url
-             * @description The deployment URL for this project in this environment
-             * @default null
-             */
-            url: string | null;
         };
     };
     responses: never;

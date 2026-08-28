@@ -104,6 +104,14 @@ export function EnvironmentDetail({
               <div className="text-secondary text-sm">Sort Order</div>
               <div className="text-primary mt-1">
                 {environment.sort_order ?? 0}
+                {environment.terminal ? (
+                  <span
+                    className="text-tertiary ml-2 text-xs"
+                    title="Ends the promotion pipeline"
+                  >
+                    ⊣ terminal
+                  </span>
+                ) : null}
               </div>
             </div>
             <div>

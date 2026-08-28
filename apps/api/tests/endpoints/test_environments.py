@@ -470,6 +470,115 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         update_params = self.mock_db.execute.call_args_list[1].args[1]
         self.assertTrue(update_params['can_deploy'])
 
+    def test_patch_seeds_terminal_false_on_pre_migration_env(self) -> None:
+        """Patch of an unrelated field persists terminal=false."""
+        from imbi.common import models as common_models
+
+        existing_env = {
+            'name': 'Production',
+            'slug': 'production',
+            'description': None,
+            'sort_order': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'e': existing_env,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                }
+            ],
+            [
+                {
+                    'e': {
+                        'name': 'Production Env',
+                        'slug': 'production',
+                        'sort_order': 0,
+                        'can_deploy': True,
+                        'can_promote': False,
+                        'terminal': False,
+                    },
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.Environment,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/environments/production',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'Production Env',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        update_params = self.mock_db.execute.call_args_list[1].args[1]
+        self.assertFalse(update_params['terminal'])
+
+    def test_patch_terminal_on_pre_migration_env(self) -> None:
+        """Replace terminal when the node lacks the field."""
+        from imbi.common import models as common_models
+
+        existing_env = {
+            'name': 'Infrastructure',
+            'slug': 'infrastructure',
+            'description': None,
+            'sort_order': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'e': existing_env,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                }
+            ],
+            [
+                {
+                    'e': {
+                        'name': 'Infrastructure',
+                        'slug': 'infrastructure',
+                        'sort_order': 0,
+                        'can_deploy': True,
+                        'can_promote': False,
+                        'terminal': True,
+                    },
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.Environment,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/environments/infrastructure',
+                json=[{'op': 'replace', 'path': '/terminal', 'value': True}],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['terminal'])
+        update_params = self.mock_db.execute.call_args_list[1].args[1]
+        self.assertTrue(update_params['terminal'])
+
     def test_patch_environment_slug_conflict(self) -> None:
         """Patch that renames slug to an existing one returns 409."""
         from imbi.common import models as common_models

@@ -122,12 +122,24 @@ export function EnvironmentManagement() {
     )
   }
 
+  // The form seeds its field state from `environment` once on mount, so
+  // don't mount it for an edit until the selection has resolved, and
+  // remount (via key) if the selection changes.
+  if (viewMode === 'edit' && !selectedEnvironment) {
+    return (
+      <div className="text-tertiary py-12 text-center">
+        {isLoading ? 'Loading environment...' : 'Environment not found.'}
+      </div>
+    )
+  }
+
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <EnvironmentForm
         environment={selectedEnvironment}
         error={createMutation.error || updateMutation.error}
         isLoading={createMutation.isPending || updateMutation.isPending}
+        key={selectedEnvSlug ?? 'create'}
         onCancel={handleCancel}
         onSave={handleSave}
       />
@@ -215,7 +227,17 @@ export function EnvironmentManagement() {
             headerAlign: 'center',
             key: 'order',
             render: (env) => (
-              <span className="text-secondary">{env.sort_order ?? 0}</span>
+              <span className="text-secondary">
+                {env.sort_order ?? 0}
+                {env.terminal ? (
+                  <span
+                    className="text-tertiary ml-1"
+                    title="Terminal environment — ends the promotion pipeline"
+                  >
+                    ⊣
+                  </span>
+                ) : null}
+              </span>
             ),
           },
           {

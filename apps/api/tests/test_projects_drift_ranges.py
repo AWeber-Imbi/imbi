@@ -15,8 +15,17 @@ def _at(day: int) -> datetime.datetime:
     return datetime.datetime(2026, 8, day, tzinfo=datetime.UTC)
 
 
-def _env(slug: str, order: int) -> dict[str, typing.Any]:
-    return {'name': slug.title(), 'slug': slug, 'sort_order': order}
+def _env(
+    slug: str, order: int, *, terminal: bool = False
+) -> dict[str, typing.Any]:
+    env: dict[str, typing.Any] = {
+        'name': slug.title(),
+        'slug': slug,
+        'sort_order': order,
+    }
+    if terminal:
+        env['terminal'] = True
+    return env
 
 
 def _release(sha: str) -> projects.ReleaseInfo:
@@ -75,6 +84,28 @@ class EnvironmentRangesTests(unittest.TestCase):
             }
         )
         self.assertEqual([('bbb', 'ccc')], ranges)
+
+    def test_no_range_spans_a_terminal_boundary(self) -> None:
+        # Two independent pipelines in one list (#285): the infra chain
+        # ends at its terminal env, testing starts a new one.  All four
+        # committishes differ, yet no infra->testing range is derived.
+        ranges = projects._environment_ranges(
+            {
+                'environments': [
+                    _env('infra-testing', 1),
+                    _env('infra', 2, terminal=True),
+                    _env('testing', 3),
+                    _env('staging', 4),
+                ],
+                'current_releases': {
+                    'infra-testing': _release('ddd'),
+                    'infra': _release('ccc'),
+                    'testing': _release('bbb'),
+                    'staging': _release('aaa'),
+                },
+            }
+        )
+        self.assertEqual([('ccc', 'ddd'), ('aaa', 'bbb')], ranges)
 
 
 class EvaluateEnvironmentDriftTests(unittest.IsolatedAsyncioTestCase):

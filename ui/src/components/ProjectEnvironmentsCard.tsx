@@ -121,6 +121,7 @@ const RESERVED_ENV_KEYS = new Set([
   'relationships',
   'slug',
   'sort_order',
+  'terminal',
   'updated_at',
   'url',
   'version',

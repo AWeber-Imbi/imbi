@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
+import { upstreamBySlug } from '@/lib/environment-chains'
 import { cn, sortEnvironments } from '@/lib/utils'
 import type { DeploymentCommit, DeploymentRef, Environment } from '@/types'
 
@@ -69,9 +70,11 @@ export function DeployTab({
     isLoading: currentReleasesLoading,
   } = useCurrentRelease({ env, open, orgSlug, projectId })
 
-  // For the first env (e.g. Testing) we list commits on the default
-  // branch.  For staging / production we list tags.
-  const isFirstEnv = env?.slug === sorted[0]?.slug
+  // For a pipeline's entry env (e.g. Testing) we list commits on the
+  // default branch.  For staging / production we list tags.  Entry means
+  // no upstream in its own pipeline — a terminal env ends a pipeline, so
+  // the env after it is an entry too (#285).
+  const isFirstEnv = !!env && !upstreamBySlug(sorted).get(env.slug)
 
   const {
     data: refs = [],
