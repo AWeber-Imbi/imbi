@@ -577,6 +577,29 @@ async def _fetch_recent_commits(
     return typing.cast('list[dict[str, typing.Any]]', resp.json())
 
 
+async def _fetch_single_commit(
+    client: httpx.AsyncClient, sha: str, *, max_wait: float
+) -> list[dict[str, typing.Any]]:
+    """``GET /commits/{sha}`` as a one-item list, ``[]`` when absent.
+
+    For a delivery that names a head commit but carries no previous
+    head -- a ``workflow_run`` / ``check_suite`` style event rather than
+    a ``push`` -- the only commit the payload attests to is *sha*
+    itself.  The response shape matches a ``commits[]`` entry from the
+    compare API, so :func:`_commit_record` maps it unchanged and the
+    caller's CI hydration and author resolution work on the list as-is.
+    """
+    resp = await _request(client, 'GET', f'/commits/{sha}', max_wait=max_wait)
+    if resp.status_code == 404:
+        LOGGER.warning(
+            'github-commit-sync: commit %s not found; nothing to sync',
+            _short_sha(sha),
+        )
+        return []
+    resp.raise_for_status()
+    return [typing.cast('dict[str, typing.Any]', resp.json())]
+
+
 async def _ci_status(
     client: httpx.AsyncClient,
     sha: str,
@@ -826,6 +849,11 @@ class SyncCommitsConfig(pydantic.BaseModel):
 
     Selectors resolve against the event context, so the push body lives
     under ``/payload`` (e.g. ``/payload/after``).
+
+    A rule bound to a non-push event points ``after_selector`` at that
+    body's head SHA and leaves ``before_selector`` alone: the default
+    ``/payload/before`` does not resolve there, which is what selects
+    :func:`sync_commits`' single-commit path.
     """
 
     before_selector: JsonPointer = pydantic.Field(
@@ -886,7 +914,21 @@ async def sync_commits(
     action_config: SyncCommitsConfig,
     event: object,
 ) -> None:
-    """Sync the commits in a ``push`` delivery into the ``commits`` table.
+    """Sync the commits a delivery attests to into the ``commits`` table.
+
+    The range synced is chosen from what ``before_selector`` resolves to,
+    which separates three cases that must not be collapsed:
+
+    * **a usable SHA** -- an ordinary push; sync ``before...after``.
+    * **nothing at all** (the pointer does not resolve) -- the delivery
+      has no notion of a previous head, so the only commit it attests to
+      is ``after``; sync that one commit.  This is the ``workflow_run``
+      shape, where falling through to the ``_last_known_sha`` compare
+      below yields an empty ``head...head`` range and silently syncs
+      nothing.
+    * **the zero SHA** -- a push that *does* carry a before, naming no
+      prior commit (a new branch).  Heal from the last commit stored for
+      the project, else fall back to a bounded recent-history walk.
 
     Branch gating is the rule's CEL ``filter_expression``'s job; this
     action does not filter refs itself.
@@ -910,6 +952,10 @@ async def sync_commits(
             if isinstance(before, str) and before and before != _ZERO_SHA:
                 raw = await _fetch_compare_commits(
                     client, before, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                )
+            elif before is None:
+                raw = await _fetch_single_commit(
+                    client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
                 )
             else:
                 last = await _last_known_sha(ctx.project_id)

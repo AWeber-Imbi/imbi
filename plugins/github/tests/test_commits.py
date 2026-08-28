@@ -87,6 +87,27 @@ def _push(
     }
 
 
+def _workflow_run(
+    *,
+    head: str = 'b' * 40,
+    branch: str = 'main',
+    full_name: str = 'octo/demo',
+    repo_url: str = 'https://api.github.com/repos/octo/demo',
+) -> dict[str, object]:
+    """A ``workflow_run`` body: a head SHA, and no ``before`` anywhere."""
+    return {
+        'action': 'completed',
+        'workflow': {'name': 'CI/CD'},
+        'workflow_run': {
+            'head_sha': head,
+            'head_branch': branch,
+            'event': 'push',
+            'conclusion': 'success',
+        },
+        'repository': {'full_name': full_name, 'url': repo_url},
+    }
+
+
 def _event(body: dict[str, typing.Any]) -> dict[str, typing.Any]:
     """Wrap a push body in the event context handlers now receive."""
     return {
@@ -223,7 +244,20 @@ class ApiBaseResolutionTestCase(unittest.TestCase):
         self.assertIsNone(self._base(ctx=_ctx(), repo_url='not-a-repo-url'))
 
 
+_WORKFLOW_RUN_CONFIG = commits.SyncCommitsConfig(
+    after_selector='/payload/workflow_run/head_sha',
+    ref_selector='/payload/workflow_run/head_branch',
+)
+
+
 class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        # Same process-wide /check-runs 403 cache SyncCommitsCiStatus
+        # clears: without this a 403 recorded by another test suppresses
+        # hydration here and the ci_status assertions below read
+        # 'unknown' depending on execution order.
+        deployment._CHECKS_DISABLED_TOKENS.clear()
+
     @respx.mock
     async def test_normal_compare_inserts_records(self) -> None:
         base, head = 'a' * 40, 'b' * 40
@@ -325,6 +359,78 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertTrue(route.called)
         insert.assert_awaited_once()
+
+    @respx.mock
+    async def test_absent_before_syncs_the_single_head_commit(self) -> None:
+        head = 'b' * 40
+        route = respx.get(
+            f'https://api.github.com/repos/octo/demo/commits/{head}'
+        ).mock(return_value=httpx.Response(200, json=_commit(head)))
+        respx.get(_check_runs_url(head)).mock(
+            return_value=httpx.Response(200, json=_check_runs('success'))
+        )
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=_WORKFLOW_RUN_CONFIG,
+                event=_event(_workflow_run(head=head)),
+            )
+        self.assertTrue(route.called)
+        insert.assert_awaited_once()
+        table, records = _await_args(insert)
+        self.assertEqual('commits', table)
+        self.assertEqual(1, len(records))
+        self.assertEqual(head, records[0].sha)
+        self.assertEqual('main', records[0].ref)
+        self.assertEqual('pass', records[0].ci_status)
+
+    @respx.mock
+    async def test_absent_before_never_consults_last_known_sha(self) -> None:
+        """The single-commit path must not fall through to a compare.
+
+        Regression guard: resolving ``_last_known_sha`` yields the head
+        itself once a prior delivery stored it, and ``head...head`` is an
+        empty range -- the commit is then silently never refreshed.
+        """
+        head = 'b' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/commits/{head}'
+        ).mock(return_value=httpx.Response(200, json=_commit(head)))
+        respx.get(_check_runs_url(head)).mock(
+            return_value=httpx.Response(200, json=_check_runs('success'))
+        )
+        with (
+            mock.patch(_QUERY, new=mock.AsyncMock()) as query,
+            mock.patch(_INSERT, new=mock.AsyncMock()) as insert,
+        ):
+            await commits.sync_commits(
+                ctx=_ctx(),
+                credentials=_CREDS,
+                external_identifier='',
+                action_config=_WORKFLOW_RUN_CONFIG,
+                event=_event(_workflow_run(head=head)),
+            )
+        query.assert_not_awaited()
+        insert.assert_awaited_once()
+
+    @respx.mock
+    async def test_absent_before_unknown_commit_inserts_nothing(self) -> None:
+        head = 'b' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/commits/{head}'
+        ).mock(return_value=httpx.Response(404, json={}))
+        with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+            with self.assertLogs(commits.LOGGER, level='WARNING'):
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=_CREDS,
+                    external_identifier='',
+                    action_config=_WORKFLOW_RUN_CONFIG,
+                    event=_event(_workflow_run(head=head)),
+                )
+        insert.assert_not_awaited()
 
     @respx.mock
     async def test_compare_pagination_collects_all_pages(self) -> None:
