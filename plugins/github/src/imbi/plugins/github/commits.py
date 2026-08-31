@@ -85,11 +85,24 @@ _MAX_HISTORY_PAGES = 100
 # ``_MAX_HISTORY_PAGES``: this path exists to pick up the handful of
 # commits a release build pushed, not to stand in for a full backfill.
 _MAX_SINCE_PAGES = 10
-# CI status is hydrated with one ``/check-runs`` call per commit, which is
-# prohibitively expensive across a full-history backfill.  Bound it to the
-# most-recent commits (the only ones whose CI is still meaningful and
-# unexpired); older commits keep the ``'unknown'`` default.
-_BACKFILL_CI_LIMIT = 25
+# CI status is hydrated with one ``/check-runs`` call per commit (more
+# when it pages), which is prohibitively expensive across a full-history
+# backfill.  Bound it to the most-recent commits; older commits keep the
+# ``'unknown'`` default.
+#
+# 200 is where the gap actually closes -- the ``recent-commits`` endpoint
+# caps ``limit`` at 200 and the deployments tab asks for exactly that
+# (``COMMIT_WINDOW``), so hydrating past 200 cannot change what a reader
+# sees.  This deliberately stops at half of it: backfills are already
+# slow, and every commit here costs at least one ``/check-runs`` call, so
+# 25 -> 200 would have octupled the request count in one step.  100 buys
+# most of the visible window at 4x rather than 8x; rows 100-199 keep the
+# ``'unknown'`` default until this is raised or made configurable.
+_BACKFILL_CI_LIMIT = 100
+# Pages of ``/check-runs`` to walk per commit before giving up.  100 per
+# page * 5 = 500 runs, well past the busiest observed commit (50), so the
+# cap only bounds a pathological repo rather than shaping normal reads.
+_MAX_CHECK_RUN_PAGES = 5
 # Page size for ``sync_new_commits``' last-resort walk, used when nothing
 # is stored *and* no ``since`` was supplied. Sized to cover a release
 # build's handful of pushed commits, not to approximate a backfill.
@@ -577,6 +590,29 @@ async def _fetch_recent_commits(
     return typing.cast('list[dict[str, typing.Any]]', resp.json())
 
 
+async def _fetch_single_commit(
+    client: httpx.AsyncClient, sha: str, *, max_wait: float
+) -> list[dict[str, typing.Any]]:
+    """``GET /commits/{sha}`` as a one-item list, ``[]`` when absent.
+
+    For a delivery that names a head commit but carries no previous
+    head -- a ``workflow_run`` / ``check_suite`` style event rather than
+    a ``push`` -- the only commit the payload attests to is *sha*
+    itself.  The response shape matches a ``commits[]`` entry from the
+    compare API, so :func:`_commit_record` maps it unchanged and the
+    caller's CI hydration and author resolution work on the list as-is.
+    """
+    resp = await _request(client, 'GET', f'/commits/{sha}', max_wait=max_wait)
+    if resp.status_code == 404:
+        LOGGER.warning(
+            'github-commit-sync: commit %s not found; nothing to sync',
+            _short_sha(sha),
+        )
+        return []
+    resp.raise_for_status()
+    return [typing.cast('dict[str, typing.Any]', resp.json())]
+
+
 async def _ci_status(
     client: httpx.AsyncClient,
     sha: str,
@@ -595,22 +631,54 @@ async def _ci_status(
     non-200, a parse error, a network error, or a rate-limit pause -- CI
     status is best-effort metadata and must never fail the sync, mirroring
     the swallow-and-continue contract the rest of this module follows.
+
+    The whole run set has to be in hand before rolling up, so this pages
+    to the end rather than reading the first page: the endpoint defaults
+    to 30 per page and a busy commit carries far more (one observed
+    commit reports 50), which on a partial read drops whichever runs fall
+    past the cut -- silently turning a ``fail`` into a ``pass`` when the
+    failing run is the one left off.
     """
     if _checks_disabled(credentials, base, owner, repo):
         return 'unknown'
+    runs: list[dict[str, typing.Any]] = []
+    params: dict[str, str] = {'per_page': '100'}
     try:
-        resp = await _request(
-            client, 'GET', f'/commits/{sha}/check-runs', max_wait=max_wait
-        )
-        if resp.status_code == 403:
-            _record_checks_disabled(credentials, base, owner, repo)
-            return 'unknown'
-        if resp.status_code != 200:
-            return 'unknown'
-        payload = typing.cast('dict[str, typing.Any]', resp.json())
+        for page in range(1, _MAX_CHECK_RUN_PAGES + 1):
+            resp = await _request(
+                client,
+                'GET',
+                f'/commits/{sha}/check-runs',
+                params=params,
+                max_wait=max_wait,
+            )
+            if resp.status_code == 403:
+                _record_checks_disabled(credentials, base, owner, repo)
+                return 'unknown'
+            if resp.status_code != 200:
+                return 'unknown'
+            payload = typing.cast('dict[str, typing.Any]', resp.json())
+            runs.extend(payload.get('check_runs') or [])
+            next_url = _next_page_url(resp.headers.get('link'))
+            next_page = (
+                _query_param(next_url, 'page')
+                if next_url is not None
+                else None
+            )
+            if next_page is None:
+                break
+            params['page'] = next_page
+            if page == _MAX_CHECK_RUN_PAGES:
+                LOGGER.warning(
+                    'github-commit-sync truncated check-runs for %s at %d '
+                    'pages (%d runs); ci_status may be incomplete',
+                    _short_sha(sha),
+                    _MAX_CHECK_RUN_PAGES,
+                    len(runs),
+                )
     except Exception:  # noqa: BLE001 - CI status is best-effort metadata
         return 'unknown'
-    return _check_runs_to_status(payload)
+    return _check_runs_to_status({'check_runs': runs})
 
 
 async def _hydrate_ci(
@@ -826,6 +894,11 @@ class SyncCommitsConfig(pydantic.BaseModel):
 
     Selectors resolve against the event context, so the push body lives
     under ``/payload`` (e.g. ``/payload/after``).
+
+    A rule bound to a non-push event points ``after_selector`` at that
+    body's head SHA and leaves ``before_selector`` alone: the default
+    ``/payload/before`` does not resolve there, which is what selects
+    :func:`sync_commits`' single-commit path.
     """
 
     before_selector: JsonPointer = pydantic.Field(
@@ -886,7 +959,21 @@ async def sync_commits(
     action_config: SyncCommitsConfig,
     event: object,
 ) -> None:
-    """Sync the commits in a ``push`` delivery into the ``commits`` table.
+    """Sync the commits a delivery attests to into the ``commits`` table.
+
+    The range synced is chosen from what ``before_selector`` resolves to,
+    which separates three cases that must not be collapsed:
+
+    * **a usable SHA** -- an ordinary push; sync ``before...after``.
+    * **nothing at all** (the pointer does not resolve) -- the delivery
+      has no notion of a previous head, so the only commit it attests to
+      is ``after``; sync that one commit.  This is the ``workflow_run``
+      shape, where falling through to the ``_last_known_sha`` compare
+      below yields an empty ``head...head`` range and silently syncs
+      nothing.
+    * **the zero SHA** -- a push that *does* carry a before, naming no
+      prior commit (a new branch).  Heal from the last commit stored for
+      the project, else fall back to a bounded recent-history walk.
 
     Branch gating is the rule's CEL ``filter_expression``'s job; this
     action does not filter refs itself.
@@ -910,6 +997,10 @@ async def sync_commits(
             if isinstance(before, str) and before and before != _ZERO_SHA:
                 raw = await _fetch_compare_commits(
                     client, before, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
+                )
+            elif before is None:
+                raw = await _fetch_single_commit(
+                    client, after, max_wait=_WEBHOOK_MAX_WAIT_SECONDS
                 )
             else:
                 last = await _last_known_sha(ctx.project_id)
