@@ -102,6 +102,10 @@ class LRUCache[K, V]:
                 entry is stale, overriding the instance ``ttl``. Pass it
                 when the deadline comes from outside -- an upstream
                 token expiry, say -- rather than from a fixed lifetime.
+                Omitting it means "use the instance policy", so a cache
+                built with a ``ttl`` cannot be given a single entry that
+                outlives it; pass a distant ``expires_at`` if you ever
+                need that.
 
         """
         if expires_at is None and self._ttl is not None:

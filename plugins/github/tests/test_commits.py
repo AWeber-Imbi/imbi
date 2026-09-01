@@ -1364,6 +1364,7 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_concurrent_cold_calls_mint_once(self) -> None:
+        """Racing callers on one installation exchange one token."""
         # Without the per-key lock every concurrent caller mints its own
         # token, burning the App's rate limit for one usable result.
         token_route = self._mock_slow_token()
@@ -1385,6 +1386,8 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
 
     @respx.mock
     async def test_concurrent_cold_calls_discover_once(self) -> None:
+        """Racing callers on one repo look its installation up once."""
+
         async def discover(_request: httpx.Request) -> httpx.Response:
             await asyncio.sleep(0.01)
             return httpx.Response(200, json={'id': 42})
@@ -1407,6 +1410,41 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
             )
         )
         self.assertEqual(1, discovery.call_count)
+        self.assertEqual(1, token_route.call_count)
+
+    @respx.mock
+    async def test_concurrent_repos_share_one_installation_mint(self) -> None:
+        """Two repos on one installation exchange a single token.
+
+        The lock taken before discovery is keyed by repo, so two repos
+        that turn out to share an installation pass it independently.
+        Only the installation-keyed lock inside the mint can collapse
+        them, and the token is per installation, not per repo.
+        """
+
+        async def discover(request: httpx.Request) -> httpx.Response:
+            await asyncio.sleep(0.01)
+            return httpx.Response(200, json={'id': 42})
+
+        for name in ('demo', 'other'):
+            respx.get(
+                f'https://api.github.com/repos/octo/{name}/installation'
+            ).mock(side_effect=discover)
+        token_route = self._mock_slow_token()
+        tokens = await asyncio.gather(
+            *(
+                _app_auth.installation_token(
+                    base='https://api.github.com',
+                    app_id='971',
+                    private_key=_APP_KEY_PEM,
+                    installation_id=None,
+                    owner='octo',
+                    repo=name,
+                )
+                for name in ('demo', 'other')
+            )
+        )
+        self.assertEqual(['ghs_minted', 'ghs_minted'], tokens)
         self.assertEqual(1, token_route.call_count)
 
     @respx.mock
