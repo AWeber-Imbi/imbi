@@ -29,7 +29,6 @@ recording behaves.
 from __future__ import annotations
 
 import asyncio
-import collections
 import collections.abc
 import datetime
 import logging
@@ -41,7 +40,7 @@ import httpx
 import jsonpointer
 import pydantic
 
-from imbi.common import clickhouse
+from imbi.common import cache, clickhouse
 from imbi.common.json_pointer import JsonPointer
 from imbi.common.models import CommitRecord, TagRecord
 from imbi.common.plugins.base import (
@@ -396,13 +395,13 @@ ResolveUser = collections.abc.Callable[
 # are cached: within a single sync :func:`_resolve_author_users` already
 # de-dupes subjects, and leaving misses uncached means a contributor who
 # links their Imbi identity later is picked up on the next sync instead
-# of being stuck unresolved for the process's lifetime.  An
-# ``OrderedDict`` gives LRU eviction once the cache exceeds
-# ``_USER_CACHE_MAX`` entries.
-_USER_CACHE: collections.OrderedDict[tuple[str, str], str] = (
-    collections.OrderedDict()
-)
+# of being stuck unresolved for the process's lifetime.  Entries never
+# expire -- a resolved identity does not go stale -- so the cache is
+# bounded only by ``_USER_CACHE_MAX``, evicting least-recently-used.
 _USER_CACHE_MAX = 8192
+_USER_CACHE: cache.LRUCache[tuple[str, str], str] = cache.LRUCache(
+    _USER_CACHE_MAX
+)
 
 
 async def _resolve_user(
@@ -418,16 +417,12 @@ async def _resolve_user(
     process's lifetime.
     """
     key = (base, subject)
-    if key in _USER_CACHE:
-        _USER_CACHE.move_to_end(key)
-        return _USER_CACHE[key]
+    if (cached := _USER_CACHE.get(key)) is not None:
+        return cached
     email = await resolver(subject)
     if email is None:
         return None
-    _USER_CACHE[key] = email
-    _USER_CACHE.move_to_end(key)
-    if len(_USER_CACHE) > _USER_CACHE_MAX:
-        _USER_CACHE.popitem(last=False)
+    _USER_CACHE.set(key, email)
     return email
 
 

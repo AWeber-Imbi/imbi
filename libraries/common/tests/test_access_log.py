@@ -7,7 +7,7 @@ import unittest
 from collections import abc
 from unittest import mock
 
-from imbi.common import access_log, otel
+from imbi.common import access_log, cache, otel
 from imbi.common.auth import core
 
 # The default logger name is derived from ``sys.argv[0]``, so pin it to
@@ -555,13 +555,14 @@ class PrincipalLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(r' - evil\r\nINJECTED 200 "GET ', message)
 
     async def test_api_key_owner_cache_evicts_lru(self) -> None:
-        with mock.patch.object(access_log, '_API_KEY_PRINCIPAL_CACHE_MAX', 1):
+        one_entry: cache.LRUCache[str, str] = cache.LRUCache(1)
+        with mock.patch.object(access_log, '_api_key_principals', one_entry):
             access_log.remember_api_key_principal('ik_abc123', 'first@x.com')
             # Pushing a second entry past the cap evicts the oldest.
             access_log.remember_api_key_principal('ik_zzz', 'second@x.com')
-        message = await self._emit(
-            headers=[(b'authorization', b'Bearer ik_abc123_sekretsecret')],
-        )
+            message = await self._emit(
+                headers=[(b'authorization', b'Bearer ik_abc123_sekretsecret')],
+            )
         self.assertIn(' - ik_abc123 "GET ', message)
 
 

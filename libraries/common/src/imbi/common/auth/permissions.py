@@ -9,12 +9,10 @@ are specific to imbi-api's domain entities.
 """
 
 import asyncio
-import collections
 import collections.abc
 import datetime
 import hashlib
 import logging
-import time
 import typing
 
 import fastapi
@@ -22,7 +20,7 @@ import jwt
 import pydantic
 from fastapi import security
 
-from imbi.common import access_log, graph, models, settings
+from imbi.common import access_log, cache, graph, models, settings
 from imbi.common.auth import core, password
 
 LOGGER = logging.getLogger(__name__)
@@ -145,8 +143,8 @@ class AuthContext(pydantic.BaseModel):
 # within a minute.
 _API_KEY_CACHE_TTL_SECONDS = 60
 _API_KEY_CACHE_MAX_ENTRIES = 1024
-_api_key_cache: collections.OrderedDict[str, tuple[float, AuthContext]] = (
-    collections.OrderedDict()
+_api_key_cache: cache.LRUCache[str, AuthContext] = cache.LRUCache(
+    _API_KEY_CACHE_MAX_ENTRIES, ttl=_API_KEY_CACHE_TTL_SECONDS
 )
 
 
@@ -156,16 +154,9 @@ def _api_key_cache_key(key: str) -> str:
 
 def _api_key_cache_lookup(key: str) -> AuthContext | None:
     """Return a cached AuthContext if present and unexpired."""
-    h = _api_key_cache_key(key)
-    entry = _api_key_cache.get(h)
-    if entry is None:
+    ctx = _api_key_cache.get(_api_key_cache_key(key))
+    if ctx is None:
         return None
-    expires, ctx = entry
-    if time.monotonic() > expires:
-        _api_key_cache.pop(h, None)
-        return None
-    # Refresh LRU recency on hit.
-    _api_key_cache.move_to_end(h)
     # A copy, not the cached instance. `AuthContext` is not frozen, so handing
     # out the shared object means anything that mutated it -- adding a
     # permission, replacing `identities` -- would change what every later
@@ -178,13 +169,7 @@ def _api_key_cache_lookup(key: str) -> AuthContext | None:
 
 def _api_key_cache_store(key: str, ctx: AuthContext) -> None:
     """Store an AuthContext in the bounded LRU cache."""
-    h = _api_key_cache_key(key)
-    while len(_api_key_cache) >= _API_KEY_CACHE_MAX_ENTRIES:
-        _api_key_cache.popitem(last=False)
-    _api_key_cache[h] = (
-        time.monotonic() + _API_KEY_CACHE_TTL_SECONDS,
-        ctx,
-    )
+    _api_key_cache.set(_api_key_cache_key(key), ctx)
 
 
 def clear_api_key_cache() -> None:

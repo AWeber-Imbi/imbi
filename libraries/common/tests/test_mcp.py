@@ -15,7 +15,7 @@ import starlette.middleware
 from fastmcp.server.providers.openapi import MCPType
 from fastmcp.utilities.openapi import HTTPRoute
 
-from imbi.common import access_log, mcp
+from imbi.common import access_log, cache, mcp
 
 
 class ExcludeNonAiToolsTestCase(unittest.TestCase):
@@ -416,7 +416,7 @@ class PermissionCacheTests(unittest.IsolatedAsyncioTestCase):
         """Past the TTL the profile is resolved again."""
         await self._resolve('Bearer token-a')
         with unittest.mock.patch.object(
-            mcp.time,
+            cache.time,
             'monotonic',
             return_value=time.monotonic()
             + mcp.PermissionFilterMiddleware.CACHE_TTL_SECONDS

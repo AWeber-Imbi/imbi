@@ -1,5 +1,6 @@
 """Tests for the GitHub commit / tag history sync webhook plugin."""
 
+import asyncio
 import base64
 import datetime
 import time
@@ -12,6 +13,7 @@ import respx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from imbi.common import cache
 from imbi.common.models import CommitRecord, TagRecord
 from imbi.common.plugins.base import PluginContext
 from imbi.common.plugins.errors import (
@@ -1313,9 +1315,9 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
         # Seed the install cache with a now-stale id, then make minting
         # against it 404 (uninstall/reinstall). The token call should
         # evict the stale id, rediscover, and mint against the new one.
-        _app_auth._INSTALL_CACHE[
-            ('971', 'https://api.github.com', 'octo', 'demo')
-        ] = '7'
+        _app_auth._INSTALL_CACHE.set(
+            ('971', 'https://api.github.com', 'octo', 'demo'), '7'
+        )
         stale = respx.post(
             'https://api.github.com/app/installations/7/access_tokens'
         ).mock(return_value=httpx.Response(404, json={'message': 'gone'}))
@@ -1337,10 +1339,75 @@ class AppAuthSyncTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, fresh.call_count)
         self.assertEqual(
             '42',
-            _app_auth._INSTALL_CACHE[
+            _app_auth._INSTALL_CACHE.get(
                 ('971', 'https://api.github.com', 'octo', 'demo')
-            ],
+            ),
         )
+
+    def _mock_slow_token(self, token: str = 'ghs_minted') -> respx.Route:
+        """Mint with a real suspension point, so callers interleave.
+
+        respx resolves instantly otherwise, which would let each
+        coroutine run its whole mint before the next one starts -- and a
+        stampede test that never overlaps proves nothing.
+        """
+
+        async def respond(_request: httpx.Request) -> httpx.Response:
+            await asyncio.sleep(0.01)
+            return httpx.Response(
+                201, json={'token': token, 'expires_at': _FAR_FUTURE}
+            )
+
+        return respx.post(
+            'https://api.github.com/app/installations/42/access_tokens'
+        ).mock(side_effect=respond)
+
+    @respx.mock
+    async def test_concurrent_cold_calls_mint_once(self) -> None:
+        # Without the per-key lock every concurrent caller mints its own
+        # token, burning the App's rate limit for one usable result.
+        token_route = self._mock_slow_token()
+        tokens = await asyncio.gather(
+            *(
+                _app_auth.installation_token(
+                    base='https://api.github.com',
+                    app_id='971',
+                    private_key=_APP_KEY_PEM,
+                    installation_id='42',
+                    owner='octo',
+                    repo='demo',
+                )
+                for _ in range(5)
+            )
+        )
+        self.assertEqual(['ghs_minted'] * 5, tokens)
+        self.assertEqual(1, token_route.call_count)
+
+    @respx.mock
+    async def test_concurrent_cold_calls_discover_once(self) -> None:
+        async def discover(_request: httpx.Request) -> httpx.Response:
+            await asyncio.sleep(0.01)
+            return httpx.Response(200, json={'id': 42})
+
+        discovery = respx.get(
+            'https://api.github.com/repos/octo/demo/installation'
+        ).mock(side_effect=discover)
+        token_route = self._mock_slow_token()
+        await asyncio.gather(
+            *(
+                _app_auth.installation_token(
+                    base='https://api.github.com',
+                    app_id='971',
+                    private_key=_APP_KEY_PEM,
+                    installation_id=None,
+                    owner='octo',
+                    repo='demo',
+                )
+                for _ in range(5)
+            )
+        )
+        self.assertEqual(1, discovery.call_count)
+        self.assertEqual(1, token_route.call_count)
 
     @respx.mock
     async def test_base64_private_key_accepted(self) -> None:
@@ -2397,12 +2464,13 @@ class ResolveUserCacheTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_lru_eviction(self) -> None:
         resolver = mock.AsyncMock(return_value='e@e.com')
-        with mock.patch.object(commits, '_USER_CACHE_MAX', 2):
+        small: cache.LRUCache[tuple[str, str], str] = cache.LRUCache(2)
+        with mock.patch.object(commits, '_USER_CACHE', small):
             await commits._resolve_user(resolver, 'b', '1')
             await commits._resolve_user(resolver, 'b', '2')
             await commits._resolve_user(resolver, 'b', '3')
-        self.assertNotIn(('b', '1'), commits._USER_CACHE)
-        self.assertIn(('b', '3'), commits._USER_CACHE)
+            self.assertNotIn(('b', '1'), small)
+            self.assertIn(('b', '3'), small)
 
     async def test_author_users_dedups_and_drops_misses(self) -> None:
         resolver = mock.AsyncMock(

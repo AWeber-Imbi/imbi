@@ -26,6 +26,7 @@ import typing
 import httpx
 import jwt
 
+from imbi.common import cache
 from imbi.plugins.github.deployment import (
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
     _raise_on_401,  # pyright: ignore[reportPrivateUsage]
@@ -56,11 +57,31 @@ _TOKEN_REFRESH_MARGIN_SECONDS = 300.0
 # (or we can't parse) the ``expires_at`` field.
 _DEFAULT_TOKEN_TTL_SECONDS = 3300.0
 
-# Process-wide caches.  Token cache values are ``(token, deadline)`` where
-# ``deadline`` is a ``time.monotonic()`` instant; the installation cache
-# avoids re-discovering the installation id on every delivery.
-_TOKEN_CACHE: dict[tuple[str, str, str], tuple[str, float]] = {}
-_INSTALL_CACHE: dict[tuple[str, str, str, str], str] = {}
+# Upper bounds on the process-wide caches.  Both were unbounded, so a
+# long-lived worker touching many repositories grew them for the life of
+# the process -- one installation entry per repository, forever.  The
+# bounds are generous: eviction costs one extra round-trip, and an
+# installation covers an entire org, so a process rarely holds more than
+# a handful of distinct ids.
+_TOKEN_CACHE_MAX_ENTRIES = 1024
+_INSTALL_CACHE_MAX_ENTRIES = 4096
+
+# Process-wide caches.  Tokens carry a per-entry deadline derived from
+# GitHub's own ``expires_at`` rather than a uniform TTL; installation ids
+# do not expire (an App being uninstalled surfaces as a 404 on the next
+# mint, which evicts the id).
+_TOKEN_CACHE: cache.LRUCache[tuple[str, str, str], str] = cache.LRUCache(
+    _TOKEN_CACHE_MAX_ENTRIES
+)
+_INSTALL_CACHE: cache.LRUCache[tuple[str, str, str, str], str] = (
+    cache.LRUCache(_INSTALL_CACHE_MAX_ENTRIES)
+)
+
+# Serializes check -> mint -> store per ``(app_id, installation, base)``.
+# Without it, N concurrent calls for one cold key each mint their own
+# token: GitHub happily issues them, the last write wins, and the rest
+# are wasted round-trips against the App's rate limit.
+_MINT_LOCK: cache.KeyedLock[tuple[str, str, str]] = cache.KeyedLock()
 
 
 def reset_cache() -> None:
@@ -115,11 +136,22 @@ def _token_deadline(expires_at: object) -> float:
     return now + max(0.0, remaining - _TOKEN_REFRESH_MARGIN_SECONDS)
 
 
-def _cached_token(key: tuple[str, str, str]) -> str | None:
-    entry = _TOKEN_CACHE.get(key)
-    if entry is not None and entry[1] > time.monotonic():
-        return entry[0]
-    return None
+def _cached_token(
+    app_id: str, base: str, installation_id: str | None, owner: str, repo: str
+) -> str | None:
+    """Return a live cached token, or ``None`` to mint one.
+
+    The installation id is the one the caller configured, falling back
+    to a previously discovered one for the repo -- so a repo whose
+    installation is already known is served from cache without the
+    discovery round-trip.
+    """
+    install = installation_id or _INSTALL_CACHE.get(
+        (app_id, base, owner, repo)
+    )
+    if install is None:
+        return None
+    return _TOKEN_CACHE.get((app_id, install, base))
 
 
 async def _discover_installation_id(
@@ -165,19 +197,48 @@ async def installation_token(
     ``installation_id`` may be ``None``, in which case the installation
     is discovered from the target repo (and cached).  The resulting
     token is cached until shortly before it expires.
-    """
-    install = installation_id
-    if install is not None and (
-        cached := _cached_token((app_id, install, base))
-    ):
-        return cached
-    if install is None:
-        install = _INSTALL_CACHE.get((app_id, base, owner, repo))
-        if install is not None and (
-            cached := _cached_token((app_id, install, base))
-        ):
-            return cached
 
+    Concurrent callers for the same installation mint once: the first
+    through the lock stores the token and the rest read it back rather
+    than each making their own exchange.
+    """
+    if (
+        token := _cached_token(app_id, base, installation_id, owner, repo)
+    ) is not None:
+        return token
+    # Keyed on what the caller knows before discovery: an explicit
+    # installation id, else the repo it will be discovered from.
+    async with _MINT_LOCK(
+        (app_id, base, installation_id or f'{owner}/{repo}')
+    ):
+        # The coroutine that held the lock may have just minted this.
+        if (
+            token := _cached_token(app_id, base, installation_id, owner, repo)
+        ) is not None:
+            return token
+        return await _mint_and_cache(
+            base=base,
+            app_id=app_id,
+            private_key=private_key,
+            installation_id=installation_id,
+            owner=owner,
+            repo=repo,
+        )
+
+
+async def _mint_and_cache(
+    *,
+    base: str,
+    app_id: str,
+    private_key: str,
+    installation_id: str | None,
+    owner: str,
+    repo: str,
+) -> str:
+    """Mint a fresh installation token and cache it until it expires."""
+    install = installation_id or _INSTALL_CACHE.get(
+        (app_id, base, owner, repo)
+    )
     install_was_cached = install is not None and installation_id is None
     app_token = _app_jwt(app_id, private_key)
     async with httpx.AsyncClient(
@@ -188,8 +249,9 @@ async def installation_token(
     ) as client:
         if install is None:
             install = await _discover_installation_id(client, owner, repo)
-            _INSTALL_CACHE[(app_id, base, owner, repo)] = install
-            if cached := _cached_token((app_id, install, base)):
+            _INSTALL_CACHE.set((app_id, base, owner, repo), install)
+            cached = _TOKEN_CACHE.get((app_id, install, base))
+            if cached is not None:
                 return cached
         try:
             token, expires_at = await _mint(client, install)
@@ -200,13 +262,12 @@ async def installation_token(
             # stale id and rediscover once before giving up.
             if not install_was_cached or exc.response.status_code != 404:
                 raise
-            _INSTALL_CACHE.pop((app_id, base, owner, repo), None)
+            _INSTALL_CACHE.pop((app_id, base, owner, repo))
             install = await _discover_installation_id(client, owner, repo)
-            _INSTALL_CACHE[(app_id, base, owner, repo)] = install
+            _INSTALL_CACHE.set((app_id, base, owner, repo), install)
             token, expires_at = await _mint(client, install)
-    _TOKEN_CACHE[(app_id, install, base)] = (
-        token,
-        _token_deadline(expires_at),
+    _TOKEN_CACHE.set(
+        (app_id, install, base), token, expires_at=_token_deadline(expires_at)
     )
     return token
 
