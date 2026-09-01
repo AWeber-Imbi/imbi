@@ -50,11 +50,9 @@ Requires the ``mcp`` extra (``imbi-common[mcp]``).
 
 from __future__ import annotations
 
-import collections
 import hashlib
 import logging
 import re
-import time
 import typing
 
 import fastmcp.server.middleware
@@ -62,7 +60,7 @@ import httpx
 from fastmcp.server.dependencies import get_http_headers, get_http_request
 from fastmcp.server.providers.openapi import MCPType, RouteMap
 
-from imbi.common import access_log
+from imbi.common import access_log, cache
 
 if typing.TYPE_CHECKING:
     import collections.abc
@@ -301,29 +299,11 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
         """
         self._client = client
         self._profile_path = f'{mount_prefix(spec)}{PROFILE_PATH}'
-        self._cache: collections.OrderedDict[
-            str, tuple[float, tuple[bool, set[str]]]
-        ] = collections.OrderedDict()
-
-    def _cache_lookup(self, key: str) -> tuple[bool, set[str]] | None:
-        """Return a cached profile if present and unexpired."""
-        entry = self._cache.get(key)
-        if entry is None:
-            return None
-        expires, profile = entry
-        if time.monotonic() > expires:
-            del self._cache[key]
-            return None
-        self._cache.move_to_end(key)
-        return profile
-
-    def _cache_store(self, key: str, profile: tuple[bool, set[str]]) -> None:
-        """Store a profile, evicting the least-recently-used entry."""
-        while len(self._cache) >= self.CACHE_MAX_ENTRIES:
-            self._cache.popitem(last=False)
-        self._cache[key] = (
-            time.monotonic() + self.CACHE_TTL_SECONDS,
-            profile,
+        # Per-instance, not module-level: each toolset filters against
+        # its own client, so two servers in one process must not share
+        # resolved profiles.
+        self._cache: cache.LRUCache[str, tuple[bool, set[str]]] = (
+            cache.LRUCache(self.CACHE_MAX_ENTRIES, ttl=self.CACHE_TTL_SECONDS)
         )
 
     async def _caller_permissions(self) -> tuple[bool, set[str]] | None:
@@ -341,10 +321,8 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
             if credential
             else ''
         )
-        if key:
-            cached = self._cache_lookup(key)
-            if cached is not None:
-                return cached
+        if key and (cached := self._cache.get(key)) is not None:
+            return cached
         try:
             response = await self._client.get(self._profile_path)
             response.raise_for_status()
@@ -370,7 +348,7 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
             {item for item in permissions if isinstance(item, str)},
         )
         if key:
-            self._cache_store(key, resolved)
+            self._cache.set(key, resolved)
         return resolved
 
     def _is_invocable(self, required: list[str], granted: set[str]) -> bool:

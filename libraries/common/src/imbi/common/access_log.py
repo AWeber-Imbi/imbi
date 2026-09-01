@@ -35,7 +35,6 @@ the SDK; it is suppressed by passing ``include_trace_context=False``
 to the middleware constructor.
 """
 
-import collections
 import logging
 import os
 import sys
@@ -44,7 +43,7 @@ from collections import abc
 
 import jwt
 
-from imbi.common import otel, settings
+from imbi.common import cache, otel, settings
 from imbi.common.auth import core
 
 _FALLBACK_LOGGER_NAME = 'imbi.common.access'
@@ -74,10 +73,12 @@ def _default_logger() -> logging.Logger:
 
 
 # Bound the API-key owner cache so a long-lived process can't grow it
-# without limit; owners are stable, so a generous LRU is plenty.
+# without limit; owners are stable, so a generous LRU with no expiry is
+# plenty. Read from the synchronous response path, which is why
+# ``LRUCache`` does not lock.
 _API_KEY_PRINCIPAL_CACHE_MAX = 2048
-_api_key_principals: collections.OrderedDict[str, str] = (
-    collections.OrderedDict()
+_api_key_principals: cache.LRUCache[str, str] = cache.LRUCache(
+    _API_KEY_PRINCIPAL_CACHE_MAX
 )
 
 Scope = abc.MutableMapping[str, typing.Any]
@@ -100,19 +101,11 @@ def remember_api_key_principal(key_id: str, label: str) -> None:
     """
     if not key_id or not label:
         return
-    cache = _api_key_principals
-    if key_id in cache:
-        cache.move_to_end(key_id)
-    cache[key_id] = label
-    while len(cache) > _API_KEY_PRINCIPAL_CACHE_MAX:
-        cache.popitem(last=False)
+    _api_key_principals.set(key_id, label)
 
 
 def _cached_api_key_principal(key_id: str) -> str | None:
-    label = _api_key_principals.get(key_id)
-    if label is not None:
-        _api_key_principals.move_to_end(key_id)
-    return label
+    return _api_key_principals.get(key_id)
 
 
 def clear_api_key_principals() -> None:
