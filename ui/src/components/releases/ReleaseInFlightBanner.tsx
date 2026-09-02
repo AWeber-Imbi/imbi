@@ -20,16 +20,18 @@ import {
 } from './releaseInFlight'
 
 /**
- * What kind of operation the banner narrates. A release walks
- * Building → Deploying → Released; a direct deploy has no build phase,
- * so its train is just Deploying → Deployed.
+ * What kind of operation the banner narrates. A promote walks
+ * Building → Deploying → Released; a release-only cut (library / image)
+ * has no rollout, so it is Building → Released; a direct deploy has no
+ * build phase, so its train is just Deploying → Deployed.
  */
-export type InFlightKind = 'deploy' | 'release'
+export type InFlightKind = 'deploy' | 'promote' | 'release'
 
 /** The train the banner walks while the operation runs. */
 const PHASES: Record<InFlightKind, readonly string[]> = {
   deploy: ['Deploying', 'Deployed'],
-  release: ['Building', 'Deploying', 'Released'],
+  promote: ['Building', 'Deploying', 'Released'],
+  release: ['Building', 'Released'],
 }
 
 const PHASE_INDEX: Record<
@@ -37,12 +39,12 @@ const PHASE_INDEX: Record<
   Partial<Record<ReleaseInFlightPhase, number>>
 > = {
   deploy: { deploying: 0, success: 1 },
-  release: { building: 0, deploying: 1, success: 2 },
+  promote: { building: 0, deploying: 1, success: 2 },
+  release: { building: 0, success: 1 },
 }
 
 interface ReleaseInFlightBannerProps {
-  /** Defaults to `'release'`; `'deploy'` narrates a direct deploy. */
-  kind?: InFlightKind
+  kind: InFlightKind
   /** Sends the operator to the tab where a redeploy can be dispatched. */
   onRedeploy: () => void
   onUnblock: (tag: string) => void
@@ -63,7 +65,7 @@ type Tone = 'amber' | 'danger' | 'muted' | 'success'
  * reason is on screen.
  */
 export function ReleaseInFlightBanner({
-  kind = 'release',
+  kind,
   onRedeploy,
   onUnblock,
   state,
@@ -173,6 +175,23 @@ const TONE_CLASS: Record<Tone, string> = {
   success: 'border-success bg-success text-success',
 }
 
+const RELEASE_DETAIL: Record<ReleaseInFlightPhase, string> = {
+  adopting: '',
+  build_failed:
+    'The tag is blocked. Fix the build and release a new version, or ' +
+    'unblock this one to retry it.',
+  building: 'The release workflow is cutting the tag and building it.',
+  deploy_failed:
+    'The build was green, so the release is not blocked — redeploy this ' +
+    'tag once the cause is fixed.',
+  deploying: 'The build is green; Imbi is rolling the release out.',
+  failed:
+    'Last promote outcome unknown — confirm the run before cutting ' +
+    'again. The tag was not blocked, so it can still be deployed.',
+  idle: '',
+  success: 'Release complete. The drift below reflects the new baseline.',
+}
+
 const DETAIL: Record<InFlightKind, Record<ReleaseInFlightPhase, string>> = {
   deploy: {
     adopting: '',
@@ -185,22 +204,8 @@ const DETAIL: Record<InFlightKind, Record<ReleaseInFlightPhase, string>> = {
     idle: '',
     success: 'Deployment complete.',
   },
-  release: {
-    adopting: '',
-    build_failed:
-      'The tag is blocked. Fix the build and release a new version, or ' +
-      'unblock this one to retry it.',
-    building: 'The release workflow is cutting the tag and building it.',
-    deploy_failed:
-      'The build was green, so the release is not blocked — redeploy this ' +
-      'tag once the cause is fixed.',
-    deploying: 'The build is green; Imbi is rolling the release out.',
-    failed:
-      'Last promote outcome unknown — confirm the run before cutting ' +
-      'again. The tag was not blocked, so it can still be deployed.',
-    idle: '',
-    success: 'Release complete. The drift below reflects the new baseline.',
-  },
+  promote: RELEASE_DETAIL,
+  release: RELEASE_DETAIL,
 }
 
 function BannerShell({
