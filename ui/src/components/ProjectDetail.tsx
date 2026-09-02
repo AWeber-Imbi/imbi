@@ -1201,6 +1201,7 @@ export function ProjectDetail({
         {releaseInFlight.phase === 'idle' ? null : (
           <div className="mb-6">
             <ReleaseInFlightBanner
+              kind={isReleaseOnly ? 'release' : 'promote'}
               onRedeploy={() => handleTabChange('deployments')}
               onUnblock={unblock}
               state={releaseInFlight}

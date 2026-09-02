@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { render } from '@/test/utils'
 
 import type { ReleaseInFlightState } from './releaseInFlight'
-import { ReleaseInFlightBanner } from './ReleaseInFlightBanner'
+import {
+  type InFlightKind,
+  ReleaseInFlightBanner,
+} from './ReleaseInFlightBanner'
 
 const state = (
   over: Partial<ReleaseInFlightState> = {},
@@ -23,12 +26,16 @@ const state = (
   ...over,
 })
 
-function renderBanner(over: Partial<ReleaseInFlightState> = {}) {
+function renderBanner(
+  over: Partial<ReleaseInFlightState> = {},
+  kind: InFlightKind = 'promote',
+) {
   const onRedeploy = vi.fn()
   const onUnblock = vi.fn()
   const value = state(over)
   render(
     <ReleaseInFlightBanner
+      kind={kind}
       onRedeploy={onRedeploy}
       onUnblock={onUnblock}
       state={value}
@@ -42,6 +49,7 @@ describe('ReleaseInFlightBanner', () => {
   it('renders nothing when no release is running', () => {
     const { container } = render(
       <ReleaseInFlightBanner
+        kind="promote"
         onRedeploy={vi.fn()}
         onUnblock={vi.fn()}
         state={state({ blocked: false, phase: 'idle' })}
@@ -69,6 +77,13 @@ describe('ReleaseInFlightBanner', () => {
       'href',
       'https://github.com/acme/demo/actions/runs/1',
     )
+  })
+
+  it('has no deploying step for a release-only cut', () => {
+    renderBanner({ envName: null, phase: 'building' }, 'release')
+    expect(screen.getByText('Building')).toBeInTheDocument()
+    expect(screen.queryByText('Deploying')).not.toBeInTheDocument()
+    expect(screen.getByText('Released')).toBeInTheDocument()
   })
 
   it('names the target environment while deploying', () => {
