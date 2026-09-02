@@ -674,8 +674,13 @@ async def _resolve_and_context(
         project_links=project_links,
         project_type_slugs=project_type_slugs,
     )
-    userless = best_effort_identity or autonomous.is_userless(auth)
-    if userless:
+    # Not named ``userless``: it is deliberately true for the backfill
+    # and resync paths, which pass ``best_effort_identity`` with a real
+    # user present.  What it selects is the *service-credential*
+    # fallback, not the absence of a user -- ``autonomous.is_userless``
+    # answers that question, and only it drives the gates above.
+    service_fallback = best_effort_identity or autonomous.is_userless(auth)
+    if service_fallback:
         ctx = await _attach_identity_best_effort(db, ctx, resolved, auth)
     else:
         ctx = await attach_identity(db, ctx, resolved, auth)
@@ -688,7 +693,9 @@ async def _resolve_and_context(
         credentials = decrypt_integration_credentials(
             resolved.encrypted_credentials
         )
-        if not _has_service_credentials(credentials, allow_app=userless):
+        if not _has_service_credentials(
+            credentials, allow_app=service_fallback
+        ):
             # The one row of the error contract that stays a 5xx: a
             # missing credential is one operator action away from being
             # fixed, so a retry is not unreasonable.
@@ -746,9 +753,14 @@ def _has_service_credentials(
 
     A PAT (``access_token``/``token``) always qualifies.  GitHub App
     credentials (``app_id`` + ``private_key``) qualify only when
-    ``allow_app`` is set -- a call with no acting user, where minting an
-    installation token is the intended behaviour rather than a silent
-    substitute for the user's own token.
+    ``allow_app`` is set -- a call that has already elected the service
+    fallback, where minting an installation token is the intended
+    behaviour rather than a silent substitute for the user's own token.
+    It is not a security boundary on its own: a PAT configured on the
+    same Integration qualifies unconditionally, so ``allow_app`` only
+    decides whether an App-credentialed Integration can do what a
+    PAT-credentialed one already does on that path.  The boundary is
+    ``autonomous.is_userless`` and the gates it drives.
     """
     if credentials.get('access_token') or credentials.get('token'):
         return True

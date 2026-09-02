@@ -266,8 +266,13 @@ async def _mint(
     a capability asking for authority the App was never given should say
     so rather than act with less.
     """
+    # ``is not None`` rather than truthiness: ``freeze_scope({})`` is an
+    # empty tuple, and asking GitHub for *no* permissions must send
+    # ``{'permissions': {}}``.  Omitting the body instead makes GitHub
+    # grant the installation's entire set -- the narrowest request
+    # would fail open to the widest token.
     body: dict[str, typing.Any] | None = (
-        {'permissions': dict(scope)} if scope else None
+        {'permissions': dict(scope)} if scope is not None else None
     )
     resp = await client.post(
         f'/app/installations/{installation_id}/access_tokens', json=body

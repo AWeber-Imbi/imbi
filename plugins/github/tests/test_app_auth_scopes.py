@@ -123,6 +123,24 @@ class ScopedMintTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(b'', route.calls[0].request.content)
 
     @respx.mock
+    async def test_empty_scope_sends_an_empty_permissions_object(
+        self,
+    ) -> None:
+        """An empty scope is a request for nothing, not for everything.
+
+        ``freeze_scope({})`` is a falsy empty tuple, so a truthiness
+        test here would omit the body and make GitHub grant the
+        installation's full set -- the narrowest request failing open
+        to the widest token.
+        """
+        route = _mock_token()
+        await self._token({})
+        self.assertEqual(
+            {'permissions': {}},
+            httpx.Response(200, content=route.calls[0].request.content).json(),
+        )
+
+    @respx.mock
     async def test_same_scope_is_served_from_cache(self) -> None:
         route = _mock_token()
         first = await self._token({'contents': 'read'})

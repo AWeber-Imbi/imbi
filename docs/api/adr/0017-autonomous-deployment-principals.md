@@ -132,10 +132,11 @@ name from activity feeds," which is not the same question.
 `acknowledge_ci_failure` documents its meaning as "an operator who has seen
 the failure and decided to ship anyway." A daemon setting it asserts
 something nobody did, so it is refused with `403` — whether CI is red or
-green, because the claim is false either way. This costs little: only
-`'fail'` gates at all, so a rollback to a genuinely good ref is unaffected.
-The only case denied is a daemon shipping a commit whose CI is failing, which
-is precisely where a human belongs.
+green, because the claim is false either way. This costs little: a daemon that
+simply omits the flag deploys as usual, so the only *deployment* this blocks
+is a daemon shipping a commit whose CI is failing — precisely where a human
+belongs. A rollback to a genuinely good ref never needs the flag and is
+unaffected.
 
 If real rollbacks turn out to be blocked, the escape hatch is a separate
 `project:deployment:override-ci` permission — added on evidence, not in
