@@ -8,7 +8,10 @@ from uvicorn.middleware import proxy_headers
 from imbi.api import endpoints, lifespans, openapi, settings, version
 from imbi.api.middleware import rate_limit
 from imbi.common import access_log, graph, lifespan, sentry, valkey
-from imbi.common.plugins.errors import PluginCredentialsMissing
+from imbi.common.plugins.errors import (
+    PluginCredentialsMissing,
+    PluginInstallationMissing,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +82,31 @@ def create_app() -> fastapi.FastAPI:
         return responses.JSONResponse(
             status_code=503,
             content={'detail': str(exc)},
+        )
+
+    # An Integration whose credential grants it nothing on the target
+    # resource -- canonically a GitHub App that simply is not installed
+    # on the repository. A terminal 403 rather than a 5xx: consuming
+    # clients retry 5xx on the assumption that it is transient, and an
+    # uninstalled App will still be uninstalled on the retry. The
+    # discriminated ``detail.error`` is what an autonomous caller
+    # branches on so it can log the cause instead of spinning.
+    @app.exception_handler(PluginInstallationMissing)
+    async def _plugin_installation_missing(  # pyright: ignore[reportUnusedFunction]
+        _request: fastapi.Request,
+        exc: PluginInstallationMissing,
+    ) -> responses.JSONResponse:
+        LOGGER.warning('Plugin installation missing: %s', exc)
+        return responses.JSONResponse(
+            status_code=403,
+            content={
+                'detail': {
+                    'error': 'app_not_installed',
+                    'message': str(exc),
+                    'owner_repo': exc.owner_repo,
+                    'integration_slug': exc.integration_slug,
+                }
+            },
         )
 
     # Phase 5: Setup rate limiting middleware

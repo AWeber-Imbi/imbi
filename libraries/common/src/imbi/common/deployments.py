@@ -153,7 +153,9 @@ _UPSERT_TAIL: typing.Final[typing.LiteralString] = """
           AND COALESCE(d.external_run_url, '')
               = COALESCE({external_run_url}, d.external_run_url, '')
           AND COALESCE(d.performed_by, '')
-              = COALESCE({performed_by}, d.performed_by, '')) AS unchanged
+              = COALESCE({performed_by}, d.performed_by, '')
+          AND COALESCE(d.credential, '')
+              = COALESCE({credential}, d.credential, '')) AS unchanged
     SET d.id = COALESCE(d.id, {id}),
         d.created_at = COALESCE(d.created_at, {timestamp}),
         d.origin = COALESCE(d.origin, {source}),
@@ -162,6 +164,7 @@ _UPSERT_TAIL: typing.Final[typing.LiteralString] = """
         d.external_run_url =
             COALESCE({external_run_url}, d.external_run_url),
         d.performed_by = COALESCE({performed_by}, d.performed_by),
+        d.credential = COALESCE({credential}, d.credential),
         d.release_tag = COALESCE({release_tag}, d.release_tag),
         d.release_committish =
             COALESCE({release_committish}, d.release_committish),
@@ -213,6 +216,7 @@ async def upsert_deployment(
     external_run_id: str | None = None,
     external_run_url: str | None = None,
     performed_by: str | None = None,
+    credential: str | None = None,
     release_tag: str | None = None,
     release_committish: str | None = None,
     timestamp: datetime.datetime | None = None,
@@ -235,8 +239,16 @@ async def upsert_deployment(
     :func:`attach_release` can finish the job when the Release turns
     up.
 
-    A ``None`` *external_run_url* or *performed_by* means "unknown", not
-    "clear": neither can blank a value another writer already recorded.
+    A ``None`` *external_run_url*, *performed_by*, or *credential* means
+    "unknown", not "clear": none of them can blank a value another
+    writer already recorded.
+
+    *credential* names the Integration credential the rollout actually
+    ran on when it was not the actor's own -- e.g.
+    ``'github-app installation 12345678'``. A userless principal acts
+    with an Integration's App installation, and recording only which
+    service account asked would leave the authority that carried the
+    deploy out unrecorded.
 
     *source* names the writer.  It lands on every ``history`` entry and,
     for the writer that created the deployment, once on the node as
@@ -260,6 +272,7 @@ async def upsert_deployment(
             'external_run_id': external_run_id,
             'external_run_url': external_run_url,
             'performed_by': performed_by,
+            'credential': credential,
             'release_tag': release_tag,
             'release_committish': release_committish,
             'status': status,
@@ -304,6 +317,7 @@ def node_to_event(
                 'external_run_id': props.get('external_run_id'),
                 'external_run_url': props.get('external_run_url'),
                 'performed_by': props.get('performed_by'),
+                'credential': props.get('credential'),
             }
         )
     except ValueError:

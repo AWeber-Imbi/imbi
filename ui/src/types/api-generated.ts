@@ -8714,6 +8714,11 @@ export interface components {
              * @default false
              */
             terminal: boolean;
+            /**
+             * Allow Autonomous
+             * @default false
+             */
+            allow_autonomous: boolean;
             organization: components["schemas"]["Organization"];
         } & {
             [key: string]: unknown;
@@ -10950,6 +10955,11 @@ export interface components {
              * @default false
              */
             terminal: boolean;
+            /**
+             * Allow Autonomous
+             * @default false
+             */
+            allow_autonomous: boolean;
         };
         /**
          * ProjectListItem
@@ -11465,6 +11475,11 @@ export interface components {
             to_sha?: string | null;
             /** Commits Pending */
             commits_pending?: number | null;
+            /**
+             * To Allow Autonomous
+             * @default false
+             */
+            to_allow_autonomous: boolean;
         };
         /** PullRequestListResponse */
         PullRequestListResponse: {
@@ -13412,6 +13427,11 @@ export interface components {
              * @default false
              */
             terminal: boolean;
+            /**
+             * Allow Autonomous
+             * @default false
+             */
+            allow_autonomous: boolean;
             organization: components["schemas"]["Organization"];
         };
         /** EnvironmentResponse */
@@ -13468,6 +13488,11 @@ export interface components {
              * @default false
              */
             terminal: boolean;
+            /**
+             * Allow Autonomous
+             * @default false
+             */
+            allow_autonomous: boolean;
             organization: components["schemas"]["Organization"];
             /**
              * Relationships
@@ -14196,6 +14221,11 @@ export interface components {
              * @default false
              */
             terminal: boolean;
+            /**
+             * Allow Autonomous
+             * @default false
+             */
+            allow_autonomous: boolean;
             organization: components["schemas"]["Organization"];
         };
     };

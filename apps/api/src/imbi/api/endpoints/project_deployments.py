@@ -25,7 +25,7 @@ import httpx
 import nanoid
 import pydantic
 
-from imbi.api.auth import permissions, principals
+from imbi.api.auth import autonomous, permissions, principals
 from imbi.api.commit_sync import queue as commit_sync_queue
 from imbi.api.commit_sync import service as commit_sync_service
 from imbi.api.deployment_sync import queue as deployment_sync_queue
@@ -272,6 +272,11 @@ class PromotionOption(pydantic.BaseModel):
     from_sha: str | None = None
     to_sha: str | None = None
     commits_pending: int | None = None
+    #: Whether a userless principal may promote into the to-env. Lets an
+    #: autonomous caller enumerate what it may touch and log "staging is
+    #: not autonomous-enabled, skipping" instead of generating a 403
+    #: every poll cycle.
+    to_allow_autonomous: bool = False
 
 
 class CommitCheckStatus(pydantic.BaseModel):
@@ -600,16 +605,49 @@ async def _resolve_and_context(
 ) -> tuple[ResolvedCapability, PluginContext, dict[str, str]]:
     """Common boilerplate: resolve plugin, attach identity, build creds.
 
-    When ``best_effort_identity`` is set (the resync/backfill path), a
-    missing per-user identity connection is not fatal: the actor is still
-    stamped for attribution, but credential resolution falls back to the
-    Integration's own service credentials (a PAT or GitHub App) rather
-    than raising ``identity_required``.  This lets the headless
-    deployment-resync sweep -- which acts as a synthetic principal with
-    no user -- backfill via the App installation token, mirroring how
-    project analysis and pr-sync already behave.
+    The identity/service-credential fork is keyed on the **principal**,
+    not the call site.  When ``auth`` carries no user there can be no
+    ``IdentityConnection`` -- the record is keyed ``{integration_id,
+    user_id}`` and only the interactive OAuth flow ever writes one -- so
+    a missing connection is expected rather than an error, and
+    credential resolution falls back to the Integration's own service
+    credentials (a PAT or a GitHub App installation token).  Answering a
+    machine with ``401 identity_required`` would be a category error:
+    that challenge exists to make a browser render a Connect button.
+
+    An *authenticated* userless principal pays for that fallback with
+    the gates in :mod:`imbi.api.auth.autonomous` --
+    ``integration:act-as-service`` plus membership in the organization
+    owning the project -- enforced here so every deployment endpoint
+    inherits them rather than each remembering to.  Imbi's own
+    in-process workers are exempt (see
+    :func:`~imbi.api.auth.autonomous.is_autonomous`).
+
+    ``best_effort_identity`` remains for callers that want the fallback
+    even with a user present (the resync / backfill / promote-watcher
+    paths), and is now a superset of, rather than a substitute for, the
+    userless branch.
     """
     resolved = await resolve_capability(db, project_id, 'deployment', source)
+
+    # Before any plugin work or credential decryption: a principal that
+    # may not act here should learn so from one graph read.
+    if autonomous.is_autonomous(auth):
+        autonomous.require_act_as_service(
+            auth, integration_id=resolved.integration_id
+        )
+        await autonomous.require_organization_membership(
+            db, auth, org_slug=org_slug
+        )
+        if not await _project_in_org(db, org_slug, project_id):
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=(
+                    f'Project {project_id!r} not found in organization '
+                    f'{org_slug!r}'
+                ),
+            )
+
     project_slug, team_slug = await lookup_project_slugs(db, project_id)
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
@@ -628,6 +666,7 @@ async def _resolve_and_context(
         org_slug=org_slug,
         team_slug=team_slug,
         environment=environment,
+        integration_slug=resolved.integration_slug,
         assignment_options=resolved.capability_options,
         integration_options=resolved.integration_options,
         capability_options=resolved.capability_options,
@@ -635,7 +674,8 @@ async def _resolve_and_context(
         project_links=project_links,
         project_type_slugs=project_type_slugs,
     )
-    if best_effort_identity:
+    userless = best_effort_identity or autonomous.is_userless(auth)
+    if userless:
         ctx = await _attach_identity_best_effort(db, ctx, resolved, auth)
     else:
         ctx = await attach_identity(db, ctx, resolved, auth)
@@ -648,15 +688,20 @@ async def _resolve_and_context(
         credentials = decrypt_integration_credentials(
             resolved.encrypted_credentials
         )
-        if not _has_service_credentials(
-            credentials, allow_app=best_effort_identity
-        ):
+        if not _has_service_credentials(credentials, allow_app=userless):
+            # The one row of the error contract that stays a 5xx: a
+            # missing credential is one operator action away from being
+            # fixed, so a retry is not unreasonable.
             raise fastapi.HTTPException(
                 status_code=503,
-                detail=(
-                    'No deployment credentials available: bind an '
-                    'identity or configure a service-account token.'
-                ),
+                detail={
+                    'error': 'no_service_credential',
+                    'message': (
+                        'No deployment credentials available: bind an '
+                        'identity or configure a service-account token.'
+                    ),
+                    'integration_id': resolved.integration_id,
+                },
             )
     return resolved, ctx, credentials
 
@@ -701,8 +746,9 @@ def _has_service_credentials(
 
     A PAT (``access_token``/``token``) always qualifies.  GitHub App
     credentials (``app_id`` + ``private_key``) qualify only when
-    ``allow_app`` is set -- the backfill paths that can mint an
-    installation token without an acting user.
+    ``allow_app`` is set -- a call with no acting user, where minting an
+    installation token is the intended behaviour rather than a silent
+    substitute for the user's own token.
     """
     if credentials.get('access_token') or credentials.get('token'):
         return True
@@ -796,6 +842,10 @@ class _EnvFlags(typing.NamedTuple):
     found: bool
     can_deploy: bool
     can_promote: bool
+    #: Opt-in, so the safe answer is also the default -- an env whose
+    #: flags a caller constructs by hand grants an autonomous principal
+    #: nothing.
+    allow_autonomous: bool = False
 
 
 async def _load_env_flags(
@@ -804,7 +854,7 @@ async def _load_env_flags(
     org_slug: str,
     env_slug: str,
 ) -> _EnvFlags:
-    """Fetch ``can_deploy`` / ``can_promote`` for one env slug.
+    """Fetch the release-train flags for one env slug.
 
     Scoped to the organization so multi-org data with overlapping
     environment slugs (e.g. ``prod`` in two orgs) never reads flags
@@ -812,26 +862,35 @@ async def _load_env_flags(
 
     Defaults conservative-but-permissive when the stored node predates
     the env-flag migration: ``can_deploy=True`` (no surprise lockouts)
-    and ``can_promote=False`` (opt-in, matching the model default).
+    and ``can_promote=False`` / ``allow_autonomous=False`` (opt-in,
+    matching the model defaults).
     """
     query: typing.LiteralString = """
     MATCH (e:Environment {{slug: {env_slug}}})
           -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    RETURN e.can_deploy AS can_deploy, e.can_promote AS can_promote
+    RETURN e.can_deploy AS can_deploy, e.can_promote AS can_promote,
+           e.allow_autonomous AS allow_autonomous
     """
     rows = await db.execute(
         query,
         {'env_slug': env_slug, 'org_slug': org_slug},
-        ['can_deploy', 'can_promote'],
+        ['can_deploy', 'can_promote', 'allow_autonomous'],
     )
     if not rows:
-        return _EnvFlags(found=False, can_deploy=True, can_promote=False)
+        return _EnvFlags(
+            found=False,
+            can_deploy=True,
+            can_promote=False,
+            allow_autonomous=False,
+        )
     can_deploy = graph.parse_agtype(rows[0].get('can_deploy'))
     can_promote = graph.parse_agtype(rows[0].get('can_promote'))
+    allow_autonomous = graph.parse_agtype(rows[0].get('allow_autonomous'))
     return _EnvFlags(
         found=True,
         can_deploy=True if can_deploy is None else bool(can_deploy),
         can_promote=False if can_promote is None else bool(can_promote),
+        allow_autonomous=bool(allow_autonomous),
     )
 
 
@@ -926,6 +985,7 @@ async def _assert_ci_not_failing(
     handler: DeploymentCapability,
     ctx: PluginContext,
     credentials: dict[str, str],
+    auth: permissions.AuthContext,
     *,
     committish: str,
     acknowledged: bool,
@@ -938,6 +998,11 @@ async def _assert_ci_not_failing(
     failure and decided to ship anyway sets ``acknowledged`` and the
     override is recorded (:func:`_set_release_ci_override`).
 
+    An autonomous principal cannot make that acknowledgement -- it
+    asserts a human reviewed the failing checks, and none did.  Refused
+    up front, before the status is even resolved, so the answer does not
+    depend on what CI happens to say this second.
+
     ``committish`` must be the commit on the default branch, never the tag
     being cut.  Tag-triggered workflow runs skip the test jobs, so a tag
     has no meaningful check status of its own -- gating on it would ask a
@@ -948,6 +1013,9 @@ async def _assert_ci_not_failing(
     the scope to look -- treating either as a failure would refuse most
     promotes.
     """
+    autonomous.require_no_ci_override(
+        auth, acknowledged=acknowledged, committish=committish
+    )
     status = await _resolve_ci_status(handler, ctx, credentials, committish)
     if status != 'fail':
         return status
@@ -1026,6 +1094,7 @@ async def _record_deployment_audit(
     from_environment: str | None = None,
     ci_status: str = 'unknown',
     ci_override: bool = False,
+    credential: str | None = None,
 ) -> None:
     """Write a deployment audit row to the ``operations_log``.
 
@@ -1045,6 +1114,12 @@ async def _record_deployment_audit(
     (ENG-102).  Deploys leave them at their defaults: a deploy ships a
     commit some earlier promote or release already gated, so the CI
     question is not this row's to answer.
+
+    ``credential`` names the Integration credential the plugin acted
+    with when it was not the actor's own -- read off
+    ``PluginContext.credential_note`` after the call, so an autonomous
+    deploy records the App installation that carried it out alongside
+    the service account that asked for it.
     """
     entry = deployed_operation_log(
         project_id=project_id,
@@ -1062,6 +1137,7 @@ async def _record_deployment_audit(
         external_run_id=external_run_id,
         ci_status=ci_status,
         ci_override=ci_override,
+        credential=credential,
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
@@ -2934,6 +3010,11 @@ async def _handle_deploy(
                 "this env's can_deploy flag."
             ),
         )
+    autonomous.require_environment_autonomous(
+        auth,
+        environment=body.environment,
+        allow_autonomous=env_flags.allow_autonomous,
+    )
     # Refuse before touching the plugin: a blocked release must not reach
     # the remote at all, and the check is a single graph read.
     await _assert_not_blocked(
@@ -2962,6 +3043,7 @@ async def _handle_deploy(
         handler,
         ctx,
         credentials,
+        auth,
         committish=body.committish,
         acknowledged=body.acknowledge_ci_failure,
         action=body.action,
@@ -3045,6 +3127,7 @@ async def _handle_deploy(
             note=note,
             external_run_id=str(run.run_id) if run.run_id else None,
             external_run_url=run.run_url,
+            credential=ctx.credential_note,
         )
         if not isinstance(appended, str):
             result = appended
@@ -3079,6 +3162,7 @@ async def _handle_deploy(
             # Past the gate with a red status means the operator
             # acknowledged it -- _assert_ci_not_failing raised otherwise.
             ci_override=ci_status == 'fail',
+            credential=ctx.credential_note,
         )
     return DeploymentTriggerResponse(
         run=run,
@@ -3910,6 +3994,11 @@ async def _handle_promote(
                 "Enable the env's can_promote flag to allow promotes."
             ),
         )
+    autonomous.require_environment_autonomous(
+        auth,
+        environment=body.to_environment,
+        allow_autonomous=env_flags.allow_autonomous,
+    )
 
     # ``body.tag`` may name an existing release (promote-from-tag) or a SHA
     # a new tag gets cut at; ``from_committish`` is the build being
@@ -3975,6 +4064,7 @@ async def _handle_promote(
         handler,
         ctx,
         credentials,
+        auth,
         committish=body.from_committish,
         acknowledged=body.acknowledge_ci_failure,
         action='promote',
@@ -4104,6 +4194,7 @@ async def _handle_promote(
         note=note,
         external_run_id=str(run.run_id) if run.run_id else None,
         external_run_url=run.run_url,
+        credential=ctx.credential_note,
     )
 
     LOGGER.info(
@@ -4135,6 +4226,7 @@ async def _handle_promote(
         from_environment=body.from_environment,
         ci_status=ci_status,
         ci_override=ci_status == 'fail',
+        credential=ctx.credential_note,
     )
     return DeploymentTriggerResponse(
         run=run,
@@ -5077,6 +5169,7 @@ async def complete_promote_build(
         external_run_url=run.run_url,
         # The person who pressed promote, not the worker that got here.
         performed_by=requested_by or None,
+        credential=ctx.credential_note,
         # Stamps ``origin`` on the node, which is what lets a reclaimed
         # job recognize its own in-flight deployment.
         source='promote',
@@ -5110,6 +5203,7 @@ async def complete_promote_build(
         from_environment=from_environment or None,
         ci_status=ci_status,
         ci_override=ci_override,
+        credential=ctx.credential_note,
     )
     return run
 
@@ -5344,7 +5438,8 @@ MATCH (p)-[:DEPLOYED_IN]->(e:Environment)
 OPTIONAL MATCH (p)-[:HAS_RELEASE]->(r:Release)
                -[d:DEPLOYED_TO]->(e)
 RETURN e{{.slug, .name, .sort_order, .can_promote,
-          terminal: coalesce(e.terminal, false)}} AS env,
+          terminal: coalesce(e.terminal, false),
+          allow_autonomous: coalesce(e.allow_autonomous, false)}} AS env,
        CASE WHEN r IS NULL THEN null ELSE r{{.*}} END AS release,
        CASE WHEN d IS NULL THEN null ELSE d.deployments END
            AS deployments
@@ -5542,6 +5637,9 @@ async def list_promotion_options(  # noqa: C901
                 from_sha=from_committish or None,
                 to_sha=to_committish or None,
                 commits_pending=pending,
+                to_allow_autonomous=bool(
+                    to_item['env'].get('allow_autonomous')
+                ),
             )
         )
     return options
@@ -6242,6 +6340,7 @@ async def cut_release(
         handler,
         ctx,
         credentials,
+        auth,
         committish=body.committish,
         acknowledged=body.acknowledge_ci_failure,
         action='release',
@@ -6345,6 +6444,7 @@ async def cut_release(
         release_url=release_url,
         ci_status=ci_status,
         ci_override=ci_status == 'fail',
+        credential=ctx.credential_note,
     )
     return ReleaseCutResponse(
         tag=body.tag,
@@ -6527,6 +6627,7 @@ async def publish_release(
         plugin_slug=resolved.plugin_slug,
         run_url=None,
         release_url=release_url,
+        credential=ctx.credential_note,
     )
     return ReleasePublishResponse(
         tag=tag,

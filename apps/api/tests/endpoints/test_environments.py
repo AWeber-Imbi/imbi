@@ -579,6 +579,129 @@ class EnvironmentEndpointsTestCase(support.SharedAppTestCase):
         update_params = self.mock_db.execute.call_args_list[1].args[1]
         self.assertTrue(update_params['terminal'])
 
+    def test_patch_seeds_allow_autonomous_false_on_pre_migration_env(
+        self,
+    ) -> None:
+        """An env predating the flag stays closed to autonomous callers.
+
+        Opt-in means the absent value has to persist as ``false``, not
+        as "unset and therefore whatever the next reader assumes".
+        """
+        from imbi.common import models as common_models
+
+        existing_env = {
+            'name': 'Production',
+            'slug': 'production',
+            'description': None,
+            'sort_order': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'e': existing_env,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                }
+            ],
+            [
+                {
+                    'e': {
+                        'name': 'Production Env',
+                        'slug': 'production',
+                        'sort_order': 0,
+                        'can_deploy': True,
+                        'can_promote': False,
+                        'terminal': False,
+                        'allow_autonomous': False,
+                    },
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.Environment,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/environments/production',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'Production Env',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        update_params = self.mock_db.execute.call_args_list[1].args[1]
+        self.assertFalse(update_params['allow_autonomous'])
+
+    def test_patch_allow_autonomous_on_pre_migration_env(self) -> None:
+        """An operator opts an environment in."""
+        from imbi.common import models as common_models
+
+        existing_env = {
+            'name': 'Staging',
+            'slug': 'staging',
+            'description': None,
+            'sort_order': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'e': existing_env,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                }
+            ],
+            [
+                {
+                    'e': {
+                        'name': 'Staging',
+                        'slug': 'staging',
+                        'sort_order': 0,
+                        'can_deploy': True,
+                        'can_promote': False,
+                        'terminal': False,
+                        'allow_autonomous': True,
+                    },
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                    'project_count': 0,
+                }
+            ],
+        ]
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            mock.patch(
+                'imbi.common.blueprints.get_model',
+                return_value=common_models.Environment,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/environments/staging',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/allow_autonomous',
+                        'value': True,
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['allow_autonomous'])
+        update_params = self.mock_db.execute.call_args_list[1].args[1]
+        self.assertTrue(update_params['allow_autonomous'])
+
     def test_patch_environment_slug_conflict(self) -> None:
         """Patch that renames slug to an existing one returns 409."""
         from imbi.common import models as common_models

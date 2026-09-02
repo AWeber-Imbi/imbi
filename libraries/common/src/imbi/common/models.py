@@ -381,6 +381,15 @@ class Environment(Node):
     # across the seam between them (#285).
     terminal: bool = False
 
+    # Lets a *userless* principal (a service account acting with an
+    # Integration's own credential, per the autonomous-deployment
+    # principals design) deploy or promote into this environment.
+    # Default false: shipping the flag grants nothing until an operator
+    # opts an environment in, so a rollback daemon reaches staging only
+    # once somebody said it may. Human callers are unaffected -- their
+    # authority in an environment is `can_deploy` / `can_promote` alone.
+    allow_autonomous: bool = False
+
     organization: BelongsToOrganization
 
 
@@ -789,6 +798,15 @@ class DeploymentEvent(pydantic.BaseModel):
     #: recorded against an in-product action where the operator is
     #: already captured in the ``operations_log`` audit row.
     performed_by: str | None = None
+    #: The Integration credential the action ran on, when it was not the
+    #: actor's own -- e.g. ``'github-app installation 12345678'``. A
+    #: userless principal acts with an Integration's App installation,
+    #: and "which service account asked" does not answer "what authority
+    #: carried it out"; ADR 0016 established
+    #: ``"{user} on behalf of {actor}"`` for delegation, and this is the
+    #: mirror image. ``None`` whenever the principal's own token was
+    #: used, which the principal already describes.
+    credential: str | None = None
 
 
 def parse_deployment_events(

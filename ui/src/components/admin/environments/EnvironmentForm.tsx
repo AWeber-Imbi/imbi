@@ -56,6 +56,9 @@ export function EnvironmentForm({
     String(environment?.sort_order ?? 0),
   )
   const [terminal, setTerminal] = useState(environment?.terminal ?? false)
+  const [allowAutonomous, setAllowAutonomous] = useState(
+    environment?.allow_autonomous ?? false,
+  )
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
   const handleIconChange = useIconWithCleanup(icon, setIcon)
@@ -101,6 +104,7 @@ export function EnvironmentForm({
     if (!validate()) return
 
     onSave(orgSlug, {
+      allow_autonomous: allowAutonomous,
       description: description.trim() || null,
       icon: icon.trim() || null,
       label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor)
@@ -287,6 +291,29 @@ export function EnvironmentForm({
                 <p className="text-tertiary mt-1 text-xs">
                   Ends the promotion pipeline: no promotion step is derived from
                   this environment to the next one, which starts a new pipeline
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Checkbox
+                checked={allowAutonomous}
+                disabled={isLoading}
+                id="environment-allow-autonomous"
+                onCheckedChange={(value) => setAllowAutonomous(value === true)}
+              />
+              <div>
+                <Label
+                  className="text-secondary block text-sm"
+                  htmlFor="environment-allow-autonomous"
+                >
+                  Allow Autonomous Deployments
+                </Label>
+                <p className="text-tertiary mt-1 text-xs">
+                  Lets a service account acting with an Integration&apos;s own
+                  credential — a rollback or promotion daemon, with no human in
+                  the loop — deploy or promote into this environment. Off by
+                  default; people are unaffected either way
                 </p>
               </div>
             </div>
