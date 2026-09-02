@@ -67,6 +67,7 @@ moon run :lint :typecheck :format   # lint + type-check + format-check everythin
 uv run pre-commit run --all-files   # ruff + tombi (write mode) — reformat
 moon run root:docs-build   # build docs; root:docs-serve to preview locally
 moon run root:image        # production image, no push
+moon run root:check-versions  # assert the lockstep version across all members
 ```
 
 Run a single test file or test directly with pytest — the suite needs the
@@ -138,10 +139,14 @@ confirming the published release.
 pyprojects (versions *and* the 27 `imbi-*==` cross-member pins),
 `ui/package.json`, and `uv.lock`. Never hand-edit those; the count is why
 lockstep used to drift. `scripts/bump-version.sh --check` asserts they all
-agree, and both `test.yml` and `release.yml` run it — `uv lock` accepts a
-member that disagrees with the meta-package's pin on it, so drift is
-otherwise silently committable and ships as a meta-package that cannot be
-installed. `helm/imbi/Chart.yaml` is deliberately outside lockstep.
+agree — `uv lock` accepts a member that disagrees with the meta-package's
+pin on it, so drift is otherwise silently committable and ships as a
+meta-package that cannot be installed. It is enforced three ways:
+`moon run root:check-versions` (so `moon ci` covers it locally), Pipeline's
+`Versions` job, and `release.yml` before the build. The two CI callers
+invoke the script directly rather than through moon, so neither has to
+provision the moon toolchain for a 74ms check. `helm/imbi/Chart.yaml` is
+deliberately outside lockstep.
 
 Tags are unprefixed (`2.18.0`, not `v2.18.0`; v2.17.0 was a one-off) and
 must match the pyproject version. **The tag annotation is the GitHub
