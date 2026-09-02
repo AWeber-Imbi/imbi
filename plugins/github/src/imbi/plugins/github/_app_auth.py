@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import collections.abc
 import datetime
 import logging
 import time
@@ -27,6 +28,7 @@ import httpx
 import jwt
 
 from imbi.common import cache
+from imbi.common.plugins.errors import PluginInstallationMissing
 from imbi.plugins.github.deployment import (
     _auth_headers,  # pyright: ignore[reportPrivateUsage]
     _raise_on_401,  # pyright: ignore[reportPrivateUsage]
@@ -35,7 +37,7 @@ from imbi.plugins.github.deployment import (
 LOGGER = logging.getLogger(__name__)
 
 
-class AppNotInstalledError(Exception):
+class AppNotInstalledError(PluginInstallationMissing):
     """The GitHub App is not installed for the target repository.
 
     Raised by :func:`_discover_installation_id` when GitHub answers the
@@ -43,6 +45,11 @@ class AppNotInstalledError(Exception):
     the repo/org, or the repo was renamed/removed.  Sync callers treat
     this as a clean skip rather than a hard failure, so an uninstalled
     App never surfaces as a Sentry error on a backfill worker.
+
+    A *mutating* caller must not treat it that way: a silent skip there
+    means the deploy or rollback did not happen and nothing said so.
+    Those callers pass ``cache_misses=False`` (see
+    :func:`installation_token`) and surface it as a terminal error.
     """
 
 
@@ -65,16 +72,58 @@ _DEFAULT_TOKEN_TTL_SECONDS = 3300.0
 # a handful of distinct ids.
 _TOKEN_CACHE_MAX_ENTRIES = 1024
 _INSTALL_CACHE_MAX_ENTRIES = 4096
+_NOT_INSTALLED_CACHE_MAX_ENTRIES = 4096
+# Long enough to stop a sweep re-paying the 404 on every call for an
+# uninstalled repo, short enough that installing the App during an
+# incident is visible within a minute.  Mutating callers do not consult
+# this cache at all (see ``cache_misses``), so the blackout never
+# outlives an operator's fix on the path that matters.
+_NOT_INSTALLED_TTL_SECONDS = 60.0
+
+#: The permission set a token is minted with, canonicalized for use as
+#: part of a cache key.  ``None`` means "whatever the installation
+#: grants" -- the pre-scoping behaviour, still used by callers that have
+#: not declared what they need.
+Scope: typing.TypeAlias = collections.abc.Mapping[str, str] | None
+FrozenScope: typing.TypeAlias = tuple[tuple[str, str], ...] | None
+
+
+def freeze_scope(scope: Scope) -> FrozenScope:
+    """Canonical, hashable form of a requested permission set.
+
+    Sorted so that ``{'a': 'read', 'b': 'write'}`` and
+    ``{'b': 'write', 'a': 'read'}`` are one cache entry, and distinct
+    from ``None`` -- a token minted with the App's full grant is *not*
+    interchangeable with one minted for ``{'contents': 'read'}``, and
+    conflating them would silently undo the down-scoping.
+    """
+    if scope is None:
+        return None
+    return tuple(sorted(scope.items()))
+
 
 # Process-wide caches.  Tokens carry a per-entry deadline derived from
 # GitHub's own ``expires_at`` rather than a uniform TTL; installation ids
 # do not expire (an App being uninstalled surfaces as a 404 on the next
 # mint, which evicts the id).
-_TOKEN_CACHE: cache.LRUCache[tuple[str, str, str], str] = cache.LRUCache(
-    _TOKEN_CACHE_MAX_ENTRIES
+#
+# The requested scope is part of the token key, and that is a
+# correctness requirement rather than an optimization: a narrower token
+# must never be served to a caller that asked for a wider one, or a
+# ``contents: read`` token would answer a ``contents: write`` request
+# and the write would 403 from GitHub at the worst possible moment.
+_TOKEN_CACHE: cache.LRUCache[tuple[str, str, str, FrozenScope], str] = (
+    cache.LRUCache(_TOKEN_CACHE_MAX_ENTRIES)
 )
 _INSTALL_CACHE: cache.LRUCache[tuple[str, str, str, str], str] = (
     cache.LRUCache(_INSTALL_CACHE_MAX_ENTRIES)
+)
+# Negative cache: repositories the App is known not to be installed on.
+# The value is unused; membership is the whole answer.
+_NOT_INSTALLED_CACHE: cache.LRUCache[tuple[str, str, str, str], bool] = (
+    cache.LRUCache(
+        _NOT_INSTALLED_CACHE_MAX_ENTRIES, ttl=_NOT_INSTALLED_TTL_SECONDS
+    )
 )
 
 # Serializes the cold-cache path.  Without it, N concurrent calls for
@@ -95,10 +144,25 @@ _INSTALL_CACHE: cache.LRUCache[tuple[str, str, str, str], str] = (
 _MINT_LOCK: cache.KeyedLock[tuple[str, ...]] = cache.KeyedLock()
 
 
+def known_installation_id(
+    app_id: str, base: str, owner: str, repo: str
+) -> str | None:
+    """The installation id already resolved for ``owner/repo``, if any.
+
+    Read-only view of the discovery cache, for callers that want to
+    *record* which installation carried an action out without forcing a
+    lookup of their own.  Populated as a side effect of
+    :func:`installation_token`, so a caller that just minted a token
+    always finds it here.
+    """
+    return _INSTALL_CACHE.get((app_id, base, owner, repo))
+
+
 def reset_cache() -> None:
     """Clear the process-wide token / installation caches (tests)."""
     _TOKEN_CACHE.clear()
     _INSTALL_CACHE.clear()
+    _NOT_INSTALLED_CACHE.clear()
 
 
 def _load_private_key(raw: str) -> str:
@@ -148,9 +212,14 @@ def _token_deadline(expires_at: object) -> float:
 
 
 def _cached_token(
-    app_id: str, base: str, installation_id: str | None, owner: str, repo: str
+    app_id: str,
+    base: str,
+    installation_id: str | None,
+    owner: str,
+    repo: str,
+    scope: FrozenScope,
 ) -> str | None:
-    """Return a live cached token, or ``None`` to mint one.
+    """Return a live cached token for ``scope``, or ``None`` to mint one.
 
     The installation id is the one the caller configured, falling back
     to a previously discovered one for the repo -- so a repo whose
@@ -162,7 +231,7 @@ def _cached_token(
     )
     if install is None:
         return None
-    return _TOKEN_CACHE.get((app_id, install, base))
+    return _TOKEN_CACHE.get((app_id, install, base, scope))
 
 
 async def _discover_installation_id(
@@ -171,23 +240,37 @@ async def _discover_installation_id(
     resp = await client.get(f'/repos/{owner}/{repo}/installation')
     if resp.status_code == 404:
         raise AppNotInstalledError(
-            f'no GitHub App installation found for {owner}/{repo}'
+            f'no GitHub App installation found for {owner}/{repo}',
+            owner_repo=f'{owner}/{repo}',
         )
     resp.raise_for_status()
     data = typing.cast('dict[str, typing.Any]', resp.json())
     install_id = data.get('id')
     if install_id is None:
         raise AppNotInstalledError(
-            f'no GitHub App installation found for {owner}/{repo}'
+            f'no GitHub App installation found for {owner}/{repo}',
+            owner_repo=f'{owner}/{repo}',
         )
     return str(install_id)
 
 
 async def _mint(
-    client: httpx.AsyncClient, installation_id: str
+    client: httpx.AsyncClient, installation_id: str, scope: FrozenScope
 ) -> tuple[str, object]:
+    """Exchange the App JWT for an installation access token.
+
+    With ``scope`` set, GitHub mints a token carrying *only* those
+    permissions -- a subset of what the installation grants -- instead
+    of the installation's full set.  Requesting a permission the
+    installation does not hold is a ``422``, which is the right failure:
+    a capability asking for authority the App was never given should say
+    so rather than act with less.
+    """
+    body: dict[str, typing.Any] | None = (
+        {'permissions': dict(scope)} if scope else None
+    )
     resp = await client.post(
-        f'/app/installations/{installation_id}/access_tokens'
+        f'/app/installations/{installation_id}/access_tokens', json=body
     )
     resp.raise_for_status()
     data = typing.cast('dict[str, typing.Any]', resp.json())
@@ -202,6 +285,8 @@ async def installation_token(
     installation_id: str | None,
     owner: str,
     repo: str,
+    scope: Scope = None,
+    cache_misses: bool = True,
 ) -> str:
     """Return a valid installation token, minting/caching as needed.
 
@@ -209,31 +294,58 @@ async def installation_token(
     is discovered from the target repo (and cached).  The resulting
     token is cached until shortly before it expires.
 
+    ``scope`` is the GitHub App permission set the calling operation
+    needs (e.g. ``{'contents': 'read'}``).  The token is minted with
+    exactly that set rather than the installation's full grant, so the
+    authority in flight tracks the operation instead of the
+    Integration's configuration.  ``None`` keeps the pre-scoping
+    behaviour.  It is part of the cache key: see :func:`freeze_scope`.
+
+    ``cache_misses=False`` skips the negative cache for a repo the App
+    is known to be uninstalled on, paying the 404 instead.  Mutating
+    callers pass it so that installing the App during an incident takes
+    effect on the next attempt rather than after the negative TTL.
+
     Concurrent callers for the same installation mint once, whether they
     named the same repository or two repositories that turn out to share
     an installation: the first through stores the token and the rest read
     it back rather than each making their own exchange.
     """
+    frozen = freeze_scope(scope)
     if (
-        token := _cached_token(app_id, base, installation_id, owner, repo)
+        token := _cached_token(
+            app_id, base, installation_id, owner, repo, frozen
+        )
     ) is not None:
         return token
+    if cache_misses and _NOT_INSTALLED_CACHE.get((app_id, base, owner, repo)):
+        raise AppNotInstalledError(
+            f'no GitHub App installation found for {owner}/{repo}',
+            owner_repo=f'{owner}/{repo}',
+        )
     # Held across discovery, so concurrent callers for one repository
     # look its installation up once.
     async with _MINT_LOCK(('repo', app_id, base, owner, repo)):
         # The coroutine that held the lock may have just minted this.
         if (
-            token := _cached_token(app_id, base, installation_id, owner, repo)
+            token := _cached_token(
+                app_id, base, installation_id, owner, repo, frozen
+            )
         ) is not None:
             return token
-        return await _mint_and_cache(
-            base=base,
-            app_id=app_id,
-            private_key=private_key,
-            installation_id=installation_id,
-            owner=owner,
-            repo=repo,
-        )
+        try:
+            return await _mint_and_cache(
+                base=base,
+                app_id=app_id,
+                private_key=private_key,
+                installation_id=installation_id,
+                owner=owner,
+                repo=repo,
+                scope=frozen,
+            )
+        except AppNotInstalledError:
+            _NOT_INSTALLED_CACHE.set((app_id, base, owner, repo), True)
+            raise
 
 
 async def _mint_and_cache(
@@ -244,6 +356,7 @@ async def _mint_and_cache(
     installation_id: str | None,
     owner: str,
     repo: str,
+    scope: FrozenScope = None,
 ) -> str:
     """Mint a fresh installation token and cache it until it expires."""
     install = installation_id or _INSTALL_CACHE.get(
@@ -261,7 +374,7 @@ async def _mint_and_cache(
             install = await _discover_installation_id(client, owner, repo)
             _INSTALL_CACHE.set((app_id, base, owner, repo), install)
         try:
-            return await _mint_locked(client, app_id, base, install)
+            return await _mint_locked(client, app_id, base, install, scope)
         except httpx.HTTPStatusError as exc:
             # A 404 (or 401, surfaced as PluginAuthenticationFailed by the
             # response hook) against a *cached* installation id means the
@@ -272,11 +385,15 @@ async def _mint_and_cache(
             _INSTALL_CACHE.pop((app_id, base, owner, repo))
             install = await _discover_installation_id(client, owner, repo)
             _INSTALL_CACHE.set((app_id, base, owner, repo), install)
-            return await _mint_locked(client, app_id, base, install)
+            return await _mint_locked(client, app_id, base, install, scope)
 
 
 async def _mint_locked(
-    client: httpx.AsyncClient, app_id: str, base: str, install: str
+    client: httpx.AsyncClient,
+    app_id: str,
+    base: str,
+    install: str,
+    scope: FrozenScope,
 ) -> str:
     """Mint one token per installation, however many callers want it.
 
@@ -286,13 +403,13 @@ async def _mint_locked(
     after a stale id re-enters under the new installation's lock, which
     is why the key is a parameter rather than derived from a repo.
     """
-    async with _MINT_LOCK(('install', app_id, base, install)):
-        cached = _TOKEN_CACHE.get((app_id, install, base))
+    async with _MINT_LOCK(('install', app_id, base, install, str(scope))):
+        cached = _TOKEN_CACHE.get((app_id, install, base, scope))
         if cached is not None:
             return cached
-        token, expires_at = await _mint(client, install)
+        token, expires_at = await _mint(client, install, scope)
         _TOKEN_CACHE.set(
-            (app_id, install, base),
+            (app_id, install, base, scope),
             token,
             expires_at=_token_deadline(expires_at),
         )
@@ -300,7 +417,13 @@ async def _mint_locked(
 
 
 async def resolve_bearer(
-    credentials: dict[str, str], base: str, owner: str, repo: str
+    credentials: dict[str, str],
+    base: str,
+    owner: str,
+    repo: str,
+    *,
+    scope: Scope = None,
+    cache_misses: bool = True,
 ) -> str:
     """Resolve the Bearer token used for a repo's GitHub API calls.
 
@@ -308,6 +431,11 @@ async def resolve_bearer(
     a short-lived GitHub App installation token from ``app_id`` +
     ``private_key`` (with an optional ``installation_id`` that skips
     per-repo installation discovery).  Tokens are cached process-wide.
+
+    ``scope`` is the permission set the calling operation needs; the
+    minted token carries that set rather than the App installation's
+    full grant.  It has no effect on the PAT branch -- a PAT's scope is
+    fixed when an operator creates it, and nothing here can narrow it.
 
     Shared by every host-agnostic behavioral plugin (commit-sync,
     pr-sync, deployment) so a service configured with only App
@@ -326,6 +454,8 @@ async def resolve_bearer(
             installation_id=credentials.get('installation_id') or None,
             owner=owner,
             repo=repo,
+            scope=scope,
+            cache_misses=cache_misses,
         )
     raise ValueError(
         'GitHub plugin requires either an access_token (PAT) or '

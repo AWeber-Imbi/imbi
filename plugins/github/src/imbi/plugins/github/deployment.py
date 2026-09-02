@@ -74,6 +74,58 @@ from imbi.plugins.github._repos import (
 
 LOGGER = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# GitHub App permission scopes, declared per operation.
+#
+# An installation token minted with no ``permissions`` body carries
+# everything the installation grants -- which, for a GHEC App installed
+# org-wide, is a great deal more than reading one ``/compare``.  Each
+# public method below names the set it actually needs, and
+# :meth:`GitHubDeployment._bearer` mints for exactly that, so the
+# authority in flight tracks the operation rather than the Integration's
+# configuration.  This bounds every App-credential caller, the
+# pre-existing headless sync paths included.
+#
+# These are the *minimum* each operation's request set requires; a
+# method that fans out into several endpoint families names the union.
+# Requesting a permission the installation does not hold is a 422 from
+# GitHub, which is the honest failure -- better than acting with less
+# authority than the operation needs and failing halfway through.
+#
+# ``metadata: read`` is implicit on every installation token and is
+# never listed.  PAT-configured Integrations are unaffected: a PAT's
+# scope is fixed when an operator creates it.
+# ---------------------------------------------------------------------------
+
+#: Refs, commits, compare, git notes, releases -- anything read out of
+#: the repository's contents.
+SCOPE_CONTENTS_READ: dict[str, str] = {'contents': 'read'}
+#: Cutting a tag or creating a Release.
+SCOPE_CONTENTS_WRITE: dict[str, str] = {'contents': 'write'}
+#: Commit check-runs, which live behind ``checks`` rather than
+#: ``contents``; the commit itself still has to be readable.
+SCOPE_CHECKS_READ: dict[str, str] = {'contents': 'read', 'checks': 'read'}
+#: Reading workflow definitions and workflow-run state.
+SCOPE_ACTIONS_READ: dict[str, str] = {'actions': 'read'}
+#: ``workflow_dispatch``: write to Actions, read the ref being built.
+SCOPE_ACTIONS_DISPATCH: dict[str, str] = {
+    'actions': 'write',
+    'contents': 'read',
+}
+#: ``GET /deployments`` and its status history.
+SCOPE_DEPLOYMENTS_READ: dict[str, str] = {'deployments': 'read'}
+#: The same, for the paths that also resolve the run and the release a
+#: deployment points at.
+SCOPE_DEPLOYMENTS_SURVEY: dict[str, str] = {
+    'deployments': 'read',
+    'contents': 'read',
+    'actions': 'read',
+}
+#: ``POST /deployments`` -- creating the Deployment object that a repo's
+#: ``on: deployment`` workflow reacts to.  Not ``actions: write``: Imbi
+#: never dispatches the deploy workflow directly.
+SCOPE_DEPLOYMENTS_WRITE: dict[str, str] = {'deployments': 'write'}
+
 _HTTP_TIMEOUT_SECONDS = 10.0
 # Cap pagination so a pathological repo (10k+ branches/tags) can't pin
 # us indefinitely.  100 per page * 10 pages = 1000 refs is plenty for
@@ -289,6 +341,20 @@ def _artifact_status(
     # ``neutral``, or a conclusion GitHub added since: terminal, but we
     # can't say whether the artifact exists.
     return 'unknown'
+
+
+def _app_auth_installation_id(
+    app_id: str, base: str, owner: str, repo: str
+) -> str | None:
+    """Read back the installation id the last mint resolved.
+
+    Wrapped in a function so the local import stays out of the hot
+    path's signature: ``_app_auth`` imports this module for its shared
+    HTTP helpers, so a top-level import would be circular.
+    """
+    from imbi.plugins.github import _app_auth
+
+    return _app_auth.known_installation_id(app_id, base, owner, repo)
 
 
 def _repo_root_from_redirect(location: str) -> str | None:
@@ -619,28 +685,90 @@ class GitHubDeployment(DeploymentCapability):
         return default
 
     async def _bearer(
-        self, ctx: PluginContext, credentials: dict[str, str]
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        scope: collections.abc.Mapping[str, str] = SCOPE_CONTENTS_READ,
+        *,
+        mutating: bool = False,
     ) -> str:
         """Resolve the Bearer token for this deployment call.
 
         Prefers the per-user OAuth token the host threads in as
         ``access_token``; when a service configured with only GitHub App
         credentials drives the call (e.g. the headless deployment-resync
-        sweep, which has no acting user), mints an installation token
-        from ``app_id`` + ``private_key`` instead.
+        sweep, or an autonomous service account acting with the
+        Integration's own credential), mints an installation token from
+        ``app_id`` + ``private_key`` instead.
+
+        ``scope`` is the App permission set *this operation* needs, so
+        the minted token carries that rather than everything the
+        installation grants.  ``mutating`` bypasses the
+        not-installed negative cache: a rollback must not be told the App
+        is missing because a read said so 40 seconds ago.
         """
         # Local import: ``_app_auth`` imports this module for its shared
         # HTTP helpers, so a top-level import here would be circular.
         from imbi.plugins.github import _app_auth
 
         owner, repo = self._owner_repo(ctx)
-        return await _app_auth.resolve_bearer(
-            credentials, self._api_base(ctx), owner, repo
+        base = self._api_base(ctx)
+        try:
+            token = await _app_auth.resolve_bearer(
+                credentials,
+                base,
+                owner,
+                repo,
+                scope=scope,
+                cache_misses=not mutating,
+            )
+        except _app_auth.AppNotInstalledError as exc:
+            # ``_app_auth`` knows the repository but not which
+            # Integration selected it; name it here so the host's error
+            # tells the caller which ``?source=`` came up short.
+            exc.integration_slug = ctx.integration_slug
+            raise
+        self._note_credential(ctx, credentials, base, owner, repo)
+        return token
+
+    @staticmethod
+    def _note_credential(
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        base: str,
+        owner: str,
+        repo: str,
+    ) -> None:
+        """Record on ``ctx`` that this call ran on the App installation.
+
+        Only when the Integration's own App credential carried the call
+        -- an acting user's token and a configured PAT are both already
+        described by the principal on the audit row, and saying "via the
+        Integration" of a user's own OAuth token would be a lie.  The
+        host reads this back onto the deployment event and the
+        operations-log row so an autonomous deploy records the
+        credential as well as the principal.
+        """
+        app_id = credentials.get('app_id')
+        if credentials.get('access_token') or credentials.get('token'):
+            return
+        if not app_id:
+            return
+        install = credentials.get(
+            'installation_id'
+        ) or _app_auth_installation_id(app_id, base, owner, repo)
+        ctx.credential_note = (
+            f'github-app installation {install}' if install else 'github-app'
         )
 
     @contextlib.asynccontextmanager
     async def _client(
-        self, ctx: PluginContext, credentials: dict[str, str]
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+        scope: collections.abc.Mapping[str, str] = SCOPE_CONTENTS_READ,
+        *,
+        mutating: bool = False,
     ) -> collections.abc.AsyncGenerator[httpx.AsyncClient]:
         """Yield an httpx client that survives — and self-heals — renames.
 
@@ -664,7 +792,9 @@ class GitHubDeployment(DeploymentCapability):
 
         client = httpx.AsyncClient(
             timeout=_HTTP_TIMEOUT_SECONDS,
-            headers=_auth_headers(await self._bearer(ctx, credentials)),
+            headers=_auth_headers(
+                await self._bearer(ctx, credentials, scope, mutating=mutating)
+            ),
             base_url=self._repo_url(ctx),
             follow_redirects=True,
             event_hooks={'response': [_capture_redirect, _raise_on_401]},
@@ -729,7 +859,9 @@ class GitHubDeployment(DeploymentCapability):
         kind: typing.Literal['default', 'branch', 'tag', 'all'] = 'all',
         query: str | None = None,
     ) -> list[Ref]:
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             tasks: list[collections.abc.Awaitable[list[Ref]]] = []
             if kind in ('default', 'branch', 'all'):
                 # Resolve the repo's actual default branch up front so
@@ -858,7 +990,7 @@ class GitHubDeployment(DeploymentCapability):
         params = {'sha': ref, 'per_page': str(max(1, min(limit, 100)))}
         host = self._resolve_host(ctx)
         owner, repo = self._owner_repo(ctx)
-        async with self._client(ctx, credentials) as client:
+        async with self._client(ctx, credentials, SCOPE_CHECKS_READ) as client:
             resp = await client.get('/commits', params=params)
             resp.raise_for_status()
             rows = typing.cast(list[dict[str, typing.Any]], resp.json())
@@ -923,7 +1055,9 @@ class GitHubDeployment(DeploymentCapability):
         credentials: dict[str, str],
         committish: str,
     ) -> Commit:
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             resp = await client.get(
                 f'/commits/{urllib.parse.quote(committish, safe="")}'
             )
@@ -940,7 +1074,9 @@ class GitHubDeployment(DeploymentCapability):
         base: str,
         head: str,
     ) -> CompareResult:
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             quoted = urllib.parse.quote(f'{base}...{head}', safe='.')
             resp = await client.get(f'/compare/{quoted}')
             resp.raise_for_status()
@@ -987,7 +1123,9 @@ class GitHubDeployment(DeploymentCapability):
         commit (with optional fan-out subtrees like ``ab/cdef...``), so a
         short committish is resolved through the commits endpoint first.
         """
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             full_sha = committish.lower()
             if not _FULL_SHA_PATTERN.match(full_sha):
                 commit = await client.get(
@@ -1023,7 +1161,9 @@ class GitHubDeployment(DeploymentCapability):
         whole ref.  A note skipped on request does not make the listing
         incomplete -- the caller already has that answer.
         """
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             tip = await self._notes_ref_tip(client, namespace)
             if tip is None:
                 return NotesListing({}, True)
@@ -1055,7 +1195,9 @@ class GitHubDeployment(DeploymentCapability):
         a stale non-null verdict from this window persists until the
         next ordinary push touches the note.
         """
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             if before == _ZERO_SHA:
                 return (await self._all_notes(client, after)).notes
             quoted = urllib.parse.quote(f'{before}...{after}', safe='.')
@@ -1274,7 +1416,9 @@ class GitHubDeployment(DeploymentCapability):
         tag: str,
         message: str,
     ) -> RefInfo:
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_WRITE, mutating=True
+        ) as client:
             tag_resp = await client.post(
                 '/git/tags',
                 json={
@@ -1310,7 +1454,9 @@ class GitHubDeployment(DeploymentCapability):
         body_markdown: str,
         prerelease: bool = False,
     ) -> ReleaseInfo:
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_WRITE, mutating=True
+        ) as client:
             resp = await client.post(
                 '/releases',
                 json={
@@ -1369,7 +1515,9 @@ class GitHubDeployment(DeploymentCapability):
         merged_payload: dict[str, typing.Any] = dict(ctx.environment_config)
         if inputs:
             merged_payload.update(inputs)
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_DEPLOYMENTS_WRITE, mutating=True
+        ) as client:
             resp = await client.post(
                 '/deployments',
                 json={
@@ -1449,7 +1597,9 @@ class GitHubDeployment(DeploymentCapability):
                 f'{len(merged_inputs)} workflow inputs; GitHub accepts at '
                 f'most {_MAX_DISPATCH_INPUTS} per workflow_dispatch'
             )
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_ACTIONS_DISPATCH, mutating=True
+        ) as client:
             resp = await client.post(
                 f'/actions/workflows/'
                 f'{urllib.parse.quote(workflow_id, safe="")}/dispatches',
@@ -1494,7 +1644,9 @@ class GitHubDeployment(DeploymentCapability):
         Passing a workflow run id to that one would 404, which is why the
         two ids never share a method.
         """
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_ACTIONS_READ
+        ) as client:
             resp = await client.get(
                 f'/actions/runs/{urllib.parse.quote(str(run_id), safe="")}'
             )
@@ -1531,7 +1683,9 @@ class GitHubDeployment(DeploymentCapability):
         ``/actions/workflows`` page at 100 — that's more than enough for
         any real repo, so this intentionally doesn't paginate.
         """
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_ACTIONS_READ
+        ) as client:
             resp = await client.get(
                 '/actions/workflows', params={'per_page': '100'}
             )
@@ -1569,7 +1723,7 @@ class GitHubDeployment(DeploymentCapability):
         if _checks_disabled(credentials, host, owner, repo):
             return 'unknown'
         encoded = urllib.parse.quote(committish, safe='')
-        async with self._client(ctx, credentials) as client:
+        async with self._client(ctx, credentials, SCOPE_CHECKS_READ) as client:
             try:
                 resp = await client.get(f'/commits/{encoded}/check-runs')
             except httpx.HTTPError:
@@ -1640,7 +1794,9 @@ class GitHubDeployment(DeploymentCapability):
         UI can deep-link without having to walk back to the workflow run
         through a check-suite join.
         """
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_DEPLOYMENTS_READ
+        ) as client:
             resp = await client.get(f'/deployments/{run_id}/statuses')
             resp.raise_for_status()
             statuses = typing.cast(list[dict[str, typing.Any]], resp.json())
@@ -1724,7 +1880,9 @@ class GitHubDeployment(DeploymentCapability):
         # default limit=1 where no single env repeats a ref.
         release_lookups: dict[str, asyncio.Task[RemoteRelease | None]] = {}
         mainline = _mainline_branches(ctx.integration_options)
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_DEPLOYMENTS_SURVEY
+        ) as client:
             per_env = await asyncio.gather(
                 *(
                     self._list_deployments_for_env(
@@ -1795,7 +1953,9 @@ class GitHubDeployment(DeploymentCapability):
         run_cache: dict[str, tuple[str, str] | None] = {}
         release_lookups: dict[str, asyncio.Task[RemoteRelease | None]] = {}
         mainline = _mainline_branches(ctx.integration_options)
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_DEPLOYMENTS_SURVEY
+        ) as client:
             return list(
                 await asyncio.gather(
                     *(
@@ -1986,7 +2146,9 @@ class GitHubDeployment(DeploymentCapability):
         so a scope-limited token short-circuits.
         """
         mainline = _mainline_branches(ctx.integration_options)
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             return await self._release_notes_for_ref(client, tag, mainline)
 
     async def _list_deployments_for_env(
@@ -2257,7 +2419,9 @@ class GitHubDeployment(DeploymentCapability):
     ) -> RemoteRelease | None:
         """Return the GitHub release for ``tag`` with its author."""
         mainline = _mainline_branches(ctx.integration_options)
-        async with self._client(ctx, credentials) as client:
+        async with self._client(
+            ctx, credentials, SCOPE_CONTENTS_READ
+        ) as client:
             return await self._release_for_ref(client, tag, mainline)
 
     async def _release_notes_for_ref(
