@@ -138,7 +138,10 @@ confirming the published release.
 pyprojects (versions *and* the 27 `imbi-*==` cross-member pins),
 `ui/package.json`, and `uv.lock`. Never hand-edit those; the count is why
 lockstep used to drift. `scripts/bump-version.sh --check` asserts they all
-agree. `helm/imbi/Chart.yaml` is deliberately outside lockstep.
+agree, and both `test.yml` and `release.yml` run it — `uv lock` accepts a
+member that disagrees with the meta-package's pin on it, so drift is
+otherwise silently committable and ships as a meta-package that cannot be
+installed. `helm/imbi/Chart.yaml` is deliberately outside lockstep.
 
 Tags are unprefixed (`2.18.0`, not `v2.18.0`; v2.17.0 was a one-off) and
 must match the pyproject version. **The tag annotation is the GitHub
@@ -170,6 +173,7 @@ safe.
 
 ## CI
 
-`test.yml` (python lint+test, ui lint+test), `docs.yml` (Pages deploy of
-the merged site), `release.yml` (tag-driven image + PyPI publish + GitHub
-release). Reproduce CI failures locally with `moon ci` before pushing.
+`test.yml` (python lint+test, ui lint+test, version lockstep, image
+build), `docs.yml` (Pages deploy of the merged site), `release.yml`
+(tag-driven image + PyPI publish + GitHub release). Reproduce CI failures
+locally with `moon ci` before pushing.

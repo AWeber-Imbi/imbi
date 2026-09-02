@@ -159,6 +159,15 @@ jobs:
           python-version: '3.14'
           enable-cache: true
 
+      # `uv version --short` below reads only the ROOT pyproject, so on its
+      # own it cannot tell whether the members agree with it. A member left
+      # behind builds a wheel at the old version while the meta-package pins
+      # the new one, and the release publishes something that cannot be
+      # installed. Pipeline checks this on every PR too; this is the gate
+      # that keeps it off PyPI.
+      - name: Verify every member version is in lockstep
+        run: scripts/bump-version.sh --check
+
       - name: Verify tag matches the package version
         run: |
           tag="${GITHUB_REF#refs/tags/}"

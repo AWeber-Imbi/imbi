@@ -25,6 +25,23 @@ jobs:
           version: "0.11.13"
       - uses: "moonrepo/setup-toolchain@v0"
       - run: "moon ci"
+  versions:
+    # Lockstep drift is silently committable and ships broken: uv lock
+    # accepts a member whose version disagrees with the meta-package's
+    # exact pin on it, and release.yml only compares the tag to the ROOT
+    # version. The published meta-package then pins a member version that
+    # never reached PyPI, so `pip install imbi==<tag>` cannot resolve --
+    # and nothing notices until a user tries it. Catch it on the PR.
+    #
+    # Deliberately toolchain-free (perl + jq + coreutils only, no uv or
+    # npm) so it reports in seconds rather than waiting on `moon ci`.
+    name: "Versions"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+        with:
+          persist-credentials: false
+      - run: "scripts/bump-version.sh --check"
   image:
     # Exercises the same docker/build-push-action configuration as
     # release.yml (single arch, no push) so drift in the build context,

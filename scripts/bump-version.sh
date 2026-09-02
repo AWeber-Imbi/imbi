@@ -41,31 +41,51 @@ current_version() {
   perl -ne 'if (/^version = "([^"]+)"/) { print "$1\n"; last }' "$ROOT_PYPROJECT"
 }
 
-# Print "<file>: <version>" for every lockstep version we track, so --check can
-# compare them and a bump can verify it left nothing behind. Exactly one
-# unindented `version = "..."` exists per pyproject; the indented matches are
-# the cross-member pins.
+# Print "<file>: <kind> <version>" for every lockstep version we track, so
+# --check can compare them and a bump can verify it left nothing behind.
+# Exactly one unindented `version = "..."` exists per pyproject; the indented
+# matches are the cross-member pins.
 collect_versions() {
   # shellcheck disable=SC2086  # $PYPROJECTS is a deliberate argument list
   perl -ne '
-    print "$ARGV: $1\n" if /^version = "([^"]+)"/;
-    print "$ARGV: $1\n" if /^\s+"imbi-[a-z-]+(?:\[[^\]]*\])?==([^"]+)"/;
+    print "$ARGV: version $1\n" if /^version = "([^"]+)"/;
+    print "$ARGV: pin $1\n" if /^\s+"imbi-[a-z-]+(?:\[[^\]]*\])?==([^"]+)"/;
   ' $PYPROJECTS
-  printf '%s: %s\n' "$UI_PACKAGE_JSON" "$(jq -r .version "$UI_PACKAGE_JSON")"
+  printf '%s: version %s\n' "$UI_PACKAGE_JSON" \
+    "$(jq -r .version "$UI_PACKAGE_JSON")"
 }
 
 check() {
-  local versions distinct majority
+  local versions distinct majority covered expected
   versions=$(collect_versions)
-  distinct=$(printf '%s\n' "$versions" | awk '{print $2}' | sort -u)
+
+  # A gate that passes because it found nothing is worse than no gate. If a
+  # version line is ever reformatted, the patterns above stop matching it and
+  # the comparison below would silently narrow to whatever still parses.
+  #
+  # Count `version` entries, not distinct files: a file whose own version line
+  # stopped parsing still shows up via its pin, so file coverage alone would
+  # not notice. Every pyproject carries exactly one, plus package.json.
+  covered=$(printf '%s\n' "$versions" | awk '$2 == "version"' | wc -l | tr -d ' ')
+  # shellcheck disable=SC2086  # deliberate word split onto one file per line
+  expected=$(($(printf '%s\n' $PYPROJECTS | wc -l) + 1)) # +1 for package.json
+  if [ "$covered" -ne "$expected" ]; then
+    die "read a project version from $covered of $expected files;" \
+      "has a 'version =' line been reformatted?"
+  fi
+  if ! printf '%s\n' "$versions" | grep -q ' pin '; then
+    die "found no imbi-*== cross-member pins; has the pin format changed?"
+  fi
+
+  distinct=$(printf '%s\n' "$versions" | awk '{print $3}' | sort -u)
   if [ "$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')" -ne 1 ]; then
     # Report the odd ones out rather than all 43 lines: the majority version
     # is almost always the intended one, so the minority is the drift.
-    majority=$(printf '%s\n' "$versions" | awk '{print $2}' | sort | uniq -c |
+    majority=$(printf '%s\n' "$versions" | awk '{print $3}' | sort | uniq -c |
       sort -rn | head -1 | awk '{print $2}')
     printf 'bump-version: versions are NOT in lockstep (most are %s):\n' \
       "$majority" >&2
-    printf '%s\n' "$versions" | awk -v m="$majority" '$2 != m' | sort -u >&2
+    printf '%s\n' "$versions" | awk -v m="$majority" '$3 != m' | sort -u >&2
     exit 1
   fi
   printf '%s\n' "$distinct"
@@ -101,7 +121,7 @@ bump() {
 
   uv lock
 
-  remaining=$(collect_versions | awk -v v="$old" '$2 == v')
+  remaining=$(collect_versions | awk -v v="$old" '$3 == v')
   if [ -n "$remaining" ]; then
     printf 'bump-version: still on %s after the rewrite:\n' "$old" >&2
     printf '%s\n' "$remaining" >&2
