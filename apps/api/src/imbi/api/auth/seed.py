@@ -577,6 +577,21 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'impersonate',
         'Schedule tasks that run as another user',
     ),
+    # Cross-cutting capability: acting with an Integration's own
+    # credential (e.g. a GitHub App installation token) instead of the
+    # principal's identity connection. Additive -- a service account
+    # still needs the capability's own permission
+    # (`project:deployment:write`, ...) on top of this one, so an
+    # autonomous principal is a deliberate second grant rather than a
+    # side effect of a permission many service accounts already hold.
+    # Granted to no *non-admin* default role, like `scheduler:impersonate`.
+    (
+        'integration:act-as-service',
+        'integration',
+        'act-as-service',
+        "Use an Integration's own credential instead of the "
+        "principal's identity",
+    ),
 ]
 
 # Permissions retired by the ThirdPartyService -> Integration rename.
