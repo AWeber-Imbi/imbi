@@ -581,6 +581,15 @@ class PluginContext(pydantic.BaseModel):
     # ``integration_slug`` and merges any dashboard links into
     # ``Project.links``.  ``None`` on every inbound context.
     service_writeback: ServiceWriteback | None = None
+    # Output side-channel: the credential the capability actually acted
+    # with, when that was the Integration's own rather than the actor's
+    # identity -- e.g. ``'github-app installation 12345678'``.  Set by
+    # the capability; the host records it on the audit trail so a
+    # deployment made by an autonomous principal says which App
+    # installation carried it out, not merely which service account
+    # asked.  ``None`` means the actor's own token was used, which is
+    # already fully described by the principal.
+    credential_note: str | None = None
     # Slug of the ``Integration`` the running capability is bound to,
     # resolved by the host.  Tells the capability which Integration its
     # ``service_writeback`` targets and which ``service_connections``

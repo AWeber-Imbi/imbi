@@ -99,6 +99,18 @@ class AuthContext(pydantic.BaseModel):
     permissions: set[str] = pydantic.Field(default_factory=set)
     identities: list[IdentityInfo] = pydantic.Field(default_factory=list)
 
+    #: Synthesized in-process rather than authenticated from a request.
+    #: Only ``imbi.api.auth.principals.system_auth`` sets it, for the
+    #: background workers (resync, promote watcher, backfill) that need
+    #: an ``AuthContext`` to attribute their writes. Those principals
+    #: hold no ``permissions`` and no ``MEMBER_OF`` edges, so the checks
+    #: that bound an *externally* authenticated userless principal
+    #: (``integration:act-as-service``, organization membership) would
+    #: deny work the operator never asked to authorize. Never trust a
+    #: value that arrived over the wire: every real authentication path
+    #: leaves this ``False``.
+    internal: bool = False
+
     def identity_for(self, plugin_slug: str) -> str | None:
         """Return the subject for the given plugin_slug, or None."""
         for i in self.identities:

@@ -189,6 +189,7 @@ def deployed_operation_log(
     occurred_at: datetime.datetime | None = None,
     ci_status: str = 'unknown',
     ci_override: bool = False,
+    credential: str | None = None,
 ) -> common_models.OperationLog:
     """Build a ``Deployed`` ``operations_log`` row.
 
@@ -217,6 +218,15 @@ def deployed_operation_log(
     Both default to the "nothing was checked" case so the backfill and
     resync callers, which observe deployments rather than CI, need not
     supply them.
+
+    ``credential`` names the Integration credential the action ran on
+    when it was not the actor's own (e.g.
+    ``'github-app installation 12345678'``), so a deploy made by an
+    autonomous principal records the authority that carried it out and
+    not only the service account that asked.  It goes in the description
+    blob rather than into ``recorded_by`` / ``performed_by``: those stay
+    bare identifiers, because the activity feed and
+    ``lookup_ops_log_performed_by`` match on them.
     """
     safe_run_url = safe_audit_url(run_url)
     description = json.dumps(
@@ -225,6 +235,7 @@ def deployed_operation_log(
             'ci_override': ci_override,
             'ci_status': ci_status,
             'commit_sha': commit_sha,
+            'credential': credential,
             'plugin_slug': plugin_slug,
             'run_url': safe_run_url,
             'release_url': safe_audit_url(release_url),

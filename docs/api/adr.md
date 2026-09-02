@@ -316,6 +316,25 @@ Adds an OAuth2 token-exchange (RFC 8693) delegation primitive plus a `Consent` m
 
 ---
 
+#### [ADR 0017: Autonomous Deployment Principals](adr/0017-autonomous-deployment-principals.md)
+
+*Date: 2026-09-02 | Status: Accepted*
+
+Lets an Imbi service account drive GitHub-backed deployment capabilities with the Integration's own GitHub App installation token — no per-user `IdentityConnection` — under Imbi-side controls that bound what an autonomous actor may do. The service-account half of the problem ADR 0016 frames.
+
+**Key Decisions:**
+
+- The identity/service-credential fork keys on the principal (`auth.user is None`), not on a per-call-site `best_effort_identity` flag
+- New cross-cutting `integration:act-as-service` permission, additive to the capability's own and granted to no non-admin default role
+- Organization membership enforced in `_resolve_and_context`, so every deployment endpoint inherits it
+- New default-false `Environment.allow_autonomous`; human authority in an environment is unchanged
+- `AuthContext.internal` exempts Imbi's own in-process workers, which hold no permissions and no memberships
+- An autonomous principal cannot set `acknowledge_ci_failure` — it asserts a human review that did not happen
+- Installation tokens are minted per declared operation scope, with the scope in the cache key
+- Terminal failures are `403` with a discriminated `detail.error`, so a daemon branches on cause rather than spinning on a retried `5xx`
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:

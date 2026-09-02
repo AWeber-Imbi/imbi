@@ -25,6 +25,7 @@ export const ENVIRONMENT_BASE_FIELDS = [
   'can_deploy',
   'can_promote',
   'terminal',
+  'allow_autonomous',
   'id',
 ]
 export const ENVIRONMENT_BASE_FIELDS_SET = new Set(ENVIRONMENT_BASE_FIELDS)

@@ -173,6 +173,7 @@ async def list_environments(
         env.setdefault('sort_order', 0)
         env.setdefault('can_deploy', True)
         env.setdefault('can_promote', False)
+        env.setdefault('allow_autonomous', False)
         pc = graph.parse_agtype(record['project_count'])
         env['relationships'] = _environment_relationships(
             request, org_slug, env['slug'], pc or 0
@@ -233,6 +234,7 @@ async def get_environment(
     env.setdefault('can_deploy', True)
     env.setdefault('can_promote', False)
     env.setdefault('terminal', False)
+    env.setdefault('allow_autonomous', False)
     pc = graph.parse_agtype(records[0]['project_count'])
     env['relationships'] = _environment_relationships(
         request, org_slug, env['slug'], pc or 0
@@ -333,6 +335,7 @@ async def _persist_environment(
     env.setdefault('can_deploy', True)
     env.setdefault('can_promote', False)
     env.setdefault('terminal', False)
+    env.setdefault('allow_autonomous', False)
     pc = graph.parse_agtype(updated[0]['project_count'])
     env['relationships'] = _environment_relationships(
         request, org_slug, env['slug'], pc or 0
@@ -402,6 +405,7 @@ async def patch_environment(
     current.setdefault('can_deploy', True)
     current.setdefault('can_promote', False)
     current.setdefault('terminal', False)
+    current.setdefault('allow_autonomous', False)
 
     patched = json_patch.apply_patch(current, operations)
     patched.pop('organization_slug', None)

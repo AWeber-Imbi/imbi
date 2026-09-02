@@ -126,6 +126,7 @@ export type Environment = Schemas['EnvironmentBlueprintResponse'] & {
 // `string|null`, which the UI create form doesn't do.
 export interface EnvironmentCreate {
   [key: string]: unknown
+  allow_autonomous?: boolean
   can_deploy?: boolean
   can_promote?: boolean
   description?: null | string

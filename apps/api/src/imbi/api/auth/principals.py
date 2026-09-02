@@ -59,10 +59,18 @@ def system_auth(slug: str, display_name: str) -> permissions.AuthContext:
     ``AuthContext`` attribute their work to the worker.  Identity attach is
     best-effort for these and falls back to the Integration's service
     credentials for a userless principal.
+
+    ``internal=True`` marks it as minted here rather than authenticated
+    from a request.  A worker holds no granted permissions and no
+    organization membership, so the gates that bound an externally
+    authenticated userless principal -- ``integration:act-as-service``
+    and organization scoping -- do not apply to it; the authorization
+    decision for a sweep was made when the sweep was configured.
     """
     return permissions.AuthContext(
         auth_method='client_credentials',
         service_account=models.ServiceAccount(
             slug=slug, display_name=display_name
         ),
+        internal=True,
     )

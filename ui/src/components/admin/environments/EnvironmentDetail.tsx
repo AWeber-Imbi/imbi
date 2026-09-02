@@ -112,6 +112,14 @@ export function EnvironmentDetail({
                     ⊣ terminal
                   </span>
                 ) : null}
+                {environment.allow_autonomous ? (
+                  <span
+                    className="text-tertiary ml-2 text-xs"
+                    title="Opted in to autonomous access. Service accounts still need the deploy or promote permission for this environment."
+                  >
+                    ⚙ autonomous
+                  </span>
+                ) : null}
               </div>
             </div>
             <div>

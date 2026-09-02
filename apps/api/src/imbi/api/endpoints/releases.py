@@ -1313,6 +1313,7 @@ async def append_deployment_event(
     external_run_url: str | None = None,
     timestamp: datetime.datetime | None = None,
     performed_by: str | None = None,
+    credential: str | None = None,
     source: str = 'api',
 ) -> (
     tuple[ReleaseEnvironmentEdgeResponse, AppendOutcome]
@@ -1356,6 +1357,11 @@ async def append_deployment_event(
     ``None`` -- those code paths already attribute the operator via
     ``operations_log``.
 
+    ``credential`` names the Integration credential the rollout ran on
+    when it was not the actor's own -- an autonomous principal acts with
+    the Integration's App installation, and the principal alone does not
+    say what authority carried the deploy out.
+
     ``source`` names the writer on the node's ``history`` entry, so a
     late webhook landing after the sweeper expired a deployment is
     auditable rather than a silent overwrite.
@@ -1379,6 +1385,7 @@ async def append_deployment_event(
         external_run_id=external_run_id,
         external_run_url=external_run_url,
         performed_by=performed_by,
+        credential=credential,
         timestamp=timestamp,
         source=source,
     )
@@ -1405,6 +1412,7 @@ async def append_deployment_event(
         external_run_id=external_run_id,
         external_run_url=external_run_url,
         performed_by=performed_by,
+        credential=credential,
     )
     superseded = [
         event

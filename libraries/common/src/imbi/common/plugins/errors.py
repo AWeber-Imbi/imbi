@@ -21,6 +21,44 @@ class PluginCredentialsMissing(Exception):
     """Raised when required credentials are absent for a plugin."""
 
 
+class PluginInstallationMissing(Exception):
+    """The Integration's own credential does not cover the target resource.
+
+    Raised when a plugin holds valid service credentials but they grant
+    it nothing on the resource in question -- canonically, a GitHub App
+    that is configured correctly and simply is not installed on the
+    repository.
+
+    Distinct from :class:`PluginCredentialsMissing` (nothing configured
+    at all) and :class:`PluginAuthenticationFailed` (a credential the
+    remote rejected): here the credential is good and the *grant* is
+    absent, so neither refreshing nor retrying changes the answer.  The
+    host surfaces it as a terminal ``403`` rather than a ``5xx`` for
+    exactly that reason -- consuming clients retry ``5xx``, and an
+    uninstalled App is not transient.
+
+    Background sync paths may still choose to treat it as a clean skip;
+    a mutating path must not, because a silent skip there means the
+    deploy or rollback did not happen and nothing said so.
+
+    ``integration_slug`` identifies the Integration whose credential
+    came up short.  The slug rather than the node id because that is
+    what ``?source=`` accepts -- a caller that has to pick a different
+    Integration can act on it directly.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        owner_repo: str | None = None,
+        integration_slug: str | None = None,
+    ) -> None:
+        self.owner_repo: str | None = owner_repo
+        self.integration_slug: str | None = integration_slug
+        super().__init__(message)
+
+
 class PluginAuthenticationFailed(Exception):
     """Raised when a plugin's API call is rejected by the upstream IdP
     or service for an authentication-related reason (HTTP 401, an AWS
