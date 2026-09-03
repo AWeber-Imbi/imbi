@@ -67,6 +67,7 @@ moon run :lint :typecheck :format   # lint + type-check + format-check everythin
 uv run pre-commit run --all-files   # ruff + tombi (write mode) — reformat
 moon run root:docs-build   # build docs; root:docs-serve to preview locally
 moon run root:image        # production image, no push
+moon run root:check-versions  # assert the lockstep version across all members
 ```
 
 Run a single test file or test directly with pytest — the suite needs the
@@ -130,16 +131,54 @@ uv run --env-file .env.test pytest apps/slackbot/tests/test_agent.py::TestAgent:
 
 ## Releasing
 
-Bump the version in the root pyproject **and every member pyproject**
-(lockstep), `uv lock`, commit, tag `<version>` (unprefixed, e.g.
-`2.18.0` — not `v2.18.0`; v2.17.0 was a one-off), push the tag.
-`release.yml` then builds the multi-arch Docker image
-(ghcr.io/aweber-imbi/imbi + aweber/imbi) and publishes every member
-wheel plus the `imbi` meta-package to PyPI via trusted publishing. The
-tag must match the pyproject version or the publish fails fast.
+Use the `release` skill (`.claude/skills/release/SKILL.md`, or `/release`)
+— it runs the whole thing: version bump, release notes, tag, push, and
+confirming the published release.
+
+`scripts/bump-version.sh <version>` does the lockstep bump — all 15
+pyprojects (versions *and* the 27 `imbi-*==` cross-member pins),
+`ui/package.json`, and `uv.lock`. Never hand-edit those; the count is why
+lockstep used to drift. `scripts/bump-version.sh --check` asserts they all
+agree — `uv lock` accepts a member that disagrees with the meta-package's
+pin on it, so drift is otherwise silently committable and ships as a
+meta-package that cannot be installed. It is enforced three ways:
+`moon run root:check-versions` (so `moon ci` covers it locally), Pipeline's
+`Versions` job, and `release.yml` before the build. The two CI callers
+invoke the script directly rather than through moon, so neither has to
+provision the moon toolchain for a 74ms check. `helm/imbi/Chart.yaml` is
+deliberately outside lockstep.
+
+Tags are unprefixed (`2.18.0`, not `v2.18.0`; v2.17.0 was a one-off) and
+must match the pyproject version. **The tag annotation is the GitHub
+release body**, so three things are non-negotiable, each having shipped
+broken at least once:
+
+```sh
+git tag -a --cleanup=verbatim -F <notes-file> <version>
+```
+
+- **Annotated** (`-a`), or there are no notes at all — 2.26.1 went out
+  lightweight.
+- **`--cleanup=verbatim`**, or git strips every `#`-leading line as
+  commentary and the `## Fixes` headings vanish — that ate 2.29.2, 2.29.3,
+  and 2.29.4.
+- **The notes file holds only the notes** (no version subject line) and
+  **ends in exactly one newline** — `gh --notes-from-tag` uses the entire
+  annotation, and tags are SSH-signed, so a missing final newline glues the
+  signature onto the last line. 2.30.0's annotation was just `2.30.0`.
+
+Pushing the tag runs `release.yml`: it fails fast if the tag mismatches the
+version or the annotation breaks any rule above, then builds the multi-arch
+Docker image (ghcr.io/aweber-imbi/imbi + aweber/imbi), publishes every
+member wheel plus the `imbi` meta-package to PyPI via trusted publishing,
+and finally **creates the GitHub release itself** with
+`gh release create --notes-from-tag --title "<version>"`. Do not create the
+release by hand; the job is idempotent, so re-running a failed release is
+safe.
 
 ## CI
 
-`test.yml` (python lint+test, ui lint+test), `docs.yml` (Pages deploy of
-the merged site), `release.yml` (tag-driven image + PyPI publish).
-Reproduce CI failures locally with `moon ci` before pushing.
+`test.yml` (python lint+test, ui lint+test, version lockstep, image
+build), `docs.yml` (Pages deploy of the merged site), `release.yml`
+(tag-driven image + PyPI publish + GitHub release). Reproduce CI failures
+locally with `moon ci` before pushing.

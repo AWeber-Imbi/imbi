@@ -40,6 +40,26 @@ tasks:
       cache: false
       runInCI: 'always'
 
+  # Assert every member version and cross-member pin agrees with the
+  # meta-package. Thin wrapper over the script so that `moon ci` and a local
+  # `moon ci` dry run give the same verdict as the Pipeline `Versions` job and
+  # release.yml -- both of those call the script directly, because neither has
+  # a reason to provision the moon toolchain for a one-second check.
+  # `always` because this validates the relationship *between* projects, so
+  # affected-project detection is the wrong filter for it.
+  check-versions:
+    script: 'scripts/bump-version.sh --check'
+    inputs:
+      - '/pyproject.toml'
+      - '/apps/*/pyproject.toml'
+      - '/libraries/*/pyproject.toml'
+      - '/plugins/*/pyproject.toml'
+      - '/ui/package.json'
+      - '/uv.lock'
+      - '/scripts/bump-version.sh'
+    options:
+      runInCI: 'always'
+
   # Boot the backing services and (re)write /.env.test with resolved ports.
   # Ported verbatim from the previous justfile `docker` recipe. Every python
   # `test` task depends on this, and moon runs it once per graph execution.
