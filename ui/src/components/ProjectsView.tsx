@@ -551,7 +551,6 @@ export function ProjectsView() {
               <Search className="text-tertiary absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 className="pr-8 pl-9"
-                disabled={isLoading}
                 onBlur={() => setSearchFocused(false)}
                 onChange={(e) => setInputQuery(e.target.value)}
                 onFocus={() => setSearchFocused(true)}
