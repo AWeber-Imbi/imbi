@@ -751,6 +751,15 @@ class Commit(pydantic.BaseModel):
     tag: str | None = None
 
 
+class DependencyChange(pydantic.BaseModel):
+    """A single npm dependency version change between two commits."""
+
+    name: str
+    old_version: str | None = None
+    new_version: str | None = None
+    kind: typing.Literal['added', 'removed', 'changed']
+
+
 class CompareResult(pydantic.BaseModel):
     """Result of comparing two commit-ish refs (``base..head``)."""
 
@@ -763,6 +772,7 @@ class CompareResult(pydantic.BaseModel):
     additions: int = 0
     deletions: int = 0
     pr_numbers: list[int] = []
+    dependency_changes: list[DependencyChange] = []
 
 
 class RefInfo(pydantic.BaseModel):
