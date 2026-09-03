@@ -233,9 +233,39 @@ GH_HOST=github.com gh release view "$TAG" --repo AWeber-Imbi/imbi \
 GH_HOST=github.com gh api repos/AWeber-Imbi/imbi/releases/latest -q .tag_name
 ```
 
-`name` must be exactly `$TAG` and `body` must match the approved notes. If the
-release is **missing** — the workflow died before reaching that job — create it
-with the same command the workflow uses.
+`name` must be exactly `$TAG`. **Diff the published body against the approved
+notes rather than eyeballing it** — this is the check that caught 2.31.0, whose
+body was the commit message:
+
+```sh
+published="$(dirname "$NOTES")/published-body.txt"
+GH_HOST=github.com gh release view "$TAG" --repo AWeber-Imbi/imbi \
+  --json body -q .body > "$published"
+diff "$published" "$NOTES"    # one trailing blank line is expected
+```
+
+If the body is wrong, **fix it with `gh release edit`** — the `github-release`
+job short-circuits on `gh release view`, so re-running the workflow will not
+repair a body it already published:
+
+```sh
+GH_HOST=github.com gh release edit "$TAG" --repo AWeber-Imbi/imbi \
+  --notes-file "$NOTES"
+```
+
+That is not hand-writing the body: `$NOTES` is what the annotation contains.
+Confirm that first if there is any doubt — the API returns the annotation with
+the signature still attached, so strip it:
+
+```sh
+sha=$(GH_HOST=github.com gh api repos/AWeber-Imbi/imbi/git/ref/tags/"$TAG" \
+        -q .object.sha)
+GH_HOST=github.com gh api repos/AWeber-Imbi/imbi/git/tags/"$sha" -q .message \
+  | sed '/-----BEGIN SSH SIGNATURE-----/,$d' | diff - "$NOTES"
+```
+
+If the release is **missing** — the workflow died before reaching that job —
+create it with the same command the workflow uses.
 
 `--latest` is not optional here. Left to decide for itself, `gh` marks the
 newest release *by date* as latest, so a patch cut on an older line would
@@ -253,8 +283,13 @@ GH_HOST=github.com gh release create "$TAG" --repo AWeber-Imbi/imbi \
   --verify-tag --notes-from-tag --title "$TAG" --latest="$is_latest"
 ```
 
-This needs the tags present locally (`git fetch --tags`), for the same reason
-the workflow's `github-release` job checks out at `fetch-depth: 0`.
+This needs the annotated tag *object* present locally, because
+`--notes-from-tag` reads local git rather than the API. `git fetch --tags`
+gives you that. Note that `fetch-depth: 0` alone does **not**, which is the
+2.31.0 bug: `actions/checkout` fetches the annotated tag and then force-fetches
+the resolved commit over `refs/tags/<tag>`, leaving a lightweight tag whose
+`%(contents)` is the commit message. The `github-release` job now re-fetches
+the tag object and asserts `git cat-file -t` reports `tag` before publishing.
 
 Do not hand-write the body with `--notes`; the annotation is the source of
 truth.
