@@ -33,6 +33,23 @@ PYPROJECTS="$ROOT_PYPROJECT $(
   ls -1 apps/*/pyproject.toml libraries/*/pyproject.toml plugins/*/pyproject.toml
 )"
 
+# Print this file's header comment: everything between the shebang and the
+# first line that is not a comment, with the leading `#` stripped. Derived
+# from the text rather than a hardcoded line range -- the range this replaces
+# silently truncated or leaked code into --help whenever a comment was added
+# near the top of the file.
+usage() {
+  awk 'NR == 1 { next }                       # the shebang
+       /^#/ {
+         sub(/^#[[:blank:]]?/, "")
+         if (!started && $0 == "") next        # the bare "#" under the shebang
+         started = 1
+         print
+         next
+       }
+       { exit }' "$0"
+}
+
 # Print a prefixed message to stderr and abort. Every argument is joined with
 # spaces, so a long message can be split across lines at the call site.
 die() {
@@ -176,7 +193,7 @@ bump() {
 
 case "${1-}" in
   --check) check ;;
-  -h | --help | '') sed -n '3,19p' "$0" | sed 's/^#\{1,2\} \{0,1\}//' ;;
+  -h | --help | '') usage ;;
   -*) die "unknown option: $1" ;;
   *)
     # Anchored, and one-or-more digits per component: a `case` glob cannot
