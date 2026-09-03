@@ -40,15 +40,6 @@ GH_HOST=github.com gh auth status
 scripts/bump-version.sh --check          # lockstep intact before we touch it
 ```
 
-The target version must not already exist. All three of these must come back
-empty or fail:
-
-```sh
-git tag --list "$TAG"
-git ls-remote --tags origin "refs/tags/$TAG"
-GH_HOST=github.com gh release view "$TAG" --repo AWeber-Imbi/imbi
-```
-
 ## Step 1 — pick the version and bump it
 
 Release tags, oldest to newest. Sort on the v-stripped version but keep the
@@ -68,6 +59,23 @@ prev=$(releases | tail -1)
 If the user named a version, use it. Otherwise read `"$prev"..HEAD` and choose:
 minor for any new capability, patch for fixes and internal changes only. Say
 which you picked and why before doing it.
+
+Then set `TAG` to what you picked. Everything from here on refers to it, so
+nothing above this line can — an unset `TAG` makes the checks below inspect
+the empty tag name and `bump-version.sh` print its help instead of bumping:
+
+```sh
+TAG=2.31.0                               # the version you just chose
+```
+
+The target version must not already exist. All three of these must come back
+empty or fail:
+
+```sh
+git tag --list "$TAG"
+git ls-remote --tags origin "refs/tags/$TAG"
+GH_HOST=github.com gh release view "$TAG" --repo AWeber-Imbi/imbi
+```
 
 ```sh
 scripts/bump-version.sh "$TAG"
@@ -227,12 +235,26 @@ GH_HOST=github.com gh api repos/AWeber-Imbi/imbi/releases/latest -q .tag_name
 
 `name` must be exactly `$TAG` and `body` must match the approved notes. If the
 release is **missing** — the workflow died before reaching that job — create it
-with the same command the workflow uses:
+with the same command the workflow uses.
+
+`--latest` is not optional here. Left to decide for itself, `gh` marks the
+newest release *by date* as latest, so a patch cut on an older line would
+demote a newer release. `release.yml` computes it from the same
+highest-semver comparison that decides the image's `:latest` tag, and the
+fallback has to reach the same answer — the workflow exits early when the
+release already exists, so a rerun will not correct a wrong choice:
 
 ```sh
+highest=$(git tag | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' \
+  | sort -V | tail -n 1)
+[ "$highest" = "${TAG#v}" ] && is_latest=true || is_latest=false
+
 GH_HOST=github.com gh release create "$TAG" --repo AWeber-Imbi/imbi \
-  --verify-tag --notes-from-tag --title "$TAG"
+  --verify-tag --notes-from-tag --title "$TAG" --latest="$is_latest"
 ```
+
+This needs the tags present locally (`git fetch --tags`), for the same reason
+the workflow's `github-release` job checks out at `fetch-depth: 0`.
 
 Do not hand-write the body with `--notes`; the annotation is the source of
 truth.

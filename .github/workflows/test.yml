@@ -4,6 +4,12 @@ on:
     branches:
       - "main"
   pull_request:
+# Every job here only checks out and reads the tree -- nothing pushes an
+# image, publishes a package, or writes back to the repo. Declared at the
+# workflow level so a new job cannot silently inherit repository-default
+# write scopes.
+permissions:
+  contents: read
 jobs:
   ci:
     name: "CI"

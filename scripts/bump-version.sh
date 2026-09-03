@@ -24,6 +24,7 @@ cd "$(dirname "$0")/.."
 
 ROOT_PYPROJECT="pyproject.toml"
 UI_PACKAGE_JSON="ui/package.json"
+UV_LOCK="uv.lock"
 
 # Every pyproject that carries a lockstep version and/or a member pin.
 # Kept as a whitespace-separated list rather than an array: this has to run
@@ -53,10 +54,28 @@ collect_versions() {
   ' $PYPROJECTS
   printf '%s: version %s\n' "$UI_PACKAGE_JSON" \
     "$(jq -r .version "$UI_PACKAGE_JSON")"
+  # uv.lock keeps its own copy of every workspace member's version, and it is
+  # not derived from the pyprojects at read time: a tree whose pyprojects were
+  # bumped without a re-lock still reports the OLD version here, and
+  # `uv sync --frozen` then installs against a stale lockfile. So it needs its
+  # own comparison rather than being taken on trust.
+  #
+  # Only the [[package]] version lines matter. Cross-member dependencies are
+  # recorded as `editable = "<path>"` with no version specifier at all -- uv
+  # resolves them from the workspace -- so there is no lockfile analogue of
+  # the pyproject `imbi-*==` pins to check.
+  perl -ne '
+    undef $pkg if /^\[/;
+    if (/^name = "(imbi(?:-[a-z-]+)?)"$/) { $pkg = $1; next }
+    if (defined $pkg && /^version = "([^"]+)"$/) {
+      print "${ARGV}[$pkg]: lock $1\n";
+      undef $pkg;
+    }
+  ' "$UV_LOCK"
 }
 
 check() {
-  local versions distinct majority covered expected
+  local versions distinct majority covered expected locked
   versions=$(collect_versions)
 
   # A gate that passes because it found nothing is worse than no gate. If a
@@ -75,6 +94,18 @@ check() {
   fi
   if ! printf '%s\n' "$versions" | grep -q ' pin '; then
     die "found no imbi-*== cross-member pins; has the pin format changed?"
+  fi
+
+  # Same reasoning as `covered` above, for the lockfile. Every pyproject is a
+  # workspace member, so uv.lock carries exactly one [[package]] per
+  # pyproject -- the meta-package included, since it is an editable member of
+  # its own workspace.
+  locked=$(printf '%s\n' "$versions" | awk '$2 == "lock"' | wc -l | tr -d ' ')
+  # shellcheck disable=SC2086  # deliberate word split onto one file per line
+  if [ "$locked" -ne "$(printf '%s\n' $PYPROJECTS | wc -l | tr -d ' ')" ]; then
+    die "read $locked member versions from $UV_LOCK, expected one per" \
+      "pyproject; has the lockfile format changed, or is a member missing" \
+      "from the workspace?"
   fi
 
   distinct=$(printf '%s\n' "$versions" | awk '{print $3}' | sort -u)
@@ -137,10 +168,13 @@ case "${1-}" in
   -h | --help | '') sed -n '3,19p' "$0" | sed 's/^#\{1,2\} \{0,1\}//' ;;
   -*) die "unknown option: $1" ;;
   *)
-    case "$1" in
-      [0-9]*.[0-9]*.[0-9]*) ;;
-      *) die "not a semantic version: $1" ;;
-    esac
+    # Anchored, and one-or-more digits per component: a `case` glob cannot
+    # express either, so `[0-9]*.[0-9]*.[0-9]*` happily accepted `1.2.3.4`
+    # and `1x.2.3` and let bump() rewrite all 15 pyprojects before `npm
+    # version` or `uv lock` rejected the value.
+    if ! [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      die "not a semantic version: $1"
+    fi
     bump "$1"
     ;;
 esac
