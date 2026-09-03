@@ -274,6 +274,31 @@ jobs:
           # so the annotated tag object has to be fetched.
           fetch-depth: 0
 
+      # fetch-depth: 0 is necessary but NOT sufficient. actions/checkout
+      # fetches the annotated tag correctly and then force-fetches the
+      # resolved COMMIT over it:
+      #
+      #   * [new tag]    2.31.0 -> 2.31.0                  # annotated object
+      #   git fetch --no-tags --prune origin +<sha>:refs/tags/2.31.0
+      #   t [tag update] <sha>  -> 2.31.0                  # now lightweight
+      #
+      # A lightweight tag has no annotation, so `gh --notes-from-tag` falls
+      # back to %(contents) of the commit and publishes the commit message as
+      # the release body. 2.31.0 shipped with "Bump version to 2.31.0" as its
+      # notes and had to be repaired by hand. Re-fetch the real tag object,
+      # then refuse to publish rather than announcing a commit subject.
+      - name: Restore the annotated tag object
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+          if [ "$(git cat-file -t "$tag")" != tag ]; then
+            echo "::error::refs/tags/$tag is not an annotated tag object in" \
+              "the local clone, so the release body would be the commit" \
+              "message rather than the release notes. See" \
+              ".claude/skills/release/SKILL.md." >&2
+            exit 1
+          fi
+
       - name: Resolve tag and whether it is the highest semver
         id: version
         run: |
