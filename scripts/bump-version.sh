@@ -33,11 +33,15 @@ PYPROJECTS="$ROOT_PYPROJECT $(
   ls -1 apps/*/pyproject.toml libraries/*/pyproject.toml plugins/*/pyproject.toml
 )"
 
+# Print a prefixed message to stderr and abort. Every argument is joined with
+# spaces, so a long message can be split across lines at the call site.
 die() {
   printf 'bump-version: %s\n' "$*" >&2
   exit 1
 }
 
+# Print the meta-package's own version -- the first unindented `version =` line
+# in the root pyproject, which is the one a bump reads to find the old value.
 current_version() {
   perl -ne 'if (/^version = "([^"]+)"/) { print "$1\n"; last }' "$ROOT_PYPROJECT"
 }
@@ -74,6 +78,10 @@ collect_versions() {
   ' "$UV_LOCK"
 }
 
+# Assert every tracked version is in lockstep and print the single agreed-on
+# version. Exits 1 -- listing the minority files -- when they disagree, or when
+# the parse covers fewer files than expected, which would mean a `version =`
+# line was reformatted out from under the patterns in collect_versions.
 check() {
   local versions distinct majority covered expected locked
   versions=$(collect_versions)
@@ -122,6 +130,9 @@ check() {
   printf '%s\n' "$distinct"
 }
 
+# Rewrite every pyproject version and cross-member pin, ui/package.json, and
+# uv.lock from the current version to $1, then verify nothing was left behind.
+# Refuses to run on a tree that is not already in lockstep.
 bump() {
   local new="$1" old file remaining
   old=$(current_version)
