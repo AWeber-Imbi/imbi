@@ -55,6 +55,7 @@ tasks:
       - '/libraries/*/pyproject.toml'
       - '/plugins/*/pyproject.toml'
       - '/ui/package.json'
+      - '/uv.lock'
       - '/scripts/bump-version.sh'
     options:
       runInCI: 'always'
