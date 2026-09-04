@@ -335,6 +335,25 @@ Lets an Imbi service account drive GitHub-backed deployment capabilities with th
 
 ---
 
+#### [ADR 0018: AI Model Catalog](adr/0018-ai-model-catalog.md)
+
+*Date: 2026-09-04 | Status: Accepted*
+
+Replaces env-only LLM configuration with a per-organization catalog of configured providers and the models they serve, so an agentic harness can resolve a model at runtime instead of reading one hard-coded default. Credentials are encrypted at rest and guarded by their own permission.
+
+**Key Decisions:**
+
+- Drivers (`anthropic`, `openai`, `openai_compatible`, `bedrock`, `vertex`) are static code in `imbi.common.llm.drivers`; an `AIProvider` node exists only once an admin configures one
+- `AIModel` carries an explicit `access_scope` plus `ALLOWED_FOR` team edges, so "every team" and "no team picked yet" stay distinguishable
+- Provider API keys are stored as `ConfigEncryption` ciphertext; responses carry `has_credentials`, a last-four `credential_hint`, and `credential_updated_at`, never the key
+- `ai_model:credentials` is separate from `ai_model:update` — editing a temperature must not imply the right to replace the production key
+- URLs address nodes by id, and every Cypher query re-matches the organization edge, so a valid id under the wrong org is `404`
+- No cascade delete: a provider that still serves models is `409`
+- `monthly_spend_cap` is advisory; Imbi has no spend tracking yet
+- Discovery calls the provider's own list-models API with the stored key, sanitizing every failure to a driver and status line
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
