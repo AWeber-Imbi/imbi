@@ -134,13 +134,11 @@ export function SettingsApiKeys() {
                     }
                     readOnly
                     style={{ borderWidth: '0.5px' }}
-                    value={`ik_${apiKey.key_id}_••••••••••••`}
+                    value={`${apiKey.key_id}_••••••••••••`}
                   />
                   <Button
                     className=""
-                    onClick={() =>
-                      handleCopyKey(`ik_${apiKey.key_id}`, apiKey.key_id)
-                    }
+                    onClick={() => handleCopyKey(apiKey.key_id, apiKey.key_id)}
                     size="icon"
                     style={{ borderWidth: '0.5px' }}
                     variant="outline"
