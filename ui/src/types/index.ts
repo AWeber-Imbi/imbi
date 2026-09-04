@@ -15,6 +15,149 @@ export interface AgeScoringPolicyCreate extends ScoringPolicyCreateBase {
   category: 'age'
 }
 
+export interface AIDiscoveredModel {
+  already_configured: boolean
+  context_window: null | number
+  created_at: null | string
+  display_name: string
+  max_output_tokens: null | number
+  model_id: string
+}
+
+export interface AIDiscoveryResponse {
+  fetched_at: string
+  models: AIDiscoveredModel[]
+}
+
+// AI model catalog. Hand-written against the REST contract in
+// docs/admin/ai-models.md and docs/api/adr/0018-ai-model-catalog.md —
+// the API ships alongside this UI, so `api-generated.ts` does not
+// describe these schemas yet.
+export interface AIModel {
+  access_scope: AIModelAccessScope
+  allowed_teams: AITeamRef[]
+  context_window: null | number
+  created_at?: string
+  default_temperature: null | number
+  default_top_p: null | number
+  description?: null | string
+  enabled: boolean
+  icon?: null | string
+  id: string
+  // Pydantic renders Decimal as a JSON string, so the cost and cap
+  // fields arrive as strings even though they are written as numbers.
+  input_cost_per_million: null | number | string
+  kind: AIModelKind
+  max_output_tokens: null | number
+  model_id: string
+  monthly_spend_cap: null | number | string
+  name: string
+  output_cost_per_million: null | number | string
+  provider_id: string
+  provider_name: string
+  slug: string
+  updated_at?: null | string
+}
+
+export type AIModelAccessScope = 'organization' | 'restricted'
+
+export interface AIModelCreate {
+  access_scope?: AIModelAccessScope
+  allowed_team_ids?: string[]
+  context_window?: null | number
+  default_temperature?: null | number
+  default_top_p?: null | number
+  description?: null | string
+  enabled?: boolean
+  input_cost_per_million?: null | number
+  kind?: AIModelKind
+  max_output_tokens?: null | number
+  model_id: string
+  monthly_spend_cap?: null | number
+  name: string
+  output_cost_per_million?: null | number
+  provider_id: string
+  slug?: string
+}
+
+export interface AIModelImport {
+  context_window?: null | number
+  display_name?: null | string
+  max_output_tokens?: null | number
+  model_id: string
+}
+
+export interface AIModelImportRequest {
+  models: AIModelImport[]
+}
+
+export interface AIModelImportResult {
+  created: AIModel[]
+  /** `model_id` values the provider already serves. */
+  skipped: string[]
+}
+
+export type AIModelKind = 'chat' | 'completion'
+
+export interface AIProvider {
+  auth_kind: AIProviderAuthKind
+  base_url: null | string
+  created_at?: string
+  credential_hint: null | string
+  credential_updated_at: null | string
+  description: null | string
+  driver: AIProviderDriverSlug
+  enabled: boolean
+  enabled_model_count: number
+  has_credentials: boolean
+  icon?: null | string
+  id: string
+  is_builtin_driver: boolean
+  model_count: number
+  name: string
+  project_id: null | string
+  region: null | string
+  slug: string
+  updated_at?: null | string
+}
+
+export type AIProviderAuthKind = 'api_key' | 'iam' | 'none'
+
+export interface AIProviderCreate {
+  api_key?: null | string
+  base_url?: null | string
+  description?: null | string
+  driver: AIProviderDriverSlug
+  name: string
+  project_id?: null | string
+  region?: null | string
+}
+
+export interface AIProviderDriver {
+  default_base_url: null | string
+  description: string
+  /** lucide-react icon name. */
+  icon: string
+  name: string
+  requires_base_url: boolean
+  slug: AIProviderDriverSlug
+  supports_discovery: boolean
+  supports_iam: boolean
+}
+
+export type AIProviderDriverSlug =
+  | 'anthropic'
+  | 'bedrock'
+  | 'openai'
+  | 'openai_compatible'
+  | 'vertex'
+
+export interface AITeamRef {
+  id: string
+  name: string
+  slug: string
+}
+
 export interface AllCondition {
   all: Condition[]
 }

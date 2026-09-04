@@ -1,8 +1,10 @@
 import dataclasses
 import datetime
+import decimal
 import json
 import re
 import typing
+import urllib.parse
 import warnings
 
 import nanoid
@@ -13,6 +15,8 @@ from jsonschema_models import models as schema_models
 from imbi.common import versioning
 
 __all__ = [
+    'AIModel',
+    'AIProvider',
     'Advisory',
     'Blueprint',
     'BlueprintAssignment',
@@ -570,6 +574,122 @@ class MCPServer(Node):
                     + ', '.join(missing)
                 )
         return self
+
+
+AIProviderDriver = typing.Literal[
+    'anthropic',
+    'openai',
+    'openai_compatible',
+    'bedrock',
+    'vertex',
+]
+
+
+def validate_provider_base_url(value: str) -> str:
+    """Reject a provider base URL that is not a plain ``http(s)`` URL.
+
+    An admin supplies this for ``openai_compatible`` providers and it is
+    used verbatim as the target of an outbound call carrying the org's
+    stored credential.  Requiring ``http``/``https`` with a host and no
+    embedded userinfo keeps the obviously-wrong shapes (``file:``,
+    ``https://key@host``) out of the graph.  Runtime SSRF controls are
+    the consumer's job.
+    """
+    parsed = urllib.parse.urlsplit(value.strip())
+    if parsed.scheme.lower() not in ('http', 'https'):
+        raise ValueError('base_url must use the http or https scheme')
+    if not parsed.hostname:
+        raise ValueError('base_url must include a host')
+    if parsed.username or parsed.password:
+        raise ValueError('base_url must not embed credentials')
+    return value.strip()
+
+
+class AIProvider(Node):
+    """A configured instance of an LLM provider for one organization.
+
+    The driver catalog (:mod:`imbi.common.llm.drivers`) is static code;
+    an ``AIProvider`` node exists only once an admin configures one, so
+    creating an organization does not imply any AI configuration.
+
+    ``credentials_encrypted`` holds Fernet *ciphertext* (see
+    :mod:`imbi.common.auth.encryption`); plaintext must never be
+    assigned to it.  ``credential_hint`` is the last four characters of
+    the key, stored in the clear so an admin can tell two keys apart.
+    """
+
+    organization: BelongsToOrganization
+    driver: AIProviderDriver
+    #: ``None`` means "use the driver's default endpoint".
+    base_url: str | None = None
+    enabled: bool = True
+    credentials_encrypted: str | None = None
+    credential_hint: str | None = None
+    credential_updated_at: datetime.datetime | None = None
+    #: bedrock / vertex
+    region: str | None = None
+    #: vertex
+    project_id: str | None = None
+
+    @pydantic.field_validator('base_url')
+    @classmethod
+    def _validate_base_url(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return validate_provider_base_url(value)
+
+    @pydantic.model_validator(mode='after')
+    def _validate_driver_requirements(self) -> typing.Self:
+        """``openai_compatible`` has no default endpoint to fall back on."""
+        if self.driver == 'openai_compatible' and not self.base_url:
+            raise ValueError("driver 'openai_compatible' requires a base_url")
+        return self
+
+
+class AIModel(Node):
+    """One model an organization may call, served by an ``AIProvider``.
+
+    ``slug`` is a stable org-scoped alias (``default-chat``) so agent
+    configuration need not name a vendor model id, while ``model_id`` is
+    the identifier actually sent to the provider.  Both are unique
+    within their scope, enforced in the endpoint rather than by a graph
+    index: ``slug`` per organization and ``model_id`` per provider.
+
+    ``access_scope`` is explicit rather than inferred from the presence
+    of ``ALLOWED_FOR`` edges, so "every team" and "no team has been
+    picked yet" stay distinguishable.
+    """
+
+    provider: typing.Annotated[
+        AIProvider, Edge(rel_type='SERVED_BY', direction='OUTGOING')
+    ]
+    #: Denormalised from the provider so scoping queries need one hop.
+    organization: BelongsToOrganization
+    model_id: str
+    kind: typing.Literal['chat', 'completion'] = 'chat'
+    enabled: bool = True
+    access_scope: typing.Literal['organization', 'restricted'] = 'organization'
+    allowed_teams: typing.Annotated[
+        list[Team], Edge(rel_type='ALLOWED_FOR', direction='OUTGOING')
+    ] = []
+    context_window: int | None = pydantic.Field(default=None, gt=0)
+    max_output_tokens: int | None = pydantic.Field(default=None, gt=0)
+    #: USD per 1M tokens. ``None`` is unknown or contract pricing;
+    #: ``0`` is self-hosted.
+    input_cost_per_million: decimal.Decimal | None = pydantic.Field(
+        default=None, ge=0
+    )
+    output_cost_per_million: decimal.Decimal | None = pydantic.Field(
+        default=None, ge=0
+    )
+    default_temperature: float | None = pydantic.Field(
+        default=None, ge=0, le=2
+    )
+    default_top_p: float | None = pydantic.Field(default=None, ge=0, le=1)
+    #: Advisory only until spend enforcement exists.
+    monthly_spend_cap: decimal.Decimal | None = pydantic.Field(
+        default=None, ge=0
+    )
 
 
 class LinkDefinition(Node):

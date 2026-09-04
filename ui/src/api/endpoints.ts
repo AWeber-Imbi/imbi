@@ -8,6 +8,14 @@ import type {
   AdminUser,
   AdminUserCreate,
   Advisory,
+  AIDiscoveryResponse,
+  AIModel,
+  AIModelCreate,
+  AIModelImportRequest,
+  AIModelImportResult,
+  AIProvider,
+  AIProviderCreate,
+  AIProviderDriver,
   ApiKey,
   ApiKeyCreated,
   ArchiveProjectResponse,
@@ -1774,6 +1782,123 @@ export const testMcpServer = (id: string) =>
 // plaintext and nothing is persisted.
 export const testMcpServerConfig = (data: MCPServerTestConfig) =>
   apiClient.post<MCPServerTestResult>('/mcp-servers/test', data)
+
+// Admin - AI providers and models (org-scoped LLM catalog)
+
+// The driver catalog is static and defined in code, so it is neither
+// org-scoped nor mutable.
+export const listAIProviderDrivers = async (
+  signal?: AbortSignal,
+): Promise<AIProviderDriver[]> => {
+  const response = await apiClient.get<AIProviderDriver[]>(
+    '/ai-provider-drivers',
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const listAIProviders = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<AIProvider[]> => {
+  const response = await apiClient.get<AIProvider[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createAIProvider = (orgSlug: string, provider: AIProviderCreate) =>
+  apiClient.post<AIProvider>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/`,
+    provider,
+  )
+
+export const updateAIProvider = (
+  orgSlug: string,
+  id: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<AIProvider>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}`,
+    operations,
+  )
+
+export const deleteAIProvider = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}`,
+  )
+
+// The key is write-only: responses only ever carry `has_credentials`,
+// `credential_hint` and `credential_updated_at`.
+export const setAIProviderCredentials = (
+  orgSlug: string,
+  id: string,
+  apiKey: string,
+) =>
+  apiClient.put<AIProvider>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}/credentials`,
+    { api_key: apiKey },
+  )
+
+// Unlike the other deletes this one answers 200 with the updated
+// provider, so `has_credentials` comes back already flipped to false.
+export const deleteAIProviderCredentials = (orgSlug: string, id: string) =>
+  apiClient.delete<AIProvider>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}/credentials`,
+  )
+
+export const listAIModels = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<AIModel[]> => {
+  const response = await apiClient.get<AIModel[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createAIModel = (orgSlug: string, model: AIModelCreate) =>
+  apiClient.post<AIModel>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/`,
+    model,
+  )
+
+export const updateAIModel = (
+  orgSlug: string,
+  id: string,
+  operations: PatchOperation[],
+) =>
+  apiClient.patch<AIModel>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/${encodeURIComponent(id)}`,
+    operations,
+  )
+
+export const deleteAIModel = (orgSlug: string, id: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/${encodeURIComponent(id)}`,
+  )
+
+// Discovery is a POST because it makes an outbound call with the
+// provider's stored credentials; nothing is cached server-side.
+export const discoverAIModels = (orgSlug: string, providerId: string) =>
+  apiClient.post<AIDiscoveryResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(providerId)}/discover`,
+  )
+
+export const importAIModels = (
+  orgSlug: string,
+  providerId: string,
+  body: AIModelImportRequest,
+) =>
+  apiClient.post<AIModelImportResult>(
+    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(providerId)}/import-models`,
+    body,
+  )
 
 // Admin - Auth Providers (global). Login providers are org-less
 // Integrations backed by a login-capable identity plugin. Authentication

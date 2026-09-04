@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 import { AdminOverview } from './admin/AdminOverview'
+import { AIModelsManagement } from './admin/AIModelsManagement'
 import { AssistantManagement } from './admin/AssistantManagement'
 import { AuthProvidersManagement } from './admin/AuthProvidersManagement'
 import { BlueprintManagement } from './admin/BlueprintManagement'
@@ -53,6 +54,7 @@ import { UserManagement } from './admin/UserManagement'
 import { Webhooks } from './admin/Webhooks'
 
 type AdminSection =
+  | 'ai-models'
   | 'assistant'
   | 'blueprints'
   | 'default-settings'
@@ -78,6 +80,7 @@ type AdminSection =
 const DEFAULT_ADMIN_SECTION: AdminSection = 'overview'
 
 const VALID_SECTIONS: AdminSection[] = [
+  'ai-models',
   'assistant',
   'blueprints',
   'default-settings',
@@ -190,6 +193,13 @@ export function Admin() {
       icon: Target,
       id: 'scoring-policies',
       label: 'Scoring Policies',
+      scope: 'org',
+    },
+    {
+      description: 'LLM providers and the model catalog for this organization',
+      icon: Sparkles,
+      id: 'ai-models',
+      label: 'AI Models',
       scope: 'org',
     },
     {
@@ -426,6 +436,7 @@ export function Admin() {
             {currentSection === 'scoring-policies' && (
               <ScoringPolicyManagement />
             )}
+            {currentSection === 'ai-models' && <AIModelsManagement />}
             {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
             {currentSection === 'graph-query' && <GraphQueryManagement />}

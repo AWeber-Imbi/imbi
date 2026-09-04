@@ -9,6 +9,8 @@ name = "vector"
 
 [vlabels]
 name = [
+  "AIModel",
+  "AIProvider",
   "APIKey",
   "Advisory",
   "AnalysisReport",
@@ -58,6 +60,31 @@ name = [
 # `unique = true` creates a UNIQUE index.
 # `attributes` lists one or more property names; multiple names
 # produce a composite index.
+
+# ``AIProvider`` / ``AIModel`` slugs are unique per *organization*, not
+# globally, so these are plain lookup indexes; the endpoint enforces
+# uniqueness within the org (and ``model_id`` within a provider).
+[[vlabel_indexes]]
+vlabel = "AIProvider"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "AIProvider"
+attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "AIModel"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "AIModel"
+attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "AIModel"
+attributes = ["model_id"]
 
 [[vlabel_indexes]]
 vlabel = "APIKey"
