@@ -36,6 +36,7 @@ dependencies = [
 
 [project.optional-dependencies]
 databases = [
+  "apache-iggy>=0.9.0.dev6",
   "clickhouse-connect[async]==1.0.0",
   "fastembed>=0.6",
   "pgvector>=0.3",

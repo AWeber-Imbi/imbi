@@ -81,6 +81,47 @@ class ClickhouseSettingsTestCase(unittest.TestCase):
                 os.environ['CLICKHOUSE_URL'] = original_url
 
 
+class IggySettingsTestCase(unittest.TestCase):
+    """Test Apache Iggy settings configuration."""
+
+    def test_defaults(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            config = settings.Iggy(_env_file=None)
+        self.assertEqual(
+            'iggy+tcp://iggy:iggy@localhost:8090', str(config.url)
+        )
+        self.assertEqual(10.0, config.connect_timeout)
+        self.assertEqual(10, config.max_connect_attempts)
+
+    def test_env_override(self) -> None:
+        env = {
+            'IGGY_URL': 'iggy+tcp://user:pass@iggy:8090',
+            'IGGY_CONNECT_TIMEOUT': '2.5',
+            'IGGY_MAX_CONNECT_ATTEMPTS': '3',
+        }
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            config = settings.Iggy(_env_file=None)
+        self.assertEqual('iggy+tcp://user:pass@iggy:8090', str(config.url))
+        self.assertEqual(2.5, config.connect_timeout)
+        self.assertEqual(3, config.max_connect_attempts)
+
+    def test_transport_schemes_the_sdk_parses_are_accepted(self) -> None:
+        for scheme in (
+            'iggy',
+            'iggy+tcp',
+            'iggy+quic',
+            'iggy+http',
+            'iggy+ws',
+        ):
+            with self.subTest(scheme=scheme):
+                url = settings.IggyDSN(f'{scheme}://iggy:iggy@iggy:8090')
+                self.assertEqual(scheme, url.scheme)
+
+    def test_other_schemes_are_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            settings.Iggy(url='tcp://iggy:8090', _env_file=None)
+
+
 class AuthSettingsTestCase(unittest.TestCase):
     """Test authentication settings configuration."""
 

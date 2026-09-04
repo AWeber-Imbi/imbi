@@ -25,6 +25,7 @@ def create_app() -> fastapi.FastAPI:
         # opens, and the run history it writes needs ClickHouse.
         lifespan=lifespan.Lifespan(
             lifespans.clickhouse_hook,
+            lifespans.iggy_hook,
             graph.graph_lifespan,
             store.store_lifespan,
             lifespans.engine_hook,

@@ -8,7 +8,7 @@ import typing
 import fastapi
 import httpx
 
-from imbi.common import clickhouse, lifespan
+from imbi.common import clickhouse, iggy, lifespan
 from imbi.scheduler import engine as engine_module
 from imbi.scheduler import executor as executor_module
 from imbi.scheduler import identity, settings, store
@@ -31,6 +31,16 @@ async def clickhouse_hook() -> 'abc.AsyncGenerator[None]':
     if result is False:
         raise RuntimeError('ClickHouse initialization failed')
     async with contextlib.aclosing(clickhouse):
+        yield
+
+
+@contextlib.asynccontextmanager
+async def iggy_hook() -> 'abc.AsyncGenerator[None]':
+    """Initialize and manage the Iggy connection."""
+    result = await iggy.initialize()
+    if result is False:
+        raise RuntimeError('Iggy initialization failed')
+    async with contextlib.aclosing(iggy):
         yield
 
 

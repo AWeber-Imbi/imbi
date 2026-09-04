@@ -22,6 +22,7 @@ def create_app() -> fastapi.FastAPI:
         lifespan=lifespan.Lifespan(
             sentry.sentry_lifespan,
             lifespans.clickhouse_hook,
+            lifespans.iggy_hook,
             graph.graph_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
