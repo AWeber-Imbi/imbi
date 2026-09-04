@@ -113,6 +113,39 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete MCP servers',
     ),
+    # AI provider and model catalog. ``credentials`` is deliberately
+    # separate from ``update``: adjusting a model's temperature must not
+    # imply the right to replace the organization's production API key.
+    (
+        'ai_model:create',
+        'ai_model',
+        'create',
+        'Create AI providers and models',
+    ),
+    (
+        'ai_model:read',
+        'ai_model',
+        'read',
+        'View AI providers and models',
+    ),
+    (
+        'ai_model:update',
+        'ai_model',
+        'update',
+        'Update AI providers and models',
+    ),
+    (
+        'ai_model:delete',
+        'ai_model',
+        'delete',
+        'Delete AI providers and models',
+    ),
+    (
+        'ai_model:credentials',
+        'ai_model',
+        'credentials',
+        'Set or remove AI provider credentials',
+    ),
     # Environment management
     (
         'environment:create',
@@ -631,6 +664,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:create',
             'project:read',
             'project:write',
+            'ai_model:read',
             'environment:read',
             'link_definition:read',
             'link_definition:write',
@@ -681,6 +715,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'document:read',
             'document:analytics:read',
             'document_template:read',
+            'ai_model:read',
             'environment:read',
             'link_definition:read',
             'me:identities:manage',
@@ -709,6 +744,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         [
             'blueprint:read',
             'component:read',
+            'ai_model:read',
             'environment:read',
             'link_definition:read',
             'operations_log:read',
@@ -755,6 +791,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'blueprint:read',
             'document:read',
             'document_template:read',
+            'ai_model:read',
             'environment:read',
             'link_definition:read',
             'operations_log:read',
