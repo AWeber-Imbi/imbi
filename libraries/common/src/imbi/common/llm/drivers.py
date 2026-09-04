@@ -21,6 +21,8 @@ __all__ = [
 class DriverInfo(pydantic.BaseModel):
     """One entry in the static provider-driver catalog."""
 
+    model_config = pydantic.ConfigDict(frozen=True)
+
     slug: str
     name: str
     description: str

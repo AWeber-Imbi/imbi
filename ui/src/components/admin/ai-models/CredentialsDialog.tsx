@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ export function CredentialsDialog({
   provider,
 }: CredentialsDialogProps) {
   const [apiKey, setApiKey] = useState('')
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
   const usesIam = provider.auth_kind === 'iam'
 
   return (
@@ -96,7 +98,7 @@ export function CredentialsDialog({
             <button
               className="text-destructive mr-auto text-sm font-medium"
               disabled={isPending}
-              onClick={onRemove}
+              onClick={() => setConfirmingRemove(true)}
               type="button"
             >
               Remove key
@@ -119,6 +121,18 @@ export function CredentialsDialog({
           </button>
         </DialogFooter>
       </DialogContent>
+
+      <ConfirmDialog
+        confirmLabel="Remove"
+        description={`Models under ${provider.name} cannot be called until a new key is set.`}
+        onCancel={() => setConfirmingRemove(false)}
+        onConfirm={() => {
+          setConfirmingRemove(false)
+          onRemove()
+        }}
+        open={confirmingRemove}
+        title={`Remove the ${provider.name} key?`}
+      />
     </Dialog>
   )
 }

@@ -187,7 +187,7 @@ then click **Delete model**.
 
 Providers are deleted through the API, not the UI:
 
-```
+```http
 DELETE /organizations/{org_slug}/ai-providers/{id}
 ```
 
@@ -199,8 +199,8 @@ provider cannot take its models with it.
 
 | Permission | Grants |
 |---|---|
-| `ai_model:read` | View providers, models, and the driver list. Run discovery. |
-| `ai_model:create` | Add providers and models. Import discovered models. |
+| `ai_model:read` | View providers, models, and the driver list. |
+| `ai_model:create` | Add providers and models. Run discovery and import discovered models. |
 | `ai_model:update` | Change a provider or a model, including the enabled flag. |
 | `ai_model:delete` | Delete providers and models. |
 | `ai_model:credentials` | Set and remove provider credentials. |

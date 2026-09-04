@@ -339,7 +339,7 @@ Lets an Imbi service account drive GitHub-backed deployment capabilities with th
 
 *Date: 2026-09-04 | Status: Accepted*
 
-Replaces env-only LLM configuration with a per-organization catalog of configured providers and the models they serve, so an agentic harness can resolve a model at runtime instead of reading one hard-coded default. Credentials are encrypted at rest and guarded by their own permission.
+Adds a per-organization catalog of configured providers and the models they serve alongside the existing environment-based LLM configuration. Nothing resolves a model from the catalog yet; that resolver is follow-up work. Credentials are encrypted at rest and guarded by their own permission.
 
 **Key Decisions:**
 

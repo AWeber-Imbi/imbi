@@ -303,7 +303,10 @@ export function AIModelsManagement() {
   }
 
   const listError =
-    providersQuery.error ?? modelsQuery.error ?? driversQuery.error
+    providersQuery.error ??
+    modelsQuery.error ??
+    driversQuery.error ??
+    teamsQuery.error
 
   return (
     <div className="space-y-6">

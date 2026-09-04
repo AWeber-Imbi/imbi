@@ -30,8 +30,9 @@ export interface AIDiscoveryResponse {
 }
 
 // AI model catalog. Hand-written against the REST contract in
-// docs/ai-models-admin-plan.md — the API ships alongside this UI, so
-// `api-generated.ts` does not describe these schemas yet.
+// docs/admin/ai-models.md and docs/api/adr/0018-ai-model-catalog.md —
+// the API ships alongside this UI, so `api-generated.ts` does not
+// describe these schemas yet.
 export interface AIModel {
   access_scope: AIModelAccessScope
   allowed_teams: AITeamRef[]

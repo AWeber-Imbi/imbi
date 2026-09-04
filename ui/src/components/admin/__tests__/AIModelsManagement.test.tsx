@@ -425,6 +425,12 @@ describe('AIModelsManagement', () => {
       ).toBeInTheDocument(),
     )
     fireEvent.click(screen.getByRole('button', { name: 'Remove key' }))
+    expect(endpoints.deleteAIProviderCredentials).not.toHaveBeenCalled()
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Remove' })).toBeVisible(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
 
     await waitFor(() =>
       expect(endpoints.deleteAIProviderCredentials).toHaveBeenCalledWith(

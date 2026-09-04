@@ -796,3 +796,10 @@ class ProviderPermissionTestCase(AIProviderTestBase):
         self.auth_context.permissions = {'ai_model:read'}
         self.route()
         self.assertEqual(self.client.get(BASE + '/').status_code, 200)
+
+    def test_read_does_not_unlock_discovery(self) -> None:
+        """Discovery spends the stored key, so it needs ``ai_model:create``."""
+        self.auth_context.permissions = {'ai_model:read'}
+        self.route((GET_PROVIDER, [{'p': provider_props()}]))
+        response = self.client.post(f'{BASE}/prv-1/discover')
+        self.assertEqual(response.status_code, 403)

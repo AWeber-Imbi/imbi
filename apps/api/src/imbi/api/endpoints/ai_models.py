@@ -216,19 +216,25 @@ MERGE (m)-[:ALLOWED_FOR]->(t)
 RETURN t.id AS id
 """
 
-_REWIRE_PROVIDER_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{id: {id}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-MATCH (m)-[r:SERVED_BY]->(:AIProvider)
-DELETE r
-"""
-
 _LINK_PROVIDER_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{id: {id}}})
       -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
 MATCH (p:AIProvider {{id: {provider_id}}})-[:BELONGS_TO]->(o)
 MERGE (m)-[:SERVED_BY]->(p)
 RETURN p.id AS id
+"""
+
+#: Runs after ``_LINK_PROVIDER_QUERY`` and keeps the edge to the new
+#: provider. Each ``execute`` autocommits, so linking first means a
+#: failure between the two writes leaves the model with two provider
+#: edges (repairable by another PATCH) rather than none (invisible to
+#: ``_LIST_QUERY`` and ``_GET_QUERY``).
+_UNLINK_OTHER_PROVIDERS_QUERY: typing.LiteralString = """
+MATCH (m:AIModel {{id: {id}}})
+      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+MATCH (m)-[r:SERVED_BY]->(p:AIProvider)
+WHERE p.id <> {provider_id}
+DELETE r
 """
 
 
@@ -786,14 +792,9 @@ async def patch_ai_model(
             detail=f'AI model with id {id!r} not found',
         )
     if provider.id != current_response.provider_id:
-        await db.execute(
-            _REWIRE_PROVIDER_QUERY, {'id': id, 'org_slug': org_slug}, []
-        )
-        await db.execute(
-            _LINK_PROVIDER_QUERY,
-            {'id': id, 'provider_id': provider.id, 'org_slug': org_slug},
-            ['id'],
-        )
+        params = {'id': id, 'provider_id': provider.id, 'org_slug': org_slug}
+        await db.execute(_LINK_PROVIDER_QUERY, params, ['id'])
+        await db.execute(_UNLINK_OTHER_PROVIDERS_QUERY, params, [])
     await _replace_team_edges(db, org_slug, id, teams)
     return _to_response(node, provider.id, provider.name, teams)
 

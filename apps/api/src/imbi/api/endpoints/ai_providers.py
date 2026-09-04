@@ -508,7 +508,10 @@ async def patch_ai_provider(
 
     if node.slug != existing.slug:
         await _assert_slug_free(db, org_slug, node.slug, exclude_id=id)
-    return to_response(await persist(db, org_slug, node))
+    counts = await model_counts(db, org_slug)
+    return to_response(
+        await persist(db, org_slug, node), *counts.get(id, (0, 0))
+    )
 
 
 @ai_providers_router.delete('/{id}', status_code=204)
@@ -660,15 +663,17 @@ async def discover_ai_provider_models(
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('ai_model:read')),
+        fastapi.Depends(permissions.require_permission('ai_model:create')),
     ],
 ) -> DiscoveryResponse:
     """Pull a provider's model list using its stored credentials.
 
     Doubles as a connection test. Nothing is written: the caller picks
-    from the result and posts to ``/import-models``. Errors from the
-    provider are sanitized to a status line so a failing call can never
-    surface the key.
+    from the result and posts to ``/import-models``, so the route shares
+    that route's ``ai_model:create`` gate. ``ai_model:read`` alone must
+    not let every default-role user spend the organization's key against
+    an admin-supplied endpoint. Errors from the provider are sanitized to
+    a status line so a failing call can never surface the key.
 
     Parameters:
         org_slug: Organization slug from the URL path.
