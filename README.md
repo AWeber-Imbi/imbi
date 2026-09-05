@@ -76,20 +76,27 @@ docker compose logs -f imbi
 Once running, Imbi is available at **http://localhost:8080** — the only
 service published on a fixed host port:
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| Imbi | http://localhost:8080 | Main application (UI + API via Caddy) |
+| Service | URL                   | Description                           |
+| ------- | --------------------- | ------------------------------------- |
+| Imbi    | http://localhost:8080 | Main application (UI + API via Caddy) |
 
 The backing services are exposed on **ephemeral** host ports (assigned by
 Docker) to avoid collisions. Find a service's mapped port with
 `docker compose port <service> <container-port>`:
 
-| Service | Container port | Description |
-|---------|----------------|-------------|
-| PostgreSQL | 5432 | Graph database (Apache AGE); user `postgres`, password `secret` |
-| ClickHouse | 8123 | Analytics database HTTP interface |
-| Mailpit | 8025 | Email testing UI (captures all outbound email) |
-| LocalStack | 4566 | S3-compatible object storage |
+| Service    | Container port | Description                                                     |
+| ---------- | -------------- | --------------------------------------------------------------- |
+| PostgreSQL | 5432           | Graph database (Apache AGE); user `postgres`, password `secret` |
+| ClickHouse | 8123           | Analytics database HTTP interface                               |
+| Iggy       | 8090           | Apache Iggy message streaming (TCP); user `iggy`, password `iggy` |
+| Mailpit    | 8025           | Email testing UI (captures all outbound email)                  |
+| LocalStack | 4566           | S3-compatible object storage                                    |
+
+The `iggy` service sets `IGGY_SYSTEM_SHARDING_PIN_CORES=false`. Iggy pins
+each shard's memory to a NUMA node by default, which Docker Desktop does
+not allow — without the flag the server aborts at boot with
+`MemoryAffinityFailed … BindingFailed` for every shard. It also needs
+`seccomp:unconfined`, since the runtime is built on `io_uring`.
 
 ### UI Development with Docker Compose
 
@@ -116,9 +123,9 @@ appropriate backend service.
 
 Useful services during UI development:
 
-| Service | URL | Use |
-|---------|-----|-----|
-| UI (dev) | http://localhost:5173 | Vite dev server with hot-reload |
+| Service        | URL                   | Use                                   |
+| -------------- | --------------------- | ------------------------------------- |
+| UI (dev)       | http://localhost:5173 | Vite dev server with hot-reload       |
 | Imbi (backend) | http://localhost:8080 | Full app via Caddy (API + bundled UI) |
 
 Mailpit (email) and PostgreSQL (graph data) are reachable on the ephemeral
@@ -213,15 +220,16 @@ moon run root:image
 
 ### Required
 
-| Variable | Description | Services |
-|----------|-------------|----------|
-| `CLICKHOUSE_URL` | ClickHouse connection URL | api, all |
-| `IMBI_AUTH_JWT_SECRET` | JWT signing secret | api, assistant, all |
-| `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key | api, all |
-| `POSTGRES_URL` | PostgreSQL connection URL | gateway, scheduler, slackbot, all |
-| `IMBI_SCHEDULER_SA_CLIENT_ID` | Client id of the scheduler's service account | scheduler |
-| `IMBI_SCHEDULER_SA_CLIENT_SECRET` | Client secret of the scheduler's service account | scheduler |
-| `IMBI_INTERNAL_API_URL` | Bare origin the scheduler connects to imbi-api on (e.g. `http://imbi-api:8000`) | scheduler |
+| Variable                          | Description                                                                     | Services  |
+| --------------------------------- | ------------------------------------------------------------------------------- | --------- |
+| `CLICKHOUSE_URL`                  | ClickHouse connection URL                                                       | all       |
+| `IGGY_URL`                        | Iggy connection URL                                                             | all       |
+| `IMBI_AUTH_JWT_SECRET`            | JWT signing secret                                                              | all       |
+| `IMBI_AUTH_ENCRYPTION_KEY`        | Fernet encryption key                                                           | all       |
+| `IMBI_INTERNAL_API_URL`           | Bare origin the scheduler connects to imbi-api on (e.g. `http://imbi-api:8000`) | scheduler |
+| `IMBI_SCHEDULER_SA_CLIENT_ID`     | Client id of the scheduler's service account                                    | scheduler |
+| `IMBI_SCHEDULER_SA_CLIENT_SECRET` | Client secret of the scheduler's service account                                | scheduler |
+| `POSTGRES_URL`                    | PostgreSQL connection URL                                                       | all       |
 
 In `all` mode the scheduler is optional: without the service-account
 credentials it is simply not started. In `scheduler` mode they are required —
@@ -232,23 +240,23 @@ client credential. See
 
 ### Optional
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `IMBI_SERVICE` | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`) | `all` |
-| `IMBI_API_URL` | Public URL of the API, including the path prefix it is mounted under (e.g. `http://localhost:8080/api`); needed when serving behind the bundled Caddy | - |
-| `VITE_API_URL` | Same value as `IMBI_API_URL`; injected into the UI at serve time | - |
-| `ANTHROPIC_API_KEY` | Anthropic API key for assistant | - |
-| `IMBI_ASSISTANT_ENABLED` | Enable the AI assistant | `false` |
-| `IMBI_EMAIL_ENABLED` | Enable email notifications | `false` |
-| `IMBI_EMAIL_SMTP_HOST` | SMTP server host | `localhost` |
-| `IMBI_EMAIL_SMTP_PORT` | SMTP server port | `587` |
-| `IMBI_EMAIL_SMTP_USE_TLS` | Use TLS for SMTP | `true` |
-| `IMBI_ENVIRONMENT` | Runtime environment | `development` |
-| `IMBI_SCHEDULER_API_PREFIX` | Path the scheduler mounts its routes under (`/status` is never prefixed) | `/api` |
-| `IMBI_SCHEDULER_SCHEMA` | Postgres schema holding task definitions | `scheduler` |
-| `IMBI_SCHEDULER_GATEWAY_URL` | imbi-gateway base URL for `gateway` targets | `http://localhost:8003` |
-| `IMBI_SCHEDULER_MAX_CONCURRENT_RUNS` | Per-process ceiling on runs in flight | `20` |
-| `IMBI_SCHEDULER_POLL_INTERVAL` | Upper bound in seconds on the trigger loop's sleep | `30` |
+| Variable                             | Description                                                                                                                                           | Default                 |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `IMBI_SERVICE`                       | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`)                                                                 | `all`                   |
+| `IMBI_API_URL`                       | Public URL of the API, including the path prefix it is mounted under (e.g. `http://localhost:8080/api`); needed when serving behind the bundled Caddy | -                       |
+| `VITE_API_URL`                       | Same value as `IMBI_API_URL`; injected into the UI at serve time                                                                                      | -                       |
+| `ANTHROPIC_API_KEY`                  | Anthropic API key for assistant                                                                                                                       | -                       |
+| `IMBI_ASSISTANT_ENABLED`             | Enable the AI assistant                                                                                                                               | `false`                 |
+| `IMBI_EMAIL_ENABLED`                 | Enable email notifications                                                                                                                            | `false`                 |
+| `IMBI_EMAIL_SMTP_HOST`               | SMTP server host                                                                                                                                      | `localhost`             |
+| `IMBI_EMAIL_SMTP_PORT`               | SMTP server port                                                                                                                                      | `587`                   |
+| `IMBI_EMAIL_SMTP_USE_TLS`            | Use TLS for SMTP                                                                                                                                      | `true`                  |
+| `IMBI_ENVIRONMENT`                   | Runtime environment                                                                                                                                   | `development`           |
+| `IMBI_SCHEDULER_API_PREFIX`          | Path the scheduler mounts its routes under (`/status` is never prefixed)                                                                              | `/api`                  |
+| `IMBI_SCHEDULER_SCHEMA`              | Postgres schema holding task definitions                                                                                                              | `scheduler`             |
+| `IMBI_GATEWAY_URL`                   | imbi-gateway base URL for `gateway` targets                                                                                                           | `http://localhost:8003` |
+| `IMBI_SCHEDULER_MAX_CONCURRENT_RUNS` | Per-process ceiling on runs in flight                                                                                                                 | `20`                    |
+| `IMBI_SCHEDULER_POLL_INTERVAL`       | Upper bound in seconds on the trigger loop's sleep                                                                                                    | `30`                    |
 
 The scheduler has more settings than these; see
 [Scheduler configuration](docs/scheduler/configuration.md) for the full set.

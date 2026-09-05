@@ -25,6 +25,24 @@ cd imbi-common
 moon run root:setup
 ```
 
+!!! important "The `databases` extra needs a Rust toolchain on Python 3.14"
+    `apache-iggy` publishes wheels for CPython 3.10 to 3.13 only, so on
+    the 3.14 interpreter Imbi pins, `uv sync` builds it from its sdist
+    and needs [rustup](https://rustup.rs) on `PATH`. Install it once
+    with `curl -fsS https://sh.rustup.rs | sh -s -- -y` and open a new
+    shell. The requirement goes away when upstream ships a 3.14 wheel.
+
+    On macOS the default release profile produces an extension module
+    the loader rejects with `mis-aligned LINKEDIT string pool`. Build it
+    with the strip pass turned off:
+
+    ```bash
+    CARGO_PROFILE_RELEASE_STRIP=none RUSTFLAGS="-C strip=none" uv sync
+    ```
+
+    If a bad build is already cached, add `--reinstall-package
+    apache-iggy` and clear it with `uv cache clean apache-iggy`.
+
 ### For Production
 
 ```bash

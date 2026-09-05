@@ -23,7 +23,7 @@ from imbi.api.pr_sync import queue as pr_sync_queue
 from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.scoring import queue as score_queue
 from imbi.api.storage.client import StorageClient
-from imbi.common import clickhouse, graph, valkey
+from imbi.common import clickhouse, graph, iggy, valkey
 from imbi.common.llm import AnthropicClient
 
 LOGGER = logging.getLogger(__name__)
@@ -55,6 +55,16 @@ async def clickhouse_hook() -> abc.AsyncGenerator[None]:
     if result is False:
         raise RuntimeError('ClickHouse initialization failed')
     async with contextlib.aclosing(clickhouse):
+        yield
+
+
+@contextlib.asynccontextmanager
+async def iggy_hook() -> abc.AsyncGenerator[None]:
+    """Initialize and manage the Iggy connection."""
+    result = await iggy.initialize()
+    if result is False:
+        raise RuntimeError('Iggy initialization failed')
+    async with contextlib.aclosing(iggy):
         yield
 
 

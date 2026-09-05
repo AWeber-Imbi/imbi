@@ -27,6 +27,7 @@ require_common_vars() {
 require_api_vars() {
     require_common_vars
     require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. clickhouse+http://default:password@clickhouse:8123/imbi)"
+    require_var IGGY_URL "Iggy connection URL (e.g. iggy+tcp://iggy:iggy@iggy:8090)"
     require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key for sensitive data"
 }
 
@@ -51,6 +52,7 @@ require_scheduler_vars() {
     require_common_vars
     require_var POSTGRES_URL "PostgreSQL connection URL (e.g. postgresql://user:pass@host/db)"
     require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. clickhouse+http://default:password@clickhouse:8123/imbi)"
+    require_var IGGY_URL "Iggy connection URL (e.g. iggy+tcp://iggy:iggy@iggy:8090)"
     # Its own service account, per ADR 0002: there is no credential store, so
     # these are the only credentials the scheduler can run a task as. Without
     # them every api-target firing resolves no principal and is skipped.
@@ -103,6 +105,7 @@ case "$IMBI_SERVICE" in
     all)
         require_common_vars
         require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. clickhouse+http://default:password@clickhouse:8123/imbi)"
+        require_var IGGY_URL "Iggy connection URL (e.g. iggy+tcp://iggy:iggy@iggy:8090)"
         require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key for sensitive data"
         require_gateway_vars
         # Slack bot is optional in 'all' mode: it auto-enables only when

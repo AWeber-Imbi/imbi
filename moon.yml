@@ -95,6 +95,7 @@ tasks:
       TEST_HOST="$test_host"
       CLICKHOUSE_URL="clickhouse+http://default:password@$test_host:$(get_port clickhouse 8123)/imbi"
       FILE_CACHE_ENABLED="no"
+      IGGY_URL="iggy+tcp://iggy:iggy@$test_host:$(get_port iggy 8090)"
       IMBI_AUTH_ENCRYPTION_KEY="$encryption_key"
       IMBI_AUTH_JWT_SECRET="$jwt_secret"
       IMBI_API_URL=http://localhost:8000
@@ -115,7 +116,7 @@ tasks:
       OTEL_RESOURCE_ATTRIBUTES="service.name=imbi-api,service.environment=development"
       OTEL_SERVICE_NAME="imbi-api"
       POSTGRES_URL="postgresql://postgres:secret@$test_host:$(get_port postgres 5432)/imbi"
-      S3_ENDPOINT_URL="http://$test_host:$(get_port localstack 4566)"
+      S3_ENDPOINT_URL="http://$test_host:$(get_port ministack 4566)"
       S3_ACCESS_KEY="test"
       S3_SECRET_KEY="test"
       S3_BUCKET="imbi-uploads"

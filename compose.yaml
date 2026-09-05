@@ -36,12 +36,16 @@ services:
       # IMBI_SCHEDULER_SA_CLIENT_SECRET: ""
       # ACTIONS_IMBI_TOKEN: ""
       S3_ACCESS_KEY: test
-      S3_ENDPOINT_URL: http://localstack:4566
+      S3_ENDPOINT_URL: http://ministack:4566
       S3_SECRET_KEY: test
     depends_on:
       clickhouse:
         condition: service_healthy
-      localstack:
+      iggy:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+      ministack:
         condition: service_healthy
       mailpit:
         condition: service_healthy
@@ -62,18 +66,40 @@ services:
       timeout: 5s
       retries: 10
 
-  localstack:
-    image: localstack/localstack:community-archive
+  iggy:
+    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
     ports:
-      - 4566
+      - 3000
+      - 8090
     environment:
-      - SERVICES=s3
-      - DEBUG=0
+      IGGY_ROOT_USERNAME: iggy
+      IGGY_ROOT_PASSWORD: iggy
+      IGGY_HTTP_ENABLED: true
+      IGGY_HTTP_ADDRESS: 0.0.0.0:3000
+      IGGY_SYSTEM_SHARDING_PIN_CORES: "false"
+      IGGY_TCP_ENABLED: true
+      IGGY_TCP_ADDRESS: 0.0.0.0:8090
+    cap_add:
+      - SYS_NICE
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 5s
+      test: ["CMD", "iggy", "ping"]
+      start_period: 15s
+      start_interval: 2s
+      interval: 60s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0
+    ports:
+      - "4317"
+      - "16686"
 
   mailpit:
     image: axllent/mailpit:v1.21.5
@@ -87,6 +113,27 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  ministack:
+    image: ministackorg/ministack
+    ports:
+      - "4566"
+    environment:
+      SERVICES: s3
+      DEBUG: "0"
+    healthcheck:
+      # The image dropped curl; use the interpreter it already runs on.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   postgres:
     image: ghcr.io/aweber-imbi/postgres:latest
