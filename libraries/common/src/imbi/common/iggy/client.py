@@ -66,7 +66,7 @@ def _translate_errors(operation: str) -> typing.Iterator[None]:
 
 
 class Iggy:
-    _instance = None
+    _instance: typing.ClassVar[Iggy | None] = None
 
     def __init__(self) -> None:
         self._iggy: IggyClient | None = None

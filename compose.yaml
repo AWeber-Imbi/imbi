@@ -43,8 +43,10 @@ services:
         condition: service_healthy
       iggy:
         condition: service_healthy
+      # The Jaeger image is distroless and ships no healthcheck, so it can
+      # never become healthy. Traces buffer until the collector answers.
       jaeger:
-        condition: service_healthy
+        condition: service_started
       ministack:
         condition: service_healthy
       mailpit:

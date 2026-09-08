@@ -174,7 +174,9 @@ and wraps `apache_iggy.IggyClient` over TCP:
 - `publish(stream, topic, models, *, columns=None)` accepts the same
   inputs as `clickhouse.insert` today plus the topic, builds one
   `SendMessage` per row with the JSON payload, and calls
-  `send_messages` with balanced partitioning. The SDK raises
+  `send_messages` with the explicit partition id `0`. Every topic has one
+  partition, so this is equivalent to balanced partitioning without
+  relying on it. The SDK raises
   `RuntimeError`; the module translates it to `iggy.PublishError` the
   way `clickhouse.DatabaseError` is.
 - `TOPICS`, the stream-to-topics mapping, lives in this module and
@@ -238,9 +240,11 @@ sink consumes, cannot occur: there is one list.
 
 ### 4. Read-after-write paths
 
-Sink lag is bounded by the poll interval plus one insert, well under a
-second. Two paths are still changed to tolerate lag rather than left on
-the direct client:
+Under healthy conditions sink lag is close to the poll interval plus one
+insert, well under a second. That is an estimate, not a bound: sink
+retries and a ClickHouse outage extend it until the sink recovers. Two
+paths are still changed to tolerate lag rather than left on the direct
+client:
 
 - **`operations_log.complete_opslog_entry`**: keep the read, but when no
   open row is found retry once after one poll interval before logging the
@@ -266,7 +270,12 @@ paths is exactly the state this ADR removes.
 `maintenance_log` would keep duplicate rows after a redelivery. Handling:
 
 - `release_components` and `release_component_batches` already carry a
-  `batch_id`; readers rank by batch, so a duplicate batch is harmless.
+  `batch_id`; readers rank by batch, so a duplicate batch row is
+  harmless. A redelivered fact row lands inside the winning batch, where
+  batch ranking does not remove it, and `GET /releases/{id}/dependencies`
+  would list the component twice. Phase 4 adds `DISTINCT` to
+  `component_facts.release_components()` and the aggregate readers over
+  the same join before this stream moves off the direct client.
 - `maintenance_log` is observability; a duplicate attempt row is noise,
   not a wrong answer. Accept it.
 - `score_history` feeds `score_latest` through an aggregating view. A
@@ -333,9 +342,11 @@ phase 4 two days, phase 5 half a day.
   change than it sounds, and §4 lists the places that needed a look.
 - Iggy becomes a required backing service for every mode, like
   ClickHouse and PostgreSQL, and the bus that later streams build on
-  under the conventions in §1. A down Iggy fails requests that record
-  events the same way a down ClickHouse does today; a down ClickHouse no
-  longer does, because the stream absorbs the outage.
+  under the conventions in §1. The lifespan hook raises when
+  `iggy.initialize()` fails, so a down or unreachable Iggy prevents a
+  service from starting, the same way a down ClickHouse or PostgreSQL
+  does today. A down ClickHouse no longer fails requests that record
+  events, because the stream absorbs the outage.
 - We maintain an Iggy image alongside the PostgreSQL one. It is a thin
   layer over upstream plus the connectors runtime and one compiled
   plugin, all built from one pinned upstream commit, and the connectors

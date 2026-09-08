@@ -90,7 +90,7 @@ Docker) to avoid collisions. Find a service's mapped port with
 | ClickHouse | 8123           | Analytics database HTTP interface                               |
 | Iggy       | 8090           | Apache Iggy message streaming (TCP); user `iggy`, password `iggy` |
 | Mailpit    | 8025           | Email testing UI (captures all outbound email)                  |
-| LocalStack | 4566           | S3-compatible object storage                                    |
+| Ministack  | 4566           | S3-compatible object storage                                    |
 
 The `iggy` service sets `IGGY_SYSTEM_SHARDING_PIN_CORES=false`. Iggy pins
 each shard's memory to a NUMA node by default, which Docker Desktop does
