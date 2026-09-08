@@ -6,6 +6,9 @@ a webhook is delivered, the gateway evaluates every rule's expression and runs
 the rule's handler only when the expression is truthy. If no rule matches, the
 delivery is recorded but no handler runs.
 
+Recorded deliveries are published to the Iggy `events` stream, topic
+`gateway`, and land in the ClickHouse `events` table through the sink.
+
 ## Evaluation context
 
 The expression is evaluated against the same data the gateway materializes

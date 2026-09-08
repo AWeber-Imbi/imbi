@@ -12,7 +12,7 @@ import fastapi
 import jsonpointer
 import pydantic
 
-from imbi.common import clickhouse, graph, models
+from imbi.common import graph, iggy, models
 from imbi.common.auth.encryption import TokenEncryption
 from imbi.common.plugins import base as plugin_base
 from imbi.common.plugins import registry as plugin_registry
@@ -30,6 +30,12 @@ router = fastapi.APIRouter(prefix='/notifications')
 #: Capability kind that gates and supplies gateway-dispatched webhook
 #: actions on an :class:`imbi.common.models.Integration`.
 _WEBHOOK_ACTIONS = 'webhook-actions'
+
+#: Iggy stream and topic every webhook delivery is published to. The
+#: stream is named for the ClickHouse table the sink drains it into and
+#: the topic names the producing service, per ADR 0019 §1.
+_EVENT_STREAM = 'events'
+_EVENT_TOPIC = 'gateway'
 
 #: Headers that may carry credentials or webhook signatures. These are
 #: replaced with ``'[redacted]'`` before persisting ``metadata.headers``
@@ -1088,26 +1094,45 @@ def _resolve_event_type(
     return selector
 
 
+def _publish_headers(
+    *, integration_slug: str, webhook_id: object
+) -> dict[str, str]:
+    """Build the Iggy ``user_headers`` carried by a delivery's messages.
+
+    A value that is not known is left out rather than published as an
+    empty string. Webhooks have no slug of their own, so ``webhook``
+    carries the ``webhook_id`` the row records in ``metadata``.
+    """
+    headers = {'producer': 'gateway'}
+    if webhook_id:
+        headers['webhook'] = str(webhook_id)
+    if integration_slug:
+        headers['integration'] = integration_slug
+    return headers
+
+
 class DeliveryRecorder:
     """Two-phase activity-feed recording for one webhook delivery.
 
-    :meth:`record_received` inserts one phase-1 ``events`` row per
+    :meth:`record_received` publishes one phase-1 ``events`` row per
     matched project before any handler runs. Handler outcomes are then
     appended to the per-project lists handed out by
-    :meth:`outcomes_for`, and :meth:`record_dispositions` re-inserts
+    :meth:`outcomes_for`, and :meth:`record_dispositions` re-publishes
     each row with its outcomes under the same ``id`` and
     ``recorded_at`` with ``version = 1`` so the ``events_latest`` view
     collapses the pair into the latest disposition.
 
-    Both inserts are best-effort — failures are logged and swallowed
-    so handlers run (and the delivery is accepted) regardless of
-    analytics insert health. If the phase-2 insert fails, the phase-1
-    row remains the source of truth.
+    Rows travel over the Iggy ``events`` stream, topic ``gateway``, and
+    the ClickHouse sink writes them. Both publishes are best-effort —
+    failures are logged and swallowed so handlers run (and the delivery
+    is accepted) regardless of stream health. If the phase-2 publish
+    fails, the phase-1 row remains the source of truth.
     """
 
     def __init__(self) -> None:
         self._events: dict[ProjectId, models.Event] = {}
         self._outcomes: dict[ProjectId, list[HandlerOutcome]] = {}
+        self._headers: dict[str, str] = {'producer': 'gateway'}
 
     async def record_received(  # noqa: PLR0913 - all inputs are required event fields
         self,
@@ -1119,7 +1144,7 @@ class DeliveryRecorder:
         metadata: dict[str, typing.Any],
         payload: dict[str, typing.Any],
     ) -> None:
-        """Insert one phase-1 ``events`` row per matched project.
+        """Publish one phase-1 ``events`` row per matched project.
 
         ``metadata`` and ``payload`` are the materialized values
         shared with the rule filter context (see
@@ -1156,12 +1181,19 @@ class DeliveryRecorder:
             )
             for record in records
         ]
+        self._headers = _publish_headers(
+            integration_slug=integration_slug,
+            webhook_id=metadata.get('webhook_id'),
+        )
         try:
-            await clickhouse.insert(
-                'events', typing.cast('list[pydantic.BaseModel]', events)
+            await iggy.publish(
+                _EVENT_STREAM,
+                _EVENT_TOPIC,
+                typing.cast('list[pydantic.BaseModel]', events),
+                headers=self._headers,
             )
         except Exception:
-            LOGGER.exception('Failed to record webhook events in ClickHouse')
+            LOGGER.exception('Failed to publish webhook events to Iggy')
         self._events = {event.project_id: event for event in events}
 
     def outcomes_for(self, project_id: ProjectId) -> list[HandlerOutcome]:
@@ -1169,7 +1201,7 @@ class DeliveryRecorder:
         return self._outcomes.setdefault(project_id, [])
 
     async def record_dispositions(self) -> None:
-        """Insert phase-2 rows that backfill handler outcomes."""
+        """Publish phase-2 rows that backfill handler outcomes."""
         if not self._events:
             return
         # ``version=1`` marks the phase-2 reinsert; see ``record_received``.
@@ -1194,12 +1226,15 @@ class DeliveryRecorder:
             for project_id, event in self._events.items()
         ]
         try:
-            await clickhouse.insert(
-                'events', typing.cast('list[pydantic.BaseModel]', phase2)
+            await iggy.publish(
+                _EVENT_STREAM,
+                _EVENT_TOPIC,
+                typing.cast('list[pydantic.BaseModel]', phase2),
+                headers=self._headers,
             )
         except Exception:
             LOGGER.exception(
-                'Failed to record webhook event dispositions in ClickHouse'
+                'Failed to publish webhook event dispositions to Iggy'
             )
 
 
