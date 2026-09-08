@@ -79,6 +79,7 @@ nav:
           - 0016 Delegated Execution for Scheduled Jobs: api/adr/0016-delegated-execution-for-scheduled-jobs.md
           - 0017 Autonomous Deployment Principals: api/adr/0017-autonomous-deployment-principals.md
           - 0018 AI Model Catalog: api/adr/0018-ai-model-catalog.md
+          - 0019 Apache Iggy Message Streaming: api/adr/0019-apache-iggy-message-streaming.md
   - Library Reference:
       - Overview: common/index.md
       - Installation: common/installation.md

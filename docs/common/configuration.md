@@ -76,6 +76,33 @@ url = "http://clickhouse-prod:8123"
 export CLICKHOUSE_URL="http://clickhouse-prod:8123"
 ```
 
+## Iggy Settings
+
+Environment prefix: `IGGY_`
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `url` | IggyDSN | `iggy+tcp://iggy:iggy@localhost:8090` | Apache Iggy connection string |
+| `connect_timeout` | float | 10.0 | Connection timeout (seconds) |
+| `max_connect_attempts` | int | 10 | Maximum connection retry attempts |
+
+The scheme selects the transport: `iggy` and `iggy+tcp` both use TCP,
+`iggy+quic`, `iggy+http` and `iggy+ws` use the others. The connection
+string carries no path.
+
+### Example
+
+**TOML:**
+```toml
+[iggy]
+url = "iggy+tcp://iggy:iggy@iggy-prod:8090"
+```
+
+**Environment:**
+```bash
+export IGGY_URL="iggy+tcp://iggy:iggy@iggy-prod:8090"
+```
+
 ## Server Configuration
 
 Environment prefix: `IMBI_`

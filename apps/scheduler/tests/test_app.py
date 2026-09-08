@@ -27,6 +27,7 @@ class AppTests(helpers.TestCase):
         self.assertEqual(
             (
                 lifespans.clickhouse_hook,
+                lifespans.iggy_hook,
                 graph.graph_lifespan,
                 store.store_lifespan,
                 lifespans.engine_hook,

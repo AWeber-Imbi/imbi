@@ -11,6 +11,7 @@ By default, the container starts all services behind a Caddy reverse proxy:
 ```bash
 docker run -p 8080:8080 \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
+  -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
@@ -19,15 +20,15 @@ docker run -p 8080:8080 \
 
 This starts:
 
-| Port | Service |
-|------|---------|
-| 8080 | Caddy (public, routes to all services) |
-| 8000 | imbi-api (internal) |
-| 8001 | imbi-mcp (internal) |
-| 8002 | imbi-assistant (internal) |
-| 8003 | imbi-gateway (internal) |
-| 8004 | imbi-slackbot (internal, started only when the Slack tokens and `ANTHROPIC_API_KEY` are set) |
+| Port | Service                                                                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ |
+| 8080 | Caddy (public, routes to all services)                                                                                   |
+| 8000 | imbi-api (internal)                                                                                                      |
+| 8001 | imbi-mcp (internal)                                                                                                      |
+| 8002 | imbi-assistant (internal)                                                                                                |
+| 8003 | imbi-gateway (internal)                                                                                                  |
 | 8005 | imbi-scheduler (internal, started only when `IMBI_SCHEDULER_SA_CLIENT_ID` and `IMBI_SCHEDULER_SA_CLIENT_SECRET` are set) |
+| 8004 | imbi-slackbot (internal, started only when the Slack tokens and `ANTHROPIC_API_KEY` are set)                             |
 
 Caddy serves imbi-scheduler under `/scheduler`, stripping that prefix before
 the request reaches it — so `/scheduler/api/tasks` hits `/api/tasks` on the
@@ -44,6 +45,7 @@ set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
 docker run -p 8000:8000 \
   -e IMBI_SERVICE=api \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
+  -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
   ghcr.io/aweber-imbi/imbi:latest
@@ -59,6 +61,7 @@ both API URLs; the entrypoint refuses to start without them:
 docker run -p 8005:8005 \
   -e IMBI_SERVICE=scheduler \
   -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
+  -e IGGY_URL=iggy+tcp://iggy:iggy@iggy:8090 \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_SCHEDULER_SA_CLIENT_ID=... \

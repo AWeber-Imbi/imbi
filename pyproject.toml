@@ -706,6 +706,7 @@ default-groups = ["dev"]
 exclude-newer = "7 days"
 
 [tool.uv.exclude-newer-package]
+apache-iggy = false
 clickhouse-connect = false
 
 [tool.uv.workspace]

@@ -25,8 +25,14 @@ WORKDIR /tmp/build
 
 RUN pip install uv \
  && apt update \
- && apt install -y --no-install-recommends git \
+ && apt install -y --no-install-recommends git curl \
  && apt install -y gcc
+
+# `apache-iggy` publishes wheels for CPython 3.10 to 3.13 only, so on 3.14
+# its sdist is compiled here. Rust lands in this stage alone; the runtime
+# stage copies only the resulting venv.
+RUN curl -fsS https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # Build a wheel for every workspace member plus the imbi meta-package
 COPY pyproject.toml uv.lock README.md LICENSE /tmp/build/

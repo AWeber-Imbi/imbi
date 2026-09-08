@@ -7,6 +7,7 @@ Shared library for the Imbi ecosystem providing core data access, authentication
 `imbi-common` is a Python library that provides common functionality for all Imbi services including:
 
 - **Database Clients**: Apache AGE/PostgreSQL (graph database) and ClickHouse (analytics database) with connection management
+- **Message Streaming**: Apache Iggy producer with connection management, stream and topic provisioning, and publishing
 - **Domain Models**: Pydantic models for Projects, Organizations, Teams, Environments, ProjectTypes, and more
 - **Authentication**: JWT token creation/verification, token encryption
 - **Configuration**: Pydantic Settings-based configuration management with TOML file support

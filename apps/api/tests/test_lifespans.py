@@ -32,6 +32,22 @@ class ApplicationLifespanTestCase(unittest.TestCase):
             'ClickHouse initialization failed',
         )
 
+    def test_iggy_initialization_failure(self) -> None:
+        """A down Iggy fails startup the way a down ClickHouse does."""
+        with unittest.mock.patch(
+            'imbi.api.lifespans.iggy.initialize',
+            new=unittest.mock.AsyncMock(),
+        ) as initialize:
+            initialize.return_value = False
+            with self.assertRaises(RuntimeError) as error:
+                with testclient.TestClient(app.create_app()):
+                    pass  # nothing to do here
+        initialize.assert_called_once()
+        self.assertEqual(
+            str(error.exception),
+            'Iggy initialization failed',
+        )
+
     def test_score_worker_skipped_when_valkey_raises(self) -> None:
         """score_worker_hook exits early when valkey.get_client() raises."""
         loop = asyncio.new_event_loop()

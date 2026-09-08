@@ -22,19 +22,39 @@ services:
       - "4317"
       - "16686"
 
-  localstack:
-    image: localstack/localstack:community-archive
+  iggy:
+    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
     ports:
-      - "4566"
+      - "3000"
+      - "8090"
+      - "8092"
     environment:
-      SERVICES: s3
-      DEBUG: "0"
+      IGGY_ROOT_USERNAME: iggy
+      IGGY_ROOT_PASSWORD: iggy
+      IGGY_HTTP_ENABLED: true
+      IGGY_HTTP_ADDRESS: 0.0.0.0:3000
+      IGGY_HTTP_WEB_UI: true
+      IGGY_SYSTEM_SHARDING_CPU_ALLOCATION: 1
+      IGGY_SYSTEM_SHARDING_PIN_CORES: "false"
+      IGGY_TCP_ENABLED: true
+      IGGY_TCP_ADDRESS: 0.0.0.0:8090
+      IGGY_WEBSOCKET_ENABLED: true
+      IGGY_WEBSOCKET_ADDRESS: 0.0.0.0:8092
+    cap_add:
+      - SYS_NICE
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 5s
+      test: ["CMD", "iggy", "ping"]
+      start_period: 15s
+      start_interval: 2s
+      interval: 60s
       timeout: 5s
       retries: 10
-      start_period: 30s
 
   mailpit:
     image: axllent/mailpit:v1.21.5
@@ -49,6 +69,27 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  ministack:
+    image: ministackorg/ministack
+    ports:
+      - "4566"
+    environment:
+      SERVICES: s3
+      DEBUG: "0"
+    healthcheck:
+      # The image dropped curl; use the interpreter it already runs on.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   postgres:
     image: ghcr.io/aweber-imbi/postgres:latest

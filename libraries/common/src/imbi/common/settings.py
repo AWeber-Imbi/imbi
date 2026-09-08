@@ -203,6 +203,42 @@ class Embeddings(pydantic_settings.BaseSettings):
     )
 
 
+class IggyDSN(pydantic.AnyUrl):
+    """Apache Iggy DSN, in the SDK's connection-string form.
+
+    The schemes are the ones ``IggyClient.from_connection_string``
+    parses: bare ``iggy`` and ``iggy+tcp`` both select the TCP
+    transport, ``iggy+quic``, ``iggy+http`` and ``iggy+ws`` select the
+    others. The SDK rejects a connection string carrying a path, so no
+    ``default_path`` is set here.
+    """
+
+    _constraints = pydantic.UrlConstraints(
+        allowed_schemes=[
+            'iggy',
+            'iggy+tcp',
+            'iggy+quic',
+            'iggy+http',
+            'iggy+ws',
+        ],
+        default_host='localhost',
+        default_port=8090,
+        host_required=True,
+    )
+
+
+class Iggy(pydantic_settings.BaseSettings):
+    """Apache Iggy connection settings."""
+
+    model_config = base_settings_config(env_prefix='IGGY_')
+
+    url: IggyDSN = pydantic.Field(
+        default=IggyDSN('iggy+tcp://iggy:iggy@localhost:8090')
+    )
+    connect_timeout: float = 10.0
+    max_connect_attempts: int = 10
+
+
 class Plugins(pydantic_settings.BaseSettings):
     """Plugin discovery settings.
 
