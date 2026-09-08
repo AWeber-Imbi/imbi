@@ -13,7 +13,7 @@ from cryptography import fernet
 
 import imbi.gateway.app
 from apps.gateway.tests import helpers
-from imbi.common import clickhouse, graph
+from imbi.common import graph, iggy
 from imbi.common.auth.encryption import TokenEncryption
 from imbi.common.graph import (
     _inject_graph,  # pyright: ignore[reportPrivateUsage]
@@ -581,8 +581,8 @@ class ProcessNotificationTests(helpers.TestCase):
         body = {'repo': {'id': self.ext_id}}
         with (
             unittest.mock.patch.object(
-                clickhouse, 'insert', new=unittest.mock.AsyncMock()
-            ) as mock_insert,
+                iggy, 'publish', new=unittest.mock.AsyncMock()
+            ) as mock_publish,
             self.assertLogs('imbi.gateway.notifications', level='DEBUG') as cm,
         ):
             response = await self._post(self.webhook_id, body)
@@ -590,7 +590,7 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual([], ACTION_CALLS)
         # The delivery is still recorded (phase-1) even though no handler
         # runs, so PagerDuty-style event capture keeps working.
-        mock_insert.assert_awaited_once()
+        mock_publish.assert_awaited_once()
         self.assertTrue(
             any(
                 'webhook-actions capability disabled' in line
@@ -1422,8 +1422,8 @@ class ProcessNotificationTests(helpers.TestCase):
         second_proj_id = await self._create_extra_project()
         body = {'repo': {'id': self.ext_id}, 'action': 'opened'}
         with unittest.mock.patch.object(
-            clickhouse, 'insert', new=unittest.mock.AsyncMock()
-        ) as mock_insert:
+            iggy, 'publish', new=unittest.mock.AsyncMock()
+        ) as mock_publish:
             response = await self._post(
                 self.webhook_id,
                 body,
@@ -1431,12 +1431,21 @@ class ProcessNotificationTests(helpers.TestCase):
             )
         self.assertEqual(202, response.status_code)
         # phase 1 (version=0) plus phase 2 (version=1).
-        self.assertEqual(2, mock_insert.await_count)
-        phase1_call, phase2_call = mock_insert.await_args_list
-        phase1_table, phase1_events = phase1_call.args
-        phase2_table, phase2_events = phase2_call.args
-        self.assertEqual('events', phase1_table)
-        self.assertEqual('events', phase2_table)
+        self.assertEqual(2, mock_publish.await_count)
+        phase1_call, phase2_call = mock_publish.await_args_list
+        phase1_stream, phase1_topic, phase1_events = phase1_call.args
+        phase2_stream, phase2_topic, phase2_events = phase2_call.args
+        self.assertEqual('events', phase1_stream)
+        self.assertEqual('gateway', phase1_topic)
+        self.assertEqual('events', phase2_stream)
+        self.assertEqual('gateway', phase2_topic)
+        expected_headers = {
+            'producer': 'gateway',
+            'webhook': self.webhook_id,
+            'integration': self.integration_slug,
+        }
+        self.assertEqual(expected_headers, phase1_call.kwargs['headers'])
+        self.assertEqual(expected_headers, phase2_call.kwargs['headers'])
         self.assertEqual(2, len(phase1_events))
         self.assertEqual(2, len(phase2_events))
         self.assertEqual(
@@ -1477,12 +1486,12 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='stub-nocreds#boom')
         body = {'repo': {'id': self.ext_id}}
         with unittest.mock.patch.object(
-            clickhouse, 'insert', new=unittest.mock.AsyncMock()
-        ) as mock_insert:
+            iggy, 'publish', new=unittest.mock.AsyncMock()
+        ) as mock_publish:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        self.assertEqual(2, mock_insert.await_count)
-        _, phase2_events = mock_insert.await_args_list[1].args
+        self.assertEqual(2, mock_publish.await_count)
+        *_, phase2_events = mock_publish.await_args_list[1].args
         handlers = phase2_events[0].metadata['handlers']
         self.assertEqual(1, len(handlers))
         self.assertEqual('stub-nocreds#boom', handlers[0]['handler'])
@@ -1497,12 +1506,12 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(handler='stub-nocreds#nonexistent_action')
         body = {'repo': {'id': self.ext_id}}
         with unittest.mock.patch.object(
-            clickhouse, 'insert', new=unittest.mock.AsyncMock()
-        ) as mock_insert:
+            iggy, 'publish', new=unittest.mock.AsyncMock()
+        ) as mock_publish:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(202, response.status_code)
-        self.assertEqual(2, mock_insert.await_count)
-        _, phase2_events = mock_insert.await_args_list[1].args
+        self.assertEqual(2, mock_publish.await_count)
+        *_, phase2_events = mock_publish.await_args_list[1].args
         handlers = phase2_events[0].metadata['handlers']
         self.assertEqual(1, len(handlers))
         self.assertEqual('skipped', handlers[0]['status'])
@@ -1513,25 +1522,25 @@ class ProcessNotificationTests(helpers.TestCase):
     ) -> None:
         # filter='false' returns from process_notification before any
         # handler runs, so phase-2 disposition recording must be
-        # skipped to avoid noisy empty inserts.
+        # skipped to avoid noisy empty publishes.
         await self._add_rule(filter_expression='false')
         body = {'repo': {'id': self.ext_id}}
         with unittest.mock.patch.object(
-            clickhouse, 'insert', new=unittest.mock.AsyncMock()
-        ) as mock_insert:
+            iggy, 'publish', new=unittest.mock.AsyncMock()
+        ) as mock_publish:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        mock_insert.assert_awaited_once()
-        _, events_arg = mock_insert.await_args_list[0].args
+        mock_publish.assert_awaited_once()
+        *_, events_arg = mock_publish.await_args_list[0].args
         self.assertEqual(0, events_arg[0].version)
 
-    async def test_phase2_insert_failure_logs_and_does_not_500(self) -> None:
+    async def test_phase2_publish_failure_logs_and_does_not_500(self) -> None:
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': self.ext_id}}
         phase2_call = 2
         call_count = 0
 
-        async def insert_side_effect(*_args: object, **_kw: object) -> None:
+        async def publish_side_effect(*_args: object, **_kw: object) -> None:
             nonlocal call_count
             call_count += 1
             if call_count == phase2_call:
@@ -1539,9 +1548,9 @@ class ProcessNotificationTests(helpers.TestCase):
 
         with (
             unittest.mock.patch.object(
-                clickhouse,
-                'insert',
-                new=unittest.mock.AsyncMock(side_effect=insert_side_effect),
+                iggy,
+                'publish',
+                new=unittest.mock.AsyncMock(side_effect=publish_side_effect),
             ),
             self.assertLogs('imbi.gateway.notifications', level='ERROR') as cm,
         ):
@@ -1551,8 +1560,7 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(2, call_count)
         self.assertTrue(
             any(
-                'Failed to record webhook event dispositions in ClickHouse'
-                in line
+                'Failed to publish webhook event dispositions to Iggy' in line
                 for line in cm.output
             )
         )
@@ -1561,15 +1569,16 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(filter_expression='false')
         body = {'repo': {'id': self.ext_id}}
         with unittest.mock.patch.object(
-            clickhouse, 'insert', new=unittest.mock.AsyncMock()
-        ) as mock_insert:
+            iggy, 'publish', new=unittest.mock.AsyncMock()
+        ) as mock_publish:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
         self.assertEqual([], ACTION_CALLS)
-        mock_insert.assert_awaited_once()
-        assert mock_insert.await_args is not None
-        table_arg, events_arg = mock_insert.await_args.args
-        self.assertEqual('events', table_arg)
+        mock_publish.assert_awaited_once()
+        assert mock_publish.await_args is not None
+        stream_arg, topic_arg, events_arg = mock_publish.await_args.args
+        self.assertEqual('events', stream_arg)
+        self.assertEqual('gateway', topic_arg)
         self.assertEqual(1, len(events_arg))
         self.assertEqual(self.proj_id, events_arg[0].project_id)
 
@@ -1577,11 +1586,11 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': 'no-such-external-id'}}
         with unittest.mock.patch.object(
-            clickhouse, 'insert', new=unittest.mock.AsyncMock()
-        ) as mock_insert:
+            iggy, 'publish', new=unittest.mock.AsyncMock()
+        ) as mock_publish:
             response = await self._post(self.webhook_id, body)
         self.assertEqual(204, response.status_code)
-        mock_insert.assert_not_awaited()
+        mock_publish.assert_not_awaited()
 
     async def test_access_log_context_includes_user_id_and_event(self) -> None:
         await self._add_rule(filter_expression='true')
@@ -1599,7 +1608,7 @@ class ProcessNotificationTests(helpers.TestCase):
                 new=unittest.mock.AsyncMock(return_value='alice@example.com'),
             ),
             unittest.mock.patch.object(
-                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+                iggy, 'publish', new=unittest.mock.AsyncMock()
             ),
             self.assertLogs('imbi.common.access', level='INFO') as cm,
         ):
@@ -1620,7 +1629,7 @@ class ProcessNotificationTests(helpers.TestCase):
         body = {'repo': {'id': self.ext_id}}
         with (
             unittest.mock.patch.object(
-                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+                iggy, 'publish', new=unittest.mock.AsyncMock()
             ),
             self.assertLogs('imbi.common.access', level='INFO') as cm,
         ):
@@ -1639,7 +1648,7 @@ class ProcessNotificationTests(helpers.TestCase):
         body = {'repo': {'id': self.ext_id}}
         with (
             unittest.mock.patch.object(
-                clickhouse, 'insert', new=unittest.mock.AsyncMock()
+                iggy, 'publish', new=unittest.mock.AsyncMock()
             ),
             self.assertLogs('imbi.common.access', level='INFO') as cm,
         ):
@@ -1651,13 +1660,13 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertNotIn('user_id:', access_line)
         self.assertIn('event:ping', access_line)
 
-    async def test_event_insert_failure_does_not_block_handlers(self) -> None:
+    async def test_event_publish_failure_does_not_block_handlers(self) -> None:
         await self._add_rule(filter_expression='true')
         body = {'repo': {'id': self.ext_id}}
         with (
             unittest.mock.patch.object(
-                clickhouse,
-                'insert',
+                iggy,
+                'publish',
                 new=unittest.mock.AsyncMock(side_effect=RuntimeError('boom')),
             ),
             self.assertLogs('imbi.gateway.notifications', level='ERROR') as cm,
@@ -1667,7 +1676,7 @@ class ProcessNotificationTests(helpers.TestCase):
         self.assertEqual(1, len(ACTION_CALLS))
         self.assertTrue(
             any(
-                'Failed to record webhook events in ClickHouse' in line
+                'Failed to publish webhook events to Iggy' in line
                 for line in cm.output
             )
         )
