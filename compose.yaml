@@ -26,6 +26,11 @@ services:
       IMBI_EMAIL_SMTP_PORT: "1025"
       IMBI_EMAIL_SMTP_USE_TLS: "false"
       IMBI_ENVIRONMENT: testing
+      IGGY_URL: iggy+tcp://iggy:iggy@iggy:8090
+      # Bearer key the connectors runtime presents to imbi-api for its
+      # sink configuration. Comma-separate to accept two during a
+      # rotation. Never open: unset, the endpoint answers 503.
+      IMBI_IGGY_CONNECTORS_API_KEYS: local-connectors-key
       POSTGRES_URL: postgresql://postgres:secret@postgres/imbi
       # imbi-scheduler and imbi-gateway each call imbi-api as their own service
       # account (ADR 0002). Deliberately unset: this all-in-one image mints and
@@ -96,6 +101,35 @@ services:
       interval: 60s
       timeout: 5s
       retries: 10
+
+  # The Iggy connectors runtime, draining every stream imbi publishes to
+  # into its ClickHouse table. It carries no sink configuration: it
+  # fetches that from imbi-api once at startup, straight from the
+  # container port rather than through Caddy, so the /api prefix here is
+  # the one IMBI_API_URL above sets.
+  iggy-connect:
+    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+    ports:
+      - 8081
+    environment:
+      IGGY_MODE: connectors
+      IGGY_CONNECTORS_CONNECTORS_BASE_URL: http://imbi:8000/api/iggy/connectors
+      IGGY_CONNECTORS_API_KEY: local-connectors-key
+      IGGY_CONNECTORS_IGGY_ADDRESS: iggy:8090
+      IGGY_CONNECTORS_IGGY_USERNAME: iggy
+      IGGY_CONNECTORS_IGGY_PASSWORD: iggy
+    # The runtime exits when imbi-api is not answering yet or when a
+    # configured stream does not exist. imbi's own startup provisions
+    # every stream in TOPICS, so the fix for both is to come back and
+    # try again. The `imbi` service has no healthcheck to wait on.
+    restart: on-failure
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      iggy:
+        condition: service_healthy
+      imbi:
+        condition: service_started
 
   jaeger:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0

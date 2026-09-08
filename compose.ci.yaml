@@ -56,6 +56,66 @@ services:
       timeout: 5s
       retries: 10
 
+  # The test suites run imbi-api in-process, so there is no container
+  # here for the connectors runtime to fetch its sink configuration
+  # from. This serves the same document imbi-api serves; the api test
+  # `ServedShapeMatchesStubTestCase` asserts the two agree field for
+  # field, so CI still exercises the real sink against the real shape.
+  iggy-config-server:
+    image: python:3.14-slim
+    ports:
+      - "8080"
+    volumes:
+      - ./scripts/iggy_config_server.py:/srv/iggy_config_server.py:ro
+    command: ["python", "/srv/iggy_config_server.py"]
+    environment:
+      # Mirrors imbi.common.iggy.TOPICS. The ClickHouse coordinates are
+      # the ones reachable from inside this network, not the host-mapped
+      # ones .env.test carries.
+      IGGY_TOPICS: events=gateway
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: imbi
+      CLICKHOUSE_USERNAME: default
+      CLICKHOUSE_PASSWORD: password
+      API_KEY: test-connectors-key
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Held out of the default profile: the sink joins a consumer group on
+  # a topic that has to exist first, and it is `root:services` that
+  # creates every TOPICS stream (through imbi's own client) once the
+  # server is up. That task starts this afterwards.
+  iggy-connect:
+    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+    profiles:
+      - "connect"
+    ports:
+      - "8081"
+    environment:
+      IGGY_MODE: connectors
+      IGGY_CONNECTORS_CONNECTORS_BASE_URL: http://iggy-config-server:8080
+      IGGY_CONNECTORS_API_KEY: test-connectors-key
+      IGGY_CONNECTORS_IGGY_ADDRESS: iggy:8090
+      IGGY_CONNECTORS_IGGY_USERNAME: iggy
+      IGGY_CONNECTORS_IGGY_PASSWORD: iggy
+    restart: on-failure
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      iggy:
+        condition: service_healthy
+      iggy-config-server:
+        condition: service_healthy
+
   mailpit:
     image: axllent/mailpit:v1.21.5
     ports:

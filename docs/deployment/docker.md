@@ -76,6 +76,40 @@ stripping it, set `IMBI_SCHEDULER_API_PREFIX=/scheduler/api`. More than one
 replica is safe — see
 [Scheduler configuration](../scheduler/configuration.md).
 
+## The Iggy connectors runtime
+
+The ClickHouse write path runs through Apache Iggy, and it is the connectors
+runtime that drains each stream into its table (see ADR 0019, Apache
+Iggy message streaming). It runs from
+the Iggy image, not the Imbi one, and carries no sink configuration of its
+own: it fetches that from imbi-api once at startup and never re-reads it.
+
+Because that response carries the ClickHouse credentials, imbi-api serves it
+only to a caller presenting a key from `IMBI_IGGY_CONNECTORS_API_KEYS`
+(comma-separated, so a rotation can overlap). Unset, imbi-api answers 503 and
+the runtime exits — there is no open default.
+
+```bash
+docker run \
+  -e IGGY_MODE=connectors \
+  -e IGGY_CONNECTORS_CONNECTORS_BASE_URL=http://imbi-api:8000/api/iggy/connectors \
+  -e IGGY_CONNECTORS_API_KEY=the-same-key \
+  -e IGGY_CONNECTORS_IGGY_ADDRESS=iggy:8090 \
+  -e IGGY_CONNECTORS_IGGY_USERNAME=iggy \
+  -e IGGY_CONNECTORS_IGGY_PASSWORD=iggy \
+  ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+```
+
+The base URL carries whatever path imbi-api mounts its routes under, which is
+the path component of `IMBI_API_URL`. Point it at imbi-api's own port rather
+than at Caddy in all-in-one mode.
+
+Restart the runtime after a release that adds a stream; that fetch is what
+picks it up. It also exits when imbi-api is not answering yet or when a stream
+it is configured for does not exist, so run it with `--restart on-failure`:
+Imbi provisions every stream as it starts, and coming back is the recovery for
+both.
+
 ## Running Setup
 
 The `setup` command initializes the authentication system:

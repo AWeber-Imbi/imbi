@@ -99,6 +99,7 @@ tasks:
       IMBI_AUTH_ENCRYPTION_KEY="$encryption_key"
       IMBI_AUTH_JWT_SECRET="$jwt_secret"
       IMBI_API_URL=http://localhost:8000
+      IMBI_IGGY_CONNECTORS_API_KEYS="test-connectors-key"
       IMBI_EMAIL_ENABLED="true"
       IMBI_EMAIL_SMTP_HOST="$test_host"
       IMBI_EMAIL_SMTP_PORT="$(get_port mailpit 1025)"
@@ -123,6 +124,21 @@ tasks:
       S3_REGION="us-east-1"
       VALKEY_URL="valkey://$test_host:$(get_port valkey 6379)"
       EOF
+      # The ClickHouse sink joins a consumer group on a topic that has to
+      # exist before the connectors runtime starts, so provision every
+      # stream through imbi's own client -- imbi.common.iggy.TOPICS is the
+      # one list -- and only then bring the runtime up. It is held in the
+      # `connect` profile for exactly this ordering.
+      uv run --frozen --env-file .env.test python - <<-'PY'
+      import asyncio
+      import sys
+
+      from imbi.common import iggy
+
+      if not asyncio.run(iggy.initialize()):
+          sys.exit('failed to provision the Iggy streams')
+      PY
+      docker compose -f compose.ci.yaml --profile connect up -d iggy-connect
     options:
       cache: false
       outputStyle: 'stream'
@@ -173,6 +189,12 @@ tasks:
       - 'compose'
       - '-f'
       - 'compose.ci.yaml'
+      # `down` only removes services in the active profiles, so without
+      # this the connectors runtime survives a teardown and the next
+      # `services` run finds a stale container attached to a gone network.
+      # Named rather than `*`, which moon expands as a workspace glob.
+      - '--profile'
+      - 'connect'
       - 'down'
       - '--remove-orphans'
       - '--volumes'

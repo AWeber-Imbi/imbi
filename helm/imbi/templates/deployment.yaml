@@ -47,11 +47,30 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: clickhouse-url
+            - name: IGGY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: iggy-url
             - name: POSTGRES_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: postgres-url
+            {{- if or .Values.iggyConnect.enabled .Values.existingSecret }}
+            {{- /* Only imbi-api reads this, and only to authenticate the
+                   connectors runtime fetching its sink configuration.
+                   Optional for the same reason as the scheduler keys
+                   below: an existingSecret for a deployment that does not
+                   run the connectors has no reason to define it, and a
+                   required missing key blocks the pod. */}}
+            - name: IMBI_IGGY_CONNECTORS_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: iggy-connectors-api-key
+                  optional: true
+            {{- end }}
             {{- if and .Values.assistant.enabled .Values.assistant.anthropicApiKey }}
             - name: ANTHROPIC_API_KEY
               valueFrom:

@@ -85,12 +85,16 @@ gateway:
 
 # Optional: reference an existing secret instead of specifying values above.
 # The secret must contain keys: jwt-secret, encryption-key, clickhouse-url,
-# postgres-url.
+# iggy-url, postgres-url.
 #
 # Conditionally required, because the deployment reads them from this same
 # secret whenever the corresponding feature is switched on:
 #   - anthropic-api-key            when assistant.enabled
 #   - s3-access-key, s3-secret-key when storage.accessKey is set
+#   - iggy-connectors-api-key, iggy-password  when iggyConnect.enabled. The
+#     runtime's two refs are not optional, so it will not start without them;
+#     imbi-api's read of iggy-connectors-api-key is optional, and without it
+#     imbi-api answers 503 and the runtime exits.
 # Those two refs are not optional, so a secret missing a key the deployment
 # asks for will fail the pod. The scheduler's scheduler-sa-client-id and
 # scheduler-sa-client-secret are read whenever existingSecret is set, as is the
@@ -131,6 +135,60 @@ resources:
 # See docs/deployment/kubernetes.md.
 externalClickhouse:
   url: ""  # REQUIRED, e.g. clickhouse+http://default:password@clickhouse-imbi:8123/imbi
+
+# Apache Iggy connection (external, required).
+#
+# Every Imbi service connects at startup and provisions the streams it
+# publishes to, and the entrypoint refuses to start without this, so a chart
+# that omits it CrashLoopBackOffs every pod. The chart does not bundle Iggy;
+# run the server from the same ghcr.io/aweber-imbi/iggy image in its default
+# `server` mode. See docs/deployment/kubernetes.md.
+externalIggy:
+  url: ""  # REQUIRED, e.g. iggy+tcp://iggy:iggy@imbi-iggy:8090
+
+# The Apache Iggy connectors runtime: a second Deployment from the Iggy image
+# that drains each stream into its ClickHouse table (ADR 0019 §3).
+#
+# Off by default. Nothing publishes to Iggy yet, and turning it on obliges the
+# operator to invent an api key; switch it on in the release that moves the
+# first write path onto the stream, and leave it on from then, because the
+# direct ClickHouse insert goes away.
+#
+# The runtime ships no sink configuration. It fetches that from imbi-api once
+# at startup and never re-reads it, so a new stream needs a restart of this
+# Deployment -- `kubectl rollout restart` -- to be consumed.
+iggyConnect:
+  enabled: false
+  image:
+    repository: ghcr.io/aweber-imbi/iggy
+    tag: 0.9.0-edge.6-0
+    pullPolicy: IfNotPresent
+  replicas: 1
+  # Bearer key the runtime sends to imbi-api, and the key imbi-api checks.
+  # Invent it; nothing reads it back out of Imbi. The response carries the
+  # ClickHouse credentials, so unset there is no permissive fallback --
+  # imbi-api answers 503. Comma-separate two values to overlap a rotation.
+  apiKey: ""
+  # Where the runtime fetches that configuration. Left empty, the chart
+  # derives it from the release's own Service and the path in
+  # service.publicApiUrl. Set it to reach an imbi-api Service directly (e.g.
+  # http://imbi-api:8000/api/iggy/connectors) when the API is a separate
+  # release.
+  configBaseUrl: ""
+  # How the runtime reaches Iggy. Separate from externalIggy.url above,
+  # which is a DSN for the Python SDK; this runtime takes host:port and
+  # credentials on their own.
+  iggy:
+    address: ""  # REQUIRED when enabled, e.g. imbi-iggy:8090
+    username: iggy
+    password: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
 
 # PostgreSQL connection (external, required).
 #
