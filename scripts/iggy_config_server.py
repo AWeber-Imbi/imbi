@@ -167,7 +167,10 @@ class Handler(server.BaseHTTPRequestHandler):
 
     def _method_not_allowed(self) -> None:
         """Versions are code here, exactly as they are in imbi-api."""
-        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        # The body is never read: a caller could declare a large
+        # Content-Length and withhold it, stalling this single-threaded
+        # server. Closing the connection discards it instead.
+        self.close_connection = True
         if self._authorized():
             self._send({'detail': 'Method Not Allowed'}, 405)
 

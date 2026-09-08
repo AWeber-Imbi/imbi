@@ -91,6 +91,7 @@ the runtime exits — there is no open default.
 
 ```bash
 docker run \
+  --restart on-failure \
   -e IGGY_MODE=connectors \
   -e IGGY_CONNECTORS_CONNECTORS_BASE_URL=http://imbi-api:8000/api/iggy/connectors \
   -e IGGY_CONNECTORS_API_KEY=the-same-key \

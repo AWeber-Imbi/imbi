@@ -173,10 +173,10 @@ Provision ClickHouse with a `ClickHouseInstallation` resource, then point
 ### Apache Iggy
 
 Every Imbi service connects to Apache Iggy at startup and provisions the
-streams it publishes to, so `externalIggy.url` is required — the entrypoint
-refuses to start without it and every pod CrashLoopBackOffs. The chart does
-not deploy Iggy; run the server from the same image the connectors runtime
-uses, in its default `server` mode:
+streams it publishes to, so `externalIggy.url` is required — the chart
+refuses to render without it. The chart does not deploy Iggy; run the server
+from the same image the connectors runtime uses, in its default `server`
+mode:
 
 ```yaml
 externalIggy:

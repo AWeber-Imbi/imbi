@@ -107,6 +107,9 @@ point at an imbi-api Service directly instead.
 {{- if .Values.service.publicApiUrl }}
 {{- $prefix = (urlParse .Values.service.publicApiUrl).path | trimSuffix "/" }}
 {{- end }}
+{{- if not (has .Values.service.mode (list "api" "all")) }}
+{{- fail (printf "iggyConnect.configBaseUrl is required in %q mode: the release Service does not route to imbi-api" .Values.service.mode) }}
+{{- end }}
 {{- if and (eq .Values.service.mode "all") (not $prefix) }}
 {{- fail "iggyConnect needs a path-mounted API: set service.publicApiUrl to a URL with a path (e.g. https://imbi.example.com/api) or set iggyConnect.configBaseUrl" }}
 {{- end }}

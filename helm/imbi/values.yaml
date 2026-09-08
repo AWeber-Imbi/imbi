@@ -139,8 +139,8 @@ externalClickhouse:
 # Apache Iggy connection (external, required).
 #
 # Every Imbi service connects at startup and provisions the streams it
-# publishes to, and the entrypoint refuses to start without this, so a chart
-# that omits it CrashLoopBackOffs every pod. The chart does not bundle Iggy;
+# publishes to. The chart refuses to render without this, so set it before
+# the first install. The chart does not bundle Iggy;
 # run the server from the same ghcr.io/aweber-imbi/iggy image in its default
 # `server` mode. See docs/deployment/kubernetes.md.
 externalIggy:
