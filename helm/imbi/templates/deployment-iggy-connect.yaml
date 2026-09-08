@@ -1,0 +1,69 @@
+{{- if .Values.iggyConnect.enabled }}
+{{- /*
+The Apache Iggy connectors runtime, draining each stream Imbi publishes to
+into its ClickHouse table (ADR 0019 §3). It ships no sink configuration:
+it fetches that from imbi-api once at startup and never re-reads it, so a
+change to imbi.common.iggy.TOPICS takes effect when this Deployment
+restarts. ClickHouse credentials reach the sink only in that response,
+which is why the endpoint is authenticated.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "imbi.iggyConnectFullname" . }}
+  labels:
+    {{- include "imbi.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.iggyConnect.replicas }}
+  selector:
+    matchLabels:
+      {{- include "imbi.iggyConnectSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "imbi.iggyConnectSelectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: iggy-connect
+          image: "{{ .Values.iggyConnect.image.repository }}:{{ .Values.iggyConnect.image.tag }}"
+          imagePullPolicy: {{ .Values.iggyConnect.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: IGGY_MODE
+              value: connectors
+            - name: IGGY_CONNECTORS_CONNECTORS_BASE_URL
+              value: {{ include "imbi.iggyConnectorsBaseUrl" . | quote }}
+            - name: IGGY_CONNECTORS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: iggy-connectors-api-key
+            - name: IGGY_CONNECTORS_IGGY_ADDRESS
+              value: {{ required "iggyConnect.iggy.address is required (host:port of the Iggy TCP listener)" .Values.iggyConnect.iggy.address | quote }}
+            - name: IGGY_CONNECTORS_IGGY_USERNAME
+              value: {{ .Values.iggyConnect.iggy.username | quote }}
+            - name: IGGY_CONNECTORS_IGGY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: iggy-password
+          {{- /* The runtime exits when imbi-api is unreachable or when a
+                 configured stream does not exist yet, and a restart is the
+                 whole recovery. A TCP probe on its own API is what tells
+                 Kubernetes it is up. */}}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.iggyConnect.resources | nindent 12 }}
+{{- end }}

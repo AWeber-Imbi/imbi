@@ -170,6 +170,66 @@ Provision ClickHouse with a `ClickHouseInstallation` resource, then point
 `externalClickhouse.url` at the service the operator creates (typically
 `clickhouse-<installation-name>`).
 
+### Apache Iggy
+
+Every Imbi service connects to Apache Iggy at startup and provisions the
+streams it publishes to, so `externalIggy.url` is required — the chart
+refuses to render without it. The chart does not deploy Iggy; run the server
+from the same image the connectors runtime uses, in its default `server`
+mode:
+
+```yaml
+externalIggy:
+  url: iggy+tcp://iggy:iggy@imbi-iggy:8090
+```
+
+### The connectors runtime
+
+Rows bound for ClickHouse travel through Iggy, and it is the connectors
+runtime that drains each stream into its table (see ADR 0019, Apache
+Iggy message streaming). Turning
+`iggyConnect.enabled` on adds a second Deployment from the Iggy image:
+
+```yaml
+iggyConnect:
+  enabled: true
+  apiKey: "invent-one-here"
+  iggy:
+    address: imbi-iggy:8090
+    username: iggy
+    password: iggy
+
+service:
+  publicApiUrl: https://imbi.example.com/api
+```
+
+Two things to know before enabling it:
+
+- **It fetches its sink configuration from imbi-api, once, at startup.** The
+  configuration is generated from the streams Imbi publishes to, so a release
+  that adds a stream needs `kubectl rollout restart deployment/<release>-connect`
+  before that stream is consumed. Nothing polls.
+- **That response carries the ClickHouse credentials**, so the endpoint serving
+  it is authenticated with `iggyConnect.apiKey`, which reaches imbi-api as
+  `IMBI_IGGY_CONNECTORS_API_KEYS` and the runtime as `IGGY_CONNECTORS_API_KEY`.
+  Rotate by setting the value to `old,new`, rolling imbi-api, then rolling the
+  connectors Deployment onto the new key alone.
+
+In `all` mode the API sits behind the bundled Caddy, which forwards only
+`/api/*` to imbi-api, so `service.publicApiUrl` has to carry a path. The chart
+refuses to render otherwise rather than pointing the runtime at the SPA. Set
+`iggyConnect.configBaseUrl` to reach an imbi-api Service directly when the API
+is a separate release:
+
+```yaml
+iggyConnect:
+  configBaseUrl: http://imbi-api:8080/api/iggy/connectors
+```
+
+The runtime exits when imbi-api is unreachable or a stream it is configured
+for does not exist yet. Both are states a restart resolves, so the Deployment
+is left to restart into them.
+
 ### Ingress
 
 ```yaml

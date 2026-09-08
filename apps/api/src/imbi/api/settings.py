@@ -209,6 +209,30 @@ class Storage(pydantic_settings.BaseSettings):
     thumbnail_quality: int = 85
 
 
+class IggyConnectors(pydantic_settings.BaseSettings):
+    """Bearer keys the Iggy connectors runtime authenticates with.
+
+    ``IMBI_IGGY_CONNECTORS_API_KEYS`` accepts a comma-separated list so a
+    rotation can overlap: both the outgoing and the incoming key are
+    accepted while the connectors deployment is rolled. Empty is not a
+    permissive default -- the endpoint answers 503, because its response
+    carries the ClickHouse credentials.
+    """
+
+    model_config = settings.base_settings_config(
+        env_prefix='IMBI_IGGY_CONNECTORS_'
+    )
+
+    api_keys: typing.Annotated[list[str], pydantic_settings.NoDecode] = []
+
+    @pydantic.field_validator('api_keys', mode='before')
+    @classmethod
+    def _split_keys(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [key.strip() for key in value.split(',') if key.strip()]
+        return value
+
+
 class InternalServices(pydantic_settings.BaseSettings):
     """Internal base URLs of sibling services, for health probing.
 
@@ -242,6 +266,7 @@ _auth_settings: Auth | None = None
 _server_config: ServerConfig | None = None
 _storage_settings: Storage | None = None
 _internal_services: InternalServices | None = None
+_iggy_connectors: IggyConnectors | None = None
 
 
 def get_auth_settings() -> Auth:
@@ -301,6 +326,14 @@ def get_internal_services() -> InternalServices:
     return _internal_services
 
 
+def get_iggy_connectors_settings() -> IggyConnectors:
+    """Get the singleton IggyConnectors settings instance."""
+    global _iggy_connectors
+    if _iggy_connectors is None:
+        _iggy_connectors = IggyConnectors()
+    return _iggy_connectors
+
+
 def clear_caches() -> None:
     """Reset the module-level singletons.
 
@@ -308,11 +341,12 @@ def clear_caches() -> None:
     which lazily initialize once per process.
     """
     global _auth_settings, _server_config, _storage_settings
-    global _internal_services
+    global _internal_services, _iggy_connectors
     _auth_settings = None
     _server_config = None
     _storage_settings = None
     _internal_services = None
+    _iggy_connectors = None
 
 
 def oauth_callback_url(provider_slug: str, base_url: str | None = None) -> str:

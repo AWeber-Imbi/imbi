@@ -89,6 +89,7 @@ Docker) to avoid collisions. Find a service's mapped port with
 | PostgreSQL | 5432           | Graph database (Apache AGE); user `postgres`, password `secret` |
 | ClickHouse | 8123           | Analytics database HTTP interface                               |
 | Iggy       | 8090           | Apache Iggy message streaming (TCP); user `iggy`, password `iggy` |
+| Iggy connect | 8081         | Iggy connectors runtime, draining each stream into ClickHouse   |
 | Mailpit    | 8025           | Email testing UI (captures all outbound email)                  |
 | Ministack  | 4566           | S3-compatible object storage                                    |
 
@@ -252,6 +253,7 @@ client credential. See
 | `IMBI_EMAIL_SMTP_PORT`               | SMTP server port                                                                                                                                      | `587`                   |
 | `IMBI_EMAIL_SMTP_USE_TLS`            | Use TLS for SMTP                                                                                                                                      | `true`                  |
 | `IMBI_ENVIRONMENT`                   | Runtime environment                                                                                                                                   | `development`           |
+| `IMBI_IGGY_CONNECTORS_API_KEYS`      | Bearer keys the Iggy connectors runtime authenticates with, comma-separated; read by imbi-api only. Unset, that endpoint answers 503                   | -                       |
 | `IMBI_SCHEDULER_API_PREFIX`          | Path the scheduler mounts its routes under (`/status` is never prefixed)                                                                              | `/api`                  |
 | `IMBI_SCHEDULER_SCHEMA`              | Postgres schema holding task definitions                                                                                                              | `scheduler`             |
 | `IMBI_GATEWAY_URL`                   | imbi-gateway base URL for `gateway` targets                                                                                                           | `http://localhost:8003` |
