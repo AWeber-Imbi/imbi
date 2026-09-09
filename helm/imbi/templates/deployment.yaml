@@ -122,7 +122,7 @@ spec:
                   name: {{ include "imbi.secretName" . }}
                   key: s3-secret-key
             {{- end }}
-          {{- if has .Values.service.mode (list "all" "api") }}
+          {{- if has .Values.service.mode (list "all" "api" "ui") }}
           livenessProbe:
             httpGet:
               path: {{ include "imbi.apiStatusPath" . }}

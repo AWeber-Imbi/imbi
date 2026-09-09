@@ -133,9 +133,15 @@ case "$IMBI_SERVICE" in
     slackbot)
         require_slackbot_vars
         ;;
+    ui)
+        # Caddy only: the UI static files plus the reverse proxy in front of
+        # the other services, which it reaches through IMBI_*_UPSTREAM (see
+        # the Caddyfile). VITE_API_URL is what the served index.html needs;
+        # it is optional here for parity with 'all' mode.
+        ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot, ui" >&2
         exit 1
         ;;
 esac
@@ -169,10 +175,10 @@ upload_sourcemaps() {
     echo "Source maps uploaded."
 }
 
-# Only `all` mode serves the UI via the bundled Caddy, so only upload there.
-# Single-service replicas (api, gateway, mcp, ...) would otherwise redundantly
-# re-upload the same maps on every start/restart.
-if [ "$IMBI_SERVICE" = "all" ]; then
+# Only `all` and `ui` modes serve the UI via the bundled Caddy, so only upload
+# there. Single-service replicas (api, gateway, mcp, ...) would otherwise
+# redundantly re-upload the same maps on every start/restart.
+if [ "$IMBI_SERVICE" = "all" ] || [ "$IMBI_SERVICE" = "ui" ]; then
     upload_sourcemaps
 fi
 
@@ -362,9 +368,12 @@ case "$IMBI_SERVICE" in
     slackbot)
         exec imbi-slackbot serve --host 0.0.0.0 --port 8004
         ;;
+    ui)
+        exec caddy run --config /etc/caddy/Caddyfile
+        ;;
     *)
         echo "ERROR: Unknown service '$IMBI_SERVICE'" >&2
-        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot" >&2
+        echo "Valid values: all, api, assistant, gateway, mcp, scheduler, slackbot, ui" >&2
         exit 1
         ;;
 esac

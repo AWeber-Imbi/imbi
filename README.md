@@ -184,6 +184,7 @@ docker run -e IMBI_SERVICE=gateway ...
 docker run -e IMBI_SERVICE=mcp ...
 docker run -e IMBI_SERVICE=slackbot ...
 docker run -e IMBI_SERVICE=scheduler ...   # also needs the vars below
+docker run -e IMBI_SERVICE=ui ...          # Caddy only; set IMBI_*_UPSTREAM
 
 # Run initial setup (create admin user, seed permissions)
 docker run -it \
@@ -243,7 +244,8 @@ client credential. See
 
 | Variable                             | Description                                                                                                                                           | Default                 |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `IMBI_SERVICE`                       | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`)                                                                 | `all`                   |
+| `IMBI_SERVICE`                       | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`, `scheduler`, `slackbot`, `ui`)                                                           | `all`                   |
+| `IMBI_<SERVICE>_UPSTREAM`            | `ui` mode only: host:port Caddy proxies to for `API`, `MCP`, `ASSISTANT`, `GATEWAY`, `SCHEDULER`                                                       | `127.0.0.1:<port>`      |
 | `IMBI_API_URL`                       | Public URL of the API, including the path prefix it is mounted under (e.g. `http://localhost:8080/api`); needed when serving behind the bundled Caddy | -                       |
 | `VITE_API_URL`                       | Same value as `IMBI_API_URL`; injected into the UI at serve time                                                                                      | -                       |
 | `ANTHROPIC_API_KEY`                  | Anthropic API key for assistant                                                                                                                       | -                       |

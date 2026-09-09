@@ -56,7 +56,7 @@ service:
 
 # Scaled-out mode — one service per release
 service:
-  mode: api        # or assistant, gateway, mcp, scheduler, slackbot
+  mode: api        # or assistant, gateway, mcp, scheduler, slackbot, ui
   api:
     replicas: 3
   assistant:
@@ -69,7 +69,20 @@ service:
     replicas: 1
   slackbot:
     replicas: 1
+  ui:
+    replicas: 2
+    upstreams:
+      api: imbi-api:8000
+      mcp: imbi-mcp:8001
+      assistant: imbi-assistant:8002
+      gateway: imbi-gateway:8003
+      scheduler: imbi-scheduler:8005
 ```
+
+In scaled-out mode the `ui` release is the one to put behind the ingress: it
+runs the bundled Caddy alone, serving the UI and proxying every other path to
+the service named in `service.ui.upstreams`, so the URL layout is the same as
+in `all` mode.
 
 ### Scheduler
 

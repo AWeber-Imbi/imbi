@@ -38,7 +38,7 @@ service and `/scheduler/status` reaches its unprefixed health endpoint.
 
 For production deployments where you want to scale services independently,
 set `IMBI_SERVICE` to one of `api`, `assistant`, `gateway`, `mcp`,
-`scheduler`, or `slackbot`:
+`scheduler`, `slackbot`, or `ui`:
 
 ```bash
 # Run only the API
@@ -51,8 +51,22 @@ docker run -p 8000:8000 \
   ghcr.io/aweber-imbi/imbi:latest
 ```
 
-When running individual services, Caddy is not started. You are
-responsible for providing your own reverse proxy or load balancer.
+When running individual services, Caddy is not started. Either provide your
+own reverse proxy, or run `IMBI_SERVICE=ui`: the bundled Caddy alone, serving
+the UI on `:8080` and proxying to the other containers. Each upstream defaults
+to the in-pod loopback, so point them at the containers by name:
+
+```bash
+docker run -p 8080:8080 \
+  -e IMBI_SERVICE=ui \
+  -e VITE_API_URL=http://localhost:8080/api \
+  -e IMBI_API_UPSTREAM=imbi-api:8000 \
+  -e IMBI_MCP_UPSTREAM=imbi-mcp:8001 \
+  -e IMBI_ASSISTANT_UPSTREAM=imbi-assistant:8002 \
+  -e IMBI_GATEWAY_UPSTREAM=imbi-gateway:8003 \
+  -e IMBI_SCHEDULER_UPSTREAM=imbi-scheduler:8005 \
+  ghcr.io/aweber-imbi/imbi:latest
+```
 
 Running the scheduler on its own needs the service-account credentials and
 both API URLs; the entrypoint refuses to start without them:

@@ -10,6 +10,8 @@ replicaCount: 1
 # - "all": run all services in one pod (uses replicaCount above)
 # - "api" | "assistant" | "gateway" | "mcp" | "scheduler" | "slackbot":
 #   run a single service
+# - "ui": run only the bundled Caddy, serving the UI and reverse-proxying to
+#   the other services through .service.ui.upstreams
 # Use the matching .service.<name>.replicas value to scale that service.
 service:
   mode: all
@@ -47,6 +49,17 @@ service:
     # Socket mode: each replica opens its own connection to Slack and Slack
     # delivers an event to one of them, so replicas do not duplicate work.
     replicas: 1
+  ui:
+    replicas: 1
+    # host:port of each service the Caddyfile proxies to, when they run as
+    # their own releases. Left empty, Caddy falls back to the in-pod loopback,
+    # which in "ui" mode reaches nothing.
+    upstreams:
+      api: ""        # e.g. imbi-api:8000
+      mcp: ""        # e.g. imbi-mcp:8001
+      assistant: ""  # e.g. imbi-assistant:8002
+      gateway: ""    # e.g. imbi-gateway:8003
+      scheduler: ""  # e.g. imbi-scheduler:8005
 
 # Required authentication settings
 auth:
