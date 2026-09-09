@@ -17,10 +17,10 @@ services:
       # index.html at serve time (Caddy templates).
       IMBI_API_URL: http://localhost:8080/api
       VITE_API_URL: http://localhost:8080/api
-      # Internal upstream URL used by imbi-mcp and imbi-assistant for
-      # service-to-service calls to imbi-api. Distinct from IMBI_API_URL
-      # (the API's public URL). Default targets the in-pod loopback used
-      # by the all-in-one image.
+      # Internal upstream URL used by imbi-assistant, imbi-gateway, imbi-mcp
+      # and imbi-scheduler for service-to-service calls to imbi-api.
+      # Distinct from IMBI_API_URL (the API's public URL). Default targets
+      # the in-pod loopback used by the all-in-one image.
       IMBI_INTERNAL_API_URL: http://localhost:8000
       IMBI_EMAIL_SMTP_HOST: mailpit
       IMBI_EMAIL_SMTP_PORT: "1025"

@@ -1,5 +1,6 @@
 import http
 import logging
+import os
 import re
 import typing
 
@@ -18,13 +19,36 @@ if typing.TYPE_CHECKING:
     from imbi.common.plugins import base as plugin_base
 
 
+_DEPRECATED_URL_VAR = 'ACTIONS_IMBI_URL'
+_URL_VAR = 'IMBI_INTERNAL_API_URL'
+
+
 class ActionSettings(pydantic_settings.BaseSettings):
     model_config = {'env_prefix': 'ACTIONS_'}
-    imbi_url: pydantic.HttpUrl = pydantic.HttpUrl('http://imbi-api:8000')
+    # Where the gateway reaches imbi-api: the in-cluster origin every other
+    # service reads from ``IMBI_INTERNAL_API_URL``. ``ACTIONS_IMBI_URL`` is
+    # the gateway's old private name for it, kept as a fallback for one
+    # release; :func:`warn_deprecated_settings` reports it at startup.
+    imbi_url: pydantic.HttpUrl = pydantic.Field(
+        default=pydantic.HttpUrl('http://localhost:8000'),
+        validation_alias=pydantic.AliasChoices(_URL_VAR, _DEPRECATED_URL_VAR),
+    )
     imbi_token: str
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def warn_deprecated_settings() -> None:
+    """Log once when the gateway still reads a deprecated variable."""
+    if _URL_VAR not in os.environ and _DEPRECATED_URL_VAR in os.environ:
+        LOGGER.warning(
+            '%s is deprecated and will be removed in the next release; '
+            'set %s instead',
+            _DEPRECATED_URL_VAR,
+            _URL_VAR,
+        )
+
 
 _COMMITTISH_PATTERN = re.compile(r'^[0-9a-f]{7}$')
 
