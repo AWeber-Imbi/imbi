@@ -2930,3 +2930,39 @@ class UpdateReleaseDriftTests(helpers.TestCase):
                 event=self._push(before='0' * 40),
             )
         mock_update.assert_awaited_once()
+
+
+class ActionSettingsTests(helpers.TestCase):
+    def test_reads_internal_api_url(self) -> None:
+        with self.override_environment(
+            ACTIONS_IMBI_TOKEN=_TOKEN,
+            ACTIONS_IMBI_URL='http://deprecated:8000',
+            IMBI_INTERNAL_API_URL='http://imbi-api:8000',
+        ):
+            settings = actions.ActionSettings()
+        self.assertEqual('http://imbi-api:8000/', str(settings.imbi_url))
+
+    def test_defaults_to_loopback(self) -> None:
+        with self.override_environment(
+            ACTIONS_IMBI_TOKEN=_TOKEN,
+            ACTIONS_IMBI_URL=None,
+            IMBI_INTERNAL_API_URL=None,
+        ):
+            settings = actions.ActionSettings()
+            with self.assertNoLogs(actions.LOGGER, level='WARNING'):
+                actions.warn_deprecated_settings()
+        self.assertEqual('http://localhost:8000/', str(settings.imbi_url))
+
+    def test_falls_back_to_deprecated_url_and_warns(self) -> None:
+        with self.override_environment(
+            ACTIONS_IMBI_TOKEN=_TOKEN,
+            ACTIONS_IMBI_URL='http://deprecated:8000',
+            IMBI_INTERNAL_API_URL=None,
+        ):
+            settings = actions.ActionSettings()
+            with self.assertLogs(actions.LOGGER, level='WARNING') as logs:
+                actions.warn_deprecated_settings()
+        self.assertEqual('http://deprecated:8000/', str(settings.imbi_url))
+        self.assertEqual(1, len(logs.records))
+        self.assertIn('ACTIONS_IMBI_URL is deprecated', logs.output[0])
+        self.assertIn('IMBI_INTERNAL_API_URL', logs.output[0])

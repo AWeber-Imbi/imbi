@@ -306,9 +306,9 @@ provision_internal_credentials() {
 
 case "$IMBI_SERVICE" in
     all)
-        # imbi-gateway's default upstream is the service name imbi-api, which
-        # in a single container resolves to nothing; imbi-api is right here.
-        export ACTIONS_IMBI_URL="${ACTIONS_IMBI_URL:-http://localhost:8000}"
+        # Every service reaches imbi-api through IMBI_INTERNAL_API_URL. Pin
+        # the loopback here: imbi-api shares this container.
+        export IMBI_INTERNAL_API_URL="${IMBI_INTERNAL_API_URL:-http://localhost:8000}"
         # Before any service starts: imbi-gateway reads ACTIONS_IMBI_TOKEN
         # when it handles its first action, and imbi-scheduler its client
         # credential at every firing.
