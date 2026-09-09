@@ -349,7 +349,7 @@ class SetupTestCase(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn(
             'imbi-gateway: already exists, credential matches '
-            '$ACTIONS_IMBI_TOKEN',
+            '$IMBI_GATEWAY_API_TOKEN',
             result.output,
         )
         self.assertNotIn('cannot be read back', result.output)

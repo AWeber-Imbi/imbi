@@ -52,8 +52,8 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
         self._env = unittest.mock.patch.dict(
             os.environ,
             {
-                'ACTIONS_IMBI_TOKEN': 'imbi-token',
-                'ACTIONS_IMBI_URL': 'http://imbi-api.example.com',
+                'IMBI_GATEWAY_API_TOKEN': 'imbi-token',
+                'IMBI_INTERNAL_API_URL': 'http://imbi-api.example.com',
             },
         )
         self._env.start()

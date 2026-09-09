@@ -56,7 +56,7 @@ to run a task; see ADR 0002), the gateway an API key it sends as a bearer
 token. Setup handles both:
 
 - **You supply them.** Set `IMBI_SCHEDULER_SA_CLIENT_ID`,
-  `IMBI_SCHEDULER_SA_CLIENT_SECRET`, and `ACTIONS_IMBI_TOKEN` (an
+  `IMBI_SCHEDULER_SA_CLIENT_SECRET`, and `IMBI_GATEWAY_API_TOKEN` (an
   `ik_<id>_<secret>` API key) before running setup, and the accounts are
   seeded to match. This is the path for Helm and Compose, where the values
   already live in a values file or `.env`.

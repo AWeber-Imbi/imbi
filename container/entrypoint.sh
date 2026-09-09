@@ -278,15 +278,15 @@ provision_internal_credentials() {
         echo "ERROR: set IMBI_SCHEDULER_SA_CLIENT_ID and IMBI_SCHEDULER_SA_CLIENT_SECRET together, or neither" >&2
         return 1
     fi
-    if [ -z "${ACTIONS_IMBI_TOKEN:-}" ]; then
+    if [ -z "${IMBI_GATEWAY_API_TOKEN:-}" ]; then
         # A fixed key_id for the same reason as the client_id above: with a
         # random one, `_write_api_key` matches nothing on the next boot and
         # creates another APIKey node, leaving a live unrevoked credential
         # behind per restart. No underscore past the `ik_` prefix -- the
         # token is split on the first two, so one here would land inside
         # the key_id and change where the secret starts.
-        ACTIONS_IMBI_TOKEN="ik_imbigatewayallmode_$(random_token)"
-        export ACTIONS_IMBI_TOKEN
+        IMBI_GATEWAY_API_TOKEN="ik_imbigatewayallmode_$(random_token)"
+        export IMBI_GATEWAY_API_TOKEN
         minted_gateway=1
     fi
     if imbi-api setup-service-accounts; then
@@ -299,7 +299,7 @@ provision_internal_credentials() {
         unset IMBI_SCHEDULER_SA_CLIENT_ID IMBI_SCHEDULER_SA_CLIENT_SECRET
     fi
     if [ "$minted_gateway" = 1 ]; then
-        unset ACTIONS_IMBI_TOKEN
+        unset IMBI_GATEWAY_API_TOKEN
     fi
     return 1
 }
@@ -309,7 +309,7 @@ case "$IMBI_SERVICE" in
         # Every service reaches imbi-api through IMBI_INTERNAL_API_URL. Pin
         # the loopback here: imbi-api shares this container.
         export IMBI_INTERNAL_API_URL="${IMBI_INTERNAL_API_URL:-http://localhost:8000}"
-        # Before any service starts: imbi-gateway reads ACTIONS_IMBI_TOKEN
+        # Before any service starts: imbi-gateway reads IMBI_GATEWAY_API_TOKEN
         # when it handles its first action, and imbi-scheduler its client
         # credential at every firing.
         if provision_internal_credentials; then
@@ -339,8 +339,9 @@ case "$IMBI_SERVICE" in
         # scheduler skipping every api-target firing for want of a
         # principal, so it stays out.
         #
-        # Seeding is one call for both services, so a bad ACTIONS_IMBI_TOKEN
-        # holds the scheduler back even when its own credential was fine.
+        # Seeding is one call for both services, so a bad
+        # IMBI_GATEWAY_API_TOKEN holds the scheduler back even when its own
+        # credential was fine.
         # Hence the wording: the error above names which one to fix, and
         # claiming the scheduler's credential failed would be wrong.
         if [ "$scheduler_configured" = 1 ]; then
