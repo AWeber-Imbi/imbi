@@ -79,7 +79,7 @@ INTERNAL_SERVICES: tuple[InternalService, ...] = (
         role_slug='imbi-gateway',
         credential='api_key',
         client_id_var=None,
-        secret_var='ACTIONS_IMBI_TOKEN',
+        secret_var='IMBI_GATEWAY_API_TOKEN',
     ),
 )
 

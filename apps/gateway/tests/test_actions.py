@@ -51,7 +51,7 @@ class UpdateProjectTests(helpers.TestCase):
             '[{"path": "/name", "from": "/payload/repo/name"}]'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'patch_project',
@@ -80,7 +80,7 @@ class UpdateProjectTests(helpers.TestCase):
             ' {"path": "/y", "from": "/payload/b"}]'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'patch_project',
@@ -108,7 +108,7 @@ class UpdateProjectTests(helpers.TestCase):
     async def test_empty_rules_still_calls_patch(self) -> None:
         config = actions.UpdateProjectConfig.model_validate_json('[]')
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'patch_project',
@@ -132,7 +132,7 @@ class UpdateProjectTests(helpers.TestCase):
             '[{"path": "/x", "from": "/payload/does/not/exist"}]'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self.assertRaises(jsonpointer.JsonPointerException),
         ):
             await actions.update_project(
@@ -147,7 +147,7 @@ class UpdateProjectTests(helpers.TestCase):
 class ImbiClientPatchProjectTests(helpers.TestCase):
     async def test_url_is_constructed_from_org_and_project(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'patch',
@@ -164,7 +164,7 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
 
     async def test_error_response_logs_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'patch',
@@ -183,7 +183,7 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
         self,
     ) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'patch',
@@ -203,7 +203,7 @@ class ImbiClientPatchProjectTests(helpers.TestCase):
     async def test_success_response_does_not_log_warning(self) -> None:
         ops = [{'op': 'replace', 'path': '/name', 'value': 'x'}]
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'patch',
@@ -305,7 +305,7 @@ def _patch_list_releases(
 class CreateReleaseTests(helpers.TestCase):
     async def test_happy_path_includes_user_id(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -333,7 +333,7 @@ class CreateReleaseTests(helpers.TestCase):
 
     async def test_no_user_omits_created_by(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -366,7 +366,7 @@ class CreateReleaseTests(helpers.TestCase):
             ' 0, 7)"}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -394,7 +394,7 @@ class CreateReleaseTests(helpers.TestCase):
             ' 0, 7)"}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -430,7 +430,7 @@ class CreateReleaseTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -488,7 +488,7 @@ class CreateReleaseTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -535,7 +535,7 @@ class CreateReleaseTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -573,7 +573,7 @@ class CreateReleaseTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -610,7 +610,7 @@ class CreateReleaseTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -643,7 +643,7 @@ class CreateReleaseTests(helpers.TestCase):
             ' 0, 7)"}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self.assertRaises(celpy.celparser.CELParseError),
         ):
             await actions.create_release(
@@ -661,7 +661,7 @@ class CreateReleaseTests(helpers.TestCase):
             ' "committish_expression": "this is not valid CEL"}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self.assertRaises(celpy.celparser.CELParseError),
         ):
             await actions.create_release(
@@ -682,7 +682,7 @@ class CreateReleaseTests(helpers.TestCase):
             ' 0, 7)"}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -717,7 +717,7 @@ class CreateReleaseTests(helpers.TestCase):
             ' 0, 7)"}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -743,7 +743,7 @@ class CreateReleaseTests(helpers.TestCase):
             ' 0, 7)"}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -765,7 +765,7 @@ class CreateReleaseTests(helpers.TestCase):
 
     async def test_409_is_treated_as_idempotent(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
@@ -788,7 +788,7 @@ class CreateReleaseTests(helpers.TestCase):
 class AddDeploymentEventTests(helpers.TestCase):
     async def test_status_mapping(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases() as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -819,7 +819,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         filters dropped the event for that whole window.
         """
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -857,7 +857,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         SHA, the mis-attribution the tag-first order exists to end.
         """
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -890,7 +890,7 @@ class AddDeploymentEventTests(helpers.TestCase):
     ) -> None:
         """A tag Imbi never recorded still resolves by commit."""
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -947,7 +947,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases() as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -996,7 +996,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             },
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases() as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1039,7 +1039,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             },
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases() as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1068,7 +1068,7 @@ class AddDeploymentEventTests(helpers.TestCase):
     async def test_failed_write_is_not_counted_as_recorded(self) -> None:
         """A 5xx loses the event; the count has to say so."""
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1091,7 +1091,7 @@ class AddDeploymentEventTests(helpers.TestCase):
 
     async def test_failed_unattached_write_is_counted_as_failed(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases([]),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1120,7 +1120,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         loss without grepping logs.
         """
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1147,7 +1147,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             'deployment_status': {'state': 'martian'},
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.metrics, 'deployment_event'
             ) as mock_metric,
@@ -1170,7 +1170,7 @@ class AddDeploymentEventTests(helpers.TestCase):
         resolve so the sweeper can attach the Release later.
         """
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases([]),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1221,7 +1221,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1255,7 +1255,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             },
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1292,7 +1292,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             },
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1321,7 +1321,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             'deployment': {**_STATUS_BODY['deployment'], 'id': 42},  # type: ignore[dict-item]
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1349,7 +1349,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             },
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1377,7 +1377,7 @@ class AddDeploymentEventTests(helpers.TestCase):
             },
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases() as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1402,7 +1402,7 @@ class AddDeploymentEventTests(helpers.TestCase):
 
     async def test_release_missing_logs_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -1453,7 +1453,7 @@ class PublishReleaseTests(helpers.TestCase):
 
     async def test_success_publishes_the_tag(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200, json={'published': True})) as pub,
         ):
             await actions.publish_release(
@@ -1473,7 +1473,7 @@ class PublishReleaseTests(helpers.TestCase):
             ' "prerelease": true}'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200)) as pub,
         ):
             await actions.publish_release(
@@ -1490,7 +1490,7 @@ class PublishReleaseTests(helpers.TestCase):
         for state in ('failure', 'error', 'inactive', 'pending', 'queued'):
             with self.subTest(state=state):
                 with (
-                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
                     self._patch(httpx.Response(200)) as pub,
                 ):
                     await actions.publish_release(
@@ -1504,7 +1504,7 @@ class PublishReleaseTests(helpers.TestCase):
 
     async def test_unmapped_state_does_not_publish(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200)) as pub,
             self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
@@ -1527,7 +1527,7 @@ class PublishReleaseTests(helpers.TestCase):
         body = _status_body('success')
         typing.cast('dict[str, object]', body['deployment'])['tag'] = None
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200)) as pub,
             self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
@@ -1546,7 +1546,7 @@ class PublishReleaseTests(helpers.TestCase):
         for status in (404, 409):
             with self.subTest(status=status):
                 with (
-                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
                     self._patch(httpx.Response(status, json={'detail': 'no'})),
                     self.assertLogs('imbi.gateway.actions', 'INFO') as cm,
                 ):
@@ -1584,7 +1584,7 @@ class BlockReleaseTests(helpers.TestCase):
         for state in ('failure', 'error'):
             with self.subTest(state=state):
                 with (
-                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
                     self._patch(httpx.Response(200)) as block,
                 ):
                     await actions.block_release(
@@ -1603,7 +1603,7 @@ class BlockReleaseTests(helpers.TestCase):
         # superseded by a newer one, which is the normal end of every
         # deployment's life and must never block the tag.
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200)) as block,
         ):
             await actions.block_release(
@@ -1620,7 +1620,7 @@ class BlockReleaseTests(helpers.TestCase):
         for state in ('success', 'pending', 'queued', 'in_progress'):
             with self.subTest(state=state):
                 with (
-                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
                     self._patch(httpx.Response(200)) as block,
                 ):
                     await actions.block_release(
@@ -1642,7 +1642,7 @@ class BlockReleaseTests(helpers.TestCase):
         status = typing.cast('dict[str, object]', body['deployment_status'])
         status['description'] = 'Migration 0042 failed'
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200)) as block,
         ):
             await actions.block_release(
@@ -1667,7 +1667,7 @@ class BlockReleaseTests(helpers.TestCase):
         status = typing.cast('dict[str, object]', body['deployment_status'])
         status['description'] = None
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200)) as block,
         ):
             await actions.block_release(
@@ -1692,7 +1692,7 @@ class BlockReleaseTests(helpers.TestCase):
         status = typing.cast('dict[str, object]', body['deployment_status'])
         status['description'] = 'x' * 600
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(200)) as block,
         ):
             await actions.block_release(
@@ -1707,7 +1707,7 @@ class BlockReleaseTests(helpers.TestCase):
 
     async def test_missing_release_logs_a_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             self._patch(httpx.Response(404, json={'detail': 'missing'})),
             self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
@@ -1725,7 +1725,7 @@ class BlockReleaseTests(helpers.TestCase):
 class ImbiClientPublishReleaseTests(helpers.TestCase):
     async def test_url_body_and_error_logging(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1744,7 +1744,7 @@ class ImbiClientPublishReleaseTests(helpers.TestCase):
 
     async def test_server_error_logs_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1764,7 +1764,7 @@ class ImbiClientPublishReleaseTests(helpers.TestCase):
         for status in (404, 409):
             with self.subTest(status=status):
                 with (
-                    self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+                    self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
                     unittest.mock.patch.object(
                         actions.ImbiClient,
                         'post',
@@ -1782,7 +1782,7 @@ class ImbiClientPublishReleaseTests(helpers.TestCase):
 class ImbiClientBlockReleaseTests(helpers.TestCase):
     async def test_url_and_body(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1801,7 +1801,7 @@ class ImbiClientBlockReleaseTests(helpers.TestCase):
 
     async def test_server_error_logs_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1821,7 +1821,7 @@ class ImbiClientBlockReleaseTests(helpers.TestCase):
 class ImbiClientFindUserByIdentityTests(helpers.TestCase):
     async def test_url_and_params_returns_email(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -1842,7 +1842,7 @@ class ImbiClientFindUserByIdentityTests(helpers.TestCase):
 
     async def test_404_returns_none(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -1857,7 +1857,7 @@ class ImbiClientFindUserByIdentityTests(helpers.TestCase):
 
     async def test_other_error_logs_and_returns_none(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -1876,7 +1876,7 @@ class ImbiClientFindUserByIdentityTests(helpers.TestCase):
 
     async def test_missing_email_returns_none(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -1891,7 +1891,7 @@ class ImbiClientFindUserByIdentityTests(helpers.TestCase):
 
     async def test_null_email_returns_none(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -1908,7 +1908,7 @@ class ImbiClientFindUserByIdentityTests(helpers.TestCase):
 class ImbiClientCreateReleaseTests(helpers.TestCase):
     async def test_url_is_constructed_from_org_and_project(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1926,7 +1926,7 @@ class ImbiClientCreateReleaseTests(helpers.TestCase):
 
     async def test_409_response_does_not_log_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1942,7 +1942,7 @@ class ImbiClientCreateReleaseTests(helpers.TestCase):
 
     async def test_other_error_logs_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1963,7 +1963,7 @@ class ImbiClientCreateReleaseTests(helpers.TestCase):
 class ImbiClientRecordDeploymentTests(helpers.TestCase):
     async def test_url_is_constructed(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -1984,7 +1984,7 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
 
     async def test_404_response_does_not_log_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -2002,7 +2002,7 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
 
     async def test_other_error_logs_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'post',
@@ -2025,7 +2025,7 @@ class ImbiClientRecordDeploymentTests(helpers.TestCase):
 class ImbiClientListReleasesTests(helpers.TestCase):
     async def test_url_and_no_filters(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -2043,7 +2043,7 @@ class ImbiClientListReleasesTests(helpers.TestCase):
 
     async def test_passes_committish_and_tag(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -2070,7 +2070,7 @@ class ImbiClientListReleasesTests(helpers.TestCase):
         ``None``.
         """
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'get',
@@ -2100,7 +2100,7 @@ class StatusMapTests(helpers.TestCase):
             },
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             _patch_list_releases(),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -2193,7 +2193,7 @@ class IngestSbomTests(helpers.TestCase):
     async def test_resolves_release_then_puts_sbom(self) -> None:
         envelope = _sbom_envelope(version='2.0.0')
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2223,7 +2223,7 @@ class IngestSbomTests(helpers.TestCase):
     async def test_drops_sbom_when_release_missing(self) -> None:
         envelope = _sbom_envelope()
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2253,7 +2253,7 @@ class IngestSbomTests(helpers.TestCase):
         # detail. Mirrors the existing add_deployment_event behavior.
         envelope = _sbom_envelope()
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2282,7 +2282,7 @@ class IngestSbomTests(helpers.TestCase):
     async def test_skips_when_sbom_is_not_an_object(self) -> None:
         envelope = {'version': '1.0.0', 'sbom': 'not a dict'}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2311,7 +2311,7 @@ class IngestSbomTests(helpers.TestCase):
         # JsonPointerException up to the dispatcher.
         envelope = {'version': '1.0.0'}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2363,7 +2363,7 @@ class IngestSbomTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2414,7 +2414,7 @@ class IngestSbomTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2452,7 +2452,7 @@ class IngestSbomTests(helpers.TestCase):
             )
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2508,7 +2508,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
     async def test_creates_release_when_committish_resolves(self) -> None:
         envelope = self._envelope()
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2558,7 +2558,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
             committish='ABCDEF1234567890ABCDEF1234567890ABCDEF12'
         )
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2592,7 +2592,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
     async def test_uses_title_selector_when_present(self) -> None:
         envelope = self._envelope(title='2026.05.26 build')
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2631,7 +2631,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         # the API.
         envelope = self._envelope(committish='main')
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2670,7 +2670,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         # and drop, not 500.
         envelope = self._envelope(committish=None)
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2706,7 +2706,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         # PUT against the winning release id rather than dropping.
         envelope = self._envelope()
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2741,7 +2741,7 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
     async def test_drops_on_create_release_error(self) -> None:
         envelope = self._envelope()
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'list_releases',
@@ -2777,7 +2777,7 @@ class ImbiClientPutSbomTests(helpers.TestCase):
     async def test_url_includes_release_id(self) -> None:
         sbom_doc = {'bomFormat': 'CycloneDX', 'specVersion': '1.7'}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'put',
@@ -2798,7 +2798,7 @@ class ImbiClientPutSbomTests(helpers.TestCase):
 
     async def test_error_response_logs_warning(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'put',
@@ -2838,7 +2838,7 @@ class UpdateReleaseDriftTests(helpers.TestCase):
 
     async def test_forwards_before_and_after(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'update_drift_notes',
@@ -2857,7 +2857,7 @@ class UpdateReleaseDriftTests(helpers.TestCase):
 
     async def test_other_refs_are_skipped(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'update_drift_notes',
@@ -2875,7 +2875,7 @@ class UpdateReleaseDriftTests(helpers.TestCase):
 
     async def test_ref_deletion_is_skipped(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'update_drift_notes',
@@ -2893,7 +2893,7 @@ class UpdateReleaseDriftTests(helpers.TestCase):
 
     async def test_missing_before_is_skipped(self) -> None:
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'update_drift_notes',
@@ -2914,7 +2914,7 @@ class UpdateReleaseDriftTests(helpers.TestCase):
         # A just-created notes ref pushes an all-zero ``before``; the
         # API ingests the whole tree for it, so it must go through.
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'update_drift_notes',
@@ -2935,34 +2935,23 @@ class UpdateReleaseDriftTests(helpers.TestCase):
 class ActionSettingsTests(helpers.TestCase):
     def test_reads_internal_api_url(self) -> None:
         with self.override_environment(
-            ACTIONS_IMBI_TOKEN=_TOKEN,
-            ACTIONS_IMBI_URL='http://deprecated:8000',
+            IMBI_GATEWAY_API_TOKEN=_TOKEN,
             IMBI_INTERNAL_API_URL='http://imbi-api:8000',
         ):
             settings = actions.ActionSettings()
         self.assertEqual('http://imbi-api:8000/', str(settings.imbi_url))
+        self.assertEqual(_TOKEN, settings.api_token)
 
     def test_defaults_to_loopback(self) -> None:
         with self.override_environment(
-            ACTIONS_IMBI_TOKEN=_TOKEN,
-            ACTIONS_IMBI_URL=None,
-            IMBI_INTERNAL_API_URL=None,
+            IMBI_GATEWAY_API_TOKEN=_TOKEN, IMBI_INTERNAL_API_URL=None
         ):
             settings = actions.ActionSettings()
-            with self.assertNoLogs(actions.LOGGER, level='WARNING'):
-                actions.warn_deprecated_settings()
         self.assertEqual('http://localhost:8000/', str(settings.imbi_url))
 
-    def test_falls_back_to_deprecated_url_and_warns(self) -> None:
-        with self.override_environment(
-            ACTIONS_IMBI_TOKEN=_TOKEN,
-            ACTIONS_IMBI_URL='http://deprecated:8000',
-            IMBI_INTERNAL_API_URL=None,
+    def test_requires_api_token(self) -> None:
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=None),
+            self.assertRaises(pydantic.ValidationError),
         ):
-            settings = actions.ActionSettings()
-            with self.assertLogs(actions.LOGGER, level='WARNING') as logs:
-                actions.warn_deprecated_settings()
-        self.assertEqual('http://deprecated:8000/', str(settings.imbi_url))
-        self.assertEqual(1, len(logs.records))
-        self.assertIn('ACTIONS_IMBI_URL is deprecated', logs.output[0])
-        self.assertIn('IMBI_INTERNAL_API_URL', logs.output[0])
+            actions.ActionSettings()

@@ -22,10 +22,13 @@ class _ImbiSettings(pydantic_settings.BaseSettings):
     handlers and this plugin's handler.
     """
 
-    model_config = {'env_prefix': 'ACTIONS_'}
+    model_config = {'env_prefix': 'IMBI_GATEWAY_'}
 
-    imbi_url: pydantic.HttpUrl = pydantic.HttpUrl('http://imbi-api:8000')
-    imbi_token: str
+    imbi_url: pydantic.HttpUrl = pydantic.Field(
+        default=pydantic.HttpUrl('http://localhost:8000'),
+        validation_alias='IMBI_INTERNAL_API_URL',
+    )
+    api_token: str
 
 
 class MetricMapping(pydantic.BaseModel):
@@ -181,8 +184,8 @@ async def _patch_imbi_project(
 ) -> None:
     """PATCH the Imbi project's facts.
 
-    Reads connection settings from the ``ACTIONS_IMBI_URL`` and
-    ``ACTIONS_IMBI_TOKEN`` environment variables (matching the
+    Reads connection settings from the ``IMBI_INTERNAL_API_URL`` and
+    ``IMBI_GATEWAY_API_TOKEN`` environment variables (matching the
     gateway's own :class:`imbi.gateway.actions.ActionSettings`) so the
     plugin requires no additional configuration.
     """
@@ -192,7 +195,7 @@ async def _patch_imbi_project(
         + f'/organizations/{org_slug}/projects/{project_id}'
     )
     headers = {
-        'Authorization': f'Bearer {settings.imbi_token}',
+        'Authorization': f'Bearer {settings.api_token}',
         'Content-Type': 'application/json',
     }
     async with httpx.AsyncClient(timeout=30.0) as http_client:

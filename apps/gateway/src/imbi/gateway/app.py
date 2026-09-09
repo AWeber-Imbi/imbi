@@ -7,7 +7,7 @@ import typer
 import imbi.gateway
 from imbi.common import access_log, graph, lifespan, server, settings
 from imbi.common.plugins import registry as plugin_registry
-from imbi.gateway import actions, app_status, lifespans, notifications
+from imbi.gateway import app_status, lifespans, notifications
 
 #: The built-in gateway-actions plugin does not follow the
 #: ``imbi_plugin_*`` naming convention, so it is registered explicitly
@@ -30,7 +30,6 @@ def _register_builtin_plugin() -> None:
 def create_app() -> fastapi.FastAPI:
     """Create and configure the FastAPI application instance."""
     _register_builtin_plugin()
-    actions.warn_deprecated_settings()
     plugin_registry.load_plugins()
     app = fastapi.FastAPI(
         version=imbi.gateway.version,

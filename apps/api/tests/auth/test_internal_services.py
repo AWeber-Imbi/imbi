@@ -384,7 +384,7 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
         db = FakeGraph({})
 
         outcome, emit = await internal_services._ensure_api_key(
-            db, GATEWAY, {'ACTIONS_IMBI_TOKEN': 'ik_abc123_s3cret_value'}
+            db, GATEWAY, {'IMBI_GATEWAY_API_TOKEN': 'ik_abc123_s3cret_value'}
         )
 
         self.assertEqual(outcome, 'supplied')
@@ -398,7 +398,7 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(internal_services.SeedError) as ctx:
             await internal_services._ensure_api_key(
-                db, GATEWAY, {'ACTIONS_IMBI_TOKEN': 'ik_taken_s3cret'}
+                db, GATEWAY, {'IMBI_GATEWAY_API_TOKEN': 'ik_taken_s3cret'}
             )
 
         self.assertIn('someone-else', str(ctx.exception))
@@ -425,10 +425,10 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(internal_services.SeedError) as ctx:
             await internal_services._ensure_api_key(
-                db, GATEWAY, {'ACTIONS_IMBI_TOKEN': 'not-an-imbi-key'}
+                db, GATEWAY, {'IMBI_GATEWAY_API_TOKEN': 'not-an-imbi-key'}
             )
 
-        self.assertIn('ACTIONS_IMBI_TOKEN', str(ctx.exception))
+        self.assertIn('IMBI_GATEWAY_API_TOKEN', str(ctx.exception))
 
     async def test_generated_key_is_emitted_whole(self) -> None:
         """The emitted value is the full key, not just its secret half."""
@@ -439,9 +439,9 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(outcome, 'generated')
-        self.assertTrue(emit['ACTIONS_IMBI_TOKEN'].startswith('ik_'))
+        self.assertTrue(emit['IMBI_GATEWAY_API_TOKEN'].startswith('ik_'))
         self.assertIsNotNone(
-            internal_services._parse_api_key(emit['ACTIONS_IMBI_TOKEN']),
+            internal_services._parse_api_key(emit['IMBI_GATEWAY_API_TOKEN']),
         )
 
     async def test_supplied_key_repoints_existing(self) -> None:
@@ -449,7 +449,7 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
         db = FakeGraph({'SET k.key_hash': [{'k': 'key'}]})
 
         outcome, _emit = await internal_services._ensure_api_key(
-            db, GATEWAY, {'ACTIONS_IMBI_TOKEN': 'ik_abc123_s3cret'}
+            db, GATEWAY, {'IMBI_GATEWAY_API_TOKEN': 'ik_abc123_s3cret'}
         )
 
         self.assertEqual(outcome, 'supplied')
@@ -461,7 +461,7 @@ class ApiKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(internal_services.SeedError) as ctx:
             await internal_services._ensure_api_key(
-                db, GATEWAY, {'ACTIONS_IMBI_TOKEN': 'ik_abc123_s3cret'}
+                db, GATEWAY, {'IMBI_GATEWAY_API_TOKEN': 'ik_abc123_s3cret'}
             )
 
         self.assertIn('imbi-gateway', str(ctx.exception))

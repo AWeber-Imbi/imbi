@@ -103,7 +103,7 @@ spec:
                    define it, and a required missing key blocks the pod. In
                    'all' mode the entrypoint seeds one itself when this is
                    absent. */}}
-            - name: ACTIONS_IMBI_TOKEN
+            - name: IMBI_GATEWAY_API_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}

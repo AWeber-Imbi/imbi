@@ -1159,7 +1159,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1183,7 +1183,7 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1200,7 +1200,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 99999}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1218,7 +1218,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._set_implemented_by(user_subject_selector='/missing/path')
         body = {'repo': {'id': self.ext_id}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1240,7 +1240,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': ''}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1267,7 +1267,7 @@ class ProcessNotificationTests(helpers.TestCase):
             'sender': {'id': 12345, 'type': 'Bot'},
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1294,7 +1294,7 @@ class ProcessNotificationTests(helpers.TestCase):
             'sender': {'id': 12345, 'type': 'User'},
         }
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1318,7 +1318,7 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1339,7 +1339,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1367,7 +1367,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1392,7 +1392,7 @@ class ProcessNotificationTests(helpers.TestCase):
         await self._set_implemented_by(user_subject_selector='/sender/id')
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -1601,7 +1601,7 @@ class ProcessNotificationTests(helpers.TestCase):
         )
         body = {'repo': {'id': self.ext_id}, 'sender': {'id': 12345}}
         with (
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'find_user_by_identity',
@@ -2015,7 +2015,7 @@ class MakeUserResolverUnitTests(helpers.TestCase):
                 'find_user_by_identity',
                 new=unittest.mock.AsyncMock(return_value='alice@example.com'),
             ) as mock_lookup,
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
         ):
             resolver = _make_user_resolver(['github-com'])
             if resolver is None:
@@ -2030,7 +2030,7 @@ class MakeUserResolverUnitTests(helpers.TestCase):
                 'find_user_by_identity',
                 new=unittest.mock.AsyncMock(return_value=None),
             ),
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
         ):
             resolver = _make_user_resolver(['github-com'])
             if resolver is None:
@@ -2048,7 +2048,7 @@ class MakeUserResolverUnitTests(helpers.TestCase):
                     side_effect=['a@example.com', 'b@example.com']
                 ),
             ),
-            self.override_environment(ACTIONS_IMBI_TOKEN=_TOKEN),
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
         ):
             resolver = _make_user_resolver(['github-com', 'ghec'])
             if resolver is None:
