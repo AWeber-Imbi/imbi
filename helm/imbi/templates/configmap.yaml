@@ -38,6 +38,13 @@ data:
   # paths it calls. Both read it from here, so they cannot disagree.
   IMBI_API_URL: {{ .Values.service.publicApiUrl | quote }}
   {{- end }}
+  {{- if eq .Values.service.mode "ui" }}
+  {{- range $name, $upstream := .Values.service.ui.upstreams }}
+  {{- if $upstream }}
+  IMBI_{{ $name | upper }}_UPSTREAM: {{ $upstream | quote }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
   IMBI_EMAIL_ENABLED: {{ .Values.email.enabled | quote }}
   {{- if .Values.email.enabled }}
   IMBI_EMAIL_SMTP_HOST: {{ .Values.email.smtp.host | quote }}

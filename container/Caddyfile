@@ -1,3 +1,7 @@
+# Each reverse_proxy upstream is an environment placeholder with the in-pod
+# loopback as its default, so `all` mode needs nothing set. `ui` mode runs
+# this Caddy on its own and points every IMBI_*_UPSTREAM at the host:port of
+# the matching service (e.g. IMBI_API_UPSTREAM=imbi-api:8000).
 {
 	auto_https off
 	# Bind the unauthenticated admin API to loopback only; nothing outside
@@ -18,7 +22,7 @@
 	header @no_cache Cache-Control "no-cache, no-store, must-revalidate"
 
 	handle /api/* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	# The Kubernetes liveness/readiness target in `all` mode. Without this
@@ -33,23 +37,23 @@
 	# match. With it set to .../api the chart probes /api/status instead and
 	# this route is simply not exercised.
 	handle /status {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	handle /assistant/* {
-		reverse_proxy 127.0.0.1:8002
+		reverse_proxy {$IMBI_ASSISTANT_UPSTREAM:127.0.0.1:8002}
 	}
 
 	handle /docs {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	handle /docs/* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	handle_path /gateway/* {
-		reverse_proxy 127.0.0.1:8003
+		reverse_proxy {$IMBI_GATEWAY_UPSTREAM:127.0.0.1:8003}
 	}
 
 	# handle_path, so /scheduler is stripped and the service sees the path it
@@ -57,7 +61,7 @@
 	# A caller therefore reaches /scheduler/api/tasks, and /scheduler/status
 	# for the health check.
 	handle_path /scheduler/* {
-		reverse_proxy 127.0.0.1:8005
+		reverse_proxy {$IMBI_SCHEDULER_UPSTREAM:127.0.0.1:8005}
 	}
 
 	# MCP clients derive AS metadata discovery from the /mcp resource
@@ -67,12 +71,12 @@
 	# wins over the /mcp/* catch-all below.
 	handle /mcp/.well-known/oauth-authorization-server* {
 		uri strip_prefix /mcp
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	@mcp path /mcp /mcp/*
 	handle @mcp {
-		reverse_proxy 127.0.0.1:8001
+		reverse_proxy {$IMBI_MCP_UPSTREAM:127.0.0.1:8001}
 	}
 
 	# OAuth discovery: imbi-mcp serves Protected Resource Metadata
@@ -80,19 +84,19 @@
 	# (RFC 8414) unprefixed at the root. Both must keep their full path,
 	# so use handle (not handle_path).
 	handle /.well-known/oauth-protected-resource* {
-		reverse_proxy 127.0.0.1:8001
+		reverse_proxy {$IMBI_MCP_UPSTREAM:127.0.0.1:8001}
 	}
 
 	handle /.well-known/oauth-authorization-server* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	handle /openapi.json {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	handle /uploads/* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy {$IMBI_API_UPSTREAM:127.0.0.1:8000}
 	}
 
 	@sourcemaps path *.map
