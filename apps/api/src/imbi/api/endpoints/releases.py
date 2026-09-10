@@ -108,7 +108,15 @@ class ReleaseCreate(pydantic.BaseModel):
 
     @pydantic.model_validator(mode='after')
     def validate_identity(self) -> typing.Self:
-        """Reject a body that identifies no revision at all."""
+        """Reject a body that identifies no revision at all.
+
+        An empty ``tag`` is normalized to ``None`` first, so it cannot
+        reach the graph: the untagged-release lookup treats ``''`` and
+        NULL alike, and a node stored with ``''`` would be matched as
+        untagged but could not then be named.
+        """
+        if self.tag == '':
+            self.tag = None
         if not self.committish and not self.tag:
             raise ValueError('one of committish or tag is required')
         return self
@@ -358,9 +366,16 @@ WHERE r.committish = {committish} AND COALESCE(r.tag, '') = ''
 RETURN r.id AS id
 """
 
+# The predicate has to be the same one ``_RELEASE_BY_COMMITTISH``
+# matched on.  ``COALESCE(r.tag, {tag})`` replaces only NULL, so a node
+# stored with an empty-string tag would be matched as untagged, adopted,
+# and left untagged -- dropping the incoming tag and answering 200 with
+# a release that still has none.  ``ReleaseCreate`` now normalizes ``''``
+# to NULL so this endpoint cannot create such a node, but rows predating
+# that (or written by another client) still have to be nameable.
 _RELEASE_ADOPT_TAG: typing.Final[typing.LiteralString] = """
 MATCH (r:Release {{id: {release_id}}})
-SET r.tag = COALESCE(r.tag, {tag}),
+SET r.tag = CASE WHEN COALESCE(r.tag, '') = '' THEN {tag} ELSE r.tag END,
     r.updated_at = {now}
 RETURN r.id AS id
 """

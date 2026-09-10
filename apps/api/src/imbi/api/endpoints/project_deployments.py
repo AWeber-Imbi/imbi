@@ -1565,9 +1565,16 @@ async def resolve_committish_for_tag(
     The remote, by contrast, has the tag by definition -- it is what it
     just announced.
 
-    Best-effort: a project with no deployment capability, missing
-    credentials, or a remote error yields ``None`` so the caller can
-    decide whether the committish was required.
+    ``None`` means the answer is *no commit*, and the caller may reject
+    the release on it: the remote positively reported the ref does not
+    exist (HTTP 404/422), no deployment capability is bound, or the
+    plugin does not implement ``resolve_committish``.  A failure to get
+    an answer at all is **not** that, and raises rather than returning
+    -- the same distinction ``resolve_remote_tags`` draws between
+    ``'absent'`` and ``'error'``, and for the same reason: a caller that
+    refuses a release on ``None`` must never read unreachability as
+    absence.  A timed-out or rate-limited lookup would otherwise turn a
+    "retry shortly" into a terminal "your tag is invalid".
     """
     try:
         resolved, ctx, credentials = await _resolve_and_context(
@@ -1582,14 +1589,44 @@ async def resolve_committish_for_tag(
                 ctx, _resolve_credentials(ctx, credentials), tag
             )
         )
-    except Exception:  # noqa: BLE001
+    except NotImplementedError:
+        return None
+    except plugin_errors.PluginRateLimited:
+        raise
+    except fastapi.HTTPException:
+        # ``call_with_timeout`` raises 503 + ``Retry-After`` on timeout.
+        raise
+    except httpx.HTTPStatusError as exc:
+        # 404 is the remote saying "no such ref"; GitHub answers 422 for
+        # a ref it cannot even parse.  Everything else (403, 5xx) is the
+        # remote failing to answer, not answering "no".
+        if exc.response.status_code in (404, 422):
+            return None
         LOGGER.warning(
-            'committish lookup failed for project=%s tag=%s',
+            'committish lookup for project=%s tag=%s failed with %s',
             project_id,
             tag,
-            exc_info=True,
+            exc.response.status_code,
         )
-        return None
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail=f'Could not reach the source host to resolve {tag!r}',
+            headers={'Retry-After': '5'},
+        ) from exc
+    except httpx.HTTPError as exc:
+        # Transport-level: connect, read, protocol.  Transient, so it
+        # must not read as "the tag does not exist" either.
+        LOGGER.warning(
+            'committish lookup for project=%s tag=%s failed: %r',
+            project_id,
+            tag,
+            exc,
+        )
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail=f'Could not reach the source host to resolve {tag!r}',
+            headers={'Retry-After': '5'},
+        ) from exc
     await persist_link_writeback(db, ctx)
     return versioning.short_committish(commit.sha)
 

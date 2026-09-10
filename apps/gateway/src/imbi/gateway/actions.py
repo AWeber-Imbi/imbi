@@ -1107,7 +1107,7 @@ async def _resolve_release_for_sbom(
     )
     if create_body is None:
         return None
-    return await _create_release_for_sbom(client, ctx, tag_value, create_body)
+    return await _create_release_for_sbom(client, ctx, create_body)
 
 
 def _build_release_create_body(
@@ -1157,31 +1157,19 @@ def _build_release_create_body(
 async def _create_release_for_sbom(
     client: ImbiClient,
     ctx: 'plugin_base.PluginContext',
-    tag_value: str,
     create_body: dict[str, object],
 ) -> str | None:
-    """POST a new ``Release`` and return its id, handling 409 races."""
+    """POST a ``Release`` and return its id, creating it if needed.
+
+    The API's create is idempotent: a release that already exists comes
+    back as 200 with its own body, so a worker that lost the race reads
+    the winner's id straight out of this response. That replaces the
+    409-then-re-list recovery this used to need, and with it the window
+    where the follow-up list returned empty and the SBoM was dropped.
+    """
     response = await client.create_release(
         ctx.org_slug, ctx.project_id, create_body
     )
-
-    if response.status_code == http.HTTPStatus.CONFLICT:
-        # Another worker (or a stale list_releases cache) won the
-        # race. The release exists now, so re-fetch by tag and take
-        # whatever id the API gives us.
-        races = await client.list_releases(
-            ctx.org_slug, ctx.project_id, tag=tag_value
-        )
-        if races:
-            return str(races[0]['id'])
-        LOGGER.warning(
-            'create_release returned 409 for project %s tag=%r but the '
-            'subsequent list returned empty; SBoM dropped',
-            ctx.project_id,
-            tag_value,
-        )
-        return None
-
     if response.is_error:
         return None
     return str(response.json()['id'])

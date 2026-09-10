@@ -2773,11 +2773,14 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         mock_create.assert_not_awaited()
         mock_put.assert_not_awaited()
 
-    async def test_handles_409_by_refetching(self) -> None:
+    async def test_a_lost_create_race_reads_the_winners_id(self) -> None:
         # Two webhook deliveries land in parallel: list_releases is
-        # empty on both, the first wins create_release with 201 and
-        # the second loses with 409. The losing run must re-list and
-        # PUT against the winning release id rather than dropping.
+        # empty on both, the first wins create_release and the second
+        # loses. The API's create is idempotent, so the loser gets 200
+        # with the winning release's own body and PUTs against that id.
+        # This used to arrive as a 409 and need a second list_releases
+        # to recover -- a round trip that dropped the SBoM whenever it
+        # came back empty.
         envelope = self._envelope()
         with (
             self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
@@ -2785,13 +2788,13 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 actions.ImbiClient,
                 'list_releases',
                 new_callable=unittest.mock.AsyncMock,
-                side_effect=[[], [{'id': 'rel-winning'}]],
-            ),
+                return_value=[],
+            ) as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
                 new_callable=unittest.mock.AsyncMock,
-                return_value=httpx.Response(409, text='exists'),
+                return_value=httpx.Response(200, json={'id': 'rel-winning'}),
             ),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -2811,6 +2814,8 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         mock_put.assert_awaited_once_with(
             'org', 'proj', 'rel-winning', envelope['sbom']
         )
+        # Only the up-front lookup; no recovery re-list.
+        self.assertEqual(1, mock_list.await_count)
 
     async def test_drops_on_create_release_error(self) -> None:
         envelope = self._envelope()

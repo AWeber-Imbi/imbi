@@ -383,7 +383,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         adopt_query, adopt_params, _ = self.mock_db.execute.call_args_list[
             3
         ].args
-        self.assertIn('SET r.tag = COALESCE(r.tag, {tag})', adopt_query)
+        self.assertIn("CASE WHEN COALESCE(r.tag, '') = ''", adopt_query)
         self.assertEqual('5.0.2', adopt_params['tag'])
         self.assertEqual(RELEASE_ID, adopt_params['release_id'])
 
@@ -577,6 +577,79 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         response = self.client.post(self._url('/'), json={'title': 'x'})
         self.assertEqual(response.status_code, 422)
         self.mock_db.execute.assert_not_awaited()
+
+    def test_create_with_only_an_empty_tag_is_422(self) -> None:
+        """An empty tag identifies nothing, so it cannot stand alone."""
+        response = self.client.post(
+            self._url('/'), json={'tag': '', 'title': 'x'}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.mock_db.execute.assert_not_awaited()
+
+    def test_create_normalizes_an_empty_tag_to_none(self) -> None:
+        """An empty tag must not reach the graph.
+
+        The untagged lookup treats '' and NULL alike, so a node stored
+        with '' would match as untagged but could never then be named.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],  # project_exists
+            [],  # existing-by-committish; no by-tag lookup runs
+            [{'release': _release_row(tag=None)}],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.nanoid.generate',
+                return_value=RELEASE_ID,
+            ),
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(
+            self.mock_db.execute.call_args_list[2].args[1]['tag']
+        )
+
+    def test_adopt_names_a_release_whose_tag_is_empty(self) -> None:
+        """The adopt predicate matches what the lookup matched on.
+
+        ``COALESCE(r.tag, {tag})`` replaces only NULL, so a node stored
+        with '' by an older writer would be adopted and left untagged --
+        dropping the incoming tag and answering 200 with a release that
+        still has none.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],  # nothing carries this tag
+            [{'id': RELEASE_ID}],  # an ''-tagged node has the commit
+            [{'id': RELEASE_ID}],  # adopt
+            [{'release': _release_row(tag='5.0.2')}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '5.0.2',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        adopt_query, _params, _ = self.mock_db.execute.call_args_list[3].args
+        self.assertIn("CASE WHEN COALESCE(r.tag, '') = ''", adopt_query)
 
 
 class ListGetReleaseTestCase(_ReleasesTestBase):

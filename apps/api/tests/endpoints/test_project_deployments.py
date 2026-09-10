@@ -6399,6 +6399,112 @@ class ResolveRemoteTagsTestCase(unittest.IsolatedAsyncioTestCase):
             await self._resolve(['1.0.0'])
 
 
+class ResolveCommittishForTagTestCase(unittest.IsolatedAsyncioTestCase):
+    """The tag lookup behind a tag-only release create.
+
+    ``create_release`` rejects the release with a 422 when this answers
+    ``None``, so the same absence-vs-failure distinction
+    ``resolve_remote_tags`` draws has to hold here: only a positive "no
+    such ref" may answer ``None``. A failure to reach the remote must
+    raise, or a timeout would read as an invalid tag.
+    """
+
+    def setUp(self) -> None:
+        self.resolve_committish = mock.AsyncMock(
+            return_value=mock.Mock(sha='9b2356a5da56631e3faf75bc5710bad1')
+        )
+        for target, replacement in (
+            ('_resolve_and_context', mock.AsyncMock()),
+            (
+                '_handler',
+                mock.Mock(
+                    return_value=mock.Mock(
+                        resolve_committish=self.resolve_committish
+                    )
+                ),
+            ),
+            ('_resolve_credentials', mock.Mock(return_value={})),
+            ('persist_link_writeback', mock.AsyncMock()),
+        ):
+            patcher = mock.patch(f'{_MODULE}.{target}', replacement)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        project_deployments._resolve_and_context.return_value = (
+            mock.Mock(plugin_slug='github'),
+            mock.Mock(environment_config=None),
+            {},
+        )
+
+    async def _resolve(self, tag: str = '5.0.2') -> str | None:
+        return await project_deployments.resolve_committish_for_tag(
+            mock.AsyncMock(),
+            org_slug='octo',
+            project_id='p1',
+            tag=tag,
+            auth=mock.Mock(),
+        )
+
+    async def test_resolves_the_tag_to_a_short_committish(self) -> None:
+        self.assertEqual('9b2356a', await self._resolve())
+
+    async def test_a_remote_404_answers_none(self) -> None:
+        self.resolve_committish.side_effect = _http_status_error(404)
+        self.assertIsNone(await self._resolve())
+
+    async def test_a_remote_422_answers_none(self) -> None:
+        self.resolve_committish.side_effect = _http_status_error(422)
+        self.assertIsNone(await self._resolve())
+
+    async def test_no_capability_answers_none(self) -> None:
+        project_deployments._resolve_and_context.side_effect = (
+            fastapi.HTTPException(status_code=404, detail='none')
+        )
+        self.assertIsNone(await self._resolve())
+
+    async def test_an_unimplemented_plugin_answers_none(self) -> None:
+        self.resolve_committish.side_effect = NotImplementedError
+        self.assertIsNone(await self._resolve())
+
+    async def test_a_remote_500_raises_503_rather_than_absence(self) -> None:
+        self.resolve_committish.side_effect = _http_status_error(500)
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._resolve()
+        self.assertEqual(503, ctx.exception.status_code)
+
+    async def test_a_remote_403_raises_503_rather_than_absence(self) -> None:
+        # A revoked credential is not the tag failing to exist.
+        self.resolve_committish.side_effect = _http_status_error(403)
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._resolve()
+        self.assertEqual(503, ctx.exception.status_code)
+
+    async def test_a_transport_failure_raises_503(self) -> None:
+        self.resolve_committish.side_effect = httpx.ConnectError('down')
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._resolve()
+        self.assertEqual(503, ctx.exception.status_code)
+
+    async def test_a_timeout_keeps_its_503_and_retry_after(self) -> None:
+        # ``call_with_timeout`` raises this; swallowing it turned a
+        # "retry in 5s" into a terminal "your tag is invalid".
+        self.resolve_committish.side_effect = fastapi.HTTPException(
+            status_code=503,
+            detail='Plugin timed out',
+            headers={'Retry-After': '5'},
+        )
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._resolve()
+        self.assertEqual(503, ctx.exception.status_code)
+        self.assertEqual({'Retry-After': '5'}, ctx.exception.headers)
+
+    async def test_rate_limiting_propagates(self) -> None:
+        self.resolve_committish.side_effect = plugin_errors.PluginRateLimited(
+            retry_at=1.0
+        )
+        with self.assertRaises(plugin_errors.PluginRateLimited):
+            await self._resolve()
+
+
 class IngestDriftNotesTests(ProjectDeploymentsTestCase):
     URL = '/organizations/myorg/projects/proj1/deployments/drift-notes'
     BODY: typing.ClassVar[dict[str, str]] = {
