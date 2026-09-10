@@ -1567,21 +1567,33 @@ async def resolve_committish_for_tag(
 
     ``None`` means the answer is *no commit*, and the caller may reject
     the release on it: the remote positively reported the ref does not
-    exist (HTTP 404/422), no deployment capability is bound, or the
-    plugin does not implement ``resolve_committish``.  A failure to get
-    an answer at all is **not** that, and raises rather than returning
-    -- the same distinction ``resolve_remote_tags`` draws between
-    ``'absent'`` and ``'error'``, and for the same reason: a caller that
-    refuses a release on ``None`` must never read unreachability as
-    absence.  A timed-out or rate-limited lookup would otherwise turn a
-    "retry shortly" into a terminal "your tag is invalid".
+    exist (HTTP 404/422), no deployment capability is bound to the
+    project at all, or the plugin does not implement
+    ``resolve_committish``.  Every other failure raises instead -- the
+    same distinction ``resolve_remote_tags`` draws between ``'absent'``
+    and ``'error'``, and for the same reason: a caller that refuses a
+    release on ``None`` must never read unreachability as absence.  A
+    timed-out, rate-limited, unauthorized or uncredentialed lookup
+    would otherwise turn a "retry shortly" into a terminal "your tag is
+    invalid".  Both the capability resolution and the call itself can
+    fail either way, so both are sorted, not just the call.
     """
     try:
         resolved, ctx, credentials = await _resolve_and_context(
             db, org_slug, project_id, auth, best_effort_identity=True
         )
-    except fastapi.HTTPException:
-        return None
+    except fastapi.HTTPException as exc:
+        # Only 404 -- "no integration provides the deployment
+        # capability" -- means this project has no way to name a
+        # commit.  The other answers here are failures to *ask*: a
+        # missing service credential is a deliberate, retryable 503
+        # (see ``_resolve_and_context``), a 403 is an authorization
+        # problem, and a 400 means the capability is bound more than
+        # once and needs ``?source=``.  Reporting any of those as an
+        # absent tag is the same mistake as swallowing the timeout.
+        if exc.status_code == 404:
+            return None
+        raise
     handler = _handler(resolved)
     try:
         commit = await call_with_timeout(

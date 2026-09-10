@@ -2773,14 +2773,16 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         mock_create.assert_not_awaited()
         mock_put.assert_not_awaited()
 
-    async def test_a_lost_create_race_reads_the_winners_id(self) -> None:
-        # Two webhook deliveries land in parallel: list_releases is
-        # empty on both, the first wins create_release and the second
-        # loses. The API's create is idempotent, so the loser gets 200
-        # with the winning release's own body and PUTs against that id.
-        # This used to arrive as a 409 and need a second list_releases
-        # to recover -- a round trip that dropped the SBoM whenever it
-        # came back empty.
+    async def test_a_duplicate_create_reads_the_existing_id(self) -> None:
+        # A second delivery for a release an earlier one already
+        # committed: the up-front list_releases misses (a stale read),
+        # but the API's create sees the existing node and answers 200
+        # with its body, so the SBoM PUTs against that id. This used to
+        # arrive as a 409 and need a second list_releases to recover --
+        # a round trip that dropped the SBoM whenever it came back
+        # empty. Note this is the *serialized* case; two creates that
+        # both miss still make two releases, and no mock here can say
+        # otherwise.
         envelope = self._envelope()
         with (
             self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),

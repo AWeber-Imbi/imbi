@@ -1162,10 +1162,16 @@ async def _create_release_for_sbom(
     """POST a ``Release`` and return its id, creating it if needed.
 
     The API's create is idempotent: a release that already exists comes
-    back as 200 with its own body, so a worker that lost the race reads
-    the winner's id straight out of this response. That replaces the
-    409-then-re-list recovery this used to need, and with it the window
-    where the follow-up list returned empty and the SBoM was dropped.
+    back as 200 carrying its own body, so the id is read straight out
+    of this response. That replaces the 409-then-re-list recovery this
+    used to need, and with it the window where the follow-up list
+    returned empty and the SBoM was dropped.
+
+    This covers a duplicate that the API can *see* -- the earlier
+    create committed before this one read. It is not concurrency
+    protection: two creates whose existence checks both miss still
+    produce two releases, which is the race tracked separately against
+    the API's create path.
     """
     response = await client.create_release(
         ctx.org_slug, ctx.project_id, create_body

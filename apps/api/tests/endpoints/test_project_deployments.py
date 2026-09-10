@@ -6461,6 +6461,40 @@ class ResolveCommittishForTagTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(await self._resolve())
 
+    async def test_a_missing_credential_propagates_its_503(self) -> None:
+        # ``_resolve_and_context`` raises this deliberately, and its own
+        # comment calls a retry reasonable.  Reading it as an absent tag
+        # is the same mistake as swallowing the timeout, one call up.
+        project_deployments._resolve_and_context.side_effect = (
+            fastapi.HTTPException(
+                status_code=503,
+                detail={'error': 'no_service_credential'},
+            )
+        )
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._resolve()
+        self.assertEqual(503, ctx.exception.status_code)
+
+    async def test_an_authorization_failure_propagates_its_403(self) -> None:
+        # The gateway posts as a service principal, so act-as-service
+        # checks are reachable here.  Not an answer about the tag.
+        project_deployments._resolve_and_context.side_effect = (
+            fastapi.HTTPException(status_code=403, detail='nope')
+        )
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._resolve()
+        self.assertEqual(403, ctx.exception.status_code)
+
+    async def test_an_ambiguous_capability_propagates_its_400(self) -> None:
+        # "Multiple integrations provide this capability" is a config
+        # error to surface, not a tag that does not exist.
+        project_deployments._resolve_and_context.side_effect = (
+            fastapi.HTTPException(status_code=400, detail='ambiguous')
+        )
+        with self.assertRaises(fastapi.HTTPException) as ctx:
+            await self._resolve()
+        self.assertEqual(400, ctx.exception.status_code)
+
     async def test_an_unimplemented_plugin_answers_none(self) -> None:
         self.resolve_committish.side_effect = NotImplementedError
         self.assertIsNone(await self._resolve())
