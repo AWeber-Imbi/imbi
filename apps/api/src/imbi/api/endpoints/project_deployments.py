@@ -1545,6 +1545,55 @@ async def fetch_release_notes_for_tag(
     )
 
 
+async def resolve_committish_for_tag(
+    db: graph.Graph,
+    *,
+    org_slug: str,
+    project_id: str,
+    tag: str,
+    auth: permissions.AuthContext,
+) -> str | None:
+    """Resolve ``tag`` to the short committish it points at.
+
+    The release-create path uses this when a caller supplies a tag but no
+    commit -- a source host's ``release`` webhook names the tag and the
+    branch it was cut from, never the SHA.  The lookup goes through the
+    deployment capability rather than the ClickHouse ``tags`` table
+    because the two race: the ``release`` delivery lands before commit
+    sync records the tag (32s apart on the delivery that motivated this),
+    so the table is reliably empty at exactly the moment this is called.
+    The remote, by contrast, has the tag by definition -- it is what it
+    just announced.
+
+    Best-effort: a project with no deployment capability, missing
+    credentials, or a remote error yields ``None`` so the caller can
+    decide whether the committish was required.
+    """
+    try:
+        resolved, ctx, credentials = await _resolve_and_context(
+            db, org_slug, project_id, auth, best_effort_identity=True
+        )
+    except fastapi.HTTPException:
+        return None
+    handler = _handler(resolved)
+    try:
+        commit = await call_with_timeout(
+            handler.resolve_committish(
+                ctx, _resolve_credentials(ctx, credentials), tag
+            )
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.warning(
+            'committish lookup failed for project=%s tag=%s',
+            project_id,
+            tag,
+            exc_info=True,
+        )
+        return None
+    await persist_link_writeback(db, ctx)
+    return versioning.short_committish(commit.sha)
+
+
 async def backfill_release_notes(
     db: graph.Graph,
     *,

@@ -328,11 +328,14 @@ class ImbiClient(httpx.AsyncClient):
 class CreateReleaseConfig(pydantic.BaseModel):
     """Validates ``handler_config`` for :func:`create_release`.
 
-    ``committish_expression`` is required because the Imbi API
-    ``ReleaseCreate`` model requires the short SHA. ``tag`` (and thus
-    ``version_expression``) is optional; when absent or evaluated to
-    null, the release is still created and identified by its
-    committish.
+    ``committish_expression`` and ``version_expression`` are both
+    optional, but at least one must be configured: the Imbi API
+    identifies a release by its commit or its tag and needs one of them.
+    A ``deployment_status`` rule configures the committish (the payload
+    carries ``deployment.sha``); a ``release`` rule configures only the
+    version, because that payload has no commit -- its
+    ``target_commitish`` is the branch the release was cut from -- and
+    the API resolves the tag to its commit instead.
 
     ``title_selector`` is optional and falls back to
     ``"Release <version>"`` (the tag, or the committish when no tag
@@ -343,8 +346,18 @@ class CreateReleaseConfig(pydantic.BaseModel):
     """
 
     title_selector: json_pointer.JsonPointer | None = None
-    committish_expression: str
+    committish_expression: str | None = None
     version_expression: str | None = None
+
+    @pydantic.model_validator(mode='after')
+    def validate_identity(self) -> typing.Self:
+        """Reject a rule that can identify no release."""
+        if not self.committish_expression and not self.version_expression:
+            raise ValueError(
+                'one of committish_expression or version_expression'
+                ' is required'
+            )
+        return self
 
 
 class AddDeploymentEventConfig(pydantic.BaseModel):
@@ -588,44 +601,52 @@ async def create_release(
     action_config: CreateReleaseConfig,
     event: object,
 ) -> None:
-    """Processes a deployment notification and ensures the release exists.
+    """Processes a release notification and ensures the release exists.
 
     The committish is the result of evaluating the CEL
     ``committish_expression`` (typically
-    ``substring(payload.deployment.sha, 0, 7)``) and is required; when
-    it evaluates to null the action is skipped because the Imbi API
-    requires the short SHA. The tag is the result of evaluating the CEL
-    ``version_expression`` (optional); when omitted or evaluated to null
-    the tag is left off the release. The title is taken from the
-    JSONPointer ``title_selector`` (resolved against the event, so the
-    body is under ``/payload``), falling back to ``Release <version>``
-    when the selector is unset or does not resolve to a value.
-    ``ctx.actor_user_id`` (the resolved Imbi user's email) is passed as
-    ``created_by`` when present; otherwise the API defaults to the
-    gateway's service principal. ``action_config`` arrives pre-validated.
+    ``substring(payload.deployment.sha, 0, 7)``) and the tag the result
+    of ``version_expression``; both are optional but the action is
+    skipped unless at least one resolves, because the Imbi API needs one
+    of them to identify the release. A ``release`` payload has only the
+    tag -- its ``target_commitish`` names the branch, not the commit --
+    and the API resolves that tag to a commit through the project's
+    deployment capability.
+
+    The title is taken from the JSONPointer ``title_selector`` (resolved
+    against the event, so the body is under ``/payload``), falling back
+    to ``Release <version>`` when the selector is unset or does not
+    resolve to a value. ``ctx.actor_user_id`` (the resolved Imbi user's
+    email) is passed as ``created_by`` when present; otherwise the API
+    defaults to the gateway's service principal. ``action_config``
+    arrives pre-validated.
+
+    The API's create is idempotent, so two rules announcing one release
+    -- a ``deployment_status`` delivery and a ``release`` delivery --
+    converge on a single node rather than racing to create two.
     """
     del credentials, external_identifier
-    committish_value = _evaluate_cel(
-        action_config.committish_expression, event
-    )
-    if committish_value is None:
-        LOGGER.warning(
-            'Skipping release for project %s: committish expression'
-            ' evaluated to null',
-            ctx.project_id,
+    committish_value: str | None = None
+    if action_config.committish_expression is not None:
+        committish_value = _evaluate_cel(
+            action_config.committish_expression, event
         )
-        return
     version_value: str | None = None
     if action_config.version_expression is not None:
         version_value = _evaluate_cel(action_config.version_expression, event)
+    identity = version_value or committish_value
+    if identity is None:
+        LOGGER.warning(
+            'Skipping release for project %s: neither committish nor'
+            ' version expression resolved',
+            ctx.project_id,
+        )
+        return
     create_body: dict[str, object] = {
-        'committish': committish_value,
-        'title': _resolve_title(
-            action_config.title_selector,
-            event,
-            version_value or committish_value,
-        ),
+        'title': _resolve_title(action_config.title_selector, event, identity),
     }
+    if committish_value is not None:
+        create_body['committish'] = committish_value
     if version_value is not None:
         create_body['tag'] = version_value
     if ctx.actor_user_id is not None:
@@ -637,7 +658,7 @@ async def create_release(
     if response.status_code == http.HTTPStatus.CONFLICT:
         LOGGER.debug(
             'Release %r already exists for project %s',
-            version_value or committish_value,
+            identity,
             ctx.project_id,
         )
 
