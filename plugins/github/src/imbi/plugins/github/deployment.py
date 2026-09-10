@@ -526,11 +526,11 @@ def _str_dict(
     raw = content.get(key)
     if not isinstance(raw, dict):
         return {}
-    return {
-        k: v
-        for k, v in raw.items()
-        if isinstance(k, str) and isinstance(v, str)
-    }
+    result: dict[str, str] = {}
+    for k, v in typing.cast(dict[str, typing.Any], raw).items():
+        if isinstance(v, str) and type(k) is str:
+            result[k] = v
+    return result
 
 
 async def _parse_package_json_dependency_changes(
