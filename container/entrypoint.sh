@@ -188,7 +188,7 @@ fi
 
 start_api() {
     echo "Starting imbi-api on :8000..."
-    IMBI_HOST=0.0.0.0 IMBI_PORT=8000 imbi-api serve &
+    imbi-api serve --host 0.0.0.0 --port 8000 &
 
     echo "Waiting for imbi-api to become healthy..."
     local attempts=0
@@ -352,7 +352,7 @@ case "$IMBI_SERVICE" in
         start_caddy
         ;;
     api)
-        IMBI_HOST=0.0.0.0 IMBI_PORT=8000 exec imbi-api serve
+        exec imbi-api serve --host 0.0.0.0 --port 8000
         ;;
     assistant)
         exec imbi-assistant serve --host 0.0.0.0 --port 8002
