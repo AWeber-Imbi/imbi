@@ -244,6 +244,16 @@ describe('PendingReleasesCard', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('labels a compare the host could not list in full', async () => {
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue({
+      ...compareResult([compareCommit('bbb222bbb222', 'the pending change')]),
+      ahead: 5001,
+    })
+    renderCard([entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')])
+    expect(await screen.findByText('the pending change')).toBeInTheDocument()
+    expect(screen.getByText('1 of 5001 commits')).toBeInTheDocument()
+  })
+
   it('falls back to the synced slice when the compare fails', async () => {
     vi.mocked(endpoints.compareDeploymentRefs).mockRejectedValue(
       new Error('source host unavailable'),

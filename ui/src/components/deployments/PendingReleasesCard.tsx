@@ -424,7 +424,9 @@ function SingleReleaseChanges({
     queryKey: ['compare', orgSlug, projectId, baseSha, entry.sha],
   })
   // The compare answers oldest-first; the list reads newest-first like
-  // the synced history it stands in for.
+  // the synced history it stands in for. Its `ahead` is the host's count
+  // of the whole range, so a list shorter than that is a truncated one
+  // and the header says so.
   const commits: ChangeCommit[] = compare
     ? [...compare.commits].reverse()
     : !baseSha || isError
@@ -434,7 +436,11 @@ function SingleReleaseChanges({
   return (
     <div className="flex flex-col gap-3">
       <div className="text-tertiary flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs">
-        <span>{commits.length} commits</span>
+        <span>
+          {compare && compare.ahead > commits.length
+            ? `${commits.length} of ${compare.ahead} commits`
+            : `${commits.length} commits`}
+        </span>
         <span className="ml-auto">
           {stage.current?.release?.tag ?? '—'} … {entry.tag}
         </span>

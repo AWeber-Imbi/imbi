@@ -6,6 +6,7 @@ import datetime
 import json
 import time
 import unittest
+import unittest.mock
 
 import httpx
 import respx
@@ -716,6 +717,98 @@ class CompareTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.commits[1].message, 'Subject only')
         self.assertIsNone(result.commits[1].body)
+
+    @respx.mock
+    async def test_compare_follows_next_link(self) -> None:
+        url = 'https://api.github.com/repos/octo/demo/compare/base...head'
+        page2_link = f'{url}?per_page=250&page=2'
+        # More-specific (page=2) matcher first; see ListRefsPagination.
+        respx.get(url, params={'per_page': '250', 'page': '2'}).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'ahead_by': 3,
+                    'commits': [
+                        {
+                            'sha': 'c3',
+                            'commit': {
+                                'message': 'three',
+                                'author': {'name': 'A', 'date': None},
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+        respx.get(url, params={'per_page': '250'}).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'ahead_by': 3,
+                    'behind_by': 0,
+                    'base_commit': {'sha': 'base-sha'},
+                    'commits': [
+                        {
+                            'sha': 'c1',
+                            'commit': {
+                                'message': 'one',
+                                'author': {'name': 'A', 'date': None},
+                            },
+                        },
+                        {
+                            'sha': 'c2',
+                            'commit': {
+                                'message': 'two',
+                                'author': {'name': 'A', 'date': None},
+                            },
+                        },
+                    ],
+                    'files': [{'additions': 1, 'deletions': 0}],
+                },
+                headers={'Link': f'<{page2_link}>; rel="next"'},
+            )
+        )
+        plugin = GitHubDeployment()
+        result = await plugin.compare(_ctx(), _CREDS, 'base', 'head')
+        self.assertEqual([c.sha for c in result.commits], ['c1', 'c2', 'c3'])
+        self.assertEqual(result.head_sha, 'c3')
+        self.assertEqual(result.base_sha, 'base-sha')
+        self.assertEqual(result.ahead, 3)
+        self.assertEqual(result.files_changed, 1)
+        self.assertEqual(result.additions, 1)
+
+    @respx.mock
+    async def test_compare_warns_when_page_walk_truncates(self) -> None:
+        url = 'https://api.github.com/repos/octo/demo/compare/base...head'
+        respx.get(url).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    'ahead_by': 500,
+                    'commits': [
+                        {
+                            'sha': 'c1',
+                            'commit': {
+                                'message': 'one',
+                                'author': {'name': 'A', 'date': None},
+                            },
+                        },
+                    ],
+                },
+                headers={'Link': f'<{url}?per_page=250&page=2>; rel="next"'},
+            )
+        )
+        plugin = GitHubDeployment()
+        with unittest.mock.patch(
+            'imbi.plugins.github.deployment._MAX_COMPARE_PAGES', 1
+        ):
+            with self.assertLogs(
+                'imbi.plugins.github', level='WARNING'
+            ) as logs:
+                result = await plugin.compare(_ctx(), _CREDS, 'base', 'head')
+        self.assertEqual(len(result.commits), 1)
+        self.assertEqual(result.ahead, 500)
+        self.assertIn('truncated', logs.output[0])
 
 
 class TriggerDeploymentTestCase(unittest.IsolatedAsyncioTestCase):

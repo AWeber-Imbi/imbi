@@ -199,6 +199,10 @@ _ZERO_SHA = '0' * 40
 # GitHub's compare endpoint lists at most 300 changed files and offers
 # no pagination for them -- a list this long may be incomplete.
 _COMPARE_FILES_CAP = 300
+# The compare endpoint pages its commits (250 per page) while ``ahead_by``
+# counts the whole range, so ``compare`` follows the ``Link`` chain -- up
+# to this many pages before it gives up on a pathological range.
+_MAX_COMPARE_PAGES = 20
 # How many note-blob reads run at once when listing a whole notes tree.
 _NOTE_BLOB_CONCURRENCY = 10
 
@@ -1078,12 +1082,38 @@ class GitHubDeployment(DeploymentCapability):
             ctx, credentials, SCOPE_CONTENTS_READ
         ) as client:
             quoted = urllib.parse.quote(f'{base}...{head}', safe='.')
-            resp = await client.get(f'/compare/{quoted}')
-            resp.raise_for_status()
-            payload = typing.cast(dict[str, typing.Any], resp.json())
-            commits_raw: list[dict[str, typing.Any]] = (
-                payload.get('commits') or []
-            )
+            path = f'/compare/{quoted}'
+            params: dict[str, str] = {'per_page': '250'}
+            payload: dict[str, typing.Any] = {}
+            commits_raw: list[dict[str, typing.Any]] = []
+            for page in range(1, _MAX_COMPARE_PAGES + 1):
+                resp = await client.get(path, params=params)
+                resp.raise_for_status()
+                page_payload = typing.cast(dict[str, typing.Any], resp.json())
+                if page == 1:
+                    # Only the first page carries ``files``, the
+                    # ``ahead_by``/``behind_by`` totals and the base.
+                    payload = page_payload
+                commits_raw.extend(page_payload.get('commits') or [])
+                next_url = _next_page_url(resp.headers.get('link'))
+                if next_url is None:
+                    break
+                next_page = _query_param(next_url, 'page')
+                if next_page is None:
+                    break
+                params['page'] = next_page
+            else:
+                # Still more pages after the cap: ``ahead`` keeps the
+                # true count so a consumer can tell the list is short.
+                LOGGER.warning(
+                    'Compare %s...%s truncated at %d pages (%d of %s '
+                    'commits); the commit list is incomplete',
+                    base,
+                    head,
+                    _MAX_COMPARE_PAGES,
+                    len(commits_raw),
+                    payload.get('ahead_by'),
+                )
             commits: list[Commit] = [
                 _commit_from_payload(item) for item in commits_raw
             ]
