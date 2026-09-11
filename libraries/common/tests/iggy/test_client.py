@@ -5,6 +5,7 @@ import orjson
 import pydantic
 
 from imbi.common import iggy as common_iggy
+from imbi.common import settings
 from imbi.common.iggy import client
 
 
@@ -89,6 +90,19 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
             str(iggy._settings.url)
         )
         self.mock_client.connect.assert_awaited_once()
+
+    async def test_initialize_decodes_userinfo(self) -> None:
+        # pydantic serializes `=` in the password as `%3D`; the SDK does
+        # not decode it, so the raw password has to be restored.
+        iggy = client.Iggy.get_instance()
+        iggy._settings = settings.Iggy(
+            url='iggy+tcp://iggy:c2VjcmV0=@iggy:8090', _env_file=None
+        )
+        self.assertIn('%3D', str(iggy._settings.url))
+        self.assertTrue(await iggy.initialize())
+        self.mock_from_connection_string.assert_called_once_with(
+            'iggy+tcp://iggy:c2VjcmV0=@iggy:8090'
+        )
 
     async def test_initialize_provisions_every_topic(self) -> None:
         # The ClickHouse sink exits at startup on a missing topic, so

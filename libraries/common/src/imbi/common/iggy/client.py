@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import logging
 import typing
+import urllib.parse
 
 import orjson
 import pydantic
@@ -41,6 +42,25 @@ PARTITIONS_COUNT = 1
 #: found``; with ``PARTITIONS_COUNT`` at 1, publishing to partition 0 is
 #: equivalent to the balanced partitioning the ADR describes.
 PARTITION_ID = 0
+
+
+def connection_string(url: pydantic.AnyUrl) -> str:
+    """Build the SDK connection string for ``url``.
+
+    pydantic percent-encodes characters such as ``=``, ``+`` and ``/`` in
+    the userinfo when it serializes a URL, and the SDK's
+    ``from_connection_string`` splits on ``@`` and ``:`` without decoding.
+    A base64 password therefore reaches the server encoded and is
+    rejected, so the userinfo is decoded here.
+    """
+    userinfo = ''
+    if url.username is not None:
+        userinfo = urllib.parse.unquote(url.username)
+        if url.password is not None:
+            userinfo += f':{urllib.parse.unquote(url.password)}'
+        userinfo += '@'
+    query = f'?{url.query}' if url.query else ''
+    return f'{url.scheme}://{userinfo}{url.host}:{url.port}{query}'
 
 
 class PublishError(Exception):
@@ -213,7 +233,7 @@ class Iggy:
             )
             try:
                 client = IggyClient.from_connection_string(
-                    str(self._settings.url)
+                    connection_string(self._settings.url)
                 )
                 async with asyncio.timeout(self._settings.connect_timeout):
                     await client.connect()
