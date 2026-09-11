@@ -52,12 +52,28 @@ def connection_string(url: pydantic.AnyUrl) -> str:
     ``from_connection_string`` splits on ``@`` and ``:`` without decoding.
     A base64 password therefore reaches the server encoded and is
     rejected, so the userinfo is decoded here.
+
+    Because the SDK does not decode, a decoded username or password that
+    itself contains ``@`` or ``:`` cannot be expressed in its connection
+    string, so ``ValueError`` is raised rather than sending misparsed
+    credentials.
     """
     userinfo = ''
     if url.username is not None:
-        userinfo = urllib.parse.unquote(url.username)
-        if url.password is not None:
-            userinfo += f':{urllib.parse.unquote(url.password)}'
+        username = urllib.parse.unquote(url.username)
+        password = (
+            urllib.parse.unquote(url.password)
+            if url.password is not None
+            else None
+        )
+        for value in (username, password):
+            if value is not None and ('@' in value or ':' in value):
+                raise ValueError(
+                    'Iggy username and password must not contain "@" or ":"'
+                )
+        userinfo = username
+        if password is not None:
+            userinfo += f':{password}'
         userinfo += '@'
     query = f'?{url.query}' if url.query else ''
     return f'{url.scheme}://{userinfo}{url.host}:{url.port}{query}'

@@ -104,6 +104,19 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
             'iggy+tcp://iggy:c2VjcmV0=@iggy:8090'
         )
 
+    async def test_initialize_rejects_reserved_userinfo_characters(
+        self,
+    ) -> None:
+        # A decoded `@` would be split on by the SDK, so it has to be
+        # refused before the connection string is built.
+        iggy = client.Iggy.get_instance()
+        iggy._settings = settings.Iggy(
+            url='iggy+tcp://iggy:p%40ss@iggy:8090', _env_file=None
+        )
+        with self.assertRaises(ValueError):
+            await iggy.initialize()
+        self.mock_from_connection_string.assert_not_called()
+
     async def test_initialize_provisions_every_topic(self) -> None:
         # The ClickHouse sink exits at startup on a missing topic, so
         # every pair has to exist before the sink is started, not on
