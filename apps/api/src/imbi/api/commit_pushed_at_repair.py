@@ -50,10 +50,23 @@ Deliberately conservative:
 The rewrite is a re-insert of the full row with the corrected
 ``pushed_at`` and a fresh ``recorded_at`` -- the same read-modify-insert
 ``opslog-backfill`` uses -- so ``FINAL`` readers see it at once and the
-background merge collapses the superseded version.  It also composes
-with the sync's carry-forward, which reads the *earliest* ``pushed_at``
-across row versions: the repaired value is the earlier one, so a
-webhook re-sync racing the repair inherits it either way.
+background merge collapses the superseded version.  It composes with
+the sync's carry-forward, which reads the *earliest* ``pushed_at``
+across row versions: once the repaired row is on disk, every later
+re-sync of that commit inherits the restored value.
+
+There is no lock between this and a webhook re-sync, and the two are not
+serialized: a re-sync that read the stored value *before* the repaired
+row landed and inserted *after* it writes the stale value back with a
+newer ``recorded_at``, and that version wins.  The window is the few
+milliseconds between the sync's lookup and its insert, it has to
+coincide with a delivery for that exact commit, and the outcome is one
+row back where it started rather than anything new being wrong.  The
+repair is idempotent, so the remedy is to run it again; the
+``commit-pushed-at-check`` dry run after a repair is what shows whether
+anything did slip through.  A shared lock would have to span the API
+worker and the gateway's webhook handler for a race this narrow and
+this cheaply undone, which is not worth the coupling.
 
 Runs as the ``commit-pushed-at-repair`` maintenance operation, with
 ``commit-pushed-at-check`` as its dry run.

@@ -1285,3 +1285,19 @@ class ExecuteCommitPushedAtRepairTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn('(dry run)', _rows(ctx)[0].message)
         self.assertTrue(_rows(ctx)[0].detail['dry_run'])
+
+    async def test_deliveries_matching_no_stored_commit_say_so(self) -> None:
+        """Zero examined is not "zero already correct": nothing the
+        deliveries name is stored under the branch they were pushed to."""
+        from imbi.api import commit_pushed_at_repair
+
+        ctx = _ctx()
+        with self._patch(commit_pushed_at_repair.RepairSummary(deliveries=4)):
+            outcome = await operations.execute_commit_pushed_at_check(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=ctx
+            )
+        self.assertEqual('skipped', outcome)
+        row = _rows(ctx)[0]
+        self.assertIn('No stored commit matches', row.message)
+        self.assertEqual(4, row.detail['deliveries'])
+        self.assertNotIn('examined', row.detail)

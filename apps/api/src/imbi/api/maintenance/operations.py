@@ -506,6 +506,16 @@ async def _commit_pushed_at_repair(
     )
     if not summary.deliveries:
         return _skip(ctx, action, 'No push deliveries on record.')
+    if not summary.examined:
+        # Deliveries exist but name no commit stored under the branch
+        # they were pushed to -- the sync tracks another branch, or has
+        # not caught up.  Nothing here for the repair to judge.
+        return _skip(
+            ctx,
+            action,
+            'No stored commit matches a push delivery to its branch.',
+            deliveries=summary.deliveries,
+        )
     if not summary.repaired:
         # Every commit a delivery accounts for already carries its push
         # time.  Distinguish this from "no deliveries" so an operator can
