@@ -238,6 +238,22 @@ _STATUS_BODY: dict[str, object] = {
     'deployment_status': {'state': 'success', 'environment': 'production'},
 }
 
+# A source host's ``release`` delivery. Note what is *not* here: a
+# commit. ``target_commitish`` is the branch the release was cut from --
+# 'main' on 7,418 of the 7,444 deliveries in production -- so the tag is
+# the only revision identity the payload carries.
+_RELEASE_BODY: dict[str, object] = {
+    'action': 'published',
+    'release': {
+        'tag_name': '5.0.2',
+        'target_commitish': 'main',
+        'name': '5.0.2',
+        'draft': False,
+        'prerelease': False,
+        'html_url': 'https://example.com/o/r/releases/tag/5.0.2',
+    },
+}
+
 _RELEASE_ID = 'rel-nanoid-abc'
 
 
@@ -352,12 +368,66 @@ class CreateReleaseTests(helpers.TestCase):
         body_arg = mock_create.call_args.args[2]
         self.assertNotIn('created_by', body_arg)
 
-    async def test_committish_expression_is_required(self) -> None:
+    async def test_one_identity_expression_is_required(self) -> None:
+        """A rule that resolves neither commit nor tag names nothing."""
         with self.assertRaises(pydantic.ValidationError):
             _create_release_config(
-                '{"title_selector": "/payload/deployment/ref",'
-                ' "version_expression": "payload.deployment.ref"}'
+                '{"title_selector": "/payload/deployment/ref"}'
             )
+
+    async def test_omits_committish_when_expression_absent(self) -> None:
+        """A ``release`` rule configures the version alone.
+
+        That payload has no commit -- ``target_commitish`` names the
+        branch the release was cut from -- so the API resolves the tag
+        to a commit instead of the gateway guessing one.
+        """
+        config = _create_release_config(
+            '{"version_expression": "payload.release.tag_name"}'
+        )
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+                return_value=httpx.Response(201),
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(_RELEASE_BODY),
+            )
+
+        body_arg = mock_create.call_args.args[2]
+        self.assertNotIn('committish', body_arg)
+        self.assertEqual('5.0.2', body_arg['tag'])
+        self.assertEqual('Release 5.0.2', body_arg['title'])
+
+    async def test_skips_when_neither_expression_resolves(self) -> None:
+        config = _create_release_config(
+            '{"committish_expression": "null", "version_expression": "null"}'
+        )
+        with (
+            self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
+            unittest.mock.patch.object(
+                actions.ImbiClient,
+                'create_release',
+                new_callable=unittest.mock.AsyncMock,
+            ) as mock_create,
+        ):
+            await actions.create_release(
+                ctx=_ctx(),
+                credentials={},
+                external_identifier='',
+                action_config=config,
+                event=_event(_RELEASE_BODY),
+            )
+
+        mock_create.assert_not_awaited()
 
     async def test_omits_tag_when_version_expression_absent(self) -> None:
         config = _create_release_config(
@@ -596,7 +666,16 @@ class CreateReleaseTests(helpers.TestCase):
         self.assertNotIn('tag', body_arg)
         self.assertEqual('abcdef1', body_arg['committish'])
 
-    async def test_null_committish_expression_skips_release(self) -> None:
+    async def test_null_committish_still_creates_when_version_resolves(
+        self,
+    ) -> None:
+        """A null committish is no longer fatal when a tag resolves.
+
+        This used to skip the release outright, because the API demanded
+        a commit. It now posts the tag alone and lets the API resolve
+        the commit -- which is what makes a source host's ``release``
+        delivery, whose payload has no SHA, usable at all.
+        """
         config = _create_release_config(
             json.dumps(
                 {
@@ -617,7 +696,6 @@ class CreateReleaseTests(helpers.TestCase):
                 new_callable=unittest.mock.AsyncMock,
                 return_value=httpx.Response(201),
             ) as mock_create,
-            self.assertLogs('imbi.gateway.actions', level='WARNING') as cm,
         ):
             await actions.create_release(
                 ctx=_ctx(),
@@ -627,13 +705,9 @@ class CreateReleaseTests(helpers.TestCase):
                 event=_event({'deployment': {'ref': 'v1.2.3', 'sha': ''}}),
             )
 
-        mock_create.assert_not_called()
-        self.assertTrue(
-            any(
-                'committish expression evaluated to null' in line
-                for line in cm.output
-            )
-        )
+        body_arg = mock_create.call_args.args[2]
+        self.assertNotIn('committish', body_arg)
+        self.assertEqual('v1.2.3', body_arg['tag'])
 
     async def test_invalid_version_expression_propagates(self) -> None:
         config = _create_release_config(
@@ -2699,11 +2773,16 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         mock_create.assert_not_awaited()
         mock_put.assert_not_awaited()
 
-    async def test_handles_409_by_refetching(self) -> None:
-        # Two webhook deliveries land in parallel: list_releases is
-        # empty on both, the first wins create_release with 201 and
-        # the second loses with 409. The losing run must re-list and
-        # PUT against the winning release id rather than dropping.
+    async def test_a_duplicate_create_reads_the_existing_id(self) -> None:
+        # A second delivery for a release an earlier one already
+        # committed: the up-front list_releases misses (a stale read),
+        # but the API's create sees the existing node and answers 200
+        # with its body, so the SBoM PUTs against that id. This used to
+        # arrive as a 409 and need a second list_releases to recover --
+        # a round trip that dropped the SBoM whenever it came back
+        # empty. Note this is the *serialized* case; two creates that
+        # both miss still make two releases, and no mock here can say
+        # otherwise.
         envelope = self._envelope()
         with (
             self.override_environment(IMBI_GATEWAY_API_TOKEN=_TOKEN),
@@ -2711,13 +2790,13 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
                 actions.ImbiClient,
                 'list_releases',
                 new_callable=unittest.mock.AsyncMock,
-                side_effect=[[], [{'id': 'rel-winning'}]],
-            ),
+                return_value=[],
+            ) as mock_list,
             unittest.mock.patch.object(
                 actions.ImbiClient,
                 'create_release',
                 new_callable=unittest.mock.AsyncMock,
-                return_value=httpx.Response(409, text='exists'),
+                return_value=httpx.Response(200, json={'id': 'rel-winning'}),
             ),
             unittest.mock.patch.object(
                 actions.ImbiClient,
@@ -2737,6 +2816,8 @@ class IngestSbomAutoCreateTests(helpers.TestCase):
         mock_put.assert_awaited_once_with(
             'org', 'proj', 'rel-winning', envelope['sbom']
         )
+        # Only the up-front lookup; no recovery re-list.
+        self.assertEqual(1, mock_list.await_count)
 
     async def test_drops_on_create_release_error(self) -> None:
         envelope = self._envelope()

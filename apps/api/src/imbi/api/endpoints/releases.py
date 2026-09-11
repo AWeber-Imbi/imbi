@@ -74,25 +74,52 @@ _RELEASE_HYDRATION_SEMAPHORE = asyncio.Semaphore(
 
 
 class ReleaseCreate(pydantic.BaseModel):
-    """Request body for creating a release."""
+    """Request body for creating a release.
+
+    At least one of ``committish`` / ``tag`` is required.  A source
+    host's *release* notification carries no commit -- GitHub's
+    ``release`` payload offers only ``target_commitish``, which is the
+    branch the release was cut from (``main`` on 99.7% of deliveries)
+    rather than a SHA -- so a caller that has only the tag omits the
+    committish and the endpoint resolves it through the project's
+    deployment capability.
+    """
 
     model_config = pydantic.ConfigDict(extra='forbid')
 
     tag: str | None = None
     committish: typing.Annotated[
-        str,
+        str | None,
         pydantic.Field(
             pattern=r'^[0-9a-f]{7}$',
             description=(
                 'Short commit SHA (7 lowercase hexadecimal chars) '
-                'identifying the source revision for this release.'
+                'identifying the source revision for this release. '
+                'Optional when a tag is supplied: the tag is then '
+                'resolved to its commit through the deployment '
+                'capability.'
             ),
         ),
-    ]
+    ] = None
     title: str
     description: str | None = None
     links: list[models.ReleaseLink] = []
     created_by: str | None = None
+
+    @pydantic.model_validator(mode='after')
+    def validate_identity(self) -> typing.Self:
+        """Reject a body that identifies no revision at all.
+
+        An empty ``tag`` is normalized to ``None`` first, so it cannot
+        reach the graph: the untagged-release lookup treats ``''`` and
+        NULL alike, and a node stored with ``''`` would be matched as
+        untagged but could not then be named.
+        """
+        if self.tag == '':
+            self.tag = None
+        if not self.committish and not self.tag:
+            raise ValueError('one of committish or tag is required')
+        return self
 
 
 class ReleaseUpdate(pydantic.BaseModel):
@@ -305,6 +332,107 @@ async def _fetch_release(
         return None
     return typing.cast(
         dict[str, typing.Any], graph.parse_agtype(rows[0]['release'])
+    )
+
+
+# Per-project release identity, in priority order.
+#
+# A tag is the identity whenever one exists: it names one shippable
+# artifact, while the commit it points at moves (the release workflow
+# bumps the version, then tags the bump commit).  Keying on the
+# committish is what let the post-bump SHA miss the node Imbi had
+# already created.
+#
+# The second clause is the cross-webhook case.  A ``deployment_status``
+# delivery creates the release from a commit alone, then the ``release``
+# delivery names the same artifact by tag; matching on the tag alone
+# misses that node and creates a sibling for one release.  A tagged
+# create therefore also claims an *untagged* node carrying its commit.
+# The reverse is deliberately not true -- an untagged create never
+# claims a tagged node, because a tag is a narrower identity than the
+# commit under it and two tags can share one commit.
+#
+# AGE has no NULL equality, so nullable comparisons go through COALESCE
+# to a sentinel.
+_RELEASE_BY_TAG: typing.Final[typing.LiteralString] = """
+MATCH (p:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+WHERE r.tag = {tag}
+RETURN r.id AS id
+"""
+
+_RELEASE_BY_COMMITTISH: typing.Final[typing.LiteralString] = """
+MATCH (p:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
+WHERE r.committish = {committish} AND COALESCE(r.tag, '') = ''
+RETURN r.id AS id
+"""
+
+# The predicate has to be the same one ``_RELEASE_BY_COMMITTISH``
+# matched on.  ``COALESCE(r.tag, {tag})`` replaces only NULL, so a node
+# stored with an empty-string tag would be matched as untagged, adopted,
+# and left untagged -- dropping the incoming tag and answering 200 with
+# a release that still has none.  ``ReleaseCreate`` now normalizes ``''``
+# to NULL so this endpoint cannot create such a node, but rows predating
+# that (or written by another client) still have to be nameable.
+_RELEASE_ADOPT_TAG: typing.Final[typing.LiteralString] = """
+MATCH (r:Release {{id: {release_id}}})
+SET r.tag = CASE WHEN COALESCE(r.tag, '') = '' THEN {tag} ELSE r.tag END,
+    r.updated_at = {now}
+RETURN r.id AS id
+"""
+
+
+class _ExistingRelease(typing.NamedTuple):
+    """A release a create would duplicate, and how it was matched."""
+
+    id: str
+    #: False when the match came from the committish, meaning the node is
+    #: untagged and a tagged create should adopt it.
+    by_tag: bool
+
+
+async def _find_existing_release(
+    db: graph.Graph,
+    *,
+    project_id: str,
+    tag: str | None,
+    committish: str,
+) -> _ExistingRelease | None:
+    """Return the release this create would duplicate, if any."""
+    if tag:
+        rows = await db.execute(
+            _RELEASE_BY_TAG,
+            {'project_id': project_id, 'tag': tag},
+            ['id'],
+        )
+        if rows:
+            return _ExistingRelease(
+                str(graph.parse_agtype(rows[0]['id'])), True
+            )
+    rows = await db.execute(
+        _RELEASE_BY_COMMITTISH,
+        {'project_id': project_id, 'committish': committish},
+        ['id'],
+    )
+    if rows:
+        return _ExistingRelease(str(graph.parse_agtype(rows[0]['id'])), False)
+    return None
+
+
+async def _adopt_release_tag(
+    db: graph.Graph,
+    *,
+    release_id: str,
+    tag: str,
+) -> None:
+    """Name an untagged release, leaving an already-tagged one alone."""
+    await db.execute(
+        _RELEASE_ADOPT_TAG,
+        {
+            'release_id': release_id,
+            'tag': tag,
+            'now': datetime.datetime.now(datetime.UTC).isoformat(),
+        },
+        ['id'],
     )
 
 
@@ -588,12 +716,26 @@ async def _hydrate_release_train(
 # -- Endpoints ----------------------------------------------------------
 
 
-@releases_router.post('/', status_code=201, response_model=ReleaseResponse)
+@releases_router.post(
+    '/',
+    status_code=201,
+    response_model=ReleaseResponse,
+    responses={
+        200: {
+            'model': ReleaseResponse,
+            'description': (
+                'The release already existed; it is returned unchanged '
+                'rather than conflicting.'
+            ),
+        },
+    },
+)
 async def create_release(
     org_slug: str,
     project_id: str,
     data: ReleaseCreate,
     db: graph.Pool,
+    response: fastapi.Response,
     background_tasks: fastapi.BackgroundTasks,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -602,46 +744,64 @@ async def create_release(
         ),
     ],
 ) -> ReleaseResponse:
-    """Create a new release for a project."""
+    """Create a release for a project, or return the one that exists.
+
+    The call is idempotent: a release matching the body is returned with
+    ``200`` rather than conflicting, because more than one webhook can
+    announce the same release.  A ``deployment_status`` delivery and a
+    ``release`` delivery describe one artifact from two angles, and the
+    first to arrive must not make the second an error -- nor a second
+    node.  Only a first create answers ``201``.
+    """
     if not await _project_exists(db, org_slug, project_id):
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Project {project_id!r} not found',
         )
 
-    # Per-project uniqueness pre-check. A tag is the release's
-    # identity: it names one shippable artifact, and the commit it
-    # points at moves (the release workflow bumps the version, then
-    # tags the bump commit). Matching on the committish instead let the
-    # post-bump SHA miss the node Imbi had already created and create a
-    # duplicate. Only an untagged release falls back to the committish.
-    # AGE has no NULL equality, so nullable comparisons go through
-    # COALESCE to a sentinel.
-    existing_query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})-[:HAS_RELEASE]->(r:Release)
-    WHERE (COALESCE({tag}, '') <> '' AND r.tag = {tag})
-       OR (COALESCE({tag}, '') = ''
-           AND r.committish = {committish}
-           AND COALESCE(r.tag, '') = '')
-    RETURN r.id AS id
-    """
-    existing = await db.execute(
-        existing_query,
-        {
-            'project_id': project_id,
-            'committish': data.committish,
-            'tag': data.tag,
-        },
-        ['id'],
+    # Local import avoids a circular import: project_deployments imports
+    # append_deployment_event from this module.
+    from imbi.api.endpoints.project_deployments import (
+        fetch_release_notes_for_tag,
+        resolve_committish_for_tag,
     )
-    if existing:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                f'Release tag={data.tag!r} committish={data.committish!r}'
-                f' already exists for project {project_id!r}'
-            ),
+
+    committish = data.committish
+    if committish is None:
+        # Guaranteed by ReleaseCreate.validate_identity.
+        assert data.tag is not None  # noqa: S101
+        committish = await resolve_committish_for_tag(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            tag=data.tag,
+            auth=auth,
         )
+        if committish is None:
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=(
+                    f'Could not resolve tag {data.tag!r} to a commit for'
+                    f' project {project_id!r}; supply committish explicitly'
+                ),
+            )
+
+    match = await _find_existing_release(
+        db, project_id=project_id, tag=data.tag, committish=committish
+    )
+    if match is not None:
+        # A tagged create that matched an untagged node adopts it: the
+        # deployment webhook records the commit before the release
+        # webhook names it, and leaving them apart is what produces the
+        # duplicate this endpoint exists to avoid.
+        if data.tag and not match.by_tag:
+            await _adopt_release_tag(db, release_id=match.id, tag=data.tag)
+        existing = await _fetch_release(db, org_slug, project_id, match.id)
+        if existing is not None:
+            response.status_code = 200
+            return _release_to_response(existing, project_id)
+        # Raced with a delete between the two reads; fall through and
+        # create the node rather than 404 a create.
 
     # Spec calls for ``auth.user.username``; the User model uses
     # ``email`` as the principal identity (no ``username`` field).
@@ -656,12 +816,6 @@ async def create_release(
     # and the release is still created (identified by committish + tag).
     description = data.description
     if data.tag and not description:
-        # Local import avoids a circular import: project_deployments
-        # imports append_deployment_event from this module.
-        from imbi.api.endpoints.project_deployments import (
-            fetch_release_notes_for_tag,
-        )
-
         description = await fetch_release_notes_for_tag(
             db,
             org_slug=org_slug,
@@ -673,7 +827,7 @@ async def create_release(
     props: dict[str, typing.Any] = {
         'id': nanoid.generate(),
         'tag': data.tag,
-        'committish': data.committish,
+        'committish': committish,
         'title': data.title,
         'description': description,
         'links': _serialize_links(data.links),

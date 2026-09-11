@@ -123,7 +123,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
     def test_create_success(self) -> None:
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],  # project_exists
-            [],  # version uniqueness check
+            [],  # existing-by-tag
+            [],  # existing-by-committish
             [{'release': _release_row()}],  # create
         ]
 
@@ -173,6 +174,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
             [],
+            [],
             [{'release': _release_row(created_by='deploy-bot')}],
         ]
         with (
@@ -203,7 +205,8 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         # UI's release history shows the "What's Changed" markdown.
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],  # project_exists
-            [],  # version uniqueness check
+            [],  # existing-by-tag
+            [],  # existing-by-committish
             [{'release': _release_row()}],  # create
         ]
         notes = "## What's Changed\n- Fixed the breadcrumb"
@@ -234,13 +237,14 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         enrich.assert_awaited_once()
         self.assertEqual(enrich.await_args.kwargs['tag'], '3.23.4')
         # The fetched body is what gets persisted as the node description.
-        create_params = self.mock_db.execute.call_args_list[2].args[1]
+        create_params = self.mock_db.execute.call_args_list[3].args[1]
         self.assertEqual(create_params['description'], notes)
 
     def test_create_does_not_enrich_when_description_supplied(self) -> None:
         # An explicit description is authoritative; no remote lookup runs.
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
+            [],
             [],
             [{'release': _release_row()}],
         ]
@@ -270,7 +274,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             )
         self.assertEqual(response.status_code, 201, response.text)
         enrich.assert_not_awaited()
-        create_params = self.mock_db.execute.call_args_list[2].args[1]
+        create_params = self.mock_db.execute.call_args_list[3].args[1]
         self.assertEqual(create_params['description'], 'Author-supplied notes')
 
     def test_create_project_not_found(self) -> None:
@@ -290,9 +294,16 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(response.status_code, 404)
 
     def test_create_duplicate_version_same_project(self) -> None:
+        """A repeat create is idempotent: 200 with the existing release.
+
+        Two webhook deliveries can announce one release -- a
+        ``deployment_status`` and a ``release`` -- so the second must
+        not be an error, nor a second node.
+        """
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
-            [{'id': RELEASE_ID}],  # duplicate
+            [{'id': RELEASE_ID}],  # duplicate, matched on the tag
+            [{'release': _release_row()}],  # re-read for the response
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -306,7 +317,10 @@ class CreateReleaseTestCase(_ReleasesTestBase):
                     'title': 'x',
                 },
             )
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['id'], RELEASE_ID)
+        # No CREATE ran: project_exists, by-tag, re-read.
+        self.assertEqual(self.mock_db.execute.await_count, 3)
 
     def test_create_dedupes_on_the_tag_not_the_committish(self) -> None:
         """The tag identifies the release; the commit it points at moves.
@@ -318,6 +332,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
             [{'id': RELEASE_ID}],  # matched on the tag alone
+            [{'release': _release_row()}],
         ]
         with mock.patch(
             'imbi.common.graph.parse_agtype',
@@ -331,16 +346,82 @@ class CreateReleaseTestCase(_ReleasesTestBase):
                     'title': 'x',
                 },
             )
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 200, response.text)
         query, params, _ = self.mock_db.execute.call_args_list[1].args
         self.assertIn('r.tag = {tag}', query)
         self.assertEqual('2.45.3', params['tag'])
+
+    def test_create_adopts_untagged_release_for_same_commit(self) -> None:
+        """A tagged create claims the untagged node for its commit.
+
+        The ``deployment_status`` rule creates the release from a commit
+        alone; the later ``release`` delivery names the same artifact by
+        tag. Matching on the tag alone missed that node and produced a
+        sibling for one release.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],  # nothing carries this tag yet
+            [{'id': RELEASE_ID}],  # but an untagged node has the commit
+            [{'id': RELEASE_ID}],  # adopt the tag
+            [{'release': _release_row(tag='5.0.2')}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '5.0.2',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['id'], RELEASE_ID)
+        adopt_query, adopt_params, _ = self.mock_db.execute.call_args_list[
+            3
+        ].args
+        self.assertIn("CASE WHEN COALESCE(r.tag, '') = ''", adopt_query)
+        self.assertEqual('5.0.2', adopt_params['tag'])
+        self.assertEqual(RELEASE_ID, adopt_params['release_id'])
+
+    def test_create_untagged_does_not_claim_a_tagged_release(self) -> None:
+        """An untagged create never adopts a tagged node.
+
+        A tag is a narrower identity than the commit beneath it, and two
+        tags can share one commit, so the claim only runs one way.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],  # by-committish, restricted to untagged nodes
+            [{'release': _release_row(tag=None)}],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.nanoid.generate',
+                return_value=RELEASE_ID,
+            ),
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={'committish': DEFAULT_COMMITTISH, 'title': 'x'},
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        query, _params, _ = self.mock_db.execute.call_args_list[1].args
+        self.assertIn("COALESCE(r.tag, '') = ''", query)
 
     def test_create_cross_project_duplicate_ok(self) -> None:
         """Uniqueness is per-project: another project may reuse 1.2.3."""
         self.mock_db.execute.side_effect = [
             [{'id': PROJECT_ID}],
-            [],  # no existing release under THIS project
+            [],  # no existing release under THIS project, by tag
+            [],  # nor by committish
             [{'release': _release_row()}],
         ]
         with (
@@ -380,6 +461,7 @@ class CreateReleaseTestCase(_ReleasesTestBase):
             ],
             # Second create: tagged
             [{'id': PROJECT_ID}],
+            [],
             [],
             [
                 {
@@ -423,6 +505,151 @@ class CreateReleaseTestCase(_ReleasesTestBase):
         self.assertEqual(second.json()['tag'], '2.2.0')
         self.assertEqual(second.json()['committish'], DEFAULT_COMMITTISH)
         self.assertEqual(second.json()['id'], 'rel-semver')
+
+    def test_create_resolves_committish_from_tag(self) -> None:
+        """A tag-only body resolves its commit through the capability.
+
+        A source host's ``release`` webhook carries no commit -- its
+        ``target_commitish`` names the branch the release was cut from
+        -- so the tag is all the caller has.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],  # project_exists
+            [],  # existing-by-tag
+            [],  # existing-by-committish
+            [{'release': _release_row(tag='5.0.2')}],  # create
+        ]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.nanoid.generate',
+                return_value=RELEASE_ID,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.project_deployments'
+                '.resolve_committish_for_tag',
+                new=mock.AsyncMock(return_value='9b2356a'),
+            ) as resolve,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={'tag': '5.0.2', 'title': 'octodns 5.0.2'},
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        resolve.assert_awaited_once()
+        self.assertEqual(resolve.await_args.kwargs['tag'], '5.0.2')
+        # The resolved commit is what the lookups and the node use.
+        self.assertEqual(
+            '9b2356a',
+            self.mock_db.execute.call_args_list[2].args[1]['committish'],
+        )
+        self.assertEqual(
+            '9b2356a',
+            self.mock_db.execute.call_args_list[3].args[1]['committish'],
+        )
+
+    def test_create_unresolvable_tag_is_422(self) -> None:
+        """An unresolvable tag is rejected, not stored without a commit."""
+        self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}]]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.project_deployments'
+                '.resolve_committish_for_tag',
+                new=mock.AsyncMock(return_value=None),
+            ),
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={'tag': 'nope', 'title': 'x'},
+            )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('supply committish', response.json()['detail'])
+
+    def test_create_without_tag_or_committish_is_422(self) -> None:
+        """A body that identifies no revision is rejected up front."""
+        response = self.client.post(self._url('/'), json={'title': 'x'})
+        self.assertEqual(response.status_code, 422)
+        self.mock_db.execute.assert_not_awaited()
+
+    def test_create_with_only_an_empty_tag_is_422(self) -> None:
+        """An empty tag identifies nothing, so it cannot stand alone."""
+        response = self.client.post(
+            self._url('/'), json={'tag': '', 'title': 'x'}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.mock_db.execute.assert_not_awaited()
+
+    def test_create_normalizes_an_empty_tag_to_none(self) -> None:
+        """An empty tag must not reach the graph.
+
+        The untagged lookup treats '' and NULL alike, so a node stored
+        with '' would match as untagged but could never then be named.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],  # project_exists
+            [],  # existing-by-committish; no by-tag lookup runs
+            [{'release': _release_row(tag=None)}],
+        ]
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.releases.nanoid.generate',
+                return_value=RELEASE_ID,
+            ),
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIsNone(
+            self.mock_db.execute.call_args_list[2].args[1]['tag']
+        )
+
+    def test_adopt_names_a_release_whose_tag_is_empty(self) -> None:
+        """The adopt predicate matches what the lookup matched on.
+
+        ``COALESCE(r.tag, {tag})`` replaces only NULL, so a node stored
+        with '' by an older writer would be adopted and left untagged --
+        dropping the incoming tag and answering 200 with a release that
+        still has none.
+        """
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],  # nothing carries this tag
+            [{'id': RELEASE_ID}],  # an ''-tagged node has the commit
+            [{'id': RELEASE_ID}],  # adopt
+            [{'release': _release_row(tag='5.0.2')}],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.post(
+                self._url('/'),
+                json={
+                    'tag': '5.0.2',
+                    'committish': DEFAULT_COMMITTISH,
+                    'title': 'x',
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        adopt_query, _params, _ = self.mock_db.execute.call_args_list[3].args
+        self.assertIn("CASE WHEN COALESCE(r.tag, '') = ''", adopt_query)
 
 
 class ListGetReleaseTestCase(_ReleasesTestBase):
