@@ -64,7 +64,7 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 
 # Install runtime dependencies
 RUN apt update \
- && apt install -y --no-install-recommends tini \
+ && apt install -y --no-install-recommends tini libcap2-bin \
  && rm -rf /var/lib/apt/lists/*
 
 # Create imbi user
@@ -73,8 +73,12 @@ RUN useradd -r -g users -d /app imbi
 # Copy Python venv with all services installed
 COPY --from=python-builder --chown=imbi:users /app/ /app/
 
-# Copy Caddy binary
+# Copy Caddy binary. COPY keeps the CAP_NET_BIND_SERVICE file capability
+# from the caddy image, and the kernel refuses to exec a binary with file
+# capabilities when privilege escalation is disabled (Kubernetes
+# allowPrivilegeEscalation=false). caddy listens on 8080, so drop it.
 COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
+RUN setcap -r /usr/local/bin/caddy
 
 # Copy Sentry CLI binary
 COPY --from=sentry-cli /bin/sentry-cli /usr/local/bin/sentry-cli
