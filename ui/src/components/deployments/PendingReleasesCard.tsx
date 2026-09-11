@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { useQuery } from '@tanstack/react-query'
 import {
   Ban,
   Check,
@@ -12,6 +13,7 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 
+import { compareDeploymentRefs } from '@/api/endpoints'
 import {
   CiFailureNotice,
   ciNeedsAcknowledgement,
@@ -27,7 +29,11 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import type { ChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
-import type { RecentCommit, ReleaseHistoryEntry } from '@/types'
+import type {
+  DeploymentCommit,
+  RecentCommit,
+  ReleaseHistoryEntry,
+} from '@/types'
 
 import { UpToDateCard } from './PendingPromoteCard'
 import type { PipelineStage } from './pipeline'
@@ -35,6 +41,18 @@ import { commitRange, compareTags } from './pipeline'
 import { ReleaseNotesMarkdown } from './ReleaseNotesMarkdown'
 import { StageCardShell } from './StageCardShell'
 import type { DeploymentActions } from './useDeploymentActions'
+
+/** The fields the changes list renders; both commit shapes carry them. */
+type ChangeCommit = Pick<
+  DeploymentCommit,
+  | 'ci_status'
+  | 'drift_detected'
+  | 'message'
+  | 'sha'
+  | 'short_sha'
+  | 'tag'
+  | 'url'
+>
 
 interface PendingReleasesCardProps {
   accent: ChipColors | null
@@ -180,6 +198,8 @@ export function PendingReleasesCard({
           <>
             <SingleReleaseChanges
               entry={active}
+              orgSlug={orgSlug}
+              projectId={projectId}
               recentCommits={recentCommits}
               stage={stage}
             />
@@ -365,20 +385,51 @@ function ReleaseStack({
 }
 
 /**
- * Commit list for the single-pending-release case, sliced from the
- * synced history between the env's current release and the pending one.
+ * Commit list for the single-pending-release case: what deploying
+ * ``entry`` brings into the env, i.e. ``current..pending``.
+ *
+ * Read from ``/deployments/compare`` — the source host's own ancestry
+ * walk — rather than sliced out of the synced ``recent-commits`` window.
+ * That window is ordered by ``pushed_at``, and a positional slice of it
+ * is only right while push order and ancestry agree: a commit re-synced
+ * after the fact sorts into the wrong release and pushes a real one out
+ * (#308). The slice remains the fallback when the compare fails, and
+ * when the env runs nothing yet (there is no base to compare against).
  */
 function SingleReleaseChanges({
   entry,
+  orgSlug,
+  projectId,
   recentCommits,
   stage,
 }: {
   entry: ReleaseHistoryEntry
+  orgSlug: string
+  projectId: string
   recentCommits: RecentCommit[]
   stage: PipelineStage
 }) {
   const baseSha = stage.current?.release?.committish ?? null
-  const commits = commitRange(recentCommits, entry.sha, baseSha)
+  const { data: compare, isError } = useQuery({
+    enabled: !!baseSha,
+    queryFn: ({ signal }) =>
+      compareDeploymentRefs(
+        orgSlug,
+        projectId,
+        baseSha as string,
+        entry.sha,
+        undefined,
+        signal,
+      ),
+    queryKey: ['compare', orgSlug, projectId, baseSha, entry.sha],
+  })
+  // The compare answers oldest-first; the list reads newest-first like
+  // the synced history it stands in for.
+  const commits: ChangeCommit[] = compare
+    ? [...compare.commits].reverse()
+    : !baseSha || isError
+      ? commitRange(recentCommits, entry.sha, baseSha)
+      : []
   if (commits.length === 0) return null
   return (
     <div className="flex flex-col gap-3">
