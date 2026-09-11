@@ -570,6 +570,50 @@ async def _last_known_sha(project_id: str) -> str | None:
     return None
 
 
+async def _stored_pushed_at(
+    project_id: str, shas: collections.abc.Iterable[str]
+) -> dict[str, datetime.datetime]:
+    """``pushed_at`` already recorded for each of *shas*, keyed by sha.
+
+    A re-sync must carry the stored push time forward rather than stamp
+    the commit with the current clock.  ``pushed_at`` is what orders the
+    recent-commits feed and picks :func:`_last_known_sha`, and the
+    ``commits`` table is a ``ReplacingMergeTree`` versioned on
+    ``recorded_at`` -- so a row re-inserted with a fresh ``pushed_at``
+    (a ``workflow_run`` delivery re-syncing a commit stored days earlier)
+    replaces the original and moves the commit out of push order.
+
+    Reads the *earliest* ``pushed_at`` still on disk for each sha, which
+    is the closest thing to the real push time when an earlier re-sync has
+    already re-stamped the row and the parts have not merged yet.
+    Best-effort: a lookup failure answers ``{}`` and the caller stamps
+    every row with the current time, as before.
+    """
+    wanted = sorted({sha for sha in shas if sha})
+    if not wanted:
+        return {}
+    try:
+        rows = await clickhouse.query(
+            'SELECT sha, min(pushed_at) AS pushed_at FROM commits '
+            'WHERE project_id = {pid:String} '
+            'AND sha IN {shas:Array(String)} GROUP BY sha',
+            {'pid': project_id, 'shas': wanted},
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug(
+            'github-commit-sync stored pushed_at lookup failed for %s',
+            project_id,
+            exc_info=True,
+        )
+        return {}
+    out: dict[str, datetime.datetime] = {}
+    for row in rows:
+        pushed_at = clickhouse.as_utc_or_none(row.get('pushed_at'))
+        if row.get('sha') and pushed_at is not None:
+            out[str(row['sha'])] = pushed_at
+    return out
+
+
 async def _fetch_recent_commits(
     client: httpx.AsyncClient, head: str, limit: int, *, max_wait: float
 ) -> list[dict[str, typing.Any]]:
@@ -1030,12 +1074,17 @@ async def sync_commits(
     user_map = await _resolve_author_users(
         raw, ctx.resolve_user_by_identity, base
     )
+    # A workflow_run re-sync of an already-stored commit must keep the
+    # push time it was first recorded with; see _stored_pushed_at.
+    stored = await _stored_pushed_at(
+        ctx.project_id, (str(i['sha']) for i in raw if i.get('sha'))
+    )
     records: list[pydantic.BaseModel] = [
         _commit_record(
             item,
             project_id=ctx.project_id,
             ref=ref,
-            pushed_at=pushed_at,
+            pushed_at=stored.get(str(item['sha']), pushed_at),
             author_user=_author_user(item, user_map),
             ci_status=ci_by_sha.get(str(item['sha']), 'unknown'),
         )
@@ -1558,12 +1607,18 @@ class GitHubCommitSync(CommitSyncCapability):
         user_map = await _resolve_author_users(
             raw_commits, ctx.resolve_user_by_identity, base
         )
+        # Re-running the backfill must not collapse every stored commit
+        # onto one push time; only commits new to the table get now().
+        stored = await _stored_pushed_at(
+            ctx.project_id,
+            (str(i['sha']) for i in raw_commits if i.get('sha')),
+        )
         commit_records: list[pydantic.BaseModel] = [
             _commit_record(
                 item,
                 project_id=ctx.project_id,
                 ref=branch,
-                pushed_at=pushed_at,
+                pushed_at=stored.get(str(item['sha']), pushed_at),
                 author_user=_author_user(item, user_map),
                 ci_status=ci_by_sha.get(str(item['sha']), 'unknown'),
             )
@@ -1721,12 +1776,15 @@ class GitHubCommitSync(CommitSyncCapability):
         user_map = await _resolve_author_users(
             raw, ctx.resolve_user_by_identity, base
         )
+        stored = await _stored_pushed_at(
+            ctx.project_id, (str(i['sha']) for i in raw if i.get('sha'))
+        )
         records: list[pydantic.BaseModel] = [
             _commit_record(
                 item,
                 project_id=ctx.project_id,
                 ref=branch,
-                pushed_at=pushed_at,
+                pushed_at=stored.get(str(item['sha']), pushed_at),
                 author_user=_author_user(item, user_map),
                 ci_status=ci_by_sha.get(str(item['sha']), 'unknown'),
             )

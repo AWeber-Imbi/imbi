@@ -121,6 +121,35 @@ def _event(body: dict[str, typing.Any]) -> dict[str, typing.Any]:
     }
 
 
+def _query_router(
+    *,
+    last_known: str | None = None,
+    stored: dict[str, datetime.datetime] | None = None,
+) -> mock.AsyncMock:
+    """A ``clickhouse.query`` stand-in that answers by statement shape.
+
+    ``stored`` maps sha -> the ``pushed_at`` already on record for it,
+    answering the carry-forward lookup; ``last_known`` answers the
+    ``_last_known_sha`` probe.  Anything else reads as an empty table.
+    """
+
+    async def _answer(
+        sql: str, params: dict[str, typing.Any] | None = None
+    ) -> list[dict[str, typing.Any]]:
+        params = params or {}
+        if 'min(pushed_at)' in sql:
+            return [
+                {'sha': sha, 'pushed_at': pushed_at}
+                for sha, pushed_at in (stored or {}).items()
+                if sha in params.get('shas', ())
+            ]
+        if 'argMax(sha, pushed_at)' in sql:
+            return [{'sha': last_known}] if last_known else []
+        return []
+
+    return mock.AsyncMock(side_effect=_answer)
+
+
 def _commit(
     sha: str, *, login: str = 'octocat', author_id: int = 583231
 ) -> dict[str, object]:
@@ -393,6 +422,96 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('pass', records[0].ci_status)
 
     @respx.mock
+    async def test_resync_keeps_the_stored_push_time(self) -> None:
+        """A re-sync of a stored commit must not re-stamp ``pushed_at``.
+
+        The re-inserted row wins under ``ReplacingMergeTree``, so a fresh
+        ``pushed_at`` lifts a commit stored days earlier above everything
+        pushed since -- and the recent-commits feed, and every release
+        range sliced out of it, is ordered by that column (#308).  The
+        re-sync still refreshes what it is for: the CI status.
+        """
+        head = 'b' * 40
+        first_pushed = datetime.datetime(
+            2026, 9, 9, 15, 8, 54, tzinfo=datetime.UTC
+        )
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/commits/{head}'
+        ).mock(return_value=httpx.Response(200, json=_commit(head)))
+        respx.get(_check_runs_url(head)).mock(
+            return_value=httpx.Response(200, json=_check_runs('success'))
+        )
+        query = _query_router(stored={head: first_pushed})
+        with mock.patch(_QUERY, new=query):
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=_CREDS,
+                    external_identifier='',
+                    action_config=_WORKFLOW_RUN_CONFIG,
+                    event=_event(_workflow_run(head=head)),
+                )
+        _, records = _await_args(insert)
+        self.assertEqual(first_pushed, records[0].pushed_at)
+        self.assertEqual('pass', records[0].ci_status)
+        lookup = next(
+            c for c in query.await_args_list if 'min(pushed_at)' in c.args[0]
+        )
+        self.assertEqual([head], lookup.args[1]['shas'])
+
+    @respx.mock
+    async def test_only_new_commits_get_the_current_push_time(self) -> None:
+        base, head = 'a' * 40, 'b' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/compare/{base}...{head}'
+        ).mock(
+            return_value=httpx.Response(
+                200, json={'commits': [_commit('c' * 40), _commit('d' * 40)]}
+            )
+        )
+        first_pushed = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        with mock.patch(
+            _QUERY, new=_query_router(stored={'c' * 40: first_pushed})
+        ):
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=_CREDS,
+                    external_identifier='',
+                    action_config=commits.SyncCommitsConfig(),
+                    event=_event(_push(before=base, after=head)),
+                )
+        _, records = _await_args(insert)
+        by_sha = {r.sha: r for r in records}
+        self.assertEqual(first_pushed, by_sha['c' * 40].pushed_at)
+        self.assertGreater(by_sha['d' * 40].pushed_at, first_pushed)
+
+    @respx.mock
+    async def test_push_time_lookup_failure_stamps_now(self) -> None:
+        """The carry-forward is best-effort; a lookup error must not
+        cost the sync."""
+        head = 'b' * 40
+        respx.get(
+            f'https://api.github.com/repos/octo/demo/commits/{head}'
+        ).mock(return_value=httpx.Response(200, json=_commit(head)))
+        respx.get(_check_runs_url(head)).mock(
+            return_value=httpx.Response(200, json=_check_runs('success'))
+        )
+        failing = mock.AsyncMock(side_effect=RuntimeError('clickhouse down'))
+        with mock.patch(_QUERY, new=failing):
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.sync_commits(
+                    ctx=_ctx(),
+                    credentials=_CREDS,
+                    external_identifier='',
+                    action_config=_WORKFLOW_RUN_CONFIG,
+                    event=_event(_workflow_run(head=head)),
+                )
+        insert.assert_awaited_once()
+        _, records = _await_args(insert)
+        self.assertEqual(head, records[0].sha)
+
+    @respx.mock
     async def test_absent_before_never_consults_last_known_sha(self) -> None:
         """The single-commit path must not fall through to a compare.
 
@@ -407,8 +526,11 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         respx.get(_check_runs_url(head)).mock(
             return_value=httpx.Response(200, json=_check_runs('success'))
         )
+        compare = respx.get(url__regex=r'.*/compare/.+\.\.\..+').mock(
+            return_value=httpx.Response(200, json={'commits': []})
+        )
         with (
-            mock.patch(_QUERY, new=mock.AsyncMock()) as query,
+            mock.patch(_QUERY, new=_query_router(last_known=head)) as query,
             mock.patch(_INSERT, new=mock.AsyncMock()) as insert,
         ):
             await commits.sync_commits(
@@ -418,7 +540,16 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=_WORKFLOW_RUN_CONFIG,
                 event=_event(_workflow_run(head=head)),
             )
-        query.assert_not_awaited()
+        # The pushed_at carry-forward reads the table too; what must not
+        # run is the last-known-sha probe (and the compare it would feed).
+        self.assertFalse(
+            [
+                c
+                for c in query.await_args_list
+                if 'argMax(sha, pushed_at)' in c.args[0]
+            ]
+        )
+        self.assertFalse(compare.called)
         insert.assert_awaited_once()
 
     @respx.mock
@@ -1552,6 +1683,37 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     @respx.mock
+    async def test_rerun_keeps_stored_push_times(self) -> None:
+        """A backfill re-run must not collapse the stored history onto one
+        push time; only commits new to the table are stamped now."""
+        self._mock_default_branch()
+        respx.get(f'{self._REPO}/commits').mock(
+            return_value=httpx.Response(
+                200, json=[_commit('c' * 40), _commit('d' * 40)]
+            )
+        )
+        respx.get(f'{self._REPO}/releases').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.get(f'{self._REPO}/git/matching-refs/tags').mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        first_pushed = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        with mock.patch(
+            _QUERY, new=_query_router(stored={'d' * 40: first_pushed})
+        ):
+            with mock.patch(_INSERT, new=mock.AsyncMock()) as insert:
+                await commits.GitHubCommitSync().sync_all_history(
+                    ctx=self._ctx(), credentials=_CREDS
+                )
+        commit_call = next(
+            c for c in insert.await_args_list if c.args[0] == 'commits'
+        )
+        by_sha = {r.sha: r for r in commit_call.args[1]}
+        self.assertEqual(first_pushed, by_sha['d' * 40].pushed_at)
+        self.assertGreater(by_sha['c' * 40].pushed_at, first_pushed)
+
+    @respx.mock
     async def test_bounds_ci_status_to_recent_commits(self) -> None:
         deployment._CHECKS_DISABLED_TOKENS.clear()
         self._mock_default_branch()
@@ -2124,6 +2286,27 @@ class SyncNewCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         record = insert.await_args_list[0].args[1][0]
         self.assertEqual('main', record.ref)
+
+    @respx.mock
+    async def test_keeps_the_stored_push_time_on_resync(self) -> None:
+        self._mock_default_branch()
+        respx.get(url__regex=r'.*/compare/.+\.\.\..+').mock(
+            return_value=httpx.Response(
+                200, json={'commits': [_commit('c' * 40), _commit('d' * 40)]}
+            )
+        )
+        first_pushed = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        with mock.patch(
+            _QUERY,
+            new=_query_router(
+                last_known='a' * 40, stored={'c' * 40: first_pushed}
+            ),
+        ):
+            written, insert = await self._sync()
+        self.assertEqual(2, written)
+        by_sha = {r.sha: r for r in insert.await_args_list[0].args[1]}
+        self.assertEqual(first_pushed, by_sha['c' * 40].pushed_at)
+        self.assertGreater(by_sha['d' * 40].pushed_at, first_pushed)
 
     @respx.mock
     async def test_since_window_when_nothing_stored(self) -> None:
