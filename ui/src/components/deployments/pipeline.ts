@@ -19,6 +19,10 @@
 // All commit/tag data comes from imbi's synced ClickHouse history
 // (``/deployments/recent-commits`` + ``/deployments/release-history``),
 // never the live source host — the sidebar's sync action refreshes it.
+// The one exception is the single-pending-release changelog, which asks
+// ``/deployments/compare`` for the exact ``current..pending`` range: the
+// synced window is push-ordered, and ``commitRange``'s positional slice
+// of it is only right while push order and ancestry agree (#308).
 import { upstreamBySlug } from '@/lib/environment-chains'
 import type {
   CurrentReleaseEnvironment,

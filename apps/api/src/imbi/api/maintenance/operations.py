@@ -495,6 +495,85 @@ async def execute_deployment_status_repair(
     return 'succeeded'
 
 
+async def _commit_pushed_at_repair(
+    project_id: str, *, ctx: log.MaintenanceContext, dry_run: bool
+) -> ExecuteOutcome:
+    from imbi.api import commit_pushed_at_repair
+
+    action = 'commit-pushed-at-check' if dry_run else 'commit-pushed-at-repair'
+    summary = await commit_pushed_at_repair.repair_project(
+        project_id, dry_run=dry_run
+    )
+    if not summary.deliveries:
+        return _skip(ctx, action, 'No push deliveries on record.')
+    if not summary.examined:
+        # Deliveries exist but name no commit stored under the branch
+        # they were pushed to -- the sync tracks another branch, or has
+        # not caught up.  Nothing here for the repair to judge.
+        return _skip(
+            ctx,
+            action,
+            'No stored commit matches a push delivery to its branch.',
+            deliveries=summary.deliveries,
+        )
+    if not summary.repaired:
+        # Every commit a delivery accounts for already carries its push
+        # time.  Distinguish this from "no deliveries" so an operator can
+        # tell a repaired project from one the repair cannot reach.
+        return _skip(
+            ctx,
+            action,
+            f'{summary.examined} commit(s) already carry their push time.',
+            deliveries=summary.deliveries,
+            examined=summary.examined,
+        )
+    ctx.log.record(
+        'succeeded',
+        action,
+        f'{summary.repaired} of {summary.examined} commit(s) re-stamped '
+        f'after their push, by up to {summary.largest_shift_seconds}s'
+        + (' (dry run).' if dry_run else '; push times restored.'),
+        deliveries=summary.deliveries,
+        examined=summary.examined,
+        repaired=summary.repaired,
+        largest_shift_seconds=summary.largest_shift_seconds,
+        dry_run=dry_run,
+    )
+    return 'succeeded'
+
+
+async def execute_commit_pushed_at_check(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Report commits whose ``pushed_at`` a re-sync overwrote.
+
+    Writes nothing.  See :mod:`imbi.api.commit_pushed_at_repair`.
+    """
+    del db, client
+    return await _commit_pushed_at_repair(project_id, ctx=ctx, dry_run=True)
+
+
+async def execute_commit_pushed_at_repair(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Restore the push time of commits a re-sync overwrote.
+
+    Reads only ClickHouse -- the push deliveries in ``events`` and the
+    ``commits`` rows -- so it costs no API calls and cannot be
+    rate-limited.  Skipped means nothing needed restoring.
+    """
+    del db, client
+    return await _commit_pushed_at_repair(project_id, ctx=ctx, dry_run=False)
+
+
 async def execute_rescore(
     db: graph.Graph,
     client: valkey.Valkey,
