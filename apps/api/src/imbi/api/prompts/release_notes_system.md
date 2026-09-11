@@ -67,9 +67,9 @@ Link related work inline:
 - Skip these false positives: CVE-\d+, BLUE-\d+, GREEN-\d+, GREY-\d+,
   PURPLE-\d+, RED-\d+, YELLOW-\d+
 
-If dependency files (package.json, requirements*.txt, pyproject.toml,
-Pipfile) show version changes in the diff, add one bullet under Changed:
-  "Updated internal dependencies: foo from 1.0.0 to 2.0.0, ..."
+When the prompt includes a "Dependency changes" section, those are
+pre-extracted facts — include each one as a bullet under `### Changed`
+exactly as supplied. Do not invent, omit, or rephrase them.
 
 ```markdown
 ## What's Changed
@@ -79,7 +79,7 @@ Pipfile) show version changes in the diff, add one bullet under Changed:
 
 ### Changed
 - Description (#12)
-- Updated internal dependencies: foo from 1.0.0 to 2.0.0
+- Updated `@lingui/react` from 5.6.0 to 5.6.1
 
 ### Deprecated
 - Description ([TICKET-123](https://aweber.atlassian.net/browse/TICKET-123))
