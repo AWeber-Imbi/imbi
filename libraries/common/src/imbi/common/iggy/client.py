@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import logging
 import typing
+import urllib.parse
 
 import orjson
 import pydantic
@@ -41,6 +42,41 @@ PARTITIONS_COUNT = 1
 #: found``; with ``PARTITIONS_COUNT`` at 1, publishing to partition 0 is
 #: equivalent to the balanced partitioning the ADR describes.
 PARTITION_ID = 0
+
+
+def connection_string(url: pydantic.AnyUrl) -> str:
+    """Build the SDK connection string for ``url``.
+
+    pydantic percent-encodes characters such as ``=``, ``+`` and ``/`` in
+    the userinfo when it serializes a URL, and the SDK's
+    ``from_connection_string`` splits on ``@`` and ``:`` without decoding.
+    A base64 password therefore reaches the server encoded and is
+    rejected, so the userinfo is decoded here.
+
+    Because the SDK does not decode, a decoded username or password that
+    itself contains ``@`` or ``:`` cannot be expressed in its connection
+    string, so ``ValueError`` is raised rather than sending misparsed
+    credentials.
+    """
+    userinfo = ''
+    if url.username is not None:
+        username = urllib.parse.unquote(url.username)
+        password = (
+            urllib.parse.unquote(url.password)
+            if url.password is not None
+            else None
+        )
+        for value in (username, password):
+            if value is not None and ('@' in value or ':' in value):
+                raise ValueError(
+                    'Iggy username and password must not contain "@" or ":"'
+                )
+        userinfo = username
+        if password is not None:
+            userinfo += f':{password}'
+        userinfo += '@'
+    query = f'?{url.query}' if url.query else ''
+    return f'{url.scheme}://{userinfo}{url.host}:{url.port}{query}'
 
 
 class PublishError(Exception):
@@ -213,7 +249,7 @@ class Iggy:
             )
             try:
                 client = IggyClient.from_connection_string(
-                    str(self._settings.url)
+                    connection_string(self._settings.url)
                 )
                 async with asyncio.timeout(self._settings.connect_timeout):
                     await client.connect()
