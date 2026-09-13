@@ -2,6 +2,7 @@ import http
 import logging
 import re
 import typing
+import urllib.parse
 
 import celpy
 import httpx
@@ -26,8 +27,44 @@ class ActionSettings(pydantic_settings.BaseSettings):
         default=pydantic.HttpUrl('http://localhost:8000'),
         validation_alias='IMBI_INTERNAL_API_URL',
     )
+    # imbi-api mounts every router under the path component of its *public*
+    # URL (``imbi.api.settings.Server.api_prefix``), while
+    # ``IMBI_INTERNAL_API_URL`` is a bare origin. The prefix therefore has to
+    # be re-derived here -- see :attr:`api_base_url`.
+    api_public_url: str = pydantic.Field(
+        default='', validation_alias='IMBI_API_URL'
+    )
     # The gateway's own API key for imbi-api, ``IMBI_GATEWAY_API_TOKEN``.
     api_token: str
+
+    @pydantic.field_validator('api_public_url')
+    @classmethod
+    def _validate_api_public_url(cls, value: str) -> str:
+        """Require an absolute URL, or nothing at all.
+
+        Only the path is used, and :func:`urllib.parse.urlparse` reads a
+        schemeless value as one: ``imbi.example.com/api`` parses to that
+        whole string as the path, so :attr:`api_base_url` would concatenate
+        to ``http://imbi-api:8000imbi.example.com/api`` and turn every action
+        into a 404. A startup failure names the misconfigured variable.
+        """
+        if value and not urllib.parse.urlparse(value).scheme:
+            raise ValueError(
+                'must be an absolute URL (e.g. https://imbi.example.com/api);'
+                f' got {value!r}'
+            )
+        return value
+
+    @property
+    def api_base_url(self) -> str:
+        """Return the in-cluster imbi-api base URL, prefix included.
+
+        Every path :class:`ImbiClient` builds must be joined onto this rather
+        than onto :attr:`imbi_url`: ``PATCH http://imbi-api:8000/organizations/
+        ...`` is a 404 when the deployment mounts the API at ``/api``.
+        """
+        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
+        return str(self.imbi_url).rstrip('/') + prefix
 
 
 LOGGER = logging.getLogger(__name__)
@@ -73,7 +110,7 @@ class ImbiClient(httpx.AsyncClient):
     def __init__(self) -> None:
         settings = helpers.settings_from_environment(ActionSettings)
         super().__init__(
-            base_url=str(settings.imbi_url),
+            base_url=settings.api_base_url,
             headers={
                 'authorization': f'Bearer {settings.api_token}',
                 'user-agent': f'imbi-gateway/{version}',

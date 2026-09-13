@@ -62,6 +62,26 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
         self._env.stop()
 
     @respx.mock
+    async def test_patch_carries_the_api_prefix(self) -> None:
+        respx.get('https://sonarqube.example.com/api/measures/component').mock(
+            return_value=httpx.Response(200, json=_SAMPLE_RESPONSE)
+        )
+        patch_route = respx.patch(
+            'http://imbi-api.example.com/api/organizations/org/projects/proj'
+        ).mock(return_value=httpx.Response(204))
+        with unittest.mock.patch.dict(
+            os.environ, {'IMBI_API_URL': 'https://imbi.example.com/api'}
+        ):
+            await actions.update_project_from_webhook(
+                ctx=_ctx(),
+                credentials=_DEFAULT_CREDS,
+                external_identifier='proj-1',
+                action_config=_config(),
+                event={},
+            )
+        self.assertTrue(patch_route.called)
+
+    @respx.mock
     async def test_happy_path_patches_all_metrics(self) -> None:
         respx.get('https://sonarqube.example.com/api/measures/component').mock(
             return_value=httpx.Response(200, json=_SAMPLE_RESPONSE)
