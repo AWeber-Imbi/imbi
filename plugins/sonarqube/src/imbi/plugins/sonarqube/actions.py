@@ -36,6 +36,21 @@ class _ImbiSettings(pydantic_settings.BaseSettings):
     )
     api_token: str
 
+    @pydantic.field_validator('api_public_url')
+    @classmethod
+    def _validate_api_public_url(cls, value: str) -> str:
+        """Require an absolute URL, or nothing at all.
+
+        A schemeless ``imbi.example.com/api`` parses as one long path and
+        :attr:`api_base_url` would concatenate it onto the origin.
+        """
+        if value and not urllib.parse.urlparse(value).scheme:
+            raise ValueError(
+                'must be an absolute URL (e.g. https://imbi.example.com/api);'
+                f' got {value!r}'
+            )
+        return value
+
     @property
     def api_base_url(self) -> str:
         """Return the in-cluster imbi-api base URL, prefix included."""

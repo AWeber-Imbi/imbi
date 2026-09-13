@@ -3,6 +3,7 @@ import unittest
 import unittest.mock
 
 import httpx
+import pydantic
 import respx
 
 from imbi.common.plugins import base as plugin_base
@@ -60,6 +61,15 @@ class UpdateProjectFromWebhookTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         self._env.stop()
+
+    def test_rejects_schemeless_public_url(self) -> None:
+        with (
+            unittest.mock.patch.dict(
+                os.environ, {'IMBI_API_URL': 'imbi.example.com/api'}
+            ),
+            self.assertRaises(pydantic.ValidationError),
+        ):
+            actions._ImbiSettings()  # type: ignore[call-arg]
 
     @respx.mock
     async def test_patch_carries_the_api_prefix(self) -> None:
