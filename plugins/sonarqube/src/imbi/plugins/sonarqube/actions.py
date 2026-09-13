@@ -2,6 +2,7 @@
 
 import logging
 import typing
+import urllib.parse
 
 import httpx
 import pydantic
@@ -28,7 +29,33 @@ class _ImbiSettings(pydantic_settings.BaseSettings):
         default=pydantic.HttpUrl('http://localhost:8000'),
         validation_alias='IMBI_INTERNAL_API_URL',
     )
+    # imbi-api mounts its routers under the path of its *public* URL, while
+    # ``IMBI_INTERNAL_API_URL`` is a bare origin; see :attr:`api_base_url`.
+    api_public_url: str = pydantic.Field(
+        default='', validation_alias='IMBI_API_URL'
+    )
     api_token: str
+
+    @pydantic.field_validator('api_public_url')
+    @classmethod
+    def _validate_api_public_url(cls, value: str) -> str:
+        """Require an absolute URL, or nothing at all.
+
+        A schemeless ``imbi.example.com/api`` parses as one long path and
+        :attr:`api_base_url` would concatenate it onto the origin.
+        """
+        if value and not urllib.parse.urlparse(value).scheme:
+            raise ValueError(
+                'must be an absolute URL (e.g. https://imbi.example.com/api);'
+                f' got {value!r}'
+            )
+        return value
+
+    @property
+    def api_base_url(self) -> str:
+        """Return the in-cluster imbi-api base URL, prefix included."""
+        prefix = urllib.parse.urlparse(self.api_public_url).path.rstrip('/')
+        return str(self.imbi_url).rstrip('/') + prefix
 
 
 class MetricMapping(pydantic.BaseModel):
@@ -191,7 +218,7 @@ async def _patch_imbi_project(
     """
     settings = _ImbiSettings()  # type: ignore[call-arg]
     url = (
-        str(settings.imbi_url).rstrip('/')
+        settings.api_base_url
         + f'/organizations/{org_slug}/projects/{project_id}'
     )
     headers = {

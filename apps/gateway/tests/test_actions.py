@@ -3036,3 +3036,54 @@ class ActionSettingsTests(helpers.TestCase):
             self.assertRaises(pydantic.ValidationError),
         ):
             actions.ActionSettings()
+
+    def test_api_base_url_joins_public_path_onto_internal_origin(
+        self,
+    ) -> None:
+        with self.override_environment(
+            IMBI_GATEWAY_API_TOKEN=_TOKEN,
+            IMBI_INTERNAL_API_URL='http://imbi-api:8000',
+            IMBI_API_URL='https://imbi.example.com/api/',
+        ):
+            settings = actions.ActionSettings()
+        self.assertEqual('http://imbi-api:8000/api', settings.api_base_url)
+
+    def test_api_base_url_without_public_url_is_bare_origin(self) -> None:
+        with self.override_environment(
+            IMBI_GATEWAY_API_TOKEN=_TOKEN,
+            IMBI_INTERNAL_API_URL='http://imbi-api:8000',
+            IMBI_API_URL=None,
+        ):
+            settings = actions.ActionSettings()
+        self.assertEqual('http://imbi-api:8000', settings.api_base_url)
+
+    def test_rejects_schemeless_public_url(self) -> None:
+        with (
+            self.override_environment(
+                IMBI_GATEWAY_API_TOKEN=_TOKEN,
+                IMBI_API_URL='imbi.example.com/api',
+            ),
+            self.assertRaises(pydantic.ValidationError),
+        ):
+            actions.ActionSettings()
+
+
+class ImbiClientTests(helpers.TestCase):
+    async def test_requests_carry_the_api_prefix(self) -> None:
+        transport = httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, json={'path': request.url.path}
+            )
+        )
+        with self.override_environment(
+            IMBI_GATEWAY_API_TOKEN=_TOKEN,
+            IMBI_INTERNAL_API_URL='http://imbi-api:8000',
+            IMBI_API_URL='https://imbi.example.com/api',
+        ):
+            client = actions.ImbiClient()
+        client._transport = transport
+        async with client:
+            response = await client.patch_project('org', 'proj', [])
+        self.assertEqual(
+            '/api/organizations/org/projects/proj', response.json()['path']
+        )
