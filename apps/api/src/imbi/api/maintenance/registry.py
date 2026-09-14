@@ -26,6 +26,8 @@ MaintenanceSlug = typing.Literal[
     'deployment-resync',
     'deployment-sweep',
     'deployment-status-repair',
+    'commit-pushed-at-check',
+    'commit-pushed-at-repair',
     'opslog-backfill',
     'orphan-release-check',
     'orphan-release-purge',
@@ -164,6 +166,39 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_deployment_status_repair,
+        ),
+        OperationDefinition(
+            slug='commit-pushed-at-check',
+            label='Report Re-stamped Commit Push Times (dry run)',
+            description=(
+                'Count the commits whose recorded push time a later '
+                're-sync overwrote -- the full backfill stamping a whole '
+                'history with one instant, or a completed workflow run '
+                're-syncing its head commit -- without changing anything. '
+                'Compares each commit against the push delivery that '
+                'first carried it to its branch. Run this before Repair '
+                'to see the scope.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_commit_pushed_at_check,
+        ),
+        OperationDefinition(
+            slug='commit-pushed-at-repair',
+            label='Repair Re-stamped Commit Push Times',
+            description=(
+                'Restore the push time of every commit a later re-sync '
+                'overwrote, from the push delivery that first carried it '
+                'to its branch. Push order is what the recent-commits '
+                'feed and the release ranges sliced from it sort on, so '
+                'a re-stamped commit shows up in the wrong release. '
+                'Commits with no push delivery on record are left alone. '
+                'Reads only ClickHouse, so it makes no API calls and '
+                'cannot be rate-limited. Safe to re-run.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_commit_pushed_at_repair,
         ),
         OperationDefinition(
             slug='opslog-backfill',

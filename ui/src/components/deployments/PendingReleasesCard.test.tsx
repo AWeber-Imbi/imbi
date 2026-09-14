@@ -6,6 +6,8 @@ import * as endpoints from '@/api/endpoints'
 import { render } from '@/test/utils'
 import type {
   CurrentReleaseEnvironment,
+  DeploymentCommit,
+  DeploymentCompareResult,
   Environment,
   RecentCommit,
   ReleaseHistoryEntry,
@@ -19,7 +21,11 @@ import type { DeploymentActions } from './useDeploymentActions'
 vi.mock('@/api/endpoints', async () => {
   const actual =
     await vi.importActual<typeof import('@/api/endpoints')>('@/api/endpoints')
-  return { ...actual, getCommitCheckStatus: vi.fn() }
+  return {
+    ...actual,
+    compareDeploymentRefs: vi.fn(),
+    getCommitCheckStatus: vi.fn(),
+  }
 })
 
 const ENV = {
@@ -136,6 +142,35 @@ const renderCard = (
     />,
   )
 
+// What the source host says ``current..pending`` contains, oldest-first
+// as the compare API answers it.
+const compareCommit = (
+  sha: string,
+  message: string,
+  extra: Partial<DeploymentCommit> = {},
+): DeploymentCommit => ({
+  ci_status: 'pass',
+  is_head: false,
+  message,
+  sha,
+  short_sha: sha.slice(0, 7),
+  ...extra,
+})
+
+const compareResult = (
+  commits: DeploymentCommit[],
+): DeploymentCompareResult => ({
+  additions: 0,
+  ahead: commits.length,
+  base_sha: 'aaa111aaa111',
+  behind: 0,
+  commits,
+  deletions: 0,
+  files_changed: 0,
+  head_sha: commits[commits.length - 1]?.sha ?? 'aaa111aaa111',
+  pr_numbers: [],
+})
+
 describe('PendingReleasesCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -143,6 +178,9 @@ describe('PendingReleasesCard', () => {
       ci_status: 'pass',
       committish: 'ccc333c',
     })
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue(
+      compareResult([compareCommit('bbb222bbb222', 'the pending change')]),
+    )
   })
 
   it('shows the up-to-date state when nothing is pending', () => {
@@ -150,15 +188,79 @@ describe('PendingReleasesCard', () => {
     expect(screen.getByText('Up to date with Staging')).toBeInTheDocument()
   })
 
-  it('renders the single-release confirm with notes and synced changes', () => {
+  it('renders the single-release confirm with notes and changes', async () => {
     renderCard([entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')])
     expect(screen.getByText(/is waiting to go live/)).toBeInTheDocument()
     expect(screen.getByText('notes for v6.5.1')).toBeInTheDocument()
-    // Changes section sliced from the synced commit history.
-    expect(screen.getByText('the pending change')).toBeInTheDocument()
+    expect(await screen.findByText('the pending change')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /Deploy v6\.5\.1 to production/ }),
     ).toBeInTheDocument()
+  })
+
+  it('lists the compared current..pending range, newest first', async () => {
+    // The synced window has these in the wrong order (a re-synced old
+    // commit sorted into the range, #308); the compare is what counts.
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue(
+      compareResult([
+        compareCommit('ccc333ccc333', 'the earlier change'),
+        compareCommit('bbb222bbb222', 'the pending change', {
+          is_head: true,
+        }),
+      ]),
+    )
+    renderCard(
+      [entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')],
+      makeActions(),
+      'v6.5.0',
+      [
+        RECENT_COMMITS[0],
+        {
+          authored_at: '2026-05-01T00:00:00Z',
+          ci_status: 'pass',
+          message: 'the re-synced old change',
+          sha: '26de0ec26de0',
+          short_sha: '26de0ec',
+        },
+        RECENT_COMMITS[1],
+      ],
+    )
+    await screen.findByText('the pending change')
+    expect(endpoints.compareDeploymentRefs).toHaveBeenCalledWith(
+      'acme',
+      'p1',
+      'aaa111aaa111',
+      'bbb222bbb222',
+      undefined,
+      expect.anything(),
+    )
+    const rows = screen.getAllByRole('listitem').map((li) => li.textContent)
+    expect(rows[0]).toContain('the pending change')
+    expect(rows[1]).toContain('the earlier change')
+    expect(screen.getByText('2 commits')).toBeInTheDocument()
+    // Sorted inside the synced window's slice, but not in the range.
+    expect(
+      screen.queryByText('the re-synced old change'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('labels a compare the host could not list in full', async () => {
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue({
+      ...compareResult([compareCommit('bbb222bbb222', 'the pending change')]),
+      ahead: 5001,
+    })
+    renderCard([entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')])
+    expect(await screen.findByText('the pending change')).toBeInTheDocument()
+    expect(screen.getByText('1 of 5001 commits')).toBeInTheDocument()
+  })
+
+  it('falls back to the synced slice when the compare fails', async () => {
+    vi.mocked(endpoints.compareDeploymentRefs).mockRejectedValue(
+      new Error('source host unavailable'),
+    )
+    renderCard([entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')])
+    expect(await screen.findByText('the pending change')).toBeInTheDocument()
+    expect(screen.getByText('1 commits')).toBeInTheDocument()
   })
 
   it('dispatches a deploy for the selected release', async () => {
@@ -242,21 +344,16 @@ describe('PendingReleasesCard', () => {
     })
   })
 
-  it('links the PR references in the changes list', () => {
-    renderCard(
-      [entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')],
-      makeActions(),
-      'v6.5.0',
-      [
-        {
-          ...RECENT_COMMITS[0],
-          message: 'Fix the cache TTL (#82)',
+  it('links the PR references in the changes list', async () => {
+    vi.mocked(endpoints.compareDeploymentRefs).mockResolvedValue(
+      compareResult([
+        compareCommit('bbb222bbb222', 'Fix the cache TTL (#82)', {
           url: 'https://github.com/aweber-imbi/imbi/commit/bbb222bbb222',
-        },
-        RECENT_COMMITS[1],
-      ],
+        }),
+      ]),
     )
-    expect(screen.getByRole('link', { name: '#82' })).toHaveAttribute(
+    renderCard([entry('v6.5.1', 'bbb222bbb222', 'Cache TTL fix')])
+    expect(await screen.findByRole('link', { name: '#82' })).toHaveAttribute(
       'href',
       'https://github.com/aweber-imbi/imbi/pull/82',
     )
