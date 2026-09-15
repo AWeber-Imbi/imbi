@@ -41,6 +41,7 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         called_sql, called_params = ch.query.call_args.args
         self.assertNotIn('viewer', called_params)
         self.assertIn('0 AS viewer_open_count', called_sql)
+        self.assertIn('AND NOT draft', called_sql)
 
     async def test_returns_counts_with_viewer(self) -> None:
         rows = [
@@ -65,6 +66,7 @@ class FetchPrCountsTestCase(unittest.IsolatedAsyncioTestCase):
         called_sql, called_params = ch.query.call_args.args
         self.assertEqual(called_params['viewer'], 'alice@example.com')
         self.assertIn('viewer_open_count', called_sql)
+        self.assertIn('AND NOT draft', called_sql)
 
     async def test_swallows_clickhouse_errors(self) -> None:
         ch = mock.MagicMock()

@@ -111,13 +111,27 @@ def _row_to_response(row: dict[str, typing.Any]) -> dict[str, typing.Any]:
 async def _fetch_org_project_ids(
     db: graph.Pool,
     org_slug: str,
+    *,
+    include_archived: bool = False,
 ) -> list[str]:
-    """Return all project IDs belonging to the org."""
-    query: typing.LiteralString = """
+    """Return the project IDs belonging to the org.
+
+    Archived projects are excluded unless ``include_archived`` is set;
+    org-wide PR views should not count PRs nobody will act on.
+    """
+    archived_filter: typing.LiteralString = (
+        '' if include_archived else 'WHERE coalesce(p.archived, false) = false'
+    )
+    query: typing.LiteralString = (
+        """
     MATCH (p:Project)-[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    """
+        + archived_filter
+        + """
     RETURN p.id AS id
     """
+    )
     records = await db.execute(query, {'org_slug': org_slug}, ['id'])
     return [
         graph.parse_agtype(r['id'])
@@ -133,8 +147,12 @@ async def _list_prs(
     author: str | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
+    include_drafts: bool = False,
 ) -> PullRequestListResponse:
-    """Run the ClickHouse query and return a paginated response."""
+    """Run the ClickHouse query and return a paginated response.
+
+    Draft PRs are excluded unless ``include_drafts`` is set.
+    """
     if limit < 1 or limit > MAX_LIMIT:
         raise fastapi.HTTPException(
             status_code=400,
@@ -158,6 +176,9 @@ async def _list_prs(
     if author is not None:
         clauses.append('author = {author:String}')
         params['author'] = author
+
+    if not include_drafts:
+        clauses.append('NOT draft')
 
     where = ' AND '.join(clauses)
     count_sql = (
@@ -212,9 +233,13 @@ async def list_project_pull_requests(
 
     Optional ``state`` filter accepts ``open`` or ``closed``.
     Optional ``author`` filter accepts a GitHub login.
-    Results are ordered newest first.
+    Results are ordered newest first.  Drafts are included and archived
+    projects are allowed: the project page filters drafts itself and
+    stays readable after the project is archived.
     """
-    org_project_ids = await _fetch_org_project_ids(db, org_slug)
+    org_project_ids = await _fetch_org_project_ids(
+        db, org_slug, include_archived=True
+    )
     if project_id not in org_project_ids:
         raise fastapi.HTTPException(
             status_code=404,
@@ -229,6 +254,7 @@ async def list_project_pull_requests(
         author=author,
         limit=limit,
         offset=offset,
+        include_drafts=True,
     )
 
 
@@ -373,6 +399,7 @@ async def _fetch_pr_activity(
     without merging.  Both anchor on ``created_at`` because the table
     carries no close timestamp -- only ``merged_at`` -- so a PR closed
     in-window but opened earlier cannot be attributed to the window.
+    Draft PRs are excluded from every count.
     """
     if not project_ids:
         return []
@@ -390,6 +417,7 @@ async def _fetch_pr_activity(
         ' AS merged_count'
         ' FROM pull_requests FINAL'
         ' WHERE project_id IN {project_ids:Array(String)}'
+        ' AND NOT draft'
         ' AND (created_at >= {since:DateTime64(3)}'
         ' OR (merged AND merged_at >= {since:DateTime64(3)}))'
         ' GROUP BY author'
