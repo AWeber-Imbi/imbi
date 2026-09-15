@@ -106,7 +106,10 @@ def _pr_record(
         state=str(pr.get('state') or 'open'),
         author=str(user.get('login') or ''),
         draft=bool(pr.get('draft', False)),
-        merged=bool(pr.get('merged', False)),
+        # The list endpoint (``GET /pulls``) omits ``merged``; only the
+        # single-PR endpoint carries it. ``merged_at`` is set on both, so
+        # treat a merge timestamp as merged.
+        merged=bool(pr.get('merged') or pr.get('merged_at')),
         created_at=created_at,
         updated_at=updated_at,
         merged_at=_parse_pr_datetime(pr.get('merged_at')),
