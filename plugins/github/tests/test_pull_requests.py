@@ -103,6 +103,31 @@ class ManifestTestCase(unittest.TestCase):
         self.assertIn('sync_pull_requests', names)
 
 
+class PrRecordTestCase(unittest.TestCase):
+    def test_merged_from_flag(self) -> None:
+        record = pull_requests._pr_record(
+            _pr(state='closed', merged=True, merged_at='2026-01-03T00:00:00Z'),
+            project_id='p1',
+        )
+        assert record is not None
+        self.assertTrue(record.merged)
+
+    def test_merged_inferred_from_merged_at_on_list_payload(self) -> None:
+        # ``GET /pulls`` (the backfill source) has no ``merged`` key.
+        pr = _pr(state='closed', merged_at='2026-01-03T00:00:00Z')
+        del pr['merged']
+        record = pull_requests._pr_record(pr, project_id='p1')
+        assert record is not None
+        self.assertTrue(record.merged)
+
+    def test_closed_without_merge_is_not_merged(self) -> None:
+        pr = _pr(state='closed')
+        del pr['merged']
+        record = pull_requests._pr_record(pr, project_id='p1')
+        assert record is not None
+        self.assertFalse(record.merged)
+
+
 class SyncPullRequestsActionTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_opened_records_one_row(self) -> None:
         with mock.patch(_INSERT_WEBHOOK, new=mock.AsyncMock()) as insert:
