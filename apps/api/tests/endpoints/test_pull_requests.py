@@ -114,6 +114,30 @@ class ListProjectPullRequestsTestCase(_PullRequestsTestBase):
         self.assertEqual(len(body['data']), 1)
         self.assertEqual(body['data'][0]['pr_number'], 42)
 
+    def test_list_keeps_drafts_and_archived_projects(self) -> None:
+        # The project page has its own Draft tab and must stay readable
+        # after the project is archived, so neither filter applies here.
+        self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
+        query = mock.AsyncMock(
+            side_effect=[[{'total': 0, 'project_count': 0}], []]
+        )
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
+                new=query,
+            ),
+        ):
+            response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 200)
+        cypher = self.mock_db.execute.call_args.args[0]
+        self.assertNotIn('archived', cypher)
+        for call in query.call_args_list:
+            self.assertNotIn('draft', call.args[0])
+
     def test_list_404_when_project_not_in_org(self) -> None:
         # Org scope check returns no rows → project_id not in org.
         self.mock_db.execute.return_value = []
@@ -179,6 +203,29 @@ class ListOrgPullRequestsTestCase(_PullRequestsTestBase):
         body = response.json()
         self.assertEqual(body['total'], 2)
         self.assertEqual(len(body['data']), 2)
+
+    def test_list_skips_drafts_and_archived_projects(self) -> None:
+        self.mock_db.execute.return_value = [{'id': PROJECT_ID}]
+        query = mock.AsyncMock(
+            side_effect=[[{'total': 0, 'project_count': 0}], []]
+        )
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
+                new=query,
+            ),
+        ):
+            response = self.client.get(self._url('?state=open'))
+        self.assertEqual(response.status_code, 200)
+        cypher = self.mock_db.execute.call_args.args[0]
+        self.assertIn('coalesce(p.archived, false) = false', cypher)
+        count_sql, data_sql = (call.args[0] for call in query.call_args_list)
+        self.assertIn('state = {state:String} AND NOT draft', count_sql)
+        self.assertIn('state = {state:String} AND NOT draft', data_sql)
 
 
 class PullRequestActivityTestCase(_PullRequestsTestBase):
@@ -253,6 +300,25 @@ class PullRequestActivityTestCase(_PullRequestsTestBase):
         self.assertEqual(rows[1]['login'], 'ghost')
         self.assertIsNone(rows[1]['display_name'])
         self.assertIsNone(rows[1]['email'])
+
+    def test_activity_skips_drafts_and_archived_projects(self) -> None:
+        self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}], []]
+        query = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
+                new=query,
+            ),
+        ):
+            response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 200)
+        cypher = self.mock_db.execute.call_args_list[0].args[0]
+        self.assertIn('coalesce(p.archived, false) = false', cypher)
+        self.assertIn(' AND NOT draft', query.call_args.args[0])
 
     def test_activity_empty_when_no_projects(self) -> None:
         self.mock_db.execute.side_effect = [[], []]

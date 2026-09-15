@@ -553,8 +553,8 @@ async def _fetch_pr_counts(
 ) -> dict[str, tuple[int, int, int, int]]:
     """Return {project_id: (open, closed, viewer_open, viewer_closed)}.
 
-    Errors are swallowed — PR counts are best-effort and should not
-    fail the project list endpoint.
+    Draft PRs are not counted.  Errors are swallowed — PR counts are
+    best-effort and should not fail the project list endpoint.
     """
     if not project_ids:
         return {}
@@ -570,6 +570,7 @@ async def _fetch_pr_counts(
             ' AS viewer_closed_count'
             ' FROM pull_requests FINAL'
             ' WHERE project_id IN {project_ids:Array(String)}'
+            ' AND NOT draft'
             ' GROUP BY project_id'
         )
         params['viewer'] = viewer
@@ -582,6 +583,7 @@ async def _fetch_pr_counts(
             ' 0 AS viewer_closed_count'
             ' FROM pull_requests FINAL'
             ' WHERE project_id IN {project_ids:Array(String)}'
+            ' AND NOT draft'
             ' GROUP BY project_id'
         )
     try:

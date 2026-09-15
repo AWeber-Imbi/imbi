@@ -289,8 +289,24 @@ def _build_series(
     return MetricSeries(total=sum(daily), daily=daily)
 
 
+async def _active_project_ids(db: graph.Graph) -> list[str]:
+    """IDs of every project that is not archived."""
+    query: typing.LiteralString = """
+    MATCH (p:Project)
+    WHERE coalesce(p.archived, false) = false
+    RETURN p.id AS id
+    """
+    records = await db.execute(query, {}, ['id'])
+    return [
+        graph.parse_agtype(r['id'])
+        for r in records
+        if graph.parse_agtype(r['id'])
+    ]
+
+
 @dashboard_router.get('/metrics', response_model=DashboardMetrics)
 async def get_dashboard_metrics(
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -298,7 +314,10 @@ async def get_dashboard_metrics(
         ),
     ],
 ) -> DashboardMetrics:
-    """Return 7-day activity metrics with per-day counts for the tiles."""
+    """Return 7-day activity metrics with per-day counts for the tiles.
+
+    The pull request series skips drafts and archived projects.
+    """
     today = datetime.datetime.now(datetime.UTC).date()
     start_date = today - datetime.timedelta(days=_METRICS_WINDOW_DAYS - 1)
     since = datetime.datetime.combine(
@@ -308,7 +327,10 @@ async def get_dashboard_metrics(
         (start_date + datetime.timedelta(days=offset)).isoformat()
         for offset in range(_METRICS_WINDOW_DAYS)
     ]
-    params: dict[str, typing.Any] = {'since': since}
+    params: dict[str, typing.Any] = {
+        'since': since,
+        'project_ids': await _active_project_ids(db),
+    }
     # One scan of the (FINAL, merge-on-read) deploy rows yields both the
     # per-day series and the per-environment rollup.
     deploys, events, ops, prs = await asyncio.gather(
@@ -339,6 +361,8 @@ async def get_dashboard_metrics(
             'SELECT toDate(created_at) AS day, count() AS c'
             ' FROM pull_requests FINAL'
             ' WHERE created_at >= {since:DateTime64(3)}'
+            ' AND NOT draft'
+            ' AND project_id IN {project_ids:Array(String)}'
             ' GROUP BY day',
             params,
         ),

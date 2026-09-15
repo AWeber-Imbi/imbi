@@ -219,6 +219,12 @@ class DashboardMetricsEndpointTestCase(support.SharedAppTestCase):
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
         )
+        # The PR series scopes to non-archived projects read from the graph.
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.mock_db.execute.return_value = [{'id': '"proj-1"'}]
+        self.test_app.dependency_overrides[graph._inject_graph] = lambda: (
+            self.mock_db
+        )
         self.client = testclient.TestClient(self.test_app)
 
     def test_metrics_aggregates_and_aligns_daily(self) -> None:
@@ -256,6 +262,19 @@ class DashboardMetricsEndpointTestCase(support.SharedAppTestCase):
             ],
             body['releases_by_environment'],
         )
+
+    def test_metrics_pr_series_skips_drafts_and_archived(self) -> None:
+        query = mock.AsyncMock(side_effect=[[], [], [], []])
+        with mock.patch.object(dashboard.clickhouse, 'query', query):
+            response = self.client.get('/admin/dashboard/metrics')
+        self.assertEqual(200, response.status_code, response.text)
+        pr_sql, pr_params = query.call_args_list[3].args
+        self.assertIn('FROM pull_requests FINAL', pr_sql)
+        self.assertIn('AND NOT draft', pr_sql)
+        self.assertIn('project_id IN {project_ids:Array(String)}', pr_sql)
+        self.assertEqual(['proj-1'], pr_params['project_ids'])
+        cypher = self.mock_db.execute.call_args.args[0]
+        self.assertIn('coalesce(p.archived, false) = false', cypher)
 
     def test_metrics_empty(self) -> None:
         query = mock.AsyncMock(side_effect=[[], [], [], []])
