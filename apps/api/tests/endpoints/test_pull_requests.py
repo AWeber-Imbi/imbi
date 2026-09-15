@@ -320,6 +320,26 @@ class PullRequestActivityTestCase(_PullRequestsTestBase):
         self.assertIn('coalesce(p.archived, false) = false', cypher)
         self.assertIn(' AND NOT draft', query.call_args.args[0])
 
+    def test_activity_anchors_every_column_on_created_at(self) -> None:
+        self.mock_db.execute.side_effect = [[{'id': PROJECT_ID}], []]
+        query = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.pull_requests.clickhouse.query',
+                new=query,
+            ),
+        ):
+            self.client.get(self._url())
+        sql = query.call_args.args[0]
+        self.assertNotIn('merged_at >=', sql)
+        self.assertIn(
+            'countIf(merged AND created_at >= {since:DateTime64(3)})', sql
+        )
+
     def test_activity_empty_when_no_projects(self) -> None:
         self.mock_db.execute.side_effect = [[], []]
         with mock.patch(

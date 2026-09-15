@@ -389,17 +389,13 @@ async def _fetch_pr_activity(
 ) -> list[dict[str, typing.Any]]:
     """Aggregate created/open/closed/merged counts per author.
 
-    A PR counts toward ``created`` when created on/after ``since`` and
-    toward ``merged`` when merged on/after ``since`` -- the two use
-    different anchors, so a PR opened earlier but merged in-window still
-    contributes to ``merged``.
-
-    ``open`` and ``closed`` are current-state breakdowns of the PRs
-    created in-window: ``open`` is still open, ``closed`` was closed
-    without merging.  Both anchor on ``created_at`` because the table
-    carries no close timestamp -- only ``merged_at`` -- so a PR closed
-    in-window but opened earlier cannot be attributed to the window.
-    Draft PRs are excluded from every count.
+    Every column covers the PRs created on/after ``since``: ``open``,
+    ``closed`` (closed without merging) and ``merged`` are the current
+    state of that same set, so ``created == open + closed + merged`` on
+    every row.  A PR opened before ``since`` is not counted anywhere,
+    even if it merged in-window; anchoring ``merged`` on ``merged_at``
+    instead made the columns disagree with ``created``.  Draft PRs are
+    excluded from every count.
     """
     if not project_ids:
         return []
@@ -413,13 +409,12 @@ async def _fetch_pr_activity(
         ' AS open_count,'
         " countIf(state != 'open' AND NOT merged"
         ' AND created_at >= {since:DateTime64(3)}) AS closed_count,'
-        ' countIf(merged AND merged_at >= {since:DateTime64(3)})'
+        ' countIf(merged AND created_at >= {since:DateTime64(3)})'
         ' AS merged_count'
         ' FROM pull_requests FINAL'
         ' WHERE project_id IN {project_ids:Array(String)}'
         ' AND NOT draft'
-        ' AND (created_at >= {since:DateTime64(3)}'
-        ' OR (merged AND merged_at >= {since:DateTime64(3)}))'
+        ' AND created_at >= {since:DateTime64(3)}'
         ' GROUP BY author'
     )
     return await clickhouse.query(
