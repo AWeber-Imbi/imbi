@@ -64,7 +64,15 @@ class StubExecutor:
         if self.raises:
             raise RuntimeError('boom')
         run = runs.start(task, fired_at, run_id=run_id, trace_id=trace_id)
-        return runs.finish(run, self.state, runs.Outcome(http_status=202))
+        # Finish at `fired_at` rather than the wall clock: the engine tests
+        # tick at fixed dates, and a real-clock finish drifts past the
+        # UInt32 `duration_ms` column once those dates are 49.7 days old.
+        return runs.finish(
+            run,
+            self.state,
+            runs.Outcome(http_status=202),
+            finished_at=fired_at,
+        )
 
     async def dry_run(
         self, task: models.Task, fired_at: datetime.datetime
