@@ -109,7 +109,9 @@ describe('MyPullRequestsToDeployWidget', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Everything you merged is in production.'),
+        screen.getByText(
+          'Everything you merged has reached a terminal environment.',
+        ),
       ).toBeInTheDocument(),
     )
   })

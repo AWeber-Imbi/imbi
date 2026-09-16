@@ -55,8 +55,8 @@ export function MyPullRequestsToDeployWidget() {
         )}
       </div>
       <p className="text-tertiary mb-3 text-xs">
-        Merged pull requests whose project has not been deployed to production
-        since the merge.
+        Merged pull requests whose project has not been deployed to a terminal
+        environment since the merge.
       </p>
 
       <div aria-busy={isLoading} className="min-h-0 flex-1 overflow-y-auto">
@@ -82,7 +82,7 @@ export function MyPullRequestsToDeployWidget() {
           </div>
         ) : prs.length === 0 ? (
           <div className="text-secondary py-6 text-center text-sm">
-            Everything you merged is in production.
+            Everything you merged has reached a terminal environment.
           </div>
         ) : (
           <div className="space-y-2">
@@ -140,7 +140,7 @@ function PrRow({
         <div className="text-tertiary text-xs">
           Merged <RelativeTime tooltip={false} value={pr.merged_at} />
           {' · '}
-          Last production deploy{' '}
+          Last terminal deploy{' '}
           <RelativeTime tooltip={false} value={pr.last_deployed_at} />
         </div>
       </div>

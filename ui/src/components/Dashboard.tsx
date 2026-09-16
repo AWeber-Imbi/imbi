@@ -153,7 +153,8 @@ const availableWidgets: WidgetConfig[] = [
   {
     category: 'activity',
     columnSpan: 2,
-    description: 'Your merged pull requests not yet deployed to production',
+    description:
+      'Your merged pull requests not yet deployed to a terminal environment',
     icon: '🚢',
     id: 'my-prs-to-deploy',
     name: 'My PRs to Deploy',
