@@ -233,11 +233,14 @@ class HistoryTests(helpers.TestCase):
     async def test_history_is_newest_first(self) -> None:
         for index in range(3):
             fired = FIRED_AT + datetime.timedelta(hours=index)
+            # Later iterations fire after FIRED_AT and may sit ahead of the
+            # wall clock; finishing at `fired` keeps every row chronological.
             await runs.record(
                 runs.finish(
                     runs.start(self.task, fired),
                     'succeeded',
                     runs.Outcome(http_status=202),
+                    finished_at=fired,
                 )
             )
         history = await runs.for_task(self.task.id, limit=2)
