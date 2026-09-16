@@ -36,6 +36,7 @@ import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import type { IdentityConnectionResponse, PluginPackage } from '@/types'
 
 import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCountsWidget'
+import { MyPullRequestsToDeployWidget } from './dashboard/widgets/MyPullRequestsToDeployWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
 import { ProjectActivityWidget } from './dashboard/widgets/ProjectActivityWidget'
@@ -63,6 +64,7 @@ const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v4'
 const DISMISSED_INTEGRATIONS_KEY = 'imbi-dashboard-dismissed-integrations-v2'
 
 type WidgetId =
+  | 'my-prs-to-deploy'
   | 'my-pull-request-counts'
   | 'my-pull-requests'
   | 'outdated-components'
@@ -149,6 +151,14 @@ const availableWidgets: WidgetConfig[] = [
     name: 'My Pull Requests',
   },
   {
+    category: 'activity',
+    columnSpan: 2,
+    description: 'Your merged pull requests not yet deployed to production',
+    icon: '🚢',
+    id: 'my-prs-to-deploy',
+    name: 'My PRs to Deploy',
+  },
+  {
     category: 'health',
     columnSpan: 2,
     description: 'Dependencies that need updating',
@@ -169,6 +179,7 @@ const defaultWidgets: WidgetId[] = [
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
+  'my-prs-to-deploy',
   'my-pull-request-counts',
   'my-pull-requests',
   'outdated-components',
@@ -372,6 +383,7 @@ export function Dashboard({
   }
 
   const widgetRegistry: Record<WidgetId, () => ReactElement> = {
+    'my-prs-to-deploy': () => <MyPullRequestsToDeployWidget />,
     'my-pull-request-counts': () => <MyPullRequestCountsWidget />,
     'my-pull-requests': () => <MyPullRequestsWidget />,
     'outdated-components': () => (

@@ -23,7 +23,7 @@ import fastapi
 import pydantic
 
 from imbi.api.auth import permissions
-from imbi.common import clickhouse, graph
+from imbi.common import clickhouse, environments, graph
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 500
 
 _TIMESTAMP_FIELDS: frozenset[str] = frozenset(
-    {'created_at', 'updated_at', 'merged_at'}
+    {'created_at', 'updated_at', 'merged_at', 'last_deployed_at'}
 )
 
 
@@ -62,6 +62,41 @@ class PullRequestListResponse(pydantic.BaseModel):
     data: list[PullRequestResponse]
     project_count: int
     total: int
+
+
+# Default look-back window on ``merged_at`` for the pending-deploy view.
+# A project that stopped deploying through Imbi would otherwise pin
+# every PR ever merged into it on the widget forever.
+DEFAULT_PENDING_DEPLOY_DAYS: int = 90
+MAX_PENDING_DEPLOY_DAYS: int = 365
+PENDING_DEPLOY_LIMIT: int = 200
+
+
+class PendingDeployPullRequest(pydantic.BaseModel):
+    """A merged pull request not yet deployed to a terminal environment."""
+
+    project_id: str
+    pr_id: str
+    pr_number: int
+    title: str
+    url: str
+    author: str
+    merged_at: datetime.datetime
+    additions: int
+    deletions: int
+    # Start of the project's most recent deploy to a terminal
+    # environment; it predates ``merged_at`` by construction.
+    last_deployed_at: datetime.datetime
+
+
+class PendingDeployResponse(pydantic.BaseModel):
+    """Merged-but-undeployed PRs, oldest merge first."""
+
+    since: datetime.datetime
+    # Slugs of the environments that count as "deployed": the last
+    # environment of every promotion pipeline.
+    environments: list[str]
+    data: list[PendingDeployPullRequest]
 
 
 # Default look-back window for the activity report when ``since`` is absent.
@@ -291,6 +326,140 @@ async def list_org_pull_requests(
         limit=limit,
         offset=offset,
     )
+
+
+def terminal_environment_slugs(
+    envs: list[dict[str, typing.Any]],
+) -> list[str]:
+    """Slugs of the environment that ends each promotion pipeline.
+
+    A pipeline ends at an environment flagged ``terminal`` or, when no
+    flag is set, at the highest ``sort_order``; either way the last
+    environment of each chain from :func:`environments.split_chains`
+    is where a merged PR counts as deployed.
+    """
+    slugs: list[str] = []
+    for chain in environments.split_chains(envs):
+        slug = chain[-1].get('slug')
+        if slug and slug not in slugs:
+            slugs.append(str(slug))
+    return slugs
+
+
+async def _fetch_terminal_environment_slugs(db: graph.Pool) -> list[str]:
+    """Resolve the terminal environment slugs from the graph."""
+    query: typing.LiteralString = """
+    MATCH (e:Environment)
+    RETURN e.slug AS slug,
+           coalesce(e.sort_order, 0) AS sort_order,
+           coalesce(e.terminal, false) AS terminal,
+           e.name AS name
+    """
+    records = await db.execute(
+        query, {}, ['slug', 'sort_order', 'terminal', 'name']
+    )
+    envs = [
+        {key: graph.parse_agtype(record[key]) for key in record}
+        for record in records
+    ]
+    return terminal_environment_slugs(envs)
+
+
+async def _list_pending_deploy(
+    *,
+    project_ids: list[str],
+    environment_slugs: list[str],
+    author: str | None,
+    since: datetime.datetime,
+) -> list[PendingDeployPullRequest]:
+    """Merged PRs whose project has not deployed to a terminal env since.
+
+    A project's deploy time is the ``occurred_at`` of its ``Deployed``
+    operations-log row, which is written when the deploy starts: a
+    deploy that started before the merge cannot contain it, whichever
+    way it finished.  Projects with no terminal deploy on record (a
+    library, say) never appear -- there is nothing to deploy them to.
+    """
+    if not project_ids or not environment_slugs:
+        return []
+    params: dict[str, typing.Any] = {
+        'project_ids': project_ids,
+        'environments': environment_slugs,
+        'since': since,
+        'limit': PENDING_DEPLOY_LIMIT,
+    }
+    author_clause = ''
+    if author is not None:
+        author_clause = ' AND pr.author = {author:String}'
+        params['author'] = author
+    sql = (
+        'WITH deployed AS ('  # noqa: S608
+        ' SELECT project_id, max(occurred_at) AS last_deployed_at'
+        ' FROM operations_log FINAL'
+        " WHERE entry_type = 'Deployed' AND is_deleted = 0"
+        ' AND environment_slug IN {environments:Array(String)}'
+        ' AND project_id IN {project_ids:Array(String)}'
+        ' GROUP BY project_id)'
+        ' SELECT pr.project_id AS project_id, pr.pr_id AS pr_id,'
+        ' pr.pr_number AS pr_number, pr.title AS title, pr.url AS url,'
+        ' pr.author AS author, pr.merged_at AS merged_at,'
+        ' pr.additions AS additions, pr.deletions AS deletions,'
+        ' d.last_deployed_at AS last_deployed_at'
+        ' FROM pull_requests AS pr FINAL'
+        ' INNER JOIN deployed AS d ON d.project_id = pr.project_id'
+        ' WHERE pr.project_id IN {project_ids:Array(String)}'
+        ' AND pr.merged AND NOT pr.draft'
+        ' AND pr.merged_at >= {since:DateTime64(3)}'
+        ' AND d.last_deployed_at <= pr.merged_at'
+        + author_clause
+        + ' ORDER BY pr.merged_at ASC, pr.pr_id ASC'
+        ' LIMIT {limit:UInt32}'
+    )
+    rows = await clickhouse.query(sql, params)
+    return [
+        PendingDeployPullRequest.model_validate(_row_to_response(row))
+        for row in rows
+    ]
+
+
+@pull_requests_router.get(
+    '/pending-deploy', response_model=PendingDeployResponse
+)
+async def list_pending_deploy_pull_requests(
+    org_slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+    author: str | None = None,
+    days: int = DEFAULT_PENDING_DEPLOY_DAYS,
+) -> PendingDeployResponse:
+    """List merged PRs not yet deployed to a terminal environment.
+
+    A PR is pending while its project's latest deploy to the last
+    environment of a promotion pipeline (production, typically)
+    started at or before the merge.  Only PRs merged in the last
+    ``days`` days are considered; ``author`` narrows to one GitHub
+    login.  Rows are ordered oldest merge first.
+    """
+    if days < 1 or days > MAX_PENDING_DEPLOY_DAYS:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'days must be 1..{MAX_PENDING_DEPLOY_DAYS}',
+        )
+    since = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=days)
+    project_ids = await _fetch_org_project_ids(db, org_slug)
+    slugs = await _fetch_terminal_environment_slugs(db)
+    data = await _list_pending_deploy(
+        project_ids=project_ids,
+        environment_slugs=slugs,
+        author=author,
+        since=since,
+    )
+    return PendingDeployResponse(since=since, environments=slugs, data=data)
 
 
 def _parse_since(value: str | None) -> datetime.datetime:

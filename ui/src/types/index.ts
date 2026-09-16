@@ -375,6 +375,25 @@ export interface OperationsLogEntry {
   type: 'OperationsLogEntry'
   version?: null | string
 }
+export interface PendingDeployPullRequest {
+  additions: number
+  author: string
+  deletions: number
+  last_deployed_at: string
+  merged_at: string
+  pr_id: string
+  pr_number: number
+  project_id: string
+  title: string
+  url: string
+}
+
+export interface PendingDeployResponse {
+  data: PendingDeployPullRequest[]
+  environments: string[]
+  since: string
+}
+
 export interface PresenceScoringPolicy extends ScoringPolicyBase {
   attribute_name: string
   category: 'presence'
