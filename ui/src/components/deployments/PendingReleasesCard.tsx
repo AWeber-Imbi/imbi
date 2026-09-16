@@ -26,6 +26,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CommitSubject } from '@/components/ui/commit-subject'
 import { RelativeTime } from '@/components/ui/RelativeTime'
+import { UserIdentity } from '@/components/ui/user-identity'
+import { useUserDisplayNames } from '@/hooks/useUserDisplayNames'
 import type { ChipColors } from '@/lib/chip-colors'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
@@ -45,6 +47,8 @@ import type { DeploymentActions } from './useDeploymentActions'
 /** The fields the changes list renders; both commit shapes carry them. */
 type ChangeCommit = Pick<
   DeploymentCommit,
+  | 'author'
+  | 'authored_at'
   | 'ci_status'
   | 'drift_detected'
   | 'message'
@@ -52,7 +56,10 @@ type ChangeCommit = Pick<
   | 'short_sha'
   | 'tag'
   | 'url'
->
+> & {
+  /** Only `RecentCommit` carries it; compare results resolve by name alone. */
+  author_email?: null | string
+}
 
 interface PendingReleasesCardProps {
   accent: ChipColors | null
@@ -410,6 +417,7 @@ function SingleReleaseChanges({
   stage: PipelineStage
 }) {
   const baseSha = stage.current?.release?.committish ?? null
+  const { displayNames } = useUserDisplayNames()
   const { data: compare, isError } = useQuery({
     enabled: !!baseSha,
     queryFn: ({ signal }) =>
@@ -450,24 +458,53 @@ function SingleReleaseChanges({
           Changes in <span className="font-mono normal-case">{entry.tag}</span>
         </p>
         <ul className="border-tertiary max-h-60 overflow-y-auto rounded-md border">
-          {commits.map((c) => (
-            <li
-              className="border-tertiary flex min-w-0 items-center gap-3 border-b px-3 py-1.5 last:border-b-0"
-              key={c.sha}
-            >
-              <DriftIndicator drift={c.drift_detected} />
-              <span className="shrink-0 font-mono text-xs">{c.short_sha}</span>
-              <TagBadge tag={c.tag} />
-              <CommitSubject
-                className="min-w-0 flex-1 truncate text-sm"
-                commitUrl={c.url}
-                message={c.message}
-              />
-              {c.ci_status !== 'unknown' ? (
-                <CiStatusDot status={c.ci_status} />
-              ) : null}
-            </li>
-          ))}
+          {commits.map((c, idx) => {
+            const author = c.author_email
+              ? (displayNames.get(c.author_email) ?? c.author)
+              : c.author
+            return (
+              <li
+                className="border-tertiary flex min-w-0 items-center gap-3 border-b px-3 py-1.5 last:border-b-0"
+                key={c.sha}
+              >
+                <DriftIndicator drift={c.drift_detected} />
+                <span className="shrink-0 font-mono text-xs">
+                  {c.short_sha}
+                </span>
+                <TagBadge tag={c.tag} />
+                <CommitSubject
+                  className="min-w-0 flex-1 truncate text-sm"
+                  commitUrl={c.url}
+                  message={c.message}
+                />
+                {/* Same fixed-width age / author / status columns as the
+                    promote card's picker, so the two cards read alike. */}
+                <div className="grid shrink-0 grid-cols-[2.5rem_9rem_1.25rem] items-center gap-3">
+                  <span className="text-tertiary truncate text-right text-xs">
+                    {c.authored_at ? (
+                      <RelativeTime value={c.authored_at} variant="narrow" />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0 truncate">
+                    {author ? (
+                      <UserIdentity
+                        actor={c.author}
+                        displayName={author}
+                        email={c.author_email}
+                        size="small"
+                      />
+                    ) : null}
+                  </span>
+                  <span className="flex justify-center">
+                    {c.ci_status !== 'unknown' ? (
+                      <CiStatusDot status={c.ci_status} />
+                    ) : null}
+                  </span>
+                </div>
+                <Badge variant="neutral">{idx === 0 ? 'tip' : `−${idx}`}</Badge>
+              </li>
+            )
+          })}
         </ul>
       </section>
     </div>
