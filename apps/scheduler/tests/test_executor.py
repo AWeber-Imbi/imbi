@@ -17,7 +17,12 @@ from imbi.scheduler import (
     settings,
 )
 
-FIRED_AT = datetime.datetime(2026, 7, 28, 6, tzinfo=datetime.UTC)
+# Relative, not fixed: `runs.finish` stamps `finished_at` with the wall
+# clock, and `duration_ms` is a UInt32 in ClickHouse. A fixed date rots --
+# 49.7 days after it, every recorded run overflows the column.
+FIRED_AT = datetime.datetime.now(datetime.UTC).replace(
+    microsecond=0
+) - datetime.timedelta(minutes=5)
 API_URL = 'http://api.test'
 GATEWAY_URL = 'http://gateway.test'
 
