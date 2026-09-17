@@ -1,5 +1,7 @@
 import React from 'react'
 
+import { MemoryRouter } from 'react-router-dom'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,7 +45,9 @@ function makePr(
 
 function wrapper(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
   )
 }
 
