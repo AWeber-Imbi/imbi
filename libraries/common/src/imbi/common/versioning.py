@@ -24,6 +24,8 @@ import re
 import typing
 
 __all__ = [
+    'CALVER_TAG_PATTERN',
+    'CALVER_TAG_RE',
     'COMMITISH_RE',
     'RELEASE_VERSION_RE',
     'SEMVER_RE',
@@ -31,10 +33,12 @@ __all__ = [
     'SEMVER_TAG_RE',
     'VersionFormat',
     'get_version_validator',
+    'is_calver_tag',
     'is_commitish',
     'is_semver_tag',
     'latest_release_tag',
     'matches_tag_formats',
+    'next_calver_tag',
     'release_tag_order_key',
     'release_version_key',
     'validate_version',
@@ -67,6 +71,21 @@ SEMVER_RE: typing.Final[re.Pattern[str]] = re.compile(
 SEMVER_TAG_PATTERN: typing.Final[str] = r'^v?' + SEMVER_RE.pattern.lstrip('^')
 SEMVER_TAG_RE: typing.Final[re.Pattern[str]] = re.compile(SEMVER_TAG_PATTERN)
 
+# Calendar versioning: ``YYYY.MM.DD`` (or ``YYYY-MM-DD``; the separator
+# must be consistent) with an optional ``.`` or ``-`` suffix such as a
+# same-day build counter (``2026.09.17-0``).  Mirrors the "Calendar
+# versioning" built-in in the UI's version-format editor
+# (``ui/src/lib/versionFormats.ts``); keep the two in step.
+CALVER_TAG_PATTERN: typing.Final[str] = (
+    r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$'
+)
+CALVER_TAG_RE: typing.Final[re.Pattern[str]] = re.compile(CALVER_TAG_PATTERN)
+
+# Same shape, broken into the parts :func:`next_calver_tag` needs.
+_CALVER_PARTS_RE: typing.Final[re.Pattern[str]] = re.compile(
+    r'^(\d{4})([.-])(\d{1,2})\2(\d{1,2})(?:([.-])(\w+))?$'
+)
+
 # 7 to 40 lowercase hex chars — matches a git short or full SHA.
 COMMITISH_RE: typing.Final[re.Pattern[str]] = re.compile(r'^[0-9a-f]{7,40}$')
 
@@ -85,6 +104,45 @@ def is_semver_tag(value: str) -> bool:
     committish (cut a tag and create a release).
     """
     return bool(SEMVER_TAG_RE.match(value))
+
+
+def is_calver_tag(value: str) -> bool:
+    """Return ``True`` if ``value`` is a calendar-versioning tag."""
+    return bool(CALVER_TAG_RE.match(value))
+
+
+def next_calver_tag(
+    last_tag: str | None,
+    today: datetime.date,
+) -> str:
+    """The calendar-versioning tag that follows ``last_tag`` on ``today``.
+
+    The date is ``today`` with zero-padded month and day, using the
+    separator of ``last_tag`` (``.`` when there is no prior calver tag).
+    The suffix mirrors the prior tag's convention: a tag that carried a
+    numeric build counter (``2026.09.16-0``) yields ``2026.09.17-0`` on a
+    new day and ``2026.09.16-1`` on the same day; a bare tag yields a bare
+    date on a new day and ``-1`` on the same day.
+    """
+    match = _CALVER_PARTS_RE.match(last_tag or '')
+    sep = match.group(2) if match else '.'
+    date = today.strftime(f'%Y{sep}%m{sep}%d')
+    if not match:
+        return date
+    year, _, month, day, suffix_sep, suffix = match.groups()
+    same_day = (int(year), int(month), int(day)) == (
+        today.year,
+        today.month,
+        today.day,
+    )
+    counted = suffix is not None and suffix.isdigit()
+    if same_day:
+        if counted:
+            return f'{date}{suffix_sep}{int(suffix) + 1}'
+        return f'{date}-1'
+    if counted:
+        return f'{date}{suffix_sep}0'
+    return date
 
 
 def is_commitish(value: str) -> bool:

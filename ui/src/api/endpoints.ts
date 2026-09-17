@@ -129,6 +129,7 @@ import type {
   ServiceAccount,
   ServiceAccountCreate,
   Tag,
+  TagFormat,
   Team,
   TeamCreate,
   TeamMember,
@@ -2556,6 +2557,18 @@ export const draftReleaseNotes = (
     body,
   )
 }
+
+/** The tag formats a release or promote tag is validated against. */
+export const getTagFormats = (
+  orgSlug: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<TagFormat[]> =>
+  apiClient.get<TagFormat[]>(
+    `${deploymentsBase(orgSlug, projectId)}/tag-formats`,
+    undefined,
+    signal,
+  )
 
 export const getDeploymentRunStatus = (
   orgSlug: string,

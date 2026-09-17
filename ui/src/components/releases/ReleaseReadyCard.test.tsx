@@ -20,6 +20,7 @@ vi.mock('@/api/endpoints', async () => {
     ...actual,
     draftReleaseNotes: vi.fn(),
     getCommitCheckStatus: vi.fn(),
+    getTagFormats: vi.fn().mockResolvedValue([]),
     listAdminUsers: vi.fn().mockResolvedValue([]),
   }
 })
@@ -95,6 +96,17 @@ function renderCard(
 describe('ReleaseReadyCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([])
+    // Every render now drafts (first releases included), so give the draft
+    // a default that leaves the drift's suggestion in place.
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'minor',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '',
+      reasoning: 'default',
+      version: 'v0.1.0',
+    })
     vi.mocked(releases.cutRelease).mockResolvedValue({
       committish: 'aaa1111',
       recorded: true,
@@ -145,6 +157,59 @@ describe('ReleaseReadyCard', () => {
     await user.type(tagInput, 'main')
     expect(screen.getByText(/Use a semver tag/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+  })
+
+  it("validates the tag against the project's configured formats", async () => {
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([
+      {
+        label: 'Calendar versioning',
+        pattern: '^\\d{4}([.-])\\d{1,2}\\1\\d{1,2}(?:[.-]\\w+)?$',
+      },
+      { label: 'Ticket', pattern: '^REL-\\d+$' },
+    ])
+    const user = userEvent.setup()
+    renderCard(FIRST_RELEASE)
+    const tagInput = screen.getByPlaceholderText('vX.Y.Z')
+    // The drift's semver suggestion no longer fits the policy.
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'Use a Calendar versioning or Ticket tag, e.g. 2026.09.17-0',
+        ),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /& release/i })).toBeDisabled()
+    await user.clear(tagInput)
+    await user.type(tagInput, '2026.09.17-0')
+    expect(screen.queryByText(/Use a /)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /& release/i })).toBeEnabled()
+    // A custom (non-built-in) format is honoured the same way.
+    await user.clear(tagInput)
+    await user.type(tagInput, 'REL-42')
+    expect(screen.queryByText(/Use a /)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /& release/i })).toBeEnabled()
+  })
+
+  it('auto-drafts release notes for a first release', async () => {
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'minor',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '## First',
+      reasoning: 'initial',
+      version: '2026.09.17',
+    })
+    renderCard(FIRST_RELEASE)
+    await waitFor(() => {
+      expect(endpoints.draftReleaseNotes).toHaveBeenCalledWith('acme', 'p1', {
+        base_sha: '',
+        head_sha: 'aaa1111',
+        last_tag: null,
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2026.09.17')).toBeInTheDocument()
+    })
   })
 
   it('auto-drafts release notes when a prior tag exists', async () => {
@@ -274,6 +339,17 @@ describe('ReleaseReadyCard', () => {
 describe('ReleaseReadyCard — a release already in flight', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([])
+    // Every render now drafts (first releases included), so give the draft
+    // a default that leaves the drift's suggestion in place.
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'minor',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '',
+      reasoning: 'default',
+      version: 'v0.1.0',
+    })
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
       ci_status: 'pass',
       committish: 'aaa1111',
@@ -368,6 +444,17 @@ describe('ReleaseReadyCard — a refused dispatch', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([])
+    // Every render now drafts (first releases included), so give the draft
+    // a default that leaves the drift's suggestion in place.
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'minor',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '',
+      reasoning: 'default',
+      version: 'v0.1.0',
+    })
     vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
       ci_status: 'pass',
       committish: 'aaa1111',

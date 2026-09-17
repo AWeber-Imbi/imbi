@@ -195,6 +195,46 @@ class ShortCommittishTestCase(unittest.TestCase):
         )
 
 
+class CalverTestCase(unittest.TestCase):
+    """``is_calver_tag`` and ``next_calver_tag``."""
+
+    TODAY = datetime.date(2026, 9, 17)
+
+    def test_is_calver_tag(self) -> None:
+        for tag in (
+            '2026.09.17-0',
+            '2026-09-17',
+            '2026.9.1.rc1',
+            '2026.09.17',
+        ):
+            self.assertTrue(versioning.is_calver_tag(tag), tag)
+        for tag in ('2026.09', '1.2.3', '2026.09-17', 'v2026.09.17'):
+            self.assertFalse(versioning.is_calver_tag(tag), tag)
+
+    def test_first_tag_is_todays_date(self) -> None:
+        self.assertEqual(
+            '2026.09.17', versioning.next_calver_tag(None, self.TODAY)
+        )
+        self.assertEqual(
+            '2026.09.17', versioning.next_calver_tag('v1.2.3', self.TODAY)
+        )
+
+    def test_counter_suffix_follows_the_prior_tag(self) -> None:
+        cases = {
+            '2026.09.16-0': '2026.09.17-0',
+            '2026.09.17-0': '2026.09.17-1',
+            '2026.09.17': '2026.09.17-1',
+            '2026.09.16': '2026.09.17',
+            '2026-09-16': '2026-09-17',
+            '2026.09.17.rc1': '2026.09.17-1',
+        }
+        for last, expected in cases.items():
+            with self.subTest(last=last):
+                self.assertEqual(
+                    expected, versioning.next_calver_tag(last, self.TODAY)
+                )
+
+
 class MatchesTagFormatsTestCase(unittest.TestCase):
     """Tests for ``matches_tag_formats``."""
 

@@ -17,13 +17,14 @@ import {
   useCommitCheckStatus,
 } from '@/components/deploy/CiFailureNotice'
 import { ReleaseCommitPicker } from '@/components/releases/ReleaseCommitPicker'
+import { useTagFormats } from '@/components/releases/useTagFormats'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SkText } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import type { ChipColors } from '@/lib/chip-colors'
-import { SEMVER_RE } from '@/lib/semver'
+import { isTagAllowed, tagFormatHint } from '@/lib/versionFormats'
 import type { DraftReleaseNotesResponse } from '@/types'
 
 import type { PipelineStage } from './pipeline'
@@ -89,8 +90,9 @@ export function PendingPromoteCard({
       }),
   })
 
-  // Auto-draft once when there is a non-empty diff to summarize.
-  const hasDiff = !!bumpFrom && !!selectedSha && commits.length > 0
+  // Auto-draft once when there is a non-empty range to summarize. With no
+  // prior tag the API drafts from the synced history up to the commit.
+  const hasDiff = !!selectedSha && commits.length > 0
   useEffect(() => {
     if (draft || !hasDiff) return
     draftMutation.mutate(
@@ -120,6 +122,12 @@ export function PendingPromoteCard({
   useEffect(() => {
     setCiAcknowledged(false)
   }, [selectedSha])
+  // The org/project-type tag policy the promote endpoint enforces.
+  const {
+    formats,
+    isError: formatsError,
+    retry: retryFormats,
+  } = useTagFormats(orgSlug, projectId)
 
   if (!fromTipSha) {
     return (
@@ -134,7 +142,7 @@ export function PendingPromoteCard({
     return <UpToDateCard upstreamName={upstreamName} />
   }
 
-  const tagValid = SEMVER_RE.test(tag)
+  const tagValid = formats !== null && isTagAllowed(tag, formats)
   const isDrafting = draftMutation.isPending
   const canSubmit =
     tagValid &&
@@ -260,9 +268,21 @@ export function PendingPromoteCard({
               that release and cutting this tag are separate moves.
             </span>
           ) : null}
-          {!tagValid && tag.length > 0 ? (
+          {formats !== null && !tagValid && tag.length > 0 ? (
             <span className="text-danger text-xs">
-              Use a semver tag, e.g. v6.5.2
+              {tagFormatHint(formats)}
+            </span>
+          ) : null}
+          {formatsError ? (
+            <span className="text-danger text-xs">
+              Could not load the tag formats, so the tag cannot be checked.{' '}
+              <button
+                className="underline"
+                onClick={retryFormats}
+                type="button"
+              >
+                Retry
+              </button>
             </span>
           ) : null}
           <div className="flex items-center justify-between gap-3">
