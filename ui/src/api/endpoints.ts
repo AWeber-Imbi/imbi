@@ -96,6 +96,7 @@ import type {
   Organization,
   OrganizationCreate,
   PatchOperation,
+  PendingDeployResponse,
   PluginAssignmentResponse,
   PluginEdge,
   PluginEdgePut,
@@ -3271,6 +3272,17 @@ export const getOrgPullRequests = (
 ) =>
   apiClient.get<PullRequestListResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/pull-requests/`,
+    params,
+    signal,
+  )
+
+export const getOrgPendingDeployPullRequests = (
+  orgSlug: string,
+  params?: { author?: string; days?: number },
+  signal?: AbortSignal,
+) =>
+  apiClient.get<PendingDeployResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/pull-requests/pending-deploy`,
     params,
     signal,
   )
