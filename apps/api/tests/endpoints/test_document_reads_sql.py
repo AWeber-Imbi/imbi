@@ -18,7 +18,9 @@ itself when the request fails, showed nothing at all. So the analytics
 statements are executed here too, against filters that match no document.
 """
 
+import datetime
 import unittest
+import uuid
 
 from imbi.api.endpoints import _document_reads, document_analytics
 from imbi.common import clickhouse
@@ -150,3 +152,82 @@ class ReadAnalyticsSqlTestCase(unittest.IsolatedAsyncioTestCase):
                 params,
             ),
         )
+
+    async def test_reaper_repairs_a_partial_finalization(self) -> None:
+        """A finalized row short of the last beat is swept again.
+
+        Heartbeats reach ClickHouse through Iggy, so a session finalized
+        by its own final flush routinely misses the beats the sink had
+        not drained yet. The reaper is what repairs that, so it has to
+        select on "finalized through the last beat" rather than on "has
+        a row at all" -- the latter makes the shortfall permanent.
+        """
+        now = datetime.datetime.now(datetime.UTC)
+        last_beat = now - datetime.timedelta(minutes=10)
+        started = now - datetime.timedelta(minutes=20)
+        partial, covered, unfinalized = (
+            f'sql-test-{uuid.uuid4()}' for _ in range(3)
+        )
+
+        await clickhouse.insert(
+            'document_read_events',
+            [
+                _document_reads.DocumentReadEventRow(
+                    org_slug='sql-test',
+                    document_id='doc',
+                    session_id=session_id,
+                    seq=1,
+                    principal='nobody@example.com',
+                    surface='web',
+                    project_id='',
+                    document_version=1,
+                    estimated_read_ms=1000,
+                    session_started_at=started,
+                    recorded_at=last_beat,
+                    engaged_ms=1000,
+                    max_scroll_pct=50,
+                    clamped=0,
+                    is_final=1,
+                )
+                for session_id in (partial, covered, unfinalized)
+            ],
+        )
+        await clickhouse.insert(
+            'document_read_sessions',
+            [
+                _document_reads.DocumentReadSessionRow(
+                    org_slug='sql-test',
+                    document_id='doc',
+                    session_id=session_id,
+                    principal='nobody@example.com',
+                    surface='web',
+                    project_id='',
+                    document_version=1,
+                    started_at=started,
+                    ended_at=ended_at,
+                    engaged_ms=1000,
+                    max_scroll_pct=50,
+                    is_view=1,
+                    is_read=0,
+                    finalized_at=now,
+                )
+                for session_id, ended_at in (
+                    # Finalized before the last beat landed in the sink.
+                    (partial, last_beat - datetime.timedelta(seconds=30)),
+                    (covered, last_beat),
+                )
+            ],
+        )
+
+        rows = await clickhouse.query(
+            _document_reads._STALE_SESSION_SQL,
+            {
+                'idle_seconds': _document_reads.SESSION_IDLE_TIMEOUT_SECONDS,
+                'lookback_hours': _document_reads.SWEEP_LOOKBACK_HOURS,
+                'batch': 10_000,
+            },
+        )
+        swept = {row['session_id'] for row in rows}
+        self.assertIn(partial, swept)
+        self.assertIn(unfinalized, swept)
+        self.assertNotIn(covered, swept)

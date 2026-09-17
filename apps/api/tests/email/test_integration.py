@@ -94,7 +94,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(audit.status, 'sent')
                 self.assertIsNone(audit.error_message)
 
-                mock_publish.assert_called_once()
+                mock_publish.assert_awaited_once()
 
         await self._verify_email_in_mailpit(
             to_email='test@example.com',

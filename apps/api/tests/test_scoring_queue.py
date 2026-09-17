@@ -51,7 +51,6 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
                 client,
                 [(b'1-0', {b'project_id': b'p1'})],
                 mock.AsyncMock(),
-                mock.AsyncMock(),
             )
         client.xack.assert_awaited_once()
 
@@ -66,7 +65,6 @@ class ConsumerTests(unittest.IsolatedAsyncioTestCase):
             await score_queue._handle_entries(
                 client,
                 [(b'1-0', {b'project_id': b'p1'})],
-                mock.AsyncMock(),
                 mock.AsyncMock(),
             )
         client.xack.assert_not_called()
