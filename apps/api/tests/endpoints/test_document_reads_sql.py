@@ -22,8 +22,9 @@ import datetime
 import unittest
 import uuid
 
+from apps.api.tests import support
 from imbi.api.endpoints import _document_reads, document_analytics
-from imbi.common import clickhouse
+from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
 
 
@@ -169,55 +170,58 @@ class ReadAnalyticsSqlTestCase(unittest.IsolatedAsyncioTestCase):
             f'sql-test-{uuid.uuid4()}' for _ in range(3)
         )
 
-        await clickhouse.insert(
-            'document_read_events',
-            [
-                _document_reads.DocumentReadEventRow(
-                    org_slug='sql-test',
-                    document_id='doc',
-                    session_id=session_id,
-                    seq=1,
-                    principal='nobody@example.com',
-                    surface='web',
-                    project_id='',
-                    document_version=1,
-                    estimated_read_ms=1000,
-                    session_started_at=started,
-                    recorded_at=last_beat,
-                    engaged_ms=1000,
-                    max_scroll_pct=50,
-                    clamped=0,
-                    is_final=1,
-                )
-                for session_id in (partial, covered, unfinalized)
-            ],
-        )
-        await clickhouse.insert(
-            'document_read_sessions',
-            [
-                _document_reads.DocumentReadSessionRow(
-                    org_slug='sql-test',
-                    document_id='doc',
-                    session_id=session_id,
-                    principal='nobody@example.com',
-                    surface='web',
-                    project_id='',
-                    document_version=1,
-                    started_at=started,
-                    ended_at=ended_at,
-                    engaged_ms=1000,
-                    max_scroll_pct=50,
-                    is_view=1,
-                    is_read=0,
-                    finalized_at=now,
-                )
-                for session_id, ended_at in (
-                    # Finalized before the last beat landed in the sink.
-                    (partial, last_beat - datetime.timedelta(seconds=30)),
-                    (covered, last_beat),
-                )
-            ],
-        )
+        with support.sink_to_clickhouse():
+            await iggy.publish(
+                'document_read_events',
+                'documents',
+                [
+                    _document_reads.DocumentReadEventRow(
+                        org_slug='sql-test',
+                        document_id='doc',
+                        session_id=session_id,
+                        seq=1,
+                        principal='nobody@example.com',
+                        surface='web',
+                        project_id='',
+                        document_version=1,
+                        estimated_read_ms=1000,
+                        session_started_at=started,
+                        recorded_at=last_beat,
+                        engaged_ms=1000,
+                        max_scroll_pct=50,
+                        clamped=0,
+                        is_final=1,
+                    )
+                    for session_id in (partial, covered, unfinalized)
+                ],
+            )
+            await iggy.publish(
+                'document_read_sessions',
+                'documents',
+                [
+                    _document_reads.DocumentReadSessionRow(
+                        org_slug='sql-test',
+                        document_id='doc',
+                        session_id=session_id,
+                        principal='nobody@example.com',
+                        surface='web',
+                        project_id='',
+                        document_version=1,
+                        started_at=started,
+                        ended_at=ended_at,
+                        engaged_ms=1000,
+                        max_scroll_pct=50,
+                        is_view=1,
+                        is_read=0,
+                        finalized_at=now,
+                    )
+                    for session_id, ended_at in (
+                        # Finalized before the last beat landed in the sink.
+                        (partial, last_beat - datetime.timedelta(seconds=30)),
+                        (covered, last_beat),
+                    )
+                ],
+            )
 
         rows = await clickhouse.query(
             _document_reads._STALE_SESSION_SQL,
