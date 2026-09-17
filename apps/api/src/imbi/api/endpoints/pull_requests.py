@@ -397,7 +397,9 @@ async def _list_pending_deploy(
         author_clause = ' AND pr.author = {author:String}'
         params['author'] = author
     if bots:
-        author_clause += " AND pr.author LIKE '%[bot]%'"
+        # GitHub names Apps and bot accounts with a trailing ``[bot]``;
+        # anchor the suffix so ``user[bot]archive`` is not a bot.
+        author_clause += " AND pr.author LIKE '%[bot]'"
     sql = (
         'WITH deployed AS ('  # noqa: S608
         ' SELECT project_id, max(occurred_at) AS last_deployed_at'

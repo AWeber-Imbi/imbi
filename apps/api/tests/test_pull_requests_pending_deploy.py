@@ -121,7 +121,8 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
             bots=True,
         )
         sql, params = self.query.await_args.args
-        self.assertIn("pr.author LIKE '%[bot]%'", sql)
+        self.assertIn("pr.author LIKE '%[bot]'", sql)
+        self.assertNotIn("LIKE '%[bot]%'", sql)
         self.assertNotIn('author', params)
 
     async def test_bots_filter_is_off_by_default(self) -> None:
