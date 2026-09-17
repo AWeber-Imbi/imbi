@@ -15,7 +15,7 @@ from collections import abc
 
 from valkey import asyncio as valkey
 
-from imbi.common import blueprints, clickhouse, graph, models
+from imbi.common import blueprints, graph, models
 from imbi.common.scoring import (
     AgePolicy,
     AnalysisResultPolicy,
@@ -292,7 +292,6 @@ async def enqueue_dependents(
 
 async def _process_message(
     db: graph.Graph,
-    ch: clickhouse.client.Clickhouse,
     fields: dict[str, str],
 ) -> None:
     project_id = fields.get('project_id')
@@ -319,7 +318,7 @@ async def _process_message(
             'Project %s score: %.1f -> %.1f', project_id, previous, score
         )
         await record_score_change(
-            ch, db, project, score, previous, reason, breakdown
+            db, project, score, previous, reason, breakdown
         )
 
 
@@ -396,7 +395,6 @@ async def _handle_entries(
     client: valkey.Valkey,
     entries: list[tuple[bytes, abc.Mapping[bytes | str, bytes | str]]],
     db: graph.Graph,
-    ch: clickhouse.client.Clickhouse,
     check_dlq: bool = False,
 ) -> None:
     for msg_id, raw_fields in entries:
@@ -404,7 +402,7 @@ async def _handle_entries(
         if check_dlq and await _maybe_dead_letter(client, msg_id, fields):
             continue
         try:
-            await _process_message(db, ch, fields)
+            await _process_message(db, fields)
         except Exception:
             LOGGER.exception('recompute failed for %s', fields)
             continue
@@ -414,7 +412,6 @@ async def _handle_entries(
 async def consume_recompute(
     client: valkey.Valkey,
     db: graph.Graph,
-    ch: clickhouse.client.Clickhouse,
     consumer: str = f'{CONSUMER_PREFIX}-0',
     stop: asyncio.Event | None = None,
 ) -> None:
@@ -426,7 +423,7 @@ async def consume_recompute(
     while stop is None or not stop.is_set():
         stale = await _claim_stale(client, consumer)
         if stale:
-            await _handle_entries(client, stale, db, ch, check_dlq=True)
+            await _handle_entries(client, stale, db, check_dlq=True)
         try:
             response = await client.xreadgroup(
                 GROUP,
@@ -442,7 +439,7 @@ async def consume_recompute(
         if not response:
             continue
         for _stream, entries in response:
-            await _handle_entries(client, entries, db, ch)
+            await _handle_entries(client, entries, db)
 
 
 async def _enqueue_all(

@@ -16,7 +16,35 @@ class TopicsTestCase(unittest.TestCase):
         # The sink configuration imbi-api serves to the connectors
         # runtime is generated from this, so a stream or topic dropped
         # here is one the ClickHouse sink stops draining.
-        self.assertEqual({'events': ('gateway',)}, iggy.TOPICS)
+        self.assertIn('gateway', iggy.TOPICS['events'])
+
+    def test_every_analytics_table_has_a_stream(self) -> None:
+        self.assertEqual(
+            {
+                'commit_drift',
+                'commits',
+                'document_read_events',
+                'document_read_sessions',
+                'document_versions',
+                'email_audit',
+                'events',
+                'maintenance_log',
+                'operations_log',
+                'pull_requests',
+                'release_component_batches',
+                'release_components',
+                'scheduler_runs',
+                'score_history',
+                'tags',
+            },
+            set(iggy.TOPICS),
+        )
+
+    def test_every_stream_has_at_least_one_topic(self) -> None:
+        for stream, topics in iggy.TOPICS.items():
+            with self.subTest(stream=stream):
+                self.assertTrue(topics)
+                self.assertEqual(len(topics), len(set(topics)))
 
     def test_publish_error_is_exported(self) -> None:
         self.assertIs(client.PublishError, iggy.PublishError)
@@ -63,4 +91,13 @@ class ModuleFunctionsTestCase(unittest.IsolatedAsyncioTestCase):
             models,
             columns=['id'],
             headers={'producer': 'gateway'},
+        )
+
+    async def test_publish_rows(self) -> None:
+        rows = [{'id': 1}]
+        await iggy.publish_rows(
+            'operations_log', 'api', rows, headers={'producer': 'api'}
+        )
+        self.instance.publish_rows.assert_awaited_once_with(
+            'operations_log', 'api', rows, headers={'producer': 'api'}
         )

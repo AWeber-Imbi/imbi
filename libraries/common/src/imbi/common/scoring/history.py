@@ -1,22 +1,12 @@
-"""Persist score changes: ClickHouse first, then AGE."""
+"""Persist score changes: the Iggy stream first, then AGE."""
 
 from __future__ import annotations
 
 import datetime
 import typing
 
-from imbi.common import graph, models
-from imbi.common.clickhouse import client as ch_client
+from imbi.common import graph, iggy, models
 from imbi.common.scoring.models import ScoreBreakdown
-
-_HISTORY_COLUMNS = [
-    'project_id',
-    'timestamp',
-    'score',
-    'previous_score',
-    'change_reason',
-    'breakdown',
-]
 
 
 async def clear_score(
@@ -37,9 +27,9 @@ async def clear_score(
     )
 
 
-# Hard invariant: write CH history first, then update AGE Project.score.
+# Hard invariant: publish the history row first, then update AGE
+# Project.score.
 async def record_score_change(
-    clickhouse: ch_client.Clickhouse,
     database: graph.Graph,
     project: models.Project,
     new_score: float,
@@ -56,15 +46,15 @@ async def record_score_change(
     breakdown_data = (
         breakdown.model_dump(mode='json') if breakdown is not None else {}
     )
-    row: list[typing.Any] = [
-        project.id,
-        datetime.datetime.now(datetime.UTC),
-        new_score,
-        previous_score,
-        change_reason,
-        breakdown_data,
-    ]
-    await clickhouse.insert('score_history', [row], _HISTORY_COLUMNS)
+    row: dict[str, typing.Any] = {
+        'project_id': project.id,
+        'timestamp': datetime.datetime.now(datetime.UTC),
+        'score': new_score,
+        'previous_score': previous_score,
+        'change_reason': change_reason,
+        'breakdown': breakdown_data,
+    }
+    await iggy.publish_rows('score_history', 'scoring', [row])
     await database.execute(
         'MATCH (p:Project {{id: {id}}})'
         ' SET p.score = {score}, p.previous_score = {previous_score}'

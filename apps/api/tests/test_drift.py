@@ -90,12 +90,8 @@ class ParseNoteVerdictTests(unittest.TestCase):
 
 class RecordVerdictsTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.ch = mock.AsyncMock()
-        patcher = mock.patch.object(
-            drift.ch_client.Clickhouse,
-            'get_instance',
-            return_value=self.ch,
-        )
+        self.publish = mock.AsyncMock()
+        patcher = mock.patch.object(drift.iggy, 'publish_rows', self.publish)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -108,24 +104,25 @@ class RecordVerdictsTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertEqual(2, written)
-        table, rows, columns = self.ch.insert.await_args.args
-        self.assertEqual(drift.VERDICT_TABLE, table)
-        self.assertEqual(drift._VERDICT_COLUMNS, columns)
+        stream, topic, rows = self.publish.await_args.args
+        self.assertEqual(drift.VERDICT_TABLE, stream)
+        self.assertEqual('drift', topic)
         # The SHA is lowercased so it joins ``imbi.commits``.
-        self.assertEqual(FULL_SHA, rows[0][1])
-        self.assertEqual([True, ['a.py']], rows[0][2:4])
+        self.assertEqual(FULL_SHA, rows[0]['sha'])
+        self.assertEqual(True, rows[0]['drift_detected'])
+        self.assertEqual(['a.py'], rows[0]['paths'])
 
     async def test_absent_verdict_writes_no_row(self) -> None:
         written = await drift.record_verdicts(
             'p1', {FULL_SHA: drift.NoteVerdict(None, [])}
         )
         self.assertEqual(0, written)
-        self.ch.insert.assert_not_awaited()
+        self.publish.assert_not_awaited()
 
     async def test_a_clickhouse_failure_answers_none_not_zero(self) -> None:
         # None, not 0: a caller must be able to tell a failed write from
         # a ref that legitimately had nothing to write.
-        self.ch.insert.side_effect = RuntimeError('boom')
+        self.publish.side_effect = RuntimeError('boom')
         with self.assertLogs(drift.LOGGER, level='ERROR'):
             written = await drift.record_verdicts(
                 'p1', {FULL_SHA: drift.NoteVerdict(True, [])}

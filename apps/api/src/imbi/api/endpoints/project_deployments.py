@@ -55,7 +55,7 @@ from imbi.api.release_promote import queue as release_promote_queue
 from imbi.api.release_promote import service as release_promote_service
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
-from imbi.common import clickhouse, graph, versioning
+from imbi.common import clickhouse, graph, iggy, versioning
 from imbi.common import deployments as deployment_nodes
 from imbi.common import environments as environment_chains
 from imbi.common import models as common_models
@@ -1153,11 +1153,7 @@ async def _record_deployment_audit(
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
-    await clickhouse.client.Clickhouse.get_instance().insert(
-        'operations_log',
-        [list(row.values())],
-        list(row.keys()),
-    )
+    await iggy.publish_rows('operations_log', 'deployments', [row])
 
 
 # ---------------------------------------------------------------------------

@@ -419,7 +419,6 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 mock.patch(
                     f'{_MODULE}.clickhouse.client.Clickhouse.get_instance',
                     return_value=mock.MagicMock(
-                        insert=mock.AsyncMock(return_value=None),
                         initialize=mock.AsyncMock(return_value=True),
                         setup_schema=mock.AsyncMock(return_value=None),
                         aclose=mock.AsyncMock(return_value=None),
@@ -427,7 +426,22 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                     ),
                 )
             ),
+            # The operations_log audit row is published to Iggy.
+            'publish_rows': self._start(
+                mock.patch(
+                    f'{_MODULE}.iggy.publish_rows',
+                    new_callable=mock.AsyncMock,
+                )
+            ),
         }
+
+    def _published_audit_row(self) -> dict[str, typing.Any]:
+        publish = self.mocks['publish_rows']
+        publish.assert_awaited_once()
+        stream, topic, rows = publish.await_args.args
+        self.assertEqual(('operations_log', 'deployments'), (stream, topic))
+        self.assertEqual(1, len(rows))
+        return rows[0]
 
     def _start(self, patcher: typing.Any) -> mock.MagicMock:
         m = patcher.start()
@@ -1452,14 +1466,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 },
             )
         self.assertEqual(response.status_code, 202)
-        ch = self.mocks['clickhouse'].return_value
-        ch.insert.assert_awaited_once()
-        args, _kwargs = ch.insert.call_args
-        self.assertEqual(args[0], 'operations_log')
-        rows = args[1]
-        cols = args[2]
-        self.assertEqual(len(rows), 1)
-        row = dict(zip(cols, rows[0], strict=False))
+        row = self._published_audit_row()
         self.assertEqual(row['entry_type'], 'Deployed')
         self.assertEqual(row['environment_slug'], 'testing')
         self.assertEqual(row['link'], 'https://gh/runs/42')
@@ -1483,12 +1490,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 },
             )
         self.assertEqual(response.status_code, 202)
-        ch = self.mocks['clickhouse'].return_value
-        ch.insert.assert_awaited_once()
-        args, _kwargs = ch.insert.call_args
-        rows = args[1]
-        cols = args[2]
-        row = dict(zip(cols, rows[0], strict=False))
+        row = self._published_audit_row()
         self.assertEqual(row['entry_type'], 'Deployed')
         self.assertEqual(row['environment_slug'], 'staging')
         self.assertEqual(row['version'], 'v6.4.0')
@@ -1510,8 +1512,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 202)
         self.assertFalse(response.json()['recorded'])
-        ch = self.mocks['clickhouse'].return_value
-        ch.insert.assert_not_called()
+        self.mocks['publish_rows'].assert_not_called()
 
 
 class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
@@ -1759,8 +1760,7 @@ class ResyncProjectDeploymentsTestCase(ProjectDeploymentsTestCase):
         """
         self._arm([self._observed()])
         self._run_resync()
-        ch = self.mocks['clickhouse'].return_value
-        ch.insert.assert_not_awaited()
+        self.mocks['publish_rows'].assert_not_awaited()
 
     def test_resync_threads_creator_to_performed_by(self) -> None:
         """``observed.creator`` becomes ``DeploymentEvent.performed_by``."""
@@ -3146,9 +3146,7 @@ class CiGateTestCase(ProjectDeploymentsTestCase):
         ]
 
     def _audit_description(self) -> dict[str, typing.Any]:
-        ch = self.mocks['clickhouse'].return_value
-        args, _ = ch.insert.call_args
-        row = dict(zip(args[2], args[1][0], strict=False))
+        row = self._published_audit_row()
         return typing.cast(
             'dict[str, typing.Any]', json.loads(row['description'])
         )
@@ -3496,12 +3494,12 @@ class DispatchCiGateTestCase(CiGateTestCase):
         self.assertEqual(
             202, self._promote(acknowledge_ci_failure=True).status_code
         )
-        self.mocks['clickhouse'].return_value.insert.assert_not_called()
+        self.mocks['publish_rows'].assert_not_called()
 
     def test_clean_promote_records_no_override_in_the_ops_log(self) -> None:
         self._use('pass')
         self.assertEqual(202, self._promote().status_code)
-        self.mocks['clickhouse'].return_value.insert.assert_not_called()
+        self.mocks['publish_rows'].assert_not_called()
 
 
 class ReleaseInFlightGuardTestCase(ProjectDeploymentsTestCase):
@@ -5591,10 +5589,9 @@ class ReleasePublishTestCase(ProjectDeploymentsTestCase):
         with testclient.TestClient(self.test_app) as client:
             response = client.post(self._PUBLISH)
         self.assertEqual(response.status_code, 200)
-        insert = self.mocks['clickhouse'].return_value.insert
-        insert.assert_awaited()
-        columns = insert.await_args.args[2]
-        row = dict(zip(columns, insert.await_args.args[1][0], strict=True))
+        publish = self.mocks['publish_rows']
+        publish.assert_awaited()
+        row = publish.await_args.args[2][0]
         self.assertEqual(row['version'], 'v6.4.0')
         self.assertEqual(json.loads(row['description'])['action'], 'publish')
 

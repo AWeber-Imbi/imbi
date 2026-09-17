@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from apps.api.tests import support
 from imbi.api import models
-from imbi.common import graph
+from imbi.common import graph, iggy
 
 PROJECT_ID = 'abc123nanoid'
 
@@ -2636,73 +2636,58 @@ class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
 class EmitChangeEventsTestCase(unittest.IsolatedAsyncioTestCase):
     """Tests for the project-change events emitter."""
 
-    async def test_no_changes_skips_clickhouse_insert(self) -> None:
+    def setUp(self) -> None:
+        super().setUp()
+        self.publish = self.enterContext(
+            mock.patch.object(
+                iggy, 'publish_rows', new_callable=mock.AsyncMock
+            )
+        )
+
+    async def test_no_changes_skips_publish(self) -> None:
         from imbi.api.endpoints import projects
 
-        with mock.patch(
-            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance'
-        ) as mock_get:
-            await projects._emit_change_events(
-                'p1', 'alice', {'name': 'A'}, {'name': 'A'}
-            )
-        mock_get.assert_not_called()
+        await projects._emit_change_events(
+            'p1', 'alice', {'name': 'A'}, {'name': 'A'}
+        )
+        self.publish.assert_not_called()
 
     async def test_emits_one_row_per_changed_field(self) -> None:
         from imbi.api.endpoints import projects
 
-        mock_instance = mock.AsyncMock()
-        mock_instance.insert = mock.AsyncMock()
-        with mock.patch(
-            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
-            return_value=mock_instance,
-        ):
-            await projects._emit_change_events(
-                'p1',
-                'alice',
-                {'name': 'A', 'description': 'old', 'id': 'p1'},
-                {'name': 'B', 'description': 'new', 'id': 'p1'},
-            )
-        mock_instance.insert.assert_awaited_once()
-        args = mock_instance.insert.await_args.args
-        self.assertEqual(args[0], 'events')
-        rows = args[1]
+        await projects._emit_change_events(
+            'p1',
+            'alice',
+            {'name': 'A', 'description': 'old', 'id': 'p1'},
+            {'name': 'B', 'description': 'new', 'id': 'p1'},
+        )
+        self.publish.assert_awaited_once()
+        stream, topic, rows = self.publish.await_args.args
+        self.assertEqual(('events', 'projects'), (stream, topic))
         self.assertEqual(len(rows), 2)
         # `id` was in skip-list so it should not appear
-        fields = {row[7]['field'] for row in rows}
+        fields = {row['payload']['field'] for row in rows}
         self.assertEqual(fields, {'name', 'description'})
+        self.assertEqual({'project-change'}, {row['type'] for row in rows})
 
     async def test_skip_list_excludes_score_and_relationships(self) -> None:
         from imbi.api.endpoints import projects
 
-        mock_instance = mock.AsyncMock()
-        mock_instance.insert = mock.AsyncMock()
-        with mock.patch(
-            'imbi.api.endpoints.projects.ch_client.Clickhouse.get_instance',
-            return_value=mock_instance,
-        ):
-            await projects._emit_change_events(
-                'p1',
-                'alice',
-                {'score': 10, 'relationships': []},
-                {'score': 20, 'relationships': [{'a': 1}]},
-            )
-        # All changes filtered out — no insert call
-        mock_instance.insert.assert_not_awaited()
+        await projects._emit_change_events(
+            'p1',
+            'alice',
+            {'score': 10, 'relationships': []},
+            {'score': 20, 'relationships': [{'a': 1}]},
+        )
+        # All changes filtered out — nothing published
+        self.publish.assert_not_awaited()
 
-    async def test_clickhouse_failure_is_logged_not_raised(self) -> None:
+    async def test_publish_failure_is_logged_not_raised(self) -> None:
         from imbi.api.endpoints import projects
 
-        mock_instance = mock.AsyncMock()
-        mock_instance.insert = mock.AsyncMock(side_effect=RuntimeError('boom'))
-        with (
-            mock.patch(
-                'imbi.api.endpoints.projects.ch_client.Clickhouse.'
-                'get_instance',
-                return_value=mock_instance,
-            ),
-            self.assertLogs('imbi.api.endpoints.projects', level='ERROR'),
-        ):
-            # Must not raise even when ClickHouse insert fails
+        self.publish.side_effect = RuntimeError('boom')
+        with self.assertLogs('imbi.api.endpoints.projects', level='ERROR'):
+            # Must not raise even when the publish fails
             await projects._emit_change_events(
                 'p1', 'alice', {'name': 'A'}, {'name': 'B'}
             )

@@ -18,7 +18,7 @@ import typing
 
 import pydantic
 
-from imbi.common import clickhouse
+from imbi.common import clickhouse, iggy
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,8 +79,9 @@ async def record_created(
 ) -> None:
     """Record version 1 for a newly created document. Best-effort."""
     try:
-        await clickhouse.insert(
+        await iggy.publish(
             'document_versions',
+            'documents',
             [
                 DocumentVersionRow(
                     document_id=document_id,
@@ -162,7 +163,7 @@ async def record_updated(
                 recorded_at=now,
             )
         )
-        await clickhouse.insert('document_versions', rows)
+        await iggy.publish('document_versions', 'documents', rows)
     except Exception:
         LOGGER.exception(
             'failed to record version %s for document %s',

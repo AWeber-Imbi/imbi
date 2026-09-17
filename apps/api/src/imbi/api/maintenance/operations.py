@@ -27,7 +27,7 @@ from valkey import asyncio as valkey
 from imbi.api.auth import permissions, principals
 from imbi.api.maintenance import log
 from imbi.api.scoring import queue as score_queue
-from imbi.common import clickhouse, graph
+from imbi.common import clickhouse, graph, iggy
 from imbi.common import models as common_models
 from imbi.common.plugins.errors import PluginRateLimited
 
@@ -829,34 +829,21 @@ async def execute_opslog_backfill(
             'Every attributed deployment already has its ops-log entry.',
         )
 
-    client_instance = clickhouse.client.Clickhouse.get_instance()
     if pending:
-        columns: list[str] = []
-        values: list[list[typing.Any]] = []
+        rows: list[dict[str, typing.Any]] = []
         for entry in pending:
             dumped = entry.model_dump(by_alias=True, mode='python')
             dumped['is_deleted'] = 1 if entry.is_deleted else 0
-            if not columns:
-                columns = list(dumped.keys())
-            values.append(list(dumped.values()))
-        await client_instance.insert('operations_log', values, columns)
+            rows.append(dumped)
+        await iggy.publish_rows('operations_log', 'maintenance', rows)
     if repairs:
-        # A separate insert: the repaired rows come off ``SELECT *`` and
-        # need not share the model dump's column order.
+        # A separate publish: the repaired rows come off ``SELECT *``.
         LOGGER.debug(
             'opslog-backfill: filling commit_sha on %d row(s) of project %s',
             len(repairs),
             project_id,
         )
-        repair_columns = list(repairs[0].keys())
-        await client_instance.insert(
-            'operations_log',
-            [
-                [repair[column] for column in repair_columns]
-                for repair in repairs
-            ],
-            repair_columns,
-        )
+        await iggy.publish_rows('operations_log', 'maintenance', repairs)
     ctx.log.record(
         'succeeded',
         'opslog-backfill',

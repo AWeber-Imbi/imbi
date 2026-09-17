@@ -21,6 +21,7 @@ from unittest import mock
 from fastapi import testclient
 from valkey import asyncio as valkey_asyncio
 
+from apps.api.tests import support
 from imbi.api import app, models
 from imbi.api.auth import password, permissions
 from imbi.api.plugins.resolution import ResolvedCapability
@@ -622,6 +623,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
                 self._seed_cache(scoped_key, [{'key': '/old', 'sentinel': 2}])
             )
             with (
+                support.sink_to_clickhouse(),
                 mock.patch(
                     'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),
@@ -713,9 +715,9 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
                     return_value={'token': 'x'},
                 ),
                 mock.patch(
-                    'imbi.api.endpoints.project_configuration.clickhouse'
-                    '.client.Clickhouse.get_instance',
-                    side_effect=RuntimeError('CH down'),
+                    'imbi.api.endpoints.project_configuration.iggy'
+                    '.publish_rows',
+                    side_effect=RuntimeError('Iggy down'),
                 ),
             ):
                 response = client.put(
@@ -738,6 +740,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         with testclient.TestClient(self.test_app) as client:
             asyncio.run(self._seed_cache(cache_key, [{'sentinel': True}]))
             with (
+                support.sink_to_clickhouse(),
                 mock.patch(
                     'imbi.api.endpoints.project_configuration.resolve_capability',
                     return_value=_resolved(self.plugin_id),

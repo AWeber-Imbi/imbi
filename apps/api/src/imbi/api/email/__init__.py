@@ -13,7 +13,7 @@ rendered using Jinja2 templates with both HTML and plain text versions.
 import logging
 from urllib import parse
 
-from imbi.common import clickhouse, graph
+from imbi.common import graph, iggy
 
 from .client import EmailClient
 from .dependencies import InjectEmailClient, InjectTemplateManager
@@ -154,18 +154,18 @@ async def send_password_reset(
 
 
 async def _save_audit(audit: models.EmailAudit) -> None:
-    """Save email audit record to ClickHouse.
+    """Publish the email audit record to the ``email_audit`` stream.
 
     Args:
         audit: Email audit record to save
 
     """
     try:
-        await clickhouse.insert('email_audit', [audit])
-        LOGGER.debug('Email audit saved to ClickHouse: %s', audit.to_email)
-    except clickhouse.client.DatabaseError as err:
+        await iggy.publish('email_audit', 'email', [audit])
+        LOGGER.debug('Email audit published: %s', audit.to_email)
+    except iggy.PublishError as err:
         # Log error but don't fail the email send
         LOGGER.warning(
-            'Failed to save email audit to ClickHouse: %s',
+            'Failed to publish email audit: %s',
             err,
         )

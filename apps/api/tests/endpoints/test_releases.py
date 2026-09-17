@@ -2617,7 +2617,7 @@ class PutReleaseSbomTestCase(_ReleasesTestBase):
         # Ingest dual-writes the component set to ClickHouse; these
         # cases assert the graph half, so the insert is stubbed out.
         self.ch_insert = mock.AsyncMock()
-        patcher = mock.patch('imbi.common.clickhouse.insert', self.ch_insert)
+        patcher = mock.patch('imbi.common.iggy.publish', self.ch_insert)
         patcher.start()
         self.addCleanup(patcher.stop)
 

@@ -13,10 +13,11 @@ GitHub's list-PRs API omits per-file diff stats
 (``additions``/``deletions``/``changed_files``), so backfill rows
 store ``0`` for those fields; they are accurate on webhook-driven rows.
 
-PR rows are written to the shared ClickHouse ``pull_requests`` table via
-:func:`imbi.common.clickhouse.insert`. Writes are best-effort: a storage
-failure is logged and swallowed so an analytics hiccup never 5xxs the
-webhook, exactly as the gateway's own event recording behaves.
+PR rows are published via :func:`imbi.common.iggy.publish` to the
+``pull_requests`` stream, which the ClickHouse sink drains into the table
+of the same name. Writes are best-effort: a publish failure is logged and
+swallowed so an analytics hiccup never 5xxs the webhook, exactly as the
+gateway's own event recording behaves.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ import httpx
 import jsonpointer
 import pydantic
 
-from imbi.common import clickhouse
+from imbi.common import iggy
 from imbi.common.json_pointer import JsonPointer
 from imbi.common.models import PullRequestRecord
 from imbi.common.plugins.base import (
@@ -43,7 +44,7 @@ from imbi.plugins.github._repos import resolve_owner_repo
 from imbi.plugins.github.commits import (
     _BACKFILL_MAX_WAIT_SECONDS,  # pyright: ignore[reportPrivateUsage]
     _client,  # pyright: ignore[reportPrivateUsage]
-    _insert_best_effort,  # pyright: ignore[reportPrivateUsage]
+    _publish_best_effort,  # pyright: ignore[reportPrivateUsage]
     _request,  # pyright: ignore[reportPrivateUsage]
     _resolve,  # pyright: ignore[reportPrivateUsage]
     _resolve_bearer,  # pyright: ignore[reportPrivateUsage]
@@ -237,7 +238,7 @@ async def sync_pull_requests(
         )
         return
     try:
-        await clickhouse.insert('pull_requests', [record])
+        await iggy.publish('pull_requests', 'github', [record])
     except Exception:
         LOGGER.exception(
             'github-pr-sync: failed to record PR #%d for project %s',
@@ -356,6 +357,6 @@ class GitHubPullRequestSync(PullRequestSyncCapability):
             record = _pr_record(pr, project_id=ctx.project_id)
             if record is not None:
                 records.append(record)
-        return await _insert_best_effort(
+        return await _publish_best_effort(
             'pull_requests', records, ctx.project_id
         )

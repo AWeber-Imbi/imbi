@@ -40,8 +40,7 @@ import typing
 import fastapi
 
 from imbi.api.auth import principals
-from imbi.common import clickhouse, graph
-from imbi.common.clickhouse import client as ch_client
+from imbi.common import clickhouse, graph, iggy
 from imbi.common.plugins import errors as plugin_errors
 
 LOGGER = logging.getLogger(__name__)
@@ -53,14 +52,6 @@ NAMESPACE = 'imbi-drift'
 #: commit this tag points at drift"; this answers the same for *every*
 #: commit, which is what OR-ing a range needs.
 VERDICT_TABLE = 'commit_drift'
-
-_VERDICT_COLUMNS = [
-    'project_id',
-    'sha',
-    'drift_detected',
-    'paths',
-    'recorded_at',
-]
 
 REQUESTED_BY = principals.DRIFT_SYNC
 
@@ -172,7 +163,7 @@ def parse_note(body: str | None) -> bool | None:
 async def record_verdicts(
     project_id: str, verdicts: dict[str, NoteVerdict]
 ) -> int | None:
-    """Persist per-commit verdicts, one insert for the whole batch.
+    """Persist per-commit verdicts, one publish for the whole batch.
 
     Keyed by the annotated commit's full SHA to join ``imbi.commits``,
     so only callers holding full SHAs write here -- the notes tree is
@@ -191,16 +182,20 @@ async def record_verdicts(
     """
     now = datetime.datetime.now(datetime.UTC)
     rows = [
-        [project_id, sha.lower(), verdict.drift_detected, verdict.paths, now]
+        {
+            'project_id': project_id,
+            'sha': sha.lower(),
+            'drift_detected': verdict.drift_detected,
+            'paths': verdict.paths,
+            'recorded_at': now,
+        }
         for sha, verdict in verdicts.items()
         if verdict.drift_detected is not None
     ]
     if not rows:
         return 0
     try:
-        await ch_client.Clickhouse.get_instance().insert(
-            VERDICT_TABLE, rows, _VERDICT_COLUMNS
-        )
+        await iggy.publish_rows(VERDICT_TABLE, 'drift', rows)
     except Exception:
         LOGGER.exception(
             'could not record %d drift verdicts for project %s',

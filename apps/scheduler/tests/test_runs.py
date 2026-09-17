@@ -216,6 +216,14 @@ class HistoryTests(helpers.TestCase):
         self.assertEqual(run.run_id, fetched.run_id)
         self.assertEqual('running', fetched.state)
 
+    async def test_record_publishes_to_the_scheduler_runs_stream(self) -> None:
+        run = runs.start(self.task, FIRED_AT)
+        await runs.record(run)
+        self.assertEqual(1, len(self.published))
+        stream, topic, rows = self.published[0]
+        self.assertEqual(('scheduler_runs', 'scheduler'), (stream, topic))
+        self.assertEqual(run.run_id, rows[0]['run_id'])
+
     async def test_terminal_row_supersedes_running(self) -> None:
         run = runs.start(self.task, FIRED_AT)
         await runs.record(run)

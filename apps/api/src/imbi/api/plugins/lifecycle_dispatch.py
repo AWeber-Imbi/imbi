@@ -32,8 +32,7 @@ from imbi.api.plugins.resolution import (
     resolve_all_capabilities,
 )
 from imbi.api.settings import get_server_config
-from imbi.common import graph
-from imbi.common.clickhouse import client as ch_client
+from imbi.common import graph, iggy
 from imbi.common.plugins import decrypt_integration_credentials
 from imbi.common.plugins.base import (
     LifecycleCapability,
@@ -281,7 +280,7 @@ async def dispatch_lifecycle(
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)
         results.append(invocation)
-    # H17: emit all per-plugin events in a single ClickHouse insert
+    # H17: emit all per-plugin events in a single publish
     # rather than one round-trip per plugin. The dispatch loop hits N
     # plugins serially, so a project assigned to a handful of plugins
     # was paying N CH round trips on every lifecycle tick.
@@ -474,18 +473,6 @@ def _extract_http_detail(exc: fastapi.HTTPException) -> str:
     return str(detail)
 
 
-_EVENT_COLUMNS = [
-    'id',
-    'project_id',
-    'recorded_at',
-    'type',
-    'integration',
-    'attributed_to',
-    'metadata',
-    'payload',
-]
-
-
 async def _emit_events_batch(
     project_id: str,
     event: LifecycleEvent,
@@ -493,40 +480,38 @@ async def _emit_events_batch(
     invocations: list[LifecycleInvocation],
     auth: permissions.AuthContext,
 ) -> None:
-    """Log all per-plugin lifecycle events in one ClickHouse insert.
+    """Publish all per-plugin lifecycle events in one batch.
 
     Errors here never bubble — the operator action already succeeded
-    and a ClickHouse hiccup must not poison the response. H17: this
-    replaces the per-invocation insert that was paying N round trips
+    and a stream hiccup must not poison the response. H17: this
+    replaces the per-invocation write that was paying N round trips
     for an N-plugin lifecycle dispatch.
     """
     if not invocations:
         return
     now = datetime.datetime.now(datetime.UTC)
     principal = auth.principal_name
-    rows: list[list[typing.Any]] = [
-        [
-            nanoid.generate(),
-            project_id,
-            now,
-            f'plugin.lifecycle.{event}',
-            resolved.integration_slug,
-            principal,
-            {'plugin_id': invocation.integration_id},
-            {
+    rows: list[dict[str, typing.Any]] = [
+        {
+            'id': nanoid.generate(),
+            'project_id': project_id,
+            'recorded_at': now,
+            'type': f'plugin.lifecycle.{event}',
+            'integration': resolved.integration_slug,
+            'attributed_to': principal,
+            'metadata': {'plugin_id': invocation.integration_id},
+            'payload': {
                 'status': invocation.status,
                 'message': invocation.message,
                 'artifacts': invocation.artifacts,
             },
-        ]
+        }
         for resolved, invocation in zip(
             resolved_list, invocations, strict=True
         )
     ]
     try:
-        await ch_client.Clickhouse.get_instance().insert(
-            'events', rows, _EVENT_COLUMNS
-        )
+        await iggy.publish_rows('events', 'lifecycle', rows)
     except Exception:
         LOGGER.exception(
             'Failed to emit %d lifecycle events for project %s',

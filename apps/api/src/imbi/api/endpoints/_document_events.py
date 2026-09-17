@@ -10,7 +10,7 @@ than surfaced.
 import datetime
 import logging
 
-from imbi.common import clickhouse, models
+from imbi.common import iggy, models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,8 +34,9 @@ async def emit_like_event(
     activity feed, which keys on ``attributed_to`` rather than project.
     """
     try:
-        await clickhouse.insert(
+        await iggy.publish(
             'events',
+            'documents',
             [
                 models.Event(
                     project_id=project_id,

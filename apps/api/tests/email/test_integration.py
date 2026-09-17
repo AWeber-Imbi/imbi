@@ -77,8 +77,8 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             await email_client.initialize()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi.common.clickhouse.insert') as mock_insert:
-                mock_insert.return_value = None
+            with mock.patch('imbi.common.iggy.publish') as mock_publish:
+                mock_publish.return_value = None
 
                 audit = await email.send_welcome_email(
                     email_client,
@@ -94,7 +94,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(audit.status, 'sent')
                 self.assertIsNone(audit.error_message)
 
-                mock_insert.assert_called_once()
+                mock_publish.assert_awaited_once()
 
         await self._verify_email_in_mailpit(
             to_email='test@example.com',
@@ -175,7 +175,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi.common.clickhouse.insert'):
+            with mock.patch('imbi.common.iggy.publish'):
                 audit = await email.send_welcome_email(
                     email_client,
                     template_manager,
@@ -202,7 +202,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi.common.clickhouse.insert'):
+            with mock.patch('imbi.common.iggy.publish'):
                 audit = await email.send_welcome_email(
                     email_client,
                     template_manager,
@@ -229,7 +229,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi.common.clickhouse.insert'):
+            with mock.patch('imbi.common.iggy.publish'):
                 token, audit = await email.send_password_reset(
                     email_client,
                     template_manager,
@@ -250,10 +250,10 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(audit.template_name, 'password_reset')
                 self.assertEqual(audit.status, 'dry_run')
 
-    async def test_clickhouse_audit_error_handling(self) -> None:
-        """Test that ClickHouse errors don't fail email sends."""
+    async def test_audit_publish_error_handling(self) -> None:
+        """Test that audit publish errors don't fail email sends."""
         from imbi.api import email
-        from imbi.common import clickhouse
+        from imbi.common import iggy
 
         with mock.patch(
             'imbi.api.email.client.settings.Email'
@@ -265,8 +265,8 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi.common.clickhouse.insert') as mock_insert:
-                mock_insert.side_effect = clickhouse.client.DatabaseError(
+            with mock.patch('imbi.common.iggy.publish') as mock_publish:
+                mock_publish.side_effect = iggy.PublishError(
                     'Connection failed'
                 )
 
@@ -298,7 +298,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_client = client.EmailClient()
             template_manager = templates.TemplateManager()
 
-            with mock.patch('imbi.common.clickhouse.insert'):
+            with mock.patch('imbi.common.iggy.publish'):
                 with mock.patch.object(
                     template_manager,
                     'render_email',

@@ -25,9 +25,8 @@ import pydantic
 
 from imbi.api.auth import permissions
 from imbi.api.endpoints import _search_index
-from imbi.common import graph, models
+from imbi.common import graph, iggy, models
 from imbi.common import patch as json_patch
-from imbi.common.clickhouse import client as ch_client
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,18 +54,19 @@ async def _emit_comment_event(
     failed analytics write must not fail the comment request.
     """
     try:
-        await ch_client.Clickhouse.get_instance().insert(
+        await iggy.publish_rows(
             'events',
+            'comments',
             [
-                [
-                    nanoid.generate(),
-                    project_id or '',
-                    datetime.datetime.now(datetime.UTC),
-                    _COMMENT_EVENT_TYPE,
-                    'internal',
-                    principal,
-                    {},
-                    {
+                {
+                    'id': nanoid.generate(),
+                    'project_id': project_id or '',
+                    'recorded_at': datetime.datetime.now(datetime.UTC),
+                    'type': _COMMENT_EVENT_TYPE,
+                    'integration': 'internal',
+                    'attributed_to': principal,
+                    'metadata': {},
+                    'payload': {
                         'document_id': document_id,
                         'thread_id': thread_id,
                         'comment_id': comment_id,
@@ -74,17 +74,7 @@ async def _emit_comment_event(
                         'action': action,
                         'excerpt': body[:140],
                     },
-                ]
-            ],
-            [
-                'id',
-                'project_id',
-                'recorded_at',
-                'type',
-                'integration',
-                'attributed_to',
-                'metadata',
-                'payload',
+                }
             ],
         )
     except Exception:

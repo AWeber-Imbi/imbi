@@ -1,3 +1,5 @@
+import typing
+
 import pydantic
 
 from . import client
@@ -10,6 +12,7 @@ __all__ = [
     'ensure_topic',
     'initialize',
     'publish',
+    'publish_rows',
 ]
 
 #: The streams Imbi publishes to and the topics of each, keyed by stream
@@ -20,7 +23,27 @@ __all__ = [
 #: generated from this mapping to the Iggy connectors runtime over HTTP,
 #: so a topic added here is a topic the sink drains, with no second list
 #: to keep in step.
-TOPICS: dict[str, tuple[str, ...]] = {'events': ('gateway',)}
+#:
+#: Topics split a stream by the feature that produces the rows. The
+#: runtime reads this mapping once at startup, so a topic added here
+#: reaches ClickHouse after the connectors runtime restarts.
+TOPICS: dict[str, tuple[str, ...]] = {
+    'commit_drift': ('drift',),
+    'commits': ('github', 'maintenance'),
+    'document_read_events': ('documents',),
+    'document_read_sessions': ('documents',),
+    'document_versions': ('documents',),
+    'email_audit': ('email',),
+    'events': ('comments', 'documents', 'gateway', 'lifecycle', 'projects'),
+    'maintenance_log': ('maintenance',),
+    'operations_log': ('api', 'configuration', 'deployments', 'maintenance'),
+    'pull_requests': ('github',),
+    'release_component_batches': ('sbom',),
+    'release_components': ('sbom',),
+    'scheduler_runs': ('scheduler',),
+    'score_history': ('scoring',),
+    'tags': ('github',),
+}
 
 
 async def initialize() -> bool:
@@ -61,4 +84,33 @@ async def publish(
     """
     await client.Iggy.get_instance().publish(
         stream, topic, models, columns=columns, headers=headers
+    )
+
+
+async def publish_rows(
+    stream: str,
+    topic: str,
+    rows: list[dict[str, typing.Any]],
+    *,
+    headers: dict[str, str] | None = None,
+) -> None:
+    """Publish one message per already-rendered row to a stream's topic.
+
+    For producers whose row is a column-to-value mapping rather than a
+    model, such as a row read back from ClickHouse and re-published with
+    a bumped version. Each row is sent as-is, so its keys must be the
+    table's column names.
+
+    Args:
+        stream: The name of the stream to publish to
+        topic: The name of the topic within that stream
+        rows: The rows to publish, one message each
+        headers: Iggy ``user_headers`` set on every message
+
+    Raises:
+        ValueError: If rows is empty
+        PublishError: If the send fails
+    """
+    await client.Iggy.get_instance().publish_rows(
+        stream, topic, rows, headers=headers
     )

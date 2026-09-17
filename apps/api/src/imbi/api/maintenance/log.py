@@ -21,9 +21,10 @@ wedge a run. Callers get no exception and no return value to check.
 
 ``record`` only buffers, so an operation can call it inside a loop
 without paying a round trip per row; the worker flushes the buffer once
-per item. The insert asks the server to batch (``async_insert``) because
-a full sweep is tens of thousands of flushes, and one MergeTree part per
-flush is how a table earns a "too many parts" complaint.
+per item. Rows go out on the ``maintenance_log`` stream, where the
+ClickHouse sink batches them, because a full sweep is tens of thousands
+of flushes, and one MergeTree part per flush is how a table earns a
+"too many parts" complaint.
 """
 
 from __future__ import annotations
@@ -36,19 +37,11 @@ import typing
 import orjson
 import pydantic
 
-from imbi.common import clickhouse, models
+from imbi.common import iggy, models
 
 LOGGER = logging.getLogger(__name__)
 
 TABLE = 'maintenance_log'
-
-#: Let the server coalesce the many small inserts a sweep produces.
-#: ``wait_for_async_insert`` keeps failures observable rather than
-#: swallowing rows into a buffer nobody watches.
-INSERT_SETTINGS: dict[str, typing.Any] = {
-    'async_insert': 1,
-    'wait_for_async_insert': 1,
-}
 
 MAX_MESSAGE_LEN = 2_000
 MAX_DETAIL_BYTES = 8_192
@@ -105,18 +98,18 @@ def _sanitize_detail(detail: dict[str, typing.Any]) -> dict[str, typing.Any]:
 
 
 async def _write(rows: list[models.MaintenanceLogRecord]) -> None:
-    """Insert *rows*, swallowing every failure."""
+    """Publish *rows*, swallowing every failure."""
     if not rows:
         return
     try:
         async with asyncio.timeout(WRITE_TIMEOUT_SECONDS):
-            # ``insert`` takes ``list[BaseModel]``, which is invariant,
+            # ``publish`` takes ``list[BaseModel]``, which is invariant,
             # so a list of one concrete model type does not satisfy it
             # directly.
-            await clickhouse.insert(
+            await iggy.publish(
                 TABLE,
+                'maintenance',
                 typing.cast('list[pydantic.BaseModel]', rows),
-                settings=INSERT_SETTINGS,
             )
     except Exception:
         LOGGER.exception(

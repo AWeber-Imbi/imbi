@@ -50,7 +50,7 @@ from cyclonedx.model import license as cdx_license
 from packageurl import PackageURL
 
 from imbi.api import component_facts
-from imbi.common import clickhouse, graph, models
+from imbi.common import graph, iggy, models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -573,12 +573,16 @@ async def publish_batch(
     parsed_count: int,
     source: typing.Literal['ingest', 'backfill'] = 'ingest',
 ) -> None:
-    """Write a batch's fact rows, then the row publishing them.
+    """Publish a batch's fact rows, then the row publishing them.
 
     The order is the point. Readers resolve a release to one
-    ``batch_id`` through the batch table, so rows written here
-    become visible only on the last statement. Raising part way
-    leaves inert rows and a reader still on the previous snapshot.
+    ``batch_id`` through the batch table, so rows published here
+    become visible only once the batch row lands. The batch row is
+    published only after the fact rows are acknowledged; the two
+    streams are drained by separate sinks, so a batch row visible
+    before its last fact rows is a window of one poll interval, not
+    a permanent state. Raising part way leaves inert rows and a
+    reader still on the previous snapshot.
 
     ``parsed_count`` is what the source held; ``len(records)`` is
     what survived. Recording both is what makes a snapshot that is
@@ -597,9 +601,14 @@ async def publish_batch(
     right than two.
     """
     if records:
-        await clickhouse.insert('release_components', list(records))
-    await clickhouse.insert(
+        await iggy.publish(
+            'release_components',
+            'sbom',
+            typing.cast('list[pydantic.BaseModel]', list(records)),
+        )
+    await iggy.publish(
         'release_component_batches',
+        'sbom',
         [
             models.ReleaseComponentBatch(
                 release_id=release_id,

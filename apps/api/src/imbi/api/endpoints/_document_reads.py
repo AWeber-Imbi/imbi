@@ -27,7 +27,7 @@ import pydantic
 from valkey import asyncio as valkey_asyncio
 
 from imbi.api.endpoints import _document_scope
-from imbi.common import clickhouse, graph
+from imbi.common import clickhouse, graph, iggy
 
 LOGGER = logging.getLogger(__name__)
 
@@ -238,8 +238,9 @@ async def record_events(rows: list[DocumentReadEventRow]) -> None:
     if not rows:
         return
     try:
-        await clickhouse.insert(
+        await iggy.publish(
             'document_read_events',
+            'documents',
             typing.cast('list[pydantic.BaseModel]', rows),
         )
     except Exception:
@@ -352,7 +353,7 @@ async def finalize_sessions(session_ids: list[str]) -> int:
     if not rows:
         return 0
     try:
-        await clickhouse.insert('document_read_sessions', rows)
+        await iggy.publish('document_read_sessions', 'documents', rows)
     except Exception:
         LOGGER.exception('failed to finalize %d session(s)', len(rows))
         return 0
@@ -366,8 +367,20 @@ async def finalize_sessions(session_ids: list[str]) -> int:
 #: never having been finalized.
 SWEEP_LOOKBACK_HOURS = 24
 
-# Sessions whose last heartbeat has aged past the idle timeout and that
-# have no finalized row yet.
+# Sessions whose last heartbeat has aged past the idle timeout and whose
+# finalized row does not yet cover that heartbeat.
+#
+# The condition is "not finalized *through* the last beat", not "not
+# finalized at all". Heartbeats reach ClickHouse through Iggy, so a
+# session finalized inline by its own final flush aggregates only the
+# beats the sink had already drained -- the last one or two are
+# routinely missing, and `engaged_ms` and `max_scroll_pct` are short by
+# that much. Skipping every session that has any row would make that
+# shortfall permanent. Comparing `ended_at` against the last beat makes
+# this sweep a repair pass instead: it re-finalizes the session once the
+# sink has caught up, `finalize_sessions` is idempotent, and the
+# rewritten row then covers the last beat, so the session stops
+# matching.
 #
 # Both sides are pinned to the same recent window so neither scans more
 # than the other needs: without the `recorded_at` bound the outer scan
@@ -386,11 +399,12 @@ FROM (
     HAVING last_beat < now() - INTERVAL {idle_seconds:UInt32} SECOND
 ) AS e
 LEFT JOIN (
-    SELECT DISTINCT session_id
+    SELECT session_id, max(ended_at) AS finalized_through
     FROM imbi.document_read_sessions
     WHERE started_at > now() - INTERVAL {lookback_hours:UInt32} HOUR
+    GROUP BY session_id
 ) AS s USING (session_id)
-WHERE s.session_id = ''
+WHERE s.session_id = '' OR s.finalized_through < e.last_beat
 LIMIT {batch:UInt32}
 """
 

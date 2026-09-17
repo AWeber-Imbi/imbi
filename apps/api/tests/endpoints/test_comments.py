@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from apps.api.tests import support
 from imbi.api import models
-from imbi.common import graph
+from imbi.common import graph, iggy
 from imbi.common import models as common_models
 
 _BASE = '/organizations/engineering/projects/proj-abc/documents/doc-1/comments'
@@ -203,46 +203,37 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             mock.patch(
                 'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
-            mock.patch(
-                'imbi.api.endpoints.comments.ch_client.Clickhouse'
-                '.get_instance',
-                return_value=ch,
-            ),
+            mock.patch.object(iggy, 'publish_rows', ch),
         ):
             response = self.client.post(_BASE, json={'body': 'First!'})
         self.assertEqual(response.status_code, 201)
-        ch.insert.assert_awaited_once()
-        table, rows, columns = ch.insert.await_args.args
-        self.assertEqual(table, 'events')
-        record = dict(zip(columns, rows[0], strict=True))
+        ch.assert_awaited_once()
+        stream, topic, rows = ch.await_args.args
+        self.assertEqual(('events', 'comments'), (stream, topic))
+        record = rows[0]
         self.assertEqual(record['type'], 'document-comment')
         self.assertEqual(record['project_id'], 'proj-abc')
         self.assertEqual(record['attributed_to'], 'alice@example.com')
         self.assertEqual(record['payload']['action'], 'created')
         self.assertEqual(record['payload']['document_id'], 'doc-1')
 
-    def test_create_thread_clickhouse_failure_is_best_effort(self) -> None:
-        # A failed ClickHouse insert must not fail the comment request.
+    def test_create_thread_publish_failure_is_best_effort(self) -> None:
+        # A failed event publish must not fail the comment request.
         self.mock_db.execute.side_effect = [
             [{'id': 'doc-1'}],
             [{'id': 'thread-1'}],
             [self._thread_row()],
         ]
-        ch = mock.AsyncMock()
-        ch.insert.side_effect = Exception('boom')
+        ch = mock.AsyncMock(side_effect=Exception('boom'))
         with (
             mock.patch(
                 'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
-            mock.patch(
-                'imbi.api.endpoints.comments.ch_client.Clickhouse'
-                '.get_instance',
-                return_value=ch,
-            ),
+            mock.patch.object(iggy, 'publish_rows', ch),
         ):
             response = self.client.post(_BASE, json={'body': 'First!'})
         self.assertEqual(response.status_code, 201)
-        ch.insert.assert_awaited_once()
+        ch.assert_awaited_once()
 
     def test_create_reply_emits_event(self) -> None:
         # Replying writes a 'document-comment' row with action 'replied'
@@ -255,49 +246,36 @@ class CommentEndpointsTestCase(support.SharedAppTestCase):
             mock.patch(
                 'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
-            mock.patch(
-                'imbi.api.endpoints.comments.ch_client.Clickhouse'
-                '.get_instance',
-                return_value=ch,
-            ),
+            mock.patch.object(iggy, 'publish_rows', ch),
         ):
             response = self.client.post(
                 f'{_BASE}/thread-1/comments', json={'body': 'reply'}
             )
         self.assertEqual(response.status_code, 201)
-        ch.insert.assert_awaited_once()
-        columns, rows = (
-            ch.insert.await_args.args[2],
-            ch.insert.await_args.args[1],
-        )
-        record = dict(zip(columns, rows[0], strict=True))
+        ch.assert_awaited_once()
+        record = ch.await_args.args[2][0]
         self.assertEqual(record['type'], 'document-comment')
         self.assertEqual(record['payload']['action'], 'replied')
         self.assertEqual(record['payload']['kind'], '')
         self.assertEqual(record['payload']['thread_id'], 'thread-1')
 
     def test_create_reply_clickhouse_failure_is_best_effort(self) -> None:
-        # A failed ClickHouse insert must not fail the reply request.
+        # A failed event publish must not fail the reply request.
         self.mock_db.execute.return_value = [
             {'c': self._comment(id='c2', body='reply')}
         ]
-        ch = mock.AsyncMock()
-        ch.insert.side_effect = Exception('boom')
+        ch = mock.AsyncMock(side_effect=Exception('boom'))
         with (
             mock.patch(
                 'imbi.common.graph.parse_agtype', side_effect=lambda x: x
             ),
-            mock.patch(
-                'imbi.api.endpoints.comments.ch_client.Clickhouse'
-                '.get_instance',
-                return_value=ch,
-            ),
+            mock.patch.object(iggy, 'publish_rows', ch),
         ):
             response = self.client.post(
                 f'{_BASE}/thread-1/comments', json={'body': 'reply'}
             )
         self.assertEqual(response.status_code, 201)
-        ch.insert.assert_awaited_once()
+        ch.assert_awaited_once()
 
     def test_create_thread_persists_mentions(self) -> None:
         self.mock_db.execute.side_effect = [

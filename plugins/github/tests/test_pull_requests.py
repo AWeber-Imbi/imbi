@@ -28,11 +28,11 @@ def _gen_pem() -> str:
 
 # Generated once for the module; signing only needs a valid RSA key.
 _APP_KEY_PEM = _gen_pem()
-# ``sync_all_history`` inserts through ``_insert_best_effort`` (defined in
+# ``sync_all_history`` publishes through ``_publish_best_effort`` (defined in
 # commits.py), so its ClickHouse call resolves in the commits namespace.
-_INSERT_BACKFILL = 'imbi.plugins.github.commits.clickhouse.insert'
-# The webhook action inserts directly through the pull_requests namespace.
-_INSERT_WEBHOOK = 'imbi.plugins.github.pull_requests.clickhouse.insert'
+_INSERT_BACKFILL = 'imbi.plugins.github.commits.iggy.publish'
+# The webhook action publishes directly through the pull_requests namespace.
+_INSERT_WEBHOOK = 'imbi.plugins.github.pull_requests.iggy.publish'
 
 
 def _connection(
@@ -140,7 +140,7 @@ class SyncPullRequestsActionTestCase(unittest.IsolatedAsyncioTestCase):
             )
         insert.assert_awaited_once()
         assert insert.await_args is not None
-        table, records = insert.await_args.args
+        table, _topic, records = insert.await_args.args
         self.assertEqual(table, 'pull_requests')
         self.assertEqual(records[0].pr_number, 7)
         self.assertEqual(records[0].author, 'octocat')

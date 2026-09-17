@@ -366,11 +366,10 @@ async def score_worker_hook() -> abc.AsyncGenerator[None]:
         LOGGER.warning('Graph not ready; score worker not started')
         yield None
         return
-    ch = clickhouse.client.Clickhouse.get_instance()
     stop = asyncio.Event()
     LOGGER.info('Score recompute worker starting')
     consumer_task = asyncio.create_task(
-        score_queue.consume_recompute(client, _graph, ch, stop=stop)
+        score_queue.consume_recompute(client, _graph, stop=stop)
     )
     tick_task = asyncio.create_task(
         score_queue.run_daily_tick(client, _graph, stop=stop)

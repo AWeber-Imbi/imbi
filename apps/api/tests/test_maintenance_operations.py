@@ -647,6 +647,9 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
                 'get_instance',
                 return_value=instance,
             ),
+            mock.patch.object(
+                operations.iggy, 'publish_rows', instance.insert
+            ),
             mock.patch(
                 'imbi.api.endpoints._helpers.lookup_project_slugs',
                 mock.AsyncMock(return_value=('proj', 'team')),
@@ -659,9 +662,10 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
 
     @staticmethod
     def _inserted_row(instance: mock.Mock) -> dict[str, object]:
-        _table, values, columns = instance.insert.await_args.args
-        assert len(values) == 1
-        return dict(zip(columns, values[0], strict=True))
+        _stream, topic, rows = instance.insert.await_args.args
+        assert topic == 'maintenance'
+        assert len(rows) == 1
+        return dict(rows[0])
 
     async def test_skipped_without_edges(self) -> None:
         outcome, instance = await self._run(edge_rows=[])
@@ -857,8 +861,8 @@ class ExecuteOpslogBackfillTests(unittest.IsolatedAsyncioTestCase):
             ],
             existing_ch_rows=[_existing_row(version='abc1234')],
         )
-        _table, values, _columns = instance.insert.await_args.args
-        self.assertEqual(1, len(values))
+        _stream, _topic, rows = instance.insert.await_args.args
+        self.assertEqual(1, len(rows))
 
     async def test_existing_rows_query_filters_soft_deleted(self) -> None:
         # A tombstoned (is_deleted=1) ops-log row must not dedupe-suppress

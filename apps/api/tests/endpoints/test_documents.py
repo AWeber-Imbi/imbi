@@ -52,12 +52,12 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             lambda: self.mock_db
         )
 
-        # Version snapshots are written to ClickHouse best-effort on
-        # create/patch; keep these tests hermetic by mocking the client.
-        self.ch_insert = mock.AsyncMock()
+        # Version snapshots are published to Iggy best-effort on
+        # create/patch; keep these tests hermetic by mocking the producer.
+        self.publish = mock.AsyncMock()
         self.ch_query = mock.AsyncMock(return_value=[{'v': 1, 'c': 1}])
         for target, replacement in (
-            ('imbi.common.clickhouse.insert', self.ch_insert),
+            ('imbi.common.iggy.publish', self.publish),
             ('imbi.common.clickhouse.query', self.ch_query),
         ):
             patcher = mock.patch(target, replacement)
@@ -747,9 +747,9 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()['version'], 1)
-        self.ch_insert.assert_awaited_once()
-        table, rows = self.ch_insert.await_args.args
-        self.assertEqual(table, 'document_versions')
+        self.publish.assert_awaited_once()
+        stream, topic, rows = self.publish.await_args.args
+        self.assertEqual(('document_versions', 'documents'), (stream, topic))
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].version, 1)
         self.assertEqual(rows[0].change_kind, 'create')
@@ -783,8 +783,8 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         # The SET query (second call) bumps the version atomically.
         write_call = self.mock_db.execute.await_args_list[1]
         self.assertEqual(write_call.args[1]['version_bump'], 1)
-        self.ch_insert.assert_awaited_once()
-        _, rows = self.ch_insert.await_args.args
+        self.publish.assert_awaited_once()
+        _stream, _topic, rows = self.publish.await_args.args
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].version, 2)
         self.assertEqual(rows[0].change_kind, 'update')
@@ -805,7 +805,7 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         write_call = self.mock_db.execute.await_args_list[1]
         self.assertEqual(write_call.args[1]['version_bump'], 0)
-        self.ch_insert.assert_not_awaited()
+        self.publish.assert_not_awaited()
 
     def test_patch_writes_baseline_for_document_without_history(self) -> None:
         """First edit of a pre-versioning document retains its old state."""
@@ -833,8 +833,8 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
                 ],
             )
         self.assertEqual(response.status_code, 200)
-        self.ch_insert.assert_awaited_once()
-        _, rows = self.ch_insert.await_args.args
+        self.publish.assert_awaited_once()
+        _stream, _topic, rows = self.publish.await_args.args
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0].version, 1)
         self.assertEqual(rows[0].change_kind, 'baseline')
@@ -842,9 +842,9 @@ class DocumentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(rows[1].version, 2)
         self.assertEqual(rows[1].change_kind, 'update')
 
-    def test_patch_succeeds_when_clickhouse_insert_fails(self) -> None:
+    def test_patch_succeeds_when_publish_fails(self) -> None:
         """Snapshot capture is best-effort; the graph write must land."""
-        self.ch_insert.side_effect = RuntimeError('clickhouse down')
+        self.publish.side_effect = RuntimeError('iggy down')
         self.mock_db.execute.side_effect = [
             [self._project_row()],
             [{'id': 'document-1', 'version': 2}],

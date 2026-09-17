@@ -25,7 +25,7 @@ from imbi.plugins.github.plugin import GitHubPlugin, GitHubWebhookActions
 
 _ZERO = '0' * 40
 _CREDS = {'access_token': 'gho_test'}
-_INSERT = 'imbi.plugins.github.commits.clickhouse.insert'
+_INSERT = 'imbi.plugins.github.commits.iggy.publish'
 _QUERY = 'imbi.plugins.github.commits.clickhouse.query'
 
 
@@ -312,7 +312,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 event=_event(_push(before=base, after=head)),
             )
         insert.assert_awaited_once()
-        table, records = _await_args(insert)
+        table, _topic, records = _await_args(insert)
         self.assertEqual('commits', table)
         self.assertEqual(2, len(records))
         first = records[0]
@@ -368,7 +368,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     event=_event(_push(before=_ZERO, after=head)),
                 )
         insert.assert_awaited_once()
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual('e' * 40, records[0].sha)
 
     @respx.mock
@@ -414,7 +414,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.assertTrue(route.called)
         insert.assert_awaited_once()
-        table, records = _await_args(insert)
+        table, _topic, records = _await_args(insert)
         self.assertEqual('commits', table)
         self.assertEqual(1, len(records))
         self.assertEqual(head, records[0].sha)
@@ -451,7 +451,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     action_config=_WORKFLOW_RUN_CONFIG,
                     event=_event(_workflow_run(head=head)),
                 )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual(first_pushed, records[0].pushed_at)
         self.assertEqual('pass', records[0].ci_status)
         lookup = next(
@@ -481,7 +481,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     action_config=commits.SyncCommitsConfig(),
                     event=_event(_push(before=base, after=head)),
                 )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         by_sha = {r.sha: r for r in records}
         self.assertEqual(first_pushed, by_sha['c' * 40].pushed_at)
         self.assertGreater(by_sha['d' * 40].pushed_at, first_pushed)
@@ -508,7 +508,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                     event=_event(_workflow_run(head=head)),
                 )
         insert.assert_awaited_once()
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual(head, records[0].sha)
 
     @respx.mock
@@ -590,7 +590,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
             '100', route.calls[0].request.url.params.get('per_page')
         )
         insert.assert_awaited_once()
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual('fail', records[0].ci_status)
 
     @respx.mock
@@ -633,7 +633,7 @@ class SyncCommitsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncCommitsConfig(),
                 event=_event(_push(before=base, after=head)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual(2, len(records))
 
     @respx.mock
@@ -716,7 +716,7 @@ class SyncCommitsCiStatusTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncCommitsConfig(),
                 event=_event(_push(before=base, after=head)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         return records
 
     @respx.mock
@@ -848,7 +848,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncTagsConfig(),
                 event=_event(self._tag_push(after=sha)),
             )
-        table, records = _await_args(insert)
+        table, _topic, records = _await_args(insert)
         self.assertEqual('tags', table)
         self.assertEqual(1, len(records))
         self.assertIsInstance(records[0], TagRecord)
@@ -886,7 +886,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncTagsConfig(),
                 event=_event(self._tag_push(after=sha)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual(
             datetime.datetime.fromisoformat('2026-02-03T04:05:06Z'),
             records[0].tagged_at,
@@ -920,7 +920,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 ),
             )
         self.assertTrue(route.called)
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual(
             datetime.datetime.fromisoformat('2026-02-03T04:05:06Z'),
             records[0].tagged_at,
@@ -946,7 +946,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncTagsConfig(),
                 event=_event(self._tag_push(after=sha)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertIsNone(records[0].tagged_at)
 
     @respx.mock
@@ -983,7 +983,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncTagsConfig(),
                 event=_event(self._tag_push(after=sha)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual('Release 1.2.3', records[0].message)
         self.assertEqual('Rel Bot', records[0].tagger_name)
         self.assertIsNotNone(records[0].tagged_at)
@@ -1060,7 +1060,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncTagsConfig(reconcile_all=True),
                 event=_event(self._tag_push(after=tag_sha)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual(['v1.2.3'], [r.name for r in records])
         self.assertEqual(commit_sha, records[0].sha)
 
@@ -1114,7 +1114,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncTagsConfig(reconcile_all=True),
                 event=_event(self._tag_push(after=sha)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         names = {r.name for r in records}
         self.assertEqual({'v1.2.3', 'v1.0.0'}, names)
         urls = {r.name: r.url for r in records}
@@ -1189,7 +1189,7 @@ class SyncTagsTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncTagsConfig(reconcile_all=True),
                 event=_event(self._tag_push(after=sha)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         names = {r.name for r in records}
         self.assertEqual({'v1.2.3', 'v1.0.0'}, names)
         urls = {r.name: r.url for r in records}
@@ -1667,13 +1667,13 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         commit_call = next(
             c for c in insert.await_args_list if c.args[0] == 'commits'
         )
-        records = commit_call.args[1]
+        records = commit_call.args[2]
         self.assertIsInstance(records[0], CommitRecord)
         self.assertEqual('main', records[0].ref)
         tag_call = next(
             c for c in insert.await_args_list if c.args[0] == 'tags'
         )
-        urls = {r.name: r.url for r in tag_call.args[1]}
+        urls = {r.name: r.url for r in tag_call.args[2]}
         self.assertEqual(
             {
                 'v1.0.0': 'https://github.com/octo/demo/releases/tag/v1.0.0',
@@ -1709,7 +1709,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         commit_call = next(
             c for c in insert.await_args_list if c.args[0] == 'commits'
         )
-        by_sha = {r.sha: r for r in commit_call.args[1]}
+        by_sha = {r.sha: r for r in commit_call.args[2]}
         self.assertEqual(first_pushed, by_sha['d' * 40].pushed_at)
         self.assertGreater(by_sha['c' * 40].pushed_at, first_pushed)
 
@@ -1738,7 +1738,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         commit_call = next(
             c for c in insert.await_args_list if c.args[0] == 'commits'
         )
-        records = commit_call.args[1]
+        records = commit_call.args[2]
         self.assertEqual('pass', records[0].ci_status)
         self.assertEqual('unknown', records[1].ci_status)
 
@@ -1948,7 +1948,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
         tag_call = next(
             c for c in insert.await_args_list if c.args[0] == 'tags'
         )
-        record = tag_call.args[1][0]
+        record = tag_call.args[2][0]
         self.assertEqual('Release 2.0.0', record.message)
         self.assertEqual('Rel Bot', record.tagger_name)
         self.assertIsNotNone(record.tagged_at)
@@ -2005,7 +2005,7 @@ class SyncAllHistoryTestCase(unittest.IsolatedAsyncioTestCase):
             r
             for c in insert.await_args_list
             if c.args[0] == 'tags'
-            for r in c.args[1]
+            for r in c.args[2]
         ]
 
     @respx.mock
@@ -2116,7 +2116,7 @@ class SyncTagTestCase(unittest.IsolatedAsyncioTestCase):
         )
         written, insert = await self._sync()
         self.assertEqual(1, written)
-        record = insert.await_args_list[0].args[1][0]
+        record = insert.await_args_list[0].args[2][0]
         self.assertEqual('2.23.0', record.name)
         self.assertEqual('c' * 40, record.sha)
         self.assertEqual(
@@ -2152,7 +2152,7 @@ class SyncTagTestCase(unittest.IsolatedAsyncioTestCase):
         )
         written, insert = await self._sync()
         self.assertEqual(1, written)
-        record = insert.await_args_list[0].args[1][0]
+        record = insert.await_args_list[0].args[2][0]
         self.assertEqual('c' * 40, record.sha)
         self.assertEqual('Release 2.23.0', record.message)
         self.assertEqual('Alice', record.tagger_name)
@@ -2163,7 +2163,7 @@ class SyncTagTestCase(unittest.IsolatedAsyncioTestCase):
         self._mock_release('2026-08-04T13:00:00Z')
         written, insert = await self._sync()
         self.assertEqual(1, written)
-        record = insert.await_args_list[0].args[1][0]
+        record = insert.await_args_list[0].args[2][0]
         self.assertEqual(
             datetime.datetime(2026, 8, 4, 13, 0, tzinfo=datetime.UTC),
             record.tagged_at,
@@ -2284,7 +2284,7 @@ class SyncNewCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             f'{"a" * 40}...main', str(compare.calls.last.request.url)
         )
-        record = insert.await_args_list[0].args[1][0]
+        record = insert.await_args_list[0].args[2][0]
         self.assertEqual('main', record.ref)
 
     @respx.mock
@@ -2304,7 +2304,7 @@ class SyncNewCommitsTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             written, insert = await self._sync()
         self.assertEqual(2, written)
-        by_sha = {r.sha: r for r in insert.await_args_list[0].args[1]}
+        by_sha = {r.sha: r for r in insert.await_args_list[0].args[2]}
         self.assertEqual(first_pushed, by_sha['c' * 40].pushed_at)
         self.assertGreater(by_sha['d' * 40].pushed_at, first_pushed)
 
@@ -2581,7 +2581,7 @@ class SyncCommitsThrottleTestCase(unittest.IsolatedAsyncioTestCase):
                 )
         slept.assert_awaited_once_with(3.0)
         insert.assert_awaited_once()
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual(1, len(records))
 
     @respx.mock
@@ -2757,7 +2757,7 @@ class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncCommitsConfig(),
                 event=_event(_push(before=base, after=head)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual('dev@example.com', records[0].author_user)
         resolver.assert_awaited_once_with('42')
 
@@ -2777,7 +2777,7 @@ class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
                 action_config=commits.SyncCommitsConfig(),
                 event=_event(_push(before=base, after=head)),
             )
-        _, records = _await_args(insert)
+        _, _, records = _await_args(insert)
         self.assertEqual('', records[0].author_user)
 
     @respx.mock
@@ -2813,7 +2813,7 @@ class AuthorAttributionTestCase(unittest.IsolatedAsyncioTestCase):
         commit_call = next(
             c for c in insert.await_args_list if c.args[0] == 'commits'
         )
-        by_sha = {r.sha: r.author_user for r in commit_call.args[1]}
+        by_sha = {r.sha: r.author_user for r in commit_call.args[2]}
         self.assertEqual('dev@example.com', by_sha['c' * 40])
         self.assertEqual('dev@example.com', by_sha['d' * 40])
         self.assertEqual('', by_sha['e' * 40])

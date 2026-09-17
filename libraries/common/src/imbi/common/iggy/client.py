@@ -213,12 +213,53 @@ class Iggy:
                 f'Expected {first_type.__name__}, but found mixed types.'
             )
 
+        await self._send(
+            stream,
+            topic,
+            [_payload(model, columns) for model in models],
+            headers,
+        )
+
+    async def publish_rows(
+        self,
+        stream: str,
+        topic: str,
+        rows: list[dict[str, typing.Any]],
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        """Publish one message per already-rendered row.
+
+        Each row is a column-to-value mapping and is sent as-is. Use
+        this where the producer holds a row rather than a model, for
+        example a row read back from ClickHouse and re-published with a
+        bumped version.
+
+        Args:
+            stream: The name of the stream to publish to
+            topic: The name of the topic within that stream
+            rows: The rows to publish, one message each
+            headers: Iggy ``user_headers`` set on every message
+
+        Raises:
+            ValueError: If rows is empty
+            PublishError: If the send fails
+        """
+        if not rows:
+            raise ValueError('Data list cannot be empty')
+        await self._send(stream, topic, rows, headers)
+
+    async def _send(
+        self,
+        stream: str,
+        topic: str,
+        payloads: list[dict[str, typing.Any]],
+        headers: dict[str, str] | None,
+    ) -> None:
         await self.ensure_topic(stream, topic)
         messages = [
-            SendMessage(
-                orjson.dumps(_payload(model, columns)), user_headers=headers
-            )
-            for model in models
+            SendMessage(orjson.dumps(payload), user_headers=headers)
+            for payload in payloads
         ]
         client = await self._require_client()
         LOGGER.debug(
