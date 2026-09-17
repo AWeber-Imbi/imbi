@@ -165,7 +165,7 @@ const availableWidgets: WidgetConfig[] = [
     category: 'activity',
     columnSpan: 2,
     description:
-      'Merged pull requests from agents and bots not yet deployed to production',
+      'Merged pull requests from agents and bots not yet deployed to a terminal environment',
     icon: '🤖',
     id: 'agent-prs-to-deploy',
     name: 'Agent PRs to Deploy',
