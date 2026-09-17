@@ -25,6 +25,7 @@ import {
   Rocket,
   ScrollText,
   Sparkles,
+  Waypoints,
   Webhook,
   Zap,
 } from 'lucide-react'
@@ -47,6 +48,7 @@ import type { DatastoreStatus, ServiceStatus } from '@/types'
 // Icons keyed by the name the dashboard status endpoint returns.
 const DATASTORE_ICONS: Record<string, LucideIcon> = {
   ClickHouse: Database,
+  Iggy: Waypoints,
   PostgreSQL: GitFork,
   Valkey: Zap,
 }

@@ -181,6 +181,31 @@ class Iggy:
                 )
         self._provisioned.add((stream, topic))
 
+    async def ping(self) -> None:
+        """Round-trip a ping to the server to prove the connection works."""
+        client = await self._require_client()
+        with _translate_errors('ping'):
+            await client.ping()
+
+    async def stored_bytes(self) -> int:
+        """Total bytes Iggy holds across every stream in `TOPICS`.
+
+        One `get_topics` call per stream, all in flight together: the
+        dashboard probe that reads this runs under a short timeout that
+        a serial round trip per stream would not fit. The streams all
+        exist by the time anything asks, because `initialize` provisions
+        them at startup.
+        """
+        # Imported here because `imbi.common.iggy` imports this module.
+        from imbi.common import iggy
+
+        client = await self._require_client()
+        with _translate_errors('reading topic sizes'):
+            per_stream = await asyncio.gather(
+                *(client.get_topics(stream) for stream in iggy.TOPICS)
+            )
+        return sum(topic.size for topics in per_stream for topic in topics)
+
     async def publish(
         self,
         stream: str,

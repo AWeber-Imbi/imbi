@@ -1,6 +1,7 @@
 """Admin dashboard system-health status endpoint.
 
-Probes the datastores in-process (PostgreSQL/AGE, ClickHouse, Valkey)
+Probes the datastores in-process (PostgreSQL/AGE, ClickHouse, Valkey,
+Iggy)
 and the sibling HTTP services via their ``/status`` endpoints. Every
 check runs concurrently with a short timeout so the endpoint never
 blocks on a degraded dependency.
@@ -18,7 +19,7 @@ import pydantic
 
 from imbi.api import settings, version
 from imbi.api.auth import permissions
-from imbi.common import clickhouse, graph, valkey
+from imbi.common import clickhouse, graph, iggy, valkey
 
 LOGGER = logging.getLogger(__name__)
 
@@ -207,6 +208,35 @@ async def _check_valkey() -> DatastoreStatus:
     )
 
 
+async def _check_iggy() -> DatastoreStatus:
+    """Ping Iggy and total the bytes held by the topics Imbi publishes."""
+    start = time.perf_counter()
+    try:
+        await asyncio.wait_for(iggy.ping(), _CHECK_TIMEOUT)
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning('Iggy health check failed: %s', err)
+        return DatastoreStatus(
+            name='Iggy',
+            role='Event streaming',
+            status='error',
+            detail=str(err),
+        )
+    latency = _ms(start)
+    # Size is best-effort; it must not fail the (already-ok) check.
+    try:
+        size = await asyncio.wait_for(iggy.stored_bytes(), _CHECK_TIMEOUT)
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning('Iggy size probe failed: %s', err)
+        size = None
+    return DatastoreStatus(
+        name='Iggy',
+        role='Event streaming',
+        status='ok',
+        latency_ms=latency,
+        size_bytes=size,
+    )
+
+
 async def _check_service(
     client: httpx.AsyncClient, name: str, base_url: str
 ) -> ServiceStatus:
@@ -251,6 +281,7 @@ async def get_dashboard_status(
                 _check_postgres(db),
                 _check_clickhouse(),
                 _check_valkey(),
+                _check_iggy(),
             ),
             asyncio.gather(
                 _check_service(
