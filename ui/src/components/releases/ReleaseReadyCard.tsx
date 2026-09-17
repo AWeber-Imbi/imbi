@@ -133,7 +133,11 @@ export function ReleaseReadyCard({
     clearCutError()
   }, [selectedSha, clearCutError])
   // The org/project-type tag policy the cut endpoint enforces.
-  const { formats } = useTagFormats(orgSlug, projectId)
+  const {
+    formats,
+    isError: formatsError,
+    retry: retryFormats,
+  } = useTagFormats(orgSlug, projectId)
 
   // Up to date — nothing new to cut.
   if (commits.length === 0) {
@@ -249,6 +253,18 @@ export function ReleaseReadyCard({
           {formats !== null && !tagValid && tag.length > 0 ? (
             <span className="text-danger text-xs">
               {tagFormatHint(formats)}
+            </span>
+          ) : null}
+          {formatsError ? (
+            <span className="text-danger text-xs">
+              Could not load the tag formats, so the tag cannot be checked.{' '}
+              <button
+                className="underline"
+                onClick={retryFormats}
+                type="button"
+              >
+                Retry
+              </button>
             </span>
           ) : null}
           {canDraft ? (

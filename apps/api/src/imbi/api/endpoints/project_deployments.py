@@ -5396,7 +5396,9 @@ def _suggest_version(
     for candidate in candidates:
         if versioning.matches_tag_formats(candidate, patterns):
             return candidate
-    return candidates[0]
+    # A policy none of the known schemes satisfy (custom formats only):
+    # suggest nothing rather than a tag the form would have to reject.
+    return '' if patterns else candidates[0]
 
 
 def _version_allowed(
@@ -5512,7 +5514,7 @@ def _build_release_notes_prompt(
 
 
 async def _commits_through(project_id: str, head_sha: str) -> list[Commit]:
-    """Synced commits at and before ``head_sha``, newest first.
+    """Synced commits at and before ``head_sha``, oldest first.
 
     Empty when the commit is not in the synced history.  Feeds the
     release-notes draft for a first release, where there is no prior tag
@@ -5545,7 +5547,9 @@ async def _commits_through(project_id: str, head_sha: str) -> list[Commit]:
             message=str(row.get('message') or ''),
             author=str(row['author']) if row.get('author') else None,
         )
-        for row in rows
+        # The query reads newest-first to bound the range; the prompt
+        # declares commits oldest to newest.
+        for row in reversed(rows)
     ]
 
 

@@ -866,6 +866,12 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         self.assertEqual(data['version'], 'v0.1.0')
         self.assertIn('first feature', data['notes_markdown'])
         self.assertEqual(query.await_count, 2)
+        # The prompt lists commits oldest to newest.
+        call = self.mock_anthropic.complete_json.call_args
+        prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
+        self.assertLess(
+            prompt.index('chore: init'), prompt.index('first feature')
+        )
 
     def test_draft_release_notes_first_release_unknown_head(self) -> None:
         """A head not in the synced history drafts from no commits."""
@@ -4794,6 +4800,8 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
             'v0.1.0',
             suggest('2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]),
         )
+        # A policy no known scheme satisfies: nothing to suggest.
+        self.assertEqual('', suggest('v1.2.3', 'patch', [r'^REL-\d+$']))
 
     def test_release_drift_no_tag_suggests_a_date_under_calver(self) -> None:
         self.mocks['_resolve_tag_formats'].return_value = [

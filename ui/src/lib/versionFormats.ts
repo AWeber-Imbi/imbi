@@ -104,7 +104,7 @@ export function buildRows(formats: TagFormat[]): FormatRow[] {
  */
 export function fullMatch(pattern: string, value: string): boolean {
   try {
-    return new RegExp(`^(?:${pattern})$`).test(value)
+    return new RegExp(`^(?:${toJsPattern(pattern)})$`).test(value)
   } catch {
     return false
   }
@@ -117,13 +117,17 @@ export function fullMatch(pattern: string, value: string): boolean {
  */
 export function isTagAllowed(tag: string, formats: TagFormat[]): boolean {
   if (formats.length === 0) return SEMVER_RE.test(tag)
-  return formats.some((f) => fullMatch(f.pattern, tag))
+  // A pattern this engine cannot compile (Python-only syntax saved through
+  // the API) is left to the server rather than blocking the form.
+  return formats.some(
+    (f) => !isValidPattern(f.pattern) || fullMatch(f.pattern, tag),
+  )
 }
 
 /** Return whether `pattern` is a valid (compilable) regular expression. */
 export function isValidPattern(pattern: string): boolean {
   try {
-    new RegExp(pattern)
+    new RegExp(toJsPattern(pattern))
     return true
   } catch {
     return false
@@ -162,4 +166,13 @@ function builtinForPattern(pattern: string): BuiltinFormat | undefined {
   const legacyLabel = LEGACY_BUILTIN_PATTERNS.get(pattern)
   if (legacyLabel) return BUILTIN_FORMATS.find((f) => f.label === legacyLabel)
   return BUILTIN_BY_PATTERN.get(pattern)
+}
+
+/**
+ * Patterns are matched server-side with Python's ``re``; translate the
+ * named-group syntax that differs (``(?P<n>…)`` / ``(?P=n)``) so a pattern
+ * saved through the API still evaluates here.
+ */
+function toJsPattern(pattern: string): string {
+  return pattern.replace(/\(\?P</g, '(?<').replace(/\(\?P=(\w+)\)/g, '\\k<$1>')
 }
