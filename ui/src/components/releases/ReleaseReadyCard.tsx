@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SkText } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { SEMVER_RE } from '@/lib/semver'
+import { isTagAllowed, tagFormatHint } from '@/lib/versionFormats'
 import type {
   DraftReleaseNotesResponse,
   ReleaseDrift,
@@ -29,6 +29,7 @@ import {
   type ReleaseInFlightState,
 } from './releaseInFlight'
 import { useCutReleaseMutation } from './useCutReleaseMutation'
+import { useTagFormats } from './useTagFormats'
 
 interface ReleaseReadyCardProps {
   drift: ReleaseDrift
@@ -75,9 +76,9 @@ export function ReleaseReadyCard({
     version: string
   }>(null)
 
-  // AI drafting needs a base tag to compare against; for the first-ever
-  // release there's nothing to diff, so notes are authored by hand.
-  const canDraft = !!drift.latest_tag_sha && !!selectedSha
+  // With a prior tag the draft diffs against it; for the first-ever
+  // release the API drafts from the synced history up to the commit.
+  const canDraft = !!selectedSha
   const draftMutation = useMutation({
     mutationFn: ({ headSha }: { headSha: string }) =>
       draftReleaseNotes(orgSlug, projectId, {
@@ -131,6 +132,8 @@ export function ReleaseReadyCard({
     // the button would do.
     clearCutError()
   }, [selectedSha, clearCutError])
+  // The org/project-type tag policy the cut endpoint enforces.
+  const { formats } = useTagFormats(orgSlug, projectId)
 
   // Up to date — nothing new to cut.
   if (commits.length === 0) {
@@ -149,7 +152,7 @@ export function ReleaseReadyCard({
     )
   }
 
-  const tagValid = SEMVER_RE.test(tag)
+  const tagValid = formats !== null && isTagAllowed(tag, formats)
   const isDrafting = draftMutation.isPending
   const canSubmit =
     tagValid &&
@@ -243,9 +246,9 @@ export function ReleaseReadyCard({
             tag={tag}
             tagValid={tagValid}
           />
-          {!tagValid && tag.length > 0 ? (
+          {formats !== null && !tagValid && tag.length > 0 ? (
             <span className="text-danger text-xs">
-              Use a semver tag, e.g. v6.5.2
+              {tagFormatHint(formats)}
             </span>
           ) : null}
           {canDraft ? (

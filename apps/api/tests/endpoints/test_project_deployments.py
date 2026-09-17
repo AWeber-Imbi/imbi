@@ -745,6 +745,159 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
         # last_tag bumped major: 6.3.0 → 7.0.0
         self.assertEqual(data['version'], 'v7.0.0')
 
+    def test_draft_release_notes_keeps_a_calver_version(self) -> None:
+        """A version that fits the tag policy is not re-bumped to semver."""
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(
+                label='Calendar versioning',
+                pattern=r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$',
+            )
+        ]
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='patch',
+                    version='2026.09.17-1',
+                    reasoning='same-day rebuild',
+                    notes_markdown='## Fixed',
+                ),
+                degraded=False,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': '2026.09.17-0',
+                    'head_sha': 'bbb',
+                    'last_tag': '2026.09.17-0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['version'], '2026.09.17-1')
+        call = self.mock_anthropic.complete_json.call_args
+        prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
+        self.assertIn('Allowed tag formats: Calendar versioning', prompt)
+        self.assertIn('Suggested next version: 2026.09.17-1', prompt)
+
+    def test_draft_release_notes_rebumps_to_the_policy(self) -> None:
+        """A semver answer under a calver-only policy becomes a date."""
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(
+                label='Calendar versioning',
+                pattern=r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$',
+            )
+        ]
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            return_value=CompletionResult(
+                data=DraftReleaseNotes(
+                    bump='minor',
+                    version='v0.2.0',
+                    reasoning='feature',
+                    notes_markdown='## Added',
+                ),
+                degraded=False,
+            )
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={
+                    'base_sha': '2026.09.10-0',
+                    'head_sha': 'bbb',
+                    'last_tag': '2026.09.10-0',
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        today = datetime.datetime.now(datetime.UTC).date()
+        self.assertEqual(
+            response.json()['version'], today.strftime('%Y.%m.%d-0')
+        )
+
+    def test_draft_release_notes_first_release_reads_synced_history(
+        self,
+    ) -> None:
+        """No base: the range is the synced commits through ``head``."""
+        query = mock.AsyncMock(
+            side_effect=[
+                [
+                    {
+                        'authored_at': datetime.datetime(
+                            2026, 9, 17, 12, 0, tzinfo=datetime.UTC
+                        )
+                    }
+                ],
+                [
+                    {
+                        'sha': 'bbb2222bbb2222',
+                        'short_sha': 'bbb2222',
+                        'message': 'feat: first feature',
+                        'author': 'gavin',
+                    },
+                    {
+                        'sha': 'aaa1111aaa1111',
+                        'short_sha': 'aaa1111',
+                        'message': 'chore: init',
+                        'author': None,
+                    },
+                ],
+            ]
+        )
+        self.mock_anthropic.complete_json = mock.AsyncMock(
+            side_effect=lambda *args, **kwargs: CompletionResult(
+                data=kwargs['fallback'], degraded=True
+            )
+        )
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={'base_sha': '', 'head_sha': 'bbb2222bbb2222'},
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['commits_considered'], 2)
+        self.assertEqual(data['bump'], 'minor')
+        self.assertEqual(data['version'], 'v0.1.0')
+        self.assertIn('first feature', data['notes_markdown'])
+        self.assertEqual(query.await_count, 2)
+
+    def test_draft_release_notes_first_release_unknown_head(self) -> None:
+        """A head not in the synced history drafts from no commits."""
+        query = mock.AsyncMock(return_value=[])
+        with (
+            mock.patch(f'{_MODULE}.clickhouse.query', new=query),
+            testclient.TestClient(self.test_app) as client,
+        ):
+            response = client.post(
+                '/organizations/myorg/projects/proj1/deployments/'
+                'draft-release-notes',
+                json={'base_sha': '', 'head_sha': 'nothere'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['commits_considered'], 0)
+
+    def test_get_tag_formats_returns_the_resolved_policy(self) -> None:
+        self.mocks['_resolve_tag_formats'].return_value = [
+            SEMVER_TAG_FORMAT,
+            TagFormat(label='Ticket', pattern=r'^REL-\d+$'),
+        ]
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(
+                '/organizations/myorg/projects/proj1/deployments/tag-formats'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [f['label'] for f in response.json()],
+            [SEMVER_TAG_FORMAT.label, 'Ticket'],
+        )
+        self.assertEqual(response.json()[1]['pattern'], r'^REL-\d+$')
+
     def test_promote_sha_ref_cuts_tag_only(self) -> None:
         # Promote target is a git SHA -- the handler cuts a tag AND
         # dispatches trigger_deployment so the run is tracked in the
@@ -4614,6 +4767,55 @@ class ReleasesTabEndpointsTestCase(ProjectDeploymentsTestCase):
         )
         self.assertEqual(
             '1.2.4', project_deployments._bump_semver('1.2.3', 'patch')
+        )
+
+    def test_suggest_version_honours_the_tag_policy(self) -> None:
+        calver = [r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$']
+        today = datetime.datetime.now(datetime.UTC).date()
+        suggest = project_deployments._suggest_version
+        # No policy: the historical semver answers stand.
+        self.assertEqual('v1.2.4', suggest('v1.2.3', 'patch', []))
+        self.assertEqual('v0.1.0', suggest(None, 'minor', []))
+        # A calver prior tag advances by date, even with no policy.
+        self.assertEqual(
+            today.strftime('%Y.%m.%d-0'),
+            suggest('2026.01.01-3', 'minor', []),
+        )
+        # Calver-only policy: a semver prior tag cannot be bumped into it.
+        self.assertEqual(
+            today.strftime('%Y.%m.%d'), suggest('v1.2.3', 'patch', calver)
+        )
+        self.assertEqual(
+            today.strftime('%Y.%m.%d'), suggest(None, 'patch', calver)
+        )
+        # Semver-only policy with a calver prior tag: first semver default
+        # (the built-in Semver format tolerates the ``v`` prefix).
+        self.assertEqual(
+            'v0.1.0',
+            suggest('2026.01.01', 'patch', [SEMVER_TAG_FORMAT.pattern]),
+        )
+
+    def test_release_drift_no_tag_suggests_a_date_under_calver(self) -> None:
+        self.mocks['_resolve_tag_formats'].return_value = [
+            TagFormat(
+                label='Calendar versioning',
+                pattern=r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$',
+            )
+        ]
+        self._patch_query(
+            [
+                [],  # no tags
+                [{'sha': 'headsha'}],
+                [self._commit_row('c1', message='feat: first feature')],
+                [{'c': 1}],
+            ]
+        )
+        with testclient.TestClient(self.test_app) as client:
+            response = client.get(f'{self._BASE}/release-drift')
+        self.assertEqual(response.status_code, 200)
+        today = datetime.datetime.now(datetime.UTC).date()
+        self.assertEqual(
+            response.json()['suggested_tag'], today.strftime('%Y.%m.%d')
         )
 
     def test_release_drift_backport_cannot_outrank_latest(self) -> None:

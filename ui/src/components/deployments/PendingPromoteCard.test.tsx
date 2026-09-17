@@ -22,6 +22,7 @@ vi.mock('@/api/endpoints', async () => {
     ...actual,
     draftReleaseNotes: vi.fn(),
     getCommitCheckStatus: vi.fn(),
+    getTagFormats: vi.fn().mockResolvedValue([]),
   }
 })
 
@@ -93,7 +94,7 @@ const makeActions = (): DeploymentActions => ({
   promotePending: false,
 })
 
-function renderCard(actions = makeActions()) {
+function renderCard(actions = makeActions(), stage: PipelineStage = STAGE) {
   render(
     <PendingPromoteCard
       accent={null}
@@ -101,7 +102,7 @@ function renderCard(actions = makeActions()) {
       canTrigger
       orgSlug="acme"
       projectId="p1"
-      stage={STAGE}
+      stage={stage}
     />,
   )
   return actions
@@ -113,6 +114,7 @@ const promoteButton = () =>
 describe('PendingPromoteCard — failing CI on the commit being tagged', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([])
     vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
       bump: 'patch',
       commits_considered: 2,
@@ -191,5 +193,75 @@ describe('PendingPromoteCard — failing CI on the commit being tagged', () => {
       ).not.toBeChecked()
     })
     expect(promoteButton()).toBeDisabled()
+  })
+})
+
+describe('PendingPromoteCard — tag formats and first promotes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([])
+    vi.mocked(endpoints.getCommitCheckStatus).mockResolvedValue({
+      ci_status: 'pass',
+      committish: TIP.short_sha,
+    })
+  })
+
+  it('drafts from the synced history when the project has no tag yet', async () => {
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'minor',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '## First',
+      reasoning: 'initial',
+      version: '2026.09.17',
+    })
+    renderCard(makeActions(), { ...STAGE, latestTag: null })
+    await waitFor(() => {
+      expect(endpoints.draftReleaseNotes).toHaveBeenCalledWith('acme', 'p1', {
+        base_sha: '',
+        head_sha: TIP.sha,
+        last_tag: null,
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2026.09.17')).toBeInTheDocument()
+    })
+  })
+
+  it('accepts a calver tag when the project type allows it', async () => {
+    vi.mocked(endpoints.getTagFormats).mockResolvedValue([
+      {
+        label: 'Calendar versioning',
+        pattern: '^\\d{4}([.-])\\d{1,2}\\1\\d{1,2}(?:[.-]\\w+)?$',
+      },
+    ])
+    vi.mocked(endpoints.draftReleaseNotes).mockResolvedValue({
+      bump: 'patch',
+      commits_considered: 2,
+      degraded: false,
+      notes_markdown: '## Notes',
+      reasoning: 'a fix landed',
+      version: '0.1.14',
+    })
+    const user = userEvent.setup()
+    const actions = renderCard()
+    // The semver draft does not fit the policy, so the form says so.
+    await waitFor(() => {
+      expect(
+        screen.getByText('Use a Calendar versioning tag, e.g. 2026.09.17-0'),
+      ).toBeInTheDocument()
+    })
+    expect(promoteButton()).toBeDisabled()
+    const tagInput = screen.getByPlaceholderText('vX.Y.Z')
+    await user.clear(tagInput)
+    await user.type(tagInput, '2026.09.17-0')
+    expect(screen.queryByText(/Use a /)).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(promoteButton()).toBeEnabled()
+    })
+    await user.click(promoteButton())
+    expect(actions.promote).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: '2026.09.17-0' }),
+    )
   })
 })

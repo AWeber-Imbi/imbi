@@ -5368,6 +5368,53 @@ def _bump_semver(last_tag: str | None, bump: SemverBump) -> str:
     return f'{prefix}{major}.{minor}.{patch + 1}'
 
 
+def _suggest_version(
+    last_tag: str | None,
+    bump: SemverBump,
+    patterns: collections.abc.Sequence[str],
+) -> str:
+    """The next tag to suggest, honouring the configured tag formats.
+
+    Candidates are tried in order and the first one satisfying
+    ``patterns`` wins: the next calendar version when ``last_tag`` is
+    calver-shaped, its semver bump when it is semver-shaped, then the
+    first-release defaults (``v0.1.0``, ``0.1.0``, today's
+    date).  With no policy configured the first candidate stands, which
+    keeps the historical ``v0.1.0`` answer for an untagged project.
+    """
+    today = datetime.datetime.now(datetime.UTC).date()
+    candidates: list[str] = []
+    # Calver first: an unpadded date (``2026.9.17``) is also valid semver,
+    # and a project tagging by date wants the next date, not ``.18``.
+    if last_tag and versioning.is_calver_tag(last_tag):
+        candidates.append(versioning.next_calver_tag(last_tag, today))
+    if last_tag and versioning.is_semver_tag(last_tag):
+        candidates.append(_bump_semver(last_tag, bump))
+    candidates.extend(
+        ['v0.1.0', '0.1.0', versioning.next_calver_tag(None, today)]
+    )
+    for candidate in candidates:
+        if versioning.matches_tag_formats(candidate, patterns):
+            return candidate
+    return candidates[0]
+
+
+def _version_allowed(
+    version: str,
+    patterns: collections.abc.Sequence[str],
+) -> bool:
+    """Whether a drafted version may be suggested as-is.
+
+    With a policy configured this is the policy; without one, a semver
+    or calver-shaped tag passes and anything else is re-derived.
+    """
+    if patterns:
+        return versioning.matches_tag_formats(version, patterns)
+    return versioning.is_semver_tag(version) or versioning.is_calver_tag(
+        version
+    )
+
+
 def _classify_bump(commits: list[Commit]) -> SemverBump:
     """Crude heuristic used as the fallback when Claude isn't available."""
     breaking = ('breaking', '!:', 'breaking change')
@@ -5426,13 +5473,22 @@ def _build_release_notes_prompt(
     base_sha: str,
     head_sha: str,
     commits: list[Commit],
+    tag_formats: collections.abc.Sequence[common_models.TagFormat] = (),
+    suggested_version: str | None = None,
 ) -> str:
     capped = commits[:_PROMPT_COMMIT_CAP]
     omitted = len(commits) - len(capped)
+    formats = (
+        ', '.join(f'{fmt.label} ({fmt.pattern})' for fmt in tag_formats)
+        or '(none configured; semantic versioning)'
+    )
     body_lines = [
         f'Project: {project_name}',
         f'Previous tag: {last_tag or "(none)"}',
-        f'Comparing: {base_sha}..{head_sha}',
+        f'Allowed tag formats: {formats}',
+        f'Today: {datetime.datetime.now(datetime.UTC).date().isoformat()}',
+        f'Suggested next version: {suggested_version or "(none)"}',
+        f'Comparing: {base_sha or "(no prior release)"}..{head_sha}',
         f'Total commits: {len(commits)}'
         + (f' (+{omitted} earlier omitted)' if omitted else ''),
         '',
@@ -5453,6 +5509,65 @@ def _build_release_notes_prompt(
     body_lines.append('')
     body_lines.append('Return the JSON object described in the system prompt.')
     return '\n'.join(body_lines)
+
+
+async def _commits_through(project_id: str, head_sha: str) -> list[Commit]:
+    """Synced commits at and before ``head_sha``, newest first.
+
+    Empty when the commit is not in the synced history.  Feeds the
+    release-notes draft for a first release, where there is no prior tag
+    to ``compare`` against.
+    """
+    head_rows = await clickhouse.query(
+        'SELECT authored_at FROM commits FINAL '
+        'WHERE project_id = {project_id:String} '
+        'AND startsWith(sha, {sha:String}) LIMIT 1',
+        {'project_id': project_id, 'sha': head_sha.lower()},
+    )
+    if not head_rows:
+        return []
+    rows = await clickhouse.query(
+        'SELECT sha, short_sha, message, author_name AS author '
+        'FROM commits FINAL '
+        'WHERE project_id = {project_id:String} '
+        'AND authored_at <= {through:DateTime64(3)} '
+        'ORDER BY authored_at DESC LIMIT {cap:UInt32}',
+        {
+            'project_id': project_id,
+            'through': head_rows[0]['authored_at'],
+            'cap': _PROMPT_COMMIT_CAP,
+        },
+    )
+    return [
+        Commit(
+            sha=str(row['sha']),
+            short_sha=str(row.get('short_sha') or str(row['sha'])[:7]),
+            message=str(row.get('message') or ''),
+            author=str(row['author']) if row.get('author') else None,
+        )
+        for row in rows
+    ]
+
+
+@project_deployments_router.get('/tag-formats')
+async def get_tag_formats(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:deployment:read'),
+        ),
+    ],
+) -> list[common_models.TagFormat]:
+    """The tag formats a release or promote tag is validated against.
+
+    The same cascade the write endpoints enforce (project type, then
+    organization; see :func:`_resolve_tag_formats`), so the UI can
+    validate a tag before submitting it.  Empty means no policy.
+    """
+    return await _resolve_tag_formats(db, org_slug, project_id)
 
 
 @project_deployments_router.post('/draft-release-notes')
@@ -5482,17 +5597,25 @@ async def draft_release_notes(
     resolved, ctx, credentials = await _resolve_and_context(
         db, org_slug, project_id, auth, source=source
     )
-    handler = _handler(resolved)
-    compare_result = await call_with_timeout(
-        handler.compare(
-            ctx, credentials, base=body.base_sha, head=body.head_sha
+    if body.base_sha:
+        handler = _handler(resolved)
+        compare_result = await call_with_timeout(
+            handler.compare(
+                ctx, credentials, base=body.base_sha, head=body.head_sha
+            )
         )
-    )
-    commits = compare_result.commits
+        commits = compare_result.commits
+    else:
+        # First release: nothing to diff against, so the range is the
+        # synced history up to the chosen commit (as the drift view
+        # reports it), rather than no draft at all.
+        commits = await _commits_through(project_id, body.head_sha)
+    tag_formats = await _resolve_tag_formats(db, org_slug, project_id)
+    patterns = [fmt.pattern for fmt in tag_formats]
     fallback_bump = _classify_bump(commits)
     fallback = DraftReleaseNotes(
         bump=fallback_bump,
-        version=_bump_semver(body.last_tag, fallback_bump),
+        version=_suggest_version(body.last_tag, fallback_bump, patterns),
         reasoning=(
             'AI unavailable — bump and notes derived from '
             'conventional-commit prefixes.'
@@ -5506,6 +5629,8 @@ async def draft_release_notes(
             body.base_sha,
             body.head_sha,
             commits,
+            tag_formats,
+            fallback.version,
         ),
         schema=DraftReleaseNotes,
         fallback=fallback,
@@ -5513,10 +5638,14 @@ async def draft_release_notes(
         cache_system_prompt=True,
     )
     notes = completion.data
-    # Re-bump if Claude returned a non-semver-shaped version string.
-    if not _SEMVER_RE.match(notes.version.lstrip('v')):
+    # Re-derive the version when Claude's does not fit the tag policy.
+    if not _version_allowed(notes.version, patterns):
         notes = notes.model_copy(
-            update={'version': _bump_semver(body.last_tag, notes.bump)}
+            update={
+                'version': _suggest_version(
+                    body.last_tag, notes.bump, patterns
+                )
+            }
         )
     # A body is what ships on the release, so an empty one is never useful:
     # fall back to the deterministic commit-prefix grouping. Reached when
@@ -6030,6 +6159,7 @@ _DRIFT_COMMIT_CAP = 100
 async def get_release_drift(
     org_slug: str,
     project_id: str,
+    db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -6061,6 +6191,10 @@ async def get_release_drift(
     latest_tag = str(latest['name']) if latest else None
     latest_tag_sha = str(latest['sha']) if latest else None
     latest_tag_at = _tag_timestamp(latest) if latest else None
+    patterns = [
+        fmt.pattern
+        for fmt in await _resolve_tag_formats(db, org_slug, project_id)
+    ]
 
     head_rows = await clickhouse.query(
         'SELECT sha FROM commits FINAL '
@@ -6085,7 +6219,7 @@ async def get_release_drift(
                 commits_since_tag=0,
                 commits=[],
                 suggested_bump='patch',
-                suggested_tag=_bump_semver(latest_tag, 'patch'),
+                suggested_tag=_suggest_version(latest_tag, 'patch', patterns),
             )
 
     where = 'project_id = {project_id:String}'
@@ -6126,7 +6260,7 @@ async def get_release_drift(
         commits_since_tag=commits_since_tag,
         commits=commits,
         suggested_bump=bump,
-        suggested_tag=_bump_semver(latest_tag, bump),
+        suggested_tag=_suggest_version(latest_tag, bump, patterns),
     )
 
 
