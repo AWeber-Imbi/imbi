@@ -315,10 +315,11 @@ class Iggy:
 def _payload(
     model: pydantic.BaseModel, columns: list[str] | None
 ) -> dict[str, typing.Any]:
-    """Render one row exactly as the direct ClickHouse insert would.
+    """Render one row as a column-to-value mapping.
 
-    ``clickhouse.insert`` takes the dumped keys as its column names, so
-    an unrestricted payload carries the same columns in the same order.
+    The dumped keys are the table's column names, aliases applied and
+    nested models flattened, so the sink's ``json_each_row`` insert
+    lands the row exactly as the direct insert once did.
     """
     dumped = clickhouse._dump(model, by_alias=True)
     if columns is None:

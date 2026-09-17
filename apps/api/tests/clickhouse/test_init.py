@@ -1,5 +1,4 @@
 import enum
-import typing
 import unittest
 from unittest import mock
 
@@ -21,12 +20,6 @@ class SampleModelWithNested(pydantic.BaseModel):
 
     id: int
     evidence: list[dict]
-
-
-class SampleModelDifferent(pydantic.BaseModel):
-    """Different sample model for type validation."""
-
-    value: str
 
 
 class SampleEnum(enum.Enum):
@@ -184,102 +177,6 @@ class AcloseTestCase(unittest.IsolatedAsyncioTestCase):
             await clickhouse.aclose()
 
         mock_ch.aclose.assert_called_once()
-
-
-class InsertTestCase(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        await super().asyncSetUp()
-        clickhouse.client.Clickhouse._instance = None
-
-    async def test_insert_success(self) -> None:
-        """Test successful insert operation."""
-        mock_ch = mock.AsyncMock()
-        mock_summary = mock.MagicMock()
-        mock_ch.insert.return_value = mock_summary
-
-        data = [
-            SampleModel(id=1, name='test1', active=True),
-            SampleModel(id=2, name='test2', active=False),
-        ]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            result = await clickhouse.insert(
-                'test_table',
-                typing.cast('list[pydantic.BaseModel]', data),
-            )
-
-        self.assertEqual(result, mock_summary)
-        mock_ch.insert.assert_called_once()
-
-        call_args = mock_ch.insert.call_args
-        self.assertEqual(call_args[0][0], 'test_table')
-        self.assertEqual(
-            call_args[0][1], [[1, 'test1', True], [2, 'test2', False]]
-        )
-        self.assertEqual(call_args[0][2], ['id', 'name', 'active'])
-
-    async def test_insert_empty_data(self) -> None:
-        """Test insert with empty data list raises ValueError."""
-        mock_ch = mock.AsyncMock()
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            with self.assertRaises(ValueError) as cm:
-                await clickhouse.insert('test_table', [])
-
-        self.assertIn('cannot be empty', str(cm.exception))
-
-    async def test_insert_mixed_types(self) -> None:
-        """Test insert with mixed model types raises ValueError."""
-        mock_ch = mock.AsyncMock()
-
-        data = [
-            SampleModel(id=1, name='test', active=True),
-            SampleModelDifferent(value='different'),
-        ]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            with self.assertRaises(ValueError) as cm:
-                await clickhouse.insert(
-                    'test_table',
-                    typing.cast('list[pydantic.BaseModel]', data),
-                )
-
-        self.assertIn('same type', str(cm.exception))
-        self.assertIn('SampleModel', str(cm.exception))
-
-    async def test_insert_single_model(self) -> None:
-        """Test insert with single model."""
-        mock_ch = mock.AsyncMock()
-        mock_summary = mock.MagicMock()
-        mock_ch.insert.return_value = mock_summary
-
-        data = [SampleModel(id=1, name='test', active=True)]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            result = await clickhouse.insert(
-                'test_table',
-                typing.cast('list[pydantic.BaseModel]', data),
-            )
-
-        self.assertEqual(result, mock_summary)
-        call_args = mock_ch.insert.call_args
-        self.assertEqual(call_args[0][1], [[1, 'test', True]])
 
 
 class QueryTestCase(unittest.IsolatedAsyncioTestCase):
