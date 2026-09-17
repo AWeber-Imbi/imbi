@@ -8,6 +8,7 @@ Shared library for the Imbi ecosystem providing core data access, authentication
 
 - **Database Clients**: Apache AGE/PostgreSQL (graph database) and ClickHouse (analytics database) with connection management
 - **Message Streaming**: Apache Iggy producer with connection management, stream and topic provisioning, and publishing
+  - Every analytics row is published to Iggy; the ClickHouse client queries and sets up schema, it does not insert (ADR 0019)
 - **Domain Models**: Pydantic models for Projects, Organizations, Teams, Environments, ProjectTypes, and more
 - **Authentication**: JWT token creation/verification, token encryption
 - **Configuration**: Pydantic Settings-based configuration management with TOML file support

@@ -3,7 +3,6 @@ import typing
 
 import orjson
 import pydantic
-from clickhouse_connect.driver import summary
 
 from . import client
 from .client import SchemataQuery
@@ -14,7 +13,6 @@ __all__ = [
     'as_utc',
     'as_utc_or_none',
     'initialize',
-    'insert',
     'iso_utc',
     'query',
     'setup_schema',
@@ -146,42 +144,6 @@ async def setup_schema() -> None:
 async def aclose() -> None:
     """Close any open connections to Clickhouse."""
     await client.Clickhouse.get_instance().aclose()
-
-
-async def insert(
-    table: str,
-    data: list[pydantic.BaseModel],
-    settings: dict[str, typing.Any] | None = None,
-) -> summary.QuerySummary:
-    """Insert data into Clickhouse.
-
-    Args:
-        table: The name of the table to insert into
-        data: List of Pydantic models to insert (all must be the same type)
-        settings: Per-statement ClickHouse settings, e.g. ``async_insert``
-
-    Returns:
-        QuerySummary containing information about the insert operation
-
-    Raises:
-        ValueError: If data list is empty or models are not all the same type
-    """
-    if not data:
-        raise ValueError('Data list cannot be empty')
-
-    # Validate all models are of the same type
-    first_type = type(data[0])
-    if not all(type(model) is first_type for model in data):
-        raise ValueError(
-            f'All models must be of the same type. '
-            f'Expected {first_type.__name__}, but found mixed types.'
-        )
-
-    dumps = [_dump(model, by_alias=True) for model in data]
-    column_names = list(dumps[0].keys())
-    rows = [[dump[col] for col in column_names] for dump in dumps]
-    clickhouse = client.Clickhouse.get_instance()
-    return await clickhouse.insert(table, rows, column_names, settings)
 
 
 async def query(

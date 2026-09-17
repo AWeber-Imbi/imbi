@@ -22,12 +22,6 @@ class SampleModelWithNested(pydantic.BaseModel):
     evidence: list[dict]
 
 
-class SampleModelDifferent(pydantic.BaseModel):
-    """Different sample model for type validation."""
-
-    value: str
-
-
 class SampleModelWithAlias(pydantic.BaseModel):
     """Model exercising Pydantic field aliases."""
 
@@ -208,102 +202,15 @@ class AcloseTestCase(unittest.IsolatedAsyncioTestCase):
         mock_ch.aclose.assert_called_once()
 
 
-class InsertTestCase(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        await super().asyncSetUp()
-        clickhouse.client.Clickhouse._instance = None
+class DumpRowShapeTestCase(unittest.TestCase):
+    """`_dump` renders the row the Iggy payload and the sink rely on."""
 
-    async def test_insert_success(self) -> None:
-        """Test successful insert operation."""
-        mock_ch = mock.AsyncMock()
-        mock_summary = mock.MagicMock()
-        mock_ch.insert.return_value = mock_summary
+    def test_uses_field_aliases(self) -> None:
+        row = clickhouse._dump(SampleModelWithAlias(id=1, row_version=7))
+        self.assertEqual({'id': 1, '_row_version': 7}, row)
 
-        data = [
-            SampleModel(id=1, name='test1', active=True),
-            SampleModel(id=2, name='test2', active=False),
-        ]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            result = await clickhouse.insert('test_table', data)
-
-        self.assertEqual(result, mock_summary)
-        mock_ch.insert.assert_called_once()
-
-        call_args = mock_ch.insert.call_args
-        self.assertEqual(call_args[0][0], 'test_table')
-        self.assertEqual(
-            call_args[0][1], [[1, 'test1', True], [2, 'test2', False]]
-        )
-        self.assertEqual(call_args[0][2], ['id', 'name', 'active'])
-
-    async def test_insert_empty_data(self) -> None:
-        """Test insert with empty data list raises ValueError."""
-        mock_ch = mock.AsyncMock()
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            with self.assertRaises(ValueError) as cm:
-                await clickhouse.insert('test_table', [])
-
-        self.assertIn('cannot be empty', str(cm.exception))
-
-    async def test_insert_mixed_types(self) -> None:
-        """Test insert with mixed model types raises ValueError."""
-        mock_ch = mock.AsyncMock()
-
-        data = [
-            SampleModel(id=1, name='test', active=True),
-            SampleModelDifferent(value='different'),
-        ]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            with self.assertRaises(ValueError) as cm:
-                await clickhouse.insert('test_table', data)
-
-        self.assertIn('same type', str(cm.exception))
-        self.assertIn('SampleModel', str(cm.exception))
-
-    async def test_insert_uses_field_aliases(self) -> None:
-        """Aliased fields must be sent using their alias name."""
-        mock_ch = mock.AsyncMock()
-        mock_summary = mock.MagicMock()
-        mock_ch.insert.return_value = mock_summary
-
-        data = [SampleModelWithAlias(id=1, row_version=7)]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            await clickhouse.insert('test_table', data)
-
-        call_args = mock_ch.insert.call_args
-        column_names = call_args[0][2]
-        self.assertIn('_row_version', column_names)
-        self.assertNotIn('row_version', column_names)
-        row_index = column_names.index('_row_version')
-        self.assertEqual(call_args[0][1][0][row_index], 7)
-
-    async def test_insert_flattens_nested_models(self) -> None:
-        """list[BaseModel] fields flatten to dotted Nested column names."""
-        mock_ch = mock.AsyncMock()
-        mock_summary = mock.MagicMock()
-        mock_ch.insert.return_value = mock_summary
-
-        data = [
+    def test_flattens_nested_models(self) -> None:
+        row = clickhouse._dump(
             SampleModelWithNestedModels(
                 id=1,
                 evidence=[
@@ -311,44 +218,10 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
                     SampleEvidence(type='link', snippet='world'),
                 ],
             )
-        ]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            await clickhouse.insert('test_table', data)
-
-        call_args = mock_ch.insert.call_args
-        column_names = call_args[0][2]
-        self.assertIn('evidence.type', column_names)
-        self.assertIn('evidence.snippet', column_names)
-        self.assertNotIn('evidence', column_names)
-        type_index = column_names.index('evidence.type')
-        snippet_index = column_names.index('evidence.snippet')
-        row = call_args[0][1][0]
-        self.assertEqual(row[type_index], ['text', 'link'])
-        self.assertEqual(row[snippet_index], ['hello', 'world'])
-
-    async def test_insert_single_model(self) -> None:
-        """Test insert with single model."""
-        mock_ch = mock.AsyncMock()
-        mock_summary = mock.MagicMock()
-        mock_ch.insert.return_value = mock_summary
-
-        data = [SampleModel(id=1, name='test', active=True)]
-
-        with mock.patch.object(
-            clickhouse.client.Clickhouse,
-            'get_instance',
-            return_value=mock_ch,
-        ):
-            result = await clickhouse.insert('test_table', data)
-
-        self.assertEqual(result, mock_summary)
-        call_args = mock_ch.insert.call_args
-        self.assertEqual(call_args[0][1], [[1, 'test', True]])
+        )
+        self.assertNotIn('evidence', row)
+        self.assertEqual(['text', 'link'], row['evidence.type'])
+        self.assertEqual(['hello', 'world'], row['evidence.snippet'])
 
 
 class QueryTestCase(unittest.IsolatedAsyncioTestCase):

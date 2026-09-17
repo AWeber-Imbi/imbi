@@ -2,17 +2,18 @@
 Abstracted Interface for interacting with Clickhouse
 
 This module provides a singleton client for asynchronous interaction with
-Clickhouse databases. It handles connection management, query execution,
-and data insertion with proper error handling.
+Clickhouse databases. It handles connection management, query execution
+and schema setup with proper error handling.
+
+Rows are not written through this client. Every analytics row is
+published to Apache Iggy with `imbi.common.iggy.publish`, and the
+connectors runtime's ClickHouse sink is the only writer to the tables
+(ADR 0019).
 
 Example usage:
     # Query data
     data = await clickhouse.query(
         'SELECT * FROM table WHERE id = {id}', {'id': 123})
-
-    # Insert data
-    result = await clickhouse.insert(
-        'table_name', [['value1', 'value2']], ['column1', 'column2'])
 """
 
 import asyncio
@@ -25,7 +26,7 @@ import typing
 import clickhouse_connect.driver
 import pydantic
 from clickhouse_connect.datatypes import format
-from clickhouse_connect.driver import asyncclient, exceptions, summary
+from clickhouse_connect.driver import asyncclient, exceptions
 
 from imbi.common import helpers, settings
 
@@ -139,30 +140,6 @@ class Clickhouse:
             if self._clickhouse is not None:
                 await self._clickhouse.close()
             self._clickhouse = None
-
-    async def insert(
-        self,
-        table: str,
-        data: list[list[typing.Any]],
-        column_names: list[str],
-        settings: dict[str, typing.Any] | None = None,
-    ) -> summary.QuerySummary:
-        """Insert data into Clickhouse.
-
-        ``settings`` is passed through to the server for this statement
-        only -- e.g. ``{'async_insert': 1, 'wait_for_async_insert': 1}``
-        for a writer that inserts a handful of rows very often and would
-        otherwise leave one part per call.
-        """
-        LOGGER.debug('Clickhouse INSERT: %s (%r)', table, column_names)
-        if not self._clickhouse:
-            await self.initialize()
-        if not self._clickhouse:
-            raise RuntimeError('Failed to initialize ClickHouse client')
-        with _translate_errors(f'insert into {table}'):
-            return await self._clickhouse.insert(
-                table, data, column_names=column_names, settings=settings
-            )
 
     async def command(
         self, statement: str, parameters: dict[str, typing.Any] | None = None
