@@ -1003,7 +1003,7 @@ function DriftCell({
         <Link
           aria-label="Cut a release"
           className={`${badgeBaseCls} ${fallbackCls}`}
-          to={`/projects/${project.id}/releases`}
+          to={`/projects/${project.id}/deployments`}
         >
           <span className="font-medium">Δ</span>
           <span>C</span>

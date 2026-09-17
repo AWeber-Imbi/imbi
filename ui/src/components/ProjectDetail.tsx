@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
@@ -128,7 +128,6 @@ const VALID_TABS = [
   'dependencies',
   'deployments',
   'relationships',
-  'releases',
   'logs',
   'incidents',
   'documents',
@@ -142,6 +141,11 @@ const VALID_TABS = [
 type TabType = (typeof VALID_TABS)[number]
 
 const VALID_TAB_SET: Set<string> = new Set(VALID_TABS)
+
+// Release-only and deployable projects share the ``deployments`` slug; the
+// project type decides whether it shows the Releases or Deployments pane.
+// ``releases`` was the release-only slug before that, so old links redirect.
+const TAB_ALIASES: Record<string, TabType> = { releases: 'deployments' }
 
 // fallow-ignore-next-line complexity
 export function ProjectDetail({
@@ -165,12 +169,13 @@ export function ProjectDetail({
   // would otherwise reopen the dialog with stale slugs).
   const previewRequestRef = useRef<AbortController | null>(null)
   const navigate = useNavigate()
+  const { search } = useLocation()
   const { copied: copiedProjectId, copy: copyProjectId } = useClipboard()
 
-  const activeTab: TabType =
-    initialTab && VALID_TAB_SET.has(initialTab)
-      ? (initialTab as TabType)
-      : 'overview'
+  const resolvedTab = initialTab ? (TAB_ALIASES[initialTab] ?? initialTab) : ''
+  const activeTab: TabType = VALID_TAB_SET.has(resolvedTab)
+    ? (resolvedTab as TabType)
+    : 'overview'
 
   const handleTabChange = (value: string) => {
     const path =
@@ -280,6 +285,16 @@ export function ProjectDetail({
   // and the promote flow can't succeed).
   // fallow-ignore-next-line complexity
   useEffect(() => {
+    if (initialTab && initialTab in TAB_ALIASES) {
+      navigate(
+        {
+          pathname: `/projects/${project.id}/${TAB_ALIASES[initialTab]}`,
+          search,
+        },
+        { replace: true },
+      )
+      return
+    }
     const isModalTab = initialTab === 'deploy' || initialTab === 'promote'
     if (initialTab && !VALID_TAB_SET.has(initialTab) && !isModalTab) {
       navigate(`/projects/${project.id}`, { replace: true })
@@ -330,6 +345,7 @@ export function ProjectDetail({
     navigate,
     project.id,
     releasesPending,
+    search,
     sortedEnvironments,
   ])
 
@@ -734,6 +750,8 @@ export function ProjectDetail({
   // counterpart of the release-only "Releases" tab above.
   const hasDeploymentsTab =
     isDeployable && !!deploymentPlugin && sortedEnvironments.length > 0
+  // Both panes live under one tab slug (see TAB_ALIASES).
+  const hasShipTab = isReleaseOnly || hasDeploymentsTab
 
   // fallow-ignore-next-line complexity
   const deploymentConnectLabel = (() => {
@@ -794,8 +812,7 @@ export function ProjectDetail({
       (activeTab === 'configuration' && !hasConfigurationPlugin) ||
       (activeTab === 'logs' && !hasLogsPlugin) ||
       (activeTab === 'incidents' && !hasIncidentsPlugin) ||
-      (activeTab === 'releases' && !isReleaseOnly) ||
-      (activeTab === 'deployments' && !hasDeploymentsTab) ||
+      (activeTab === 'deployments' && !hasShipTab) ||
       (activeTab === 'pull-requests' && !hasLifecyclePlugin)
     ) {
       navigate(`/projects/${project.id}`, { replace: true })
@@ -803,11 +820,10 @@ export function ProjectDetail({
   }, [
     activeTab,
     hasConfigurationPlugin,
-    hasDeploymentsTab,
     hasIncidentsPlugin,
     hasLifecyclePlugin,
     hasLogsPlugin,
-    isReleaseOnly,
+    hasShipTab,
     navigate,
     project.id,
     projectPluginsFetched,
@@ -981,12 +997,12 @@ export function ProjectDetail({
       ? [{ id: 'configuration' as const, label: 'Configuration' }]
       : []),
     { id: 'dependencies', label: 'Dependencies' },
-    ...(hasDeploymentsTab
+    ...(hasShipTab
       ? [
           {
-            drift: hasDeploymentDrift,
+            drift: isReleaseOnly ? hasReleaseDrift : hasDeploymentDrift,
             id: 'deployments' as const,
-            label: 'Deployments',
+            label: isReleaseOnly ? 'Releases' : 'Deployments',
           },
         ]
       : []),
@@ -1022,15 +1038,6 @@ export function ProjectDetail({
         return `Relationships (${total})`
       })(),
     },
-    ...(isReleaseOnly
-      ? [
-          {
-            drift: hasReleaseDrift,
-            id: 'releases' as const,
-            label: 'Releases',
-          },
-        ]
-      : []),
     { id: 'score-history', label: 'Score History' },
     { id: 'doctor', label: '' },
     { id: 'settings', label: '' },
@@ -1492,43 +1499,13 @@ export function ProjectDetail({
             showSummary={false}
           />
         </TabsContent>
-        {isReleaseOnly && (
-          <TabsContent value="releases">
-            {deploymentReadiness === 'disconnected' &&
-              resolvedIdentityPlugin && (
-                <div className="mb-4">
-                  <ConnectIdentityPrompt
-                    action="release"
-                    label={deploymentConnectLabel}
-                    onConnect={() =>
-                      navigate(
-                        `/settings/connections?connect=${encodeURIComponent(resolvedIdentityPlugin.plugin_slug)}`,
-                      )
-                    }
-                    onManage={() => navigate('/settings/connections')}
-                    serviceIcon={deploymentPlugin?.service_icon ?? null}
-                  />
-                </div>
-              )}
-            <ReleasesTab
-              connectLabel={deploymentConnectLabel}
-              onBuildStarted={handleBuildStarted}
-              orgSlug={orgSlug}
-              project={project}
-              readiness={deploymentReadiness}
-              releaseInFlight={releaseInFlight}
-              serviceIcon={deploymentPlugin?.service_icon ?? null}
-              serviceLabel={deploymentPlugin?.service_name ?? null}
-            />
-          </TabsContent>
-        )}
-        {hasDeploymentsTab && (
+        {hasShipTab && (
           <TabsContent value="deployments">
             {deploymentReadiness === 'disconnected' &&
               resolvedIdentityPlugin && (
                 <div className="mb-4">
                   <ConnectIdentityPrompt
-                    action="deploy"
+                    action={isReleaseOnly ? 'release' : 'deploy'}
                     label={deploymentConnectLabel}
                     onConnect={() =>
                       navigate(
@@ -1540,18 +1517,31 @@ export function ProjectDetail({
                   />
                 </div>
               )}
-            <DeploymentsTab
-              canTrigger={canTriggerDeployments && !releaseInFlight.blocked}
-              connectLabel={deploymentConnectLabel}
-              environments={sortedEnvironments}
-              onBuildStarted={handleBuildStarted}
-              onRunStarted={handleRunStarted}
-              orgSlug={orgSlug}
-              projectId={project.id}
-              readiness={deploymentReadiness}
-              serviceIcon={deploymentPlugin?.service_icon ?? null}
-              serviceLabel={deploymentPlugin?.service_name ?? null}
-            />
+            {isReleaseOnly ? (
+              <ReleasesTab
+                connectLabel={deploymentConnectLabel}
+                onBuildStarted={handleBuildStarted}
+                orgSlug={orgSlug}
+                project={project}
+                readiness={deploymentReadiness}
+                releaseInFlight={releaseInFlight}
+                serviceIcon={deploymentPlugin?.service_icon ?? null}
+                serviceLabel={deploymentPlugin?.service_name ?? null}
+              />
+            ) : (
+              <DeploymentsTab
+                canTrigger={canTriggerDeployments && !releaseInFlight.blocked}
+                connectLabel={deploymentConnectLabel}
+                environments={sortedEnvironments}
+                onBuildStarted={handleBuildStarted}
+                onRunStarted={handleRunStarted}
+                orgSlug={orgSlug}
+                projectId={project.id}
+                readiness={deploymentReadiness}
+                serviceIcon={deploymentPlugin?.service_icon ?? null}
+                serviceLabel={deploymentPlugin?.service_name ?? null}
+              />
+            )}
           </TabsContent>
         )}
         {hasLifecyclePlugin && (
