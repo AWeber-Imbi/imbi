@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import { ChevronRight, GitMerge } from 'lucide-react'
 
 import type { ProjectListItem } from '@/api/endpoints'
@@ -81,11 +83,9 @@ function PrRow({
   )
 
   return (
-    <a
+    <Link
       className="border-input bg-background hover:border-secondary flex w-full items-start gap-3 rounded-lg border p-3 transition-colors"
-      href={pr.url}
-      rel="noreferrer"
-      target="_blank"
+      to={`/projects/${pr.project_id}/deployments`}
     >
       <GitMerge className="mt-0.5 size-5 shrink-0 text-purple-500" />
       <div className="min-w-0 flex-1">
@@ -118,7 +118,7 @@ function PrRow({
         </div>
       </div>
       <ChevronRight className="text-tertiary mt-0.5 size-4 shrink-0" />
-    </a>
+    </Link>
   )
 }
 

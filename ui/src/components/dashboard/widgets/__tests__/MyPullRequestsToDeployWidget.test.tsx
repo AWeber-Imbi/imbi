@@ -1,5 +1,7 @@
 import React from 'react'
 
+import { MemoryRouter } from 'react-router-dom'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -56,7 +58,9 @@ function makePr(
 
 function wrapper(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
   )
 }
 
@@ -95,7 +99,7 @@ describe('MyPullRequestsToDeployWidget', () => {
     expect(screen.getByText(/^Waiting \d+ days?$/)).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: /Add the widget/ }),
-    ).toHaveAttribute('href', 'https://github.example/org/repo/pull/42')
+    ).toHaveAttribute('href', '/projects/p1/deployments')
   })
 
   it('shows an all-clear message when nothing is pending', async () => {

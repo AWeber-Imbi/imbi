@@ -188,6 +188,8 @@ const defaultWidgets: WidgetId[] = [
   'my-pull-request-counts',
   'recent-deployments',
   'my-pull-requests',
+  'my-prs-to-deploy',
+  'agent-prs-to-deploy',
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
