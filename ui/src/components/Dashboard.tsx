@@ -35,6 +35,7 @@ import { useConnectableIdentities } from '@/hooks/useConnectableIdentities'
 import { useRecentDeployments } from '@/hooks/useRecentDeployments'
 import type { IdentityConnectionResponse, PluginPackage } from '@/types'
 
+import { AgentPullRequestsToDeployWidget } from './dashboard/widgets/AgentPullRequestsToDeployWidget'
 import { MyPullRequestCountsWidget } from './dashboard/widgets/MyPullRequestCountsWidget'
 import { MyPullRequestsToDeployWidget } from './dashboard/widgets/MyPullRequestsToDeployWidget'
 import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
@@ -64,6 +65,7 @@ const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v4'
 const DISMISSED_INTEGRATIONS_KEY = 'imbi-dashboard-dismissed-integrations-v2'
 
 type WidgetId =
+  | 'agent-prs-to-deploy'
   | 'my-prs-to-deploy'
   | 'my-pull-request-counts'
   | 'my-pull-requests'
@@ -160,6 +162,15 @@ const availableWidgets: WidgetConfig[] = [
     name: 'My PRs to Deploy',
   },
   {
+    category: 'activity',
+    columnSpan: 2,
+    description:
+      'Merged pull requests from agents and bots not yet deployed to production',
+    icon: '🤖',
+    id: 'agent-prs-to-deploy',
+    name: 'Agent PRs to Deploy',
+  },
+  {
     category: 'health',
     columnSpan: 2,
     description: 'Dependencies that need updating',
@@ -180,6 +191,7 @@ const defaultWidgets: WidgetId[] = [
 ]
 
 const WIDGET_IDS: ReadonlySet<WidgetId> = new Set<WidgetId>([
+  'agent-prs-to-deploy',
   'my-prs-to-deploy',
   'my-pull-request-counts',
   'my-pull-requests',
@@ -384,6 +396,7 @@ export function Dashboard({
   }
 
   const widgetRegistry: Record<WidgetId, () => ReactElement> = {
+    'agent-prs-to-deploy': () => <AgentPullRequestsToDeployWidget />,
     'my-prs-to-deploy': () => <MyPullRequestsToDeployWidget />,
     'my-pull-request-counts': () => <MyPullRequestCountsWidget />,
     'my-pull-requests': () => <MyPullRequestsWidget />,

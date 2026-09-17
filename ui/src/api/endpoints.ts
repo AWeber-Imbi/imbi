@@ -3278,7 +3278,7 @@ export const getOrgPullRequests = (
 
 export const getOrgPendingDeployPullRequests = (
   orgSlug: string,
-  params?: { author?: string; days?: number },
+  params?: { author?: string; bots?: boolean; days?: number },
   signal?: AbortSignal,
 ) =>
   apiClient.get<PendingDeployResponse>(

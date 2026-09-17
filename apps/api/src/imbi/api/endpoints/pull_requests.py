@@ -371,8 +371,12 @@ async def _list_pending_deploy(
     environment_slugs: list[str],
     author: str | None,
     since: datetime.datetime,
+    bots: bool = False,
 ) -> list[PendingDeployPullRequest]:
     """Merged PRs whose project has not deployed to a terminal env since.
+
+    ``bots`` keeps only PRs opened by GitHub Apps and bot accounts,
+    which GitHub names with a ``[bot]`` suffix (``dependabot[bot]``).
 
     A project's deploy time is the ``occurred_at`` of its ``Deployed``
     operations-log row, which is written when the deploy starts: a
@@ -392,6 +396,8 @@ async def _list_pending_deploy(
     if author is not None:
         author_clause = ' AND pr.author = {author:String}'
         params['author'] = author
+    if bots:
+        author_clause += " AND pr.author LIKE '%[bot]%'"
     sql = (
         'WITH deployed AS ('  # noqa: S608
         ' SELECT project_id, max(occurred_at) AS last_deployed_at'
@@ -436,6 +442,7 @@ async def list_pending_deploy_pull_requests(
     ],
     author: str | None = None,
     days: int = DEFAULT_PENDING_DEPLOY_DAYS,
+    bots: bool = False,
 ) -> PendingDeployResponse:
     """List merged PRs not yet deployed to a terminal environment.
 
@@ -443,7 +450,8 @@ async def list_pending_deploy_pull_requests(
     environment of a promotion pipeline (production, typically)
     started at or before the merge.  Only PRs merged in the last
     ``days`` days are considered; ``author`` narrows to one GitHub
-    login.  Rows are ordered oldest merge first.
+    login and ``bots`` to authors named with GitHub's ``[bot]``
+    suffix.  Rows are ordered oldest merge first.
     """
     if days < 1 or days > MAX_PENDING_DEPLOY_DAYS:
         raise fastapi.HTTPException(
@@ -458,6 +466,7 @@ async def list_pending_deploy_pull_requests(
         environment_slugs=slugs,
         author=author,
         since=since,
+        bots=bots,
     )
     return PendingDeployResponse(since=since, environments=slugs, data=data)
 

@@ -112,6 +112,28 @@ class ListPendingDeployTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('pr.author = {author:String}', sql)
         self.assertNotIn('author', params)
 
+    async def test_bots_filter_matches_the_github_bot_suffix(self) -> None:
+        await pull_requests._list_pending_deploy(
+            project_ids=['p1'],
+            environment_slugs=['production'],
+            author=None,
+            since=self.since,
+            bots=True,
+        )
+        sql, params = self.query.await_args.args
+        self.assertIn("pr.author LIKE '%[bot]%'", sql)
+        self.assertNotIn('author', params)
+
+    async def test_bots_filter_is_off_by_default(self) -> None:
+        await pull_requests._list_pending_deploy(
+            project_ids=['p1'],
+            environment_slugs=['production'],
+            author='gmr',
+            since=self.since,
+        )
+        sql, _params = self.query.await_args.args
+        self.assertNotIn('[bot]', sql)
+
     async def test_rows_become_utc_models(self) -> None:
         # ClickHouse hands back naive datetimes; the endpoint stamps UTC.
         merged = datetime.datetime(2026, 8, 2, 12, 0)  # noqa: DTZ001
