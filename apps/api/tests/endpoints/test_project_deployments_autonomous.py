@@ -122,12 +122,17 @@ class _AutonomousBase(support.SharedAppTestCase):
                 mock.patch(
                     f'{_MODULE}.clickhouse.client.Clickhouse.get_instance',
                     return_value=mock.MagicMock(
-                        insert=mock.AsyncMock(return_value=None),
                         initialize=mock.AsyncMock(return_value=True),
                         setup_schema=mock.AsyncMock(return_value=None),
                         aclose=mock.AsyncMock(return_value=None),
                         close=mock.AsyncMock(return_value=None),
                     ),
+                )
+            ),
+            'publish_rows': self._start(
+                mock.patch(
+                    f'{_MODULE}.iggy.publish_rows',
+                    new_callable=mock.AsyncMock,
                 )
             ),
         }

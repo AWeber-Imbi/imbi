@@ -4,10 +4,16 @@ import os
 import pathlib
 import typing
 import unittest
+import unittest.mock
 import uuid
 
 import dotenv
+import orjson
+import pydantic
 
+from imbi.common import iggy
+from imbi.common.clickhouse import client as ch_client
+from imbi.common.iggy import client as iggy_client
 from imbi.scheduler import models, triggers
 
 if typing.TYPE_CHECKING:
@@ -51,6 +57,14 @@ def build_task(**overrides: typing.Any) -> models.Task:
     return models.Task.model_validate(fields)
 
 
+async def _write_rows(stream: str, rows: list[dict[str, typing.Any]]) -> None:
+    """Insert `rows` into the table `stream` lands in, as the sink would."""
+    lines = '\n'.join(orjson.dumps(row).decode() for row in rows)
+    await ch_client.Clickhouse.get_instance().command(
+        f'INSERT INTO {stream} FORMAT JSONEachRow\n{lines}'
+    )
+
+
 class TestCase(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -58,6 +72,56 @@ class TestCase(unittest.IsolatedAsyncioTestCase):
         my_dir = pathlib.Path(__file__).parent
         env_path = my_dir.parent / '.env'
         dotenv.load_dotenv(str(env_path))
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.patch_iggy()
+
+    def patch_iggy(self) -> None:
+        """Route `iggy.publish` straight into ClickHouse.
+
+        The real path is producer, Iggy server, connectors runtime, sink,
+        table, and the row shows up a poll interval later. These cases
+        read what they just recorded, so the fake writes the exact
+        JSONEachRow payload the sink would insert, synchronously. Every
+        publish is recorded in `self.published` as `(stream, topic, rows)`.
+        """
+        self.published: list[tuple[str, str, list[dict[str, typing.Any]]]] = []
+
+        async def publish(
+            stream: str,
+            topic: str,
+            models: list[pydantic.BaseModel],
+            *,
+            columns: list[str] | None = None,
+            headers: dict[str, str] | None = None,
+        ) -> None:
+            rows = [iggy_client._payload(model, columns) for model in models]
+            self.published.append((stream, topic, rows))
+            await _write_rows(stream, rows)
+
+        async def publish_rows(
+            stream: str,
+            topic: str,
+            rows: list[dict[str, typing.Any]],
+            *,
+            headers: dict[str, str] | None = None,
+        ) -> None:
+            self.published.append((stream, topic, rows))
+            await _write_rows(stream, rows)
+
+        self.enterContext(
+            unittest.mock.patch.object(
+                iggy, 'publish', new=unittest.mock.AsyncMock(wraps=publish)
+            )
+        )
+        self.enterContext(
+            unittest.mock.patch.object(
+                iggy,
+                'publish_rows',
+                new=unittest.mock.AsyncMock(wraps=publish_rows),
+            )
+        )
 
     @contextlib.contextmanager
     def override_environment(

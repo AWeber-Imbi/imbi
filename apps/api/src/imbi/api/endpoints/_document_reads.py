@@ -27,7 +27,7 @@ import pydantic
 from valkey import asyncio as valkey_asyncio
 
 from imbi.api.endpoints import _document_scope
-from imbi.common import clickhouse, graph
+from imbi.common import clickhouse, graph, iggy
 
 LOGGER = logging.getLogger(__name__)
 
@@ -238,8 +238,9 @@ async def record_events(rows: list[DocumentReadEventRow]) -> None:
     if not rows:
         return
     try:
-        await clickhouse.insert(
+        await iggy.publish(
             'document_read_events',
+            'documents',
             typing.cast('list[pydantic.BaseModel]', rows),
         )
     except Exception:
@@ -352,7 +353,7 @@ async def finalize_sessions(session_ids: list[str]) -> int:
     if not rows:
         return 0
     try:
-        await clickhouse.insert('document_read_sessions', rows)
+        await iggy.publish('document_read_sessions', 'documents', rows)
     except Exception:
         LOGGER.exception('failed to finalize %d session(s)', len(rows))
         return 0

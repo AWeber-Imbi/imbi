@@ -49,10 +49,10 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
             lambda: self.mock_db
         )
 
-        self.ch_insert = mock.AsyncMock()
+        self.publish = mock.AsyncMock()
         self.ch_query = mock.AsyncMock(return_value=[])
         for target, replacement in (
-            ('imbi.common.clickhouse.insert', self.ch_insert),
+            ('imbi.common.iggy.publish', self.publish),
             ('imbi.common.clickhouse.query', self.ch_query),
         ):
             patcher = mock.patch(target, replacement)
@@ -210,8 +210,8 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(set_call.args[1]['version_bump'], 1)
         self.assertEqual(set_call.args[1]['content'], 'Original text')
         # The new snapshot is recorded as a restore.
-        self.ch_insert.assert_awaited_once()
-        _, rows = self.ch_insert.await_args.args
+        self.publish.assert_awaited_once()
+        _stream, _topic, rows = self.publish.await_args.args
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].version, 3)
         self.assertEqual(rows[0].change_kind, 'restore')
@@ -252,7 +252,7 @@ class DocumentVersionEndpointsTestCase(support.SharedAppTestCase):
                 '/versions/1/restore'
             )
         self.assertEqual(response.status_code, 200)
-        _, rows = self.ch_insert.await_args.args
+        _stream, _topic, rows = self.publish.await_args.args
         self.assertEqual(rows[0].tags, ['runbook'])
 
     def test_restore_version_not_found(self) -> None:

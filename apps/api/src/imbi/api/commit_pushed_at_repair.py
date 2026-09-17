@@ -80,7 +80,7 @@ import typing
 
 import pydantic
 
-from imbi.common import clickhouse, models
+from imbi.common import clickhouse, iggy, models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ async def repair_project(
         largest = max(largest, shift)
         repaired.append(_repaired_record(row, delivered))
     if repaired and not dry_run:
-        await clickhouse.insert('commits', repaired)
+        await iggy.publish('commits', 'maintenance', repaired)
         LOGGER.info(
             'restored pushed_at on %d commit(s) for project %s',
             len(repaired),

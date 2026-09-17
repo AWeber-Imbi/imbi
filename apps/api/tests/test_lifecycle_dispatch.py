@@ -12,6 +12,7 @@ import unittest.mock as mock
 
 import fastapi
 
+from imbi.api.plugins import lifecycle_dispatch
 from imbi.api.plugins.lifecycle_dispatch import (
     LifecycleContextBundle,
     LifecycleEvent,
@@ -177,15 +178,13 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 'tok'}),
             ),
-            mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
-                'get_instance'
-            ) as ch_get,
+            mock.patch.object(
+                lifecycle_dispatch.iggy, 'publish_rows', mock.AsyncMock()
+            ) as publish,
         ):
-            ch_get.return_value.insert = mock.AsyncMock()
             return asyncio.run(
                 dispatch_lifecycle(mock_db, 'proj-1', 'org-1', event, auth)
-            ), ch_get.return_value.insert
+            ), publish
 
     def test_empty_when_no_plugins_assigned(self) -> None:
         results, _ = self._run([])
@@ -313,7 +312,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         self.assertIn('remove', merge_links.await_args.kwargs)
 
     def test_emits_one_clickhouse_call_for_multiple_plugins(self) -> None:
-        """H17: N plugins → 1 ClickHouse insert (rows batched)."""
+        """H17: N plugins → 1 publish (rows batched)."""
         entries = [
             _resolved(_make_lifecycle_entry(f'gh-{i}'), integration_id=f'p{i}')
             for i in range(3)
@@ -322,8 +321,8 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         self.assertEqual(len(results), 3)
         insert.assert_awaited_once()
         args = insert.call_args.args
-        self.assertEqual(args[0], 'events')
-        rows = args[1]
+        self.assertEqual(args[:2], ('events', 'lifecycle'))
+        rows = args[2]
         self.assertEqual(len(rows), 3)
 
     def test_unarchive_not_implemented_is_skipped(self) -> None:
@@ -404,14 +403,12 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
-            mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
-                'get_instance'
-            ) as ch_get,
+            mock.patch.object(
+                lifecycle_dispatch.iggy,
+                'publish_rows',
+                mock.AsyncMock(side_effect=RuntimeError('iggy down')),
+            ),
         ):
-            ch_get.return_value.insert = mock.AsyncMock(
-                side_effect=RuntimeError('clickhouse down')
-            )
             results = asyncio.run(
                 dispatch_lifecycle(
                     mock_db, 'proj-1', 'org-1', 'archived', auth
@@ -572,12 +569,10 @@ class WidenedEventNotImplementedTestCase(unittest.TestCase):
                 'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
-            mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
-                'get_instance'
-            ) as ch_get,
+            mock.patch.object(
+                lifecycle_dispatch.iggy, 'publish_rows', mock.AsyncMock()
+            ),
         ):
-            ch_get.return_value.insert = mock.AsyncMock()
             results = asyncio.run(
                 dispatch_lifecycle(mock_db, 'proj-1', 'org-1', event, auth)
             )
@@ -681,12 +676,10 @@ class BundleAndContextPropagationTestCase(unittest.TestCase):
                 'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 't'}),
             ),
-            mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
-                'get_instance'
-            ) as ch_get,
+            mock.patch.object(
+                lifecycle_dispatch.iggy, 'publish_rows', mock.AsyncMock()
+            ),
         ):
-            ch_get.return_value.insert = mock.AsyncMock()
             asyncio.run(
                 dispatch_lifecycle(
                     mock_db,
@@ -859,12 +852,10 @@ class ContextHydrationTestCase(unittest.TestCase):
                 'imbi.api.plugins.lifecycle_dispatch._resolve_credentials',
                 mock.Mock(return_value={'access_token': 'tok'}),
             ),
-            mock.patch(
-                'imbi.api.plugins.lifecycle_dispatch.ch_client.Clickhouse.'
-                'get_instance'
-            ) as ch_get,
+            mock.patch.object(
+                lifecycle_dispatch.iggy, 'publish_rows', mock.AsyncMock()
+            ),
         ):
-            ch_get.return_value.insert = mock.AsyncMock()
             asyncio.run(
                 dispatch_lifecycle(
                     mock_db,

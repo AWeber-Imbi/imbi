@@ -12,6 +12,7 @@ are hidden.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import typing
@@ -29,7 +30,7 @@ from imbi.api.endpoints._pagination import (
     encode_cursor,
     parse_iso,
 )
-from imbi.common import clickhouse, models
+from imbi.common import clickhouse, iggy, models
 from imbi.common import patch as json_patch
 from imbi.common.plugins import OpsLogTemplate
 from imbi.common.plugins.registry import list_plugins
@@ -147,18 +148,19 @@ def _model_to_row(entry: models.OperationLog) -> dict[str, typing.Any]:
     return dumped
 
 
-async def _insert_row(row: dict[str, typing.Any]) -> None:
-    """Insert a single row into operations_log.
+#: One poll interval of the ClickHouse sink. A row published moments
+#: ago is not readable until the sink has drained it, so a read that
+#: expects it waits this long once before concluding it is absent.
+SINK_POLL_INTERVAL_SECONDS: typing.Final[float] = 0.25
 
-    Calls the class method directly with explicit column names/values
-    because the module-level ``clickhouse.insert`` wrapper only accepts
-    pydantic models and loses the alias during serialization.
+
+async def _insert_row(row: dict[str, typing.Any], topic: str = 'api') -> None:
+    """Publish a single ``operations_log`` row to the Iggy stream.
+
+    The row is a column-name mapping, so it goes through
+    ``publish_rows``; the ``_row_version`` alias is already rendered.
     """
-    await clickhouse.client.Clickhouse.get_instance().insert(
-        'operations_log',
-        [list(row.values())],
-        list(row.keys()),
-    )
+    await iggy.publish_rows('operations_log', topic, [row])
 
 
 _BY_EXTERNAL_RUN_SQL: typing.Final[str] = (
@@ -176,14 +178,24 @@ async def complete_opslog_entry(
     """Mark the opslog entry for ``external_run_id`` as completed.
 
     Looks up the latest in-progress row by ``external_run_id``, then
-    re-inserts it with ``completed_at`` set and a bumped ``_row_version``
+    re-publishes it with ``completed_at`` set and a bumped ``_row_version``
     so ReplacingMergeTree converges to the completed state.  Returns
     ``True`` when an entry was found and written, ``False`` otherwise.
     Silently no-ops when the entry is already completed or missing.
+
+    The open row reaches ClickHouse through the sink, so when the lookup
+    finds nothing it is retried once after one poll interval before the
+    entry is treated as missing. The start and the completion are
+    normally seconds to minutes apart, so the retry is a safety net.
     """
     rows = await clickhouse.client.Clickhouse.get_instance().query(
         _BY_EXTERNAL_RUN_SQL, {'run_id': external_run_id}
     )
+    if not rows:
+        await asyncio.sleep(SINK_POLL_INTERVAL_SECONDS)
+        rows = await clickhouse.client.Clickhouse.get_instance().query(
+            _BY_EXTERNAL_RUN_SQL, {'run_id': external_run_id}
+        )
     if not rows:
         LOGGER.debug(
             'complete_opslog_entry: no open entry for external_run_id=%s',
@@ -193,7 +205,7 @@ async def complete_opslog_entry(
     row = dict(rows[0])
     row['completed_at'] = completed_at
     row['_row_version'] = next_row_version(int(row['_row_version']))
-    await _insert_row(row)
+    await _insert_row(row, 'deployments')
     return True
 
 

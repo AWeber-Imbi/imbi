@@ -39,7 +39,7 @@ from imbi.api.plugins.resolution import resolve_all_capabilities
 from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.api.scoring import OptionalValkeyClient
 from imbi.api.scoring import queue as score_queue
-from imbi.common import blueprints, clickhouse, graph, models, versioning
+from imbi.common import blueprints, clickhouse, graph, iggy, models, versioning
 from imbi.common import deployments as deployment_nodes
 from imbi.common import environments as environment_chains
 from imbi.common import patch as json_patch
@@ -1581,13 +1581,13 @@ async def _emit_change_events(
     before: dict[str, typing.Any],
     after: dict[str, typing.Any],
 ) -> None:
-    """Emit one events row per changed field into ClickHouse.
+    """Publish one ``events`` row per changed field to the Iggy stream.
 
     Errors are logged but do not bubble up — the graph write already
-    succeeded and we do not want a ClickHouse hiccup to fail the request.
+    succeeded and we do not want a streaming hiccup to fail the request.
     """
     now = datetime.datetime.now(datetime.UTC)
-    rows: list[list[typing.Any]] = []
+    rows: list[dict[str, typing.Any]] = []
     for key in set(before) | set(after):
         if key in _EVENT_SKIP_FIELDS:
             continue
@@ -1596,34 +1596,21 @@ async def _emit_change_events(
         if old_val == new_val:
             continue
         rows.append(
-            [
-                nanoid.generate(),
-                project_id,
-                now,
-                'project-change',
-                'internal',
-                principal,
-                {},
-                {'field': key, 'old': old_val, 'new': new_val},
-            ]
+            {
+                'id': nanoid.generate(),
+                'project_id': project_id,
+                'recorded_at': now,
+                'type': 'project-change',
+                'integration': 'internal',
+                'attributed_to': principal,
+                'metadata': {},
+                'payload': {'field': key, 'old': old_val, 'new': new_val},
+            }
         )
     if not rows:
         return
     try:
-        await ch_client.Clickhouse.get_instance().insert(
-            'events',
-            rows,
-            [
-                'id',
-                'project_id',
-                'recorded_at',
-                'type',
-                'integration',
-                'attributed_to',
-                'metadata',
-                'payload',
-            ],
-        )
+        await iggy.publish_rows('events', 'projects', rows)
     except Exception:
         LOGGER.exception(
             'Failed to emit change events for project %s', project_id

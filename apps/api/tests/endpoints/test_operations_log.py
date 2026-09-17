@@ -12,6 +12,7 @@ from imbi.api import models as api_models
 from imbi.api.auth import permissions as api_permissions
 from imbi.api.endpoints import operations_log
 from imbi.common import clickhouse as imbi_clickhouse
+from imbi.common import iggy
 
 ALL_OPSLOG_PERMS: set[str] = {
     'operations_log:create',
@@ -84,25 +85,28 @@ class _OpsLogTestBase(support.SharedAppTestCase):
         self.client = testclient.TestClient(self.test_app)
         self.addCleanup(self.client.close)
 
-        # Patch ClickHouse:
-        #   * query() is the module-level wrapper used for reads; returns
-        #     list[dict].
-        #   * insert is the class method Clickhouse.insert called directly
-        #     with explicit column names/values (the module-level wrapper
-        #     only accepts pydantic models and strips the alias).
-        self.insert_patcher = mock.patch.object(
-            imbi_clickhouse.client.Clickhouse,
-            'insert',
-            new_callable=mock.AsyncMock,
+        # Reads go through the module-level ``clickhouse.query`` wrapper;
+        # writes are published to the ``operations_log`` stream as
+        # rendered rows through ``iggy.publish_rows``.
+        self.publish_patcher = mock.patch.object(
+            iggy, 'publish_rows', new_callable=mock.AsyncMock
         )
         self.query_patcher = mock.patch(
             'imbi.common.clickhouse.query',
             new_callable=mock.AsyncMock,
         )
-        self.mock_insert = self.insert_patcher.start()
+        self.mock_publish = self.publish_patcher.start()
         self.mock_query = self.query_patcher.start()
-        self.addCleanup(self.insert_patcher.stop)
+        self.addCleanup(self.publish_patcher.stop)
         self.addCleanup(self.query_patcher.stop)
+
+    def _published_row(self) -> dict[str, typing.Any]:
+        self.mock_publish.assert_awaited_once()
+        assert self.mock_publish.await_args is not None
+        stream, _topic, rows = self.mock_publish.await_args.args
+        self.assertEqual('operations_log', stream)
+        self.assertEqual(1, len(rows))
+        return rows[0]
 
     def _stub_list(
         self,
@@ -207,7 +211,7 @@ class PostOperationLogTests(_OpsLogTestBase):
         self.assertNotIn('_row_version', body)
         self.assertNotIn('row_version', body)
         self.assertNotIn('is_deleted', body)
-        self.mock_insert.assert_awaited_once()
+        self.mock_publish.assert_awaited_once()
 
     def test_create_with_explicit_performed_by(self) -> None:
         body = self._valid_body() | {'performed_by': 'ci-bot'}
@@ -227,7 +231,7 @@ class PostOperationLogTests(_OpsLogTestBase):
             '/operations-log/', json=self._valid_body()
         )
         self.assertEqual(response.status_code, 403)
-        self.mock_insert.assert_not_awaited()
+        self.mock_publish.assert_not_awaited()
 
 
 class GetSingleEntryTests(_OpsLogTestBase):
@@ -403,12 +407,7 @@ class PatchOperationLogTests(_OpsLogTestBase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body['description'], 'Rolled out v2.4.1')
-        self.mock_insert.assert_awaited_once()
-        assert self.mock_insert.await_args is not None
-        args, _kwargs = self.mock_insert.await_args
-        column_names = args[2]
-        values = args[1][0]
-        columns = dict(zip(column_names, values, strict=True))
+        columns = self._published_row()
         self.assertGreater(columns['_row_version'], 1)
         self.assertEqual(columns['id'], 'entry-abc')
 
@@ -519,12 +518,7 @@ class DeleteOperationLogTests(_OpsLogTestBase):
         self.mock_query.return_value = [_sample_row()]
         response = self.client.delete('/operations-log/entry-abc')
         self.assertEqual(response.status_code, 204)
-        self.mock_insert.assert_awaited_once()
-        assert self.mock_insert.await_args is not None
-        args, _kwargs = self.mock_insert.await_args
-        column_names = args[2]
-        values = args[1][0]
-        row = dict(zip(column_names, values, strict=True))
+        row = self._published_row()
         self.assertEqual(row['id'], 'entry-abc')
         self.assertEqual(row['is_deleted'], 1)
         self.assertGreater(row['_row_version'], 1)
@@ -554,6 +548,19 @@ class DeleteOperationLogTests(_OpsLogTestBase):
 class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
     """Tests for the complete_opslog_entry helper."""
 
+    def setUp(self) -> None:
+        super().setUp()
+        self.publish = self.enterContext(
+            mock.patch.object(
+                iggy, 'publish_rows', new_callable=mock.AsyncMock
+            )
+        )
+        self.sleep = self.enterContext(
+            mock.patch.object(
+                operations_log.asyncio, 'sleep', new_callable=mock.AsyncMock
+            )
+        )
+
     async def test_returns_false_when_no_row_found(self) -> None:
         instance = mock.MagicMock()
         instance.query = mock.AsyncMock(return_value=[])
@@ -566,14 +573,19 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
                 'run-abc', datetime.datetime.now(datetime.UTC)
             )
         self.assertFalse(result)
-        instance.query.assert_awaited_once()
+        # The open row may still be in the sink, so the lookup is retried
+        # once after a poll interval before the entry is treated as missing.
+        self.assertEqual(2, instance.query.await_count)
+        self.sleep.assert_awaited_once_with(
+            operations_log.SINK_POLL_INTERVAL_SECONDS
+        )
+        self.publish.assert_not_awaited()
 
-    async def test_closes_open_entry(self) -> None:
+    async def test_retries_once_when_the_open_row_lags(self) -> None:
         now = datetime.datetime.now(datetime.UTC)
         existing = dict(_sample_row(external_run_id='run-99', _row_version=1))
         instance = mock.MagicMock()
-        instance.query = mock.AsyncMock(return_value=[existing])
-        instance.insert = mock.AsyncMock(return_value=None)
+        instance.query = mock.AsyncMock(side_effect=[[], [existing]])
         with mock.patch.object(
             imbi_clickhouse.client.Clickhouse,
             'get_instance',
@@ -581,12 +593,28 @@ class CompleteOpslogEntryTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             result = await operations_log.complete_opslog_entry('run-99', now)
         self.assertTrue(result)
-        # Verify the insert was called with the bumped row_version and
-        # completed_at set.
-        instance.insert.assert_awaited_once()
-        call_args = instance.insert.call_args
-        columns: list[str] = call_args.args[2]
-        values: list[typing.Any] = call_args.args[1][0]
-        row_dict = dict(zip(columns, values, strict=True))
+        self.assertEqual(2, instance.query.await_count)
+        self.sleep.assert_awaited_once()
+        self.publish.assert_awaited_once()
+
+    async def test_closes_open_entry(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        existing = dict(_sample_row(external_run_id='run-99', _row_version=1))
+        instance = mock.MagicMock()
+        instance.query = mock.AsyncMock(return_value=[existing])
+        with mock.patch.object(
+            imbi_clickhouse.client.Clickhouse,
+            'get_instance',
+            return_value=instance,
+        ):
+            result = await operations_log.complete_opslog_entry('run-99', now)
+        self.assertTrue(result)
+        self.sleep.assert_not_awaited()
+        # Verify the row was published with the bumped row_version and
+        # completed_at set, to the deployments topic.
+        self.publish.assert_awaited_once()
+        stream, topic, rows = self.publish.await_args.args
+        self.assertEqual(('operations_log', 'deployments'), (stream, topic))
+        row_dict = rows[0]
         self.assertEqual(row_dict['completed_at'], now)
         self.assertGreater(int(row_dict['_row_version']), 1)

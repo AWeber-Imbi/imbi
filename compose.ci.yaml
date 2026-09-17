@@ -72,7 +72,7 @@ services:
       # Mirrors imbi.common.iggy.TOPICS. The ClickHouse coordinates are
       # the ones reachable from inside this network, not the host-mapped
       # ones .env.test carries.
-      IGGY_TOPICS: events=gateway
+      IGGY_TOPICS: commit_drift=drift;commits=github,maintenance;document_read_events=documents;document_read_sessions=documents;document_versions=documents;email_audit=email;events=comments,documents,gateway,lifecycle,projects;maintenance_log=maintenance;operations_log=api,configuration,deployments,maintenance;pull_requests=github;release_component_batches=sbom;release_components=sbom;scheduler_runs=scheduler;score_history=scoring;tags=github
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_DATABASE: imbi
       CLICKHOUSE_USERNAME: default

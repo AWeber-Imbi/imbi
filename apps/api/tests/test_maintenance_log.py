@@ -190,22 +190,22 @@ class BestEffortConstructionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WriteTests(unittest.IsolatedAsyncioTestCase):
-    async def test_no_rows_is_not_an_insert(self) -> None:
-        with mock.patch.object(log.clickhouse, 'insert') as insert:
+    async def test_no_rows_is_not_a_publish(self) -> None:
+        with mock.patch.object(log.iggy, 'publish') as publish:
             await log._write([])
-        insert.assert_not_called()
+        publish.assert_not_called()
 
-    async def test_a_clickhouse_failure_is_swallowed(self) -> None:
+    async def test_a_publish_failure_is_swallowed(self) -> None:
         item = _item_log()
         item.attempt('succeeded')
         with mock.patch.object(
-            log.clickhouse,
-            'insert',
-            mock.AsyncMock(side_effect=RuntimeError('clickhouse down')),
+            log.iggy,
+            'publish',
+            mock.AsyncMock(side_effect=RuntimeError('iggy down')),
         ):
             await item.flush()
 
-    async def test_a_stalled_insert_times_out(self) -> None:
+    async def test_a_stalled_publish_times_out(self) -> None:
         async def _stall(*_args: object, **_kwargs: object) -> None:
             await asyncio.sleep(60)
 
@@ -213,19 +213,18 @@ class WriteTests(unittest.IsolatedAsyncioTestCase):
         item.attempt('succeeded')
         with (
             mock.patch.object(log, 'WRITE_TIMEOUT_SECONDS', 0.01),
-            mock.patch.object(log.clickhouse, 'insert', _stall),
+            mock.patch.object(log.iggy, 'publish', _stall),
         ):
             await item.flush()
         self.assertEqual(0, item.buffered)
 
-    async def test_the_insert_asks_the_server_to_batch(self) -> None:
+    async def test_rows_go_to_the_maintenance_topic(self) -> None:
         item = _item_log()
         item.attempt('succeeded')
         with mock.patch.object(
-            log.clickhouse, 'insert', mock.AsyncMock()
-        ) as insert:
+            log.iggy, 'publish', mock.AsyncMock()
+        ) as publish:
             await item.flush()
-        self.assertEqual(log.TABLE, insert.await_args.args[0])
         self.assertEqual(
-            log.INSERT_SETTINGS, insert.await_args.kwargs['settings']
+            (log.TABLE, 'maintenance'), publish.await_args.args[:2]
         )

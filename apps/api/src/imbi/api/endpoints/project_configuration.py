@@ -18,7 +18,7 @@ from imbi.api.endpoints._helpers import (
 from imbi.api.identity.host_integration import call_with_identity_retry
 from imbi.api.plugins import call_with_timeout
 from imbi.api.plugins.resolution import ResolvedCapability, resolve_capability
-from imbi.common import clickhouse, graph, valkey
+from imbi.common import graph, iggy, valkey
 from imbi.common import models as common_models
 from imbi.common.plugins import decrypt_integration_credentials
 from imbi.common.plugins.base import (
@@ -412,8 +412,4 @@ async def _write_audit(
     )
     row = entry.model_dump(by_alias=True, mode='python')
     row['is_deleted'] = 1 if entry.is_deleted else 0
-    await clickhouse.client.Clickhouse.get_instance().insert(
-        'operations_log',
-        [list(row.values())],
-        list(row.keys()),
-    )
+    await iggy.publish_rows('operations_log', 'configuration', [row])

@@ -133,10 +133,16 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
                 for stream, topics in common_iggy.TOPICS.items()
                 for topic in topics
             }
+            expected_streams = set(common_iggy.TOPICS)
         self.assertEqual(expected, iggy._provisioned)
+        # The mocked `get_stream` never reports a stream as existing, so
+        # a stream with several topics is created once per topic here.
         self.assertEqual(
-            [mock.call('events'), mock.call('operations_log')],
-            self.mock_client.create_stream.await_args_list,
+            expected_streams,
+            {
+                call.args[0]
+                for call in self.mock_client.create_stream.await_args_list
+            },
         )
 
     async def test_initialize_tolerates_provisioned_topics(self) -> None:
@@ -194,6 +200,13 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
         await client.Iggy.get_instance().aclose()
 
     async def test_ensure_topic_creates_what_is_missing(self) -> None:
+        # `_require_client` initializes on first use, which provisions
+        # every pair in TOPICS; pin it to the one under test.
+        self.enterContext(
+            mock.patch.dict(
+                common_iggy.TOPICS, {'events': ('gateway',)}, clear=True
+            )
+        )
         iggy = client.Iggy.get_instance()
         self.mock_client.get_stream.return_value = None
         self.mock_client.get_topic.return_value = None
@@ -210,6 +223,13 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_client.create_topic.assert_not_awaited()
 
     async def test_ensure_topic_is_cached(self) -> None:
+        # `_require_client` initializes on first use, which provisions
+        # every pair in TOPICS; pin it to the one under test.
+        self.enterContext(
+            mock.patch.dict(
+                common_iggy.TOPICS, {'events': ('gateway',)}, clear=True
+            )
+        )
         iggy = client.Iggy.get_instance()
         await iggy.ensure_topic('events', 'gateway')
         await iggy.ensure_topic('events', 'gateway')
@@ -295,6 +315,41 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
                 'gateway',
                 [SampleModel(id=1, name='a'), SampleModelDifferent(value='b')],
             )
+        self.mock_client.send_messages.assert_not_awaited()
+
+    async def test_publish_rows_sends_each_row_as_is(self) -> None:
+        iggy = client.Iggy.get_instance()
+        with mock.patch.object(client, 'SendMessage') as send_message:
+            await iggy.publish_rows(
+                'operations_log',
+                'api',
+                [{'id': 'a', '_row_version': 2}, {'id': 'b'}],
+                headers={'producer': 'api'},
+            )
+        self.assertEqual(
+            [
+                mock.call(
+                    orjson.dumps({'id': 'a', '_row_version': 2}),
+                    user_headers={'producer': 'api'},
+                ),
+                mock.call(
+                    orjson.dumps({'id': 'b'}),
+                    user_headers={'producer': 'api'},
+                ),
+            ],
+            send_message.call_args_list,
+        )
+        self.mock_client.send_messages.assert_awaited_once()
+        args = self.mock_client.send_messages.await_args.args
+        self.assertEqual(
+            ('operations_log', 'api', client.PARTITION_ID), args[:3]
+        )
+        self.assertIn(('operations_log', 'api'), iggy._provisioned)
+
+    async def test_publish_rows_rejects_an_empty_list(self) -> None:
+        iggy = client.Iggy.get_instance()
+        with self.assertRaises(ValueError):
+            await iggy.publish_rows('operations_log', 'api', [])
         self.mock_client.send_messages.assert_not_awaited()
 
     async def test_publish_translates_sdk_errors(self) -> None:

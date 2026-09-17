@@ -19,11 +19,11 @@ backfill: there is no push payload, so the GitHub host is read from
 it walks the full default-branch history and the complete tag list rather
 than a single push delta.
 
-Commit / tag rows are written to the shared ClickHouse ``commits`` /
-``tags`` tables via :func:`imbi.common.clickhouse.insert`. Writes are
-best-effort: a storage failure is logged and swallowed so an analytics
-hiccup never 5xxs the webhook, exactly as the gateway's own event
-recording behaves.
+Commit / tag rows are published via :func:`imbi.common.iggy.publish` to
+the ``commits`` / ``tags`` streams, which the ClickHouse sink drains into
+the tables of the same name. Writes are best-effort: a publish failure is
+logged and swallowed so an analytics hiccup never 5xxs the webhook,
+exactly as the gateway's own event recording behaves.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ import httpx
 import jsonpointer
 import pydantic
 
-from imbi.common import cache, clickhouse
+from imbi.common import cache, clickhouse, iggy
 from imbi.common.json_pointer import JsonPointer
 from imbi.common.models import CommitRecord, TagRecord
 from imbi.common.plugins.base import (
@@ -66,6 +66,9 @@ from imbi.plugins.github.deployment import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+#: The Iggy topic every row this plugin publishes goes to.
+_TOPIC = 'github'
 
 _HTTP_TIMEOUT_SECONDS = 10.0
 _ZERO_SHA = '0' * 40
@@ -903,25 +906,26 @@ async def _fetch_commits_since(
     return out
 
 
-async def _insert_best_effort(
-    table: str, records: list[pydantic.BaseModel], project_id: str
+async def _publish_best_effort(
+    stream: str, records: list[pydantic.BaseModel], project_id: str
 ) -> int:
-    """Insert ``records`` into ``table``; return rows written (0 on fail).
+    """Publish ``records`` to ``stream``; return rows sent (0 on fail).
 
-    ``imbi.common.clickhouse.insert`` rejects an empty list, so an empty
-    set short-circuits to 0.  A storage failure is logged and swallowed,
+    The stream is named for the ClickHouse table the sink lands it in.
+    ``imbi.common.iggy.publish`` rejects an empty list, so an empty set
+    short-circuits to 0.  A publish failure is logged and swallowed,
     mirroring the webhook actions -- an analytics hiccup must not fail the
     sync.
     """
     if not records:
         return 0
     try:
-        await clickhouse.insert(table, records)
+        await iggy.publish(stream, _TOPIC, records)
     except Exception:
         LOGGER.exception(
             'github-commit-sync: failed to record %d %s rows for project %s',
             len(records),
-            table,
+            stream,
             project_id,
         )
         return 0
@@ -1094,7 +1098,7 @@ async def sync_commits(
     if not records:
         return
     try:
-        await clickhouse.insert('commits', records)
+        await iggy.publish('commits', _TOPIC, records)
     except Exception:
         LOGGER.exception(
             'github-commit-sync: failed to record %d commits for project %s',
@@ -1464,7 +1468,7 @@ async def sync_tags(
     if not records:
         return  # every tag in this delivery was unpeelable (warned above)
     try:
-        await clickhouse.insert('tags', records)
+        await iggy.publish('tags', _TOPIC, records)
     except Exception:
         LOGGER.exception(
             'github-commit-sync: failed to record %d tags for project %s',
@@ -1478,7 +1482,8 @@ sync_commits_descriptor = ActionDescriptor(
     label='Sync Commit History',
     description=(
         'Fetch the full set of commits in a push (via the GitHub compare '
-        'API) and record them in the ClickHouse commits table.'
+        'API) and publish them to the stream that lands in the ClickHouse '
+        'commits table.'
     ),
     callable=typing.cast(
         'typing.Any', 'imbi.plugins.github.commits:sync_commits'
@@ -1492,8 +1497,8 @@ sync_tags_descriptor = ActionDescriptor(
     name='sync_tags',
     label='Sync Tag History',
     description=(
-        'Record the pushed tag (and, when reconcile_all is set, the full '
-        'tag list) in the ClickHouse tags table.'
+        'Publish the pushed tag (and, when reconcile_all is set, the full '
+        'tag list) to the stream that lands in the ClickHouse tags table.'
     ),
     callable=typing.cast(
         'typing.Any', 'imbi.plugins.github.commits:sync_tags'
@@ -1625,10 +1630,10 @@ class GitHubCommitSync(CommitSyncCapability):
             for item in raw_commits
             if item.get('sha')
         ]
-        commits_recorded = await _insert_best_effort(
+        commits_recorded = await _publish_best_effort(
             'commits', commit_records, ctx.project_id
         )
-        tags_recorded = await _insert_best_effort(
+        tags_recorded = await _publish_best_effort(
             'tags', list(tags), ctx.project_id
         )
         return commits_recorded, tags_recorded
@@ -1724,7 +1729,7 @@ class GitHubCommitSync(CommitSyncCapability):
             )
         if record is None:
             return 0  # unpeelable (warned by _tag_record)
-        return await _insert_best_effort('tags', [record], ctx.project_id)
+        return await _publish_best_effort('tags', [record], ctx.project_id)
 
     async def sync_new_commits(
         self,
@@ -1791,7 +1796,7 @@ class GitHubCommitSync(CommitSyncCapability):
             for item in raw
             if item.get('sha')
         ]
-        return await _insert_best_effort('commits', records, ctx.project_id)
+        return await _publish_best_effort('commits', records, ctx.project_id)
 
     async def _fetch_new_commits(
         self,

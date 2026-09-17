@@ -19,12 +19,17 @@ import uuid
 
 import pydantic
 
-from imbi.common import clickhouse
+from imbi.common import clickhouse, iggy
 from imbi.scheduler import models
 
 LOGGER = logging.getLogger(__name__)
 
 TABLE = 'imbi.scheduler_runs'
+
+#: The Iggy stream and topic a run is published to. The ClickHouse sink
+#: drains the stream into ``TABLE``.
+STREAM = 'scheduler_runs'
+TOPIC = 'scheduler'
 
 #: Response bodies are evidence, not archives.
 RESPONSE_EXCERPT_LIMIT = 8192
@@ -224,8 +229,12 @@ def skipped(
 
 
 async def record(run: Run) -> None:
-    """Write `run` to ClickHouse."""
-    await clickhouse.insert(TABLE, [run])
+    """Publish `run` to the stream the ClickHouse sink drains into `TABLE`.
+
+    The row lands in ClickHouse a sink poll interval later, so a read
+    straight after this call may not see it yet.
+    """
+    await iggy.publish(STREAM, TOPIC, [run])
     LOGGER.debug(
         'Recorded run %s for %s as %s', run.run_id, run.task_slug, run.state
     )

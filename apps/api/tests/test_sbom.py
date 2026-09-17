@@ -314,7 +314,7 @@ class DualWriteTests(unittest.IsolatedAsyncioTestCase):
             {'component_id': '"c-1"', 'component_release_id': '"cr-1"'}
         ]
         self.insert = mock.AsyncMock()
-        patcher = mock.patch('imbi.common.clickhouse.insert', self.insert)
+        patcher = mock.patch('imbi.common.iggy.publish', self.insert)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -334,7 +334,7 @@ class DualWriteTests(unittest.IsolatedAsyncioTestCase):
     def _writes(self) -> dict[str, list]:
         """Map each written table to its rows, in call order."""
         return {
-            call.args[0]: call.args[1] for call in self.insert.await_args_list
+            call.args[0]: call.args[2] for call in self.insert.await_args_list
         }
 
     def _batch(self) -> typing.Any:

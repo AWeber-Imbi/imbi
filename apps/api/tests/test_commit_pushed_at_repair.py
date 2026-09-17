@@ -11,7 +11,7 @@ from imbi.api import commit_pushed_at_repair
 from imbi.common.models import CommitRecord
 
 _QUERY = 'imbi.api.commit_pushed_at_repair.clickhouse.query'
-_INSERT = 'imbi.api.commit_pushed_at_repair.clickhouse.insert'
+_INSERT = 'imbi.api.commit_pushed_at_repair.iggy.publish'
 
 UTC = datetime.UTC
 _ZERO = '0' * 40
@@ -88,8 +88,8 @@ def _router(
 def _inserted(insert: mock.AsyncMock) -> dict[str, CommitRecord]:
     if not insert.await_args_list:
         return {}
-    table, records = insert.await_args_list[0].args
-    assert table == 'commits'
+    stream, topic, records = insert.await_args_list[0].args
+    assert (stream, topic) == ('commits', 'maintenance')
     return {r.sha: r for r in records}
 
 

@@ -1414,8 +1414,9 @@ class CommitRecord(pydantic.BaseModel):
     """A VCS commit recorded in the ClickHouse ``commits`` table.
 
     Generic across version-control providers — a GitHub, GitLab, or
-    Bitbucket plugin maps its API response onto these fields and inserts
-    via :func:`imbi.common.clickhouse.insert`. The table is a
+    Bitbucket plugin maps its API response onto these fields and publishes
+    them with :func:`imbi.common.iggy.publish` to the ``commits`` stream,
+    which the ClickHouse sink drains into the table. The table is a
     ``ReplacingMergeTree`` keyed by ``(project_id, sha)``, so re-syncing an
     overlapping commit range collapses duplicates on merge.
     """

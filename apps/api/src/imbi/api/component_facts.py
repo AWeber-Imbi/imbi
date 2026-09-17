@@ -332,10 +332,14 @@ async def release_components(
     ``ComponentRelease`` node and were never copied here, so the
     listing endpoint fetches them from the graph by id -- a bounded
     ``IN`` over one release's versions, not a traversal.
+
+    ``DISTINCT`` because the stream delivers at least once: a
+    redelivered fact row lands inside the winning batch, where the
+    batch ranking cannot remove it.
     """
     rows = await clickhouse.query(
         _by_release(
-            'SELECT c.component_id AS component_id,'
+            'SELECT DISTINCT c.component_id AS component_id,'
             ' c.component_release_id AS component_release_id,'
             ' c.purl_name AS purl_name,'
             ' c.ecosystem AS ecosystem,'

@@ -205,7 +205,6 @@ class HandleEntriesWithDlqTest(unittest.IsolatedAsyncioTestCase):
                     client,
                     [(b'1-0', {b'project_id': b'p1'})],
                     mock.AsyncMock(),
-                    mock.AsyncMock(),
                     check_dlq=True,
                 )
         process.assert_not_called()
@@ -214,17 +213,15 @@ class HandleEntriesWithDlqTest(unittest.IsolatedAsyncioTestCase):
 class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
     async def test_skips_missing_project_id(self) -> None:
         db = mock.AsyncMock()
-        ch = mock.AsyncMock()
-        await score_queue._process_message(db, ch, {})
+        await score_queue._process_message(db, {})
         db.match.assert_not_called()
 
     async def test_skips_when_project_not_found(self) -> None:
         db = mock.AsyncMock()
         db.match = mock.AsyncMock(return_value=[])
-        ch = mock.AsyncMock()
         with self.assertLogs('imbi.api.scoring.queue', level='INFO'):
             await score_queue._process_message(
-                db, ch, {'project_id': 'p1', 'reason': 'policy_change'}
+                db, {'project_id': 'p1', 'reason': 'policy_change'}
             )
 
     async def test_computes_and_records_score(self) -> None:
@@ -234,7 +231,6 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
         project = mock.MagicMock(spec=models.Project)
         project.score = 0.5
         db.match = mock.AsyncMock(return_value=[project])
-        ch = mock.AsyncMock()
         with (
             mock.patch(
                 'imbi.api.scoring.queue.compute_score',
@@ -246,7 +242,7 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
             ) as mock_record,
         ):
             await score_queue._process_message(
-                db, ch, {'project_id': 'p1', 'reason': 'attribute_change'}
+                db, {'project_id': 'p1', 'reason': 'attribute_change'}
             )
             mock_record.assert_awaited_once()
 
@@ -257,7 +253,6 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
         project = mock.MagicMock(spec=models.Project)
         project.score = None
         db.match = mock.AsyncMock(return_value=[project])
-        ch = mock.AsyncMock()
         with (
             mock.patch(
                 'imbi.api.scoring.queue.compute_score',
@@ -269,12 +264,12 @@ class ProcessMessageTests(unittest.IsolatedAsyncioTestCase):
             ) as mock_record,
         ):
             await score_queue._process_message(
-                db, ch, {'project_id': 'p1', 'reason': 'attribute_change'}
+                db, {'project_id': 'p1', 'reason': 'attribute_change'}
             )
             _args, kwargs = mock_record.call_args
             # previous should have been 0.0 (default when score is None)
             self.assertEqual(
-                kwargs.get('previous', _args[4] if len(_args) > 4 else None),
+                kwargs.get('previous', _args[3] if len(_args) > 3 else None),
                 0.0,
             )
 
@@ -308,7 +303,6 @@ class ConsumeRecomputeTests(unittest.IsolatedAsyncioTestCase):
             await score_queue.consume_recompute(
                 client,
                 mock.AsyncMock(),
-                mock.AsyncMock(),
                 stop=stop,
             )
 
@@ -336,7 +330,6 @@ class ConsumeRecomputeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs('imbi.api.scoring.queue', level='ERROR'):
             await score_queue.consume_recompute(
                 client,
-                mock.AsyncMock(),
                 mock.AsyncMock(),
                 stop=stop,
             )
@@ -377,7 +370,6 @@ class ConsumeRecomputeTests(unittest.IsolatedAsyncioTestCase):
         ):
             await score_queue.consume_recompute(
                 client,
-                mock.AsyncMock(),
                 mock.AsyncMock(),
                 stop=stop,
             )
