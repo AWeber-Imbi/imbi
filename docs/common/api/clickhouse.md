@@ -6,8 +6,12 @@ database with GDPR-compliant privacy utilities.
 ## Overview
 
 The ClickHouse client manages connections to ClickHouse and provides query
-execution, data insertion, and schema management capabilities. It includes
-utilities for GDPR-compliant data handling.
+execution and schema management capabilities. It includes utilities for
+GDPR-compliant data handling.
+
+The client does not write rows. Every analytics row is published to Apache
+Iggy and written to ClickHouse by the sink, as
+[ADR 0019](../../api/adr/0019-apache-iggy-message-streaming.md) describes.
 
 ## Basic Usage
 
@@ -19,9 +23,6 @@ await clickhouse.initialize()
 
 # Set up database schema from schemata.toml
 await clickhouse.setup_schema()
-
-# Insert data (list of Pydantic models)
-await clickhouse.insert("table_name", [model_instance])
 
 # Query data
 results = await clickhouse.query(
@@ -84,14 +85,15 @@ join on either form when reading historical data.
 `project_id`. Their `ReplacingMergeTree` engines collapse duplicate rows
 (by `recorded_at`) on merge, so re-syncing an overlapping commit range
 or re-pushing a tag is idempotent. Reads that must be exact use `FINAL`
-or `argMax(..., recorded_at)`. Insert typed rows with the matching
+or `argMax(..., recorded_at)`. Publish typed rows with the matching
 model:
 
 ```python
-from imbi.common import clickhouse, models
+from imbi.common import iggy, models
 
-await clickhouse.insert(
+await iggy.publish(
     "commits",
+    "github",
     [
         models.CommitRecord(
             project_id="abc123",
@@ -203,8 +205,6 @@ hashed = privacy.hash_ip_address("192.168.1.100")
 ### Query Operations
 
 ::: imbi.common.clickhouse.query
-
-::: imbi.common.clickhouse.insert
 
 ### Client
 

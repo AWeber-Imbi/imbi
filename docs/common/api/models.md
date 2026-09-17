@@ -55,8 +55,9 @@ schema extension.
 - **BlueprintAssignment**: Blueprint-to-entity relationships
 
 ### Analytics Models
-These are not graph nodes — they are typed rows inserted into ClickHouse
-via [`clickhouse.insert`](clickhouse.md). They are provider-agnostic so
+These are not graph nodes — they are typed rows published to Apache Iggy
+via `iggy.publish` and written to [ClickHouse](clickhouse.md) by the sink.
+They are provider-agnostic so
 any version-control plugin (GitHub, GitLab, …) can reuse them.
 - **CommitRecord**: A VCS commit, written to the `commits` table
   (`ReplacingMergeTree` keyed by `(project_id, sha)`)
