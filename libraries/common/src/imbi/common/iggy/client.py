@@ -181,6 +181,45 @@ class Iggy:
                 )
         self._provisioned.add((stream, topic))
 
+    async def ping(self) -> None:
+        """Round-trip a ping to the server to prove the connection works."""
+        client = await self._require_client()
+        with _translate_errors('ping'):
+            await client.ping()
+
+    async def stored_bytes(self) -> int:
+        """Total bytes Iggy holds across every stream in `TOPICS`.
+
+        One `get_topics` call per stream, all in flight together: the
+        dashboard probe that reads this runs under a short timeout that
+        a serial round trip per stream would not fit. The streams all
+        exist by the time anything asks, because `initialize` provisions
+        them at startup.
+
+        A call that fails or is cancelled takes its siblings with it, so
+        no topic read outlives the probe that started it.
+        """
+        # Imported here because `imbi.common.iggy` imports this module.
+        from imbi.common import iggy
+
+        client = await self._require_client()
+        tasks = [
+            asyncio.ensure_future(client.get_topics(stream))
+            for stream in iggy.TOPICS
+        ]
+        try:
+            with _translate_errors('reading topic sizes'):
+                per_stream = await asyncio.gather(*tasks)
+        finally:
+            # `gather` abandons the siblings of a call that raises, so
+            # they would outlive the probe and the next one would stack
+            # another set on top. Cancelling here covers the caller's
+            # timeout as well, rather than leaving that to `gather`.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        return sum(topic.size for topics in per_stream for topic in topics)
+
     async def publish(
         self,
         stream: str,

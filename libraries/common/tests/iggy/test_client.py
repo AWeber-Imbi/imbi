@@ -1,3 +1,5 @@
+import asyncio
+import typing
 import unittest
 from unittest import mock
 
@@ -7,6 +9,21 @@ import pydantic
 from imbi.common import iggy as common_iggy
 from imbi.common import settings
 from imbi.common.iggy import client
+
+
+def _topics(sizes: list[int]) -> list[mock.Mock]:
+    """Stand-ins for `Topic`, carrying only the size the probe reads."""
+    return [mock.Mock(size=size) for size in sizes]
+
+
+def _pending_tasks() -> list[asyncio.Task[typing.Any]]:
+    """Every task still running besides the test's own."""
+    current = asyncio.current_task()
+    return [
+        task
+        for task in asyncio.all_tasks()
+        if task is not current and not task.done()
+    ]
 
 
 class SampleModel(pydantic.BaseModel):
@@ -373,3 +390,74 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
             await iggy.publish(
                 'events', 'gateway', [SampleModel(id=1, name='a')]
             )
+
+    async def test_ping_round_trips_through_the_sdk(self) -> None:
+        iggy = client.Iggy.get_instance()
+        await iggy.ping()
+        self.mock_client.ping.assert_awaited_once()
+
+    async def test_ping_translates_sdk_errors(self) -> None:
+        iggy = client.Iggy.get_instance()
+        self.mock_client.ping.side_effect = RuntimeError('disconnected')
+        with self.assertRaises(client.PublishError) as ctx:
+            await iggy.ping()
+        self.assertIn('ping', str(ctx.exception))
+
+    async def test_stored_bytes_totals_every_stream(self) -> None:
+        iggy = client.Iggy.get_instance()
+        self.mock_client.get_topics.side_effect = lambda stream: _topics(
+            {'events': [16, 32], 'tags': [8]}[stream]
+        )
+        with mock.patch.dict(
+            common_iggy.TOPICS,
+            {'events': ('gateway',), 'tags': ('github',)},
+            clear=True,
+        ):
+            self.assertEqual(56, await iggy.stored_bytes())
+
+    async def test_stored_bytes_cancels_the_siblings_of_a_failure(
+        self,
+    ) -> None:
+        # `gather` abandons the calls still in flight when one raises.
+        # Left alone they outlive the health probe that started them,
+        # and the next probe stacks another set on top.
+        iggy = client.Iggy.get_instance()
+        hung = asyncio.Event()
+
+        async def get_topics(stream: str) -> list[mock.Mock]:
+            if stream == 'events':
+                raise RuntimeError('stream not found')
+            await hung.wait()
+            raise AssertionError('the sibling read was not cancelled')
+
+        self.mock_client.get_topics.side_effect = get_topics
+        with mock.patch.dict(
+            common_iggy.TOPICS,
+            {'events': ('gateway',), 'tags': ('github',)},
+            clear=True,
+        ):
+            with self.assertRaises(client.PublishError):
+                await iggy.stored_bytes()
+        self.assertEqual([], _pending_tasks())
+
+    async def test_stored_bytes_cancels_the_siblings_of_a_timeout(
+        self,
+    ) -> None:
+        # The dashboard probe wraps this in `wait_for`, and the reads
+        # it started must not outlive it. `gather` propagates that
+        # cancel on its own today, so this pins the behaviour down
+        # rather than covering the fix above.
+        iggy = client.Iggy.get_instance()
+        hung = asyncio.Event()
+
+        async def get_topics(stream: str) -> list[mock.Mock]:
+            await hung.wait()
+            raise AssertionError('the topic read was not cancelled')
+
+        self.mock_client.get_topics.side_effect = get_topics
+        with mock.patch.dict(
+            common_iggy.TOPICS, {'events': ('gateway',)}, clear=True
+        ):
+            with self.assertRaises(TimeoutError):
+                await asyncio.wait_for(iggy.stored_bytes(), 0.01)
+        self.assertEqual([], _pending_tasks())

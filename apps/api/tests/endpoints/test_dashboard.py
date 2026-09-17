@@ -84,6 +84,14 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.valkey_patch = mock.patch.object(
             dashboard.valkey, 'get_client', return_value=valkey_client
         )
+        self.iggy_ping_patch = mock.patch.object(
+            dashboard.iggy, 'ping', new=mock.AsyncMock(return_value=None)
+        )
+        self.iggy_size_patch = mock.patch.object(
+            dashboard.iggy,
+            'stored_bytes',
+            new=mock.AsyncMock(return_value=512),
+        )
         # Postgres size reads the psycopg pool directly; patch the helper
         # rather than mock the async connection/cursor protocol.
         self.pg_size_patch = mock.patch.object(
@@ -105,10 +113,14 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.valkey_patch.start()
         self.services_patch.start()
         self.pg_size_patch.start()
+        self.iggy_ping_patch.start()
+        self.iggy_size_patch.start()
         self.addCleanup(self.clickhouse_patch.stop)
         self.addCleanup(self.valkey_patch.stop)
         self.addCleanup(self.services_patch.stop)
         self.addCleanup(self.pg_size_patch.stop)
+        self.addCleanup(self.iggy_ping_patch.stop)
+        self.addCleanup(self.iggy_size_patch.stop)
 
     def test_all_healthy(self) -> None:
         """Every datastore ok and every service up."""
@@ -120,7 +132,7 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
 
         datastores = {d['name']: d for d in body['datastores']}
         self.assertEqual(
-            {'PostgreSQL', 'ClickHouse', 'Valkey'}, set(datastores)
+            {'PostgreSQL', 'ClickHouse', 'Valkey', 'Iggy'}, set(datastores)
         )
         for entry in datastores.values():
             self.assertEqual('ok', entry['status'])
@@ -129,6 +141,7 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual(4096, datastores['PostgreSQL']['size_bytes'])
         self.assertEqual(2048, datastores['ClickHouse']['size_bytes'])
         self.assertEqual(1024, datastores['Valkey']['size_bytes'])
+        self.assertEqual(512, datastores['Iggy']['size_bytes'])
 
         services = {s['name']: s for s in body['services']}
         self.assertEqual(
@@ -151,6 +164,38 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.assertEqual('error', datastores['PostgreSQL']['status'])
         self.assertEqual('pool closed', datastores['PostgreSQL']['detail'])
         self.assertEqual('ok', datastores['ClickHouse']['status'])
+
+    def test_iggy_error_reported(self) -> None:
+        """A failed Iggy ping returns status=error without a size probe."""
+        self.iggy_ping_patch.stop()
+        self.addCleanup(self.iggy_ping_patch.start)
+        with mock.patch.object(
+            dashboard.iggy,
+            'ping',
+            new=mock.AsyncMock(side_effect=RuntimeError('connection reset')),
+        ):
+            with _patch_async_client(_ok_status_handler):
+                response = self.client.get('/admin/dashboard/status')
+        self.assertEqual(200, response.status_code)
+        datastores = {d['name']: d for d in response.json()['datastores']}
+        self.assertEqual('error', datastores['Iggy']['status'])
+        self.assertEqual('connection reset', datastores['Iggy']['detail'])
+        self.assertEqual('ok', datastores['Valkey']['status'])
+
+    def test_iggy_size_probe_failure_keeps_status_ok(self) -> None:
+        """A failed size probe leaves Iggy ok with no size reported."""
+        self.iggy_size_patch.stop()
+        self.addCleanup(self.iggy_size_patch.start)
+        with mock.patch.object(
+            dashboard.iggy,
+            'stored_bytes',
+            new=mock.AsyncMock(side_effect=RuntimeError('no such topic')),
+        ):
+            with _patch_async_client(_ok_status_handler):
+                response = self.client.get('/admin/dashboard/status')
+        datastores = {d['name']: d for d in response.json()['datastores']}
+        self.assertEqual('ok', datastores['Iggy']['status'])
+        self.assertIsNone(datastores['Iggy']['size_bytes'])
 
     def test_service_down_reported(self) -> None:
         """A non-200 from a service marks it down without failing others."""

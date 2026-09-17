@@ -11,8 +11,10 @@ __all__ = [
     'aclose',
     'ensure_topic',
     'initialize',
+    'ping',
     'publish',
     'publish_rows',
+    'stored_bytes',
 ]
 
 #: The streams Imbi publishes to and the topics of each, keyed by stream
@@ -59,6 +61,16 @@ async def aclose() -> None:
 async def ensure_topic(stream: str, topic: str) -> None:
     """Create the stream and topic when they do not exist yet."""
     await client.Iggy.get_instance().ensure_topic(stream, topic)
+
+
+async def ping() -> None:
+    """Round-trip a ping to the server to prove the connection works."""
+    await client.Iggy.get_instance().ping()
+
+
+async def stored_bytes() -> int:
+    """Total bytes Iggy holds across every stream in `TOPICS`."""
+    return await client.Iggy.get_instance().stored_bytes()
 
 
 async def publish(
