@@ -1193,6 +1193,10 @@ export interface IdentityPollingDescriptor {
   verification_uri_complete: null | string
 }
 
+export type IggyTopic = Schemas['IggyTopic']
+
+export type IggyTopics = Schemas['IggyTopics']
+
 // Mirrors imbi_common.plugins.IncidentResult / IncidentView, returned by
 // GET /organizations/{org}/projects/{id}/incidents/.
 export interface IncidentResult {

@@ -10,7 +10,7 @@ from apps.api.tests import support
 from imbi.api import models, settings
 from imbi.api.auth import password, permissions
 from imbi.api.endpoints import dashboard
-from imbi.common import graph
+from imbi.common import graph, iggy
 
 
 def _ok_status_handler(request: httpx.Request) -> httpx.Response:
@@ -236,6 +236,75 @@ class DashboardStatusEndpointTestCase(support.SharedAppTestCase):
         self.admin_context.permissions = set()
         with _patch_async_client(_ok_status_handler):
             response = self.client.get('/admin/dashboard/status')
+        self.assertEqual(403, response.status_code)
+
+
+class DashboardIggyEndpointTestCase(support.SharedAppTestCase):
+    """Test cases for GET /admin/dashboard/iggy."""
+
+    def setUp(self) -> None:
+        self.admin_context = permissions.AuthContext(
+            user=models.User(
+                email='admin@example.com',
+                display_name='Admin User',
+                is_active=True,
+                is_admin=True,
+                password_hash=password.hash_password('testpassword123'),
+                created_at=datetime.datetime.now(datetime.UTC),
+            ),
+            session_id='test-session',
+            auth_method='jwt',
+            permissions=set(),
+        )
+
+        async def mock_get_current_user():
+            return self.admin_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+        self.client = testclient.TestClient(self.test_app)
+        self.topic_status = self.enterContext(
+            mock.patch.object(
+                dashboard.iggy,
+                'topic_status',
+                new=mock.AsyncMock(
+                    return_value=[
+                        iggy.TopicStatus(
+                            stream='operations_log',
+                            topic='deployments',
+                            messages=223,
+                            current_offset=222,
+                            size_bytes=4096,
+                            consumer_group='operations_log',
+                            members=2,
+                            members_owning=1,
+                        )
+                    ]
+                ),
+            )
+        )
+
+    def test_returns_each_topic(self) -> None:
+        response = self.client.get('/admin/dashboard/iggy')
+        self.assertEqual(200, response.status_code)
+        [topic] = response.json()['topics']
+        self.assertEqual('operations_log', topic['stream'])
+        self.assertEqual(222, topic['current_offset'])
+        self.assertEqual(2, topic['members'])
+        self.assertEqual(1, topic['members_owning'])
+        # Iggy cannot return a group offset over HTTP yet.
+        self.assertIsNone(topic['stored_offset'])
+        self.assertIsNone(topic['lag'])
+
+    def test_iggy_failure_is_503(self) -> None:
+        self.topic_status.side_effect = RuntimeError('disconnected')
+        response = self.client.get('/admin/dashboard/iggy')
+        self.assertEqual(503, response.status_code)
+
+    def test_requires_permission(self) -> None:
+        self.admin_context.user.is_admin = False
+        response = self.client.get('/admin/dashboard/iggy')
         self.assertEqual(403, response.status_code)
 
 

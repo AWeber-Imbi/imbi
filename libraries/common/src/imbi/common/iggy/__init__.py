@@ -3,11 +3,12 @@ import typing
 import pydantic
 
 from . import client
-from .client import PublishError
+from .client import PublishError, TopicStatus
 
 __all__ = [
     'TOPICS',
     'PublishError',
+    'TopicStatus',
     'aclose',
     'ensure_topic',
     'initialize',
@@ -15,6 +16,7 @@ __all__ = [
     'publish',
     'publish_rows',
     'stored_bytes',
+    'topic_status',
 ]
 
 #: The streams Imbi publishes to and the topics of each, keyed by stream
@@ -71,6 +73,11 @@ async def ping() -> None:
 async def stored_bytes() -> int:
     """Total bytes Iggy holds across every stream in `TOPICS`."""
     return await client.Iggy.get_instance().stored_bytes()
+
+
+async def topic_status() -> list[TopicStatus]:
+    """The state of every topic in `TOPICS` and its sink group."""
+    return await client.Iggy.get_instance().topic_status()
 
 
 async def publish(
