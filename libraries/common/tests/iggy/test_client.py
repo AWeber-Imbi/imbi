@@ -60,6 +60,40 @@ class TranslateErrorsTestCase(unittest.TestCase):
                     raise RuntimeError('boom')
         sentry.capture_exception.assert_called_once()
 
+    def test_a_lost_connection_discards_the_owner_client(self) -> None:
+        # Every fragment, because each one is a separate Iggy error and
+        # a missed one strands the producer until its process restarts.
+        for message in (
+            'Disconnected',
+            'Cannot establish connection',
+            'Connection closed',
+            'Stale client',
+            'TCP error',
+            'Background worker disconnected',
+            # Both spellings: the SDK renders this one with an upstream
+            # typo today and may well render it correctly tomorrow.
+            'Cannot sed messages due to client disconnection',
+            'Cannot send messages due to client disconnection',
+        ):
+            with self.subTest(message=message):
+                owner, failed = mock.Mock(), mock.Mock()
+                with self.assertRaises(client.PublishError):
+                    with client._translate_errors('publish', owner, failed):
+                        raise RuntimeError(message)
+                owner.discard.assert_called_once_with(failed)
+
+    def test_a_refused_request_keeps_the_owner_client(self) -> None:
+        owner = mock.Mock()
+        with self.assertRaises(client.PublishError):
+            with client._translate_errors('publish', owner):
+                raise RuntimeError('Topic with name: gateway already exists.')
+        owner.discard.assert_not_called()
+
+    def test_no_owner_is_left_alone(self) -> None:
+        with self.assertRaises(client.PublishError):
+            with client._translate_errors('publish'):
+                raise RuntimeError('Disconnected')
+
 
 class PayloadTestCase(unittest.TestCase):
     def test_payload_matches_the_clickhouse_dump(self) -> None:
@@ -379,6 +413,104 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
                 'events', 'gateway', [SampleModel(id=1, name='a')]
             )
         self.assertIn('publish to events/gateway', str(ctx.exception))
+
+    async def test_publish_reconnects_after_the_server_restarts(self) -> None:
+        # What an Iggy restart looks like to a long-lived producer: the
+        # cached client raises, and every later publish has to build a
+        # new one rather than reuse the dead connection.
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        self.mock_from_connection_string.reset_mock()
+        self.mock_client.send_messages.side_effect = RuntimeError(
+            'Disconnected'
+        )
+        with self.assertRaises(client.PublishError):
+            await iggy.publish(
+                'events', 'gateway', [SampleModel(id=1, name='a')]
+            )
+        self.assertIsNone(iggy._iggy)
+        self.assertEqual(set(), iggy._provisioned)
+
+        self.mock_client.send_messages.side_effect = None
+        await iggy.publish('events', 'gateway', [SampleModel(id=1, name='a')])
+        self.mock_from_connection_string.assert_called_once()
+
+    async def test_publish_reconnects_after_a_client_disconnection(
+        self,
+    ) -> None:
+        # The send-path spelling of a lost connection. `disconnected`
+        # does not match `disconnection`, so this error reached the
+        # caller with the dead client still cached.
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        self.mock_client.send_messages.side_effect = RuntimeError(
+            'Cannot sed messages due to client disconnection'
+        )
+        with self.assertRaises(client.PublishError):
+            await iggy.publish(
+                'events', 'gateway', [SampleModel(id=1, name='a')]
+            )
+        self.assertIsNone(iggy._iggy)
+        self.assertEqual(set(), iggy._provisioned)
+
+    async def test_a_late_error_does_not_discard_the_replacement(
+        self,
+    ) -> None:
+        # Concurrent publishes all fail the same lost connection, so the
+        # slowest of them reports a client that has already been
+        # replaced. Only the first discard may take effect.
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        stale = self.mock_client
+        replacement = mock.AsyncMock()
+        iggy._iggy = replacement
+        iggy._provisioned.add(('events', 'gateway'))
+
+        iggy.discard(stale)
+
+        self.assertIs(replacement, iggy._iggy)
+        self.assertIn(('events', 'gateway'), iggy._provisioned)
+
+    async def test_aclose_discards_whatever_is_cached(self) -> None:
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        await iggy.aclose()
+        self.assertIsNone(iggy._iggy)
+        self.assertEqual(set(), iggy._provisioned)
+
+    async def test_provisioning_is_not_cached_for_a_discarded_client(
+        self,
+    ) -> None:
+        # A concurrent failure discards the client while `ensure_topic`
+        # is mid-flight. Caching the pair anyway would have the
+        # replacement skip a topic the Iggy restart took with it.
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        iggy._provisioned.clear()
+
+        async def discard_then_answer(
+            stream: str, topic: str
+        ) -> mock.Mock | None:
+            iggy.discard(self.mock_client)
+            return mock.Mock()
+
+        self.mock_client.get_topic.side_effect = discard_then_answer
+        await iggy.ensure_topic('events', 'gateway')
+        self.assertNotIn(('events', 'gateway'), iggy._provisioned)
+
+    async def test_publish_keeps_the_client_on_a_refused_request(
+        self,
+    ) -> None:
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        self.mock_client.send_messages.side_effect = RuntimeError(
+            'Invalid message payload'
+        )
+        with self.assertRaises(client.PublishError):
+            await iggy.publish(
+                'events', 'gateway', [SampleModel(id=1, name='a')]
+            )
+        self.assertIs(self.mock_client, iggy._iggy)
 
     async def test_publish_raises_when_the_client_cannot_connect(
         self,

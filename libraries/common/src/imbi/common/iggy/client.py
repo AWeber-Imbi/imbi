@@ -83,14 +83,51 @@ class PublishError(Exception):
     """Base class for errors raised by the Iggy client."""
 
 
+#: Lowercased fragments of the Iggy errors that mean the connection is
+#: gone rather than the request refused. The SDK reconnects some of its
+#: own transports but surfaces these to the caller with the client left
+#: unusable, and it exposes no way to reconnect one, so a client that
+#: reports any of them is discarded instead of reused.
+#:
+#: `client disconnection` is the tail of the SDK's
+#: `CannotSendMessagesDueToClientDisconnection`, which `disconnected`
+#: does not match. Only the tail is matched because the rest of that
+#: message is misspelled upstream -- the SDK renders it as "Cannot sed
+#: messages due to client disconnection" -- and the fragment has to keep
+#: working once that is corrected.
+_CONNECTION_LOST = (
+    'cannot establish connection',
+    'client disconnection',
+    'connection closed',
+    'disconnected',
+    'stale client',
+    'tcp error',
+)
+
+
 @contextlib.contextmanager
-def _translate_errors(operation: str) -> typing.Iterator[None]:
+def _translate_errors(
+    operation: str,
+    owner: Iggy | None = None,
+    client: IggyClient | None = None,
+) -> typing.Iterator[None]:
     """Translate Iggy SDK errors into `PublishError`.
 
     Logs the failure, reports it to Sentry when `sentry_sdk` is
     installed, and re-raises as `PublishError` with a clear message. The
     SDK signals every server-side and transport failure as a plain
     `RuntimeError`.
+
+    When `owner` is given and the error says the connection is gone, the
+    owner's cached client is discarded so the next call builds a new
+    one. Without that a producer never recovers from an Iggy restart:
+    the cached client keeps raising and only a process restart clears
+    it. Errors that leave the connection intact, such as a refused
+    payload, keep the client.
+
+    `client` is the client the operation ran on. It goes to `discard` so
+    that a slow call surfacing its error after a reconnect cannot throw
+    away the replacement, so pass it wherever `owner` is passed.
     """
     try:
         yield
@@ -98,7 +135,18 @@ def _translate_errors(operation: str) -> typing.Iterator[None]:
         LOGGER.error('Error during iggy %s: %s', operation, err)
         if sentry_sdk is not None:
             sentry_sdk.capture_exception(err)
+        if owner is not None and _connection_lost(err):
+            LOGGER.warning(
+                'Discarding the Iggy client after %s: %s', operation, err
+            )
+            owner.discard(client)
         raise PublishError(f'Iggy {operation} failed: {err}') from err
+
+
+def _connection_lost(err: RuntimeError) -> bool:
+    """Whether `err` means the client's connection is unusable."""
+    message = str(err).lower()
+    return any(fragment in message for fragment in _CONNECTION_LOST)
 
 
 class Iggy:
@@ -154,8 +202,27 @@ class Iggy:
         what a previous one saw.
         """
         async with self._lock:
-            self._iggy = None
-            self._provisioned.clear()
+            self.discard()
+
+    def discard(self, failed_client: IggyClient | None = None) -> None:
+        """Drop the cached client so the next call reconnects.
+
+        `failed_client` is the client whose error prompted this, and a
+        client that is no longer the cached one is ignored: concurrent
+        calls all fail the same lost connection, and the slowest of them
+        surfaces its error after the first has already been replaced.
+        Clearing then would throw away a healthy connection and its
+        provisioning cache once per in-flight call. `aclose` passes
+        nothing, which discards whatever is cached.
+
+        Synchronous, and deliberately not holding `_lock`: it runs from
+        the error handler in `_translate_errors`, which sits between the
+        failed await and the raise with nothing to await on.
+        """
+        if failed_client is not None and self._iggy is not failed_client:
+            return
+        self._iggy = None
+        self._provisioned.clear()
 
     async def ensure_topic(self, stream: str, topic: str) -> None:
         """Create the stream and topic when they do not exist yet.
@@ -168,7 +235,7 @@ class Iggy:
         client = await self._require_client()
         if (stream, topic) in self._provisioned:
             return
-        with _translate_errors(f'provisioning {stream}/{topic}'):
+        with _translate_errors(f'provisioning {stream}/{topic}', self, client):
             if await client.get_stream(stream) is None:
                 LOGGER.debug('Creating Iggy stream %s', stream)
                 await _tolerate_exists(client.create_stream(stream))
@@ -179,12 +246,17 @@ class Iggy:
                         stream, topic, partitions_count=PARTITIONS_COUNT
                     )
                 )
-        self._provisioned.add((stream, topic))
+        # Only when this client is still the cached one. A concurrent
+        # failure may have discarded it while the round trips above were
+        # in flight, and caching the pair then would have the
+        # replacement skip topics that the Iggy restart took with it.
+        if self._iggy is client:
+            self._provisioned.add((stream, topic))
 
     async def ping(self) -> None:
         """Round-trip a ping to the server to prove the connection works."""
         client = await self._require_client()
-        with _translate_errors('ping'):
+        with _translate_errors('ping', self, client):
             await client.ping()
 
     async def stored_bytes(self) -> int:
@@ -208,7 +280,7 @@ class Iggy:
             for stream in iggy.TOPICS
         ]
         try:
-            with _translate_errors('reading topic sizes'):
+            with _translate_errors('reading topic sizes', self, client):
                 per_stream = await asyncio.gather(*tasks)
         finally:
             # `gather` abandons the siblings of a call that raises, so
@@ -304,7 +376,7 @@ class Iggy:
         LOGGER.debug(
             'Iggy PUBLISH: %s/%s (%d messages)', stream, topic, len(messages)
         )
-        with _translate_errors(f'publish to {stream}/{topic}'):
+        with _translate_errors(f'publish to {stream}/{topic}', self, client):
             await client.send_messages(stream, topic, PARTITION_ID, messages)
 
     async def _require_client(self) -> IggyClient:
