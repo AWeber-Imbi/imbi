@@ -99,7 +99,9 @@ _CONNECTION_LOST = (
 
 @contextlib.contextmanager
 def _translate_errors(
-    operation: str, owner: Iggy | None = None
+    operation: str,
+    owner: Iggy | None = None,
+    client: IggyClient | None = None,
 ) -> typing.Iterator[None]:
     """Translate Iggy SDK errors into `PublishError`.
 
@@ -114,6 +116,10 @@ def _translate_errors(
     the cached client keeps raising and only a process restart clears
     it. Errors that leave the connection intact, such as a refused
     payload, keep the client.
+
+    `client` is the client the operation ran on. It goes to `discard` so
+    that a slow call surfacing its error after a reconnect cannot throw
+    away the replacement, so pass it wherever `owner` is passed.
     """
     try:
         yield
@@ -125,7 +131,7 @@ def _translate_errors(
             LOGGER.warning(
                 'Discarding the Iggy client after %s: %s', operation, err
             )
-            owner.discard()
+            owner.discard(client)
         raise PublishError(f'Iggy {operation} failed: {err}') from err
 
 
@@ -190,15 +196,23 @@ class Iggy:
         async with self._lock:
             self.discard()
 
-    def discard(self) -> None:
+    def discard(self, failed_client: IggyClient | None = None) -> None:
         """Drop the cached client so the next call reconnects.
+
+        `failed_client` is the client whose error prompted this, and a
+        client that is no longer the cached one is ignored: concurrent
+        calls all fail the same lost connection, and the slowest of them
+        surfaces its error after the first has already been replaced.
+        Clearing then would throw away a healthy connection and its
+        provisioning cache once per in-flight call. `aclose` passes
+        nothing, which discards whatever is cached.
 
         Synchronous, and deliberately not holding `_lock`: it runs from
         the error handler in `_translate_errors`, which sits between the
-        failed await and the raise with nothing to await on. Racing a
-        concurrent `initialize` costs at most one extra reconnect, never
-        a client that outlives its connection.
+        failed await and the raise with nothing to await on.
         """
+        if failed_client is not None and self._iggy is not failed_client:
+            return
         self._iggy = None
         self._provisioned.clear()
 
@@ -213,7 +227,7 @@ class Iggy:
         client = await self._require_client()
         if (stream, topic) in self._provisioned:
             return
-        with _translate_errors(f'provisioning {stream}/{topic}', self):
+        with _translate_errors(f'provisioning {stream}/{topic}', self, client):
             if await client.get_stream(stream) is None:
                 LOGGER.debug('Creating Iggy stream %s', stream)
                 await _tolerate_exists(client.create_stream(stream))
@@ -224,12 +238,17 @@ class Iggy:
                         stream, topic, partitions_count=PARTITIONS_COUNT
                     )
                 )
-        self._provisioned.add((stream, topic))
+        # Only when this client is still the cached one. A concurrent
+        # failure may have discarded it while the round trips above were
+        # in flight, and caching the pair then would have the
+        # replacement skip topics that the Iggy restart took with it.
+        if self._iggy is client:
+            self._provisioned.add((stream, topic))
 
     async def ping(self) -> None:
         """Round-trip a ping to the server to prove the connection works."""
         client = await self._require_client()
-        with _translate_errors('ping', self):
+        with _translate_errors('ping', self, client):
             await client.ping()
 
     async def stored_bytes(self) -> int:
@@ -253,7 +272,7 @@ class Iggy:
             for stream in iggy.TOPICS
         ]
         try:
-            with _translate_errors('reading topic sizes', self):
+            with _translate_errors('reading topic sizes', self, client):
                 per_stream = await asyncio.gather(*tasks)
         finally:
             # `gather` abandons the siblings of a call that raises, so
@@ -349,7 +368,7 @@ class Iggy:
         LOGGER.debug(
             'Iggy PUBLISH: %s/%s (%d messages)', stream, topic, len(messages)
         )
-        with _translate_errors(f'publish to {stream}/{topic}', self):
+        with _translate_errors(f'publish to {stream}/{topic}', self, client):
             await client.send_messages(stream, topic, PARTITION_ID, messages)
 
     async def _require_client(self) -> IggyClient:

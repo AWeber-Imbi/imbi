@@ -72,11 +72,11 @@ class TranslateErrorsTestCase(unittest.TestCase):
             'Background worker disconnected',
         ):
             with self.subTest(message=message):
-                owner = mock.Mock()
+                owner, failed = mock.Mock(), mock.Mock()
                 with self.assertRaises(client.PublishError):
-                    with client._translate_errors('publish', owner):
+                    with client._translate_errors('publish', owner, failed):
                         raise RuntimeError(message)
-                owner.discard.assert_called_once_with()
+                owner.discard.assert_called_once_with(failed)
 
     def test_a_refused_request_keeps_the_owner_client(self) -> None:
         owner = mock.Mock()
@@ -430,6 +430,51 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_client.send_messages.side_effect = None
         await iggy.publish('events', 'gateway', [SampleModel(id=1, name='a')])
         self.mock_from_connection_string.assert_called_once()
+
+    async def test_a_late_error_does_not_discard_the_replacement(
+        self,
+    ) -> None:
+        # Concurrent publishes all fail the same lost connection, so the
+        # slowest of them reports a client that has already been
+        # replaced. Only the first discard may take effect.
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        stale = self.mock_client
+        replacement = mock.AsyncMock()
+        iggy._iggy = replacement
+        iggy._provisioned.add(('events', 'gateway'))
+
+        iggy.discard(stale)
+
+        self.assertIs(replacement, iggy._iggy)
+        self.assertIn(('events', 'gateway'), iggy._provisioned)
+
+    async def test_aclose_discards_whatever_is_cached(self) -> None:
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        await iggy.aclose()
+        self.assertIsNone(iggy._iggy)
+        self.assertEqual(set(), iggy._provisioned)
+
+    async def test_provisioning_is_not_cached_for_a_discarded_client(
+        self,
+    ) -> None:
+        # A concurrent failure discards the client while `ensure_topic`
+        # is mid-flight. Caching the pair anyway would have the
+        # replacement skip a topic the Iggy restart took with it.
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        iggy._provisioned.clear()
+
+        async def discard_then_answer(
+            stream: str, topic: str
+        ) -> mock.Mock | None:
+            iggy.discard(self.mock_client)
+            return mock.Mock()
+
+        self.mock_client.get_topic.side_effect = discard_then_answer
+        await iggy.ensure_topic('events', 'gateway')
+        self.assertNotIn(('events', 'gateway'), iggy._provisioned)
 
     async def test_publish_keeps_the_client_on_a_refused_request(
         self,
