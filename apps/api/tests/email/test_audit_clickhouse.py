@@ -53,7 +53,7 @@ class EmailAuditClickhouseTestCase(unittest.IsolatedAsyncioTestCase):
             subject='Reset your password',
             status='sent',
             sent_at=datetime.datetime.now(datetime.UTC),
-            user_id='someone@example.com',
+            user_id='user-1',
             related_entity_type='password_reset_token',
             related_entity_id=entity_id,
         )
@@ -70,7 +70,11 @@ class EmailAuditClickhouseTestCase(unittest.IsolatedAsyncioTestCase):
         # `EmailStr` lowercases the domain but keeps the local part's case.
         self.assertEqual('example.com', row['to_email_domain'])
         self.assertNotIn('to_email', row)
-        for address in ('Someone@Example.com', 'Someone@example.com'):
+        for address in (
+            'Someone@Example.com',
+            'Someone@example.com',
+            'someone@example.com',
+        ):
             self.assertNotIn(address, row.values())
 
     async def test_unset_optional_fields_land_as_empty_strings(self) -> None:
