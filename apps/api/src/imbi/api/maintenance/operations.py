@@ -830,12 +830,12 @@ async def execute_opslog_backfill(
         )
 
     if pending:
-        rows: list[dict[str, typing.Any]] = []
+        entries: list[dict[str, typing.Any]] = []
         for entry in pending:
             dumped = entry.model_dump(by_alias=True, mode='python')
             dumped['is_deleted'] = 1 if entry.is_deleted else 0
-            rows.append(dumped)
-        await iggy.publish_rows('operations_log', 'maintenance', rows)
+            entries.append(dumped)
+        await iggy.publish_rows('operations_log', 'maintenance', entries)
     if repairs:
         # A separate publish: the repaired rows come off ``SELECT *``.
         LOGGER.debug(
