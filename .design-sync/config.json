@@ -1,0 +1,254 @@
+{
+  "projectId": "183ec9e4-7bfe-4c26-ad87-a730cbd79d6f",
+  "shape": "package",
+  "pkg": "imbi-ui",
+  "globalName": "ImbiUI",
+  "buildCmd": ".design-sync/lib-build/build.sh",
+  "entry": ".design-sync/.cache/lib-dist/index.js",
+  "srcDir": "../../../ui/src/components/ui",
+  "cssEntry": "style.css",
+  "provider": {
+    "component": "ImbiProvider"
+  },
+  "componentSrcMap": {
+    "AlertDialogAction": null,
+    "AlertDialogCancel": null,
+    "AlertDialogContent": null,
+    "AlertDialogDescription": null,
+    "AlertDialogFooter": null,
+    "AlertDialogHeader": null,
+    "AlertDialogOverlay": null,
+    "AlertDialogPortal": null,
+    "AlertDialogTitle": null,
+    "AlertDialogTrigger": null,
+    "CardContent": null,
+    "CardDescription": null,
+    "CardFooter": null,
+    "CardHeader": null,
+    "CardTitle": null,
+    "CollapsibleContent": null,
+    "CollapsibleTrigger": null,
+    "CommandDialog": null,
+    "CommandEmpty": null,
+    "CommandGroup": null,
+    "CommandInput": null,
+    "CommandItem": null,
+    "CommandList": null,
+    "CommandSeparator": null,
+    "CommandShortcut": null,
+    "DialogClose": null,
+    "DialogContent": null,
+    "DialogDescription": null,
+    "DialogFooter": null,
+    "DialogHeader": null,
+    "DialogTitle": null,
+    "DialogTrigger": null,
+    "DropdownMenuCheckboxItem": null,
+    "DropdownMenuContent": null,
+    "DropdownMenuGroup": null,
+    "DropdownMenuItem": null,
+    "DropdownMenuLabel": null,
+    "DropdownMenuPortal": null,
+    "DropdownMenuRadioGroup": null,
+    "DropdownMenuRadioItem": null,
+    "DropdownMenuSeparator": null,
+    "DropdownMenuShortcut": null,
+    "DropdownMenuSub": null,
+    "DropdownMenuSubContent": null,
+    "DropdownMenuSubTrigger": null,
+    "DropdownMenuTrigger": null,
+    "HoverCardContent": null,
+    "HoverCardTrigger": null,
+    "ItemActions": null,
+    "ItemContent": null,
+    "ItemDescription": null,
+    "ItemGroup": null,
+    "ItemMedia": null,
+    "ItemTitle": null,
+    "PopoverClose": null,
+    "PopoverContent": null,
+    "PopoverTrigger": null,
+    "SegmentedControlItem": null,
+    "SelectContent": null,
+    "SelectGroup": null,
+    "SelectItem": null,
+    "SelectLabel": null,
+    "SelectSeparator": null,
+    "SelectTrigger": null,
+    "SelectValue": null,
+    "Sk": null,
+    "SkText": null,
+    "Swap": null,
+    "TableBody": null,
+    "TableCaption": null,
+    "TableCell": null,
+    "TableFooter": null,
+    "TableHead": null,
+    "TableHeader": null,
+    "TableRow": null,
+    "TabsContent": null,
+    "TabsList": null,
+    "TabsTrigger": null,
+    "TooltipContent": null,
+    "TooltipProvider": null,
+    "TooltipTrigger": null,
+    "ImbiProvider": null
+  },
+  "extraFonts": [
+    "../fonts/node_modules/@fontsource/inter/latin-400.css",
+    "../fonts/node_modules/@fontsource/inter/latin-500.css",
+    "../fonts/node_modules/@fontsource/inter/latin-600.css",
+    "../fonts/node_modules/@fontsource/inter/latin-700.css",
+    "../fonts/node_modules/@fontsource/jetbrains-mono/latin-400.css",
+    "../fonts/node_modules/@fontsource/jetbrains-mono/latin-500.css",
+    "../fonts/node_modules/@fontsource/jetbrains-mono/latin-700.css"
+  ],
+  "runtimeFontPrefixes": [
+    "Fira Code"
+  ],
+  "overrides": {
+    "Dialog": {
+      "cardMode": "single",
+      "viewport": "720x480"
+    },
+    "AlertDialog": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "DeleteProject"
+    },
+    "ConfirmDialog": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "DeleteEnvironment"
+    },
+    "Popover": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "ActivityFilter"
+    },
+    "HoverCard": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "EnvironmentRelease"
+    },
+    "Tooltip": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "SyncButton"
+    },
+    "IconTooltip": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "CopyProjectId"
+    },
+    "DropdownMenu": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "ProjectActions"
+    },
+    "Select": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "EnvironmentOpen"
+    },
+    "Combobox": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "TeamOpen"
+    },
+    "FilterPopover": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "ButtonOpen"
+    },
+    "Card": {
+      "cardMode": "column"
+    },
+    "Checkbox": {
+      "cardMode": "column"
+    },
+    "Command": {
+      "cardMode": "column"
+    },
+    "FormField": {
+      "cardMode": "column"
+    },
+    "Separator": {
+      "cardMode": "column"
+    },
+    "StatCard": {
+      "cardMode": "column"
+    },
+    "Switch": {
+      "cardMode": "column"
+    },
+    "InlineSelect": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "Editing"
+    },
+    "InlineDate": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "Editing"
+    },
+    "InlineMultiSelect": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "Editing"
+    },
+    "InlineArray": {
+      "cardMode": "single",
+      "viewport": "720x480",
+      "primaryStory": "Editing"
+    },
+    "Table": {
+      "cardMode": "column"
+    },
+    "AdminTable": {
+      "cardMode": "column"
+    },
+    "Collapsible": {
+      "cardMode": "column"
+    },
+    "DynamicFormFields": {
+      "cardMode": "column"
+    },
+    "EnvironmentBadge": {
+      "cardMode": "column"
+    },
+    "SavedIndicator": {
+      "cardMode": "column"
+    },
+    "Skeleton": {
+      "cardMode": "column"
+    },
+    "Tabs": {
+      "cardMode": "column"
+    },
+    "InlineDisplay": {
+      "cardMode": "column"
+    },
+    "InlineField": {
+      "cardMode": "column"
+    },
+    "InlineNumber": {
+      "cardMode": "column"
+    },
+    "InlineText": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md",
+  "dtsPropsFor": {
+    "DynamicFormFields": "data: Record<string, unknown>;\nerrors: Record<string, string>;\nisLoading?: boolean;\nonChange: (key: string, value: unknown) => void;\nschema: { properties: Record<string, { type?: string; format?: string; title?: string; description?: string; enum?: string[]; default?: unknown; minimum?: number; maximum?: number; minLength?: number; maxLength?: number }>; required?: string[] };",
+    "FilterPopover": "activeFilters: Set<string>;\nlabel: string;\n/** Offered in the popover header once anything is selected. */\nonClear?: () => void;\nonToggle: (slug: string) => void;\noptions: Array<{ slug: string; label: string; count?: number; dotClass?: string }>;\n/** `icon` is the funnel that lives inside a table header. `button` is the standalone pill for a filter bar above the table, */\nvariant?: \"button\" | \"icon\";",
+    "Combobox": "disabled?: boolean;\nonChange: (value: string) => void;\noptions: Array<{ label: string; value: string }>;\nplaceholder?: string;\nvalue: string;",
+    "AttributeValue": "/** Blueprint schema definition driving formatting + x-ui color/icon maps. */\ndef?: { type?: string | null; format?: string | null; title?: string | null; description?: string | null; enum?: string[] | null; items?: { type?: string | null; enum?: string[] | null } | null; minimum?: number | null; maximum?: number | null; default?: unknown; 'x-display'?: { format?: string | null } | null; 'x-ui'?: { editable?: boolean; 'color-map'?: Record<string, string>; 'color-range'?: Record<string, string>; 'color-age'?: Record<string, string>; 'icon-map'?: Record<string, string>; 'icon-range'?: Record<string, string>; 'icon-age'?: Record<string, string> } | null };\n/** Rendered when the value is empty/unset. Defaults to `null`. */\nfallback?: React.ReactNode;\n/** The raw attribute value (string/number/bool/etc.) as stored. */\nrawValue: unknown;",
+    "DynamicDetailFields": "data: Record<string, unknown>;\nschema: { properties: Record<string, { type?: string; format?: string; title?: string; description?: string; enum?: string[]; default?: unknown; minimum?: number; maximum?: number; minLength?: number; maxLength?: number }>; required?: string[] };",
+    "ReleaseTrain": "className?: string;\nsize?: \"default\" | \"compact\";\nstops: Array<{ environment: { slug: string; name: string; label_color?: string | null; sort_order?: number }; title?: string; value?: string | null; done?: boolean }>;",
+    "InlineMultiSelect": "onCommit: (next: string[]) => Promise<void> | void;\noptions: Array<{ label: string; value: string }>;\npending?: boolean;\nplaceholder?: string;\nreadOnly?: boolean;\nvalues: string[];",
+    "InlineSelect": "onCommit: (next: string) => Promise<void> | void;\noptions: Array<{ label: string; value: string }>;\npending?: boolean;\nplaceholder?: string;\nreadOnly?: boolean;\n/** Override the display-mode rendering (e.g. include icon/color). */\nrenderDisplay?: React.ReactNode;\nvalue: string;",
+    "InlineField": "def: { type?: string | null; format?: string | null; title?: string | null; description?: string | null; enum?: string[] | null; items?: { type?: string | null; enum?: string[] | null } | null; minimum?: number | null; maximum?: number | null; default?: unknown; 'x-display'?: { format?: string | null } | null; 'x-ui'?: { editable?: boolean; 'color-map'?: Record<string, string>; 'color-range'?: Record<string, string>; 'color-age'?: Record<string, string>; 'icon-map'?: Record<string, string>; 'icon-range'?: Record<string, string>; 'icon-age'?: Record<string, string> } | null };\ndisplay: React.ReactNode;\nonCommit: (value: unknown) => Promise<void>;\npending: boolean;\nraw: unknown;"
+  }
+}
