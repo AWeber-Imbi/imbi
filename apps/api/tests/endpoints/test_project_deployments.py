@@ -761,6 +761,12 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
 
     def test_draft_release_notes_keeps_a_calver_version(self) -> None:
         """A version that fits the tag policy is not re-bumped to semver."""
+        # Both tags are derived from today, because this is the same-day
+        # rebuild case: a hardcoded date stops being "same day" the day
+        # after it is written and the suggestion moves on without it.
+        today = datetime.datetime.now(datetime.UTC).date()
+        last_tag = today.strftime('%Y.%m.%d-0')
+        rebuild_tag = today.strftime('%Y.%m.%d-1')
         self.mocks['_resolve_tag_formats'].return_value = [
             TagFormat(
                 label='Calendar versioning',
@@ -771,7 +777,7 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
             return_value=CompletionResult(
                 data=DraftReleaseNotes(
                     bump='patch',
-                    version='2026.09.17-1',
+                    version=rebuild_tag,
                     reasoning='same-day rebuild',
                     notes_markdown='## Fixed',
                 ),
@@ -783,17 +789,17 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 '/organizations/myorg/projects/proj1/deployments/'
                 'draft-release-notes',
                 json={
-                    'base_sha': '2026.09.17-0',
+                    'base_sha': last_tag,
                     'head_sha': 'bbb',
-                    'last_tag': '2026.09.17-0',
+                    'last_tag': last_tag,
                 },
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['version'], '2026.09.17-1')
+        self.assertEqual(response.json()['version'], rebuild_tag)
         call = self.mock_anthropic.complete_json.call_args
         prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
         self.assertIn('Allowed tag formats: Calendar versioning', prompt)
-        self.assertIn('Suggested next version: 2026.09.17-1', prompt)
+        self.assertIn(f'Suggested next version: {rebuild_tag}', prompt)
 
     def test_draft_release_notes_rebumps_to_the_policy(self) -> None:
         """A semver answer under a calver-only policy becomes a date."""
