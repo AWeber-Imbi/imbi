@@ -336,8 +336,38 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(audit.status, 'failed')
         assert audit.error_message is not None
         self.assertIn('after 3 attempts', audit.error_message)
-        self.assertIn('Persistent error', audit.error_message)
+        self.assertIn('SMTPException', audit.error_message)
+        self.assertNotIn('Persistent error', audit.error_message)
         self.assertEqual(self.mock_smtp.send_message.call_count, 3)
+
+    async def test_failed_audit_omits_refused_recipient(self) -> None:
+        """Test the failure message does not carry the recipient address."""
+        self.mock_settings.max_retries = 0
+
+        email_client = client.EmailClient()
+        await email_client.initialize()
+
+        message = models.EmailMessage(
+            to_email='user@example.com',
+            subject='Test',
+            html_body='<p>Test</p>',
+            text_body='Test',
+            template_name='test',
+            context={},
+        )
+
+        self.mock_smtp.send_message.side_effect = (
+            smtplib.SMTPRecipientsRefused(
+                {'user@example.com': (550, b'User unknown')}
+            )
+        )
+
+        audit = await email_client.send_email(message)
+
+        self.assertEqual(audit.status, 'failed')
+        assert audit.error_message is not None
+        self.assertIn('SMTPRecipientsRefused', audit.error_message)
+        self.assertNotIn('user@example.com', audit.error_message)
 
     async def test_retry_exponential_backoff(self) -> None:
         """Test exponential backoff delays."""

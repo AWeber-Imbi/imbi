@@ -504,3 +504,31 @@ ORDER BY (occurred_at, id)
 TTL toDateTime(occurred_at) + INTERVAL 90 DAY;
 """
 enabled = true
+
+[email_audit]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.email_audit {on_cluster}(
+  sent_at              DateTime64(3, 'UTC'),
+  template_name        LowCardinality(String),
+  subject              String,
+  -- LowCardinality rather than the Enum8 ADR 0003 sketched: an Enum rejects a
+  -- status it does not list, and through the Iggy sink that is a message
+  -- that can never be inserted. A status added to `EmailAudit` lands as-is.
+  status               LowCardinality(String),
+  error_message        String DEFAULT '',
+  -- `EmailAudit` never serializes the address itself, only its SHA-256 and
+  -- its domain, so neither the table nor the stream holds the address.
+  to_email_hash        String,
+  to_email_domain      LowCardinality(String),
+  user_id              String DEFAULT '',
+  related_entity_type  LowCardinality(String) DEFAULT '',
+  related_entity_id    String DEFAULT ''
+) ENGINE = {replicated}MergeTree()
+PARTITION BY toYYYYMM(sent_at)
+ORDER BY (sent_at, to_email_hash)
+-- One year, per ADR 0003. Append-only, one row per send, so a plain TTL is
+-- safe; `toDateTime` because DateTime64 + INTERVAL is rejected with
+-- BAD_TTL_EXPRESSION, as scheduler_runs notes.
+TTL toDateTime(sent_at) + INTERVAL 1 YEAR;
+"""
+enabled = true

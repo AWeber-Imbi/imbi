@@ -140,11 +140,16 @@ class EmailClient:
                     await asyncio.sleep(delay)
                     delay *= self._settings.retry_backoff_factor
 
-        # All retries exhausted
+        # All retries exhausted. The audit keeps the error type and SMTP
+        # code only: exception text such as SMTPRecipientsRefused carries
+        # the recipient address, and the audit must not store it.
         error_msg = (
             f'SMTP error after {self._settings.max_retries + 1} attempts: '
-            f'{last_error}'
+            f'{type(last_error).__name__}'
         )
+        smtp_code = getattr(last_error, 'smtp_code', None)
+        if smtp_code is not None:
+            error_msg += f' ({smtp_code})'
         return self._create_audit(message, 'failed', error_msg)
 
     async def _send_smtp(self, message: models.EmailMessage) -> None:

@@ -1,9 +1,12 @@
+import pathlib
+import re
+import tomllib
 import unittest
 from unittest import mock
 
 import pydantic
 
-from imbi.common import iggy
+from imbi.common import clickhouse, iggy
 from imbi.common.iggy import client
 
 
@@ -39,6 +42,26 @@ class TopicsTestCase(unittest.TestCase):
             },
             set(iggy.TOPICS),
         )
+
+    def test_every_stream_has_a_clickhouse_table(self) -> None:
+        # The sink inserts each stream into the table of the same name. A
+        # stream with no table takes every publish and then cannot deliver
+        # any of it, and nothing reaches the producer to say so --
+        # `email_audit` shipped that way.
+        schemata = pathlib.Path(clickhouse.__file__).parent / 'schemata.toml'
+        with schemata.open('rb') as f:
+            entries = tomllib.load(f).values()
+        created = {
+            match.group(1)
+            for entry in entries
+            if entry.get('enabled', True)
+            for match in re.finditer(
+                r'CREATE TABLE IF NOT EXISTS imbi\.(\w+)', entry['query']
+            )
+        }
+        for stream in iggy.TOPICS:
+            with self.subTest(stream=stream):
+                self.assertIn(stream, created)
 
     def test_every_stream_has_at_least_one_topic(self) -> None:
         for stream, topics in iggy.TOPICS.items():
