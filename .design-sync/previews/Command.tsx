@@ -11,7 +11,10 @@ import {
 import { Activity, Check, FolderKanban, Rocket, Settings } from 'lucide-react'
 
 export const ProjectSearch = () => (
-  <Command className="w-96 rounded-lg border shadow-md">
+  <Command
+    className="w-96 rounded-lg border shadow-md"
+    label="Search projects and actions"
+  >
     <CommandInput placeholder="Search projects and actions..." />
     <CommandList>
       <CommandEmpty>No results found.</CommandEmpty>
@@ -53,7 +56,7 @@ export const ProjectSearch = () => (
 const teams = ['Platform', 'Data Engineering', 'Messaging', 'Web']
 
 export const TeamPicker = () => (
-  <Command className="w-64 rounded-md border shadow-md">
+  <Command className="w-64 rounded-md border shadow-md" label="Pick a team">
     <CommandInput placeholder="Search..." />
     <CommandList>
       <CommandEmpty>No results found.</CommandEmpty>
@@ -72,7 +75,7 @@ export const TeamPicker = () => (
 )
 
 export const NoResults = () => (
-  <Command className="w-64 rounded-md border shadow-md">
+  <Command className="w-64 rounded-md border shadow-md" label="Pick a team">
     <CommandInput
       onValueChange={() => {}}
       placeholder="Search..."

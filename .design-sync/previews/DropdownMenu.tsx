@@ -59,7 +59,12 @@ export const QuickCreate = () => (
   <div className="flex justify-center p-6">
     <DropdownMenu defaultOpen modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button className="gap-2" size="sm" variant="outline">
+        <Button
+          aria-label="Quick create"
+          className="gap-2"
+          size="sm"
+          variant="outline"
+        >
           <Plus className="size-4" />
           <ChevronDown className="size-3" />
         </Button>

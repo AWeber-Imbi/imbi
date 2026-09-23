@@ -20,7 +20,8 @@ const { ImbiProvider, Card, CardHeader, CardTitle, CardContent, Badge, Button } 
 ```
 
 - Dark mode: add the `dark` class to `<html>`. Tokens switch on their own.
-- Fonts: Inter (UI) and JetBrains Mono (`font-mono`) ship in `fonts/`.
+- Fonts: Inter Variable (UI) and JetBrains Mono Variable (`font-mono`)
+  ship inside the stylesheet. `font-sans` / `font-mono` select them.
 - Compound components are flat exports: `Dialog` + `DialogContent`,
   `DialogHeader`, `DialogTitle`, `DialogFooter`; `Select` + `SelectTrigger`,
   `SelectValue`, `SelectContent`, `SelectItem`; `Table` + `TableHeader`,

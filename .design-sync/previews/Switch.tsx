@@ -8,7 +8,7 @@ export const Default = () => (
         Receive email updates about your projects
       </p>
     </div>
-    <Switch defaultChecked />
+    <Switch aria-label="Email notifications" defaultChecked />
   </div>
 )
 
@@ -59,7 +59,7 @@ export const SettingsList = () => (
           <p className="text-primary text-[13.5px]">{r.label}</p>
           <p className="text-tertiary text-[12px]">{r.description}</p>
         </div>
-        <Switch defaultChecked={r.checked} />
+        <Switch aria-label={r.label} defaultChecked={r.checked} />
       </div>
     ))}
   </div>

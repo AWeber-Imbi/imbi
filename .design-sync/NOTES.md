@@ -8,7 +8,7 @@
 - [GENERAL] Every card failed `IMBI_API_URL (or VITE_API_URL) is required`: `api/client.ts` throws at import. build.sh sets `VITE_API_URL=/api`.
 - [GENERAL] shadcn-style flat exports (`DialogContent`, `SelectItem`, ...) are sub-parts, excluded from cards via `componentSrcMap: null`; they stay on `window.ImbiUI` and appear inside the root component's preview.
 - [GENERAL] `ImbiProvider` (lib-build/ImbiProvider.tsx) = QueryClient + MemoryRouter + ThemeProvider + Toaster; `cfg.provider`. Excluded from cards.
-- [GENERAL] Fonts: the app names Inter / JetBrains Mono but loads neither (system fallback in prod). User chose to ship them: `@fontsource` latin 400-700 installed by build.sh into `.cache/fonts`, wired via `cfg.extraFonts`. `Fira Code` is a never-reached fallback in `--font-mono` -> `runtimeFontPrefixes`.
+- [GENERAL] Fonts: since #332 the app self-hosts `@fontsource-variable/inter` and `@fontsource-variable/jetbrains-mono` (imported in index.css). Vite lib mode inlines them as data URIs in `style.css`, so they ship inside `_ds_bundle.css` (no `fonts/` dir). The plain `Inter` / `JetBrains Mono` / `Fira Code` names are never-reached fallbacks in the font stacks -> `runtimeFontPrefixes`. Risk: the `Inter` prefix also matches `Inter Variable`, so a `[FONT_MISSING]` for it would be hidden if the import is ever removed.
 - [GENERAL] The converter flattens props but leaves referenced named types undeclared (`ProjectSchemaSectionProperty`, `DynamicSchema`, `ReleaseTrainStop`, option types). `cfg.dtsPropsFor` holds the 9 affected props bodies with those types inlined (generated from the emitted body + source types). If the source types change, regenerate them - they do not update on their own.
 
 ## Preview authoring
@@ -41,7 +41,7 @@
 - New files in `ui/src/components/ui/` are picked up automatically; new compound sub-parts appear as extra cards until added to `componentSrcMap: null`.
 - `dtsPropsFor` (9 components) is a snapshot of the props with inlined types - it goes stale when those props or `ProjectSchemaSectionProperty`/`DynamicSchema`/`Environment` change. Regenerate from the emitted `.d.ts` + source types.
 - Icon sets other than Lucide are stubbed (size cap). Designs cannot show si-/aws/devicon/tabler/phosphor icons.
-- Fonts come from `@fontsource/inter@5` and `@fontsource/jetbrains-mono@5` (npm, network at build time) - not what the app ships (it ships none).
+- Fonts are the app's own variable fonts inlined in the CSS (525 KB stylesheet). `runtimeFontPrefixes` hides FONT_MISSING for `Inter*` / `JetBrains Mono*` - check the families by hand if index.css font imports change.
 - Previews tied to internals: EditableKeyValueMap (hook options), `PreviewOnlyAutoOpen` clicks on `[role="button"]` / triggers (inline-edit, Combobox, FilterPopover) - a DOM change in those components silently stops the open state; re-grade after edits there.
 - Partial coverage: IconUpload (empty only), IconPicker (closed only), AttributeValue (no icon-map), Slider (no disabled cell).
 - Source bugs found (not fixed): MarkdownPreview list markers, AttributeValue icon-map sync `getIcon()`, Slider disabled styling. When fixed upstream, extend those previews.

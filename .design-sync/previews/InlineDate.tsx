@@ -21,6 +21,10 @@ const PreviewOnlyAutoOpen = ({ children }: { children: ReactNode }) => {
   return <div ref={ref}>{children}</div>
 }
 
+
+// The display is formatted in the viewer's time zone, so it always matches
+// the day the calendar selects.
+const REVIEWED_AT = '2026-09-14T15:30:00Z'
 export const Display = () => (
   <div className="w-96">
     <Row label="Go-live date">
@@ -31,9 +35,15 @@ export const Display = () => (
         mode="date-time"
         onCommit={save}
         renderDisplay={
-          <span className="text-primary text-sm">Sep 14, 2026</span>
+          <span className="text-primary text-sm">
+            {new Date(REVIEWED_AT).toLocaleDateString('en-US', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            })}
+          </span>
         }
-        value="2026-09-14T15:30:00Z"
+        value={REVIEWED_AT}
       />
     </Row>
   </div>

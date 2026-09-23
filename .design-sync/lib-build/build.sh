@@ -45,21 +45,24 @@ JSON
 cd "$UI"
 # api/client.ts throws at import time without an API URL.
 VITE_API_URL=/api node_modules/.bin/vite build --config "$HERE/vite.config.ts" --logLevel warn
-# Declarations: emit errors in app files do not block the .d.ts output.
+# Declarations: tsc reports type errors in app files (vite-only globals such
+# as import.meta.glob) but still emits every .d.ts. Tolerate the errors, and
+# fail only when a primitive's declaration is missing.
 node_modules/.bin/tsc -p "$SRC/tsconfig.json" > "$SRC/tsc.log" 2>&1 || true
+missing=0
+for m in $MODULES hooks/useEditableKeyValueMap; do
+  if [ ! -f "$OUT/types/$m.d.ts" ]; then
+    echo "missing declaration: $OUT/types/$m.d.ts" >&2
+    missing=1
+  fi
+done
+if [ "$missing" -ne 0 ]; then
+  echo "tsc did not emit all declarations; see $SRC/tsc.log" >&2
+  exit 1
+fi
 node "$HERE/fix-dts.mjs" "$OUT/types" $MODULES
 
 ln -sfn "$UI/node_modules" "$OUT/node_modules"
-# Brand fonts: the app names Inter and JetBrains Mono but loads neither.
-# Designs get the OFL @fontsource builds (sync-only, not app dependencies).
-FONTS="$ROOT/.design-sync/.cache/fonts"
-if [ ! -d "$FONTS/node_modules/@fontsource/inter" ]; then
-  mkdir -p "$FONTS"
-  echo '{"private":true}' > "$FONTS/package.json"
-  npm i --prefix "$FONTS" --no-audit --no-fund \
-    @fontsource/inter@5 @fontsource/jetbrains-mono@5 > /dev/null
-fi
-
 VERSION=$(node -p "require('$UI/package.json').version")
 cat > "$OUT/package.json" <<JSON
 {

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { EditableKeyValueMap, useEditableKeyValueMap } from 'imbi-ui'
 import { BookOpen, Github, type LucideIcon, Radar, Siren } from 'lucide-react'
 
@@ -26,9 +28,20 @@ const LINK_DEFS: Record<string, LinkDef> = {
   },
 }
 
-// The app wires onPatch to an API mutation; here it resolves at once.
-const useMapState = (serverMap: Record<string, string>) =>
-  useEditableKeyValueMap<string>({ onPatch: async () => {}, serverMap })
+// The app wires onPatch to an API mutation that refetches the map. Here the
+// patch goes straight into local state, so adds and deletes show at once.
+const useMapState = (initial: Record<string, string>, allKeys: string[]) => {
+  const [serverMap, setServerMap] = useState(initial)
+  const state = useEditableKeyValueMap<string>({
+    onPatch: async (payload) => setServerMap(payload),
+    serverMap,
+    transformPatch: (payload) =>
+      Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== '')),
+  })
+  const visibleKeys = allKeys.filter((k) => k in serverMap)
+  const unassignedKeys = allKeys.filter((k) => !(k in serverMap))
+  return { state, unassignedKeys, visibleKeys }
+}
 
 const LINKS = {
   github: 'https://github.com/aweber-imbi/imbi',
@@ -40,6 +53,7 @@ const IDENTIFIERS = {
   sonarqube_key: 'aweber-imbi_imbi',
 }
 const EMPTY = {}
+const LINK_KEYS = ['github', 'docs', 'sentry', 'pagerduty']
 
 const linkProps = {
   deleteDialogDescription: 'This will remove the link from the project.',
@@ -84,21 +98,24 @@ const linkProps = {
 }
 
 export const ProjectLinks = () => {
-  const state = useMapState(LINKS)
+  const { state, unassignedKeys, visibleKeys } = useMapState(LINKS, LINK_KEYS)
   return (
     <div className="w-full">
       <EditableKeyValueMap
         {...linkProps}
         state={state}
-        unassignedKeys={['docs', 'pagerduty']}
-        visibleKeys={['github', 'sentry']}
+        unassignedKeys={unassignedKeys}
+        visibleKeys={visibleKeys}
       />
     </div>
   )
 }
 
 export const Identifiers = () => {
-  const state = useMapState(IDENTIFIERS)
+  const { state, unassignedKeys, visibleKeys } = useMapState(
+    IDENTIFIERS,
+    Object.keys(IDENTIFIERS),
+  )
   const names: Record<string, string> = {
     pagerduty_service: 'PagerDuty',
     sentry_project: 'Sentry',
@@ -126,23 +143,23 @@ export const Identifiers = () => {
         )}
         state={state}
         title="Identifiers"
-        unassignedKeys={[]}
+        unassignedKeys={unassignedKeys}
         valueInputClassName="font-mono"
-        visibleKeys={['pagerduty_service', 'sentry_project', 'sonarqube_key']}
+        visibleKeys={visibleKeys}
       />
     </div>
   )
 }
 
 export const EmptyWithAddRow = () => {
-  const state = useMapState(EMPTY)
+  const { state, unassignedKeys, visibleKeys } = useMapState(EMPTY, LINK_KEYS)
   return (
     <div className="w-full">
       <EditableKeyValueMap
         {...linkProps}
         state={state}
-        unassignedKeys={['github', 'docs', 'sentry', 'pagerduty']}
-        visibleKeys={[]}
+        unassignedKeys={unassignedKeys}
+        visibleKeys={visibleKeys}
       />
     </div>
   )

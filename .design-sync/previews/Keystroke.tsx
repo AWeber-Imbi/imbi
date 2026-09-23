@@ -36,7 +36,7 @@ export const MacVsOther = () => (
 
 export const InSearchInput = () => (
   <div className="relative w-80">
-    <Input placeholder="Search projects…" />
+    <Input aria-label="Search projects" placeholder="Search projects…" />
     <div className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2">
       <Keystroke value="/" />
     </div>

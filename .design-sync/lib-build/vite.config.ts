@@ -72,7 +72,15 @@ export default async () => {
       outDir: OUT,
       rollupOptions: {
         external: [/^react($|\/)/, /^react-dom($|\/)/],
-        output: { assetFileNames: 'style.css', inlineDynamicImports: true },
+        output: {
+          // The one stylesheet is style.css; fonts and other assets keep
+          // their names under assets/.
+          assetFileNames: (asset: { names?: string[] }) =>
+            asset.names?.some((n) => n.endsWith('.css'))
+              ? 'style.css'
+              : 'assets/[name][extname]',
+          inlineDynamicImports: true,
+        },
       },
     },
     define: {
