@@ -87,9 +87,12 @@ export function ReleaseTrain({
               color: derived.fg,
             }
           : undefined
-        const title =
-          stop.title ??
-          `${stop.environment.name}${stop.value ? `: ${stop.value}` : ' · not deployed'}`
+        const status = stop.value
+          ? `: ${stop.value}`
+          : done
+            ? ' · deployed'
+            : ' · not deployed'
+        const title = stop.title ?? `${stop.environment.name}${status}`
         return (
           <span className="flex items-center" key={stop.environment.slug}>
             {idx > 0 ? (
