@@ -767,11 +767,14 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 pattern=r'^\d{4}([.-])\d{1,2}\1\d{1,2}(?:[.-]\w+)?$',
             )
         ]
+        # Same-day rebuild: the calver suggestion depends on today's date,
+        # so derive the tags from it rather than hardcoding one.
+        stamp = datetime.datetime.now(datetime.UTC).date().strftime('%Y.%m.%d')
         self.mock_anthropic.complete_json = mock.AsyncMock(
             return_value=CompletionResult(
                 data=DraftReleaseNotes(
                     bump='patch',
-                    version='2026.09.17-1',
+                    version=f'{stamp}-1',
                     reasoning='same-day rebuild',
                     notes_markdown='## Fixed',
                 ),
@@ -783,17 +786,17 @@ class ProjectDeploymentsTestCase(support.SharedAppTestCase):
                 '/organizations/myorg/projects/proj1/deployments/'
                 'draft-release-notes',
                 json={
-                    'base_sha': '2026.09.17-0',
+                    'base_sha': f'{stamp}-0',
                     'head_sha': 'bbb',
-                    'last_tag': '2026.09.17-0',
+                    'last_tag': f'{stamp}-0',
                 },
             )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['version'], '2026.09.17-1')
+        self.assertEqual(response.json()['version'], f'{stamp}-1')
         call = self.mock_anthropic.complete_json.call_args
         prompt = call.args[0] if call.args else call.kwargs.get('prompt', '')
         self.assertIn('Allowed tag formats: Calendar versioning', prompt)
-        self.assertIn('Suggested next version: 2026.09.17-1', prompt)
+        self.assertIn(f'Suggested next version: {stamp}-1', prompt)
 
     def test_draft_release_notes_rebumps_to_the_policy(self) -> None:
         """A semver answer under a calver-only policy becomes a date."""
