@@ -34,6 +34,21 @@ const LAST_AUDIT = {
   'x-ui': { 'color-age': { '>90d': 'red', '>30d': 'amber', '<=30d': 'green' } },
 }
 
+const DEPLOY_STATUS = {
+  enum: ['healthy', 'degraded', 'down'],
+  title: 'Deploy Status',
+  type: 'string',
+  'x-display': { format: 'humanize' },
+  'x-ui': {
+    'color-map': { degraded: 'amber', down: 'red', healthy: 'green' },
+    'icon-map': {
+      degraded: 'lucide-triangle-alert',
+      down: 'lucide-circle-x',
+      healthy: 'lucide-circle-check',
+    },
+  },
+}
+
 const Field = ({ children, label }: { children: React.ReactNode; label: string }) => (
   <div className="min-w-0">
     <div className={OVERLINE}>{label}</div>
@@ -46,6 +61,14 @@ export const ColorMap = () => (
     <AttributeValue def={LIFECYCLE} rawValue="active" />
     <AttributeValue def={LIFECYCLE} rawValue="in_progress" />
     <AttributeValue def={LIFECYCLE} rawValue="deprecated" />
+  </div>
+)
+
+export const IconMap = () => (
+  <div className="flex flex-col gap-2">
+    <AttributeValue def={DEPLOY_STATUS} rawValue="healthy" />
+    <AttributeValue def={DEPLOY_STATUS} rawValue="degraded" />
+    <AttributeValue def={DEPLOY_STATUS} rawValue="down" />
   </div>
 )
 

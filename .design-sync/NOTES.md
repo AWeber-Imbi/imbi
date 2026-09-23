@@ -26,8 +26,7 @@
 - IconUpload: uploaded-thumbnail state cannot render (needs `/uploads/<id>` from the API; `data:` URIs fail its check). Only empty states are previewed. IconPicker: open grid opens only from inside; only closed states are previewed.
 - [GENERAL] Capture freezes the clock at 2024-05-15T12:00:00Z; product cards use the real clock. Relative dates (RelativeTime, AttributeValue color-age) are offsets from `Date.now()` (an `ago(seconds)` helper), never fixed ISO literals, or the live card reads "2y ago".
 - Inline-edit components save via `onCommit` (not `onSave`); editing state is internal (`useInlineEdit`), opened in previews by `PreviewOnlyAutoOpen` clicking the `[role="button"]` display.
-- AttributeValue: threshold maps (`color-age`/`color-range`) match in key order, first match wins. `icon-map` omitted: the component calls sync `getIcon()`, which returns the ExternalLink fallback before the Lucide set loads and never re-renders (possible app bug; EntityIcon uses `useIcon`).
-- MarkdownPreview: lists render without markers - preflight `list-style:none`, not restored by `.document-markdown` in ui/src/index.css. Same in the app (source issue, preview left faithful).
+- AttributeValue: threshold maps (`color-age`/`color-range`) match in key order, first match wins. `icon-map` is shown with `lucide-*` values (re-renders when the set loads, since #334).
 - UserIdentity: Gravatar does not load in capture; initials fallback is the component's own.
 - Inline-edit rows follow the app layout: `flex items-center justify-between border-b border-tertiary py-1.5 last:border-0`, label `text-sm text-tertiary`, in a `w-96`. InlineField shows formatted `display` nodes ("Tier 2", "99.9%"), not raw values. InlineSelect/Date/MultiSelect/Array open popovers when editing -> single mode, `primaryStory: Editing`.
 - Keystroke previews set `isMac` so output does not depend on the capture browser. Legacy `Skeleton` is deliberately faint (`bg-tertiary/30`, deprecated); `Sk`/`SkText`/`Swap` are the current primitives.
@@ -43,6 +42,6 @@
 - Icon sets other than Lucide are stubbed (size cap). Designs cannot show si-/aws/devicon/tabler/phosphor icons.
 - Fonts are the app's own variable fonts inlined in the CSS (525 KB stylesheet). `runtimeFontPrefixes` hides FONT_MISSING for `Inter*` / `JetBrains Mono*` - check the families by hand if index.css font imports change.
 - Previews tied to internals: EditableKeyValueMap (hook options), `PreviewOnlyAutoOpen` clicks on `[role="button"]` / triggers (inline-edit, Combobox, FilterPopover) - a DOM change in those components silently stops the open state; re-grade after edits there.
-- Partial coverage: IconUpload (empty only), IconPicker (closed only), AttributeValue (no icon-map), Slider (no disabled cell).
-- Source bugs found (not fixed): MarkdownPreview list markers, AttributeValue icon-map sync `getIcon()`, Slider disabled styling. When fixed upstream, extend those previews.
+- Partial coverage: IconUpload (empty only), IconPicker (closed only).
+- Source bugs found during the first sync were fixed in #334 (list markers, AttributeValue icon re-render, Slider disabled state, Combobox `id`, ReleaseTrain done title); the previews were extended to show them. `dtsPropsFor.Combobox` includes the new `id` prop by hand.
 - Toolchain: node 26, vite 6, tailwind 4.3, storybook 10 (the 6 stories were ported, not compared against Storybook).
