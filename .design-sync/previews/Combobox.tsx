@@ -34,9 +34,10 @@ export const TeamOpen = () => {
   const [team, setTeam] = useState('platform')
   return (
     <div className="grid w-80 gap-2">
-      <Label>Team</Label>
+      <Label htmlFor="team">Team</Label>
       <PreviewOnlyAutoOpen>
         <Combobox
+          id="team"
           onChange={setTeam}
           options={TEAMS}
           placeholder="Select team..."
@@ -51,8 +52,9 @@ export const ClosedPlaceholder = () => {
   const [type, setType] = useState('')
   return (
     <div className="grid w-80 gap-2">
-      <Label>Project type</Label>
+      <Label htmlFor="project-type">Project type</Label>
       <Combobox
+        id="project-type"
         onChange={setType}
         options={PROJECT_TYPES}
         placeholder="Select project type..."
@@ -66,8 +68,9 @@ export const ClosedWithValue = () => {
   const [type, setType] = useState('http-api')
   return (
     <div className="grid w-80 gap-2">
-      <Label>Project type</Label>
+      <Label htmlFor="project-type-set">Project type</Label>
       <Combobox
+        id="project-type-set"
         onChange={setType}
         options={PROJECT_TYPES}
         placeholder="Select project type..."
@@ -79,9 +82,10 @@ export const ClosedWithValue = () => {
 
 export const Disabled = () => (
   <div className="grid w-80 gap-2">
-    <Label>Environment</Label>
+    <Label htmlFor="environment">Environment</Label>
     <Combobox
       disabled
+      id="environment"
       onChange={() => {}}
       options={[]}
       placeholder="Select a project first..."

@@ -34,3 +34,12 @@ export const SearchFilters = () => (
     </div>
   </div>
 )
+
+export const Disabled = () => (
+  <div className="w-64">
+    <Label className="text-muted-foreground mb-1.5 block text-xs">
+      Similarity threshold (locked by admin)
+    </Label>
+    <Slider defaultValue={[0.75]} disabled max={1.0} min={0.1} step={0.05} />
+  </div>
+)
