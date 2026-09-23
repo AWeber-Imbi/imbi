@@ -168,24 +168,35 @@ user and get approval before tagging.** The notes are the one part of this a
 human should sign off on, and an annotated tag is awkward to correct after it
 is pushed.
 
-## Step 4 — create the annotated tag
+## Step 4 — create the signed, annotated tag
 
 ```sh
-git tag -a --cleanup=verbatim -F "$NOTES" "$TAG"
+git tag -a -s --cleanup=verbatim -F "$NOTES" "$TAG"
 ```
 
-Then prove it round-tripped, which is what would have caught 2.26.1 and
-2.29.2/3/4:
+Pass `-s` even if `tag.gpgsign` is set. `commit.gpgsign` does not cover
+tags, and this command shipped without `-s`, so every release from 2.31.1
+through 2.35.1 went out unsigned while its commits were signed.
+
+Then prove it round-tripped and signed, which is what would have caught
+2.26.1, 2.29.2/3/4, and 2.31.1 onward:
 
 ```sh
 [ "$(git cat-file -t "$TAG")" = tag ] || echo "NOT ANNOTATED"
-diff <(git for-each-ref "refs/tags/$TAG" --format='%(contents)' \
-        | sed '/-----BEGIN SSH SIGNATURE-----/,$d') "$NOTES"
+git cat-file tag "$TAG" | grep -q -- '-----BEGIN SSH SIGNATURE-----' \
+  || echo "NOT SIGNED"
+diff <(git cat-file tag "$TAG" \
+        | sed '1,/^$/d; /-----BEGIN SSH SIGNATURE-----/,$d') "$NOTES"
 ```
 
-`diff` must print nothing. If it prints anything at all, `git tag -d "$TAG"`,
-fix the cause, and start this step over — **do not push a tag that failed the
-round-trip.**
+Nothing may print. If anything does, `git tag -d "$TAG"`, fix the cause, and
+start this step over — **do not push a tag that failed the round-trip.**
+
+The message comes from `git cat-file tag` rather than `git for-each-ref
+--format='%(contents)'`, because `for-each-ref` ends every record with a
+newline that only the signature strip removes. On an unsigned tag that
+newline survives and the `diff` reports a trailing blank line even when the
+message is exact.
 
 If the tag fails to sign, **stop and tell the user.** Do not retry with
 `--no-sign`, do not fall back to `-m`.
