@@ -70,6 +70,10 @@ class TranslateErrorsTestCase(unittest.TestCase):
             'Stale client',
             'TCP error',
             'Background worker disconnected',
+            # Both spellings: the SDK renders this one with an upstream
+            # typo today and may well render it correctly tomorrow.
+            'Cannot sed messages due to client disconnection',
+            'Cannot send messages due to client disconnection',
         ):
             with self.subTest(message=message):
                 owner, failed = mock.Mock(), mock.Mock()
@@ -430,6 +434,24 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_client.send_messages.side_effect = None
         await iggy.publish('events', 'gateway', [SampleModel(id=1, name='a')])
         self.mock_from_connection_string.assert_called_once()
+
+    async def test_publish_reconnects_after_a_client_disconnection(
+        self,
+    ) -> None:
+        # The send-path spelling of a lost connection. `disconnected`
+        # does not match `disconnection`, so this error reached the
+        # caller with the dead client still cached.
+        iggy = client.Iggy.get_instance()
+        await iggy.initialize()
+        self.mock_client.send_messages.side_effect = RuntimeError(
+            'Cannot sed messages due to client disconnection'
+        )
+        with self.assertRaises(client.PublishError):
+            await iggy.publish(
+                'events', 'gateway', [SampleModel(id=1, name='a')]
+            )
+        self.assertIsNone(iggy._iggy)
+        self.assertEqual(set(), iggy._provisioned)
 
     async def test_a_late_error_does_not_discard_the_replacement(
         self,

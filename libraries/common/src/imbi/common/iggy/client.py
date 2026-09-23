@@ -88,8 +88,16 @@ class PublishError(Exception):
 #: own transports but surfaces these to the caller with the client left
 #: unusable, and it exposes no way to reconnect one, so a client that
 #: reports any of them is discarded instead of reused.
+#:
+#: `client disconnection` is the tail of the SDK's
+#: `CannotSendMessagesDueToClientDisconnection`, which `disconnected`
+#: does not match. Only the tail is matched because the rest of that
+#: message is misspelled upstream -- the SDK renders it as "Cannot sed
+#: messages due to client disconnection" -- and the fragment has to keep
+#: working once that is corrected.
 _CONNECTION_LOST = (
     'cannot establish connection',
+    'client disconnection',
     'connection closed',
     'disconnected',
     'stale client',
