@@ -317,8 +317,10 @@ class WriteRoutesTestCase(_EndpointTestCase):
 class OpenAPITestCase(_EndpointTestCase):
     def test_routes_are_not_published(self) -> None:
         paths = self.client.get('/openapi.json').json()['paths']
+        # Only the connector configuration is private; other Iggy
+        # routes (e.g. /admin/dashboard/iggy) are public UI endpoints.
         self.assertFalse(
-            [path for path in paths if 'iggy' in path],
+            [path for path in paths if '/iggy/connectors' in path],
             'the connector configuration must stay out of the schema',
         )
 
