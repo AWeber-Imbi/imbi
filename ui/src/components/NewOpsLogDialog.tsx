@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MarkdownEditor } from '@/components/ui/markdown-editor/MarkdownEditor'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Sk, Swap } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -302,11 +303,11 @@ export function NewOpsLogDialog({
               <Label className="text-sm font-medium" htmlFor="new-ops-notes">
                 Notes
               </Label>
-              <Textarea
-                className="min-h-24 resize-none"
+              <MarkdownEditor
                 id="new-ops-notes"
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={setNotes}
                 placeholder="Optional context for future readers"
+                textareaClassName="min-h-24 resize-none"
                 value={notes}
               />
             </div>

@@ -6,6 +6,8 @@ import remarkGfm from 'remark-gfm'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { MarkdownToolbar } from '@/components/ui/markdown-editor/MarkdownToolbar'
+import { useMarkdownFormatting } from '@/components/ui/markdown-editor/useMarkdownFormatting'
 import { cn } from '@/lib/utils'
 import type { Document, DocumentTemplate, TagRef } from '@/types'
 
@@ -72,6 +74,8 @@ export function DocumentsPinboardNew({
         : [],
   )
   const titleRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLTextAreaElement>(null)
+  const { format, onKeyDown } = useMarkdownFormatting(contentRef, setContent)
   useEffect(() => {
     const input = titleRef.current
     if (!input) return
@@ -214,16 +218,27 @@ export function DocumentsPinboardNew({
             )}
           >
             {showEditor && (
-              <textarea
+              <div
                 className={cn(
-                  'min-h-140 w-full resize-none border-0 bg-primary px-7 py-5 font-mono text-[13px] leading-[1.65] text-primary outline-none placeholder:text-tertiary',
+                  'flex flex-col',
                   mode === 'split' && 'border-tertiary md:border-r',
                 )}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Start writing… Markdown supported."
-                spellCheck
-                value={content}
-              />
+              >
+                <MarkdownToolbar
+                  className="border-tertiary bg-primary h-9 border-b px-5"
+                  onFormat={format}
+                />
+                <textarea
+                  aria-label="Document content"
+                  className="bg-primary text-primary placeholder:text-tertiary min-h-140 w-full flex-1 resize-none border-0 px-7 py-5 font-mono text-[13px] leading-[1.65] outline-none"
+                  onChange={(e) => setContent(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="Start writing… Markdown supported."
+                  ref={contentRef}
+                  spellCheck
+                  value={content}
+                />
+              </div>
             )}
             {showPreview && (
               // In split view the preview needs a second column — below md
@@ -234,7 +249,7 @@ export function DocumentsPinboardNew({
                   'flex-col',
                 )}
               >
-                <div className="border-tertiary bg-primary text-overline text-tertiary flex items-center gap-1.5 border-b px-5 py-2 uppercase">
+                <div className="border-tertiary bg-primary text-overline text-tertiary flex h-9 items-center gap-1.5 border-b px-5 uppercase">
                   <Eye className="size-3" />
                   Preview
                 </div>
