@@ -66,6 +66,17 @@ Creates an optimized production build in the `dist` directory.
 npm run preview
 ```
 
+### Storybook
+
+```bash
+npm run storybook        # http://localhost:6006
+npm run build-storybook  # static build in storybook-static/
+```
+
+Browse components in isolation, with a light/dark theme toggle in the
+toolbar. Stories live next to their component as `*.stories.tsx`;
+config is in `.storybook/`.
+
 ## Project Structure
 
 ```
