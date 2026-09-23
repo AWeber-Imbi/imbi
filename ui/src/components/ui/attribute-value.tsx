@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatByFormat } from '@/lib/formatDate'
-import { getIcon } from '@/lib/icons'
+import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import {
   applyDisplayFormat,
   COLOR_TEXT,
@@ -41,6 +41,9 @@ export function AttributeValue({
   fallback = null,
   rawValue,
 }: AttributeValueProps) {
+  // Re-render when an icon set finishes loading; `getIcon` below returns
+  // its fallback until the set that owns the icon is in the registry.
+  useIconRegistryVersion()
   const value = formatFieldValue(rawValue, def)
   if (value === null) return fallback
 

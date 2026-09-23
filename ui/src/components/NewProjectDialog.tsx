@@ -135,6 +135,7 @@ export function NewProjectDialog({
               </Label>
               <Swap ready={!teamsLoading} skeleton={<FieldSkeleton />}>
                 <Combobox
+                  id="new-project-team"
                   onChange={setTeamSlug}
                   options={teams.map((t) => ({
                     label: t.name,
@@ -156,6 +157,7 @@ export function NewProjectDialog({
               </Label>
               <Swap ready={!projectTypesLoading} skeleton={<FieldSkeleton />}>
                 <Combobox
+                  id="new-project-type"
                   onChange={setProjectTypeSlug}
                   options={projectTypes.map((pt) => ({
                     label: pt.name,

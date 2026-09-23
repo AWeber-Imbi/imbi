@@ -384,6 +384,17 @@
   .document-markdown ol {
     padding-left: 1.2em;
   }
+  /* Tailwind preflight removes list markers; put them back for prose. */
+  .document-markdown ul {
+    list-style: disc;
+  }
+  .document-markdown ol {
+    list-style: decimal;
+  }
+  /* GFM task lists show a checkbox instead of a marker. */
+  .document-markdown li.task-list-item {
+    list-style: none;
+  }
   .document-markdown li {
     margin: 0.25em 0;
   }

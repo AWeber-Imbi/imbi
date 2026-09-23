@@ -24,6 +24,8 @@ export interface ComboboxOption {
 
 interface ComboboxProps {
   disabled?: boolean
+  /** Set on the trigger so a `<Label htmlFor>` names the combobox. */
+  id?: string
   onChange: (value: string) => void
   options: ComboboxOption[]
   placeholder?: string
@@ -32,6 +34,7 @@ interface ComboboxProps {
 
 export function Combobox({
   disabled = false,
+  id,
   onChange,
   options,
   placeholder = 'Select...',
@@ -52,6 +55,7 @@ export function Combobox({
             disabled && 'cursor-not-allowed opacity-50',
           )}
           disabled={disabled}
+          id={id}
           role="combobox"
           type="button"
         >
