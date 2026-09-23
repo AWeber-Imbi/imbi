@@ -42,7 +42,7 @@ describe('IggyTopicsCard', () => {
     })
     render(<IggyTopicsCard />)
     expect(
-      await screen.findByText('1 streams · 2 topics · 45,875 messages'),
+      await screen.findByText('1 stream · 2 topics · 45,875 messages'),
     ).toBeInTheDocument()
     expect(screen.getByText('All topics owned')).toBeInTheDocument()
     expect(screen.getByText('45,874')).toBeInTheDocument()
@@ -64,5 +64,17 @@ describe('IggyTopicsCard', () => {
     })
     render(<IggyTopicsCard />)
     expect(await screen.findByText('1 unowned')).toBeInTheDocument()
+  })
+
+  it('flags a topic with messages and no group members', async () => {
+    vi.mocked(getDashboardIggy).mockResolvedValue({
+      checked_at: '2026-09-23T20:00:00Z',
+      topics: [topic({ members: 0, members_owning: 0 })],
+    })
+    render(<IggyTopicsCard />)
+    expect(
+      await screen.findByText('1 stream · 1 topic · 45,875 messages'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('1 unowned')).toBeInTheDocument()
   })
 })

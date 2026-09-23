@@ -105,7 +105,7 @@ export function IggyTopicsCard() {
           <span className="text-[15px] font-semibold">Iggy topics</span>
           <span className="text-secondary font-mono text-xs">
             {data
-              ? `${streams} streams · ${topics.length} topics · ${total.toLocaleString('en-US')} messages`
+              ? `${streams} ${streams === 1 ? 'stream' : 'streams'} · ${topics.length} ${topics.length === 1 ? 'topic' : 'topics'} · ${total.toLocaleString('en-US')} messages`
               : isError
                 ? 'unavailable'
                 : 'checking…'}
@@ -307,6 +307,9 @@ function TopicRow({
 }
 
 function topicState(t: IggyTopic): TopicState {
+  // Each topic has a sink group. No members while messages wait means
+  // the sink is down.
+  if (t.members === 0 && t.messages > 0) return 'unowned'
   if (t.members_owning < t.members) return 'unowned'
   if ((t.lag ?? 0) > 0) return 'lagging'
   if (t.messages === 0) return 'empty'
