@@ -174,6 +174,7 @@ export function NewOpsLogDialog({
               </Label>
               <Swap ready={!projectsLoading} skeleton={<FieldSkeleton />}>
                 <Combobox
+                  id="new-ops-project"
                   onChange={(val) => {
                     setProjectId(val)
                     setEnvironmentSlug('')
@@ -202,6 +203,7 @@ export function NewOpsLogDialog({
               >
                 <Combobox
                   disabled={!projectId || projectEnvironments.length === 0}
+                  id="new-ops-environment"
                   onChange={setEnvironmentSlug}
                   options={projectEnvironments.map((env) => ({
                     label: env.name,
@@ -231,6 +233,7 @@ export function NewOpsLogDialog({
                 Entry Type <RequiredAsterisk />
               </Label>
               <Combobox
+                id="new-ops-entry-type"
                 onChange={(val) => setEntryType(val as OperationsLogEntryType)}
                 options={OPERATIONS_LOG_ENTRY_TYPES.map((t) => ({
                   label: t,
