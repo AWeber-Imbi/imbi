@@ -66,18 +66,14 @@ describe('MaintenanceActivityLog', () => {
     vi.mocked(endpoints.getMaintenanceLog).mockResolvedValue(page([entry()]))
   })
 
-  it(
-    'renders one row per attempt',
-    async () => {
-      await renderLog()
-      await waitFor(() =>
-        expect(screen.getByText('campaign-builder')).toBeInTheDocument(),
-      )
-      expect(screen.getByText('Tag resolution failed')).toBeInTheDocument()
-      expect(screen.getByText('deployment-sweep')).toBeInTheDocument()
-    },
-    10000,
-  )
+  it('renders one row per attempt', async () => {
+    await renderLog()
+    await waitFor(() =>
+      expect(screen.getByText('campaign-builder')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('Tag resolution failed')).toBeInTheDocument()
+    expect(screen.getByText('deployment-sweep')).toBeInTheDocument()
+  }, 10000)
 
   it('asks for attempt rows across every disposition by default', async () => {
     const endpoints = await import('@/api/endpoints')
