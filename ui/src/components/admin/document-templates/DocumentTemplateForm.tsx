@@ -18,6 +18,7 @@ import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MarkdownEditor } from '@/components/ui/markdown-editor/MarkdownEditor'
 import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -289,13 +290,13 @@ export function DocumentTemplateForm({
               >
                 Content
               </Label>
-              <Textarea
-                className="resize-y rounded-lg font-mono"
+              <MarkdownEditor
+                className="rounded-lg"
                 disabled={isLoading}
                 id="document-tpl-content"
-                onChange={(e) => setContent(e.target.value)}
+                onChange={setContent}
                 placeholder="Markdown body that pre-fills new documents"
-                rows={10}
+                textareaClassName="min-h-56 resize-y font-mono"
                 value={content}
               />
             </div>

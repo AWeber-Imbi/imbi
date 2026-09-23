@@ -22,9 +22,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MarkdownEditor } from '@/components/ui/markdown-editor/MarkdownEditor'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { cn } from '@/lib/utils'
@@ -530,14 +530,16 @@ export function PromoteTab({
           </Button>
         </div>
 
-        <Textarea
+        <MarkdownEditor
+          aria-label="Release notes"
           autoResize
-          className="mt-2 max-h-[60vh] min-h-40 font-mono text-xs"
-          onChange={(e) => {
-            setNotes(e.target.value)
+          className="mt-2"
+          onChange={(value) => {
+            setNotes(value)
             setNotesDirty(true)
           }}
           placeholder="## Highlights&#10;- …"
+          textareaClassName="max-h-[60vh] min-h-40 font-mono text-xs"
           value={notes}
         />
       </section>

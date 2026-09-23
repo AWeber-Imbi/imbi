@@ -575,7 +575,7 @@ export function CommandBar() {
           <div className="border-tertiary bg-tertiary focus-within:border-secondary flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors">
             <span className="text-tertiary text-sm select-none">&gt;</span>
             <input
-              className="text-primary placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
+              className="text-primary placeholder:text-tertiary flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
               disabled={mode === 'assistant' && isStreaming}
               onBlur={() => setInputFocused(false)}
               onChange={handleInputChange}

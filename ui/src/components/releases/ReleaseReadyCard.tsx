@@ -13,8 +13,8 @@ import { DispatchFailureNotice } from '@/components/deploy/DispatchFailureNotice
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MarkdownEditor } from '@/components/ui/markdown-editor/MarkdownEditor'
 import { SkText } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { isTagAllowed, tagFormatHint } from '@/lib/versionFormats'
 import type {
   DraftReleaseNotesResponse,
@@ -315,14 +315,15 @@ export function ReleaseReadyCard({
           {isDrafting && !notes ? (
             <DraftingNotes />
           ) : (
-            <Textarea
+            <MarkdownEditor
+              aria-label="Release notes"
               autoResize
-              className="max-h-[60vh] min-h-40 font-mono text-xs"
-              onChange={(e) => {
-                setNotes(e.target.value)
+              onChange={(value) => {
+                setNotes(value)
                 setNotesDirty(true)
               }}
               placeholder="## Highlights&#10;- …"
+              textareaClassName="max-h-[60vh] min-h-40 font-mono text-xs"
               value={notes}
             />
           )}

@@ -21,8 +21,8 @@ import { useTagFormats } from '@/components/releases/useTagFormats'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MarkdownEditor } from '@/components/ui/markdown-editor/MarkdownEditor'
 import { SkText } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import type { ChipColors } from '@/lib/chip-colors'
 import { isTagAllowed, tagFormatHint } from '@/lib/versionFormats'
 import type { DraftReleaseNotesResponse } from '@/types'
@@ -331,14 +331,15 @@ export function PendingPromoteCard({
           {isDrafting && !draft ? (
             <DraftingNotes />
           ) : (
-            <Textarea
+            <MarkdownEditor
+              aria-label="Release notes"
               autoResize
-              className="max-h-[60vh] min-h-32 font-mono text-xs"
-              onChange={(e) => {
-                setNotes(e.target.value)
+              onChange={(value) => {
+                setNotes(value)
                 setNotesDirty(true)
               }}
               placeholder="## Highlights&#10;- …"
+              textareaClassName="max-h-[60vh] min-h-32 font-mono text-xs"
               value={notes}
             />
           )}
