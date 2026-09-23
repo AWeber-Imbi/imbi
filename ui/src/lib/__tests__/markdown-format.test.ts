@@ -129,4 +129,9 @@ describe('line prefixes', () => {
   it('ignores the line after a trailing newline', () => {
     expect(apply('quote', '[a\n]b')).toBe('[> a]\nb')
   })
+
+  it('prefixes an empty first line', () => {
+    expect(apply('heading', '|\nfoo')).toBe('### |\nfoo')
+    expect(apply('quote', '[\na\nb]')).toBe('[\n> a\n> b]')
+  })
 })

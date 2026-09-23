@@ -166,8 +166,11 @@ function prefixLines(
   { existing, prefix, toggle }: LinePrefix,
 ): MarkdownEdit {
   // Expand to whole lines. A selection ending just after a newline (e.g. a
-  // triple-click) doesn't take in the following line.
-  const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1
+  // triple-click) doesn't take in the following line. lastIndexOf clamps a
+  // negative fromIndex to 0, so offset 0 needs its own case or a leading
+  // newline would be taken as the end of a previous line.
+  const lineStart =
+    selectionStart === 0 ? 0 : value.lastIndexOf('\n', selectionStart - 1) + 1
   const end =
     selectionEnd > selectionStart && value[selectionEnd - 1] === '\n'
       ? selectionEnd - 1
