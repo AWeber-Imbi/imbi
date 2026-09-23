@@ -21,6 +21,9 @@ from apache_iggy import IggyClient, SendMessage
 
 from imbi.common import clickhouse, settings
 
+if typing.TYPE_CHECKING:
+    from apache_iggy import ConsumerGroupDetails, TopicDetails
+
 try:
     import sentry_sdk
 except ImportError:
@@ -292,6 +295,51 @@ class Iggy:
             await asyncio.gather(*tasks, return_exceptions=True)
         return sum(topic.size for topics in per_stream for topic in topics)
 
+    async def topic_status(self) -> list[TopicStatus]:
+        """Read the state of every topic in `TOPICS` and its sink group.
+
+        The group read is the one the ClickHouse sink joins, which is
+        named after the stream. All reads are in flight together, and a
+        read that fails or is cancelled takes its siblings with it, as
+        in `stored_bytes`.
+        """
+        # Imported here because `imbi.common.iggy` imports this module.
+        from imbi.common import iggy
+
+        client = await self._require_client()
+        pairs = [
+            (stream, topic)
+            for stream, topics in iggy.TOPICS.items()
+            for topic in topics
+        ]
+        topic_tasks = [
+            asyncio.ensure_future(client.get_topic(stream, topic))
+            for stream, topic in pairs
+        ]
+        group_tasks = [
+            asyncio.ensure_future(
+                client.get_consumer_group(stream, topic, stream)
+            )
+            for stream, topic in pairs
+        ]
+        tasks: list[asyncio.Future[typing.Any]] = [*topic_tasks, *group_tasks]
+        try:
+            with _translate_errors('reading topic status', self, client):
+                details, groups = await asyncio.gather(
+                    asyncio.gather(*topic_tasks),
+                    asyncio.gather(*group_tasks),
+                )
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        return [
+            _topic_status(stream, topic, detail, group)
+            for (stream, topic), detail, group in zip(
+                pairs, details, groups, strict=True
+            )
+        ]
+
     async def publish(
         self,
         stream: str,
@@ -421,6 +469,45 @@ class Iggy:
             else:
                 return client
         return None
+
+
+class TopicStatus(pydantic.BaseModel):
+    """The state of one topic and of the sink group that consumes it.
+
+    `members_owning` counts the members that have a partition. A group
+    with more members than owners has a member that polls nothing,
+    which is how a stuck sink shows (apache/iggy#4273).
+    """
+
+    stream: str
+    topic: str
+    messages: int
+    current_offset: int
+    size_bytes: int
+    consumer_group: str | None
+    members: int
+    members_owning: int
+
+
+def _topic_status(
+    stream: str,
+    topic: str,
+    detail: TopicDetails | None,
+    group: ConsumerGroupDetails | None,
+) -> TopicStatus:
+    """Build a `TopicStatus` from the SDK's topic and group details."""
+    partitions = detail.partitions if detail is not None else []
+    members = group.members if group is not None else []
+    return TopicStatus(
+        stream=stream,
+        topic=topic,
+        messages=sum(p.messages_count for p in partitions),
+        current_offset=max((p.current_offset for p in partitions), default=0),
+        size_bytes=detail.size if detail is not None else 0,
+        consumer_group=group.name if group is not None else None,
+        members=len(members),
+        members_owning=sum(1 for m in members if m.partitions_count > 0),
+    )
 
 
 def _payload(

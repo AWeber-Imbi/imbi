@@ -593,3 +593,78 @@ class IggyClientTestCase(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(TimeoutError):
                 await asyncio.wait_for(iggy.stored_bytes(), 0.01)
         self.assertEqual([], _pending_tasks())
+
+    async def test_topic_status_reads_each_topic_and_its_group(
+        self,
+    ) -> None:
+        iggy = client.Iggy.get_instance()
+        partition = mock.Mock(messages_count=223, current_offset=222)
+        self.mock_client.get_topic.return_value = mock.Mock(
+            partitions=[partition], size=4096
+        )
+        # A live member with no partitions next to a dead one that
+        # holds partition 0, as in apache/iggy#4273.
+        group = mock.Mock(
+            members=[
+                mock.Mock(partitions_count=0),
+                mock.Mock(partitions_count=1),
+            ]
+        )
+        group.name = 'operations_log'
+        self.mock_client.get_consumer_group.return_value = group
+        with mock.patch.dict(
+            common_iggy.TOPICS,
+            {'operations_log': ('deployments',)},
+            clear=True,
+        ):
+            status = await iggy.topic_status()
+        self.mock_client.get_consumer_group.assert_awaited_once_with(
+            'operations_log', 'deployments', 'operations_log'
+        )
+        self.assertEqual(
+            [
+                client.TopicStatus(
+                    stream='operations_log',
+                    topic='deployments',
+                    messages=223,
+                    current_offset=222,
+                    size_bytes=4096,
+                    consumer_group='operations_log',
+                    members=2,
+                    members_owning=1,
+                )
+            ],
+            status,
+        )
+
+    async def test_topic_status_without_a_topic_or_group(self) -> None:
+        iggy = client.Iggy.get_instance()
+        self.mock_client.get_topic.return_value = None
+        self.mock_client.get_consumer_group.return_value = None
+        with mock.patch.dict(
+            common_iggy.TOPICS, {'email_audit': ('email',)}, clear=True
+        ):
+            [status] = await iggy.topic_status()
+        self.assertEqual(0, status.messages)
+        self.assertEqual(0, status.current_offset)
+        self.assertIsNone(status.consumer_group)
+        self.assertEqual(0, status.members)
+
+    async def test_topic_status_cancels_the_siblings_of_a_failure(
+        self,
+    ) -> None:
+        iggy = client.Iggy.get_instance()
+        hung = asyncio.Event()
+
+        async def get_consumer_group(*_args: str) -> mock.Mock:
+            await hung.wait()
+            raise AssertionError('the group read was not cancelled')
+
+        self.mock_client.get_topic.side_effect = RuntimeError('boom')
+        self.mock_client.get_consumer_group.side_effect = get_consumer_group
+        with mock.patch.dict(
+            common_iggy.TOPICS, {'events': ('gateway',)}, clear=True
+        ):
+            with self.assertRaises(client.PublishError):
+                await iggy.topic_status()
+        self.assertEqual([], _pending_tasks())

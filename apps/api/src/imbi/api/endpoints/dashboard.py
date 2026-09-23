@@ -89,6 +89,24 @@ class DashboardMetrics(pydantic.BaseModel):
     releases_by_environment: list[EnvironmentCount]
 
 
+class IggyTopic(iggy.TopicStatus):
+    """One Iggy topic and the sink group that consumes it."""
+
+    # @TODO: Fill `stored_offset` and `lag` when Iggy can read a group
+    # offset over HTTP (apache/iggy#4279) or the Python SDK exposes the
+    # offset read (apache/iggy#3997). `lag` is `current_offset` minus
+    # `stored_offset`. Until then they are always `None`.
+    stored_offset: int | None = None
+    lag: int | None = None
+
+
+class IggyTopics(pydantic.BaseModel):
+    """Per-topic Iggy state for the admin dashboard."""
+
+    checked_at: datetime.datetime
+    topics: list[IggyTopic]
+
+
 def _ms(start: float) -> float:
     """Milliseconds elapsed since *start* (``time.perf_counter()``)."""
     return round((time.perf_counter() - start) * 1000, 1)
@@ -303,6 +321,36 @@ async def get_dashboard_status(
         checked_at=datetime.datetime.now(datetime.UTC),
         datastores=list(datastores),
         services=[api_status, *services],
+    )
+
+
+# Reads one topic and one group per topic, all in flight together, so
+# it gets more time than a single health check.
+_IGGY_TOPICS_TIMEOUT = 5.0
+
+
+@dashboard_router.get('/iggy', response_model=IggyTopics)
+async def get_dashboard_iggy(
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('admin:dashboard:read')
+        ),
+    ],
+) -> IggyTopics:
+    """Return each Iggy topic with its sink group's members."""
+    try:
+        topics = await asyncio.wait_for(
+            iggy.topic_status(), _IGGY_TOPICS_TIMEOUT
+        )
+    except Exception as err:
+        LOGGER.warning('Iggy topic status failed: %s', err)
+        raise fastapi.HTTPException(
+            status_code=503, detail='Iggy topic status is unavailable'
+        ) from err
+    return IggyTopics(
+        checked_at=datetime.datetime.now(datetime.UTC),
+        topics=[IggyTopic(**topic.model_dump()) for topic in topics],
     )
 
 
