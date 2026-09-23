@@ -7,22 +7,37 @@ import { cn } from '@/lib/utils'
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <SliderPrimitive.Root
-    className={cn(
-      // Radix marks a disabled slider with data-disabled, not :disabled.
-      'relative flex w-full touch-none items-center select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+>(
+  (
+    {
+      'aria-label': ariaLabel,
+      'aria-labelledby': ariaLabelledby,
       className,
-    )}
-    ref={ref}
-    {...props}
-  >
-    <SliderPrimitive.Track className="bg-secondary relative h-1.5 w-full grow overflow-hidden rounded-full">
-      <SliderPrimitive.Range className="bg-action absolute h-full" />
-    </SliderPrimitive.Track>
-    <SliderPrimitive.Thumb className="border-action bg-background ring-offset-background focus-visible:ring-ring block size-4 rounded-full border-2 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none" />
-  </SliderPrimitive.Root>
-))
+      ...props
+    },
+    ref,
+  ) => (
+    <SliderPrimitive.Root
+      className={cn(
+        // Radix marks a disabled slider with data-disabled, not :disabled.
+        'relative flex w-full touch-none items-center select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        className,
+      )}
+      ref={ref}
+      {...props}
+    >
+      <SliderPrimitive.Track className="bg-secondary relative h-1.5 w-full grow overflow-hidden rounded-full">
+        <SliderPrimitive.Range className="bg-action absolute h-full" />
+      </SliderPrimitive.Track>
+      {/* role="slider" is on the thumb, so the accessible name goes there. */}
+      <SliderPrimitive.Thumb
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledby}
+        className="border-action bg-background ring-offset-background focus-visible:ring-ring block size-4 rounded-full border-2 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+      />
+    </SliderPrimitive.Root>
+  ),
+)
 Slider.displayName = SliderPrimitive.Root.displayName
 
 export { Slider }

@@ -344,6 +344,7 @@ export function SearchResultsPanel({
                 Similarity threshold
               </Label>
               <Slider
+                aria-label="Similarity threshold"
                 max={1.0}
                 min={0.1}
                 onValueChange={(v) => onThresholdChange(v[0])}
@@ -359,6 +360,7 @@ export function SearchResultsPanel({
                 Max results
               </Label>
               <Slider
+                aria-label="Max results"
                 max={100}
                 min={5}
                 onValueChange={(v) => onLimitChange(v[0])}
