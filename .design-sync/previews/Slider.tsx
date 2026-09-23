@@ -5,7 +5,7 @@ export const Default = () => (
     <Label className="text-muted-foreground mb-1.5 block text-xs">
       Similarity threshold
     </Label>
-    <Slider defaultValue={[0.75]} max={1.0} min={0.1} step={0.05} />
+    <Slider aria-label="Similarity threshold" defaultValue={[0.75]} max={1.0} min={0.1} step={0.05} />
     <span className="text-muted-foreground mt-1 block font-mono text-xs">
       0.75 cosine
     </span>
@@ -18,7 +18,7 @@ export const SearchFilters = () => (
       <Label className="text-muted-foreground mb-1.5 block text-xs">
         Similarity threshold
       </Label>
-      <Slider defaultValue={[0.3]} max={1.0} min={0.1} step={0.05} />
+      <Slider aria-label="Similarity threshold" defaultValue={[0.3]} max={1.0} min={0.1} step={0.05} />
       <span className="text-muted-foreground mt-1 block font-mono text-xs">
         0.30 cosine
       </span>
@@ -27,7 +27,7 @@ export const SearchFilters = () => (
       <Label className="text-muted-foreground mb-1.5 block text-xs">
         Max results
       </Label>
-      <Slider defaultValue={[25]} max={100} min={5} step={5} />
+      <Slider aria-label="Max results" defaultValue={[25]} max={100} min={5} step={5} />
       <span className="text-muted-foreground mt-1 block font-mono text-xs">
         25
       </span>
@@ -40,6 +40,6 @@ export const Disabled = () => (
     <Label className="text-muted-foreground mb-1.5 block text-xs">
       Similarity threshold (locked by admin)
     </Label>
-    <Slider defaultValue={[0.75]} disabled max={1.0} min={0.1} step={0.05} />
+    <Slider aria-label="Similarity threshold (locked by admin)" defaultValue={[0.75]} disabled max={1.0} min={0.1} step={0.05} />
   </div>
 )
