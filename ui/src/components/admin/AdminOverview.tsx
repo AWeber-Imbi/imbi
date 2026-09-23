@@ -390,13 +390,12 @@ export function AdminOverview() {
           </section>
 
           <IggyTopicsCard />
-
-          <ResourcesCard />
         </div>
 
         {/* Status rail */}
         <div className="flex flex-col gap-3.5">
           <SystemHealthRail />
+          <ResourcesCard />
         </div>
       </div>
     </div>
