@@ -74,6 +74,7 @@ import type {
   IdentityConnectionResponse,
   IdentityConnectionStartRequest,
   IdentityConnectionStartResponse,
+  IggyTopics,
   IncidentResult,
   Integration,
   IntegrationCreate,
@@ -1360,6 +1361,9 @@ export const getDashboardStatus = (signal?: AbortSignal) =>
 
 export const getDashboardMetrics = (signal?: AbortSignal) =>
   apiClient.get<DashboardMetrics>('/admin/dashboard/metrics', undefined, signal)
+
+export const getDashboardIggy = (signal?: AbortSignal) =>
+  apiClient.get<IggyTopics>('/admin/dashboard/iggy', undefined, signal)
 
 // Admin - Blueprints
 export const listBlueprints = async (

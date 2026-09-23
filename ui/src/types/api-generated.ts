@@ -8969,6 +8969,45 @@ export interface components {
             scopes?: string[] | null;
         };
         /**
+         * IggyTopic
+         * @description One Iggy topic and the sink group that consumes it.
+         */
+        IggyTopic: {
+            /** Stream */
+            stream: string;
+            /** Topic */
+            topic: string;
+            /** Messages */
+            messages: number;
+            /** Current Offset */
+            current_offset: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Consumer Group */
+            consumer_group: string | null;
+            /** Members */
+            members: number;
+            /** Members Owning */
+            members_owning: number;
+            /** Stored Offset */
+            stored_offset?: number | null;
+            /** Lag */
+            lag?: number | null;
+        };
+        /**
+         * IggyTopics
+         * @description Per-topic Iggy state for the admin dashboard.
+         */
+        IggyTopics: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Topics */
+            topics: components["schemas"]["IggyTopic"][];
+        };
+        /**
          * IdentityConnectionStartResponse
          * @description Reply to ``POST /me/identities/{integration_id}/start``.
          */

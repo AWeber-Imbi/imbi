@@ -38,6 +38,7 @@ import {
   listEnvironments,
   type TeamScoreSeries,
 } from '@/api/endpoints'
+import { IggyTopicsCard } from '@/components/admin/IggyTopicsCard'
 import { Card } from '@/components/ui/card'
 import { Sk } from '@/components/ui/skeleton'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -387,6 +388,8 @@ export function AdminOverview() {
               </Card>
             </div>
           </section>
+
+          <IggyTopicsCard />
 
           <ResourcesCard />
         </div>
