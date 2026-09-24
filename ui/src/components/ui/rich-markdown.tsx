@@ -11,7 +11,9 @@ interface RichMarkdownProps {
 }
 
 const COMPONENTS: Components = {
-  a: (props) => <a {...props} rel="noopener noreferrer" target="_blank" />,
+  a: ({ node: _node, ...props }) => (
+    <a {...props} rel="noopener noreferrer" target="_blank" />
+  ),
 }
 
 /**
