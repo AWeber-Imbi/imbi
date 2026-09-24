@@ -6,6 +6,7 @@ import {
   createOperationsLogEntry,
   getProject,
   getProjects,
+  listIntegrations,
   type OperationsLogCreate,
 } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,8 @@ import { RequiredAsterisk } from '@/components/ui/required-asterisk'
 import { Sk, Swap } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { ProjectRepoProvider } from '@/contexts/ProjectRepoContext'
+import { projectRepoUrl } from '@/lib/github-refs'
 import {
   OPERATIONS_LOG_ENTRY_TYPES,
   type OperationsLogEntryType,
@@ -104,6 +107,23 @@ export function NewOpsLogDialog({
     () =>
       [...projects].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
     [projects],
+  )
+
+  // Shares ProjectDetail's cache key; only needed to resolve the selected
+  // project's GitHub repo for the notes preview.
+  const { data: integrations = [] } = useQuery({
+    enabled: !!orgSlug && !!projectId && isOpen,
+    queryFn: ({ signal }) => listIntegrations(orgSlug, signal),
+    queryKey: ['integrations', orgSlug],
+    staleTime: 60 * 1000,
+  })
+
+  // The notes preview links ``#N`` against the project picked here, not
+  // whatever project page the dialog happens to open over.
+  const repoUrl = useMemo(
+    () =>
+      selectedProject ? projectRepoUrl(selectedProject, integrations) : null,
+    [selectedProject, integrations],
   )
 
   const projectSlug = selectedProject?.slug ?? ''
@@ -306,13 +326,15 @@ export function NewOpsLogDialog({
               <Label className="text-sm font-medium" htmlFor="new-ops-notes">
                 Notes
               </Label>
-              <MarkdownEditor
-                id="new-ops-notes"
-                onChange={setNotes}
-                placeholder="Optional context for future readers"
-                textareaClassName="min-h-24 resize-none"
-                value={notes}
-              />
+              <ProjectRepoProvider repoUrl={repoUrl}>
+                <MarkdownEditor
+                  id="new-ops-notes"
+                  onChange={setNotes}
+                  placeholder="Optional context for future readers"
+                  textareaClassName="min-h-24 resize-none"
+                  value={notes}
+                />
+              </ProjectRepoProvider>
             </div>
           </div>
         </div>
