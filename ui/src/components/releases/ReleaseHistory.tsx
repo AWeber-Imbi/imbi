@@ -8,12 +8,11 @@ import {
   GitCompareArrows,
   ShieldAlert,
 } from 'lucide-react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RelativeTime } from '@/components/ui/RelativeTime'
+import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { UserIdentity } from '@/components/ui/user-identity'
 import { cn } from '@/lib/utils'
 import type { ReleaseBlocker, ReleaseHistoryEntry } from '@/types'
@@ -307,16 +306,7 @@ function ReleaseRow({
           {rel.ci_override_by ? <CiOverrideNote rel={rel} /> : null}
           {rel.notes_markdown ? (
             <div className="document-markdown max-w-none text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-              <Markdown
-                components={{
-                  a: (props) => (
-                    <a {...props} rel="noopener noreferrer" target="_blank" />
-                  ),
-                }}
-                remarkPlugins={[remarkGfm]}
-              >
-                {rel.notes_markdown}
-              </Markdown>
+              <RichMarkdown>{rel.notes_markdown}</RichMarkdown>
             </div>
           ) : (
             <p className="text-tertiary text-xs">No release notes.</p>

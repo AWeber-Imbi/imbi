@@ -12,7 +12,7 @@ export interface CommitSubjectSegment {
 
 // ``#123`` references, as the source host itself linkifies them. The
 // lookbehind keeps mid-word noise (``sha#12``, ``##12``) from matching.
-const PR_REF_RE = /(?<![\w#])#(\d+)\b/g
+export const PR_REF_RE = /(?<![\w#])#(\d+)\b/g
 
 /**
  * The pull requests a commit subject references, deduplicated and in

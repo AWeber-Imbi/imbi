@@ -97,6 +97,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { ProjectRepoProvider } from '@/contexts/ProjectRepoContext'
 import { useBalancedEnvLayout } from '@/hooks/useBalancedEnvLayout'
 import { useClipboard } from '@/hooks/useClipboard'
 import { useProjectTypes, useTeams } from '@/hooks/useOrgResources'
@@ -104,6 +105,7 @@ import { useProjectPatch } from '@/hooks/useProjectPatch'
 import { computeDriftPairs } from '@/lib/deployment-drift'
 import { upstreamBySlug } from '@/lib/environment-chains'
 import { formatDateTime } from '@/lib/formatDate'
+import { projectRepoUrl } from '@/lib/github-refs'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { formatFieldKey } from '@/lib/project-field-formatting'
 import { treatNotFoundAsNull } from '@/lib/queryHelpers'
@@ -851,6 +853,13 @@ export function ProjectDetail({
     [orgIntegrations],
   )
 
+  // Lets markdown anywhere on the page (release notes, ops-log notes,
+  // editor previews) link ``#N`` references to this project's repo.
+  const repoUrl = useMemo(
+    () => projectRepoUrl(project, orgIntegrations),
+    [project, orgIntegrations],
+  )
+
   // The header bar merges two sources, sorted together alphabetically:
   //   1. project.links entries that resolve to an org link definition
   //      (name/icon from the definition). Keys without a definition are
@@ -1045,7 +1054,7 @@ export function ProjectDetail({
     { id: 'settings', label: '' },
   ]
 
-  return (
+  const content = (
     <div className="max-w-project-detail mx-auto px-6 py-8">
       {/* Project Header */}
       <div className="mb-6">
@@ -1655,6 +1664,8 @@ export function ProjectDetail({
       />
     </div>
   )
+
+  return <ProjectRepoProvider repoUrl={repoUrl}>{content}</ProjectRepoProvider>
 }
 
 function AttributesSkeleton() {

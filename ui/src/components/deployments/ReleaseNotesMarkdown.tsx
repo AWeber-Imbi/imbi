@@ -1,5 +1,4 @@
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { RichMarkdown } from '@/components/ui/rich-markdown'
 
 interface ReleaseNotesMarkdownProps {
   notes: null | string | undefined
@@ -12,16 +11,7 @@ export function ReleaseNotesMarkdown({ notes }: ReleaseNotesMarkdownProps) {
   }
   return (
     <div className="document-markdown max-w-none text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-      <Markdown
-        components={{
-          a: (props) => (
-            <a {...props} rel="noopener noreferrer" target="_blank" />
-          ),
-        }}
-        remarkPlugins={[remarkGfm]}
-      >
-        {notes}
-      </Markdown>
+      <RichMarkdown>{notes}</RichMarkdown>
     </div>
   )
 }

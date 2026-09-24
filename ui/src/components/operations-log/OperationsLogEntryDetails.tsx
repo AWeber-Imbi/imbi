@@ -4,8 +4,6 @@ import { Link } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import { Copy, ExternalLink } from 'lucide-react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 
 import { getOperationsLogEntry } from '@/api/endpoints'
 import {
@@ -13,6 +11,7 @@ import {
   type NewOpsLogInitialValues,
 } from '@/components/NewOpsLogDialog'
 import { Button } from '@/components/ui/button'
+import { RichMarkdown } from '@/components/ui/rich-markdown'
 import {
   Tooltip,
   TooltipContent,
@@ -106,7 +105,7 @@ export function OperationsLogEntryDetails({ entry }: Props) {
             Notes
           </h3>
           <div className="document-markdown border-tertiary bg-primary text-primary max-w-none rounded-md border p-3 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-            <Markdown remarkPlugins={[remarkGfm]}>{sanitizedNotes}</Markdown>
+            <RichMarkdown>{sanitizedNotes}</RichMarkdown>
           </div>
         </div>
       )}
