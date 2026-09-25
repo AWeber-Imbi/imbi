@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useSearchParams } from 'react-router-dom'
 
@@ -21,11 +21,19 @@ export function useUrlSearchQuery(
   const urlQuery = searchParams.get(param) ?? ''
   const [inputQuery, setInputQuery] = useState(urlQuery)
   const debouncedQuery = useDebouncedValue(inputQuery, delayMs)
+  const previousUrlQuery = useRef(urlQuery)
 
   // Sync the debounced query → URL. Skip the write when the value
   // already matches what's in the URL (covers back/forward and the
   // initial mount where ``inputQuery === urlQuery`` by construction).
+  // A run triggered by an external URL change is skipped too: the
+  // debounced value is still the stale pre-navigation query, and
+  // writing it would clobber the ``q`` that just arrived.
   useEffect(() => {
+    if (previousUrlQuery.current !== urlQuery) {
+      previousUrlQuery.current = urlQuery
+      return
+    }
     if (debouncedQuery === urlQuery) return
     setSearchParams(
       (prev) => {

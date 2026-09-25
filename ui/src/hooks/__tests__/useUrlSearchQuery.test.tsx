@@ -47,4 +47,12 @@ describe('useUrlSearchQuery', () => {
     act(() => result.current.navigate('/x'))
     await waitFor(() => expect(result.current.query.inputQuery).toBe(''))
   })
+
+  it('does not overwrite an external URL change with the stale query', async () => {
+    const { result } = setup('/x?q=api')
+    act(() => result.current.navigate('/x?q=ui'))
+    expect(result.current.location.search).toBe('?q=ui')
+    await waitFor(() => expect(result.current.query.debouncedQuery).toBe('ui'))
+    expect(result.current.location.search).toBe('?q=ui')
+  })
 })
