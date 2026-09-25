@@ -664,7 +664,7 @@ export function ProjectsView() {
                     <Link
                       aria-label={`View pull requests for ${project.name}`}
                       className={`border-accent bg-accent text-accent relative z-10 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.open_pr_count ?? 0) > 0 ? '' : 'pointer-events-none invisible'}`}
-                      to={`/projects/${project.id}/pull-requests`}
+                      to={`/projects/${project.id}/pull-requests?state=open`}
                     >
                       <GitPullRequest className="size-3.5" />
                       <span>{project.open_pr_count ?? 0}</span>
@@ -672,7 +672,7 @@ export function ProjectsView() {
                     <Link
                       aria-label={`View your pull requests for ${project.name}`}
                       className={`border-info bg-info text-info relative z-10 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs ${(project.viewer_open_pr_count ?? 0) > 0 ? '' : 'pointer-events-none invisible'}`}
-                      to={`/projects/${project.id}/pull-requests`}
+                      to={`/projects/${project.id}/pull-requests?state=open&author=me`}
                     >
                       <User className="size-3.5" />
                       <span>{project.viewer_open_pr_count ?? 0}</span>
@@ -1592,7 +1592,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
             <Link
               aria-label={`View pull requests for ${project.name}`}
               className="border-accent bg-accent text-accent relative z-10 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs"
-              to={`/projects/${project.id}/pull-requests`}
+              to={`/projects/${project.id}/pull-requests?state=open`}
             >
               <GitPullRequest className="size-3.5" />
               <span>{project.open_pr_count}</span>
@@ -1602,7 +1602,7 @@ const ProjectListRow = React.memo(function ProjectListRow({
             <Link
               aria-label={`View your pull requests for ${project.name}`}
               className="border-info bg-info text-info relative z-10 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs"
-              to={`/projects/${project.id}/pull-requests`}
+              to={`/projects/${project.id}/pull-requests?state=open&author=me`}
             >
               <User className="size-3.5" />
               <span>{project.viewer_open_pr_count}</span>
