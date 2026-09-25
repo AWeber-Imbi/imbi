@@ -36,8 +36,8 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useSearchShortcut } from '@/hooks/useSearchShortcut'
+import { useUrlSearchQuery } from '@/hooks/useUrlSearchQuery'
 import { deriveChipColors } from '@/lib/chip-colors'
 import {
   computeDriftPairs,
@@ -168,7 +168,6 @@ const VIEW_MODE_STORAGE_KEY = 'imbi.projects.view-mode'
 // downstream filter+render pass) doesn't fire on every keystroke.
 // 200ms is short enough to feel synchronous for the common
 // type-pause-look pattern.
-const SEARCH_DEBOUNCE_MS = 200
 
 // fallow-ignore-next-line complexity
 export function ProjectsView() {
@@ -201,14 +200,11 @@ export function ProjectsView() {
   // ``inputQuery`` drives the controlled <Input>; ``debouncedQuery``
   // is what gets persisted to the URL and consumed by the filter
   // pipeline. Local input state keeps typing responsive even though
-  // filtering hundreds of rows is expensive; the URL sync trails the
-  // user by ``SEARCH_DEBOUNCE_MS`` so back-buttoning still works.
-  const urlQuery = searchParams.get('q') ?? ''
-  const [inputQuery, setInputQuery] = useState(urlQuery)
+  // filtering hundreds of rows is expensive.
+  const { debouncedQuery, inputQuery, setInputQuery } = useUrlSearchQuery()
   const [searchFocused, setSearchFocused] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   useSearchShortcut(searchInputRef)
-  const debouncedQuery = useDebouncedValue(inputQuery, SEARCH_DEBOUNCE_MS)
   // ``useDeferredValue`` lets React render the stale filtered list
   // first (so the input never freezes), then reconcile to the new
   // ``debouncedQuery`` at a lower priority. Cheap to add and
@@ -238,33 +234,6 @@ export function ProjectsView() {
       { replace: true },
     )
   }
-
-  // Sync the debounced query → URL. Skip the write when the value
-  // already matches what's in the URL (covers back/forward and the
-  // initial mount where ``inputQuery === urlQuery`` by construction).
-  useEffect(() => {
-    if (debouncedQuery === urlQuery) return
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        if (debouncedQuery) next.set('q', debouncedQuery)
-        else next.delete('q')
-        return next
-      },
-      { replace: true },
-    )
-  }, [debouncedQuery, urlQuery, setSearchParams])
-
-  // Honor external URL changes (back/forward, deep links) by
-  // resyncing the input. Compares against the *current* input so
-  // typing isn't clobbered by the debounced URL write that just
-  // landed.
-  useEffect(() => {
-    if (urlQuery !== inputQuery && urlQuery !== debouncedQuery) {
-      setInputQuery(urlQuery)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlQuery])
 
   const setSort = (key: SortKey) =>
     setSearchParams((prev) => nextSortParams(prev, key), { replace: true })
