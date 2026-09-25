@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+
+import { useSearchParams } from 'react-router-dom'
 
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -7,6 +9,7 @@ import {
   GitPullRequest,
   GitPullRequestClosed,
   RefreshCw,
+  User,
 } from 'lucide-react'
 
 import { getProjectPullRequests } from '@/api/endpoints'
@@ -25,7 +28,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { UserIdentity } from '@/components/ui/user-identity'
+import { useGithubLogin } from '@/hooks/useGithubLogin'
 import { useLoginToEmail } from '@/hooks/useLoginToEmail'
+import { useUrlSearchQuery } from '@/hooks/useUrlSearchQuery'
 import type { PullRequest } from '@/types'
 
 interface Props {
@@ -35,10 +40,53 @@ interface Props {
 
 type StateFilter = 'all' | 'closed' | 'draft' | 'merged' | 'open'
 
+const STATE_FILTERS: ReadonlySet<string> = new Set<StateFilter>([
+  'all',
+  'closed',
+  'draft',
+  'merged',
+  'open',
+])
+
 // fallow-ignore-next-line complexity
 export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
-  const [stateFilter, setStateFilter] = useState<StateFilter>('all')
-  const [search, setSearch] = useState('')
+  // `?state=<filter>`, `?author=me` and `?q=<text>` deep-link the
+  // filters (e.g. from the projects list's PR badges); in-tab selections
+  // take over from there.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedState = searchParams.get('state')
+  const stateFilter: StateFilter = isStateFilter(requestedState)
+    ? requestedState
+    : 'all'
+  // Functional update so a toggle can't clobber a `q` write from the
+  // debounced text filter that landed since this render.
+  const setParam = (key: string, value: null | string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (value === null) next.delete(key)
+        else next.set(key, value)
+        return next
+      },
+      { replace: true },
+    )
+  const setStateFilter = (state: StateFilter) =>
+    setParam('state', state === 'all' ? null : state)
+
+  // "Mine" only applies once we know the viewer's GitHub login; without a
+  // linked identity the param is ignored and the toggle is hidden.
+  const { isLoading: loginLoading, login } = useGithubLogin()
+  const mineRequested = searchParams.get('author') === 'me'
+  const viewerLogin = mineRequested ? login?.toLowerCase() : undefined
+  // Filter by author server-side so Mine isn't truncated by the page
+  // limit on busy projects; hold the fetch until the login resolves.
+  const author = mineRequested ? login : undefined
+  const queriesEnabled =
+    !!orgSlug && !!projectId && !(mineRequested && loginLoading)
+  const toggleMine = () => setParam('author', mineRequested ? null : 'me')
+  // The list is small enough to filter on every keystroke; only the
+  // URL write is debounced.
+  const { inputQuery: search, setInputQuery: setSearch } = useUrlSearchQuery()
 
   const {
     data: openData,
@@ -46,15 +94,15 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
     isFetching: openFetching,
     refetch: refetchOpen,
   } = useQuery({
-    enabled: !!orgSlug && !!projectId,
+    enabled: queriesEnabled,
     queryFn: ({ signal }) =>
       getProjectPullRequests(
         orgSlug,
         projectId,
-        { limit: 100, state: 'open' },
+        { author, limit: 100, state: 'open' },
         signal,
       ),
-    queryKey: ['project-prs', orgSlug, projectId, 'open'],
+    queryKey: ['project-prs', orgSlug, projectId, 'open', author ?? null],
     staleTime: 60_000,
   })
 
@@ -64,21 +112,22 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
     isFetching: closedFetching,
     refetch: refetchClosed,
   } = useQuery({
-    enabled: !!orgSlug && !!projectId,
+    enabled: queriesEnabled,
     queryFn: ({ signal }) =>
       getProjectPullRequests(
         orgSlug,
         projectId,
-        { limit: 100, state: 'closed' },
+        { author, limit: 100, state: 'closed' },
         signal,
       ),
-    queryKey: ['project-prs', orgSlug, projectId, 'closed'],
+    queryKey: ['project-prs', orgSlug, projectId, 'closed', author ?? null],
     staleTime: 60_000,
   })
 
   const { displayNames, loginToEmail } = useLoginToEmail()
 
-  const isLoading = openFetching || closedFetching
+  const isLoading =
+    openFetching || closedFetching || (mineRequested && loginLoading)
   const hasError = openError || closedError
 
   // fallow-ignore-next-line complexity
@@ -91,30 +140,41 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
     )
   }, [openData, closedData])
 
+  // The author filter scopes the state counts too, so "Open" under Mine
+  // matches the projects list's your-open-PRs badge. The server already
+  // filters by author; this guards the case-insensitive match.
+  const authorPRs = useMemo(
+    () =>
+      viewerLogin
+        ? allPRs.filter((pr) => pr.author.toLowerCase() === viewerLogin)
+        : allPRs,
+    [allPRs, viewerLogin],
+  )
+
   // fallow-ignore-next-line complexity
   const counts = useMemo(() => {
     let openCount = 0
     let draftCount = 0
     let mergedCount = 0
     let closedCount = 0
-    for (const pr of allPRs) {
+    for (const pr of authorPRs) {
       if (pr.draft) draftCount++
       else if (pr.merged) mergedCount++
       else if (pr.state === 'open') openCount++
       else closedCount++
     }
     return {
-      all: allPRs.length,
+      all: authorPRs.length,
       closed: closedCount,
       draft: draftCount,
       merged: mergedCount,
       open: openCount,
     }
-  }, [allPRs])
+  }, [authorPRs])
 
   // fallow-ignore-next-line complexity
   const filtered = useMemo(() => {
-    let prs = allPRs
+    let prs = authorPRs
     switch (stateFilter) {
       case 'closed':
         prs = prs.filter((pr) => pr.state === 'closed' && !pr.merged)
@@ -139,7 +199,7 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
       )
     }
     return prs
-  }, [allPRs, stateFilter, search])
+  }, [authorPRs, stateFilter, search])
 
   function handleRefresh() {
     void refetchOpen()
@@ -174,8 +234,24 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
             </button>
           ))}
         </div>
+        {login && (
+          <button
+            aria-pressed={mineRequested}
+            className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              mineRequested
+                ? 'border-info bg-info text-info'
+                : 'border-border text-secondary hover:text-primary'
+            }`}
+            onClick={toggleMine}
+            type="button"
+          >
+            <User className="size-3.5" />
+            Mine
+          </button>
+        )}
         <div className="flex flex-1 items-center justify-end gap-2">
           <input
+            aria-label="Filter pull requests"
             className="border-input bg-background text-primary focus:ring-action h-8 w-56 rounded border px-3 text-sm focus:ring-1 focus:outline-none"
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter by title, author, or #"
@@ -267,6 +343,10 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
       </Table>
     </Card>
   )
+}
+
+function isStateFilter(value: null | string): value is StateFilter {
+  return value !== null && STATE_FILTERS.has(value)
 }
 
 // fallow-ignore-next-line complexity
