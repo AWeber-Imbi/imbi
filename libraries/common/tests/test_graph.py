@@ -481,6 +481,21 @@ def _mock_pool_conns(
     return pool, conns
 
 
+@contextlib.contextmanager
+def _mock_fresh_conn() -> typing.Iterator[mock.AsyncMock]:
+    """Patch the unpooled connection the poisoned-backend retry opens."""
+    fresh = mock.AsyncMock()
+    with (
+        mock.patch.object(
+            client.psycopg.AsyncConnection,
+            'connect',
+            new=mock.AsyncMock(return_value=fresh),
+        ),
+        mock.patch.object(graph.Graph, '_configure_connection'),
+    ):
+        yield fresh
+
+
 class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
     """The 42P01 discard-and-retry path for poisoned AGE backends."""
 
@@ -499,13 +514,47 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
                 )
             return 'ok'
 
-        with self.assertLogs(client.LOGGER, level='WARNING'):
+        with (
+            _mock_fresh_conn() as fresh,
+            self.assertLogs(client.LOGGER, level='WARNING'),
+        ):
             result = await g._run_retrying_poisoned(run)
         self.assertEqual('ok', result)
-        self.assertEqual([conns[0], conns[1]], seen)
+        self.assertEqual([conns[0], fresh], seen)
         # The poisoned connection was closed inside the pool block so
         # the pool replaces it instead of handing the backend back out.
         conns[0].close.assert_awaited_once()
+        # The retry's own connection is not pooled, so it is closed too.
+        fresh.close.assert_awaited_once()
+
+    async def test_retry_skips_other_poisoned_pool_connections(
+        self,
+    ) -> None:
+        """The retry must not land on a neighbouring poisoned backend.
+
+        Load that poisons one backend poisons others, so taking the
+        retry from the pool failed the promote of account-settings-client
+        2.52.0 with ``relation "imbi.r(\x12" does not exist``.
+        """
+        g = graph.Graph()
+        g.opened = True
+        pool, conns = _mock_pool_conns(2)
+        g.pool = pool
+
+        async def run(conn: typing.Any) -> str:
+            if conn is not fresh:
+                raise psycopg.errors.UndefinedTable(
+                    'relation "imbi.r(\x12" does not exist'
+                )
+            return 'ok'
+
+        with (
+            _mock_fresh_conn() as fresh,
+            self.assertLogs(client.LOGGER, level='WARNING'),
+        ):
+            result = await g._run_retrying_poisoned(run)
+        self.assertEqual('ok', result)
+        self.assertEqual(1, pool.connection.call_count)
         conns[1].close.assert_not_awaited()
 
     async def test_second_failure_propagates(self) -> None:
@@ -519,11 +568,14 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
                 'relation "imbi.missing" does not exist'
             )
 
-        with self.assertLogs(client.LOGGER, level='WARNING'):
-            with self.assertRaises(psycopg.errors.UndefinedTable):
-                await g._run_retrying_poisoned(run)
+        with (
+            _mock_fresh_conn() as fresh,
+            self.assertLogs(client.LOGGER, level='WARNING'),
+            self.assertRaises(psycopg.errors.UndefinedTable),
+        ):
+            await g._run_retrying_poisoned(run)
         conns[0].close.assert_awaited_once()
-        conns[1].close.assert_awaited_once()
+        fresh.close.assert_awaited_once()
 
     async def test_retries_a_lost_update_race(self) -> None:
         """AGE reports a concurrent update instead of re-reading the row.
@@ -615,7 +667,10 @@ class RunRetryingPoisonedTests(unittest.IsolatedAsyncioTestCase):
             ),
             [{'n': '1'}],
         ]
-        with self.assertLogs(client.LOGGER, level='WARNING'):
+        with (
+            _mock_fresh_conn(),
+            self.assertLogs(client.LOGGER, level='WARNING'),
+        ):
             result = await g.execute('MATCH (n) RETURN n')
         self.assertEqual([{'n': '1'}], result)
         self.assertEqual(2, mock_exec.await_count)
