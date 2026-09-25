@@ -22,6 +22,9 @@ export function useUrlSearchQuery(
   const [inputQuery, setInputQuery] = useState(urlQuery)
   const debouncedQuery = useDebouncedValue(inputQuery, delayMs)
   const previousUrlQuery = useRef(urlQuery)
+  // The value this hook last wrote to the URL, so the resync effect
+  // can tell its own write landing apart from external navigation.
+  const writtenUrlQuery = useRef<null | string>(null)
 
   // Sync the debounced query → URL. Skip the write when the value
   // already matches what's in the URL (covers back/forward and the
@@ -35,6 +38,7 @@ export function useUrlSearchQuery(
       return
     }
     if (debouncedQuery === urlQuery) return
+    writtenUrlQuery.current = debouncedQuery
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
@@ -47,11 +51,14 @@ export function useUrlSearchQuery(
   }, [debouncedQuery, param, urlQuery, setSearchParams])
 
   // Honor external URL changes (back/forward, deep links) by
-  // resyncing the input. Compares against the *current* input so
-  // typing isn't clobbered by the debounced URL write that just
-  // landed.
+  // resyncing the input. The hook's own debounced write is skipped so
+  // typing that continued past it isn't clobbered; any other change
+  // resyncs, even one that happens to equal the stale debounced value
+  // (e.g. navigating away and back inside the debounce window).
   useEffect(() => {
-    if (urlQuery !== inputQuery && urlQuery !== debouncedQuery) {
+    const isOwnWrite = writtenUrlQuery.current === urlQuery
+    writtenUrlQuery.current = null
+    if (!isOwnWrite && urlQuery !== inputQuery) {
       setInputQuery(urlQuery)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

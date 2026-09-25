@@ -55,4 +55,24 @@ describe('useUrlSearchQuery', () => {
     await waitFor(() => expect(result.current.query.debouncedQuery).toBe('ui'))
     expect(result.current.location.search).toBe('?q=ui')
   })
+
+  it('resyncs the input when navigating away and back before the debounce', async () => {
+    const { result } = setup('/x?q=api')
+    act(() => result.current.navigate('/x?q=ui'))
+    act(() => result.current.navigate('/x?q=api'))
+    expect(result.current.query.inputQuery).toBe('api')
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)))
+    expect(result.current.query.debouncedQuery).toBe('api')
+    expect(result.current.location.search).toBe('?q=api')
+  })
+
+  it('does not clobber in-flight typing when its own URL write lands', async () => {
+    const { result } = setup('/x')
+    act(() => result.current.query.setInputQuery('ab'))
+    await waitFor(() => expect(result.current.location.search).toBe('?q=ab'))
+    act(() => result.current.query.setInputQuery('abc'))
+    expect(result.current.query.inputQuery).toBe('abc')
+    await waitFor(() => expect(result.current.location.search).toBe('?q=abc'))
+    expect(result.current.query.inputQuery).toBe('abc')
+  })
 })
