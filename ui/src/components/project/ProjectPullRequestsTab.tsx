@@ -78,6 +78,11 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
   const { isLoading: loginLoading, login } = useGithubLogin()
   const mineRequested = searchParams.get('author') === 'me'
   const viewerLogin = mineRequested ? login?.toLowerCase() : undefined
+  // Filter by author server-side so Mine isn't truncated by the page
+  // limit on busy projects; hold the fetch until the login resolves.
+  const author = mineRequested ? login : undefined
+  const queriesEnabled =
+    !!orgSlug && !!projectId && !(mineRequested && loginLoading)
   const toggleMine = () => setParam('author', mineRequested ? null : 'me')
   // The list is small enough to filter on every keystroke; only the
   // URL write is debounced.
@@ -89,15 +94,15 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
     isFetching: openFetching,
     refetch: refetchOpen,
   } = useQuery({
-    enabled: !!orgSlug && !!projectId,
+    enabled: queriesEnabled,
     queryFn: ({ signal }) =>
       getProjectPullRequests(
         orgSlug,
         projectId,
-        { limit: 100, state: 'open' },
+        { author, limit: 100, state: 'open' },
         signal,
       ),
-    queryKey: ['project-prs', orgSlug, projectId, 'open'],
+    queryKey: ['project-prs', orgSlug, projectId, 'open', author ?? null],
     staleTime: 60_000,
   })
 
@@ -107,15 +112,15 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
     isFetching: closedFetching,
     refetch: refetchClosed,
   } = useQuery({
-    enabled: !!orgSlug && !!projectId,
+    enabled: queriesEnabled,
     queryFn: ({ signal }) =>
       getProjectPullRequests(
         orgSlug,
         projectId,
-        { limit: 100, state: 'closed' },
+        { author, limit: 100, state: 'closed' },
         signal,
       ),
-    queryKey: ['project-prs', orgSlug, projectId, 'closed'],
+    queryKey: ['project-prs', orgSlug, projectId, 'closed', author ?? null],
     staleTime: 60_000,
   })
 
@@ -136,7 +141,8 @@ export function ProjectPullRequestsTab({ orgSlug, projectId }: Props) {
   }, [openData, closedData])
 
   // The author filter scopes the state counts too, so "Open" under Mine
-  // matches the projects list's your-open-PRs badge.
+  // matches the projects list's your-open-PRs badge. The server already
+  // filters by author; this guards the case-insensitive match.
   const authorPRs = useMemo(
     () =>
       viewerLogin

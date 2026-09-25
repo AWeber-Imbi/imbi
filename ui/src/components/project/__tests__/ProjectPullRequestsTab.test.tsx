@@ -133,6 +133,30 @@ describe('ProjectPullRequestsTab', () => {
     )
   })
 
+  it('filters by author server-side under ?author=me', async () => {
+    renderAt('/projects/p1/pull-requests?author=me')
+    await screen.findByText('Open PR')
+    for (const state of ['open', 'closed'] as const) {
+      expect(getProjectPullRequests).toHaveBeenCalledWith(
+        'acme',
+        'p1',
+        { author: 'gmr', limit: 100, state },
+        expect.anything(),
+      )
+    }
+  })
+
+  it('omits the author filter without ?author=me', async () => {
+    renderAt('/projects/p1/pull-requests')
+    await screen.findByText('Open PR')
+    expect(getProjectPullRequests).toHaveBeenCalledWith(
+      'acme',
+      'p1',
+      { author: undefined, limit: 100, state: 'open' },
+      expect.anything(),
+    )
+  })
+
   it('toggles Mine in the URL', async () => {
     const user = userEvent.setup()
     renderAt('/projects/p1/pull-requests?state=open')
