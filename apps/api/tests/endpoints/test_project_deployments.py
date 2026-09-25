@@ -9,6 +9,7 @@ from unittest import mock
 
 import fastapi
 import httpx
+import psycopg
 from fastapi import testclient
 
 from apps.api.tests import support
@@ -4146,6 +4147,46 @@ class PromoteReclaimGuardTestCase(unittest.IsolatedAsyncioTestCase):
         assert run is not None
         self.assertEqual('new-run', run.run_id)
         project_deployments.append_deployment_event.assert_awaited_once()
+
+    async def test_a_failed_event_write_still_attributes_the_deploy(
+        self,
+    ) -> None:
+        """A graph failure after dispatch must not abandon the promote.
+
+        The deployment runs regardless, so raising here left only the
+        webhook's anonymous event behind: no audit row and no watcher
+        close, the two writes that carry ``requested_by``.
+        """
+        project_deployments.append_deployment_event.side_effect = (
+            psycopg.errors.UndefinedTable(
+                'relation "imbi.r(\x12" does not exist'
+            )
+        )
+        db = self._db([])
+        with (
+            mock.patch(
+                f'{_MODULE}.graph.parse_agtype', side_effect=lambda x: x
+            ),
+            self.assertLogs(project_deployments.LOGGER, level='ERROR'),
+        ):
+            run = await project_deployments.complete_promote_build(
+                db,
+                org_slug='octo',
+                project_id='p1',
+                release_id='rel1',
+                tag='2.45.3',
+                committish='3c1ea7b',
+                to_environment='production',
+                requested_by='someone@example.com',
+                run_id='build-1',
+            )
+        assert run is not None
+        self.assertEqual('new-run', run.run_id)
+        audit = project_deployments._record_deployment_audit
+        audit.assert_awaited_once()
+        self.assertEqual(
+            'someone@example.com', audit.await_args.kwargs['recorded_by']
+        )
 
 
 class PromotedTagSyncTestCase(unittest.IsolatedAsyncioTestCase):

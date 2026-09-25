@@ -851,6 +851,32 @@ class Graph:
                 await conn.close()
                 raise
 
+    async def _run_on_fresh_connection(
+        self,
+        run: collections.abc.Callable[
+            [psycopg.AsyncConnection[typing.Any]],
+            collections.abc.Awaitable[RunResultT],
+        ],
+    ) -> RunResultT:
+        """Run *run* on a new, unpooled connection, then close it.
+
+        The poisoned-backend retry cannot take its second attempt from
+        the pool: ``pool.connection()`` hands out an existing idle
+        connection, and the concurrent load that poisons one backend
+        routinely poisons its neighbours too, so the retry landed on
+        another corrupt backend and failed the same way.  A connection
+        opened here is a new backend with an empty label cache.
+
+        """
+        conn = await psycopg.AsyncConnection.connect(
+            str(self.settings.url),
+        )
+        try:
+            await self._configure_connection(conn)
+            return await run(conn)
+        finally:
+            await conn.close()
+
     async def _run_retrying_poisoned(
         self,
         run: collections.abc.Callable[
@@ -862,8 +888,11 @@ class Graph:
 
         The retry cannot double a write: with autocommit on, a
         statement that raised committed nothing, and the batch path
-        retries only after its transaction rolled back.  A genuine
-        ``UndefinedTable`` fails again on the retry and propagates.
+        retries only after its transaction rolled back.  The 42P01
+        retry runs on a fresh backend (see
+        :meth:`_run_on_fresh_connection`), so a genuine
+        ``UndefinedTable`` is the only kind that fails again and
+        propagates.
 
         A concurrent-update failure (see
         :data:`_CONCURRENT_UPDATE_MESSAGE`) is retried on the same
@@ -877,10 +906,11 @@ class Graph:
         except psycopg.errors.UndefinedTable as err:
             LOGGER.warning(
                 'graph query failed with UndefinedTable (%s); '
-                'discarded the connection and retrying once',
+                'discarded the connection and retrying once on a '
+                'fresh one',
                 err,
             )
-            return await self._run_discarding_poisoned(run)
+            return await self._run_on_fresh_connection(run)
         except psycopg.errors.InternalError as err:
             if not _is_concurrent_update(err):
                 raise
