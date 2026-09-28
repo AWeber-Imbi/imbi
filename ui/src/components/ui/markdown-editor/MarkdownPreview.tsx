@@ -1,6 +1,4 @@
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-
+import { RichMarkdown } from '@/components/ui/rich-markdown'
 import { cn } from '@/lib/utils'
 
 interface MarkdownPreviewProps {
@@ -24,16 +22,7 @@ export function MarkdownPreview({ className, value }: MarkdownPreviewProps) {
         className,
       )}
     >
-      <Markdown
-        components={{
-          a: (props) => (
-            <a {...props} rel="noopener noreferrer" target="_blank" />
-          ),
-        }}
-        remarkPlugins={[remarkGfm]}
-      >
-        {value}
-      </Markdown>
+      <RichMarkdown>{value}</RichMarkdown>
     </div>
   )
 }
