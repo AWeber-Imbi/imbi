@@ -5263,23 +5263,39 @@ async def complete_promote_build(
         resolved.plugin_slug,
         run.run_id,
     )
-    appended = await append_deployment_event(
-        db,
-        org_slug=org_slug,
-        project_id=project_id,
-        release_id=release_id,
-        env_slug=to_environment,
-        status='in_progress',
-        note=f'via {resolved.plugin_slug}',
-        external_run_id=str(run.run_id) if run.run_id else None,
-        external_run_url=run.run_url,
-        # The person who pressed promote, not the worker that got here.
-        performed_by=requested_by or None,
-        credential=ctx.credential_note,
-        # Stamps ``origin`` on the node, which is what lets a reclaimed
-        # job recognize its own in-flight deployment.
-        source='promote',
-    )
+    # The deployment is dispatched and will run whatever happens next, so
+    # recording it is best-effort from here on.  Raising would abandon the
+    # promote before the audit row below is written and before the watcher
+    # closes the deployment -- the two writes that attribute it to
+    # ``requested_by`` -- leaving the webhook's anonymous event as the only
+    # record and "Deployed by" blank.  The watcher's close re-creates the
+    # node on the same ``external_run_id`` if this write is lost.
+    try:
+        appended = await append_deployment_event(
+            db,
+            org_slug=org_slug,
+            project_id=project_id,
+            release_id=release_id,
+            env_slug=to_environment,
+            status='in_progress',
+            note=f'via {resolved.plugin_slug}',
+            external_run_id=str(run.run_id) if run.run_id else None,
+            external_run_url=run.run_url,
+            # The person who pressed promote, not the worker that got here.
+            performed_by=requested_by or None,
+            credential=ctx.credential_note,
+            # Stamps ``origin`` on the node, which is what lets a reclaimed
+            # job recognize its own in-flight deployment.
+            source='promote',
+        )
+    except Exception:
+        LOGGER.exception(
+            'release-promote could not record the dispatched deployment '
+            'for project %s release %s',
+            project_id,
+            release_id,
+        )
+        appended = None
     if isinstance(appended, str):
         LOGGER.warning(
             'release-promote could not record the deployment event for '
