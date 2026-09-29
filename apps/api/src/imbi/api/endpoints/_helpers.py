@@ -14,7 +14,11 @@ import psycopg
 from imbi.common import graph
 from imbi.common import models as common_models
 from imbi.common import patch as json_patch
-from imbi.common.plugins.base import PluginContext, ServiceConnection
+from imbi.common.plugins.base import (
+    PluginContext,
+    ProjectDependency,
+    ServiceConnection,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -521,6 +525,147 @@ async def lookup_project_exists_in(
             )
         )
     return connections
+
+
+_DEPENDENCY_QUERIES: dict[str, typing.LiteralString] = {
+    'outbound': (
+        'MATCH (p:Project {{id: {project_id}}})-[:DEPENDS_ON]->(n:Project) '
+        'OPTIONAL MATCH (n)-[ei:EXISTS_IN]->(i:Integration) '
+        'RETURN n.id AS project_id, n.slug AS project_slug, '
+        'i.slug AS integration_slug, ei.identifier AS identifier, '
+        'ei.canonical_url AS canonical_url'
+    ),
+    'inbound': (
+        'MATCH (p:Project {{id: {project_id}}})<-[:DEPENDS_ON]-(n:Project) '
+        'OPTIONAL MATCH (n)-[ei:EXISTS_IN]->(i:Integration) '
+        'RETURN n.id AS project_id, n.slug AS project_slug, '
+        'i.slug AS integration_slug, ei.identifier AS identifier, '
+        'ei.canonical_url AS canonical_url'
+    ),
+}
+
+
+async def lookup_project_dependencies(
+    db: graph.Graph,
+    project_id: str,
+) -> list[ProjectDependency]:
+    """Return the project's ``DEPENDS_ON`` neighbours in both directions.
+
+    Each :class:`ProjectDependency` carries the neighbour's own
+    ``EXISTS_IN`` connections.  Returns ``[]`` on lookup failure.
+    Populated onto :attr:`PluginContext.dependencies`.
+    """
+    columns = [
+        'project_id',
+        'project_slug',
+        'integration_slug',
+        'identifier',
+        'canonical_url',
+    ]
+    dependencies: list[ProjectDependency] = []
+    for direction, query in _DEPENDENCY_QUERIES.items():
+        try:
+            records = await db.execute(
+                query, {'project_id': project_id}, columns
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.debug('Project dependency lookup failed', exc_info=True)
+            return []
+        by_id: dict[str, ProjectDependency] = {}
+        for r in records:
+            neighbour_id = graph.parse_agtype(r.get('project_id'))
+            if not neighbour_id:
+                continue
+            dep = by_id.get(str(neighbour_id))
+            if dep is None:
+                dep = ProjectDependency(
+                    direction=typing.cast(
+                        typing.Literal['inbound', 'outbound'], direction
+                    ),
+                    project_id=str(neighbour_id),
+                    project_slug=str(
+                        graph.parse_agtype(r.get('project_slug')) or ''
+                    ),
+                )
+                by_id[dep.project_id] = dep
+            slug = graph.parse_agtype(r.get('integration_slug'))
+            identifier = graph.parse_agtype(r.get('identifier'))
+            if not slug or not identifier:
+                continue
+            canonical_url = graph.parse_agtype(r.get('canonical_url'))
+            dep.service_connections.append(
+                ServiceConnection(
+                    integration_slug=str(slug),
+                    identifier=str(identifier),
+                    canonical_url=(
+                        None if canonical_url is None else str(canonical_url)
+                    ),
+                )
+            )
+        dependencies.extend(by_id.values())
+    return dependencies
+
+
+async def lookup_linked_identifiers(
+    db: graph.Graph,
+    org_slug: str,
+    integration_slug: str,
+    identifiers: list[str],
+) -> set[str]:
+    """Return the ``identifiers`` bound to a project in ``org_slug``.
+
+    Matches ``EXISTS_IN`` edges to the ``integration_slug`` Integration
+    from any project owned by a team in the organization.  Returns an
+    empty set on lookup failure, so a caller that removes remote state
+    only for linked identifiers fails safe.
+    """
+    if not identifiers:
+        return set()
+    query: typing.LiteralString = (
+        'MATCH (:Organization {{slug: {org_slug}}})<-[:BELONGS_TO]-(:Team)'
+        '<-[:OWNED_BY]-(:Project)-[ei:EXISTS_IN]->'
+        '(:Integration {{slug: {integration_slug}}}) '
+        'WHERE ei.identifier IN {identifiers} '
+        'RETURN DISTINCT ei.identifier AS identifier'
+    )
+    try:
+        records = await db.execute(
+            query,
+            {
+                'org_slug': org_slug,
+                'integration_slug': integration_slug,
+                'identifiers': identifiers,
+            },
+            ['identifier'],
+        )
+    except Exception:  # noqa: BLE001
+        LOGGER.debug('Linked identifier lookup failed', exc_info=True)
+        return set()
+    return {
+        str(value)
+        for r in records
+        if (value := graph.parse_agtype(r.get('identifier')))
+    }
+
+
+def linked_identifier_resolver(
+    db: graph.Graph, org_slug: str, integration_slug: str | None
+) -> (
+    collections.abc.Callable[[list[str]], collections.abc.Awaitable[set[str]]]
+    | None
+):
+    """Build the :attr:`PluginContext.resolve_linked_identifiers` hook.
+
+    Returns ``None`` for a capability not bound to an Integration.
+    """
+    if not integration_slug:
+        return None
+    slug = integration_slug
+
+    async def _resolve(identifiers: list[str]) -> set[str]:
+        return await lookup_linked_identifiers(db, org_slug, slug, identifiers)
+
+    return _resolve
 
 
 async def persist_service_writeback(

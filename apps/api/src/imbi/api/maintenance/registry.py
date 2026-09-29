@@ -22,6 +22,7 @@ from imbi.common import graph
 MaintenanceSlug = typing.Literal[
     'run-analysis',
     'remediate',
+    'sync-fixes',
     'rescore',
     'deployment-resync',
     'deployment-sweep',
@@ -103,6 +104,21 @@ OPERATIONS: dict[MaintenanceSlug, OperationDefinition] = {
             pause_key=None,
             enumerate=operations.enumerate_all_projects,
             execute=operations.execute_remediate,
+        ),
+        OperationDefinition(
+            slug='sync-fixes',
+            label='Apply Sync Fixes',
+            description=(
+                'Run the Project Doctor analysis for every project, then '
+                'apply only the fixes a plugin marks safe to sweep -- '
+                'e.g. repointing a PagerDuty escalation policy or syncing '
+                'PagerDuty service dependencies. Never creates or deletes '
+                'a remote resource. Projects with no such findings are '
+                'skipped.'
+            ),
+            pause_key=None,
+            enumerate=operations.enumerate_all_projects,
+            execute=operations.execute_sync_fixes,
         ),
         OperationDefinition(
             slug='rescore',

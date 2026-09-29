@@ -2918,6 +2918,29 @@ async def list_project_relationships(
     )
 
 
+async def _dispatch_dependencies_changed(
+    db: graph.Pool,
+    org_slug: str,
+    project_id: str,
+    auth: permissions.AuthContext,
+) -> None:
+    """Tell lifecycle plugins the source project's dependencies changed.
+
+    Only the source is dispatched: its plugin reconciles the dependency
+    in both directions, so the target needs no second call.  Failures
+    are logged and never undo the Imbi-side edge change.
+    """
+    try:
+        await dispatch_lifecycle(
+            db, project_id, org_slug, 'dependencies_changed', auth
+        )
+    except Exception:
+        LOGGER.exception(
+            'Lifecycle dependencies_changed dispatch failed for project %s',
+            project_id,
+        )
+
+
 @projects_router.post(
     '/{project_id}/relationships/{target_id}',
     status_code=204,
@@ -2975,6 +2998,7 @@ async def create_project_relationship(
                 f'Project {project_id!r} or target {target_id!r} not found'
             ),
         )
+    await _dispatch_dependencies_changed(db, org_slug, project_id, auth)
     # The source project gained a dependency, which can change a
     # condition-policy score that reads its neighbours. No-op unless a
     # condition policy exists.
@@ -3034,6 +3058,7 @@ async def delete_project_relationship(
                 f'Relationship from {project_id!r} to {target_id!r} not found'
             ),
         )
+    await _dispatch_dependencies_changed(db, org_slug, project_id, auth)
     # The source project lost a dependency; re-score it so a condition
     # policy reading its neighbours reflects the change. No-op unless a
     # condition policy exists.

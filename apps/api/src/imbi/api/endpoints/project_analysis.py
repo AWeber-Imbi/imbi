@@ -29,6 +29,8 @@ from imbi.api.blueprint_compliance import (
     remediate_blueprint,
 )
 from imbi.api.endpoints._helpers import (
+    linked_identifier_resolver,
+    lookup_project_dependencies,
     lookup_project_exists_in,
     lookup_project_links,
     lookup_project_slugs,
@@ -110,6 +112,7 @@ async def _build_context(
     project_links = await lookup_project_links(db, project_id)
     project_type_slugs = await lookup_project_type_slugs(db, project_id)
     service_connections = await lookup_project_exists_in(db, project_id)
+    dependencies = await lookup_project_dependencies(db, project_id)
     return PluginContext(
         project_id=project_id,
         project_slug=project_slug,
@@ -122,6 +125,10 @@ async def _build_context(
         project_type_slugs=project_type_slugs,
         integration_slug=resolved.integration_slug,
         service_connections=service_connections,
+        dependencies=dependencies,
+        resolve_linked_identifiers=linked_identifier_resolver(
+            db, org_slug, resolved.integration_slug
+        ),
     )
 
 
@@ -669,6 +676,7 @@ async def remediate_all_for_project(
     org_slug: str,
     project_id: str,
     auth: permissions.AuthContext,
+    sweepable_only: bool = False,
 ) -> RemediateAllResponse | None:
     """Apply every fixable finding in a project's report (best-effort).
 
@@ -678,7 +686,10 @@ async def remediate_all_for_project(
     re-run once at the end so the returned report reflects every fix.
 
     Shared by the per-project endpoint and the ``remediate`` maintenance
-    sweep, so both apply findings identically.
+    sweep, so both apply findings identically.  ``sweepable_only``
+    restricts the pass to offers marked
+    :attr:`RemediationOffer.sweepable` (the ``sync-fixes`` sweep) and
+    skips the closing re-analysis when nothing was applied.
     """
     report = await _fetch_report(db, project_id)
     if report is None:
@@ -691,6 +702,8 @@ async def remediate_all_for_project(
     outcomes: list[RemediateOutcome] = []
     for finding in report.results:
         if finding.remediation is None:
+            continue
+        if sweepable_only and not finding.remediation.sweepable:
             continue
         try:
             result = await _remediate_one(
@@ -724,6 +737,8 @@ async def remediate_all_for_project(
                 result=result,
             )
         )
+    if sweepable_only and not outcomes:
+        return RemediateAllResponse(outcomes=outcomes, report=report)
     fresh = await run_and_persist(db, org_slug, project_id, auth)
     return RemediateAllResponse(outcomes=outcomes, report=fresh)
 

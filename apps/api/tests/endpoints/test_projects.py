@@ -2244,6 +2244,12 @@ class _RelationshipsTestBase(support.SharedAppTestCase):
             self.mock_db
         )
         self.client = TestClient(self.test_app)
+        dispatch = mock.patch(
+            'imbi.api.endpoints.projects.dispatch_lifecycle',
+            mock.AsyncMock(return_value=[]),
+        )
+        self.mock_dispatch = dispatch.start()
+        self.addCleanup(dispatch.stop)
 
     def _url(self, pid: str = PROJECT_ID) -> str:
         return f'/organizations/engineering/projects/{pid}/relationships'
@@ -2418,6 +2424,13 @@ class CreateProjectRelationshipTestCase(_RelationshipsTestBase):
         query = self.mock_db.execute.call_args.args[0]
         self.assertIn('MERGE', query)
         self.assertIn('DEPENDS_ON', query)
+        self.mock_dispatch.assert_awaited_once_with(
+            self.mock_db,
+            PROJECT_ID,
+            'engineering',
+            'dependencies_changed',
+            self.auth_context,
+        )
 
     def test_create_is_idempotent(self) -> None:
         """MERGE makes repeated calls safe; still returns 204."""
@@ -2568,6 +2581,33 @@ class DeleteProjectRelationshipTestCase(_RelationshipsTestBase):
         query = self.mock_db.execute.call_args.args[0]
         self.assertIn('DELETE r', query)
         self.assertIn('DEPENDS_ON', query)
+        self.mock_dispatch.assert_awaited_once_with(
+            self.mock_db,
+            PROJECT_ID,
+            'engineering',
+            'dependencies_changed',
+            self.auth_context,
+        )
+
+    def test_dispatch_failure_does_not_fail_the_request(self) -> None:
+        """A lifecycle dispatch error never undoes the edge change."""
+        self.mock_db.execute.return_value = [{'source_id': PROJECT_ID}]
+        self.mock_dispatch.side_effect = RuntimeError('boom')
+
+        with (
+            mock.patch(
+                'imbi.common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi.api.endpoints.projects.score_queue'
+                '.condition_policies_exist',
+                mock.AsyncMock(return_value=False),
+            ),
+        ):
+            response = self.client.delete(self._target_url('target1'))
+
+        self.assertEqual(response.status_code, 204)
 
     def test_delete_enqueues_source_recompute(self) -> None:
         """Removing a dependency re-scores the source project."""

@@ -153,6 +153,66 @@ class ExecuteRemediateTests(unittest.IsolatedAsyncioTestCase):
                 )
 
 
+class ExecuteSyncFixesTests(unittest.IsolatedAsyncioTestCase):
+    def _patch(
+        self, remediate: mock.AsyncMock, run: mock.AsyncMock | None = None
+    ) -> contextlib.ExitStack:
+        stack = contextlib.ExitStack()
+        stack.enter_context(
+            mock.patch.object(operations, '_org_slug_for', _org_slug('org'))
+        )
+        stack.enter_context(
+            mock.patch(
+                'imbi.api.endpoints.project_analysis.run_and_persist',
+                run or mock.AsyncMock(),
+            )
+        )
+        stack.enter_context(
+            mock.patch(
+                'imbi.api.endpoints.project_analysis'
+                '.remediate_all_for_project',
+                remediate,
+            )
+        )
+        return stack
+
+    async def test_analyzes_first_then_applies_sweepable_only(self) -> None:
+        run = mock.AsyncMock()
+        remediate = mock.AsyncMock(return_value=_remediate_response('fixed'))
+        with self._patch(remediate, run):
+            outcome = await operations.execute_sync_fixes(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+            )
+        self.assertEqual('succeeded', outcome)
+        run.assert_awaited_once()
+        self.assertTrue(remediate.await_args.kwargs['sweepable_only'])
+
+    async def test_skipped_without_sweepable_findings(self) -> None:
+        remediate = mock.AsyncMock(return_value=_remediate_response())
+        with self._patch(remediate):
+            outcome = await operations.execute_sync_fixes(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+            )
+        self.assertEqual('skipped', outcome)
+
+    async def test_skipped_without_org(self) -> None:
+        with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
+            outcome = await operations.execute_sync_fixes(
+                mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+            )
+        self.assertEqual('skipped', outcome)
+
+    async def test_any_failed_raises_item_failed(self) -> None:
+        remediate = mock.AsyncMock(
+            return_value=_remediate_response('fixed', 'failed')
+        )
+        with self._patch(remediate):
+            with self.assertRaises(operations.MaintenanceItemFailed):
+                await operations.execute_sync_fixes(
+                    mock.AsyncMock(), mock.AsyncMock(), 'p1', ctx=_ctx()
+                )
+
+
 class ExecuteCommitSyncTests(unittest.IsolatedAsyncioTestCase):
     def _patches(
         self, run_sync: mock.AsyncMock
