@@ -12331,6 +12331,11 @@ export interface components {
              * @default false
              */
             destructive: boolean;
+            /**
+             * Sweepable
+             * @default false
+             */
+            sweepable: boolean;
         };
         /**
          * RemediationResult

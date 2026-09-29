@@ -458,6 +458,22 @@ class ServiceConnection(pydantic.BaseModel):
     canonical_url: str | None = None
 
 
+class ProjectDependency(pydantic.BaseModel):
+    """One ``DEPENDS_ON`` neighbour of the project in the context.
+
+    ``outbound`` means the context project depends on this project;
+    ``inbound`` means this project depends on the context project.
+    ``service_connections`` mirrors the neighbour's own ``EXISTS_IN``
+    edges so a capability can map the dependency onto the remote (e.g. a
+    PagerDuty service dependency) without re-querying the graph.
+    """
+
+    direction: typing.Literal['inbound', 'outbound']
+    project_id: str
+    project_slug: str
+    service_connections: list[ServiceConnection] = []
+
+
 class ServiceWriteback(pydantic.BaseModel):
     """A project's Integration relationship the host should persist.
 
@@ -601,6 +617,26 @@ class PluginContext(pydantic.BaseModel):
     # relationship without re-querying the graph.  Empty when the project
     # exists in no Integrations.
     service_connections: list[ServiceConnection] = []
+    # The project's ``DEPENDS_ON`` neighbours in both directions, each
+    # with its own ``EXISTS_IN`` connections.  Populated by the host on
+    # lifecycle dispatch and analysis; empty when the project has no
+    # dependencies or the host does not populate it.
+    dependencies: list[ProjectDependency] = []
+    # Host-injected resolver that takes remote identifiers for
+    # ``integration_slug`` and returns the subset bound to *some* Imbi
+    # project in the same organization by an ``EXISTS_IN`` edge.  Lets a
+    # capability tell an Imbi-managed remote resource from one created
+    # outside Imbi before it removes anything.  ``None`` when the host
+    # wires no resolver; capabilities must then not remove remote state
+    # they cannot attribute.  Excluded from serialization like
+    # ``resolve_user_by_identity``.
+    resolve_linked_identifiers: typing.Annotated[
+        collections.abc.Callable[
+            [list[str]], collections.abc.Awaitable[set[str]]
+        ]
+        | None,
+        pydantic.Field(default=None, exclude=True, repr=False),
+    ] = None
     # Host-injected resolver mapping an external identity *subject* (e.g.
     # a GitHub numeric user id) to the matching Imbi user's email, or
     # ``None`` when no active ``IdentityConnection`` matches.  Lets a
@@ -1748,6 +1784,17 @@ class LifecycleCapability(CapabilityHandler):
         del ctx, credentials
         raise NotImplementedError
 
+    async def on_project_dependencies_changed(
+        self,
+        ctx: PluginContext,
+        credentials: dict[str, str],
+    ) -> LifecycleResult:
+        """React to a ``DEPENDS_ON`` edge being added to or removed from
+        the project.  Optional -- ``ctx.dependencies`` carries the
+        post-change neighbour set in both directions."""
+        del ctx, credentials
+        raise NotImplementedError
+
     async def resolve_relocation_target(
         self,
         ctx: PluginContext,
@@ -1819,6 +1866,12 @@ class RemediationOffer(pydantic.BaseModel):
     #: fixes that create/remove an edge or delete a value rather than
     #: simply reconciling Imbi state to an external source of truth.
     destructive: bool = False
+    #: When ``True`` the ``sync-fixes`` maintenance sweep may apply this
+    #: fix unattended across every project.  Set it only for idempotent
+    #: fixes that bring a remote back in line with Imbi (e.g. repoint a
+    #: routing target) -- never for a fix that creates or deletes a
+    #: remote resource.
+    sweepable: bool = False
 
 
 class RemediationResult(pydantic.BaseModel):

@@ -1164,6 +1164,7 @@ export interface RemediationOffer {
   destructive?: boolean
   id: string
   label: string
+  sweepable?: boolean
 }
 
 interface RemediateAllResponse {
