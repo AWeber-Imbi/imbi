@@ -125,9 +125,15 @@ async def _build_context(
         project_type_slugs=project_type_slugs,
         integration_slug=resolved.integration_slug,
         service_connections=service_connections,
-        dependencies=dependencies,
-        resolve_linked_identifiers=linked_identifier_resolver(
-            db, org_slug, resolved.integration_slug
+        dependencies=dependencies or [],
+        # No resolver when the dependency lookup failed, so a fix does
+        # not remove remote state on partial data.
+        resolve_linked_identifiers=(
+            None
+            if dependencies is None
+            else linked_identifier_resolver(
+                db, org_slug, resolved.integration_slug
+            )
         ),
     )
 

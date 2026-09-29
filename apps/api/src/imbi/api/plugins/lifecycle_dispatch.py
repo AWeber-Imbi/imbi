@@ -140,7 +140,8 @@ class LifecycleContextBundle:
     )
     project_name: str | None = None
     project_description: str | None = None
-    dependencies: list[ProjectDependency] = dataclasses.field(
+    # ``None`` when the dependency lookup failed.
+    dependencies: list[ProjectDependency] | None = dataclasses.field(
         default_factory=list
     )
 
@@ -290,9 +291,15 @@ async def dispatch_lifecycle(
             integration_options=resolved.integration_options,
             capability_options=resolved.capability_options,
             service_connections=bundle.service_connections,
-            dependencies=bundle.dependencies,
-            resolve_linked_identifiers=linked_identifier_resolver(
-                db, org_slug, resolved.integration_slug
+            dependencies=bundle.dependencies or [],
+            # No resolver when the dependency lookup failed, so a
+            # capability does not remove remote state on partial data.
+            resolve_linked_identifiers=(
+                None
+                if bundle.dependencies is None
+                else linked_identifier_resolver(
+                    db, org_slug, resolved.integration_slug
+                )
             ),
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)

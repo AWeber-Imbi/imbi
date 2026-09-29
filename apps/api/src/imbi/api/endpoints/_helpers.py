@@ -548,12 +548,16 @@ _DEPENDENCY_QUERIES: dict[str, typing.LiteralString] = {
 async def lookup_project_dependencies(
     db: graph.Graph,
     project_id: str,
-) -> list[ProjectDependency]:
+) -> list[ProjectDependency] | None:
     """Return the project's ``DEPENDS_ON`` neighbours in both directions.
 
     Each :class:`ProjectDependency` carries the neighbour's own
-    ``EXISTS_IN`` connections.  Returns ``[]`` on lookup failure.
-    Populated onto :attr:`PluginContext.dependencies`.
+    ``EXISTS_IN`` connections.  Populated onto
+    :attr:`PluginContext.dependencies`.  Returns ``None`` on lookup
+    failure, so callers can tell "no dependencies" from "unknown".
+    When the result is ``None``, the host must not wire
+    :attr:`PluginContext.resolve_linked_identifiers`: without a
+    resolver, capabilities do not remove remote state.
     """
     columns = [
         'project_id',
@@ -569,8 +573,8 @@ async def lookup_project_dependencies(
                 query, {'project_id': project_id}, columns
             )
         except Exception:  # noqa: BLE001
-            LOGGER.debug('Project dependency lookup failed', exc_info=True)
-            return []
+            LOGGER.warning('Project dependency lookup failed', exc_info=True)
+            return None
         by_id: dict[str, ProjectDependency] = {}
         for r in records:
             neighbour_id = graph.parse_agtype(r.get('project_id'))

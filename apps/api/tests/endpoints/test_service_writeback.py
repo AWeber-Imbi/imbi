@@ -305,6 +305,7 @@ class LookupProjectDependenciesTestCase(unittest.TestCase):
         result = asyncio.run(
             _helpers.lookup_project_dependencies(db, 'proj-1')
         )
+        assert result is not None
         by_id = {d.project_id: d for d in result}
         self.assertEqual(set(by_id), {'db', 'cache', 'web'})
         self.assertEqual(by_id['db'].direction, 'outbound')
@@ -315,13 +316,21 @@ class LookupProjectDependenciesTestCase(unittest.TestCase):
         self.assertEqual(by_id['cache'].service_connections, [])
         self.assertEqual(by_id['web'].direction, 'inbound')
 
-    def test_empty_on_lookup_failure(self) -> None:
+    def test_none_on_lookup_failure(self) -> None:
         db = mock.AsyncMock()
         db.execute.side_effect = RuntimeError('boom')
         result = asyncio.run(
             _helpers.lookup_project_dependencies(db, 'proj-1')
         )
-        self.assertEqual(result, [])
+        self.assertIsNone(result)
+
+    def test_none_when_only_inbound_lookup_fails(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = [[], RuntimeError('boom')]
+        result = asyncio.run(
+            _helpers.lookup_project_dependencies(db, 'proj-1')
+        )
+        self.assertIsNone(result)
 
 
 class LookupLinkedIdentifiersTestCase(unittest.TestCase):
