@@ -138,8 +138,12 @@ async def current_pairs(
     )
     pairs: set[Pair] = set()
     for relationship in relationships:
-        dependent = _provisioning.as_dict(relationship.get('dependent_service'))
-        supporting = _provisioning.as_dict(relationship.get('supporting_service'))
+        dependent = _provisioning.as_dict(
+            relationship.get('dependent_service')
+        )
+        supporting = _provisioning.as_dict(
+            relationship.get('supporting_service')
+        )
         if (
             dependent.get('type') != _SERVICE_TYPE
             or supporting.get('type') != _SERVICE_TYPE
