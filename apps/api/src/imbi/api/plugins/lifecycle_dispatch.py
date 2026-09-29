@@ -39,6 +39,7 @@ from imbi.common.plugins.base import (
     LifecycleResult,
     LinkWriteback,
     PluginContext,
+    ProjectDependency,
     ServiceConnection,
     ServiceWriteback,
 )
@@ -60,6 +61,7 @@ LifecycleEvent = typing.Literal[
     'unarchived',
     'deleted',
     'relocated',
+    'dependencies_changed',
 ]
 
 #: Map of lifecycle events to the matching ``LifecycleCapability`` hook
@@ -72,6 +74,7 @@ _EVENT_METHOD: dict[LifecycleEvent, str] = {
     'unarchived': 'on_project_unarchived',
     'deleted': 'on_project_deleted',
     'relocated': 'on_project_relocated',
+    'dependencies_changed': 'on_project_dependencies_changed',
 }
 
 
@@ -137,6 +140,10 @@ class LifecycleContextBundle:
     )
     project_name: str | None = None
     project_description: str | None = None
+    # ``None`` when the dependency lookup failed.
+    dependencies: list[ProjectDependency] | None = dataclasses.field(
+        default_factory=list
+    )
 
 
 async def build_lifecycle_context_bundle(
@@ -148,6 +155,7 @@ async def build_lifecycle_context_bundle(
     write, and pass it as ``bundle=`` to :func:`dispatch_lifecycle`.
     """
     from imbi.api.endpoints._helpers import (
+        lookup_project_dependencies,
         lookup_project_exists_in,
         lookup_project_links,
         lookup_project_name_description,
@@ -163,12 +171,14 @@ async def build_lifecycle_context_bundle(
         project_type_slugs,
         service_connections,
         (project_name, project_description),
+        dependencies,
     ) = await asyncio.gather(
         lookup_project_slugs(db, project_id),
         lookup_project_links(db, project_id),
         lookup_project_type_slugs(db, project_id),
         lookup_project_exists_in(db, project_id),
         lookup_project_name_description(db, project_id),
+        lookup_project_dependencies(db, project_id),
     )
     return LifecycleContextBundle(
         project_slug=project_slug,
@@ -178,6 +188,7 @@ async def build_lifecycle_context_bundle(
         service_connections=service_connections,
         project_name=project_name,
         project_description=project_description,
+        dependencies=dependencies,
     )
 
 
@@ -225,6 +236,9 @@ async def dispatch_lifecycle(
     :class:`PluginContext` for plugins that need a before/after view
     (``'updated'`` / ``'relocated'``).
     """
+    # Lazy import to avoid the endpoints/_helpers <-> this-module cycle.
+    from imbi.api.endpoints._helpers import linked_identifier_resolver
+
     if resolved_list is None:
         resolved_list = await resolve_all_capabilities(
             db, project_id, 'lifecycle'
@@ -277,6 +291,16 @@ async def dispatch_lifecycle(
             integration_options=resolved.integration_options,
             capability_options=resolved.capability_options,
             service_connections=bundle.service_connections,
+            dependencies=bundle.dependencies or [],
+            # No resolver when the dependency lookup failed, so a
+            # capability does not remove remote state on partial data.
+            resolve_linked_identifiers=(
+                None
+                if bundle.dependencies is None
+                else linked_identifier_resolver(
+                    db, org_slug, resolved.integration_slug
+                )
+            ),
         )
         invocation = await _invoke_one(db, ctx, resolved, event, auth)
         results.append(invocation)

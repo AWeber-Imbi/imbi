@@ -261,3 +261,110 @@ class MergeExistsInTestCase(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LookupProjectDependenciesTestCase(unittest.TestCase):
+    def test_groups_connections_per_neighbour_and_direction(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = [
+            # outbound
+            [
+                {
+                    'project_id': 'db',
+                    'project_slug': 'db',
+                    'integration_slug': 'pagerduty',
+                    'identifier': 'PDB',
+                    'canonical_url': None,
+                },
+                {
+                    'project_id': 'db',
+                    'project_slug': 'db',
+                    'integration_slug': 'github',
+                    'identifier': '42',
+                    'canonical_url': None,
+                },
+                {
+                    'project_id': 'cache',
+                    'project_slug': 'cache',
+                    'integration_slug': None,
+                    'identifier': None,
+                    'canonical_url': None,
+                },
+            ],
+            # inbound
+            [
+                {
+                    'project_id': 'web',
+                    'project_slug': 'web',
+                    'integration_slug': 'pagerduty',
+                    'identifier': 'PWEB',
+                    'canonical_url': None,
+                },
+            ],
+        ]
+        result = asyncio.run(
+            _helpers.lookup_project_dependencies(db, 'proj-1')
+        )
+        assert result is not None
+        by_id = {d.project_id: d for d in result}
+        self.assertEqual(set(by_id), {'db', 'cache', 'web'})
+        self.assertEqual(by_id['db'].direction, 'outbound')
+        self.assertEqual(
+            [c.identifier for c in by_id['db'].service_connections],
+            ['PDB', '42'],
+        )
+        self.assertEqual(by_id['cache'].service_connections, [])
+        self.assertEqual(by_id['web'].direction, 'inbound')
+
+    def test_none_on_lookup_failure(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = RuntimeError('boom')
+        result = asyncio.run(
+            _helpers.lookup_project_dependencies(db, 'proj-1')
+        )
+        self.assertIsNone(result)
+
+    def test_none_when_only_inbound_lookup_fails(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = [[], RuntimeError('boom')]
+        result = asyncio.run(
+            _helpers.lookup_project_dependencies(db, 'proj-1')
+        )
+        self.assertIsNone(result)
+
+
+class LookupLinkedIdentifiersTestCase(unittest.TestCase):
+    def test_returns_matched_identifiers(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'identifier': 'PDB'}]
+        result = asyncio.run(
+            _helpers.lookup_linked_identifiers(
+                db, 'org-1', 'pagerduty', ['PDB', 'PHAND']
+            )
+        )
+        self.assertEqual(result, {'PDB'})
+        params = db.execute.call_args.args[1]
+        self.assertEqual(params['identifiers'], ['PDB', 'PHAND'])
+        self.assertEqual(params['integration_slug'], 'pagerduty')
+        self.assertEqual(params['org_slug'], 'org-1')
+
+    def test_no_query_for_empty_input(self) -> None:
+        db = mock.AsyncMock()
+        result = asyncio.run(
+            _helpers.lookup_linked_identifiers(db, 'org-1', 'pagerduty', [])
+        )
+        self.assertEqual(result, set())
+        db.execute.assert_not_called()
+
+    def test_empty_on_lookup_failure(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.side_effect = RuntimeError('boom')
+        result = asyncio.run(
+            _helpers.lookup_linked_identifiers(db, 'org-1', 'pagerduty', ['P'])
+        )
+        self.assertEqual(result, set())
+
+    def test_resolver_is_none_without_integration(self) -> None:
+        self.assertIsNone(
+            _helpers.linked_identifier_resolver(mock.AsyncMock(), 'org', None)
+        )

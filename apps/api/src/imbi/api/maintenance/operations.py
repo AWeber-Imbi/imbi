@@ -31,6 +31,9 @@ from imbi.common import clickhouse, graph, iggy
 from imbi.common import models as common_models
 from imbi.common.plugins.errors import PluginRateLimited
 
+if typing.TYPE_CHECKING:
+    from imbi.api.endpoints.project_analysis import RemediateOutcome
+
 LOGGER = logging.getLogger(__name__)
 
 #: ``requested_by`` / ``principal_name`` recorded on work this runs.
@@ -144,32 +147,79 @@ async def execute_remediate(
         return _skip(
             ctx, 'remediate', 'No persisted report, or no fixable findings.'
         )
-    # One row per remediation that did not work: which finding, which
-    # plugin, and what it said. Successful fixes stay as a count -- a
-    # project with forty findings would otherwise write forty rows to
-    # say nothing an operator will read.
-    for outcome in response.outcomes:
+    return _record_remediations(ctx, 'remediate', response.outcomes)
+
+
+async def execute_sync_fixes(
+    db: graph.Graph,
+    client: valkey.Valkey,
+    project_id: str,
+    *,
+    ctx: log.MaintenanceContext,
+) -> ExecuteOutcome:
+    """Analyze one project, then apply only its sweepable fixes.
+
+    Unlike ``remediate`` this does not trust a stored report: it runs
+    the analysis first so drift that appeared since the last run is
+    found, then applies the findings whose offer is marked
+    :attr:`~imbi.common.plugins.base.RemediationOffer.sweepable` --
+    idempotent fixes that bring a remote back in line with Imbi, never
+    ones that create or delete a remote resource.
+    """
+    from imbi.api.endpoints import project_analysis
+
+    org_slug = await _org_slug_for(db, project_id)
+    if org_slug is None:
+        return _skip(ctx, 'no-organization', _NO_ORG)
+    auth = _system_auth()
+    await project_analysis.run_and_persist(db, org_slug, project_id, auth)
+    response = await project_analysis.remediate_all_for_project(
+        db,
+        org_slug=org_slug,
+        project_id=project_id,
+        auth=auth,
+        sweepable_only=True,
+    )
+    if response is None or not response.outcomes:
+        return _skip(ctx, 'sync-fixes', 'No sweepable findings.')
+    return _record_remediations(ctx, 'sync-fixes', response.outcomes)
+
+
+def _record_remediations(
+    ctx: log.MaintenanceContext,
+    action: str,
+    outcomes: list[RemediateOutcome],
+) -> ExecuteOutcome:
+    """Log a remediation pass and classify the item.
+
+    One row per remediation that did not work: which finding, which
+    plugin, and what it said. Successful fixes stay as a count -- a
+    project with forty findings would otherwise write forty rows to say
+    nothing an operator will read.  Raises
+    :class:`MaintenanceItemFailed` when any remediation failed.
+    """
+    for outcome in outcomes:
         if outcome.result.status == 'failed':
             ctx.log.record(
                 'failed',
-                'remediate',
+                action,
                 outcome.result.message,
                 finding=outcome.slug,
                 plugin=outcome.plugin_id,
             )
-    failed = sum(1 for o in response.outcomes if o.result.status == 'failed')
-    fixed = sum(1 for o in response.outcomes if o.result.status == 'fixed')
+    failed = sum(1 for o in outcomes if o.result.status == 'failed')
+    fixed = sum(1 for o in outcomes if o.result.status == 'fixed')
     ctx.log.record(
         'failed' if failed else 'succeeded',
-        'remediate',
-        f'{fixed} of {len(response.outcomes)} findings fixed.',
+        action,
+        f'{fixed} of {len(outcomes)} findings fixed.',
         fixed=fixed,
         failed=failed,
-        total=len(response.outcomes),
+        total=len(outcomes),
     )
     if failed:
         raise MaintenanceItemFailed(
-            f'{failed} of {len(response.outcomes)} remediations failed; '
+            f'{failed} of {len(outcomes)} remediations failed; '
             'see server logs for details.'
         )
     return 'succeeded'

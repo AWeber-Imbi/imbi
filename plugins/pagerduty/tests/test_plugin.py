@@ -56,7 +56,13 @@ class PluginTestCase(unittest.TestCase):
         self.assertTrue(capability.hints['supports_lifecycle_sync'])
         self.assertEqual(
             capability.hints['lifecycle_events'],
-            ['created', 'updated', 'deleted', 'relocated'],
+            [
+                'created',
+                'updated',
+                'deleted',
+                'relocated',
+                'dependencies_changed',
+            ],
         )
 
     def test_incidents_capability(self) -> None:

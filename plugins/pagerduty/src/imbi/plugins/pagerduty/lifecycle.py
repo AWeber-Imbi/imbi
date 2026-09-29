@@ -38,7 +38,12 @@ from imbi.common.plugins.base import (
     RelocationTarget,
     ServiceWriteback,
 )
-from imbi.plugins.pagerduty import _client, _provisioning, _services
+from imbi.plugins.pagerduty import (
+    _client,
+    _dependencies,
+    _provisioning,
+    _services,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -217,6 +222,34 @@ class PagerDutyLifecycle(LifecycleCapability):
         return LifecycleResult(
             status='ok',
             message=f'Repointed PagerDuty service {service_id}',
+            artifacts={'service_id': service_id},
+        )
+
+    async def on_project_dependencies_changed(
+        self, ctx: PluginContext, credentials: dict[str, str]
+    ) -> LifecycleResult:
+        async with _client.client(credentials) as client:
+            service_id = _dependencies.own_service_id(
+                ctx
+            ) or await _services.resolve_service_id(client, ctx)
+            if service_id is None:
+                return LifecycleResult(
+                    status='skipped',
+                    message='No PagerDuty service to sync dependencies for',
+                )
+            changes = await _dependencies.plan(client, ctx, service_id)
+            if changes.in_sync:
+                return LifecycleResult(
+                    status='skipped',
+                    message='PagerDuty service dependencies already match',
+                    artifacts={'service_id': service_id},
+                )
+            await _dependencies.apply(client, changes)
+        return LifecycleResult(
+            status='ok',
+            message=(
+                f'Synced PagerDuty service dependencies ({changes.summary()})'
+            ),
             artifacts={'service_id': service_id},
         )
 

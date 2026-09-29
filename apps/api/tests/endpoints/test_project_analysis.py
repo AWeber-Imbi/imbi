@@ -525,6 +525,91 @@ class ProjectAnalysisTestCase(unittest.TestCase):
         self.assertEqual('failed', body['outcomes'][0]['result']['status'])
 
 
+class RemediateAllSweepableTestCase(unittest.IsolatedAsyncioTestCase):
+    """``sweepable_only`` applies only offers marked sweepable."""
+
+    def _report(self, *offers: RemediationOffer) -> typing.Any:
+        from imbi.api.endpoints.project_analysis import (
+            AnalysisReport,
+            AnalysisResult,
+        )
+
+        return AnalysisReport(
+            id='r1',
+            project_id='proj-1',
+            created_at=datetime.datetime.now(datetime.UTC),
+            overall_status='fail',
+            results=[
+                AnalysisResult(
+                    slug=f'finding-{index}',
+                    title='t',
+                    description='d',
+                    status='fail',
+                    plugin_slug='blueprint-compliance',
+                    plugin_id='built-in',
+                    remediation=offer,
+                )
+                for index, offer in enumerate(offers)
+            ],
+        )
+
+    async def test_filters_to_sweepable_offers(self) -> None:
+        from imbi.api.endpoints import project_analysis
+
+        report = self._report(
+            RemediationOffer(id='safe', label='Fix', sweepable=True),
+            RemediationOffer(id='create', label='Create', destructive=True),
+        )
+        fixer = mock.AsyncMock(
+            return_value=RemediationResult(status='fixed', message='ok')
+        )
+        with (
+            mock.patch(f'{_MODULE}._fetch_report', return_value=report),
+            mock.patch(f'{_MODULE}.remediate_blueprint', fixer),
+            mock.patch(f'{_MODULE}.resolve_all_capabilities', return_value=[]),
+            mock.patch(
+                f'{_MODULE}.lookup_project_type_slugs', return_value=[]
+            ),
+            mock.patch(
+                f'{_MODULE}.run_and_persist', return_value=report
+            ) as rerun,
+        ):
+            response = await project_analysis.remediate_all_for_project(
+                mock.AsyncMock(),
+                org_slug='acme',
+                project_id='proj-1',
+                auth=mock.Mock(),
+                sweepable_only=True,
+            )
+        assert response is not None
+        self.assertEqual(['finding-0'], [o.slug for o in response.outcomes])
+        self.assertEqual('safe', fixer.await_args.args[3])
+        rerun.assert_awaited_once()
+
+    async def test_nothing_sweepable_skips_reanalysis(self) -> None:
+        from imbi.api.endpoints import project_analysis
+
+        report = self._report(RemediationOffer(id='create', label='Create'))
+        with (
+            mock.patch(f'{_MODULE}._fetch_report', return_value=report),
+            mock.patch(f'{_MODULE}.resolve_all_capabilities', return_value=[]),
+            mock.patch(
+                f'{_MODULE}.lookup_project_type_slugs', return_value=[]
+            ),
+            mock.patch(f'{_MODULE}.run_and_persist') as rerun,
+        ):
+            response = await project_analysis.remediate_all_for_project(
+                mock.AsyncMock(),
+                org_slug='acme',
+                project_id='proj-1',
+                auth=mock.Mock(),
+                sweepable_only=True,
+            )
+        assert response is not None
+        self.assertEqual([], response.outcomes)
+        rerun.assert_not_called()
+
+
 class FetchReportParsingTestCase(unittest.IsolatedAsyncioTestCase):
     """Regression: ``_fetch_report`` must decode collected result rows.
 

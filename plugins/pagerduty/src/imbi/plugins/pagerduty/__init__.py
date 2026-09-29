@@ -95,6 +95,7 @@ class PagerDutyPlugin(Plugin):
                         'updated',
                         'deleted',
                         'relocated',
+                        'dependencies_changed',
                     ],
                 },
                 handler=PagerDutyLifecycle,

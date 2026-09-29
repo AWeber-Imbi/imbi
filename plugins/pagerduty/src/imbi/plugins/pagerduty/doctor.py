@@ -33,7 +33,12 @@ from imbi.common.plugins.errors import (
     PluginAuthenticationFailed,
     PluginRateLimited,
 )
-from imbi.plugins.pagerduty import _client, _provisioning, _services
+from imbi.plugins.pagerduty import (
+    _client,
+    _dependencies,
+    _provisioning,
+    _services,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +52,14 @@ _REPAIR_EDGE = 'repair-edge'
 #: service has vanished since analysis, remediation fails fast rather than
 #: silently recreating it without the create confirmation.
 _RECONCILE_EDGE = 'reconcile-edge'
+
+#: Sweepable remediation: repoint the live service at the escalation
+#: policy the owning team maps to.  Idempotent; never creates anything.
+_REPOINT_POLICY = 'repoint-escalation-policy'
+
+#: Sweepable remediation: associate / disassociate PagerDuty service
+#: dependencies so they match Imbi's ``DEPENDS_ON`` edges.
+_SYNC_DEPENDENCIES = 'sync-dependencies'
 
 _LINK_KEY = _services.SERVICE_LINK_KEY
 
@@ -86,6 +99,24 @@ def _reconcile_offer() -> RemediationOffer:
     return RemediationOffer(
         id=_RECONCILE_EDGE,
         label='Repair the PagerDuty service link',
+    )
+
+
+def _repoint_offer() -> RemediationOffer:
+    """A sweepable offer to repoint the service's escalation policy."""
+    return RemediationOffer(
+        id=_REPOINT_POLICY,
+        label='Repoint the escalation policy',
+        sweepable=True,
+    )
+
+
+def _sync_dependencies_offer() -> RemediationOffer:
+    """A sweepable offer to sync the service's dependencies."""
+    return RemediationOffer(
+        id=_SYNC_DEPENDENCIES,
+        label='Sync PagerDuty service dependencies',
+        sweepable=True,
     )
 
 
@@ -189,7 +220,9 @@ class PagerDutyDoctor(AnalysisCapability):
         policy_id: str | None,
     ) -> list[AnalysisResultItem]:
         if connection is not None:
-            return await self._analyze_existing_edge(ctx, client, connection)
+            return await self._analyze_existing_edge(
+                ctx, client, connection, policy_id
+            )
         return await self._analyze_no_edge(ctx, client, policy_id)
 
     async def _analyze_existing_edge(
@@ -197,6 +230,7 @@ class PagerDutyDoctor(AnalysisCapability):
         ctx: PluginContext,
         client: httpx.AsyncClient,
         connection: ServiceConnection,
+        policy_id: str | None,
     ) -> list[AnalysisResultItem]:
         resp = await client.get(f'/services/{connection.identifier}')
         if resp.status_code == 404:
@@ -288,6 +322,12 @@ class PagerDutyDoctor(AnalysisCapability):
                     _reconcile_offer(),
                 )
             )
+        policy_item = _policy_drift_item(service, policy_id)
+        if policy_item is not None:
+            results.append(policy_item)
+        results.append(
+            await _dependencies_item(ctx, client, connection.identifier)
+        )
         return results
 
     async def _analyze_no_edge(
@@ -355,7 +395,12 @@ class PagerDutyDoctor(AnalysisCapability):
         service. Reuses :func:`_provisioning.provision_service` for the
         create path so a doctor-created service matches a lifecycle one.
         """
-        if remediation_id not in (_REPAIR_EDGE, _RECONCILE_EDGE):
+        if remediation_id not in (
+            _REPAIR_EDGE,
+            _RECONCILE_EDGE,
+            _REPOINT_POLICY,
+            _SYNC_DEPENDENCIES,
+        ):
             return await super().remediate(ctx, credentials, remediation_id)
         slug = ctx.integration_slug
         if slug is None:
@@ -363,11 +408,14 @@ class PagerDutyDoctor(AnalysisCapability):
                 status='failed',
                 message='Capability is not bound to an Integration.',
             )
-        allow_create = remediation_id == _REPAIR_EDGE
         try:
             async with _client.client(credentials) as client:
+                if remediation_id == _REPOINT_POLICY:
+                    return await _repoint_policy(ctx, client)
+                if remediation_id == _SYNC_DEPENDENCIES:
+                    return await _sync_dependencies(ctx, client)
                 return await self._remediate(
-                    ctx, client, allow_create=allow_create
+                    ctx, client, allow_create=remediation_id == _REPAIR_EDGE
                 )
         except ValueError as exc:
             return RemediationResult(status='failed', message=str(exc))
@@ -478,3 +526,151 @@ class PagerDutyDoctor(AnalysisCapability):
             status='fixed',
             message=f'{verb} the PagerDuty service link ({service_id}).',
         )
+
+
+def _policy_drift_item(
+    service: dict[str, typing.Any], policy_id: str | None
+) -> AnalysisResultItem | None:
+    """Compare the live service's escalation policy with the team's.
+
+    Returns ``None`` when no policy is mapped: the ``escalation-policy``
+    finding already reports that, and there is nothing to repoint to.
+    """
+    if not policy_id:
+        return None
+    current = _provisioning.as_dict(service.get('escalation_policy'))
+    current_id = str(current.get('id') or '')
+    if current_id == policy_id:
+        return _item(
+            'service-escalation-policy',
+            'Service escalation policy',
+            'pass',
+            f'The service routes to the mapped escalation policy '
+            f'{policy_id!r}.',
+        )
+    return _item(
+        'service-escalation-policy',
+        'Service escalation policy',
+        'fail',
+        f'The service routes to escalation policy {current_id!r}, but '
+        f'the owning team maps to {policy_id!r}. Use the Fix action to '
+        'repoint it.',
+        _repoint_offer(),
+    )
+
+
+async def _dependencies_item(
+    ctx: PluginContext, client: httpx.AsyncClient, service_id: str
+) -> AnalysisResultItem:
+    """Compare Imbi ``DEPENDS_ON`` edges with PagerDuty dependencies.
+
+    A PagerDuty error degrades to a ``warn`` so it does not hide the
+    service findings already gathered.
+    """
+    try:
+        changes = await _dependencies.plan(client, ctx, service_id)
+    except (PluginRateLimited, httpx.HTTPError) as exc:
+        return _item(
+            'service-dependencies',
+            'Service dependencies',
+            'warn',
+            f'Could not read PagerDuty service dependencies: {exc}',
+        )
+    unlinked = (
+        f' Not linked to a PagerDuty service, so not synced: '
+        f'{", ".join(changes.unlinked)}.'
+        if changes.unlinked
+        else ''
+    )
+    if changes.in_sync:
+        return _item(
+            'service-dependencies',
+            'Service dependencies',
+            'warn' if changes.unlinked else 'pass',
+            f'PagerDuty service dependencies match Imbi.{unlinked}',
+        )
+    return _item(
+        'service-dependencies',
+        'Service dependencies',
+        'fail',
+        f'PagerDuty service dependencies differ from Imbi '
+        f'({changes.summary()}). Use the Fix action to sync them.'
+        f'{unlinked}',
+        _sync_dependencies_offer(),
+    )
+
+
+def _live_service_id(ctx: PluginContext) -> str | None:
+    connection = _find_connection(ctx, typing.cast(str, ctx.integration_slug))
+    return connection.identifier if connection is not None else None
+
+
+async def _repoint_policy(
+    ctx: PluginContext, client: httpx.AsyncClient
+) -> RemediationResult:
+    """Repoint the linked service at the team's escalation policy."""
+    service_id = _live_service_id(ctx)
+    if not service_id:
+        return RemediationResult(
+            status='failed',
+            message='The project is not linked to a PagerDuty service.',
+        )
+    policy_id = _provisioning.escalation_policy_id(ctx, ctx.team_slug)
+    if not policy_id:
+        return RemediationResult(
+            status='failed',
+            message=(
+                f'No escalation policy mapped for team {ctx.team_slug!r}.'
+            ),
+        )
+    resp = await client.get(f'/services/{service_id}')
+    resp.raise_for_status()
+    service = _service_from_get(resp.json()) or {}
+    current = _provisioning.as_dict(service.get('escalation_policy'))
+    if current.get('id') == policy_id:
+        return RemediationResult(
+            status='noop',
+            message='The service already routes to the mapped policy.',
+        )
+    body = {
+        'service': {
+            'escalation_policy': {
+                'id': policy_id,
+                'type': 'escalation_policy_reference',
+            }
+        }
+    }
+    resp = await client.put(f'/services/{service_id}', json=body)
+    resp.raise_for_status()
+    return RemediationResult(
+        status='fixed',
+        message=(
+            f'Repointed PagerDuty service {service_id} to escalation '
+            f'policy {policy_id}.'
+        ),
+    )
+
+
+async def _sync_dependencies(
+    ctx: PluginContext, client: httpx.AsyncClient
+) -> RemediationResult:
+    """Make the linked service's dependencies match Imbi."""
+    service_id = _live_service_id(ctx)
+    if not service_id:
+        return RemediationResult(
+            status='failed',
+            message='The project is not linked to a PagerDuty service.',
+        )
+    changes = await _dependencies.plan(client, ctx, service_id)
+    if changes.in_sync:
+        return RemediationResult(
+            status='noop',
+            message='PagerDuty service dependencies already match.',
+        )
+    await _dependencies.apply(client, changes)
+    return RemediationResult(
+        status='fixed',
+        message=(
+            f'Synced PagerDuty service dependencies ({changes.summary()}).'
+        ),
+    )

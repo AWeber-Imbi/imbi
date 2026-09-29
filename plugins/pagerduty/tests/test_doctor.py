@@ -1,5 +1,6 @@
 """Tests for the PagerDuty project-doctor analysis capability."""
 
+import json
 import unittest
 
 import httpx
@@ -8,12 +9,15 @@ import respx
 from imbi.common.plugins.base import (
     AnalysisResultItem,
     PluginContext,
+    ProjectDependency,
     ServiceConnection,
 )
 from imbi.common.plugins.errors import PluginRemediationNotSupported
 from imbi.plugins.pagerduty.doctor import (
     _RECONCILE_EDGE,
     _REPAIR_EDGE,
+    _REPOINT_POLICY,
+    _SYNC_DEPENDENCIES,
     PagerDutyDoctor,
 )
 
@@ -22,7 +26,16 @@ _CREDS = {'api_key': 'k'}
 _SVC_ID = 'PSVC1'
 _HTML = 'https://acme.pagerduty.com/service-directory/PSVC1'
 _CANONICAL = f'https://api.pagerduty.com/services/{_SVC_ID}'
-_SERVICE = {'id': _SVC_ID, 'html_url': _HTML, 'name': 'demo'}
+_SERVICE = {
+    'id': _SVC_ID,
+    'html_url': _HTML,
+    'name': 'demo',
+    'escalation_policy': {'id': 'POLICY1', 'type': 'escalation_policy'},
+}
+_DEPS_URL = (
+    f'https://api.pagerduty.com/service_dependencies/technical_services/'
+    f'{_SVC_ID}'
+)
 _LINK_KEY = 'pagerduty-service'
 
 
@@ -56,6 +69,14 @@ def _ctx(
     )
 
 
+def _mock_deps(relationships: list[dict[str, object]] | None = None) -> None:
+    respx.get(_DEPS_URL).mock(
+        return_value=httpx.Response(
+            200, json={'relationships': relationships or []}
+        )
+    )
+
+
 def _by_slug(
     items: list[AnalysisResultItem],
 ) -> dict[str, AnalysisResultItem]:
@@ -86,20 +107,27 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
             respx.get(f'https://api.pagerduty.com/services/{_SVC_ID}').mock(
                 return_value=httpx.Response(200, json={'service': _SERVICE})
             )
+            _mock_deps()
             results = await PagerDutyDoctor().analyze(ctx, _CREDS)
-        self.assertEqual(_by_slug(results)['escalation-policy'].status, 'warn')
+        by_slug = _by_slug(results)
+        self.assertEqual(by_slug['escalation-policy'].status, 'warn')
+        # Nothing to repoint to, so no drift finding is reported.
+        self.assertNotIn('service-escalation-policy', by_slug)
 
     @respx.mock
     async def test_edge_present_all_pass(self) -> None:
         respx.get(f'https://api.pagerduty.com/services/{_SVC_ID}').mock(
             return_value=httpx.Response(200, json={'service': _SERVICE})
         )
+        _mock_deps()
         ctx = _ctx(connections=[_conn()], links={_LINK_KEY: _HTML})
         results = await PagerDutyDoctor().analyze(ctx, _CREDS)
         by_slug = _by_slug(results)
         self.assertEqual(by_slug['service'].status, 'pass')
         self.assertEqual(by_slug['canonical-url'].status, 'pass')
         self.assertEqual(by_slug['dashboard-link'].status, 'pass')
+        self.assertEqual(by_slug['service-escalation-policy'].status, 'pass')
+        self.assertEqual(by_slug['service-dependencies'].status, 'pass')
 
     @respx.mock
     async def test_edge_present_service_404_offers_create(self) -> None:
@@ -133,6 +161,7 @@ class AnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
             identifier=_SVC_ID,
             canonical_url='https://api.pagerduty.com/services/WRONG',
         )
+        _mock_deps()
         ctx = _ctx(connections=[conn], links={_LINK_KEY: 'https://old/url'})
         results = await PagerDutyDoctor().analyze(ctx, _CREDS)
         by_slug = _by_slug(results)
@@ -349,3 +378,135 @@ class RemediateTestCase(unittest.IsolatedAsyncioTestCase):
             _ctx(), _CREDS, _REPAIR_EDGE
         )
         self.assertEqual(result.status, 'failed')
+
+
+_SVC_URL = f'https://api.pagerduty.com/services/{_SVC_ID}'
+_DRIFTED = {**_SERVICE, 'escalation_policy': {'id': 'OLDPOLICY'}}
+
+
+def _dep_ctx() -> PluginContext:
+    ctx = _ctx(connections=[_conn()], links={_LINK_KEY: _HTML})
+    ctx.dependencies = [
+        ProjectDependency(
+            direction='outbound',
+            project_id='db',
+            project_slug='db',
+            service_connections=[
+                ServiceConnection(integration_slug=_SLUG, identifier='PDB')
+            ],
+        ),
+        ProjectDependency(
+            direction='outbound', project_id='cache', project_slug='cache'
+        ),
+    ]
+    return ctx
+
+
+class DriftAnalyzeTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_policy_drift_offers_sweepable_repoint(self) -> None:
+        respx.get(_SVC_URL).mock(
+            return_value=httpx.Response(200, json={'service': _DRIFTED})
+        )
+        _mock_deps()
+        ctx = _ctx(connections=[_conn()], links={_LINK_KEY: _HTML})
+        results = await PagerDutyDoctor().analyze(ctx, _CREDS)
+        finding = _by_slug(results)['service-escalation-policy']
+        self.assertEqual(finding.status, 'fail')
+        assert finding.remediation is not None
+        self.assertEqual(finding.remediation.id, _REPOINT_POLICY)
+        self.assertTrue(finding.remediation.sweepable)
+        self.assertFalse(finding.remediation.destructive)
+
+    @respx.mock
+    async def test_dependency_drift_offers_sweepable_sync(self) -> None:
+        respx.get(_SVC_URL).mock(
+            return_value=httpx.Response(200, json={'service': _SERVICE})
+        )
+        _mock_deps()
+        results = await PagerDutyDoctor().analyze(_dep_ctx(), _CREDS)
+        finding = _by_slug(results)['service-dependencies']
+        self.assertEqual(finding.status, 'fail')
+        self.assertIn('add 1', finding.description)
+        self.assertIn('cache', finding.description)
+        assert finding.remediation is not None
+        self.assertEqual(finding.remediation.id, _SYNC_DEPENDENCIES)
+        self.assertTrue(finding.remediation.sweepable)
+
+    @respx.mock
+    async def test_dependency_read_error_warns_without_hiding(self) -> None:
+        respx.get(_SVC_URL).mock(
+            return_value=httpx.Response(200, json={'service': _SERVICE})
+        )
+        respx.get(_DEPS_URL).mock(return_value=httpx.Response(500))
+        ctx = _ctx(connections=[_conn()], links={_LINK_KEY: _HTML})
+        by_slug = _by_slug(await PagerDutyDoctor().analyze(ctx, _CREDS))
+        self.assertEqual(by_slug['service-dependencies'].status, 'warn')
+        self.assertEqual(by_slug['service'].status, 'pass')
+
+
+class DriftRemediateTestCase(unittest.IsolatedAsyncioTestCase):
+    @respx.mock
+    async def test_repoint_puts_mapped_policy(self) -> None:
+        respx.get(_SVC_URL).mock(
+            return_value=httpx.Response(200, json={'service': _DRIFTED})
+        )
+        put = respx.put(_SVC_URL).mock(
+            return_value=httpx.Response(200, json={'service': _SERVICE})
+        )
+        ctx = _ctx(connections=[_conn()])
+        result = await PagerDutyDoctor().remediate(
+            ctx, _CREDS, _REPOINT_POLICY
+        )
+        self.assertEqual(result.status, 'fixed')
+        body = json.loads(put.calls.last.request.content)
+        self.assertEqual(body['service']['escalation_policy']['id'], 'POLICY1')
+
+    @respx.mock
+    async def test_repoint_matching_is_noop(self) -> None:
+        respx.get(_SVC_URL).mock(
+            return_value=httpx.Response(200, json={'service': _SERVICE})
+        )
+        put = respx.put(_SVC_URL)
+        result = await PagerDutyDoctor().remediate(
+            _ctx(connections=[_conn()]), _CREDS, _REPOINT_POLICY
+        )
+        self.assertEqual(result.status, 'noop')
+        self.assertFalse(put.called)
+
+    async def test_repoint_without_edge_fails(self) -> None:
+        result = await PagerDutyDoctor().remediate(
+            _ctx(), _CREDS, _REPOINT_POLICY
+        )
+        self.assertEqual(result.status, 'failed')
+
+    async def test_repoint_without_mapping_fails(self) -> None:
+        result = await PagerDutyDoctor().remediate(
+            _ctx(
+                connections=[_conn()],
+                options={'team_escalation_policy_mapping': {}},
+            ),
+            _CREDS,
+            _REPOINT_POLICY,
+        )
+        self.assertEqual(result.status, 'failed')
+
+    @respx.mock
+    async def test_sync_dependencies_associates(self) -> None:
+        _mock_deps()
+        associate = respx.post(
+            'https://api.pagerduty.com/service_dependencies/associate'
+        ).mock(return_value=httpx.Response(200, json={}))
+        result = await PagerDutyDoctor().remediate(
+            _dep_ctx(), _CREDS, _SYNC_DEPENDENCIES
+        )
+        self.assertEqual(result.status, 'fixed')
+        self.assertTrue(associate.called)
+
+    @respx.mock
+    async def test_sync_dependencies_in_sync_is_noop(self) -> None:
+        _mock_deps()
+        result = await PagerDutyDoctor().remediate(
+            _ctx(connections=[_conn()]), _CREDS, _SYNC_DEPENDENCIES
+        )
+        self.assertEqual(result.status, 'noop')

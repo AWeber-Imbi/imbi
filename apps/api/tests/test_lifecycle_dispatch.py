@@ -31,6 +31,7 @@ from imbi.common.plugins.base import (
     LinkWriteback,
     PluginContext,
     PluginManifest,
+    ProjectDependency,
     ServiceWriteback,
 )
 from imbi.common.plugins.errors import PluginCredentialsMissing
@@ -134,6 +135,11 @@ def _resolved(
     )
 
 
+_DEPENDENCY = ProjectDependency(
+    direction='outbound', project_id='db', project_slug='db'
+)
+
+
 class DispatchLifecycleTestCase(unittest.TestCase):
     """Branch coverage for :func:`dispatch_lifecycle`."""
 
@@ -142,6 +148,7 @@ class DispatchLifecycleTestCase(unittest.TestCase):
         resolved_list: list[ResolvedCapability],
         *,
         event: LifecycleEvent = 'archived',
+        lookup_failed: bool = False,
     ) -> tuple[list[LifecycleInvocation], mock.AsyncMock]:
         mock_db = mock.AsyncMock()
         auth = _make_auth()
@@ -171,6 +178,12 @@ class DispatchLifecycleTestCase(unittest.TestCase):
                 mock.AsyncMock(return_value=(None, None)),
             ),
             mock.patch(
+                'imbi.api.endpoints._helpers.lookup_project_dependencies',
+                mock.AsyncMock(
+                    return_value=None if lookup_failed else [_DEPENDENCY]
+                ),
+            ),
+            mock.patch(
                 'imbi.api.plugins.lifecycle_dispatch.call_with_identity_retry',
                 new=_passthrough_identity_retry,
             ),
@@ -185,6 +198,62 @@ class DispatchLifecycleTestCase(unittest.TestCase):
             return asyncio.run(
                 dispatch_lifecycle(mock_db, 'proj-1', 'org-1', event, auth)
             ), publish
+
+    def test_dependencies_changed_reaches_hook_with_context(self) -> None:
+        seen: list[PluginContext] = []
+
+        class _Deps(LifecycleCapability):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                del ctx, credentials
+                return LifecycleResult(status='ok')
+
+            async def on_project_dependencies_changed(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                del credentials
+                seen.append(ctx)
+                return LifecycleResult(status='ok')
+
+        results, _ = self._run(
+            [_resolved(_entry('pd', _Deps))], event='dependencies_changed'
+        )
+        self.assertEqual(results[0].status, 'ok')
+        self.assertEqual(seen[0].dependencies, [_DEPENDENCY])
+        self.assertIsNotNone(seen[0].resolve_linked_identifiers)
+
+    def test_failed_dependency_lookup_wires_no_resolver(self) -> None:
+        seen: list[PluginContext] = []
+
+        class _Deps(LifecycleCapability):
+            async def on_project_archived(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                del ctx, credentials
+                return LifecycleResult(status='ok')
+
+            async def on_project_dependencies_changed(
+                self, ctx: PluginContext, credentials: dict[str, str]
+            ) -> LifecycleResult:
+                del credentials
+                seen.append(ctx)
+                return LifecycleResult(status='ok')
+
+        self._run(
+            [_resolved(_entry('pd', _Deps))],
+            event='dependencies_changed',
+            lookup_failed=True,
+        )
+        self.assertEqual(seen[0].dependencies, [])
+        self.assertIsNone(seen[0].resolve_linked_identifiers)
+
+    def test_dependencies_changed_without_hook_is_skipped(self) -> None:
+        results, _ = self._run(
+            [_resolved(_make_lifecycle_entry('gh'))],
+            event='dependencies_changed',
+        )
+        self.assertEqual(results[0].status, 'skipped')
 
     def test_empty_when_no_plugins_assigned(self) -> None:
         results, _ = self._run([])
