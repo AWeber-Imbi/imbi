@@ -58,6 +58,22 @@ def _token(name: str) -> str:
     return value
 
 
+def outside_repository(path: pathlib.Path) -> pathlib.Path:
+    """Return ``path``, or stop when it is inside a git worktree.
+
+    Recordings and reports with values hold the data of the database,
+    so they must not be in a repository, where a commit can take them.
+    """
+    resolved = path.resolve()
+    for directory in (resolved, *resolved.parents):
+        if (directory / '.git').exists():
+            raise SystemExit(
+                f'{path} is inside the git worktree {directory}; write '
+                'recordings and reports outside the repository'
+            )
+    return path
+
+
 def _config_dir(arguments: argparse.Namespace) -> pathlib.Path:
     return typing.cast('pathlib.Path', arguments.config_dir)
 
@@ -360,12 +376,13 @@ def command_diff(arguments: argparse.Namespace) -> int:
                     ],
                     'unused_expectations': report.unused_expectations,
                     'unstable': report.unstable,
+                    'unstable_new': report.unstable_new,
                 },
                 indent=2,
                 default=str,
             )
         )
-    return 1 if report.unexpected else 0
+    return 1 if report.failed else 0
 
 
 def command_timings(arguments: argparse.Namespace) -> int:
@@ -390,8 +407,10 @@ def _add_compare_commands(
         '--mask-unstable',
         action='store_true',
         help=(
-            'also mask the fields that changed between two sends (from '
-            '--repeat); for a first look only, because it is not a rule'
+            'also mask the fields of the old side that changed between '
+            'two sends (from --repeat); for a first look only, because '
+            'it is not a rule. Fields that are unstable on the new side '
+            'are never masked'
         ),
     )
     compare.set_defaults(handler=command_diff)
@@ -477,6 +496,10 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
+    for name in ('out', 'json'):
+        value = getattr(arguments, name, None)
+        if value is not None:
+            outside_repository(typing.cast('pathlib.Path', value))
     handler = typing.cast(
         'typing.Callable[[argparse.Namespace], int]', arguments.handler
     )

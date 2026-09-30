@@ -24,6 +24,26 @@ class _Model(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid', frozen=True)
 
 
+def _mask_pointer(value: str) -> str:
+    """Reject a normalize pointer that masks too much.
+
+    The root (``''``) and a pattern that ends in ``*`` or ``**`` mask
+    whole objects or lists, so a difference inside them cannot show.
+    Name the field.
+    """
+    if value == '' or value.rsplit('/', 1)[-1] in {'*', '**'}:
+        raise ValueError(
+            f'normalize pointer {value!r} must end in a field name, '
+            'not the root, "*", or "**"'
+        )
+    if not value.startswith('/'):
+        raise ValueError(f'normalize pointer {value!r} must start with "/"')
+    return value
+
+
+MaskPointer = typing.Annotated[str, pydantic.AfterValidator(_mask_pointer)]
+
+
 # -- routes.toml -------------------------------------------------------
 
 
@@ -116,7 +136,7 @@ class NormalizeRule(_Model):
     """
 
     route: str = '*'
-    pointer: str
+    pointer: MaskPointer
     reason: str
 
 
@@ -194,6 +214,14 @@ class ExpectedDifference(_Model):
     new_status: int | None = None
     reason: str
 
+    @pydantic.model_validator(mode='after')
+    def _names_a_route_or_key(self) -> typing.Self:
+        if self.route == '*' and self.key == '*':
+            raise ValueError(
+                'an expected difference must name a route or a key'
+            )
+        return self
+
 
 class ExpectedConfig(_Model):
     domain: str
@@ -249,7 +277,9 @@ class Step(_Model):
     body: typing.Any = None
     expect: int | list[int] | None = None
     save: dict[str, str] = pydantic.Field(default_factory=dict[str, str])
-    normalize: list[str] = pydantic.Field(default_factory=list[str])
+    normalize: list[MaskPointer] = pydantic.Field(
+        default_factory=list[MaskPointer]
+    )
     always: bool = False
     wait_for: WaitFor | None = None
 

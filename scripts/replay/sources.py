@@ -50,8 +50,13 @@ class Database:
     """A read-only connection to the recorded database."""
 
     def __init__(self, dsn: str, graph: str) -> None:
-        self._connection = psycopg.connect(dsn, autocommit=True)
-        self._connection.read_only = True
+        # ``read_only`` on the connection has no effect in autocommit
+        # mode, so the session setting makes every statement read only.
+        self._connection = psycopg.connect(
+            dsn,
+            autocommit=True,
+            options='-c default_transaction_read_only=on',
+        )
         self._graph = graph
         self._connection.execute(
             'SET search_path = ag_catalog, "$user", public'

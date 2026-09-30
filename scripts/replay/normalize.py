@@ -3,7 +3,8 @@
 Normalization changes only the fields that a rule names. It does not
 sort lists, it does not remove fields, and a ``null`` stays ``null``:
 a rule replaces a value that is present and not ``null`` with
-:data:`MASK`.
+``<normalized:TYPE>``, so a change of the JSON type is still a
+difference.
 """
 
 import fnmatch
@@ -11,7 +12,26 @@ import typing
 
 from scripts.replay import models, pointer
 
-MASK = '<normalized>'
+MASK = '<normalized:{}>'
+
+
+def mask(value: typing.Any) -> str:
+    """Return the mask of ``value``, which keeps its JSON type."""
+    if isinstance(value, bool):
+        kind = 'bool'
+    elif isinstance(value, int):
+        kind = 'int'
+    elif isinstance(value, float):
+        kind = 'float'
+    elif isinstance(value, str):
+        kind = 'str'
+    elif isinstance(value, dict):
+        kind = 'object'
+    elif isinstance(value, list):
+        kind = 'array'
+    else:
+        kind = type(value).__name__
+    return MASK.format(kind)
 
 
 def pointers_for(
@@ -40,7 +60,7 @@ def _walk(
     if value is not None and any(
         pointer.matches(pattern, path) for pattern in patterns
     ):
-        return MASK
+        return mask(value)
     if isinstance(value, dict):
         items = typing.cast('dict[str, typing.Any]', value)
         return {

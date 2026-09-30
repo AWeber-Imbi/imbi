@@ -19,9 +19,10 @@ The tool:
 cover (the workers, the other apps, the CLI commands).
 
 Recordings contain the data of the database. Write them to a directory
-outside the repository, and do not commit them. Use `diff --no-values`
-for a report that others read: it shows no values, and no concrete
-paths of recorded requests.
+outside the repository, and do not commit them: `--out` and
+`diff --json` refuse a path inside a git worktree. Use
+`diff --no-values` for a report that others read: it shows no values,
+and no concrete paths of recorded requests.
 
 ## Files
 
@@ -129,11 +130,24 @@ route). Give the route a source or a `skip` reason in `routes.toml`.
 `--route 'GET /api/organizations/{org_slug}/tags*'`.
 
 `--repeat 2` sends each request twice. A field that is different in
-the two responses is *unstable*. The diff lists each unstable field
-that no rule masks, in its own section: add a rule to
-`normalize.toml` with the reason, or fix the API.
+the two responses is *unstable*. The diff does not mask unstable
+fields:
 
-`diff` exits with 1 when it finds an unexpected difference. It groups
+- On the old (AGE-era) side, it lists each unstable field that no rule
+  masks: add a rule to `normalize.toml` with the reason.
+- On the new side, an unstable field that no rule masks is a failure
+  (for example a list with no `ORDER BY`): fix the new code.
+- `diff --mask-unstable` also masks the unstable fields of the old
+  side, for a first look. It never masks the new side.
+
+A rule replaces a value with `<normalized:TYPE>` (`str`, `int`,
+`float`, `bool`, `object`, `array`), so a change of type is still a
+difference. A rule pointer must end in a field name: the root, `*`,
+and `**` at the end are refused, because they would hide a whole
+object or list.
+
+`diff` exits with 1 when it finds an unexpected difference, or an
+unstable field on the new side. It groups
 the unexpected differences by the owner letter of the route. It also
 lists each expected difference that did not occur, for the exchanges
 that it compared.
@@ -439,6 +453,7 @@ new = "<missing>"
 reason = "README Not carried over: Tag.icon"
 ```
 
+- An entry must name a `route` or a `key` (not both `*`).
 - `route` is a glob on the route (`METHOD template`), `key` a glob on
   the exchange key (`GET /api/...` for a recorded request,
   `scenario:<domain>/<name>#<step> ...` for a scenario step).

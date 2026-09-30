@@ -1,7 +1,11 @@
 """Tests for the request plan and the parameter sources."""
 
+import os
 import typing
 import unittest
+import unittest.mock
+
+import psycopg
 
 from scripts.replay import models, plan, sources
 
@@ -173,6 +177,21 @@ class ConfigTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             models.Source.model_validate({'cypher': 'MATCH (n) RETURN n'})
 
+    def test_normalize_pointer_must_name_a_field(self) -> None:
+        for bad in ('', '/*', '/data/**', 'id'):
+            with self.assertRaises(ValueError, msg=bad):
+                models.NormalizeRule(pointer=bad, reason='r')
+            with self.assertRaises(ValueError, msg=bad):
+                models.Step.model_validate(
+                    {'method': 'GET', 'path': '/a', 'normalize': [bad]}
+                )
+        models.NormalizeRule(pointer='/**/id', reason='r')
+
+    def test_expected_difference_needs_a_route_or_key(self) -> None:
+        with self.assertRaises(ValueError):
+            models.ExpectedDifference(field='status', reason='r')
+        models.ExpectedDifference(field='status', key='k', reason='r')
+
     def test_unknown_key(self) -> None:
         with self.assertRaises(ValueError):
             models.Step.model_validate(
@@ -196,3 +215,28 @@ class SubstituteTestCase(unittest.TestCase):
     def test_unknown_variable(self) -> None:
         with self.assertRaises(KeyError):
             sources.substitute('$nothing', {}, cypher=True)
+
+
+class DatabaseTestCase(unittest.TestCase):
+    def test_connects_read_only(self) -> None:
+        with unittest.mock.patch.object(sources.psycopg, 'connect') as connect:
+            sources.Database('postgresql://x/y', 'imbi')
+        connect.assert_called_once_with(
+            'postgresql://x/y',
+            autocommit=True,
+            options='-c default_transaction_read_only=on',
+        )
+
+    @unittest.skipUnless(
+        os.environ.get('REPLAY_TEST_DSN'),
+        'set REPLAY_TEST_DSN to a PostgreSQL database to run it',
+    )
+    def test_a_write_fails(self) -> None:
+        database = sources.Database(os.environ['REPLAY_TEST_DSN'], 'imbi')
+        try:
+            with self.assertRaises(psycopg.errors.ReadOnlySqlTransaction):
+                database._connection.execute(  # pyright: ignore[reportPrivateUsage]
+                    'CREATE TEMPORARY TABLE replay_write_test (x int)'
+                )
+        finally:
+            database.close()

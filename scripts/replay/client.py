@@ -116,8 +116,9 @@ def capture(  # noqa: PLR0913 - the keyword arguments are the exchange fields
 
     The first response is the one that the recording keeps. The other
     responses give more timings. A field that changes between the
-    responses is listed in ``unstable``, and the diff masks it on both
-    sides.
+    responses is listed in ``unstable``. The diff does not mask it: it
+    reports each unstable field of the old side that no rule masks, and
+    it fails on each unstable field of the new side.
     """
     first = client.send(method, path, query, body)
     timings = [first.elapsed_ms]

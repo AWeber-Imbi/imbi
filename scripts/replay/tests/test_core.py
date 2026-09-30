@@ -58,11 +58,31 @@ class NormalizeTestCase(unittest.TestCase):
         self.assertEqual(
             result,
             {
-                'id': normalize.MASK,
+                'id': '<normalized:str>',
                 'name': 'n',
-                'items': [{'id': normalize.MASK}, {'id': normalize.MASK}],
+                'items': [
+                    {'id': '<normalized:int>'},
+                    {'id': '<normalized:int>'},
+                ],
             },
         )
+
+    def test_mask_keeps_the_type(self) -> None:
+        value: dict[str, object] = {'a': True, 'b': 1.5, 'c': {}, 'd': []}
+        result = normalize.apply(value, ['/a', '/b', '/c', '/d'])
+        self.assertEqual(
+            result,
+            {
+                'a': '<normalized:bool>',
+                'b': '<normalized:float>',
+                'c': '<normalized:object>',
+                'd': '<normalized:array>',
+            },
+        )
+        report = differ(
+            rules=[models.NormalizeRule(pointer='/n', reason='r')]
+        ).run([exchange(body={'n': '1'})], [exchange(body={'n': 1})])
+        self.assertEqual(len(report.unexpected), 1)
 
     def test_keeps_null_and_missing(self) -> None:
         value = {'id': None}
@@ -254,6 +274,32 @@ class DifferTestCase(unittest.TestCase):
         self.assertEqual(report.differences, [])
         self.assertEqual(report.unstable, {})
 
+    def test_unstable_on_the_new_side_fails(self) -> None:
+        report = differ().run(
+            [exchange(body={'items': [1, 2]})],
+            [exchange(body={'items': [1, 2]}, unstable=['/items/0'])],
+        )
+        self.assertEqual(report.unexpected, [])
+        self.assertEqual(
+            report.unstable_new, {'GET /api/things/{id}': ['/items/*']}
+        )
+        self.assertTrue(report.failed)
+        self.assertIn('new side', diff.format_text(report, values=False))
+
+    def test_mask_unstable_masks_the_old_side_only(self) -> None:
+        masking = diff.Differ(
+            rules=[],
+            expected=[],
+            owners=models.OwnersConfig(),
+            mask_unstable=True,
+        )
+        report = masking.run(
+            [exchange(body={'at': '1'})],
+            [exchange(body={'at': '2'}, unstable=['/at'])],
+        )
+        self.assertEqual(len(report.unexpected), 1)
+        self.assertTrue(report.failed)
+
     def test_mask_unstable(self) -> None:
         masking = diff.Differ(
             rules=[],
@@ -280,7 +326,11 @@ class DifferTestCase(unittest.TestCase):
                     reason='not carried over',
                 ),
                 models.ExpectedDifference(
-                    field='status', old=204, new=409, reason='never happens'
+                    route='GET /api/things/*',
+                    field='status',
+                    old=204,
+                    new=409,
+                    reason='never happens',
                 ),
             ],
         )
@@ -301,7 +351,11 @@ class DifferTestCase(unittest.TestCase):
             owner='K',
             difference=[
                 models.ExpectedDifference(
-                    field='status', old=204, new=409, reason='restrict'
+                    route='GET /api/things/*',
+                    field='status',
+                    old=204,
+                    new=409,
+                    reason='restrict',
                 )
             ],
         )
@@ -316,6 +370,7 @@ class DifferTestCase(unittest.TestCase):
             owner='K',
             difference=[
                 models.ExpectedDifference(
+                    route='GET /api/things/*',
                     field='body',
                     old_status=404,
                     new_status=200,

@@ -79,12 +79,23 @@ class Report:
     unused_expectations: list[str] = dataclasses.field(
         default_factory=list[str]
     )
-    #: Fields that changed between two sends of one request on one
-    #: side, and that no rule masks. Each one needs a rule in
-    #: normalize.toml (or a fix in the API).
+    #: Fields of the old (AGE-era) side that changed between two sends
+    #: of one request, and that no rule masks. Each one needs a rule in
+    #: normalize.toml, with a reason.
     unstable: dict[str, list[str]] = dataclasses.field(
         default_factory=dict[str, list[str]]
     )
+    #: The same for the new side. A field that is unstable only on the
+    #: new side is a defect of the new side (for example a list with no
+    #: ORDER BY), so the diff fails when this is not empty.
+    unstable_new: dict[str, list[str]] = dataclasses.field(
+        default_factory=dict[str, list[str]]
+    )
+
+    @property
+    def failed(self) -> bool:
+        """``True`` when the result must fail the run."""
+        return bool(self.unexpected or self.unstable_new)
 
     @property
     def unexpected(self) -> list[Difference]:
@@ -161,6 +172,7 @@ class Differ:
         ]
         self._used: set[int] = set()
         self._unstable: dict[str, set[str]] = {}
+        self._unstable_new: dict[str, set[str]] = {}
         self._owners = owners
 
     def run(
@@ -189,6 +201,10 @@ class Differ:
         report.unstable = {
             route: sorted(items)
             for route, items in sorted(self._unstable.items())
+        }
+        report.unstable_new = {
+            route: sorted(items)
+            for route, items in sorted(self._unstable_new.items())
         }
         return report
 
@@ -242,20 +258,12 @@ class Differ:
             for item in normalize.pointers_for(self._rules, after)
             if item not in patterns
         ]
-        for item in (*before.unstable, *after.unstable):
-            if any(
-                pointer.matches(rule, pointer.parse(item)) for rule in patterns
-            ):
-                continue
-            general = pointer.to_pointer(
-                tuple(
-                    '*' if segment.isdigit() else segment
-                    for segment in pointer.parse(item)
-                )
-            )
-            self._unstable.setdefault(route, set()).add(general)
+        self._collect_unstable(self._unstable, route, before, patterns)
+        self._collect_unstable(self._unstable_new, route, after, patterns)
         if self._mask_unstable:
-            patterns += [*before.unstable, *after.unstable]
+            # Only the old side: a field that is unstable on the new side
+            # is a difference, never masked.
+            patterns += list(before.unstable)
         old_body = normalize.apply(before.body, patterns)
         new_body = normalize.apply(after.body, patterns)
         for path, old_value, new_value in compare_values(old_body, new_body):
@@ -275,6 +283,26 @@ class Differ:
                 )
             )
         return result
+
+    @staticmethod
+    def _collect_unstable(
+        target: dict[str, set[str]],
+        route: str,
+        exchange: models.Exchange,
+        patterns: list[str],
+    ) -> None:
+        for item in exchange.unstable:
+            if any(
+                pointer.matches(rule, pointer.parse(item)) for rule in patterns
+            ):
+                continue
+            general = pointer.to_pointer(
+                tuple(
+                    '*' if segment.isdigit() else segment
+                    for segment in pointer.parse(item)
+                )
+            )
+            target.setdefault(route, set()).add(general)
 
     def _classify(self, difference: Difference) -> Difference:
         for index, (config, entry) in enumerate(self._expected):
@@ -352,8 +380,17 @@ def format_text(report: Report, *, values: bool) -> str:
             lines.append(f'- ({hidden} more body differences not shown)')
     if report.unstable:
         lines.append('')
-        lines.append('## fields that change between two sends, with no rule')
+        lines.append(
+            '## old side: fields that change between two sends, with no rule'
+        )
         for route, items in report.unstable.items():
+            lines.append(f'- {route}: {", ".join(items)}')
+    if report.unstable_new:
+        lines.append('')
+        lines.append(
+            '## new side: fields that change between two sends (a failure)'
+        )
+        for route, items in report.unstable_new.items():
             lines.append(f'- {route}: {", ".join(items)}')
     if report.unused_expectations:
         lines.append('')
