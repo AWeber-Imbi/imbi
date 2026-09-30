@@ -88,6 +88,21 @@ statements() {
     grep -vE '^[[:space:]]*(--.*)?$' "$1" || true
 }
 
+# Pass when the output has a plan line 1..N, N test lines, and no
+# failed test.
+tap_passed() {
+    local planned ran
+    planned=$(sed -nE 's/^1\.\.([0-9]+)$/\1/p' "$1" | head -n 1)
+    ran=$(grep -cE '^(not )?ok [0-9]+' "$1" || true)
+    if grep -qE '^not ok' "$1"; then
+        return 1
+    fi
+    if test -z "$planned" || test "$planned" != "$ran"; then
+        echo "planned ${planned:-no} tests, ran $ran" >&2
+        return 1
+    fi
+}
+
 drop_database() {
     psql_run -d postgres -c \
         "DROP DATABASE IF EXISTS $(quote_ident "$1") WITH (FORCE)"
@@ -136,10 +151,16 @@ check() {
             -c 'CREATE SCHEMA tap' \
             -c 'CREATE EXTENSION pgtap SCHEMA tap' \
             -c 'GRANT USAGE ON SCHEMA tap TO PUBLIC'
-        if ! psql_run -At -d "$test_db" -f "$file"; then
+        # The tests roll back transactions, and a rollback also removes
+        # the pgTAP state of the tests in it, so finish() cannot count
+        # them. This reads the TAP output instead, as pg_prove does.
+        # Only the TAP lines are shown; errors go to stderr.
+        if ! psql_run -At -d "$test_db" -f "$file" > "$work/tap.out" \
+           || ! tap_passed "$work/tap.out"; then
             failed=$((failed + 1))
             echo "FAILED: $(basename "$file")" >&2
         fi
+        grep -E '^(ok|not ok|#|1\.\.)' "$work/tap.out" || true
         drop_database "$test_db"
     done
     if test "$failed" -gt 0; then
