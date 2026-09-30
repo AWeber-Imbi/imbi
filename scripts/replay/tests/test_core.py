@@ -346,6 +346,8 @@ class DifferTestCase(unittest.TestCase):
         self.assertIn('## owner K: 1', with_values)
         self.assertIn('"secret"', with_values)
         self.assertNotIn('secret', without)
+        self.assertNotIn('/api/things/1 ', without)
+        self.assertIn('GET /api/things/{id} #', without)
 
     def test_format_text_limits_body_differences(self) -> None:
         count = diff.MAX_BODY_DIFFERENCES + 5

@@ -18,9 +18,10 @@ The tool:
 `process-matrix.md` lists the processes that the replay does not
 cover (the workers, the other apps, the CLI commands).
 
-Recordings contain production data. Write them to a directory outside
-the repository, and do not commit them. Use `diff --no-values` for a
-report that others read.
+Recordings contain the data of the database. Write them to a directory
+outside the repository, and do not commit them. Use `diff --no-values`
+for a report that others read: it shows no values, and no concrete
+paths of recorded requests.
 
 ## Files
 
@@ -191,6 +192,181 @@ uv run python -m scripts.replay scenarios --scenarios-dir scripts/replay/seed \
 Give `--var org_slug=synthetic` to `record` and `scenarios` as well:
 the global `org_slug` is the first organization by slug, and `second`
 sorts before `synthetic`.
+
+## Rehearsal on a production copy (maintainer only)
+
+Agents do not use production data (D35). The maintainer runs these
+commands in the rehearsal (execution plan section 7), with the
+orchestrator. Replace `<backup>` with the path of the production backup
+(`meta:backups/`). Step 1 makes the worktrees; run the other steps from
+the `imbi-replay-new` worktree, which has `scripts/replay/`.
+
+The rehearsal uses two copies of one backup, each a database named
+`imbi` in a PostgreSQL container of its own (pg_cron; see "Start an
+API for the replay"). Copy A is for the AGE-era side. Copy B gets the
+cutover runbook and is then the relational side. Both copies start
+from the same data, so the requests and the scenarios are the same on
+both sides.
+
+### 1. Worktrees, copies, and environment files
+
+```sh
+OS=/Volumes/Users/gmr/Source/open-source
+REC=$OS/replay-recordings
+mkdir -p $REC
+git -C $OS/imbi fetch origin
+git -C $OS/imbi worktree add --detach $OS/imbi-replay-old origin/main
+git -C $OS/imbi worktree add --detach $OS/imbi-replay-new origin/feature/age-relational
+cd $OS/imbi-replay-new
+uv sync --frozen --all-groups --all-extras
+
+docker run -d --name replay-copy-a -p 127.0.0.1:55441:5432 \
+  -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=imbi \
+  ghcr.io/aweber-imbi/postgres:latest
+docker run -d --name replay-copy-b -p 127.0.0.1:55442:5432 \
+  -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=imbi \
+  ghcr.io/aweber-imbi/postgres:latest
+
+# When `docker logs replay-copy-a` shows "pg_cron scheduler started":
+PGPASSWORD=secret psql -h 127.0.0.1 -p 55441 -U postgres -d imbi -q \
+  -f <backup> > $REC/restore-a.log 2>&1
+PGPASSWORD=secret psql -h 127.0.0.1 -p 55442 -U postgres -d imbi -q \
+  -f <backup> > $REC/restore-b.log 2>&1
+```
+
+Write `$REC/old.env` and `$REC/new.env`
+(outside the repository). Use a new JWT secret and a new Fernet key: the
+production keys must not reach the replay API, so it cannot decrypt the
+production credentials.
+
+```sh
+# old.env
+IMBI_SOURCE=/Volumes/Users/gmr/Source/open-source/imbi-replay-old
+REPLAY_DATABASE=imbi
+REPLAY_PG_PORT=55441
+REPLAY_API_PORT=18000
+IMBI_AUTH_JWT_SECRET=<random>
+IMBI_AUTH_ENCRYPTION_KEY=<Fernet key>
+
+# new.env
+IMBI_SOURCE=/Volumes/Users/gmr/Source/open-source/imbi-replay-new
+REPLAY_DATABASE=imbi
+REPLAY_PG_PORT=55442
+REPLAY_API_PORT=18001
+IMBI_AUTH_JWT_SECRET=<random>
+IMBI_AUTH_ENCRYPTION_KEY=<Fernet key>
+# The login and the settings that the runbook gives the relational build:
+REPLAY_POSTGRES_URL=postgresql://imbi_app:<password>@postgres:5432/imbi
+REPLAY_API_ENV_FILE=/Volumes/Users/gmr/Source/open-source/replay-recordings/new-api.env
+```
+
+`new-api.env` holds the other settings of the relational build (for
+example the `imbi_admin` pool) and, for step 4, `IMBI_READ_ONLY=true`.
+
+Define the commands once:
+
+```sh
+C=scripts/replay/docker/compose.yaml
+R="uv run python -m scripts.replay"
+```
+
+### 2. The AGE-era side (copy A)
+
+```sh
+docker compose -p replay-old --env-file $REC/old.env -f $C run --rm setup
+docker compose -p replay-old --env-file $REC/old.env -f $C up -d api api-relay
+until curl -sf http://127.0.0.1:18000/api/status; do sleep 2; done
+
+set -a; . $REC/old.env; set +a
+export REPLAY_TOKEN=$($R token \
+  --dsn postgresql://postgres:secret@127.0.0.1:55441/imbi)
+
+$R record --repeat 5 --base-url http://127.0.0.1:18000 \
+  --dsn postgresql://postgres:secret@127.0.0.1:55441/imbi \
+  --out $REC/old-get
+$R scenarios --base-url http://127.0.0.1:18000 \
+  --dsn postgresql://postgres:secret@127.0.0.1:55441/imbi \
+  --out $REC/old-scenarios
+```
+
+`record` must end with `0 uncovered`, and `scenarios` with `0 failed`.
+Record before the scenarios: the scenarios write to copy A. Then stop
+the AGE-era side:
+
+```sh
+docker compose -p replay-old --env-file $REC/old.env -f $C down
+```
+
+### 3. The cutover runbook (copy B)
+
+Run the runbook (`docs/architecture/age-cutover-runbook.md`) on copy B
+(`127.0.0.1:55442`), up to the reconciliation. The runbook, not this
+tool, owns these steps.
+
+### 4. The relational side, read only (copy B)
+
+`new-api.env` has `IMBI_READ_ONLY=true`.
+
+```sh
+docker compose -p replay-new --env-file $REC/new.env -f $C run --rm setup
+docker compose -p replay-new --env-file $REC/new.env -f $C up -d api api-relay
+until curl -sf http://127.0.0.1:18001/api/status; do sleep 2; done
+
+set -a; . $REC/new.env; set +a
+export REPLAY_TOKEN=$($R token \
+  --subject "$(jq -r .variables.admin_email $REC/old-get/meta.json)")
+
+$R replay --repeat 5 --base-url http://127.0.0.1:18001 \
+  --path-map scripts/replay/path-map.toml \
+  --from $REC/old-get --out $REC/new-get
+$R diff --old $REC/old-get --new $REC/new-get --json $REC/diff-get.json \
+  > $REC/diff-get.txt
+$R diff --no-values --old $REC/old-get --new $REC/new-get \
+  > $REC/diff-get-no-values.txt
+$R timings --old $REC/old-get --new $REC/new-get > $REC/timings.md
+```
+
+If the relational API does not accept a token with no `issued_tokens`
+row, sign in with `POST /api/auth/login` instead, and export the access
+token as `REPLAY_TOKEN`.
+
+### 5. The relational side, with writes (copy B)
+
+Remove `IMBI_READ_ONLY=true` from `new-api.env`, then:
+
+```sh
+docker compose -p replay-new --env-file $REC/new.env -f $C up -d --force-recreate api
+until curl -sf http://127.0.0.1:18001/api/status; do sleep 2; done
+
+$R scenarios --allow-failures --base-url http://127.0.0.1:18001 \
+  --path-map scripts/replay/path-map.toml \
+  --variables-from $REC/old-scenarios --out $REC/new-scenarios
+$R diff --old $REC/old-scenarios --new $REC/new-scenarios \
+  --json $REC/diff-scenarios.json > $REC/diff-scenarios.txt
+```
+
+### 6. The result
+
+- `diff` exits with 0 when every difference is expected. With
+  `--no-values`, the report shows no field values, and for a recorded
+  request it shows the route and a digest of the key, not the path
+  (paths hold ids and email addresses). Those files and `timings.md`
+  can go into the rehearsal record
+  (`docs/architecture/age-migration-rehearsal-<date>.md`). The files
+  with values, and every recording, stay in `$REC`.
+- The orchestrator sends each unexpected difference to the owner letter
+  that the report shows.
+- `timings.md` marks each route with a p95 ratio over 1.2 as `slower`.
+  The exit of section 7 needs a written reason for each one.
+- Then run the process matrix checks (`process-matrix.md`, table 2).
+
+Remove the rehearsal containers and volumes after the record is written:
+
+```sh
+docker compose -p replay-old --env-file $REC/old.env -f $C down -v
+docker compose -p replay-new --env-file $REC/new.env -f $C down -v
+docker rm -f replay-copy-a replay-copy-b
+```
 
 ## Add a scenario
 

@@ -13,6 +13,7 @@ agent that owns the route.
 import collections
 import dataclasses
 import fnmatch
+import hashlib
 import json
 import typing
 from collections import abc
@@ -40,9 +41,22 @@ class Difference:
     new_status: int | None = None
     expected_by: str | None = None
 
+    def display_key(self, *, values: bool) -> str:
+        """Return the key, or a key with no data values.
+
+        The key of a recorded request is its concrete path, which holds
+        ids, slugs, and email addresses. Without values, the report
+        shows the route and a short digest of the key instead. A
+        scenario key holds only the path template, so it stays.
+        """
+        if values or self.key.startswith('scenario:'):
+            return self.key
+        digest = hashlib.sha256(self.key.encode()).hexdigest()[:12]
+        return f'{self.route} #{digest}'
+
     def as_dict(self, *, values: bool) -> dict[str, typing.Any]:
         result: dict[str, typing.Any] = {
-            'key': self.key,
+            'key': self.display_key(values=values),
             'route': self.route,
             'owner': self.owner,
             'field': self.field,
@@ -320,7 +334,7 @@ def format_text(report: Report, *, values: bool) -> str:
             shown[item.key] += 1
             if item.field == 'body' and shown[item.key] > MAX_BODY_DIFFERENCES:
                 continue
-            text = f'- {item.key} [{item.field}]'
+            text = f'- {item.display_key(values=values)} [{item.field}]'
             if item.pointer:
                 text += f' {item.pointer}'
             if values:

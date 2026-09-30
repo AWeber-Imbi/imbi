@@ -18,6 +18,12 @@
 #   REPLAY_PG_PORT    the host port of the PostgreSQL server
 #   REPLAY_API_PORT   the host port of the API (18000)
 #   IMBI_AUTH_JWT_SECRET, IMBI_AUTH_ENCRYPTION_KEY
+#   REPLAY_POSTGRES_URL  optional; the connection URL of the API, for a
+#                     build that connects with another login (the
+#                     relational side). The host is `postgres` (the relay).
+#   REPLAY_API_ENV_FILE  optional; a file with more settings for the API,
+#                     for example IMBI_READ_ONLY=true. The settings of
+#                     `environment` below win over the file.
 #
 # Run it with a project name for each side, for example
 # `docker compose -p replay-old -f scripts/replay/docker/compose.yaml up`.
@@ -133,6 +139,9 @@ services:
   api:
     <<: *uv
     networks: [isolated]
+    env_file:
+      - path: ${REPLAY_API_ENV_FILE:-/dev/null}
+        required: false
     depends_on:
       postgres:
         condition: service_started
@@ -149,7 +158,7 @@ services:
     environment:
       <<: *uv-environment
       HF_HUB_OFFLINE: "1"
-      POSTGRES_URL: postgresql://postgres:secret@postgres:5432/${REPLAY_DATABASE:?set REPLAY_DATABASE}
+      POSTGRES_URL: ${REPLAY_POSTGRES_URL:-postgresql://postgres:secret@postgres:5432/${REPLAY_DATABASE:?set REPLAY_DATABASE}}
       CLICKHOUSE_URL: clickhouse+http://default:password@clickhouse:8123/imbi
       VALKEY_URL: valkey://valkey:6379
       IGGY_URL: iggy+tcp://iggy:iggy@iggy:8090
