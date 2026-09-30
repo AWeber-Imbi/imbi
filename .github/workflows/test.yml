@@ -124,6 +124,20 @@ jobs:
       # no task with runInCI false, and runInCI true would add the task
       # to `moon ci` in the CI job, which has no PostgreSQL 18 client.
       - run: "schemata/scripts/schema.sh check"
+      # root:cutover-check: the DDL steps of the AGE cutover runbook on
+      # an AGE-era fixture. The image sets cron.database_name = imbi, so
+      # only in the database imbi does the fixture get pg_cron. This
+      # container is used only by this job, and schema.sh check refuses
+      # the name imbi. The script drops only a database with its marker
+      # comment, so this job marks the empty imbi database first.
+      - name: "Cutover check"
+        env:
+          CUTOVER_CHECK_ALLOW: "1"
+          CUTOVER_DB: "imbi"
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -d postgres \
+            -c "COMMENT ON DATABASE imbi IS 'root:cutover-check fixture'"
+          schemata/cutover/cutover-check.sh
   image:
     # Exercises the same docker/build-push-action configuration as
     # release.yml (single arch, no push) so drift in the build context,

@@ -57,6 +57,7 @@ nav:
       - Services: architecture/services.md
       - Blueprint Attributes in JSONB: architecture/blueprint-attributes-jsonb.md
       - Graph Workbench Audit: architecture/graph-workbench-audit.md
+      - AGE Cutover Runbook: architecture/age-cutover-runbook.md
   - API Service:
       - Overview: api/index.md
       - Configuration: api/configuration.md
