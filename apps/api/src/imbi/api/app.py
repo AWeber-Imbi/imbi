@@ -7,7 +7,8 @@ from uvicorn.middleware import proxy_headers
 
 from imbi.api import endpoints, lifespans, openapi, settings, version
 from imbi.api.middleware import rate_limit
-from imbi.common import access_log, graph, lifespan, sentry, valkey
+from imbi.common import access_log, db, graph, lifespan, sentry, valkey
+from imbi.common.db import errors as db_errors
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginInstallationMissing,
@@ -24,6 +25,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,
             graph.graph_lifespan,
+            db.database_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
             lifespans.anthropic_hook,
@@ -109,6 +111,11 @@ def create_app() -> fastapi.FastAPI:
                 }
             },
         )
+
+    # Relational constraint violations: 23001, 23505, and a 23503 that
+    # blocks a delete or key change give 409; 23514 and a 23503 for a
+    # missing referenced row give 422.
+    db_errors.add_exception_handlers(app)
 
     # Phase 5: Setup rate limiting middleware
     rate_limit.setup_rate_limiting(app)

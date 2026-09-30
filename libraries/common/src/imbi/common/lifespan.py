@@ -106,6 +106,7 @@ class Lifespan(dict[LifespanHook, object | None]):
         """
         super().__init__()
         self._hooks: tuple[LifespanHook, ...] = hooks
+        self._runs = 0
 
     def get_state[T](self, hook: TypedLifespanHook[T]) -> T:
         """Retrieve the resource yielded by a specific hook.
@@ -164,19 +165,42 @@ class Lifespan(dict[LifespanHook, object | None]):
             - Hooks are entered in the order provided to __init__
             - Duplicate hooks are detected and only executed once
             - Resources are cleaned up in LIFO order (last-in-first-out)
+            - A run that starts while another run of the same app is
+              open (a nested run) reuses the open resources and enters
+              no hook. Only the first run closes the hooks, when it exits
+            - After cleanup the resources are removed, so a later run of
+              the same app enters every hook again
             - Uses AsyncExitStack to ensure proper cleanup even if hooks
               raise exceptions
         """
 
         @contextlib.asynccontextmanager
-        async def cm() -> abc.AsyncIterator[dict[str, Lifespan]]:
-            async with contextlib.AsyncExitStack() as stack:
-                for hook in self._hooks:
-                    if hook not in self:
-                        self[hook] = await stack.enter_async_context(hook())
+        async def nested() -> abc.AsyncIterator[dict[str, Lifespan]]:
+            self._runs += 1
+            try:
                 yield {'lifespan_data': self}
+            finally:
+                self._runs -= 1
 
-        return cm()
+        @contextlib.asynccontextmanager
+        async def cm() -> abc.AsyncIterator[dict[str, Lifespan]]:
+            self._runs = 1
+            try:
+                async with contextlib.AsyncExitStack() as stack:
+                    for hook in self._hooks:
+                        if hook not in self:
+                            self[hook] = await stack.enter_async_context(
+                                hook()
+                            )
+                    yield {'lifespan_data': self}
+            finally:
+                # The hooks are closed now. Remove their resources, so
+                # that a later run of the same app enters each hook
+                # again and does not serve a closed resource.
+                self._runs = 0
+                self.clear()
+
+        return nested() if self._runs else cm()
 
 
 def _get_lifespan(request: fastapi.Request) -> Lifespan:

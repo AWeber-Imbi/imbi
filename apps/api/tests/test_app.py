@@ -4,6 +4,8 @@ import unittest
 import unittest.mock
 
 import fastapi
+import psycopg
+from fastapi import testclient
 
 from imbi.api import app, settings, version
 from imbi.common import access_log
@@ -91,3 +93,27 @@ class ApiPrefixTestCase(unittest.TestCase):
             {'IMBI_API_URL': 'https://imbi.example.com/api/'},
         ):
             self.assertEqual(settings.ServerConfig().api_prefix, '/api')
+
+
+class ConstraintViolationTestCase(unittest.TestCase):
+    """The app maps relational constraint violations to 409 and 422."""
+
+    def test_violations_map_to_status(self) -> None:
+        application = app.create_app()
+        cases = {
+            'restrict': (psycopg.errors.RestrictViolation, 409),
+            'foreign-key': (psycopg.errors.ForeignKeyViolation, 409),
+            'unique': (psycopg.errors.UniqueViolation, 409),
+            'check': (psycopg.errors.CheckViolation, 422),
+        }
+
+        @application.get('/violation/{name}')
+        async def violation(name: str) -> None:  # pyright: ignore[reportUnusedFunction]
+            raise cases[name][0]('violation')
+
+        client = testclient.TestClient(application)
+        for name, (_cls, status) in cases.items():
+            with self.subTest(name):
+                response = client.get(f'/violation/{name}')
+                self.assertEqual(status, response.status_code)
+                self.assertEqual(['detail'], list(response.json()))
