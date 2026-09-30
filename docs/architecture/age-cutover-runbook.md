@@ -7,6 +7,12 @@ WP0.8 of the implementation plan
 of decisions D25, D27, and D28 of the execution plan
 (`meta:docs/age-to-relational-execution-plan.md`).
 
+This runbook is generic. The parts that depend on one deployment are
+named placeholders, such as "the app Deployments", "the UI Deployment",
+and "the maintenance switch" (see "Deployment placeholders"). Each
+deployment keeps an environment document, outside this repository, that
+gives the commands for each placeholder.
+
 The SQL of the runbook is in `schemata/cutover/`. The moon task
 `root:cutover-check` runs steps 4, 5, and 6, the probe of step 9, and
 the rollback on an AGE-era fixture (see "Tests of this runbook"). The rehearsal (WP3.2) runs the full runbook on a
@@ -28,7 +34,7 @@ production copy, and makes it fail after each of steps 5 to 12.
 
 | Role | Who | Does |
 |---|---|---|
-| Operator | Gavin | Runs every command that changes production: `kubectl`, `helm`, `psql`, the ETL. Makes the go and no-go decisions. |
+| Operator | Gavin | Runs every command that changes production: the commands of the environment document, `psql`, pglifecycle, and the ETL. Makes the go and no-go decisions. |
 | Checker | A second person, or an agent session with read-only access | Reads each output and confirms each check. Does not change production. |
 | Communicator | The operator, or a person that the operator names | Sends the announcement (step 1) and the end notice (step 13 or the rollback). |
 
@@ -43,21 +49,19 @@ step 1. A different value stops the cutover.
 | pglifecycle commit | `4f6729cda43b1d8facdeed304e6adfeb4991d18a` (pinned by D27 in `schemata/scripts/install-pglifecycle.sh` and `schemata/README.md`) | `pglifecycle --version` does not show it; read the install script |
 | pglifecycle build | `schemata/scripts/install-pglifecycle.sh` (`cargo install --locked --git ... --rev <commit>`). Keep the binary file of the rehearsal and use that file at the cutover. The script gives the same binary each time on one platform, but another build command gives another binary (a `cargo build --release` of the same commit had a different SHA-256 on 2026-09-30) | the script prints the path |
 | pglifecycle binary SHA-256 | Linux x86_64: `10b8f2d2ff0381c9378653f4867b30908c11c51c2f124ab9e2e1fc50fdf58561` (the CI Schema job). macOS arm64: `e2ec81979d7e30a2df6c6e6c875988e794dc327a08a4cca67f642e3a44cb2f0e` (the build that `root:cutover-check` used on 2026-09-30). Record the value of the rehearsal workstation; the cutover uses the same file | `shasum -a 256 <binary>`; `root:cutover-check` prints it |
-| New release image | the digest of the integration branch build (`ghcr.io/aweber-imbi/imbi@sha256:...`) | the release workflow output |
-| Previous release image | the digest of the AGE-era image that production runs before step 1 | `kubectl get deploy -o jsonpath='{..image}'`, then the digest from the registry |
+| New release image | the digest of the image that the app Deployments run after the cutover (the integration branch build, or a deployment image built on it) | the environment document |
+| Previous release image | the digest of the AGE-era image that the app Deployments run before step 1 | the environment document |
 | Monorepo commit | the commit of the new release image; the operator runs every `schemata/` file and CLI from a checkout of this commit | `git rev-parse HEAD` |
 | Rehearsal deploy plan | the `cutover.sql` of the last rehearsal (step 6 compares with it) | the rehearsal record |
 
 ## Settings
 
-Set these in the operator shell before step 1. The values are
-deployment-specific; this runbook does not name them.
+Set these in the operator shell before step 1. The environment document
+adds its own settings.
 
 ```bash
-export KCTX=<kubectl context of production>
-export NS=<namespace of the Imbi releases>
-export AGE_LOGIN=<the login role in the AGE-era POSTGRES_URL>
-export PGHOST=127.0.0.1 PGPORT=<local port of the port-forward>
+export AGE_LOGIN=<the user of the AGE-era POSTGRES_URL>
+export PGHOST=127.0.0.1 PGPORT=<local port of the database connection>
 export PGUSER=imbi_operator   # see "Prep: the operator role"
 export PGDATABASE=<the Imbi database>
 export PGLIFECYCLE=<path to the pinned pglifecycle binary>
@@ -66,45 +70,54 @@ export TENANT_SLUG=<slug of the tenant that the ETL creates>
 export TENANT_NAME=<name of that tenant>
 ```
 
-The operator reaches PostgreSQL through
-`kubectl --context "$KCTX" -n "$NS" port-forward svc/<primary service> "$PGPORT":5432`
-in a second shell.
+## The processes
 
-## The Deployments
+Every Imbi process runs from the same image; `IMBI_SERVICE` selects it.
 
-The chart `helm/imbi/` renders one `Deployment` for each Helm release,
-from `templates/deployment.yaml`. `service.mode` selects the process:
-
-| `service.mode` | Process | AGE-era image runs `graph.initialize()` |
-|---|---|---|
-| `all` | every process below in one pod, behind the bundled Caddy; the entrypoint also runs `imbi-api setup-service-accounts` (a write) at each start | yes |
-| `api` | `imbi-api serve`, with its background workers in the same process: score recompute, commit sync, pull request sync, deployment sync, release promote, maintenance operations, the identity refresh sweeper, and the document read sweeper | yes |
-| `assistant` | `imbi-assistant serve` | yes |
-| `gateway` | `imbi-gateway serve` | yes |
-| `mcp` | `imbi-mcp serve`; it calls the API | no |
-| `scheduler` | `imbi-scheduler serve`; it also writes the schema `scheduler` | yes |
-| `slackbot` | `imbi-slackbot serve` | yes |
-| `ui` | Caddy: the UI files, and a reverse proxy to the other releases | no |
-
-Every mode writes production data, directly or through the API, except
-`ui`. The freeze stops all of them, `ui` too, because the maintenance
-page must come from a server that is not Imbi.
-
-`templates/deployment-iggy-connect.yaml` renders a second Deployment,
-`<release>-imbi-connect`, when `iggyConnect.enabled` is true. It drains
-the Iggy streams into ClickHouse and does not connect to PostgreSQL. It
-can stay up. It reads its configuration from imbi-api only when it
-starts, so if it restarts while the API is stopped, it exits; restart it
-after step 13.
-
-With the default chart name, all Imbi Deployments have the label
-`app.kubernetes.io/name=imbi`. The
-connectors runtime has `app.kubernetes.io/name=imbi-connect`, so the
-label selector below does not stop it.
+| Process | `IMBI_SERVICE` | Writes without an HTTP request | AGE-era image runs `graph.initialize()` |
+|---|---|---|---|
+| the API | `api` | yes: its background workers run in the same process (score recompute, commit sync, pull request sync, deployment sync, release promote, maintenance operations, the identity refresh sweeper, the document read sweeper) | yes |
+| the MCP server | `mcp` | no; it calls the API | no |
+| the assistant | `assistant` | yes (conversations) | yes |
+| the Slack bot | `slackbot` | yes, on Slack events | yes |
+| the gateway | `gateway` | yes, on webhook events | yes |
+| the scheduler | `scheduler` | yes, on its clock; it also writes the schema `scheduler` | yes |
+| the UI | `ui` | no: Caddy serves the UI files and proxies to the others | no |
 
 `graph.initialize()` creates `public.embeddings` when it is not there.
 For this reason no AGE-era process can run from step 2 until the
 rollback.
+
+In per-service modes, the entrypoint runs no setup command at start.
+`all` mode (every process in one container) runs
+`imbi-api setup-service-accounts`, a write, at each start, so step 12
+cannot use it.
+
+The connectors runtime of Iggy does not connect to PostgreSQL. It reads
+its configuration from the API only when it starts, so if it restarts
+while the API is stopped, it exits; restart it after step 13. Valkey
+and Iggy stay up for the whole cutover.
+
+## Deployment placeholders
+
+The environment document gives the commands for each of these, and
+follows the rules in the right column.
+
+| Placeholder | What it is | Rules |
+|---|---|---|
+| the app Deployments | every Deployment (or release) that runs an Imbi process of the table above, the UI too | Stop and start them by name. Do not use a label selector that also matches Valkey, Iggy, or other stores. After a stop, wait until their pods are gone. |
+| the API Deployment | the one that runs `api` | The only Deployment that gets `IMBI_READ_ONLY`. |
+| the UI Deployment | the one that runs `ui` | Starts in step 12, after the API. |
+| the worker Deployments | `mcp`, `assistant`, `slackbot`, `gateway`, `scheduler` | Stay stopped until step 13, then start in that order, one at a time. |
+| the shared configuration | the source of the environment that every app Deployment reads, if the deployment has one | Never put `IMBI_READ_ONLY` in it: set the switch on the API Deployment only. |
+| the maintenance server | a server that is not Imbi, which answers every request with status 503, a `Retry-After` header, and a page with a marker text | It answers the health check of the load balancer with 200, so that the page does not depend on how the load balancer acts when every target is unhealthy. |
+| the maintenance switch | the change that sends all traffic of every host (internal and public) to the maintenance server, and the change back | Save the routing configuration before the switch. Stop the app Deployments only after every host gives the marker text. After the change back, compare the routing configuration with the saved one, and remove the maintenance server only after every host gives Imbi again. |
+| the deployment automation | whatever applies the deployment configuration (a pipeline, GitOps, `helm upgrade`) | Nobody runs it from step 2 until step 14: it starts every app Deployment again. |
+
+The chart in `helm/imbi/` renders one `Deployment` for each release,
+selected by `service.mode`, and optionally a connectors runtime
+Deployment. With the chart, the app Deployments are the releases, and
+`service.mode: all` is not possible in step 12.
 
 ## Decision tree
 
@@ -134,19 +147,24 @@ ran `freeze.sql`).
    blocking rule (WP3.0 is done).
 4. The relational roles exist in production:
    `schemata/scripts/create-roles.sql`, with the passwords from the
-   secret store. The secret of the new release has the `imbi_app` and
-   `imbi_admin` URLs. The operator has the `imbi_maintenance` URL.
+   secret store. The configuration of the new release has the
+   `imbi_app` and `imbi_admin` URLs; the AGE-era image does not read
+   them, and `POSTGRES_URL` stays for the rollback. The operator has the `imbi_maintenance` URL.
 5. The operator role `imbi_operator` exists (see "Prep: the operator
    role"), and `AGE_LOGIN` is not a superuser, is not the operator role,
    has no login role as a member, and is not a role of
    `schemata/README.md` "Roles". `freeze.sql` checks this again in step
    4.
-6. Nothing starts the apps again by itself during the freeze: pause any
-   GitOps sync or automated `helm upgrade` for the Imbi releases, and
+6. The environment document exists and gives the commands for each
+   placeholder of "Deployment placeholders". It was rehearsed: on a test
+   environment with its own database, the whole runbook ran with the real
+   Deployments and routing.
+7. Nothing starts the apps again by itself during the freeze: nobody
+   runs the deployment automation, and
    find each autoscaler, Job, and CronJob that uses the Imbi image or
    the database credentials (step 2 lists them).
-7. A maintenance page is ready that no Imbi process serves (see step 2).
-8. Nothing outside Kubernetes holds the AGE-era database credentials, or
+8. The maintenance server is ready (see "Deployment placeholders").
+9. Nothing outside Kubernetes holds the AGE-era database credentials, or
    the operator has a list of those clients and stops them in step 2.
    `freeze.sql` stops the runbook in step 4 when any client that is not
    a superuser is still connected.
@@ -216,40 +234,19 @@ estimate.
 ### 2. Write freeze: stop every app, show the maintenance page
 
 - Role: operator.
-- Action:
-
-  ```bash
-  # Every workload in the namespace, not only the Imbi Deployments.
-  kubectl --context "$KCTX" -n "$NS" get \
-    deploy,statefulset,daemonset,job,cronjob,hpa -o wide \
-    | tee "$CUTOVER/02-before.txt"
-  # Switch the Ingress (or the load balancer) to the maintenance page.
-  kubectl --context "$KCTX" -n "$NS" scale deploy \
-    -l app.kubernetes.io/name=imbi --replicas=0
-  # Suspend each CronJob that uses the Imbi image or the database, and
-  # stop each other client of the list of "Before the cutover day".
-  ```
-
-  The chart has no Job, CronJob, or autoscaler, but a deployment can add
-  them. An autoscaler on an Imbi Deployment must be removed or set to
-  zero, or it scales the Deployment up again.
-
-  The maintenance page is a static page that a separate server gives
-  for every path, with status 503 and a `Retry-After` header. A 503 on
-  `/api/*` tells automation to try again later. Recommended: a small
-  web server Deployment and Service in the namespace, and a change of
-  the Ingress backend to it. The Imbi `ui` mode is not acceptable: it is
-  an Imbi process of the AGE-era image.
-
-- Check:
-
-  ```bash
-  kubectl --context "$KCTX" -n "$NS" get pods \
-    -l app.kubernetes.io/name=imbi   # expect: No resources found
-  curl -s -o /dev/null -w '%{http_code}\n' https://<imbi host>/api/status
-  # expect: 503 from the maintenance page
-  ```
-
+- Action, with the commands of the environment document:
+  1. Record every workload of the namespace (Deployments, StatefulSets,
+     DaemonSets, Jobs, CronJobs, autoscalers) in
+     `$CUTOVER/02-before.txt`.
+  2. Start the maintenance server, and do the maintenance switch. Wait
+     until every host gives the marker text.
+  3. Stop the app Deployments, and wait until their pods are gone.
+  4. Suspend each CronJob that uses the Imbi image or the database, and
+     stop each other client of the list of "Before the cutover day". An
+     autoscaler on an app Deployment must be removed or set to zero, or
+     it starts the Deployment again.
+- Check: each app Deployment has zero pods, and a request to
+  `/api/status` on every host returns 503 from the maintenance server.
 - Why: D28. The AGE-era image has no read-only mode, and a stop is
   simpler. A sign-in and an API key "last used" update are writes too,
   so the API cannot stay up.
@@ -272,7 +269,7 @@ estimate.
 
 - Role: operator.
 - Action:
-  1. Check again that every Imbi Deployment has zero pods (step 2
+  1. Check again that the app Deployments have zero pods (step 2
      check).
   2. Block the AGE-era login and end its sessions. Do not use `-1`:
 
@@ -493,15 +490,13 @@ estimate.
      The setting applies to each new session of these logins. A write
      then fails with SQLSTATE 25006 (`read_only_sql_transaction`), and
      the log shows it.
-  2. Deploy the new release image to the `api` and `ui` releases only,
-     with `IMBI_READ_ONLY=true`. The `assistant`, `gateway`, `mcp`,
-     `scheduler`, and `slackbot` releases stay at zero replicas. If
-     production runs `service.mode: all`, do not start it: deploy a
-     separate `api` release and a `ui` release for this step, because
-     `all` starts every worker and runs `setup-service-accounts`.
-  3. The maintenance page stays for the users. The checker reaches the
-     new release directly (a port-forward to the `ui` or `api`
-     Service).
+  2. Start the API Deployment on the new release image, with
+     `IMBI_READ_ONLY=true` on it only, then the UI Deployment on the new
+     image. The worker Deployments stay stopped, on the previous image.
+     Do not run the deployment automation: it starts the workers.
+  3. The maintenance switch stays for the users. The checker reaches the
+     new release directly (for example a port-forward to the UI
+     Deployment, which proxies `/api` to the API).
   4. Validate with reads only:
      - the baseline routes (WP1.8, Appendix C of the implementation
        plan), each 200;
@@ -520,12 +515,17 @@ estimate.
      backends flush their statistics, then record the counters again,
      into `$CUTOVER/12-counters.txt`, with the query of step 11 (a new
      `psql` session reads a new statistics snapshot).
-- Check: every read passes, the write returns 503, the logs have no
-  SQLSTATE 25006, and
+- Check: the API and UI pods run the digest of the new release image,
+  every read passes, the write returns 503 (which also proves that no
+  other source of configuration overrides `IMBI_READ_ONLY`), the logs
+  have no SQLSTATE 25006, and
   `diff "$CUTOVER/11-counters.txt" "$CUTOVER/12-counters.txt"` is
   empty. The counters are the second signal after the database fence:
   a changed counter or a 25006 error means that a process tried to
   write. That stops the cutover.
+- Why only the API and the UI: the workers write without an HTTP
+  request, and the switch covers the API only. The UI does not connect
+  to the database.
 - Why: D25. The point of no return is the first write to the relational
   tables, not the start of the new image. This step proves that the new
   image serves the data before anything can write.
@@ -546,17 +546,22 @@ estimate.
        -c "ALTER ROLE imbi_admin RESET default_transaction_read_only"
      ```
 
-  3. Set `IMBI_READ_ONLY=false` on the `api` release and deploy it. The
-     new pods open new sessions, which do not have the fence. Wait until
-     the `api` pods are ready.
-  4. Deploy the new image to `assistant`, `gateway`, `mcp`, `scheduler`,
-     and `slackbot`, and go back to the normal layout of production
-     (take away the temporary releases of step 12 if you made them).
-  5. Switch the Ingress back from the maintenance page to Imbi.
+  3. Take `IMBI_READ_ONLY` away from the API Deployment. Its new pods
+     open new sessions, which do not have the fence. Wait until they are
+     ready.
+  4. Start the worker Deployments on the new image, one at a time, in
+     this order: `mcp`, `assistant`, `slackbot`, `gateway`, `scheduler`.
+     The order starts with the processes that only answer requests and
+     ends with the processes that act by themselves. Before the next one
+     starts, the pod of each is ready, runs the new digest, has no
+     restart, and its log has no error.
+  5. Do the maintenance switch back. Compare the routing configuration
+     with the one saved in step 2, and remove the maintenance server
+     only when every host gives Imbi again.
   6. The communicator sends the end notice.
-- Check: `GET /api/status` returns 200 through the Ingress, and one
-  write through the UI works (for example a change to a tag
-  description, then back).
+- Check: `GET /api/status` returns 200 on every host, one write through
+  the UI works (for example a change to a tag description, then back),
+  and every app Deployment has one ready pod.
 
 From now on, the decision tree has no rollback.
 
@@ -574,7 +579,10 @@ From now on, the decision tree has no rollback.
   - the scheduler occurrences that the window missed, as the scheduler
     reports them;
   - search returns results (if step 8 failed, run `search-reindex` for
-    each organization now).
+    each organization now);
+  - when the watch is quiet, run the deployment automation of the new
+    release, so the cluster matches the deployment configuration again
+    (and `IMBI_READ_ONLY` is not set anywhere).
 
 ### 15. Keep AGE readable
 
@@ -591,9 +599,8 @@ From now on, the decision tree has no rollback.
 Use it for a failed check in any step from 5 to 12, or when the operator
 says no-go at step 13.
 
-1. Stop every app, as in step 2: every Deployment with
-   `app.kubernetes.io/name=imbi` has zero pods. The maintenance page
-   stays.
+1. Stop the app Deployments, as in step 2, and wait until their pods
+   are gone. The maintenance switch stays.
 2. Put the legacy table back:
 
    ```bash
@@ -619,9 +626,13 @@ says no-go at step 13.
 
 4. Flush the Imbi Valkey keys again (step 10): the new image can have
    written cache values in step 12.
-5. Deploy the previous release image (the AGE-era digest in "Build
-   record") to every release, with its old values. Switch the Ingress
-   back from the maintenance page, and send the end notice.
+5. Put the previous release image (the AGE-era digest in "Build
+   record") back on the API and UI Deployments, and take
+   `IMBI_READ_ONLY` away. Start the API Deployment, then the UI and the
+   worker Deployments one at a time, with the checks of step 13, action
+   4. The workers still have the previous image: step 12 did not change
+   them. Then do the maintenance switch back as in step 13, action 5,
+   and send the end notice.
 
 Check after the rollback:
 
@@ -643,9 +654,9 @@ reverse ETL (decision O1). So:
 
 1. Keep the new release running, if it serves most requests. A broken
    route is better than a lost write.
-2. If the damage grows (wrong data is written), set `IMBI_READ_ONLY=true`
-   on the `api` release and stop the workers. This keeps the data as
-   it is while you fix it.
+2. If the damage grows (wrong data is written), stop the worker
+   Deployments and set `IMBI_READ_ONLY=true` on the API Deployment. This
+   keeps the data as it is while you fix it.
 3. Fix the code on a branch from the release commit, build the image,
    and deploy it. Fix the data through the API, or with SQL as
    `imbi_maintenance` that the operator approves and the log records.
@@ -744,7 +755,7 @@ age-cutover-runbook-2026-09-30), from a summary. Adopted:
 - A database fence for step 12 (`default_transaction_read_only` on the
   app logins), with the write counters as the second signal.
 - The point of no return is before the first writable pod starts, not
-  the Ingress switch.
+  the maintenance switch back.
 - `freeze.sql` finds indirect members, and stops while any client that
   is not a superuser is connected. Step 2 lists every workload kind.
 - `rollback.sql` checks the OID of the legacy table and reports a
@@ -777,23 +788,33 @@ Not adopted, with the reason:
   transactions, so a failure inside one leaves no partial state.
   `freeze.sql` can run again.
 
+A second round reviewed the deployment steps with the real production
+layout. Adopted, as rules of "Deployment placeholders": the maintenance
+server answers the load balancer health check with 200; the app
+Deployments stop only after every host gives the maintenance page, and
+the runbook waits until their pods are gone; the maintenance server goes
+only after every host gives Imbi again; the routing configuration is
+compared with the saved one; each worker is checked before the next
+starts; the pods run the recorded digest; `IMBI_READ_ONLY` is never in
+the shared configuration. Not adopted: a deployment configuration that
+declares zero replicas for the freeze, because it would be one more
+deployment path during the freeze; the rule that nobody runs the
+deployment automation is the lock.
+
 ## Questions for review
 
 Answered on 2026-09-30: production uses one login for the app and the
 operator (so "Prep: the operator role" is new), that login is not a
-superuser (so step 4 can set it NOLOGIN), and Valkey holds only Imbi
-keys (so step 10 flushes it).
+superuser (so step 4 can set it NOLOGIN), Valkey holds only Imbi keys
+(so step 10 flushes it), the environment-specific commands go into an
+environment document outside this repository, the test environment has
+its own database and runs the runbook first, and a hand-applied
+maintenance server with a routing switch is acceptable.
 
-1. Production layout: the commands of steps 2, 4, 12, and 13 for the
-   production deployment (its Deployment names, maintenance page, and
-   Ingress switch) are written, and wait for a decision on the
-   repository that keeps them. Step 12 needs the API and the UI without
-   the workers, in every layout.
-2. The maintenance page: which server, and who owns the Ingress?
-3. The restore of the step 4 backup: add it to the rehearsal, or accept
+1. The restore of the step 4 backup: add it to the rehearsal, or accept
    it as not tested?
-4. pglifecycle: the SHA-256 depends on the platform and the build
+2. pglifecycle: the SHA-256 depends on the platform and the build
    command. Keep the binary file of the rehearsal workstation for the
    cutover, or build a container image with pglifecycle once and pin its
    digest?
-5. The 14 days of step 15 are a proposal.
+3. The 14 days of step 15 are a proposal.
