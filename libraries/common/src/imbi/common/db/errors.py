@@ -2,18 +2,27 @@
 
 One mapping for every app (implementation plan D18, recipe step 4):
 
-=========  ========================  ======
-SQLSTATE   psycopg error             Status
-=========  ========================  ======
-``23001``  ``RestrictViolation``     409
-``23503``  ``ForeignKeyViolation``   409
-``23505``  ``UniqueViolation``       409
-``23514``  ``CheckViolation``        422
-=========  ========================  ======
+=========  ========================  ======================  ======
+SQLSTATE   psycopg error             Cause                   Status
+=========  ========================  ======================  ======
+``23001``  ``RestrictViolation``     RESTRICT delete         409
+``23503``  ``ForeignKeyViolation``   other rows refer to it  409
+``23503``  ``ForeignKeyViolation``   missing referenced row  422
+``23505``  ``UniqueViolation``       duplicate key           409
+``23514``  ``CheckViolation``        CHECK or domain         422
+=========  ========================  ======================  ======
 
-A CHECK constraint and a domain (``slug``, ``jsonb_object``) both raise
-23514. :func:`add_exception_handlers` registers a fallback handler for
-these errors. The handler returns the standard error body,
+23503 has two sides. On the parent side, a delete or a key change is
+blocked by rows that refer to the row: 409. On the child side, an
+insert or an update refers to a row that does not exist: 422. The
+server gives no field for the side, only the text of
+``diag.message_primary``: ``insert or update on table ...`` for the
+child side and ``update or delete on table ...`` for the parent side.
+That text is English only while the server's ``lc_messages`` is
+English. With other text, the violation is taken as the parent side.
+
+:func:`add_exception_handlers` registers a fallback handler for these
+errors. The handler returns the standard error body,
 ``{"detail": "..."}``, with a general message. An endpoint that must
 keep a specific message wraps its transaction in
 :func:`violation_details`.
@@ -32,23 +41,20 @@ from psycopg import errors
 
 LOGGER = logging.getLogger(__name__)
 
-RESTRICT_VIOLATION = '23001'
-FOREIGN_KEY_VIOLATION = '23503'
-UNIQUE_VIOLATION = '23505'
-CHECK_VIOLATION = '23514'
+_CHILD_SIDE_PREFIX = 'insert or update on table '
 
-STATUS: dict[str, int] = {
-    RESTRICT_VIOLATION: 409,
-    FOREIGN_KEY_VIOLATION: 409,
-    UNIQUE_VIOLATION: 409,
-    CHECK_VIOLATION: 422,
-}
+_REFERENCED = 'Other resources refer to this resource'
 
-_DETAIL: dict[str, str] = {
-    RESTRICT_VIOLATION: 'Other resources refer to this resource',
-    FOREIGN_KEY_VIOLATION: 'The request conflicts with a related resource',
-    UNIQUE_VIOLATION: 'The resource already exists',
-    CHECK_VIOLATION: 'The request has a value that is not permitted',
+#: The HTTP status and the fallback ``detail`` of each cause.
+RULES: dict[str, tuple[int, str]] = {
+    'restrict': (409, _REFERENCED),
+    'referenced': (409, _REFERENCED),
+    'missing_reference': (
+        422,
+        'The request refers to a resource that does not exist',
+    ),
+    'unique': (409, 'The resource already exists'),
+    'check': (422, 'The request has a value that is not permitted'),
 }
 
 _ERRORS: tuple[type[psycopg.errors.IntegrityError], ...] = (
@@ -57,6 +63,20 @@ _ERRORS: tuple[type[psycopg.errors.IntegrityError], ...] = (
     errors.UniqueViolation,
     errors.CheckViolation,
 )
+
+
+def cause(exc: psycopg.Error) -> str:
+    """Return the :data:`RULES` key of a mapped violation."""
+    if isinstance(exc, errors.RestrictViolation):
+        return 'restrict'
+    if isinstance(exc, errors.ForeignKeyViolation):
+        message = exc.diag.message_primary or ''
+        if message.startswith(_CHILD_SIDE_PREFIX):
+            return 'missing_reference'
+        return 'referenced'
+    if isinstance(exc, errors.UniqueViolation):
+        return 'unique'
+    return 'check'
 
 
 @contextlib.contextmanager
@@ -70,9 +90,9 @@ def violation_details(
     """Raise ``HTTPException`` with an endpoint's own message.
 
     Each argument is the ``detail`` for one SQLSTATE: *restrict* for
-    23001, *foreign_key* for 23503, *unique* for 23505, and *check* for
-    23514. A violation with no message here goes to the fallback
-    handler.
+    23001, *foreign_key* for 23503 (both sides), *unique* for 23505, and
+    *check* for 23514. The status is the status of :data:`RULES`. A
+    violation with no message here goes to the fallback handler.
 
     .. code-block:: python
 
@@ -84,20 +104,22 @@ def violation_details(
 
     """
     details = {
-        RESTRICT_VIOLATION: restrict,
-        FOREIGN_KEY_VIOLATION: foreign_key,
-        UNIQUE_VIOLATION: unique,
-        CHECK_VIOLATION: check,
+        'restrict': restrict,
+        'referenced': foreign_key,
+        'missing_reference': foreign_key,
+        'unique': unique,
+        'check': check,
     }
     try:
         yield
     except _ERRORS as exc:
-        detail = details[exc.sqlstate or '']
+        key = cause(exc)
+        detail = details[key]
         if detail is None:
             raise
         _log(exc)
         raise fastapi.HTTPException(
-            status_code=STATUS[exc.sqlstate or ''], detail=detail
+            status_code=RULES[key][0], detail=detail
         ) from exc
 
 
@@ -116,10 +138,10 @@ async def _handle_violation(
 ) -> responses.JSONResponse:
     # Registered only for the classes in _ERRORS.
     error = typing.cast('psycopg.Error', exc)
-    sqlstate = error.sqlstate or ''
     _log(error)
+    status, detail = RULES[cause(error)]
     return responses.JSONResponse(
-        status_code=STATUS[sqlstate], content={'detail': _DETAIL[sqlstate]}
+        status_code=status, content={'detail': detail}
     )
 
 

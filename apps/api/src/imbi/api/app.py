@@ -111,8 +111,9 @@ def create_app() -> fastapi.FastAPI:
             },
         )
 
-    # Relational constraint violations: 23001, 23503, and 23505 give
-    # 409, 23514 gives 422.
+    # Relational constraint violations: 23001, 23505, and a 23503 that
+    # blocks a delete or key change give 409; 23514 and a 23503 for a
+    # missing referenced row give 422.
     db_errors.add_exception_handlers(app)
 
     # Phase 5: Setup rate limiting middleware

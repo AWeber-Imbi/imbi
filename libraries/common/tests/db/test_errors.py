@@ -63,7 +63,7 @@ class DatabaseViolationTestCase(support.DatabaseTestCase):
                 409,
             ),
             (
-                'foreign key',
+                'foreign key, child side',
                 pg_errors.ForeignKeyViolation,
                 [
                     (
@@ -71,6 +71,19 @@ class DatabaseViolationTestCase(support.DatabaseTestCase):
                         ' (organization_id, principal_id, role_id)'
                         ' VALUES (%s, %s, %s)',
                         (s.org_a, 'no-such-principal', s.role_a),
+                    )
+                ],
+                422,
+            ),
+            (
+                # A membership refers to the role, and the foreign key
+                # has no ON UPDATE action.
+                'foreign key, parent side',
+                pg_errors.ForeignKeyViolation,
+                [
+                    (
+                        'UPDATE roles SET id = %s WHERE id = %s',
+                        (support.new_id('r'), s.role_a),
                     )
                 ],
                 409,
@@ -99,6 +112,14 @@ class DatabaseViolationTestCase(support.DatabaseTestCase):
                 self.assertEqual(status, response.status_code)
                 self.assertEqual(['detail'], list(response.json()))
                 self.assertIsInstance(response.json()['detail'], str)
+                # An endpoint message keeps the status of the cause.
+                with self.assertRaises(fastapi.HTTPException) as ctx:
+                    with errors.violation_details(
+                        restrict='m', foreign_key='m', unique='m', check='m'
+                    ):
+                        raise exc
+                self.assertEqual(status, ctx.exception.status_code)
+                self.assertEqual('m', ctx.exception.detail)
 
 
 class ViolationDetailsTestCase(unittest.TestCase):
@@ -147,6 +168,18 @@ class ViolationDetailsTestCase(unittest.TestCase):
 class ModuleTestCase(unittest.TestCase):
     def test_status_mapping(self) -> None:
         self.assertEqual(
-            {'23001': 409, '23503': 409, '23505': 409, '23514': 422},
-            errors.STATUS,
+            {
+                'restrict': 409,
+                'referenced': 409,
+                'missing_reference': 422,
+                'unique': 409,
+                'check': 422,
+            },
+            {key: status for key, (status, _detail) in errors.RULES.items()},
+        )
+
+    def test_foreign_key_without_message_is_parent_side(self) -> None:
+        # No server text (or text in another language): 409.
+        self.assertEqual(
+            'referenced', errors.cause(pg_errors.ForeignKeyViolation())
         )
