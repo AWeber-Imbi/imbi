@@ -174,3 +174,12 @@ class AgeGraphTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(edges[0][0], {'id': 't1'})
         self.assertEqual(edges[0][1], {'w': 1})
         self.assertEqual(edges[0][2]['id'], 'o1')
+
+    async def test_only_organization_id(self) -> None:
+        self.assertEqual(
+            await graph.only_organization_id(self.conn, 'imbi'), 'o1'
+        )
+
+    async def test_only_organization_id_needs_one(self) -> None:
+        with self.assertRaisesRegex(mapping.EtlError, 'has 0'):
+            await graph.only_organization_id(self.conn, 'other')

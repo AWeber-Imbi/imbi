@@ -76,7 +76,12 @@ class Report:
 async def table_checksum(
     conn: psycopg.AsyncConnection[typing.Any], table: str
 ) -> str:
-    """Return an MD5 over the text of every row, in a fixed order."""
+    """Return an MD5 over the text of every row, in a fixed order.
+
+    The text of a timestamp depends on the ``TimeZone`` setting; compare
+    only checksums made with the same setting. ``reconcile()`` uses UTC.
+
+    """
     cursor = await conn.execute(
         sql.SQL(
             'SELECT md5(COALESCE(string_agg(h, {sep} ORDER BY h), {empty}))'
@@ -122,6 +127,7 @@ async def reconcile(
         await target.execute(
             'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'
         )
+        await target.execute("SET LOCAL TimeZone TO 'UTC'")
         tables = await catalog.load(target)
         absent = [name for name in names if name not in tables]
         if absent:

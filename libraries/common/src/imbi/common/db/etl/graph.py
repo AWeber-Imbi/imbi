@@ -143,6 +143,26 @@ async def edge_targets(
     return targets
 
 
+async def only_organization_id(
+    conn: psycopg.AsyncConnection[typing.Any], graph: str
+) -> str:
+    """Return the ``id`` of the one ``Organization`` vertex.
+
+    Plan O2: a row that has no organization in the graph belongs to the
+    one production organization. Appendix E, E1 blocks the ETL when
+    there is more than one, so this raises unless there is exactly one.
+
+    """
+    ids = [
+        str(org['id']) async for org in read_label(conn, graph, 'Organization')
+    ]
+    if len(ids) != 1:
+        raise mapping.EtlError(
+            f'Plan O2 needs one organization; the graph has {len(ids)}'
+        )
+    return ids[0]
+
+
 def timestamp(value: object) -> datetime.datetime | None:
     """Parse a graph timestamp (an ISO 8601 string).
 
