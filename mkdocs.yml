@@ -55,6 +55,8 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Services: architecture/services.md
+      - Blueprint Attributes in JSONB: architecture/blueprint-attributes-jsonb.md
+      - Graph Workbench Audit: architecture/graph-workbench-audit.md
   - API Service:
       - Overview: api/index.md
       - Configuration: api/configuration.md
@@ -80,6 +82,7 @@ nav:
           - 0017 Autonomous Deployment Principals: api/adr/0017-autonomous-deployment-principals.md
           - 0018 AI Model Catalog: api/adr/0018-ai-model-catalog.md
           - 0019 Apache Iggy Message Streaming: api/adr/0019-apache-iggy-message-streaming.md
+          - 0020 Replace Apache AGE with Relational PostgreSQL: api/adr/0020-replace-apache-age-with-relational-postgresql.md
   - Library Reference:
       - Overview: common/index.md
       - Installation: common/installation.md
@@ -109,6 +112,7 @@ nav:
           - 0001 Library Extraction: common/adr/0001-imbi-common-library-extraction.md
           - 0002 Lifespan Composition: common/adr/0002-lifespan-composition.md
           - 0003 Use ClickHouse for PR Tracking: common/adr/0003-use-clickhouse-for-pr-tracking.md
+          - 0004 pglifecycle Schema Management: common/adr/0004-pglifecycle-schema-management.md
   - Plugins:
       - Authoring Plugins: common/plugins/index.md
       - Configuration: common/plugins/configuration.md
