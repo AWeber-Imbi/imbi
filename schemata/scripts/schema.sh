@@ -41,18 +41,24 @@ usage() {
 }
 
 connect_from_env_test() {
-    local url
+    local env_test="$repo/.env.test" line url
     test -n "${PGHOST:-}" && return 0
-    test -f "$repo/.env.test" || return 0
-    url=$(grep -m1 '^POSTGRES_URL=' "$repo/.env.test" | cut -d= -f2- \
-          | tr -d '"\r')
-    if [[ $url =~ ^postgresql://([^:@/]+)(:([^@/]*))?@([^:/]+):([0-9]+)/ ]]
-    then
-        export PGUSER="${BASH_REMATCH[1]}"
-        export PGPASSWORD="${BASH_REMATCH[3]}"
-        export PGHOST="${BASH_REMATCH[4]}"
-        export PGPORT="${BASH_REMATCH[5]}"
+    test -f "$env_test" || return 0
+    if ! line=$(grep -m1 '^POSTGRES_URL=' "$env_test"); then
+        echo "$env_test has no POSTGRES_URL line. Run" \
+             "\`moon run root:services\`, or set PGHOST." >&2
+        exit 2
     fi
+    url=$(echo "$line" | cut -d= -f2- | tr -d '"\r')
+    if ! [[ $url =~ ^postgresql://([^:@/]+)(:([^@/]*))?@([^:/]+):([0-9]+)/ ]]
+    then
+        echo "cannot read POSTGRES_URL in $env_test: $url" >&2
+        exit 2
+    fi
+    export PGUSER="${BASH_REMATCH[1]}"
+    export PGPASSWORD="${BASH_REMATCH[3]}"
+    export PGHOST="${BASH_REMATCH[4]}"
+    export PGPORT="${BASH_REMATCH[5]}"
 }
 
 psql_run() {
@@ -103,26 +109,86 @@ tap_passed() {
     fi
 }
 
-drop_database() {
-    psql_run -d postgres -c \
-        "DROP DATABASE IF EXISTS $(quote_ident "$1") WITH (FORCE)"
+# check drops only the databases that it made itself. It marks each one
+# with this comment, and refuses a name that another database has.
+MARKER='imbi schemata/scripts/schema.sh check scratch database'
+
+# Print absent, ours (the database has the marker), or foreign.
+database_state() {
+    psql_run -d postgres -At -v name="$1" -v marker="$MARKER" <<'SQL'
+SELECT coalesce(
+         (SELECT CASE
+                   WHEN shobj_description(oid, 'pg_database') = :'marker'
+                     THEN 'ours'
+                   ELSE 'foreign'
+                 END
+            FROM pg_database
+           WHERE datname = :'name'),
+         'absent')
+SQL
+}
+
+drop_scratch_database() {
+    if test "$(database_state "$1")" = 'ours'; then
+        psql_run -d postgres -c \
+            "DROP DATABASE $(quote_ident "$1") WITH (FORCE)"
+    fi
+}
+
+# create_scratch_database NAME [TEMPLATE]
+create_scratch_database() {
+    local qname template=''
+    case "$(database_state "$1")" in
+        foreign)
+            echo "Database $1 exists, and schema.sh check did not make" \
+                 "it. check does not drop it; give another name." >&2
+            exit 2
+            ;;
+        ours)
+            drop_scratch_database "$1"
+            ;;
+    esac
+    qname=$(quote_ident "$1")
+    if test -n "${2:-}"; then
+        template=" TEMPLATE $(quote_ident "$2")"
+    fi
+    psql_run -d postgres -c "CREATE DATABASE $qname$template"
+    cleanup_databases+=("$1")
+    echo "COMMENT ON DATABASE $qname IS :'marker'" \
+        | psql_run -d postgres -v marker="$MARKER"
 }
 
 check() {
-    local db="$1" qdb test_db tests=0 failed=0
+    local db="$1" test_db tests=0 failed=0 file files=()
     if test "$db" = 'imbi'; then
         echo 'check makes a new database; give a name other than imbi' >&2
         exit 2
     fi
-    qdb=$(quote_ident "$db")
+    for file in "$project"/tests/test_*.sql; do
+        test -e "$file" && files+=("$file")
+    done
+    if test "${#files[@]}" -eq 0; then
+        echo "no test files in $project/tests (test_*.sql)" >&2
+        exit 1
+    fi
 
     echo "== build"
     "$pgl" build "$project" "$work/schema.dump"
 
+    # With no password variable, create-roles.sql must stop before it
+    # creates a role, with an exit status that is not 0, also when the
+    # caller does not set ON_ERROR_STOP.
+    echo "== create-roles.sql without the password variables"
+    if psql -X -q -d postgres -f "$scripts/create-roles.sql" \
+        > "$work/roles.out" 2>&1; then
+        cat "$work/roles.out" >&2
+        echo 'create-roles.sql exited 0 with no password variables' >&2
+        exit 1
+    fi
+    echo 'create-roles.sql stops with no password variables'
+
     echo "== deploy into a new database $db"
-    cleanup_databases=("$db")
-    drop_database "$db"
-    psql_run -d postgres -c "CREATE DATABASE $qdb"
+    create_scratch_database "$db"
     deploy_apply "$db"
 
     echo "== second deploy"
@@ -138,15 +204,11 @@ check() {
     fi
     echo 'second deploy has only the allowlisted statements'
 
-    for file in "$project"/tests/test_*.sql; do
-        test -e "$file" || continue
+    test_db="${db}_test"
+    for file in "${files[@]}"; do
         tests=$((tests + 1))
-        test_db="${db}_test"
         echo "== $(basename "$file")"
-        cleanup_databases+=("$test_db")
-        drop_database "$test_db"
-        psql_run -d postgres -c \
-            "CREATE DATABASE $(quote_ident "$test_db") TEMPLATE $qdb"
+        create_scratch_database "$test_db" "$db"
         psql_run -d "$test_db" \
             -c 'CREATE SCHEMA tap' \
             -c 'CREATE EXTENSION pgtap SCHEMA tap' \
@@ -161,7 +223,7 @@ check() {
             echo "FAILED: $(basename "$file")" >&2
         fi
         grep -E '^(ok|not ok|#|1\.\.)' "$work/tap.out" || true
-        drop_database "$test_db"
+        drop_scratch_database "$test_db"
     done
     if test "$failed" -gt 0; then
         echo "$failed of $tests test files failed" >&2
@@ -173,7 +235,7 @@ check() {
 cleanup() {
     local db
     for db in ${cleanup_databases[@]+"${cleanup_databases[@]}"}; do
-        drop_database "$db" > /dev/null 2>&1 || true
+        drop_scratch_database "$db" > /dev/null 2>&1 || true
     done
     rm -rf "$work"
 }

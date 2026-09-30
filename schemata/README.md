@@ -42,7 +42,10 @@ The tasks connect with the libpq variables (`PGHOST`, `PGPORT`,
 `PGUSER`, `PGPASSWORD`). When `PGHOST` is not set, they use
 `POSTGRES_URL` from `.env.test` (`moon run root:services` writes it).
 `schema-apply` refuses a database that has the legacy `public.embeddings`
-table of the AGE-era app.
+table of the AGE-era app. `schema-check` puts a marker comment on each
+database that it makes (the check database and `<name>_test`), and drops
+only a database with that marker: it refuses a name that another
+database already has. It fails when `tests/` has no `test_*.sql` file.
 
 | Command | What it does |
 |---|---|
@@ -90,7 +93,9 @@ roles. Create the roles before the first deploy with
 `scripts/create-roles.sql`, which takes the three login passwords from
 the psql variables `app_password`, `admin_password`, and
 `maintenance_password`, and creates only the roles that do not exist.
-The postgres service of `compose.ci.yaml` runs it at init, and
+It stops with an error, before it creates a role, when a variable is not
+set, and it stops when an existing role has `LOGIN`, `BYPASSRLS`, or
+`SUPERUSER` set differently from this list. The postgres service of `compose.ci.yaml` runs it at init, and
 `moon run root:services` runs it again. It has these statements:
 
 ```sql

@@ -516,7 +516,7 @@ SELECT throws_ok(
   $$INSERT INTO embeddings (organization_id, node_label, node_id, attribute,
                             model_name, chunk_text, embedding)
     VALUES (NULL, 'Component', 'c1', 'description', 'test', 'x', '[1,2,3]')$$,
-  NULL, NULL,
+  '42501', NULL,
   'imbi_app cannot insert an embedding with no organization');
 ROLLBACK;
 
