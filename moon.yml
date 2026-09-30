@@ -63,6 +63,14 @@ tasks:
   # Boot the backing services and (re)write /.env.test with resolved ports.
   # Ported verbatim from the previous justfile `docker` recipe. Every python
   # `test` task depends on this, and moon runs it once per graph execution.
+  #
+  # compose.ci.yaml names the compose project `imbi-tests`. To run a second
+  # stack next to it (for example one for each worktree), set
+  # COMPOSE_PROJECT_NAME, which docker compose uses in place of that name:
+  # `COMPOSE_PROJECT_NAME=imbi-tests-c moon run root:services`. The host
+  # ports are random, so two stacks do not collide. Without the variable
+  # (CI), the name is `imbi-tests`. Set the same variable for every
+  # `docker compose` command on that stack.
   services:
     script: |
       set -e
@@ -120,6 +128,9 @@ tasks:
       OTEL_RESOURCE_ATTRIBUTES="service.name=imbi-api,service.environment=development"
       OTEL_SERVICE_NAME="imbi-api"
       POSTGRES_URL="postgresql://postgres:secret@$test_host:$(get_port postgres 5432)/imbi"
+      DATABASE_URL="postgresql://imbi_app:secret@$test_host:$(get_port postgres 5432)/imbi_test"
+      ADMIN_DATABASE_URL="postgresql://imbi_admin:secret@$test_host:$(get_port postgres 5432)/imbi_test"
+      MAINTENANCE_DATABASE_URL="postgresql://imbi_maintenance:secret@$test_host:$(get_port postgres 5432)/imbi_test"
       S3_ENDPOINT_URL="http://$test_host:$(get_port ministack 4566)"
       S3_ACCESS_KEY="test"
       S3_SECRET_KEY="test"
@@ -127,6 +138,44 @@ tasks:
       S3_REGION="us-east-1"
       VALKEY_URL="valkey://$test_host:$(get_port valkey 6379)"
       EOF
+      # Build the two templates that isolated_database() copies for each
+      # test process: imbi_graph_template has the graph setup of the
+      # AGE-era code, and imbi_template has the relational schema and no
+      # AGE. Each run builds them again, so they match the checkout. The
+      # roles exist already (10-create-roles.sh above). imbi_test is a
+      # copy of imbi_template that the DATABASE_URL settings of .env.test
+      # name, for a process that does not call isolated_database(). The
+      # processes that use it share it.
+      export PGHOST="$test_host" PGPORT="$(get_port postgres 5432)"
+      export PGUSER=postgres PGPASSWORD=secret
+      psql_admin() {
+          psql -X -q -v ON_ERROR_STOP=1 -d postgres "$@"
+      }
+      # Also drop the copies that a killed test process left, when no
+      # session uses them.
+      psql_admin <<-'SQL'
+      SELECT format('DROP DATABASE %I', datname)
+        FROM pg_database AS d
+       WHERE (datname LIKE 'imbi\_test\_%' OR datname LIKE 'imbi\_graph\_test\_%')
+         AND NOT EXISTS (SELECT FROM pg_stat_activity AS a
+                          WHERE a.datname = d.datname)
+      \gexec
+      SELECT format('ALTER DATABASE %I IS_TEMPLATE false', datname)
+        FROM pg_database
+       WHERE datname IN ('imbi_graph_template', 'imbi_template')
+      \gexec
+      DROP DATABASE IF EXISTS imbi_test WITH (FORCE);
+      DROP DATABASE IF EXISTS imbi_graph_template WITH (FORCE);
+      DROP DATABASE IF EXISTS imbi_template WITH (FORCE);
+      CREATE DATABASE imbi_graph_template;
+      CREATE DATABASE imbi_template;
+      SQL
+      POSTGRES_URL="postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/imbi_graph_template" \
+          uv run --frozen python -c 'import asyncio; from imbi.common.graph import initializer; asyncio.run(initializer.initialize())'
+      schemata/scripts/schema.sh apply imbi_template
+      psql_admin -c 'ALTER DATABASE imbi_graph_template IS_TEMPLATE true' \
+          -c 'ALTER DATABASE imbi_template IS_TEMPLATE true' \
+          -c 'CREATE DATABASE imbi_test TEMPLATE imbi_template'
       # The ClickHouse sink joins a consumer group on a topic that has to
       # exist before the connectors runtime starts, so provision every
       # stream through imbi's own client -- imbi.common.iggy.TOPICS is the
