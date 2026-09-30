@@ -76,6 +76,9 @@ jobs:
     steps:
       - uses: "actions/checkout@v4"
         with:
+          # moon compares the head with the base branch, as in the CI job.
+          fetch-depth: 0
+          filter: "blob:none"
           persist-credentials: false
       # deploy runs pg_dump, which must not be older than the server.
       - name: "Install the PostgreSQL 18 client"
