@@ -126,14 +126,14 @@ drop them:
 `schemata/scripts/create-roles.sql` creates them before the first
 deploy (WP0.4).
 
-pglifecycle `main` sets the owner that each YAML file names, from
-commit `47c58cc` (2026-09-29). An earlier build created each object as
-the connecting role. Agent A verifies this behavior at the pinned
-commit in WP0.4. If deploy sets every owner that README "Roles" names,
-`schemata/scripts/set-owners.sql` only checks the owners and fails on a
-difference. If it does not, `set-owners.sql` sets them. The SECURITY
-DEFINER functions must not stay owned by the deploying superuser in
-either case: a function that a superuser owns runs as superuser.
+`deploy` sets the owner that each YAML file names. pglifecycle `main`
+does this from commit `47c58cc` (2026-09-29). An earlier build created
+each object as the connecting role. WP0.4 confirmed the behavior at the
+pinned commit `4f6729c` (PR #348). So `schemata/scripts/set-owners.sql`
+is a check: it changes nothing, and it fails when an owner is not the
+owner that README "Roles" names. The check matters most for the
+SECURITY DEFINER functions: a function that the deploying superuser
+owns runs as superuser.
 
 ### The pglifecycle pin
 
