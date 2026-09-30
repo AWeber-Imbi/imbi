@@ -22,6 +22,26 @@ jobs:
           # moon ci only builds/tests (no push), so the token is not needed
           # after checkout; don't persist it in .git/config for later steps.
           persist-credentials: false
+      # root:services builds the relational test template with
+      # schemata/scripts/schema.sh. Its deploy runs pg_dump, which must
+      # not be older than the server, and it needs the pinned pglifecycle
+      # build. The cache key is the key of the Schema job, so the two jobs
+      # share one build.
+      - name: "Install the PostgreSQL 18 client"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+      - uses: "actions/cache@v4"
+        with:
+          path: "~/.cache/imbi/pglifecycle"
+          key: "pglifecycle-${{ runner.os }}-${{ hashFiles('schemata/scripts/install-pglifecycle.sh') }}"
+      - name: "Install pglifecycle"
+        run: |
+          binary=$(schemata/scripts/install-pglifecycle.sh)
+          "$binary" --version
       # moon's unstable_uv toolchain installs uv, but with python left
       # unmanaged the `uv venv` env-setup step races ahead of that install
       # and fails with "uv: command not found" on fresh runners. Provision
