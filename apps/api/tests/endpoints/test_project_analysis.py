@@ -10,6 +10,7 @@ from unittest import mock
 
 from fastapi import testclient
 
+from apps.api.tests import support
 from imbi.api import app, models
 from imbi.api.auth import password, permissions
 from imbi.api.plugins.resolution import ResolvedCapability
@@ -141,6 +142,7 @@ def _resolved(
 
 class ProjectAnalysisTestCase(unittest.TestCase):
     def setUp(self) -> None:
+        support.isolated_database()
         self.test_app = app.create_app()
         self.test_user = models.User(
             id='user-1',

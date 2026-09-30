@@ -7,7 +7,7 @@ from uvicorn.middleware import proxy_headers
 
 from imbi.api import endpoints, lifespans, openapi, settings, version
 from imbi.api.middleware import rate_limit
-from imbi.common import access_log, graph, lifespan, sentry, valkey
+from imbi.common import access_log, db, graph, lifespan, sentry, valkey
 from imbi.common.db import errors as db_errors
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
@@ -25,6 +25,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,
             graph.graph_lifespan,
+            db.database_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
             lifespans.anthropic_hook,

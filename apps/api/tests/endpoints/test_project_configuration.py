@@ -153,6 +153,7 @@ class ProjectConfigurationEndpointTestCase(unittest.TestCase):
         asyncio.run(_ensure_schema())
 
     def setUp(self) -> None:
+        support.isolated_database()
         self.test_app = app.create_app()
         self.test_user = models.User(
             email='admin@example.com',

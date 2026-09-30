@@ -1,7 +1,8 @@
 """Helpers for the tests of ``imbi.common.db``.
 
-The tests need a database that ``pglifecycle deploy`` built from
-``schemata/``, with the owners set, and three logins:
+The tests use the relational database of the test process, which
+:func:`imbi.common.testing.databases.isolated_database` copies from
+``imbi_template``, and three logins:
 
 - ``DATABASE_URL``: ``imbi_app``, the login under test.
 - ``ADMIN_DATABASE_URL``: ``imbi_admin``, the login under test.
@@ -20,17 +21,13 @@ import psycopg
 from psycopg import sql
 
 from imbi.common import db
+from imbi.common.testing import databases
 
 
 def env_url(name: str) -> str:
-    """Return the URL in the environment variable *name*."""
-    try:
-        return os.environ[name]
-    except KeyError:
-        raise RuntimeError(
-            f'{name} is not set. The imbi.common.db tests need a database '
-            f'that `moon run root:schema-apply` built.'
-        ) from None
+    """Return the URL in *name*, for the database of this process."""
+    databases.isolated_database()
+    return os.environ[name]
 
 
 def new_id(prefix: str) -> str:
