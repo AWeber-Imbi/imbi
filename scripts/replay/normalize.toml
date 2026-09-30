@@ -1,0 +1,82 @@
+# The fields that the diff masks before it compares. This is the only
+# list: the diff changes no other field. It does not sort lists, and
+# it keeps the difference between a null and a missing field.
+#
+# `route` is a glob on the route (`GET /api/...`) or on the exchange
+# key. `pointer` is a JSON pointer pattern: `*` is one segment, `**` is
+# zero or more segments. Each rule has a reason.
+#
+# A scenario step can also list pointers in its own `normalize` key,
+# for the ids that it creates.
+
+# -- values that the AGE-era API makes new for each response -----------
+#
+# Found with `record --repeat 2` on the AGE-era API: the value is
+# different for two sends of the same request.
+
+[[rule]]
+route = "GET /api/roles/{slug}"
+pointer = "/id"
+reason = "the seed writes Role nodes with no id; the response model makes a new id for each response"
+
+[[rule]]
+route = "GET /api/roles/{slug}"
+pointer = "/created_at"
+reason = "the seed writes Role nodes with no created_at; the response model uses the time of the response"
+
+[[rule]]
+route = "GET /api/roles/{slug}"
+pointer = "/permissions/*/id"
+reason = "the seed writes Permission nodes with no id; the response model makes a new id for each response"
+
+[[rule]]
+route = "GET /api/roles/{slug}"
+pointer = "/permissions/*/created_at"
+reason = "the seed writes Permission nodes with no created_at; the response model uses the time of the response"
+
+[[rule]]
+route = "GET /api/admin/settings"
+pointer = "/permissions/*/id"
+reason = "the seed writes Permission nodes with no id; the response model makes a new id for each response"
+
+[[rule]]
+route = "GET /api/admin/settings"
+pointer = "/permissions/*/created_at"
+reason = "the seed writes Permission nodes with no created_at; the response model uses the time of the response"
+
+# -- values from the time of the request -------------------------------
+
+[[rule]]
+route = "GET /api/admin/dashboard/*"
+pointer = "/checked_at"
+reason = "the time of the check"
+
+[[rule]]
+route = "GET /api/admin/dashboard/status"
+pointer = "/datastores/*/latency_ms"
+reason = "a measured round trip to each data store"
+
+[[rule]]
+route = "GET /api/admin/dashboard/status"
+pointer = "/datastores/*/total_bytes"
+reason = "the size of a data store, which changes while the API writes logs and events"
+
+[[rule]]
+route = "GET /api/admin/dashboard/status"
+pointer = "/datastores/*/size_bytes"
+reason = "the size of a data store, which changes while the API writes logs and events"
+
+[[rule]]
+route = "GET /api/users/{email}/*"
+pointer = "/since"
+reason = "the start of a window that ends at the time of the request"
+
+[[rule]]
+route = "GET /api/users/{email}/*"
+pointer = "/until"
+reason = "the time of the request"
+
+[[rule]]
+route = "GET /api/organizations/{org_slug}/pull-requests/pending-deploy"
+pointer = "/since"
+reason = "the start of a window that ends at the time of the request"

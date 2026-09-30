@@ -1,0 +1,81 @@
+# Differences that the relational tenancy tables cause on purpose
+# (agent K). See ../README.md, "Add an expected difference".
+
+domain = "tenancy"
+owner = "K"
+
+# README Differences 15 and "Delete behavior": team and project type
+# deletes are RESTRICT. The graph deletes the node and its edges.
+[[difference]]
+key = "scenario:tenancy/restricted delete#03 *"
+field = "status"
+old = 204
+new = 409
+reason = "Differences 15: a team that owns a project cannot be deleted (RESTRICT, SQLSTATE 23001)"
+
+[[difference]]
+key = "scenario:tenancy/restricted delete#04 *"
+field = "status"
+old = 204
+new = 409
+reason = "Differences 15: a project type that a project uses cannot be deleted (RESTRICT)"
+
+# The AGE-era API deleted the team in step 03, so the project routes
+# (which find a project through its team) cannot find the project.
+[[difference]]
+key = "scenario:tenancy/restricted delete#05 *"
+field = "status"
+old = 404
+new = 200
+reason = "Differences 15: the project keeps its team, because the team delete failed"
+
+[[difference]]
+key = "scenario:tenancy/restricted delete#05 *"
+field = "body"
+old_status = 404
+new_status = 200
+reason = "Differences 15: the project keeps its team, so the read returns the project, not a 404 error"
+
+[[difference]]
+key = "scenario:tenancy/restricted delete#06 *"
+field = "status"
+old = 404
+new = 200
+reason = "Differences 15: the project keeps its team, so the delete finds it"
+
+[[difference]]
+key = "scenario:tenancy/restricted delete#06 *"
+field = "body"
+old_status = 404
+new_status = 200
+reason = "Differences 15: the delete returns its result, not a 404 error"
+
+# The relational API deletes the team and the project type here, after
+# the project is gone. The AGE-era API deleted them in steps 03 and 04.
+[[difference]]
+key = "scenario:tenancy/restricted delete#07 *"
+field = "status"
+old = 404
+new = 204
+reason = "Differences 15: the cleanup deletes the team that step 03 could not delete"
+
+[[difference]]
+key = "scenario:tenancy/restricted delete#07 *"
+field = "body"
+old_status = 404
+new_status = 204
+reason = "Differences 15: a 204 has no body"
+
+[[difference]]
+key = "scenario:tenancy/restricted delete#08 *"
+field = "status"
+old = 404
+new = 204
+reason = "Differences 15: the cleanup deletes the project type that step 04 could not delete"
+
+[[difference]]
+key = "scenario:tenancy/restricted delete#08 *"
+field = "body"
+old_status = 404
+new_status = 204
+reason = "Differences 15: a 204 has no body"

@@ -1,0 +1,72 @@
+# Write scenarios for tags (agent J). See ../README.md, "Add a
+# scenario".
+#
+# `{org_slug}` is the organization of the recording; `{run}` is the
+# run token (`--run-token`, default `replay`), so both sides create
+# the same names.
+
+domain = "tags"
+owner = "J"
+
+[[scenario]]
+name = "tag lifecycle"
+description = "create, read, update, a failed patch, a duplicate, delete"
+
+[[scenario.step]]
+name = "create"
+method = "POST"
+path = "/api/organizations/{org_slug}/tags/"
+body = { name = "Replay Tag {run}", slug = "replay-tag-{run}", description = "replay" }
+expect = 201
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "read the new tag"
+method = "GET"
+path = "/api/organizations/{org_slug}/tags/replay-tag-{run}"
+expect = 200
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "update the description"
+method = "PATCH"
+path = "/api/organizations/{org_slug}/tags/replay-tag-{run}"
+body = [{ op = "replace", path = "/description", value = "changed" }]
+expect = 200
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "read the change"
+method = "GET"
+path = "/api/organizations/{org_slug}/tags/replay-tag-{run}"
+expect = 200
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "a failed patch test operation is 422"
+method = "PATCH"
+path = "/api/organizations/{org_slug}/tags/replay-tag-{run}"
+body = [{ op = "test", path = "/name", value = "not the name" }]
+expect = 422
+
+[[scenario.step]]
+name = "a duplicate slug"
+method = "POST"
+path = "/api/organizations/{org_slug}/tags/"
+body = { name = "Replay Tag {run}", slug = "replay-tag-{run}" }
+expect = [201, 409]
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "delete"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/tags/replay-tag-{run}"
+expect = 204
+always = true
+
+[[scenario.step]]
+name = "the deleted tag is gone"
+method = "GET"
+path = "/api/organizations/{org_slug}/tags/replay-tag-{run}"
+expect = 404
+always = true

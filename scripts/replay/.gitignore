@@ -1,0 +1,5 @@
+# Recordings hold production data. Write them outside the repository;
+# this is a second guard.
+recordings/
+*.jsonl
+*.env
