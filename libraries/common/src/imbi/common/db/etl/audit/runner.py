@@ -9,6 +9,7 @@ that a blocking rule is clean.
 import collections.abc
 import dataclasses
 import datetime
+import re
 import typing
 
 import psycopg
@@ -18,6 +19,15 @@ from imbi.common.db.etl.audit import checks, rules
 from imbi.common.db.etl.audit import tables as schema_tables
 
 ID_LIMIT = 100
+
+#: Makes the id that the ETL gives a vertex with no ``id`` property
+#: (E36), from its label and graph id.
+VertexId = collections.abc.Callable[[str, int], str]
+
+_STAND_IN = re.compile(rules.DERIVED_ID_PREFIX + r'(\d+)')
+
+#: AGE keeps the label id in the high 16 bits of a graph id.
+_LABEL_SHIFT = 48
 
 
 @dataclasses.dataclass
@@ -95,6 +105,43 @@ async def graph_tables(conn: Connection, graph: str) -> set[str]:
     return {name for (name,) in await cursor.fetchall()}
 
 
+async def label_names(conn: Connection, graph: str) -> dict[int, str]:
+    """Return the label name of each AGE label id of *graph*."""
+    try:
+        async with conn.transaction():
+            cursor = await conn.execute(
+                'SELECT l.id, l.name FROM ag_catalog.ag_label AS l'
+                ' JOIN ag_catalog.ag_graph AS g ON g.graphid = l.graph'
+                ' WHERE g.name = %s',
+                (graph,),
+            )
+            rows = await cursor.fetchall()
+    except psycopg.Error:
+        return {}
+    return {int(label_id): name for label_id, name in rows}
+
+
+def report_ids(
+    ids: list[str], labels: dict[int, str], vertex_id: VertexId | None
+) -> list[str]:
+    """Replace each ``gid:<graph id>`` stand-in with the ETL's id.
+
+    The queries use the stand-in so that the rows that refer to a vertex
+    with no id still join. The report gives the id that the ETL loads,
+    so WP3.0 and the reconciliation can compare them.
+
+    """
+    if vertex_id is None:
+        return ids
+
+    def replace(match: re.Match[str]) -> str:
+        graph_id = int(match.group(1))
+        label = labels.get(graph_id >> _LABEL_SHIFT)
+        return match.group(0) if label is None else vertex_id(label, graph_id)
+
+    return sorted(_STAND_IN.sub(replace, value) for value in ids)
+
+
 async def _relation_exists(conn: Connection, name: str) -> bool:
     cursor = await conn.execute('SELECT to_regclass(%s) IS NOT NULL', (name,))
     row = await cursor.fetchone()
@@ -169,12 +216,14 @@ async def run(
     id_limit: int = ID_LIMIT,
     not_covered: collections.abc.Mapping[str, str] | None = None,
     covered: collections.abc.Mapping[str, str] | None = None,
+    vertex_id: VertexId | None = None,
 ) -> Report:
     """Run every rule on *conn* and return the report.
 
     *conn* must not be in a transaction. The audit sets it read only.
     *only* limits the run to the rules whose id starts with one of its
-    entries (``E5``, ``schema:users``).
+    entries (``E5``, ``schema:users``). *vertex_id* gives the reported
+    id of a vertex with no id (E36).
 
     """
     report = Report(graph, datetime.datetime.now(datetime.UTC))
@@ -183,6 +232,7 @@ async def run(
     await conn.set_isolation_level(psycopg.IsolationLevel.REPEATABLE_READ)
     async with conn.transaction():
         tables = await graph_tables(conn, graph)
+        labels = await label_names(conn, graph)
         found = list(appendix_rules)
         probed: dict[str, tuple[checks.Source, list[str]]] = {}
         for source in sources:
@@ -220,7 +270,7 @@ async def run(
         for rule in found:
             if only and not any(rule.id.startswith(o) for o in only):
                 continue
-            report.results.append(
-                await _count(conn, graph, tables, rule, id_limit)
-            )
+            result = await _count(conn, graph, tables, rule, id_limit)
+            result.ids = report_ids(result.ids, labels, vertex_id)
+            report.results.append(result)
     return report

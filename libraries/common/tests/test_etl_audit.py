@@ -195,7 +195,13 @@ async def _audit(database: str) -> runner.Report:
             not_covered=sources.NOT_COVERED,
             covered=appendix_e.COVERED,
             id_limit=1,
+            vertex_id=_vertex_id,
         )
+
+
+def _vertex_id(label: str, graph_id: int) -> str:
+    """A stand-in for the ETL id function, to show the mapping."""
+    return f'derived-{label}-{graph_id > 0}'
 
 
 async def _drop(database: str) -> None:
@@ -278,6 +284,9 @@ class AuditTestCase(unittest.TestCase):
             'schema:tags.unique.tags_organization_id_slug_key'
         ).rule
         self.assertEqual((rule.covered_by, rule.fate), ('E39', 'blocking'))
+
+    def test_node_with_no_id_reports_the_etl_id(self) -> None:
+        self.assertEqual(self.result('E36').ids, ['derived-Role-True'])
 
     def test_id_limit(self) -> None:
         result = self.result(

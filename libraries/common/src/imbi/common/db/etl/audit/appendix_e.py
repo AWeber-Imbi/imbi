@@ -597,7 +597,7 @@ RULES: list[rules.Rule] = [
         'Nodes with no id property: the ETL derives the id from the graph id',
         'changed',
         ' UNION ALL '.join(
-            f"SELECT '{label}/' || v.gid::text AS id FROM {{{label}}} v"
+            f"SELECT v.p->>'id' AS id FROM {{{label}}} v"
             f" WHERE v.p->>'id' LIKE '{rules.DERIVED_ID_PREFIX}%'"
             for label in _NO_ID_LABELS
         ),
