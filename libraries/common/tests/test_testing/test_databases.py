@@ -2,6 +2,7 @@
 
 import collections.abc
 import os
+import pathlib
 import typing
 import unittest
 
@@ -79,6 +80,13 @@ class IsolatedDatabaseTestCase(unittest.TestCase):
                     'SELECT current_user, current_database()'
                 ).fetchone()
                 self.assertEqual(row, (role, self.result.relational))
+
+    def test_services_cleanup_takes_the_same_lock(self) -> None:
+        moon = pathlib.Path(__file__).parents[4] / 'moon.yml'
+        self.assertIn(
+            f'SELECT pg_advisory_lock({databases.CLEANUP_LOCK})',
+            moon.read_text(),
+        )
 
 
 class ProjectsIndexConditionTestCase(unittest.TestCase):

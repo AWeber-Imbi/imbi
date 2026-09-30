@@ -42,6 +42,12 @@ MAINTENANCE_URL = 'MAINTENANCE_DATABASE_URL'
 #: factories use. It bypasses row-level security. Application code
 #: never reads it.
 FACTORY_URL = 'IMBI_TEST_FACTORY_URL'
+#: The advisory lock key (in the ``postgres`` database) that keeps the
+#: cleanup of ``moon run root:services`` away from a copy that has no
+#: session yet. A process holds it shared from before its CREATE
+#: DATABASE until its sessions are open; the cleanup takes it
+#: exclusive. Change it here and in the root ``moon.yml`` together.
+CLEANUP_LOCK = 7351041
 
 
 @dataclasses.dataclass(frozen=True)
@@ -90,7 +96,9 @@ def isolated_database() -> IsolatedDatabases:
     hosts (or in two containers) have the same process id and use one
     server. The process keeps one idle session open on each copy until
     it exits, so a copy with no session is a copy that a killed process
-    left. ``moon run root:services`` drops those.
+    left. ``moon run root:services`` drops those. The process holds
+    :data:`CLEANUP_LOCK` from before it creates a copy until the session
+    on the copy is open, so the cleanup cannot drop a new copy.
 
     """
     pid = os.getpid()
@@ -107,10 +115,13 @@ def isolated_database() -> IsolatedDatabases:
         factory_url=_with_database(superuser, relational),
     )
     server = _with_database(superuser, 'postgres')
+    keepers: list[psycopg.Connection[typing.Any]] = []
+    # Closing the connection releases the lock.
     with psycopg.connect(server, autocommit=True) as conn:
-        for database, template in (
-            (graph, GRAPH_TEMPLATE),
-            (relational, TEMPLATE),
+        conn.execute('SELECT pg_advisory_lock_shared(%s)', [CLEANUP_LOCK])
+        for database, template, url in (
+            (graph, GRAPH_TEMPLATE, result.graph_url),
+            (relational, TEMPLATE, result.factory_url),
         ):
             try:
                 conn.execute(
@@ -123,9 +134,7 @@ def isolated_database() -> IsolatedDatabases:
                     f'The template database {template} does not exist: '
                     'run `moon run root:services`'
                 ) from None
-    keepers = [
-        psycopg.connect(url) for url in (result.graph_url, result.factory_url)
-    ]
+            keepers.append(psycopg.connect(url))
     atexit.register(_drop, server, [graph, relational], keepers, pid)
     os.environ[GRAPH_URL] = result.graph_url
     os.environ[APP_URL] = result.app_url

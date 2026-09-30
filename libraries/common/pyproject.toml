@@ -94,3 +94,6 @@ include = [
   "src/imbi/common/clickhouse/schemata.toml",
   "src/imbi/common/graph/schemata.toml",
 ]
+# Test helpers only. The factories use a superuser connection, so they
+# must not ship. Workspace tests import them from the source tree.
+exclude = ["src/imbi/common/testing"]
