@@ -194,6 +194,12 @@ check() {
     echo "== second deploy"
     "$pgl" deploy -d "$db" --allow-drop -o "$work/second.sql" \
         --error-file "$work/errors.log" "${flags[@]}" "$project"
+    # statements() reads a missing file as no statements, so a deploy
+    # that wrote no plan would match an empty allowlist.
+    if ! test -s "$work/second.sql"; then
+        echo 'The second deploy wrote no plan file.' >&2
+        exit 1
+    fi
     if ! diff -u \
         <(statements "$project/tests/second-deploy-allowlist.sql") \
         <(statements "$work/second.sql"); then

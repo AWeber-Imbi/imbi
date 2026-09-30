@@ -70,8 +70,9 @@ Then every operator of the chart gets schema upgrades. That work
 package also adds a `helm template` check to CI, because nothing
 renders the chart in CI today. The hook has these conditions:
 
-- A second deploy is empty. While README Known problem 2 remains (the
-  HNSW index), each deploy has a `DROP INDEX`, and `--apply` refuses it.
+- A second deploy is empty. At the pinned commit it is: the
+  second-deploy allowlist has no statements. When a statement repeats on
+  each deploy, the hook cannot converge.
 - The pglifecycle build is pinned (see below).
 - The Job does not retry automatically.
 - A schema change is additive until the release after the code that
@@ -129,8 +130,9 @@ deploy (WP0.4).
 
 `deploy` sets the owner that each YAML file names. pglifecycle `main`
 does this from commit `47c58cc` (2026-09-29). An earlier build created
-each object as the connecting role. WP0.4 confirmed the behavior at the
-pinned commit `4f6729c` (PR #348). So `schemata/scripts/set-owners.sql`
+each object as the connecting role. WP0.4 confirmed the behavior at
+commit `4f6729c` (PR #348), and `root:schema-check` confirms it at each
+pin. So `schemata/scripts/set-owners.sql`
 is a check: it changes nothing, and it fails when an owner is not the
 owner that README "Roles" names. The check matters most for the
 SECURITY DEFINER functions: a function that the deploying superuser
@@ -143,14 +145,16 @@ latest release is 2.0.0-alpha.2. So, until the maintainer tags a
 release (D27):
 
 - CI and the moon tasks build pglifecycle from one commit of `main`.
-  WP0.4 pinned `4f6729c` (the head of `main` on 2026-09-30), and
+  WP0.4 pinned `4f6729c`. The pin is now `1e5b893` (the head of `main`
+  on 2026-09-30, with pglifecycle #114 to #118), and
   `schemata/README.md` records the commit.
 - The rehearsal and the cutover use the same build as CI. The runbook
   records the SHA-256 of the binary.
-- When a release is tagged, a PR changes the pin to the release, in
-  `.prototools` or the moon task and in the GitHub Action `version:`
-  input. If the release fixes README Known problem 2, the same PR
-  removes the HNSW statements from the second-deploy allowlist.
+- When a release is tagged, a PR changes the pin to the release in
+  `schemata/scripts/install-pglifecycle.sh` and `schemata/README.md`,
+  and runs `root:schema-check`. If the second deploy then has
+  statements, the same PR adds them to the second-deploy allowlist and
+  to README "Known problems".
 
 `main` moves, and alpha releases move. The pin does not.
 
