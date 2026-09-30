@@ -1,0 +1,73 @@
+---
+name: team_members
+schema: public
+owner: imbi_owner
+comment: A user who is a member of a team. The team pages and the user profile show
+  these memberships. Replaces the MEMBER_OF edge from User to Team.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: team_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The team.
+- name: user_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The user who is a member.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+primary_key:
+- team_id
+- user_id
+foreign_keys:
+- name: team_members_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: team_members_team_id_fkey
+  columns:
+  - organization_id
+  - team_id
+  references:
+    name: public.teams
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: team_members_user_id_fkey
+  columns:
+  - user_id
+  references:
+    name: public.users
+    columns:
+    - id
+  on_delete: CASCADE
+indexes:
+- name: team_members_user_idx
+  method: btree
+  columns:
+  - name: user_id
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

@@ -1,0 +1,23 @@
+---
+name: webhook_organization_id
+schema: public
+owner: imbi_definer
+parameters:
+- mode: IN
+  name: p_webhook_id
+  data_type: text
+returns: text
+language: sql
+stable: true
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |2-
+   SELECT w.organization_id
+     FROM public.webhooks AS w
+    WHERE w.id = p_webhook_id;
+comment: The organization of a webhook, or NULL when there is no such webhook. The
+  gateway calls it for POST /notifications/{id} and then sets imbi.organization_id.
+dependencies:
+  tables:
+  - public.webhooks

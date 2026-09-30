@@ -1,0 +1,42 @@
+---
+name: plugin_registrations
+schema: public
+owner: imbi_owner
+comment: An installed plugin package and whether an operator enabled it. The API
+  adds a row for each plugin it loads at startup. Replaces the PluginRegistration
+  node.
+columns:
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The plugin slug from the plugin manifest.
+- name: enabled
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: False for a new plugin. An admin must enable it before an integration
+    can use it. Startup keeps the value an admin set.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- slug
+triggers:
+- name: plugin_registrations_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: false

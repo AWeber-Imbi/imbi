@@ -1,0 +1,149 @@
+---
+name: blockers
+schema: public
+owner: imbi_owner
+comment: A reason that a release cannot deploy or promote. Any open blocker refuses
+  the deploy or promote, and the 409 response lists them. Resolving keeps the record;
+  delete is for mistakes. Replaces the graph Blocker node and its BLOCKED_BY edge.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: release_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The release that the blocker holds back.
+- name: blocker_type
+  data_type: TEXT
+  nullable: false
+  default: '''manual''::text'
+  comment: A label, such as drift or qa. No behavior changes by type. The drift check
+    files drift blockers.
+- name: description
+  data_type: TEXT
+  nullable: false
+  comment: Why the release is blocked, 1 to 500 characters. The UI and the 409 response
+    show it.
+- name: external_ref
+  data_type: TEXT
+  comment: A handle that an outside process, such as a CI job or an agent, uses to
+    find and resolve the blocker it filed. It then does not need to store an Imbi
+    id. NULL for blockers that a person filed.
+- name: blocker_status
+  data_type: TEXT
+  nullable: false
+  default: '''open''::text'
+  comment: open refuses deploys and promotes. resolved keeps the record and stops
+    refusing.
+- name: scope
+  data_type: TEXT
+  nullable: false
+  default: '''commit''::text'
+  comment: commit also refuses the same commit under a different tag, to stop shipping
+    that code. tag refuses this version only, so a bumped version of the same commit
+    can still ship, such as after a failed release build.
+- name: created_by
+  data_type: TEXT
+  nullable: false
+  comment: 'Who filed the blocker: a user email, a service account slug or a worker
+    name.'
+- name: resolved_by
+  data_type: TEXT
+  comment: Who resolved the blocker. NULL while it is open.
+- name: resolved_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the blocker was resolved. NULL while it is open.
+- name: resolution_note
+  data_type: TEXT
+  comment: Optional text about how the blocker was resolved, up to 500 characters.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+check_constraints:
+- name: blocker_type_valid
+  expression: (blocker_type = ANY (ARRAY['build-failure'::text, 'drift'::text, 'product-review'::text,
+    'qa'::text, 'deploy-order'::text, 'dependency'::text, 'manual'::text]))
+- name: blocker_status_valid
+  expression: (blocker_status = ANY (ARRAY['open'::text, 'resolved'::text]))
+- name: scope_valid
+  expression: (scope = ANY (ARRAY['commit'::text, 'tag'::text]))
+- name: description_length
+  expression: ((char_length(description) >= 1) AND (char_length(description) <= 500))
+- name: external_ref_length
+  expression: (char_length(external_ref) <= 200)
+- name: resolution_note_length
+  expression: (char_length(resolution_note) <= 500)
+foreign_keys:
+- name: blockers_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: blockers_release_id_fkey
+  columns:
+  - organization_id
+  - release_id
+  references:
+    name: public.releases
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+indexes:
+- name: blockers_open_ref_idx
+  unique: true
+  method: btree
+  columns:
+  - name: organization_id
+  - name: release_id
+  - name: external_ref
+  where: ((blocker_status = 'open'::text) AND (external_ref IS NOT NULL))
+  comment: One open blocker per release and reference.
+- name: blockers_release_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: release_id
+  comment: The deploy and promote gate, and the foreign key check when a release
+    is deleted.
+triggers:
+- name: blockers_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

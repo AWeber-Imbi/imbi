@@ -1,0 +1,9 @@
+---
+name: imbi
+encoding: UTF-8
+stdstrings: true
+superuser: postgres
+extensions:
+- name: vector
+  schema: public
+  comment: vector data type and ivfflat and hnsw access methods

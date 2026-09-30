@@ -1,0 +1,68 @@
+---
+name: scoring_policy_targets
+schema: public
+owner: imbi_owner
+comment: A project type that a scoring policy applies to. No rows means all project
+  types. Replaces the TARGETS edge.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: scoring_policy_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The policy.
+- name: project_type_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: 'A project type whose projects the policy scores. A project with none
+    of the target types is not scored by the policy. RESTRICT: a targeted project
+    type cannot be deleted, because removing the last row would make the policy score
+    all project types.'
+primary_key:
+- scoring_policy_id
+- project_type_id
+foreign_keys:
+- name: scoring_policy_targets_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: scoring_policy_targets_scoring_policy_id_fkey
+  columns:
+  - organization_id
+  - scoring_policy_id
+  references:
+    name: public.scoring_policies
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: scoring_policy_targets_project_type_id_fkey
+  columns:
+  - organization_id
+  - project_type_id
+  references:
+    name: public.project_types
+    columns:
+    - organization_id
+    - id
+  on_delete: RESTRICT
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

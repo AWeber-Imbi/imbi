@@ -1,0 +1,113 @@
+---
+name: imbi_app
+comment: The application login. Does not own tables and does not bypass row-level
+  security. It can insert into the shared catalog, but cannot change or delete catalog
+  rows. It can only read tenants.
+options:
+  bypass_rls: false
+  inherit: true
+grants:
+  schemata:
+    public:
+    - USAGE
+  tables:
+    public.advisories:
+    - SELECT
+    - INSERT
+    public.ai_model_teams: &id001
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    public.ai_models: *id001
+    public.ai_providers: *id001
+    public.analysis_reports: *id001
+    public.analysis_results: *id001
+    public.api_keys: *id001
+    public.blockers: *id001
+    public.blueprints: *id001
+    public.client_credentials: *id001
+    public.comment_threads: *id001
+    public.comments: *id001
+    public.component_advisories: *id001
+    public.component_governance: *id001
+    public.component_identifiers:
+    - SELECT
+    - INSERT
+    public.component_notes: *id001
+    public.component_overrides: *id001
+    public.component_release_governance: *id001
+    public.component_release_overrides: *id001
+    public.component_releases:
+    - SELECT
+    - INSERT
+    public.components:
+    - SELECT
+    - INSERT
+    public.conversations: *id001
+    public.deployments: *id001
+    public.document_likes: *id001
+    public.document_tags: *id001
+    public.document_templates: *id001
+    public.documents: *id001
+    public.embeddings: *id001
+    public.environments: *id001
+    public.identity_connections: *id001
+    public.integrations: *id001
+    public.issued_tokens: *id001
+    public.link_definitions: *id001
+    public.local_auth_settings: *id001
+    public.mcp_servers: *id001
+    public.memberships: *id001
+    public.messages: *id001
+    public.oauth_clients: *id001
+    public.organizations: *id001
+    public.password_reset_tokens: *id001
+    public.permissions: *id001
+    public.plugin_edges: *id001
+    public.plugin_entities: *id001
+    public.plugin_entity_keys: *id001
+    public.plugin_registrations: *id001
+    public.principals: *id001
+    public.project_capabilities: *id001
+    public.project_dependencies: *id001
+    public.project_environments: *id001
+    public.project_integrations: *id001
+    public.project_promotions: *id001
+    public.project_syncs: *id001
+    public.project_type_assignments: *id001
+    public.project_type_capabilities: *id001
+    public.project_types: *id001
+    public.projects: *id001
+    public.releases: *id001
+    public.resource_acls: *id001
+    public.role_grants: *id001
+    public.roles: *id001
+    public.scoring_policies: *id001
+    public.scoring_policy_targets: *id001
+    public.service_accounts: *id001
+    public.tags: *id001
+    public.team_members: *id001
+    public.teams: *id001
+    public.template_project_types: *id001
+    public.template_tags: *id001
+    public.tenants:
+    - SELECT
+    public.totp_secrets: *id001
+    public.uploads: *id001
+    public.users: *id001
+    public.webhook_rules: *id001
+    public.webhooks: *id001
+  functions:
+    public.integration_organization_id(text):
+    - EXECUTE
+    public.principal_memberships():
+    - EXECUTE
+    public.principal_permissions():
+    - EXECUTE
+    public.principal_teams():
+    - EXECUTE
+    public.upload_organization_id(text):
+    - EXECUTE
+    public.webhook_organization_id(text):
+    - EXECUTE

@@ -1,0 +1,27 @@
+---
+name: delete_embeddings
+schema: public
+owner: imbi_trigger
+returns: trigger
+language: plpgsql
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |-
+  BEGIN
+    IF TG_OP <> 'DELETE' OR TG_WHEN <> 'AFTER' OR TG_LEVEL <> 'ROW'
+       OR TG_NARGS <> 1 THEN
+      RAISE EXCEPTION 'delete_embeddings must be an AFTER DELETE row trigger with one argument';
+    END IF;
+    DELETE FROM public.embeddings
+     WHERE node_label = TG_ARGV[0]
+       AND node_id = OLD.id;
+    RETURN NULL;
+  END;
+comment: 'Trigger function for AFTER DELETE. Deletes the embeddings of the deleted
+  row. The trigger argument is the node_label. SECURITY DEFINER, owned by imbi_trigger:
+  a cascade fires it as the owner of the child table under row-level security, and
+  the imbi_admin login has no grant on embeddings.'
+dependencies:
+  tables:
+  - public.embeddings

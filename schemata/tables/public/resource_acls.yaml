@@ -1,0 +1,90 @@
+---
+name: resource_acls
+schema: public
+owner: imbi_owner
+comment: Actions that a principal can do on one resource, in addition to its role
+  permissions. The resource-level permission check reads it when the role does not
+  grant the permission. Replaces the CAN_ACCESS edge. No code writes these grants
+  today.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: principal_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The principal that gets the access.
+- name: resource_type
+  data_type: TEXT
+  nullable: false
+  comment: The kind of resource, the same names as the resource part of permission
+    names, for example project.
+- name: resource_slug
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The slug of the resource. Not a foreign key, because resource_type selects
+    the table.
+- name: actions
+  data_type: TEXT[]
+  nullable: false
+  default: '''{}''::text[]'
+  comment: The actions allowed on the resource, for example read or write. The check
+    passes when the requested action is in this list.
+- name: granted_by
+  data_type: TEXT
+  comment: The actor who granted the access.
+- name: granted_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the access was granted.
+primary_key:
+- organization_id
+- principal_id
+- resource_type
+- resource_slug
+check_constraints:
+- name: resource_type_valid
+  expression: (resource_type = ANY (ARRAY['blueprint'::text, 'document'::text, 'document_template'::text,
+    'environment'::text, 'identity_connection'::text, 'integration'::text, 'link_definition'::text,
+    'organization'::text, 'project'::text, 'project_type'::text, 'release'::text,
+    'role'::text, 'tag'::text, 'team'::text]))
+foreign_keys:
+- name: resource_acls_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: resource_acls_principal_id_fkey
+  columns:
+  - principal_id
+  references:
+    name: public.principals
+    columns:
+    - id
+  on_delete: CASCADE
+indexes:
+- name: resource_acls_resource_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: resource_type
+  - name: resource_slug
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

@@ -1,0 +1,14 @@
+---
+name: delete_principal
+schema: public
+owner: imbi_owner
+returns: trigger
+language: plpgsql
+definition: |-
+  BEGIN
+    DELETE FROM public.principals WHERE id = OLD.id;
+    RETURN NULL;
+  END;
+comment: Trigger function for AFTER DELETE on users and service_accounts. Deletes
+  the principal, so its memberships, API keys, tokens and access grants cascade away.
+  Content keeps its actor names.

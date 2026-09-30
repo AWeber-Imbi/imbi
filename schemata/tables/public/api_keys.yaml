@@ -1,0 +1,97 @@
+---
+name: api_keys
+schema: public
+owner: imbi_owner
+comment: A long-lived bearer credential that a user or a service account owns. The
+  full key is ik_<id>_<secret>, and the API shows it once. The graph APIKey label.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: principal_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The owner. Replaces the OWNED_BY edge.
+- name: key_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The public part, ik_<hex>. Authentication finds the row by it before it
+    verifies the secret.
+- name: key_hash
+  data_type: TEXT
+  nullable: false
+  comment: Argon2id hash of the secret part. The secret is not stored.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: The name that the owner gives the key.
+- name: description
+  data_type: TEXT
+  comment: What the key is for.
+- name: scopes
+  data_type: TEXT[]
+  nullable: false
+  default: '''{}''::text[]'
+  comment: Permission names. A request with the key gets the owner permissions that
+    are in this list. Empty means all permissions of the owner.
+- name: expires_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the key stops working. NULL means no expiry.
+- name: last_used_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the key last authenticated a request. The API caches keys, so it
+    updates this at most once in each cache period.
+- name: last_rotated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the secret was last replaced. Rotation keeps key_id. NULL until the
+    first rotation.
+- name: revoked_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the key was revoked. NULL while it is valid. Authentication rejects
+    a key with revoked_at set. Replaces the graph revoked flag.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+storage_parameters:
+  fillfactor: '90'
+unique_constraints:
+- - key_id
+foreign_keys:
+- name: api_keys_principal_id_fkey
+  columns:
+  - principal_id
+  references:
+    name: public.principals
+    columns:
+    - id
+  on_delete: CASCADE
+indexes:
+- name: api_keys_principal_idx
+  method: btree
+  columns:
+  - name: principal_id
+triggers:
+- name: api_keys_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: false

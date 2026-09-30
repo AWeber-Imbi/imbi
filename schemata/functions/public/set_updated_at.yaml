@@ -1,0 +1,14 @@
+---
+name: set_updated_at
+schema: public
+owner: imbi_owner
+returns: trigger
+language: plpgsql
+definition: |-
+  BEGIN
+    NEW.updated_at := statement_timestamp();
+    RETURN NEW;
+  END;
+comment: Trigger function. Sets updated_at to the statement time, so the application
+  does not set it. The statement time, not the transaction start, so updated_at cannot
+  be earlier than a created_at that a later transaction wrote.

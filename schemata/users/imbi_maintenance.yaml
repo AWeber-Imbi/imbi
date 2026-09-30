@@ -1,0 +1,457 @@
+---
+name: imbi_maintenance
+comment: The login for the data migration, the reconciliation report and catalog
+  maintenance, such as deleting components that nothing uses. BYPASSRLS. The application
+  never uses it.
+options:
+  bypass_rls: true
+  inherit: true
+grants:
+  schemata:
+    public:
+    - USAGE
+  tables:
+    public.advisories:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.ai_model_teams:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.ai_models:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.ai_providers:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.analysis_reports:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.analysis_results:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.api_keys:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.blockers:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.blueprints:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.client_credentials:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.comment_threads:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.comments:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_advisories:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_governance:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_identifiers:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_notes:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_overrides:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_release_governance:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_release_overrides:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.component_releases:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.components:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.conversations:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.deployments:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.document_likes:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.document_tags:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.document_templates:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.documents:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.embeddings:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.environments:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.identity_connections:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.integrations:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.issued_tokens:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.link_definitions:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.local_auth_settings:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.mcp_servers:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.memberships:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.messages:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.oauth_clients:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.organizations:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.password_reset_tokens:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.permissions:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.plugin_edges:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.plugin_entities:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.plugin_entity_keys:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.plugin_registrations:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.principals:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_capabilities:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_dependencies:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_environments:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_integrations:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_promotions:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_syncs:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_type_assignments:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_type_capabilities:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.project_types:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.projects:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.releases:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.resource_acls:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.role_grants:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.roles:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.scoring_policies:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.scoring_policy_targets:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.service_accounts:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.tags:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.team_members:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.teams:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.template_project_types:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.template_tags:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.tenants:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.totp_secrets:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.uploads:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.users:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.webhook_rules:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE
+    public.webhooks:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    - TRUNCATE

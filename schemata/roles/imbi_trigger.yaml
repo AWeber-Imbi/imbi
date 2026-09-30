@@ -1,0 +1,20 @@
+---
+name: imbi_trigger
+comment: Owns the delete_embeddings() and delete_plugin_edges() trigger functions
+  and nothing else. Cannot log in. BYPASSRLS, because a cascade fires a trigger without
+  an organization setting; it can only read and delete embeddings and plugin_edges.
+options:
+  login: false
+  bypass_rls: true
+  inherit: true
+grants:
+  schemata:
+    public:
+    - USAGE
+  tables:
+    public.embeddings:
+    - SELECT
+    - DELETE
+    public.plugin_edges:
+    - SELECT
+    - DELETE

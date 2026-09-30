@@ -1,0 +1,88 @@
+---
+name: embeddings
+schema: public
+owner: imbi_owner
+comment: Vector embeddings of text fields for semantic search. The existing public.embeddings
+  table, with organization_id added. Rows point to many tables, so they have no foreign
+  keys. Instead, an AFTER DELETE trigger on each embedded table deletes the rows
+  of a deleted entity, so search cannot find deleted text. Shared catalog components
+  are not embedded, so every row belongs to an organization.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: node_label
+  data_type: TEXT
+  nullable: false
+  comment: The entity type, such as Project or Document.
+- name: node_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The id of the entity in the table that node_label names.
+- name: attribute
+  data_type: TEXT
+  nullable: false
+  comment: The embedded field, such as description or content.
+- name: chunk_index
+  data_type: INTEGER
+  nullable: false
+  default: '0'
+  comment: The position of the chunk in the field, from 0. A long Markdown field
+    is split into chunks. A short field has one chunk.
+- name: model_name
+  data_type: TEXT
+  nullable: false
+  default: '''text''::text'
+  comment: The key of the embedding model in the embeddings settings. text is BAAI/bge-small-en-v1.5
+    by default. Part of the key, so two models can index the same text.
+- name: chunk_text
+  data_type: TEXT
+  nullable: false
+  comment: The text of the chunk. Search returns it with each match.
+- name: embedding
+  data_type: public.vector
+  nullable: false
+  comment: The vector. The type has no fixed dimension, so models with different
+    sizes can share the table. The HNSW index casts the text model rows to 384 dimensions.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+primary_key:
+- node_label
+- node_id
+- attribute
+- chunk_index
+- model_name
+foreign_keys:
+- name: embeddings_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+indexes:
+- name: embeddings_text_hnsw_idx
+  method: hnsw
+  columns:
+  - expression: ((embedding)::vector(384))
+    opclass: vector_cosine_ops
+  where: (model_name = 'text'::text)
+  comment: BAAI/bge-small-en-v1.5, 384 dimensions.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

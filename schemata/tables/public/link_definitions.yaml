@@ -1,0 +1,91 @@
+---
+name: link_definitions
+schema: public
+owner: imbi_owner
+comment: A kind of external project link, such as a repository or a dashboard. Keys
+  of projects.links are these slugs. Replaces the LinkDefinition node.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: URL-safe identifier. UI routes and API paths use it.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: url_template
+  data_type: TEXT
+  comment: An example URL that the link editor shows as the input placeholder. The
+    application does not expand it. NULL shows a generic placeholder.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - slug
+foreign_keys:
+- name: link_definitions_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: link_definitions_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: link_definitions_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - LinkDefinition
+  comment: Deletes the embeddings of a deleted LinkDefinition, also when a cascade
+    deletes it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

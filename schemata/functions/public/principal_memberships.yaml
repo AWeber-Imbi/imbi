@@ -1,0 +1,25 @@
+---
+name: principal_memberships
+schema: public
+owner: imbi_definer
+returns: jsonb
+language: sql
+stable: true
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |2-
+   SELECT COALESCE( jsonb_agg(jsonb_build_object( 'organization_id', o.id, 'organization_name', o.name, 'organization_slug', o.slug, 'role_slug', r.slug) ORDER BY o.slug), '[]'::jsonb)
+     FROM public.memberships AS m
+       JOIN public.organizations AS o ON o.id = m.organization_id
+       JOIN public.roles AS r ON r.id = m.role_id
+    WHERE m.principal_id = public.current_principal_id();
+comment: The organizations of the principal in imbi.principal_id, with its role slug
+  in each, as a JSON array. GET /users/me and the organization switcher use it.
+dependencies:
+  tables:
+  - public.memberships
+  - public.organizations
+  - public.roles
+  functions:
+  - public.current_principal_id

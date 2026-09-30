@@ -1,0 +1,70 @@
+---
+name: component_identifiers
+schema: public
+owner: imbi_owner
+comment: An identifier that resolves to a component, such as a purl or a CPE. Ingest
+  removes the version before it stores the value, so one identifier finds the component
+  for every version. The first component that claims an identifier keeps it.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: component_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The component that the identifier resolves to.
+- name: kind
+  data_type: TEXT
+  nullable: false
+  comment: 'The identifier type: purl, cpe, bom-ref or swid.'
+- name: value
+  data_type: TEXT
+  nullable: false
+  comment: The identifier without a version. Unique with kind across all components.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - kind
+  - value
+check_constraints:
+- name: kind_valid
+  expression: (kind = ANY (ARRAY['purl'::text, 'cpe'::text, 'bom-ref'::text, 'swid'::text]))
+foreign_keys:
+- name: component_identifiers_component_id_fkey
+  columns:
+  - component_id
+  references:
+    name: public.components
+    columns:
+    - id
+  on_delete: CASCADE
+indexes:
+- name: component_identifiers_comp_idx
+  method: btree
+  columns:
+  - name: component_id
+triggers:
+- name: component_identifiers_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: false

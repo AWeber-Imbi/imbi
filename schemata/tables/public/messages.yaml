@@ -1,0 +1,106 @@
+---
+name: messages
+schema: public
+owner: imbi_owner
+comment: A message in an assistant conversation. Append-only. The assistant rebuilds
+  the Anthropic message list from these rows for each turn. Replaces the Message
+  node.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: A UUID string that the assistant generates.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: conversation_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The conversation of the message.
+- name: message_seq
+  data_type: INTEGER
+  nullable: false
+  comment: The position in the conversation, from 0. The history sorts on it. Replaces
+    Message.sequence.
+- name: author_role
+  data_type: TEXT
+  nullable: false
+  comment: user or assistant. A tool result goes back to the model as a user message.
+    Replaces Message.role.
+- name: content
+  data_type: TEXT
+  nullable: false
+  default: '''''::text'
+  comment: The message text. A user message has at most 32768 characters, the input
+    limit of the assistant. An assistant message has no limit, because it holds the
+    model output. Empty for a user message that only carries tool results.
+- name: tool_use
+  data_type: public.jsonb_array
+  comment: For an assistant message, a list of {id, name, input} for each tool call
+    the model made. NULL when it made none.
+- name: tool_results
+  data_type: public.jsonb_array
+  comment: For a user message, a list of Anthropic tool_result blocks, one for each
+    tool call, with is_error set on a failure. NULL when there are none.
+- name: token_usage
+  data_type: public.jsonb_object
+  comment: For an assistant message, the {input_tokens, output_tokens} that the vendor
+    reported. NULL for a user message.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+primary_key:
+- id
+unique_constraints:
+- - conversation_id
+  - message_seq
+check_constraints:
+- name: author_role_valid
+  expression: (author_role = ANY (ARRAY['user'::text, 'assistant'::text]))
+- name: message_seq_range
+  expression: (message_seq >= 0)
+- name: content_length
+  expression: ((author_role <> 'user'::text) OR (char_length(content) <= 32768))
+foreign_keys:
+- name: messages_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: messages_conversation_id_fkey
+  columns:
+  - organization_id
+  - conversation_id
+  references:
+    name: public.conversations
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.
+- name: owner_only
+  restrictive: true
+  using: "(conversation_id IN ( SELECT conversations.id\n   FROM public.conversations))"
+  with_check: "(conversation_id IN ( SELECT conversations.id\n   FROM public.conversations))"
+  comment: A message is visible only with its conversation. The subquery runs under
+    the conversations policies, so only the owner of the conversation can read or
+    add messages.

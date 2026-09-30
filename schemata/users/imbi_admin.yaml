@@ -1,0 +1,20 @@
+---
+name: imbi_admin
+comment: The login of the instance admin endpoints, in its own connection pool. The
+  application uses it only after it checks users.is_admin. The instance_admin policy
+  lets it write the instance sign-in providers. It does not bypass row-level security.
+options:
+  bypass_rls: false
+  inherit: true
+grants:
+  schemata:
+    public:
+    - USAGE
+  tables:
+    public.integrations:
+    - SELECT
+    - INSERT
+    - UPDATE
+    - DELETE
+    public.plugin_registrations:
+    - SELECT

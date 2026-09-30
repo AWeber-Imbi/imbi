@@ -1,0 +1,106 @@
+---
+name: conversations
+schema: public
+owner: imbi_owner
+comment: An assistant conversation of one user. Replaces the Conversation node and
+  its HAS_CONVERSATION edge.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: A UUID string that the assistant generates.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: user_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The user who owns the conversation. Only that user can read it. Replaces
+    Conversation.user_email.
+- name: title
+  data_type: TEXT
+  comment: The title in the conversation list. The assistant generates it after the
+    first exchange, and the user can change it. NULL until then.
+- name: model_name
+  data_type: TEXT
+  nullable: false
+  comment: The vendor model id that the conversation uses, from the request or the
+    assistant default at creation. Each later message uses the same model. Replaces
+    Conversation.model.
+- name: archived_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the user archived the conversation. Set hides it from the default
+    list without deleting it. NULL while it is active. Replaces Conversation.is_archived.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the last message was added or the conversation changed. NOT NULL,
+    unlike other tables, because the list sorts on it, newest first.
+primary_key:
+- id
+storage_parameters:
+  fillfactor: '90'
+unique_constraints:
+- - organization_id
+  - id
+foreign_keys:
+- name: conversations_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: conversations_user_id_fkey
+  columns:
+  - user_id
+  references:
+    name: public.users
+    columns:
+    - id
+  on_delete: CASCADE
+indexes:
+- name: conversations_user_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: user_id
+  - name: updated_at
+triggers:
+- name: conversations_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.
+- name: owner_only
+  restrictive: true
+  using: (user_id = ( SELECT public.current_principal_id() AS current_principal_id))
+  with_check: (user_id = ( SELECT public.current_principal_id() AS current_principal_id))
+  comment: 'Only the owner can read or write a conversation. RESTRICTIVE, so it narrows
+    organization_isolation: the transaction sets both imbi.organization_id and imbi.principal_id.'

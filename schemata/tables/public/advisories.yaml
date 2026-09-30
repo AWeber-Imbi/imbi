@@ -1,0 +1,36 @@
+---
+name: advisories
+schema: public
+owner: imbi_owner
+comment: A published security advisory, one row per CVE or GHSA id. All versions
+  and organizations that it affects share the row. Organization users create it when
+  they first record it against a version. The row holds only the id, so no organization
+  can change what another organization sees. The URL and title are in component_advisories.
+  It has no severity until a feed can supply one.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: cve_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The advisory id, such as CVE-2025-1234 or GHSA-xxxx-xxxx-xxxx. Stored
+    in upper case, so one advisory cannot have two rows.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+primary_key:
+- id
+unique_constraints:
+- - cve_id
+check_constraints:
+- name: cve_id_upper
+  expression: (cve_id = upper(cve_id))
+row_level_security:
+  enabled: false

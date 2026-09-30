@@ -1,0 +1,32 @@
+---
+name: imbi_definer
+comment: Owns the SECURITY DEFINER lookup functions and nothing else. Cannot log
+  in. BYPASSRLS, because the lookups run before an organization is known; it can
+  only SELECT the tables they read.
+options:
+  login: false
+  bypass_rls: true
+  inherit: true
+grants:
+  schemata:
+    public:
+    - USAGE
+  tables:
+    public.integrations:
+    - SELECT
+    public.memberships:
+    - SELECT
+    public.organizations:
+    - SELECT
+    public.role_grants:
+    - SELECT
+    public.roles:
+    - SELECT
+    public.team_members:
+    - SELECT
+    public.teams:
+    - SELECT
+    public.uploads:
+    - SELECT
+    public.webhooks:
+    - SELECT

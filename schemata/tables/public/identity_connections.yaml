@@ -1,0 +1,145 @@
+---
+name: identity_connections
+schema: public
+owner: imbi_owner
+comment: The link between a user and an account at an integration, with its OAuth
+  tokens. Plugin calls get the credentials of the acting user from it. Sign-in through
+  a login integration also writes one. The graph IdentityConnection label.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: integration_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The integration the account is at.
+- name: organization_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The organization of the integration, written when the connection is created
+    and not changed after. NULL for an instance sign-in provider. The refresh sweeper
+    runs before any organization is known, so it sets the organization context from
+    this column. A trigger keeps it equal to the organization of the integration.
+- name: user_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The Imbi user.
+- name: subject
+  data_type: TEXT
+  nullable: false
+  comment: The user id at the provider. Unique for each integration, so one external
+    account links to one user.
+- name: access_token_encrypted
+  data_type: TEXT
+  comment: Fernet ciphertext of the provider access token. NULL after revocation.
+- name: refresh_token_encrypted
+  data_type: TEXT
+  comment: Fernet ciphertext of the provider refresh token. NULL when the provider
+    gave none, and after revocation.
+- name: id_token_claims_encrypted
+  data_type: TEXT
+  comment: Fernet ciphertext of the JSON profile claims from the provider. NULL when
+    there were none, and after revocation.
+- name: scopes
+  data_type: TEXT[]
+  nullable: false
+  default: '''{}''::text[]'
+  comment: The OAuth scopes that the provider granted.
+- name: connection_status
+  data_type: TEXT
+  nullable: false
+  default: '''active''::text'
+  comment: active, revoked or expired. A failed token refresh sets expired. A disconnect
+    sets revoked, and a second disconnect deletes the row. The graph property is
+    status.
+- name: expires_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the access token expires. NULL when the provider gave no expiry.
+- name: last_used_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the connection was last created or refreshed.
+- name: metadata
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: Plain-text provider details for filtering without decryption, for example
+    the GitHub login.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+storage_parameters:
+  fillfactor: '90'
+unique_constraints:
+- - integration_id
+  - user_id
+- - integration_id
+  - subject
+check_constraints:
+- name: connection_status_valid
+  expression: (connection_status = ANY (ARRAY['active'::text, 'revoked'::text, 'expired'::text]))
+foreign_keys:
+- name: identity_connections_integration_id_fkey
+  columns:
+  - integration_id
+  references:
+    name: public.integrations
+    columns:
+    - id
+  on_delete: CASCADE
+- name: identity_connections_user_id_fkey
+  columns:
+  - user_id
+  references:
+    name: public.users
+    columns:
+    - id
+  on_delete: CASCADE
+indexes:
+- name: identity_connections_user_idx
+  method: btree
+  columns:
+  - name: user_id
+- name: identity_connections_expiry_idx
+  method: btree
+  columns:
+  - name: expires_at
+  where: (connection_status = 'active'::text)
+triggers:
+- name: identity_connections_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: identity_connections_integration_id_scope
+  when: BEFORE
+  events:
+  - INSERT
+  - UPDATE
+  update_columns:
+  - integration_id
+  - organization_id
+  for_each: ROW
+  function: public.check_integration_scope()
+  arguments:
+  - integration_id
+  - same
+  comment: integration_id must name an integration of the organization of the row.
+row_level_security:
+  enabled: false

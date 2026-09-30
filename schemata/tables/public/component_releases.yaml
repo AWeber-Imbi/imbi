@@ -1,0 +1,73 @@
+---
+name: component_releases
+schema: public
+owner: imbi_owner
+comment: One version of a component. All organizations share it. SBOM ingest inserts
+  it, and the first values stay. An organization whose SBOM has different values
+  writes component_release_overrides. Replaces the graph ComponentRelease node and
+  its HAS_RELEASE edge.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: component_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The component that this version belongs to.
+- name: version
+  data_type: TEXT
+  nullable: false
+  comment: The version string from the SBOM. Unique per component, because two components
+    can use the same version string.
+- name: license
+  data_type: TEXT
+  comment: The license from the first SBOM, reduced from its license records to one
+    SPDX-style string. NULL when it declared none.
+- name: supplier
+  data_type: TEXT
+  comment: The supplier name from the first SBOM. NULL when it declared none.
+- name: hashes
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: 'Content digests from the first SBOM, keyed by algorithm, such as {"SHA-256":
+    "abc..."}. JSONB because the set of algorithms changes by producer.'
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - component_id
+  - version
+foreign_keys:
+- name: component_releases_component_id_fkey
+  columns:
+  - component_id
+  references:
+    name: public.components
+    columns:
+    - id
+  on_delete: CASCADE
+triggers:
+- name: component_releases_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: false

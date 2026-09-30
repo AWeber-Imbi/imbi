@@ -1,0 +1,153 @@
+---
+name: blueprints
+schema: public
+owner: imbi_owner
+comment: A JSON Schema that adds attribute fields to an entity type or to a relationship.
+  The application builds the Pydantic model of the entity from the enabled blueprints
+  that match. The values go in the attributes column of that table. Replaces the
+  Blueprint node.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Generated from the name when the client sends none. Lowercase letters,
+    digits and hyphens. Unique per organization, kind and entity type.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: kind
+  data_type: TEXT
+  nullable: false
+  default: '''node''::text'
+  comment: node adds fields to an entity type. relationship adds fields to a relationship
+    between two types. The kind_fields check requires the matching type columns.
+- name: entity_type
+  data_type: TEXT
+  comment: For kind node, the entity type that gets the fields, such as Project.
+    Replaces Blueprint.type.
+- name: source_type
+  data_type: TEXT
+  comment: For kind relationship, the source type, such as Project. Replaces Blueprint.source.
+- name: target_type
+  data_type: TEXT
+  comment: For kind relationship, the target type, such as Environment. Replaces
+    Blueprint.target.
+- name: edge_type
+  data_type: TEXT
+  comment: For kind relationship, the relationship name, such as DEPLOYED_IN. Replaces
+    Blueprint.edge.
+- name: enabled
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: False removes the fields from the model without deleting the blueprint.
+- name: priority
+  data_type: INTEGER
+  nullable: false
+  default: '0'
+  comment: The application applies blueprints in ascending priority. When two blueprints
+    define the same field, the later one wins.
+- name: filter
+  data_type: public.jsonb_object
+  comment: '{project_type: [...], environment: [...]} of slugs. A blueprint applies
+    only when the context matches every non-empty list. NULL or empty lists match
+    everything.'
+- name: json_schema
+  data_type: public.jsonb_object
+  nullable: false
+  comment: The JSON Schema. Each property becomes a model field, and required makes
+    the field required.
+- name: version
+  data_type: INTEGER
+  nullable: false
+  default: '0'
+  comment: Carried over from Blueprint.version. No code changes it today, so it stays
+    0.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- columns:
+  - organization_id
+  - kind
+  - entity_type
+  - slug
+  nulls_not_distinct: true
+check_constraints:
+- name: kind_valid
+  expression: (kind = ANY (ARRAY['node'::text, 'relationship'::text]))
+- name: entity_type_valid
+  expression: (entity_type = ANY (ARRAY['Team'::text, 'Environment'::text, 'ProjectType'::text,
+    'Project'::text, 'Organization'::text, 'Integration'::text]))
+- name: kind_fields
+  expression: (((kind = 'node'::text) AND (entity_type IS NOT NULL) AND (source_type
+    IS NULL) AND (target_type IS NULL) AND (edge_type IS NULL)) OR ((kind = 'relationship'::text)
+    AND (entity_type IS NULL) AND (source_type IS NOT NULL) AND (target_type IS NOT
+    NULL) AND (edge_type IS NOT NULL)))
+foreign_keys:
+- name: blueprints_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: blueprints_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: blueprints_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - Blueprint
+  comment: Deletes the embeddings of a deleted Blueprint, also when a cascade deletes
+    it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

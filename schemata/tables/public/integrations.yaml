@@ -1,0 +1,220 @@
+---
+name: integrations
+schema: public
+owner: imbi_owner
+comment: One configured instance of an installed plugin, such as GitHub.com or GHEC
+  for the github plugin, with its own credentials, options and capability settings.
+  Replaces the Integration node. organization_id is NULL for an instance sign-in
+  provider.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The organization that owns the integration. NULL for an instance sign-in
+    provider, because sign-in happens before an organization is selected.
+- name: team_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: 'The team that manages the integration. NULL means no team. Replaces the
+    MANAGED_BY edge. RESTRICT: a team that manages an integration cannot be deleted.'
+- name: plugin_slug
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The installed plugin that implements the integration. One plugin can back
+    many integrations. Replaces Integration.plugin.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: URL-safe identifier, unique per organization and among the instance sign-in
+    providers. The sign-in provider endpoints and the webhook slug use it.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: options
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: Integration option values, such as a host or a region. The plugin manifest
+    defines the keys. JSONB because each plugin defines a different set.
+- name: credentials_encrypted
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: Credential field name to its Fernet ciphertext. The only store for integration
+    credentials. The API encrypts before it writes and never returns secret values.
+- name: capabilities
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: Capability kind to {enabled, options}. A project can use a capability
+    only when it is enabled here. The options are the base layer under the project
+    and project type options.
+- name: used_as_login
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: True when users sign in with this integration. Only an instance sign-in
+    provider (organization_id NULL) can set it, and the instance has at most one.
+    Organization-owned login providers are not carried over.
+- name: vendor
+  data_type: TEXT
+  comment: The vendor name. Carried over from the v2 ThirdPartyService model. The
+    API stores and returns it. The admin UI does not show it.
+- name: service_url
+  data_type: TEXT
+  comment: The URL of the external service. Carried over from the v2 ThirdPartyService
+    model. The API stores and returns it.
+- name: category
+  data_type: TEXT
+  comment: A free-text category. Carried over from the v2 ThirdPartyService model.
+    The API stores and returns it.
+- name: integration_status
+  data_type: TEXT
+  nullable: false
+  default: '''active''::text'
+  comment: 'The lifecycle status: active, deprecated, evaluating or inactive. Carried
+    over from the v2 ThirdPartyService model. Replaces Integration.status.'
+- name: links
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: A map of link name to URL. Carried over from the v2 ThirdPartyService
+    model. The API stores and returns it.
+- name: identifiers
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: A map of identifier name to a string or integer value. Carried over from
+    the v2 ThirdPartyService model. The API stores and returns it.
+- name: attributes
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: 'Values for the fields that enabled blueprints of this type add. The application
+    validates them against the blueprint JSON schemas. Scoring policies and list
+    filters read them. In the graph, these values are extra node properties. No GIN
+    index: under row-level security a jsonb condition is a filter, not an index condition.'
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+- columns:
+  - organization_id
+  - slug
+  nulls_not_distinct: true
+check_constraints:
+- name: integration_status_valid
+  expression: (integration_status = ANY (ARRAY['active'::text, 'deprecated'::text,
+    'evaluating'::text, 'inactive'::text]))
+- name: slug_valid
+  expression: ((slug)::text ~ '^[a-z][a-z0-9-]{1,63}$'::text)
+- name: login_is_instance
+  expression: ((NOT used_as_login) OR (organization_id IS NULL))
+foreign_keys:
+- name: integrations_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: integrations_team_id_fkey
+  columns:
+  - organization_id
+  - team_id
+  references:
+    name: public.teams
+    columns:
+    - organization_id
+    - id
+  on_delete: RESTRICT
+- name: integrations_plugin_slug_fkey
+  columns:
+  - plugin_slug
+  references:
+    name: public.plugin_registrations
+    columns:
+    - slug
+  on_delete: RESTRICT
+indexes:
+- name: integrations_one_login_idx
+  unique: true
+  method: btree
+  columns:
+  - name: organization_id
+  nulls_not_distinct: true
+  where: used_as_login
+  comment: At most one sign-in provider in the instance. The login_is_instance check
+    makes organization_id NULL on every such row.
+- name: integrations_plugin_idx
+  method: btree
+  columns:
+  - name: plugin_slug
+triggers:
+- name: integrations_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: integrations_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - Integration
+  comment: Deletes the embeddings of a deleted Integration, also when a cascade deletes
+    it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  roles:
+  - imbi_app
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows of the organization in imbi.organization_id, for imbi_app only, so
+    the imbi_admin login cannot reach organization integrations whatever it sets.
+- name: instance_sign_in_providers
+  command: SELECT
+  using: (organization_id IS NULL)
+  comment: Any session can read the instance sign-in providers.
+- name: instance_admin
+  roles:
+  - imbi_admin
+  using: (organization_id IS NULL)
+  with_check: (organization_id IS NULL)
+  comment: Only the imbi_admin role, which the instance admin endpoints use, can
+    write the instance sign-in providers.

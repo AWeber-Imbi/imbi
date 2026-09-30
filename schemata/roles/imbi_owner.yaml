@@ -1,0 +1,7 @@
+---
+name: imbi_owner
+comment: Owns the Imbi schema objects. Cannot log in.
+options:
+  login: false
+  bypass_rls: false
+  inherit: true

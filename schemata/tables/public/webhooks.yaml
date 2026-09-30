@@ -1,0 +1,163 @@
+---
+name: webhooks
+schema: public
+owner: imbi_owner
+comment: An inbound notification endpoint that an external service calls. The gateway
+  route is /{id}. The gateway records each delivery as an activity event and runs
+  the matching webhook_rules. Replaces the Webhook node.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Generated from the integration slug and the name. The API does not accept
+    a slug from the client.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: integration_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: 'The integration that sends the notifications. The selectors and rule
+    credentials need it. NULL for a generic webhook. RESTRICT: an integration with
+    webhooks cannot be deleted, because SET NULL would break the selectors_need_integration
+    check.'
+- name: secret_encrypted
+  data_type: TEXT
+  comment: Fernet ciphertext of a secret that an admin sets. The gateway does not
+    check deliveries against it today. Signed deliveries use project_integrations.webhook_secret_encrypted.
+- name: identifier_selector
+  data_type: TEXT
+  comment: JSON Pointer to the remote project identifier in the payload, such as
+    /repository/id. The gateway matches it against project_integrations.identifier.
+- name: user_subject_selector
+  data_type: TEXT
+  comment: JSON Pointer to the external identity of the sender, such as /deployment/creator/id.
+    The gateway maps it to an Imbi user for attribution.
+- name: user_type_selector
+  data_type: TEXT
+  comment: JSON Pointer to the sender account type, such as /sender/type. When it
+    resolves to Bot, the gateway skips the user lookup.
+- name: identity_integration_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The identity integration to find the Imbi user with. NULL means the identity
+    integrations attached to integration_id. It can be an integration of this organization
+    or the instance sign-in provider; a trigger checks that, because the provider
+    has no organization. Deleting it sets this to NULL. In the graph, this is identity_integration_slug
+    on IMPLEMENTED_BY.
+- name: event_type_selector
+  data_type: TEXT
+  comment: The source of the activity-feed event type. A JSON Pointer into the body
+    when it starts with /, else a header name. When the header is missing, the value
+    itself is the label.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+- - organization_id
+  - slug
+check_constraints:
+- name: slug_valid
+  expression: ((slug)::text ~ '^[a-z][a-z0-9-]{1,63}$'::text)
+- name: selectors_need_integration
+  expression: ((integration_id IS NOT NULL) OR ((identifier_selector IS NULL) AND
+    (user_subject_selector IS NULL) AND (user_type_selector IS NULL) AND (identity_integration_id
+    IS NULL) AND (event_type_selector IS NULL)))
+foreign_keys:
+- name: webhooks_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: webhooks_integration_id_fkey
+  columns:
+  - organization_id
+  - integration_id
+  references:
+    name: public.integrations
+    columns:
+    - organization_id
+    - id
+  on_delete: RESTRICT
+- name: webhooks_identity_integration_id_fkey
+  columns:
+  - identity_integration_id
+  references:
+    name: public.integrations
+    columns:
+    - id
+  on_delete: SET NULL
+indexes:
+- name: webhooks_identity_integration_idx
+  method: btree
+  columns:
+  - name: identity_integration_id
+  where: (identity_integration_id IS NOT NULL)
+triggers:
+- name: webhooks_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: webhooks_identity_integration_id_scope
+  when: BEFORE
+  events:
+  - INSERT
+  - UPDATE
+  update_columns:
+  - identity_integration_id
+  - organization_id
+  for_each: ROW
+  function: public.check_integration_scope()
+  arguments:
+  - identity_integration_id
+  - same_or_instance
+  comment: identity_integration_id must name an integration of the organization of
+    the row, or an instance sign-in provider.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

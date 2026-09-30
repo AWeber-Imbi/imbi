@@ -1,0 +1,112 @@
+---
+name: document_templates
+schema: public
+owner: imbi_owner
+comment: 'Starter content for a new document: title, body and tags. Replaces the
+  DocumentTemplate node.'
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: URL-safe identifier. UI routes and API paths use it.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: template_type
+  data_type: TEXT
+  nullable: false
+  default: '''project''::text'
+  comment: 'The documents that can use the template: project, user or project_type
+    documents, or global for all of them. Replaces DocumentTemplate.type.'
+- name: title
+  data_type: TEXT
+  comment: The title a new document gets. NULL means the user types one.
+- name: content
+  data_type: TEXT
+  nullable: false
+  default: '''''::text'
+  comment: The Markdown body a new document gets. Empty means a blank document.
+- name: sort_order
+  data_type: INTEGER
+  nullable: false
+  default: '0'
+  comment: The position in the template picker. The list sorts on it, then on name.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+- - organization_id
+  - slug
+check_constraints:
+- name: template_type_valid
+  expression: (template_type = ANY (ARRAY['project'::text, 'global'::text, 'user'::text,
+    'project_type'::text]))
+foreign_keys:
+- name: document_templates_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: document_templates_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: document_templates_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - DocumentTemplate
+  comment: Deletes the embeddings of a deleted DocumentTemplate, also when a cascade
+    deletes it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

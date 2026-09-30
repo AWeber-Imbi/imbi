@@ -1,0 +1,33 @@
+---
+name: check_integration_scope
+schema: public
+owner: imbi_owner
+returns: trigger
+language: plpgsql
+configuration:
+  search_path: pg_temp
+definition: |-
+  DECLARE
+    v_integration_id text := to_jsonb(NEW) ->> TG_ARGV[0];
+    v_organization_id text;
+  BEGIN
+    IF v_integration_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+    SELECT i.organization_id INTO v_organization_id
+      FROM public.integrations AS i
+     WHERE i.id = v_integration_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'integration % is not visible here', v_integration_id USING ERRCODE = 'foreign_key_violation';
+    END IF;
+    IF v_organization_id IS NOT DISTINCT FROM NEW.organization_id
+       OR (TG_ARGV[1] = 'same_or_instance'
+           AND v_organization_id IS NULL) THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'integration % belongs to another organization', v_integration_id USING ERRCODE = 'foreign_key_violation';
+  END;
+comment: Trigger function for BEFORE INSERT OR UPDATE. The first argument names the
+  column that holds an integration id. The second is same (the integration is in
+  the organization of the row) or same_or_instance (it can also be the instance sign-in
+  provider). It raises foreign_key_violation otherwise.

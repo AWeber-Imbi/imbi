@@ -1,0 +1,66 @@
+---
+name: ai_model_teams
+schema: public
+owner: imbi_owner
+comment: A team that can use an AI model whose access_scope is restricted. Replaces
+  the ALLOWED_FOR edge.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: ai_model_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The restricted model.
+- name: team_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: A team that can use the model. The API requires at least one team for
+    a restricted model.
+primary_key:
+- ai_model_id
+- team_id
+foreign_keys:
+- name: ai_model_teams_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: ai_model_teams_ai_model_id_fkey
+  columns:
+  - organization_id
+  - ai_model_id
+  references:
+    name: public.ai_models
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: ai_model_teams_team_id_fkey
+  columns:
+  - organization_id
+  - team_id
+  references:
+    name: public.teams
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

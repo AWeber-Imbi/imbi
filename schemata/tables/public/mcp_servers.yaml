@@ -1,0 +1,183 @@
+---
+name: mcp_servers
+schema: public
+owner: imbi_owner
+comment: An external MCP server, reached over streamable HTTP, whose tools the assistant
+  can call. Replaces the MCPServer node.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: URL-safe identifier. The assistant uses it as the tool name prefix when
+    tool_prefix is NULL.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: url
+  data_type: TEXT
+  nullable: false
+  comment: The MCP endpoint URL.
+- name: enabled
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: False stops the assistant from connecting, without deleting the server.
+- name: tool_prefix
+  data_type: TEXT
+  comment: The prefix for the names of the tools of this server, so two servers cannot
+    register the same tool name. NULL means the slug.
+- name: timeout_seconds
+  data_type: INTEGER
+  nullable: false
+  default: '30'
+  comment: The HTTP timeout for calls to the server. Replaces MCPServer.timeout.
+- name: verify_ssl
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: False turns off TLS certificate checks. The assistant logs a warning when
+    it connects without them.
+- name: ignored_tools
+  data_type: TEXT[]
+  nullable: false
+  default: '''{}''::text[]'
+  comment: Tool names that the assistant does not register, even when the server
+    offers them.
+- name: auth_type
+  data_type: TEXT
+  nullable: false
+  default: '''none''::text'
+  comment: 'How the assistant authenticates: none, static (a fixed header) or oauth_client_credentials.
+    The static_complete and oauth_complete checks require the matching columns.'
+- name: static_header
+  data_type: TEXT
+  comment: For static auth, the name of the HTTP header to send, such as Authorization.
+- name: static_value_encrypted
+  data_type: TEXT
+  comment: For static auth, Fernet ciphertext of the header value. The API never
+    returns it.
+- name: oauth_token_url
+  data_type: TEXT
+  comment: For OAuth client credentials, the token endpoint URL.
+- name: oauth_client_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: For OAuth client credentials, the client id.
+- name: oauth_client_secret_encrypted
+  data_type: TEXT
+  comment: For OAuth client credentials, Fernet ciphertext of the client secret.
+    The API never returns it.
+- name: oauth_scope
+  data_type: TEXT
+  comment: For OAuth client credentials, the scope to request. NULL requests no scope.
+- name: server_status
+  data_type: TEXT
+  nullable: false
+  default: '''unknown''::text'
+  comment: 'The last known health: unknown, healthy, degraded or unreachable. The
+    connection test writes it. unknown means never tested. Replaces MCPServer.status.'
+- name: last_tested_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the last connection test ran. NULL means never.
+- name: last_tested_latency_ms
+  data_type: INTEGER
+  comment: The round-trip time of the last connection test, in milliseconds.
+- name: tools_discovered_count
+  data_type: INTEGER
+  comment: How many tools the last connection test found. Replaces MCPServer.tools_discovered.
+- name: last_error
+  data_type: TEXT
+  comment: The error text of the last failed connection test. The API returns it.
+    NULL when there was no failure.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - slug
+check_constraints:
+- name: auth_type_valid
+  expression: (auth_type = ANY (ARRAY['none'::text, 'static'::text, 'oauth_client_credentials'::text]))
+- name: server_status_valid
+  expression: (server_status = ANY (ARRAY['unknown'::text, 'healthy'::text, 'degraded'::text,
+    'unreachable'::text]))
+- name: static_complete
+  expression: ((auth_type <> 'static'::text) OR ((static_header IS NOT NULL) AND
+    (static_value_encrypted IS NOT NULL)))
+- name: oauth_complete
+  expression: ((auth_type <> 'oauth_client_credentials'::text) OR ((oauth_token_url
+    IS NOT NULL) AND (oauth_client_id IS NOT NULL) AND (oauth_client_secret_encrypted
+    IS NOT NULL)))
+- name: timeout_positive
+  expression: (timeout_seconds > 0)
+- name: latency_positive
+  expression: (last_tested_latency_ms >= 0)
+- name: tools_positive
+  expression: (tools_discovered_count >= 0)
+foreign_keys:
+- name: mcp_servers_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: mcp_servers_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: mcp_servers_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - MCPServer
+  comment: Deletes the embeddings of a deleted MCPServer, also when a cascade deletes
+    it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

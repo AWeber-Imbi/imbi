@@ -1,0 +1,31 @@
+---
+name: permissions
+schema: public
+owner: imbi_owner
+comment: The global permission vocabulary, resource_type:action. The API setup commands
+  seed it from the permission list in code. Roles grant these, and API keys and client
+  credentials use them as scopes.
+columns:
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: The permission, for example project:write. Endpoints require it by this
+    name.
+- name: resource_type
+  data_type: TEXT
+  nullable: false
+  comment: The part of name before the colon, for example project.
+- name: action
+  data_type: TEXT
+  nullable: false
+  comment: The part of name after the colon, for example write.
+- name: description
+  data_type: TEXT
+  comment: What the permission allows. Shown in the role editor.
+primary_key:
+- name
+check_constraints:
+- name: name_valid
+  expression: (name = ((resource_type || ':'::text) || action))
+row_level_security:
+  enabled: false

@@ -1,0 +1,27 @@
+---
+name: delete_plugin_edges
+schema: public
+owner: imbi_trigger
+returns: trigger
+language: plpgsql
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |-
+  BEGIN
+    IF TG_OP <> 'DELETE' OR TG_WHEN <> 'AFTER' OR TG_LEVEL <> 'ROW'
+       OR TG_NARGS <> 1 THEN
+      RAISE EXCEPTION 'delete_plugin_edges must be an AFTER DELETE row trigger with one argument';
+    END IF;
+    DELETE FROM public.plugin_edges
+     WHERE source_label = TG_ARGV[0]
+       AND source_id = OLD.id;
+    RETURN NULL;
+  END;
+comment: Trigger function for AFTER DELETE on a core table that a plugin relationship
+  can start from. Deletes the plugin edges whose source is the deleted row. The trigger
+  argument is the source_label. SECURITY DEFINER, owned by imbi_trigger, for the
+  same reason as delete_embeddings.
+dependencies:
+  tables:
+  - public.plugin_edges

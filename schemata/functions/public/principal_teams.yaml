@@ -1,0 +1,25 @@
+---
+name: principal_teams
+schema: public
+owner: imbi_definer
+returns: jsonb
+language: sql
+stable: true
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |2-
+   SELECT COALESCE( jsonb_agg(jsonb_build_object( 'organization_slug', o.slug, 'team_name', t.name, 'team_slug', t.slug) ORDER BY o.slug, t.slug), '[]'::jsonb)
+     FROM public.team_members AS tm
+       JOIN public.teams AS t ON t.id = tm.team_id
+       JOIN public.organizations AS o ON o.id = t.organization_id
+    WHERE tm.user_id = public.current_principal_id();
+comment: The teams of the user in imbi.principal_id, in all organizations, as a JSON
+  array. GET /users/me uses it.
+dependencies:
+  tables:
+  - public.organizations
+  - public.team_members
+  - public.teams
+  functions:
+  - public.current_principal_id

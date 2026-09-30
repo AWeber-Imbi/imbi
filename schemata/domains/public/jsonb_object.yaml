@@ -1,0 +1,10 @@
+---
+name: jsonb_object
+schema: public
+owner: imbi_owner
+data_type: JSONB
+check_constraints:
+- name: jsonb_object_check
+  expression: (jsonb_typeof(VALUE) = 'object'::text)
+comment: A JSONB value that is an object. Use it for maps and attribute bags, so
+  a column cannot hold a list or a scalar.

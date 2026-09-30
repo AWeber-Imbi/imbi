@@ -1,0 +1,234 @@
+# Classification of every table in this project.
+#
+# organization: tenant-owned; RLS forced; organization_id NOT NULL,
+#               except integrations (NULL for the instance sign-in
+#               provider).
+# tenancy:      the tenancy chain itself (tenants, organizations).
+# instance:     identity and platform configuration; no RLS.
+# catalog:      shared SBOM catalog; no RLS. imbi_app can insert rows
+#               but not change or delete them. SBOM ingest writes
+#               components, component_releases and
+#               component_identifiers; organization users create
+#               advisories.
+
+[tables."public.advisories"]
+scope = "catalog"
+
+[tables."public.ai_model_teams"]
+scope = "organization"
+
+[tables."public.ai_models"]
+scope = "organization"
+
+[tables."public.ai_providers"]
+scope = "organization"
+
+[tables."public.analysis_reports"]
+scope = "organization"
+
+[tables."public.analysis_results"]
+scope = "organization"
+
+[tables."public.api_keys"]
+scope = "instance"
+
+[tables."public.blockers"]
+scope = "organization"
+
+[tables."public.blueprints"]
+scope = "organization"
+
+[tables."public.client_credentials"]
+scope = "instance"
+
+[tables."public.comment_threads"]
+scope = "organization"
+
+[tables."public.comments"]
+scope = "organization"
+
+[tables."public.component_advisories"]
+scope = "organization"
+
+[tables."public.component_governance"]
+scope = "organization"
+
+[tables."public.component_identifiers"]
+scope = "catalog"
+
+[tables."public.component_notes"]
+scope = "organization"
+
+[tables."public.component_overrides"]
+scope = "organization"
+
+[tables."public.component_release_governance"]
+scope = "organization"
+
+[tables."public.component_release_overrides"]
+scope = "organization"
+
+[tables."public.component_releases"]
+scope = "catalog"
+
+[tables."public.components"]
+scope = "catalog"
+
+[tables."public.conversations"]
+scope = "organization"
+
+[tables."public.deployments"]
+scope = "organization"
+
+[tables."public.document_likes"]
+scope = "organization"
+
+[tables."public.document_tags"]
+scope = "organization"
+
+[tables."public.document_templates"]
+scope = "organization"
+
+[tables."public.documents"]
+scope = "organization"
+
+[tables."public.embeddings"]
+scope = "organization"
+
+[tables."public.environments"]
+scope = "organization"
+
+[tables."public.identity_connections"]
+scope = "instance"
+
+[tables."public.integrations"]
+scope = "organization"
+
+[tables."public.issued_tokens"]
+scope = "instance"
+
+[tables."public.link_definitions"]
+scope = "organization"
+
+[tables."public.local_auth_settings"]
+scope = "instance"
+
+[tables."public.mcp_servers"]
+scope = "organization"
+
+[tables."public.memberships"]
+scope = "organization"
+
+[tables."public.messages"]
+scope = "organization"
+
+[tables."public.oauth_clients"]
+scope = "instance"
+
+[tables."public.organizations"]
+scope = "tenancy"
+
+[tables."public.password_reset_tokens"]
+scope = "instance"
+
+[tables."public.permissions"]
+scope = "instance"
+
+[tables."public.plugin_edges"]
+scope = "organization"
+
+[tables."public.plugin_entities"]
+scope = "organization"
+
+[tables."public.plugin_entity_keys"]
+scope = "organization"
+
+[tables."public.plugin_registrations"]
+scope = "instance"
+
+[tables."public.principals"]
+scope = "instance"
+
+[tables."public.project_capabilities"]
+scope = "organization"
+
+[tables."public.project_dependencies"]
+scope = "organization"
+
+[tables."public.project_environments"]
+scope = "organization"
+
+[tables."public.project_integrations"]
+scope = "organization"
+
+[tables."public.project_promotions"]
+scope = "organization"
+
+[tables."public.project_syncs"]
+scope = "organization"
+
+[tables."public.project_type_assignments"]
+scope = "organization"
+
+[tables."public.project_type_capabilities"]
+scope = "organization"
+
+[tables."public.project_types"]
+scope = "organization"
+
+[tables."public.projects"]
+scope = "organization"
+
+[tables."public.releases"]
+scope = "organization"
+
+[tables."public.resource_acls"]
+scope = "organization"
+
+[tables."public.role_grants"]
+scope = "organization"
+
+[tables."public.roles"]
+scope = "organization"
+
+[tables."public.scoring_policies"]
+scope = "organization"
+
+[tables."public.scoring_policy_targets"]
+scope = "organization"
+
+[tables."public.service_accounts"]
+scope = "instance"
+
+[tables."public.tags"]
+scope = "organization"
+
+[tables."public.team_members"]
+scope = "organization"
+
+[tables."public.teams"]
+scope = "organization"
+
+[tables."public.template_project_types"]
+scope = "organization"
+
+[tables."public.template_tags"]
+scope = "organization"
+
+[tables."public.tenants"]
+scope = "tenancy"
+
+[tables."public.totp_secrets"]
+scope = "instance"
+
+[tables."public.uploads"]
+scope = "organization"
+
+[tables."public.users"]
+scope = "instance"
+
+[tables."public.webhook_rules"]
+scope = "organization"
+
+[tables."public.webhooks"]
+scope = "organization"

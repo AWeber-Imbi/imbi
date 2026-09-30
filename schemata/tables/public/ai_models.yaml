@@ -1,0 +1,177 @@
+---
+name: ai_models
+schema: public
+owner: imbi_owner
+comment: A model that an organization can call, served by an AI provider, with its
+  limits and costs. The admin catalog manages it. The assistant does not read the
+  catalog yet. Replaces the AIModel node and its SERVED_BY edge.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: A stable alias, such as default-chat, so agent configuration does not
+    name a vendor model id.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: provider_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The provider that serves the model. RESTRICT keeps a provider that still
+    has models.
+- name: provider_model_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The model id that the API call to the vendor sends. Unique per provider.
+    Replaces AIModel.model_id.
+- name: kind
+  data_type: TEXT
+  nullable: false
+  default: '''chat''::text'
+  comment: 'The API style of the model: chat or completion.'
+- name: enabled
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: False turns the model off without deleting it.
+- name: access_scope
+  data_type: TEXT
+  nullable: false
+  default: '''organization''::text'
+  comment: organization lets every team use the model. restricted limits it to the
+    teams in ai_model_teams. It is explicit so "all teams" and "no team selected
+    yet" are different states.
+- name: context_window
+  data_type: INTEGER
+  comment: The maximum input size in tokens. NULL means unknown.
+- name: max_output_tokens
+  data_type: INTEGER
+  comment: The maximum output size in tokens. NULL means unknown.
+- name: input_cost_per_million
+  data_type: NUMERIC(12,6)
+  comment: USD per one million input tokens. NULL means unknown or contract pricing.
+    0 means self-hosted. NUMERIC keeps the exact decimal value.
+- name: output_cost_per_million
+  data_type: NUMERIC(12,6)
+  comment: USD per one million output tokens, with the same NULL and 0 rules as input_cost_per_million.
+- name: default_temperature
+  data_type: NUMERIC(4,3)
+  comment: The sampling temperature to use when a caller sets none, from 0 to 2.
+    NULL means the vendor default.
+- name: default_top_p
+  data_type: NUMERIC(4,3)
+  comment: The nucleus sampling value to use when a caller sets none, from 0 to 1.
+    NULL means the vendor default.
+- name: monthly_spend_cap
+  data_type: NUMERIC(12,2)
+  comment: 'A monthly budget in USD. Advisory only: nothing enforces it yet. NULL
+    means no cap.'
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+- - organization_id
+  - slug
+- - provider_id
+  - provider_model_id
+check_constraints:
+- name: kind_valid
+  expression: (kind = ANY (ARRAY['chat'::text, 'completion'::text]))
+- name: access_scope_valid
+  expression: (access_scope = ANY (ARRAY['organization'::text, 'restricted'::text]))
+- name: context_window_positive
+  expression: (context_window > 0)
+- name: max_output_tokens_positive
+  expression: (max_output_tokens > 0)
+- name: input_cost_positive
+  expression: (input_cost_per_million >= (0)::numeric)
+- name: output_cost_positive
+  expression: (output_cost_per_million >= (0)::numeric)
+- name: temperature_range
+  expression: ((default_temperature >= (0)::numeric) AND (default_temperature <=
+    (2)::numeric))
+- name: top_p_range
+  expression: ((default_top_p >= (0)::numeric) AND (default_top_p <= (1)::numeric))
+- name: spend_cap_positive
+  expression: (monthly_spend_cap >= (0)::numeric)
+foreign_keys:
+- name: ai_models_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: ai_models_provider_id_fkey
+  columns:
+  - organization_id
+  - provider_id
+  references:
+    name: public.ai_providers
+    columns:
+    - organization_id
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: ai_models_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: ai_models_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - AIModel
+  comment: Deletes the embeddings of a deleted AIModel, also when a cascade deletes
+    it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

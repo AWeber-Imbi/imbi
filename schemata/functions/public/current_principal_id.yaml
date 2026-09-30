@@ -1,0 +1,13 @@
+---
+name: current_principal_id
+schema: public
+owner: imbi_owner
+returns: text
+language: sql
+stable: true
+parallel: SAFE
+sql_body: RETURN NULLIF(current_setting('imbi.principal_id'::text, true), ''::text)
+comment: The principal that the transaction set in imbi.principal_id, or NULL when
+  it is not set or empty. Row-level security policies call it, so the setting name
+  is in one place. The planner inlines it, so indexes on the compared column still
+  apply.

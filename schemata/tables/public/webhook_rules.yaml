@@ -1,0 +1,80 @@
+---
+name: webhook_rules
+schema: public
+owner: imbi_owner
+comment: A rule that sends a webhook event to a plugin action. The gateway runs every
+  rule whose filter matches, in ordinal order. Replaces the WebhookRule node.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: webhook_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The webhook of the rule.
+- name: ordinal
+  data_type: SMALLINT
+  nullable: false
+  comment: The position of the rule, from 0. The API sets it from the order of the
+    rules list.
+- name: filter_expression
+  data_type: TEXT
+  nullable: false
+  comment: A CEL expression. It sees the event type, integration, attributed user,
+    headers and payload. The rule runs when it is true.
+- name: handler
+  data_type: TEXT
+  nullable: false
+  comment: The action to run, as <plugin_slug>#<action>. The check uses the pattern
+    of the gateway, which drops every rule of the webhook when one handler does not
+    match it. The gateway resolves the action when the event arrives, and skips a
+    rule it cannot resolve.
+- name: handler_config
+  data_type: JSONB
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: Configuration for the action. The config model of the action validates
+    it for each event. An invalid value skips the rule.
+primary_key:
+- webhook_id
+- ordinal
+check_constraints:
+- name: ordinal_range
+  expression: (ordinal >= 0)
+- name: handler_valid
+  expression: (handler ~ '^[a-z][a-z0-9-]*#[a-z][a-z0-9_]*$'::text)
+- name: filter_not_empty
+  expression: (filter_expression <> ''::text)
+foreign_keys:
+- name: webhook_rules_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: webhook_rules_webhook_id_fkey
+  columns:
+  - organization_id
+  - webhook_id
+  references:
+    name: public.webhooks
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

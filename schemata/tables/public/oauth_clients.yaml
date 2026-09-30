@@ -1,0 +1,75 @@
+---
+name: oauth_clients
+schema: public
+owner: imbi_owner
+comment: An OAuth client from dynamic registration (RFC 7591), for example an MCP
+  client. The authorize and token endpoints read it to validate the client. Only
+  public PKCE clients are supported, so no secret is stored.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: client_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: mcp_<nanoid>. The API makes it at registration. The client sends it to
+    the authorize and token endpoints.
+- name: client_name
+  data_type: TEXT
+  comment: The name that the client gave at registration.
+- name: redirect_uris
+  data_type: TEXT[]
+  nullable: false
+  comment: The URIs that the authorize endpoint can redirect to. Each is https, or
+    http on a loopback host.
+- name: grant_types
+  data_type: TEXT[]
+  nullable: false
+  default: '''{authorization_code,refresh_token}''::text[]'
+  comment: Registration accepts only authorization_code and refresh_token.
+- name: response_types
+  data_type: TEXT[]
+  nullable: false
+  default: '''{code}''::text[]'
+  comment: Registration accepts only code.
+- name: token_endpoint_auth_method
+  data_type: TEXT
+  nullable: false
+  default: '''none''::text'
+  comment: Registration accepts only none, a public client.
+- name: scope
+  data_type: TEXT
+  comment: Space-delimited scopes that the client asked for at registration. NULL
+    when it asked for none.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - client_id
+check_constraints:
+- name: redirect_uris_not_empty
+  expression: (cardinality(redirect_uris) > 0)
+triggers:
+- name: oauth_clients_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: false

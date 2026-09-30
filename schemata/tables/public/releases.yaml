@@ -1,0 +1,191 @@
+---
+name: releases
+schema: public
+owner: imbi_owner
+comment: A version of a project, identified by its tag or, when it has no tag, by
+  its commit. Deploy, promote, blockers and drift checks refer to it. Replaces the
+  graph Release node and its HAS_RELEASE edge.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: project_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The project that the release belongs to.
+- name: tag
+  data_type: TEXT
+  comment: The version tag, such as 1.2.3. It is the release identity when it is
+    set. It must match the tag_formats of the project type or organization. NULL
+    for an untagged release, such as a deploy of a branch.
+- name: committish
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The short commit SHA (7 lowercase hex characters) of the source. When
+    the tag later resolves to a different commit, the application changes this value
+    to that commit.
+- name: promoted_committish
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The commit that the release had before the application changed committish,
+    set once. Testing deployments ran this commit, so release lookups by commit match
+    it too. NULL when committish did not change.
+- name: title
+  data_type: TEXT
+  nullable: false
+  comment: Display title in the release history. Search embeds it.
+- name: description
+  data_type: TEXT
+  comment: Markdown release notes. Search embeds it in chunks. A sync that finds
+    no notes does not clear it.
+- name: links
+  data_type: public.jsonb_array
+  nullable: false
+  default: '''[]''::jsonb'
+  comment: External links, as a list of {type, url, label} objects. type is free
+    text, such as github_release. JSONB because the list is small and the application
+    reads and writes it as a whole.
+- name: created_by
+  data_type: TEXT
+  nullable: false
+  comment: 'Who cut the release: a user email, a service account slug or a worker
+    name. A known author replaces a worker name, but a person is never replaced.'
+- name: workflow_run_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The CI workflow run that built the release. The orphan release check finds
+    tagged releases without one. NULL when no build was recorded, such as for releases
+    that a sync found.
+- name: workflow_run_url
+  data_type: TEXT
+  comment: A link to the workflow run in workflow_run_id.
+- name: promote_ci_status
+  data_type: TEXT
+  comment: 'The CI status of the commit when the release was promoted: pass, fail,
+    warn or unknown. It shows that a release shipped green or without CI. NULL when
+    the release was not promoted through Imbi. Graph property: ci_status_at_promote.'
+- name: ci_override_by
+  data_type: TEXT
+  comment: Who promoted the release over a failing CI status. The release history
+    shows an override badge. Written once and never cleared. NULL when no one overrode
+    CI.
+- name: ci_override_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When ci_override_by acknowledged the failing CI status.
+- name: drift_detected
+  data_type: BOOLEAN
+  comment: The CI drift verdict for the commit, from a git note. true opens a drift
+    blocker; any other verdict resolves it. NULL means that no note was found yet,
+    because CI writes notes later.
+- name: drift_checked_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When Imbi last looked for a drift note. It separates "not checked" from
+    "checked, no note". The deployment sweep uses it to limit how often it checks
+    again.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+storage_parameters:
+  fillfactor: '90'
+unique_constraints:
+- - organization_id
+  - id
+check_constraints:
+- name: tag_not_empty
+  expression: (tag <> ''::text)
+- name: promote_ci_status_valid
+  expression: (promote_ci_status = ANY (ARRAY['pass'::text, 'fail'::text, 'warn'::text,
+    'unknown'::text]))
+foreign_keys:
+- name: releases_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: releases_project_id_fkey
+  columns:
+  - organization_id
+  - project_id
+  references:
+    name: public.projects
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+indexes:
+- name: releases_project_tag_idx
+  unique: true
+  method: btree
+  columns:
+  - name: organization_id
+  - name: project_id
+  - name: tag
+  where: (tag IS NOT NULL)
+  comment: A tag identifies one release of a project.
+- name: releases_project_commit_idx
+  unique: true
+  method: btree
+  columns:
+  - name: organization_id
+  - name: project_id
+  - name: committish
+  where: (tag IS NULL)
+  comment: A commit identifies one untagged release.
+- name: releases_project_created_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: project_id
+  - name: created_at
+triggers:
+- name: releases_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: releases_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - Release
+  comment: Deletes the embeddings of a deleted Release, also when a cascade deletes
+    it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

@@ -1,0 +1,21 @@
+---
+name: PUBLIC
+create: false
+revocations:
+  functions:
+    public.delete_embeddings():
+    - EXECUTE
+    public.delete_plugin_edges():
+    - EXECUTE
+    public.integration_organization_id(text):
+    - EXECUTE
+    public.principal_memberships():
+    - EXECUTE
+    public.principal_permissions():
+    - EXECUTE
+    public.principal_teams():
+    - EXECUTE
+    public.upload_organization_id(text):
+    - EXECUTE
+    public.webhook_organization_id(text):
+    - EXECUTE

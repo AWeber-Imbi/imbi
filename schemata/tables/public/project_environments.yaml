@@ -1,0 +1,143 @@
+---
+name: project_environments
+schema: public
+owner: imbi_owner
+comment: The environments a project deploys into, and what runs there now. Replaces
+  the DEPLOYED_IN edge and its properties.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: project_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The project. The row goes when the project is deleted.
+- name: environment_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: 'The environment. RESTRICT: an environment in use cannot be deleted.'
+- name: attributes
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: Values for the fields that relationship blueprints add to the project-environment
+    link, such as url. In the graph, these values are DEPLOYED_IN edge properties.
+- name: current_release_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The release that runs in the environment now. A success deployment event
+    or a reconcile against the provider sets it. NULL means nothing is known to run
+    there. Deleting the release sets it to NULL.
+- name: current_release_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: The time of the success event that set current_release_id. It only moves
+    forward, so a replayed or late older event cannot install an older release.
+- name: current_deployment_external_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The provider ID of the deployment that a reconcile found active. Provenance
+    for current_release_id. NULL when no reconcile wrote the pointer.
+- name: current_state_source
+  data_type: TEXT
+  comment: What wrote the provenance columns. Only reconcile today. NULL until a
+    reconcile writes the state; success events do not set it.
+- name: current_state_observed_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the reconcile took its provider snapshot. A later write with an older
+    snapshot does not replace the state.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- project_id
+- environment_id
+storage_parameters:
+  fillfactor: '90'
+check_constraints:
+- name: current_state_source_valid
+  expression: (current_state_source = ANY (ARRAY['reconcile'::text]))
+foreign_keys:
+- name: project_environments_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: project_environments_project_id_fkey
+  columns:
+  - organization_id
+  - project_id
+  references:
+    name: public.projects
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: project_environments_environment_id_fkey
+  columns:
+  - organization_id
+  - environment_id
+  references:
+    name: public.environments
+    columns:
+    - organization_id
+    - id
+  on_delete: RESTRICT
+- name: project_environments_current_release_id_fkey
+  columns:
+  - organization_id
+  - current_release_id
+  references:
+    name: public.releases
+    columns:
+    - organization_id
+    - id
+  on_delete: SET NULL
+  on_delete_columns:
+  - current_release_id
+indexes:
+- name: project_environments_env_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: environment_id
+- name: project_environments_release_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: current_release_id
+  where: (current_release_id IS NOT NULL)
+  comment: The foreign key check when a release is deleted.
+triggers:
+- name: project_environments_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

@@ -1,0 +1,121 @@
+---
+name: comments
+schema: public
+owner: imbi_owner
+comment: A comment in a thread. The oldest comment starts the thread and replies
+  follow in created_at order. Replaces the Comment node and its IN_THREAD edge.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: thread_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The thread of the comment.
+- name: author
+  data_type: TEXT
+  nullable: false
+  comment: The principal name (user email or service account slug) that wrote the
+    comment. Only the author can edit or delete it.
+- name: body
+  data_type: TEXT
+  nullable: false
+  comment: The comment text in Markdown, with @Display Name tokens for mentions.
+    Search embeds it.
+- name: mentions
+  data_type: TEXT[]
+  nullable: false
+  default: '''{}''::text[]'
+  comment: Email addresses of the users that the body mentions. The UI resolves each
+    @ mention to an email when the user writes the comment.
+- name: acknowledged_by
+  data_type: TEXT[]
+  nullable: false
+  default: '''{}''::text[]'
+  comment: Principal names that acknowledged the comment. The acknowledge action
+    adds or removes the current principal.
+- name: edited
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: True after the author changed the body. The UI shows an edited label.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+check_constraints:
+- name: body_not_empty
+  expression: (body <> ''::text)
+foreign_keys:
+- name: comments_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: comments_thread_id_fkey
+  columns:
+  - organization_id
+  - thread_id
+  references:
+    name: public.comment_threads
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+indexes:
+- name: comments_thread_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: thread_id
+  - name: created_at
+triggers:
+- name: comments_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: comments_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - Comment
+  comment: Deletes the embeddings of a deleted Comment, also when a cascade deletes
+    it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

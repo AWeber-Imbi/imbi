@@ -1,0 +1,127 @@
+---
+name: roles
+schema: public
+owner: imbi_owner
+comment: A named set of permissions in one organization. Global role templates are
+  copied into each organization, so a change to a template does not change the access
+  in an organization.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name of the role in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Identifier of the role in API paths. Unique in the organization. The graph
+    MEMBER_OF edge stores this slug as its role property.
+- name: description
+  data_type: TEXT
+  comment: What the role is for. Shown on the roles page.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon of the role.
+- name: parent_role_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: The role this role inherits permissions from. Permission resolution follows
+    the chain with a recursive query. Replaces the INHERITS_FROM edge. NULL for a
+    role with no parent. Deleting the parent sets it to NULL, so the role keeps only
+    its own grants.
+- name: priority
+  data_type: INTEGER
+  nullable: false
+  default: '0'
+  comment: Sort order of role lists, highest first. The seeded service roles have
+    a higher value than the roles for people.
+- name: is_system
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: Seeded from a template. The roles API refuses to change or delete it.
+- name: is_default
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: The role that sign-in gives to a user who has no membership. The partial
+    unique index allows one per organization.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+- - organization_id
+  - slug
+check_constraints:
+- name: not_own_parent
+  expression: (parent_role_id <> id)
+foreign_keys:
+- name: roles_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: roles_parent_role_id_fkey
+  columns:
+  - organization_id
+  - parent_role_id
+  references:
+    name: public.roles
+    columns:
+    - organization_id
+    - id
+  on_delete: SET NULL
+  on_delete_columns:
+  - parent_role_id
+indexes:
+- name: roles_one_default_idx
+  unique: true
+  method: btree
+  columns:
+  - name: organization_id
+  where: is_default
+triggers:
+- name: roles_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

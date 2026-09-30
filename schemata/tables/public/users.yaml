@@ -1,0 +1,111 @@
+---
+name: users
+schema: public
+owner: imbi_owner
+comment: A person who signs in. One identity with memberships in many organizations.
+  The graph User label.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: principal_type
+  data_type: TEXT
+  nullable: false
+  default: '''user''::text'
+  comment: Always user. The foreign key to principals includes it, so one principal
+    id cannot be both a user and a service account.
+- name: email
+  data_type: TEXT
+  nullable: false
+  comment: The sign-in identifier. Today it is also the JWT subject and the key that
+    token and permission lookups use. Sign-in with a login integration links to an
+    existing user by email.
+- name: display_name
+  data_type: TEXT
+  nullable: false
+  comment: The name that the UI shows for the user.
+- name: password_hash
+  data_type: TEXT
+  comment: Argon2id hash for password sign-in. NULL for a user that signs in only
+    through a login integration.
+- name: is_active
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: False blocks sign-in and makes every token and API key of the user fail
+    authentication.
+- name: is_admin
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: Platform operator. The application skips permission checks for this user.
+    Row-level security still applies, so it does not bypass organization isolation.
+- name: email_notifications
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: The email notification preference of the user. The users API stores and
+    returns it.
+- name: avatar_url
+  data_type: TEXT
+  comment: Profile image URL. Sign-in with a login integration copies it from the
+    provider profile.
+- name: last_login_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the user last signed in. Sign-in sets it to the issue time of the
+    new tokens. The graph property is User.last_login.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+check_constraints:
+- name: principal_type_valid
+  expression: (principal_type = 'user'::text)
+foreign_keys:
+- name: users_id_principal_type_fkey
+  columns:
+  - id
+  - principal_type
+  references:
+    name: public.principals
+    columns:
+    - id
+    - principal_type
+  on_delete: CASCADE
+indexes:
+- name: users_email_idx
+  unique: true
+  method: btree
+  columns:
+  - expression: lower(email)
+  comment: Email addresses are unique without regard to case.
+triggers:
+- name: users_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: users_delete_principal
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_principal()
+  comment: Deletes the principal, so its memberships, API keys, tokens and access
+    grants go too. Content that it made stays.
+row_level_security:
+  enabled: false

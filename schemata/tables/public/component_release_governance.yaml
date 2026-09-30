@@ -1,0 +1,65 @@
+---
+name: component_release_governance
+schema: public
+owner: imbi_owner
+comment: A deprecated or forbidden mark that an organization puts on one component
+  version. Reports show the stricter of this mark and the component mark. No row
+  means current. Replaces the status properties on the ComponentRelease node.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: component_release_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The marked component version.
+- name: governance_status
+  data_type: TEXT
+  nullable: false
+  comment: deprecated or forbidden. forbidden is stricter.
+- name: status_by
+  data_type: TEXT
+  nullable: false
+  comment: The user email or service account slug that set the mark.
+- name: status_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the mark was set. Setting it again updates the time.
+primary_key:
+- organization_id
+- component_release_id
+check_constraints:
+- name: governance_status_valid
+  expression: (governance_status = ANY (ARRAY['deprecated'::text, 'forbidden'::text]))
+foreign_keys:
+- name: component_release_governance_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: component_release_governance_component_release_id_fkey
+  columns:
+  - component_release_id
+  references:
+    name: public.component_releases
+    columns:
+    - id
+  on_delete: RESTRICT
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

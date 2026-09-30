@@ -1,0 +1,175 @@
+---
+name: documents
+schema: public
+owner: imbi_owner
+comment: A markdown document attached to one project, project type or user. Replaces
+  the Document node and its ATTACHED_TO edge. The full text of each version is in
+  the ClickHouse document_versions table.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: project_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: Set when the document is attached to a project. The one_attachment check
+    allows at most one of project_id, project_type_id and user_id. Deleting the project
+    deletes the document.
+- name: project_type_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: 'Set when the document is attached to a project type, for documentation
+    that applies to all projects of that type. RESTRICT: a project type with documents
+    cannot be deleted.'
+- name: user_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: 'Set for a personal document of one user. Replaces the ATTACHED_TO edge
+    to a User node. Deleting the user sets it to NULL: the content stays, with no
+    attachment, as in the graph.'
+- name: title
+  data_type: TEXT
+  nullable: false
+  comment: The title that document lists and search show. At most 200 characters.
+    Search embeds it.
+- name: content
+  data_type: TEXT
+  nullable: false
+  comment: The document body in Markdown. Search embeds it in chunks.
+- name: is_pinned
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: True puts the document in the pinned group at the top of the documents
+    page.
+- name: version
+  data_type: INTEGER
+  nullable: false
+  default: '1'
+  comment: The current version number. It increments when the title, content or tags
+    change, and the matching snapshot goes to ClickHouse document_versions.
+- name: created_by
+  data_type: TEXT
+  nullable: false
+  comment: 'The principal that created the document: a user email or a service account
+    slug. Text, not a foreign key, because it stores the principal name.'
+- name: updated_by
+  data_type: TEXT
+  comment: The principal that last saved the document, in the same form as created_by.
+    NULL until the first change.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+check_constraints:
+- name: one_attachment
+  expression: (num_nonnulls(project_id, project_type_id, user_id) <= 1)
+- name: title_length
+  expression: (char_length(title) <= 200)
+- name: version_positive
+  expression: (version >= 1)
+foreign_keys:
+- name: documents_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: documents_project_id_fkey
+  columns:
+  - organization_id
+  - project_id
+  references:
+    name: public.projects
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: documents_project_type_id_fkey
+  columns:
+  - organization_id
+  - project_type_id
+  references:
+    name: public.project_types
+    columns:
+    - organization_id
+    - id
+  on_delete: RESTRICT
+- name: documents_user_id_fkey
+  columns:
+  - user_id
+  references:
+    name: public.users
+    columns:
+    - id
+  on_delete: SET NULL
+indexes:
+- name: documents_project_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: project_id
+  where: (project_id IS NOT NULL)
+- name: documents_project_type_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: project_type_id
+  where: (project_type_id IS NOT NULL)
+- name: documents_user_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: user_id
+  where: (user_id IS NOT NULL)
+triggers:
+- name: documents_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: documents_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - Document
+  comment: Deletes the embeddings of a deleted Document, also when a cascade deletes
+    it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

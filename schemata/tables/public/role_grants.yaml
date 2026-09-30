@@ -1,0 +1,61 @@
+---
+name: role_grants
+schema: public
+owner: imbi_owner
+comment: A permission that a role grants. Replaces the GRANTS edge from Role to Permission.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: role_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The role that grants it.
+- name: permission_name
+  data_type: TEXT
+  nullable: false
+  comment: The permission that the role grants.
+primary_key:
+- role_id
+- permission_name
+foreign_keys:
+- name: role_grants_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: role_grants_role_id_fkey
+  columns:
+  - organization_id
+  - role_id
+  references:
+    name: public.roles
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: role_grants_permission_name_fkey
+  columns:
+  - permission_name
+  references:
+    name: public.permissions
+    columns:
+    - name
+  on_delete: CASCADE
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

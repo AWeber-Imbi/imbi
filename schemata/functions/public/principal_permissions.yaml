@@ -1,0 +1,34 @@
+---
+name: principal_permissions
+schema: public
+owner: imbi_definer
+returns: text[]
+language: sql
+stable: true
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |2-
+   WITH RECURSIVE chain(role_id) AS (
+           SELECT m.role_id
+             FROM public.memberships AS m
+            WHERE m.principal_id = public.current_principal_id()
+  UNION
+           SELECT r.parent_role_id
+             FROM public.roles AS r
+               JOIN chain AS c ON c.role_id = r.id
+            WHERE r.parent_role_id IS NOT NULL
+          )
+   SELECT COALESCE( array_agg(DISTINCT g.permission_name ORDER BY g.permission_name), '{}'::text[])
+     FROM chain
+       JOIN public.role_grants AS g ON g.role_id = chain.role_id;
+comment: The permission names of the principal in imbi.principal_id, over all its
+  memberships and the parent chain of each role. Authentication calls it before an
+  organization is known. UNION stops at a cycle in the parent chain.
+dependencies:
+  tables:
+  - public.memberships
+  - public.role_grants
+  - public.roles
+  functions:
+  - public.current_principal_id

@@ -1,0 +1,24 @@
+---
+name: integration_organization_id
+schema: public
+owner: imbi_definer
+parameters:
+- mode: IN
+  name: p_integration_id
+  data_type: text
+returns: text
+language: sql
+stable: true
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |2-
+   SELECT i.organization_id
+     FROM public.integrations AS i
+    WHERE i.id = p_integration_id;
+comment: The organization of an integration. NULL for an instance sign-in provider
+  or when there is no such integration. The identity connection routes call it before
+  they set imbi.organization_id.
+dependencies:
+  tables:
+  - public.integrations

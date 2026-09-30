@@ -1,0 +1,58 @@
+---
+name: components
+schema: public
+owner: imbi_owner
+comment: 'A third-party package that releases depend on, for all versions. All organizations
+  share it. SBOM ingest inserts it, and the first values stay: imbi_app can insert
+  rows but cannot change or delete them. An organization whose SBOM has different
+  values writes component_overrides. Each organization sets governance in component_governance.'
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: purl_name
+  data_type: TEXT
+  nullable: false
+  comment: The package URL without its version, such as pkg:npm/express. It is the
+    component identity, so ingest matches on it.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: The package name from the first SBOM that named the package.
+- name: ecosystem
+  data_type: TEXT
+  nullable: false
+  comment: The package ecosystem from the purl type, such as npm, pypi or maven.
+    The component report counts packages per ecosystem.
+- name: description
+  data_type: TEXT
+  comment: The package description from the first SBOM, as Markdown. NULL when that
+    SBOM had none.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - purl_name
+triggers:
+- name: components_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: false

@@ -1,0 +1,125 @@
+---
+name: scoring_policies
+schema: public
+owner: imbi_owner
+comment: A rule that scores projects. The project score is the weighted average of
+  the enabled policies that apply. Replaces the ScoringPolicy node.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: URL-safe identifier, unique per organization. The API paths use it.
+- name: description
+  data_type: TEXT
+  comment: What the policy checks and why.
+- name: category
+  data_type: TEXT
+  nullable: false
+  default: '''attribute''::text'
+  comment: 'The scoring model: attribute, presence, link_presence, analysis_result,
+    deployment_status, age or condition. It decides which keys parameters must have.'
+- name: weight
+  data_type: SMALLINT
+  nullable: false
+  comment: The weight of the policy in the average, from 0 to 100.
+- name: enabled
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: False leaves the policy out of scoring without deleting it.
+- name: priority
+  data_type: INTEGER
+  nullable: false
+  default: '0'
+  comment: The sort order of the policy list. It does not change the score.
+- name: parameters
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: The fields of the category, such as attribute_name and value_score_map.
+    The scoring models validate the full shape. One JSONB column, because each category
+    has different fields. The parameters_match_category check requires the key fields
+    with non-null values. It tests values, not keys, because the models write optional
+    fields as null.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+- - organization_id
+  - slug
+check_constraints:
+- name: category_valid
+  expression: (category = ANY (ARRAY['attribute'::text, 'presence'::text, 'link_presence'::text,
+    'analysis_result'::text, 'deployment_status'::text, 'age'::text, 'condition'::text]))
+- name: weight_range
+  expression: ((weight >= 0) AND (weight <= 100))
+- name: parameters_match_category
+  expression: "CASE category\n    WHEN 'attribute'::text THEN ((((parameters)::jsonb\
+    \ ->> 'attribute_name'::text) IS NOT NULL) AND (COALESCE((jsonb_typeof(((parameters)::jsonb\
+    \ -> 'value_score_map'::text)) = 'object'::text), false) <> COALESCE((jsonb_typeof(((parameters)::jsonb\
+    \ -> 'range_score_map'::text)) = 'object'::text), false)))\n    WHEN 'presence'::text\
+    \ THEN (((parameters)::jsonb ->> 'attribute_name'::text) IS NOT NULL)\n    WHEN\
+    \ 'link_presence'::text THEN (((parameters)::jsonb ->> 'link_slug'::text) IS\
+    \ NOT NULL)\n    WHEN 'analysis_result'::text THEN (((parameters)::jsonb ->>\
+    \ 'result_slug'::text) IS NOT NULL)\n    WHEN 'deployment_status'::text THEN\
+    \ (((parameters)::jsonb ->> 'environment_slug'::text) IS NOT NULL)\n    WHEN\
+    \ 'age'::text THEN ((((parameters)::jsonb ->> 'attribute_name'::text) IS NOT\
+    \ NULL) AND COALESCE((jsonb_typeof(((parameters)::jsonb -> 'age_score_map'::text))\
+    \ = 'object'::text), false))\n    WHEN 'condition'::text THEN COALESCE((jsonb_typeof(((parameters)::jsonb\
+    \ -> 'condition'::text)) = 'object'::text), false)\n    ELSE false\nEND"
+foreign_keys:
+- name: scoring_policies_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: scoring_policies_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

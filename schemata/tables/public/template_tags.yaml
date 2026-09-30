@@ -1,0 +1,65 @@
+---
+name: template_tags
+schema: public
+owner: imbi_owner
+comment: A tag that a document template gives to new documents. Replaces the TAGGED_WITH
+  edge from a DocumentTemplate.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: document_template_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The template.
+- name: tag_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The tag that each document created from the template gets.
+primary_key:
+- document_template_id
+- tag_id
+foreign_keys:
+- name: template_tags_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: template_tags_document_template_id_fkey
+  columns:
+  - organization_id
+  - document_template_id
+  references:
+    name: public.document_templates
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: template_tags_tag_id_fkey
+  columns:
+  - organization_id
+  - tag_id
+  references:
+    name: public.tags
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

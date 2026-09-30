@@ -1,0 +1,79 @@
+---
+name: project_dependencies
+schema: public
+owner: imbi_owner
+comment: A project that another project depends on. Replaces the DEPENDS_ON edge.
+  The project page shows inbound and outbound counts.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: project_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The dependent project.
+- name: dependency_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The project that project_id depends on.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+primary_key:
+- project_id
+- dependency_id
+check_constraints:
+- name: not_self
+  expression: (project_id <> dependency_id)
+foreign_keys:
+- name: project_dependencies_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: project_dependencies_project_id_fkey
+  columns:
+  - organization_id
+  - project_id
+  references:
+    name: public.projects
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+- name: project_dependencies_dependency_id_fkey
+  columns:
+  - organization_id
+  - dependency_id
+  references:
+    name: public.projects
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+indexes:
+- name: project_dependencies_dep_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: dependency_id
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

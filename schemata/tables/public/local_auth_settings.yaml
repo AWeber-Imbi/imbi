@@ -1,0 +1,39 @@
+---
+name: local_auth_settings
+schema: public
+owner: imbi_owner
+comment: Whether email and password sign-in is offered next to the login integrations.
+  One row. The graph LocalAuthConfig label.
+columns:
+- name: singleton
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: Always true. The primary key and the one_row check allow only one row.
+    Replaces the key property with the value global.
+- name: enabled
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: True offers password sign-in. False allows only the login integrations.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- singleton
+check_constraints:
+- name: one_row
+  expression: singleton
+triggers:
+- name: local_auth_settings_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: false

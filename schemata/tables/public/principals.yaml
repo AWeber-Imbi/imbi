@@ -1,0 +1,34 @@
+---
+name: principals
+schema: public
+owner: imbi_owner
+comment: The supertype of users and service accounts. Memberships, issued tokens,
+  API keys and resource ACLs refer to a principal, so one foreign key covers both
+  kinds.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The id of the user or service account. The users or service_accounts row
+    has the same id.
+- name: principal_type
+  data_type: TEXT
+  nullable: false
+  comment: 'Which table has the details: user or service_account. Replaces the User.is_service_account
+    flag and the separate graph labels.'
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+primary_key:
+- id
+unique_constraints:
+- - id
+  - principal_type
+check_constraints:
+- name: principal_type_valid
+  expression: (principal_type = ANY (ARRAY['user'::text, 'service_account'::text]))
+row_level_security:
+  enabled: false

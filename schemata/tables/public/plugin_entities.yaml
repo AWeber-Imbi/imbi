@@ -1,0 +1,94 @@
+---
+name: plugin_entities
+schema: public
+owner: imbi_owner
+comment: A record of a type that a plugin manifest declares, such as AwsAccount.
+  Replaces the graph nodes with plugin labels. The admin plugin entity endpoints
+  read and write it.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: plugin_slug
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The plugin that declares the type.
+- name: label
+  data_type: TEXT
+  nullable: false
+  comment: The vertex label from the manifest, such as AwsAccount. One table holds
+    all plugin types, so this column tells them apart.
+- name: data
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: The field values. The Pydantic model that model_ref of the manifest names
+    validates them. JSONB because each plugin type has different fields.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+foreign_keys:
+- name: plugin_entities_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: plugin_entities_plugin_slug_fkey
+  columns:
+  - plugin_slug
+  references:
+    name: public.plugin_registrations
+    columns:
+    - slug
+  on_delete: CASCADE
+indexes:
+- name: plugin_entities_label_idx
+  method: btree
+  columns:
+  - name: organization_id
+  - name: plugin_slug
+  - name: label
+triggers:
+- name: plugin_entities_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

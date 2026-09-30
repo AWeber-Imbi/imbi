@@ -1,0 +1,95 @@
+---
+name: analysis_results
+schema: public
+owner: imbi_owner
+comment: One finding in an analysis report, from an analysis plugin or the built-in
+  blueprint compliance check. Replaces the AnalysisResult node.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: report_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The report of the finding.
+- name: slug
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: A stable name for the check, such as exists-in or blueprint-compliance:all-pass.
+    Not the slug domain, because the built-in check uses colons. Two plugins can
+    report the same slug. Scoring policies of category analysis_result refer to it
+    as result_slug.
+- name: title
+  data_type: TEXT
+  nullable: false
+  comment: The finding title in the Doctor panel.
+- name: description
+  data_type: TEXT
+  nullable: false
+  comment: The finding details in Markdown.
+- name: result_status
+  data_type: TEXT
+  nullable: false
+  comment: pass, warn or fail. Replaces AnalysisResult.status.
+- name: plugin_slug
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The plugin that made the finding, or blueprint-compliance for the built-in
+    check. No foreign key, because the built-in check is not a plugin.
+- name: integration_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The integration that ran the check, or built-in for the built-in check.
+    Replaces AnalysisResult.plugin_id, which holds the same values. No foreign key,
+    because built-in is not an integration. Part of the key, so two plugins can report
+    the same slug.
+- name: remediation
+  data_type: public.jsonb_object
+  comment: A fix offer {id, label, confirm, destructive}. The Doctor panel shows
+    a Fix button for it. id goes back to the plugin unchanged. NULL means the finding
+    has no automatic fix.
+primary_key:
+- report_id
+- integration_id
+- slug
+check_constraints:
+- name: result_status_valid
+  expression: (result_status = ANY (ARRAY['pass'::text, 'warn'::text, 'fail'::text]))
+- name: slug_not_empty
+  expression: (slug <> ''::text)
+foreign_keys:
+- name: analysis_results_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: analysis_results_report_id_fkey
+  columns:
+  - organization_id
+  - report_id
+  references:
+    name: public.analysis_reports
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

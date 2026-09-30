@@ -1,0 +1,128 @@
+---
+name: organizations
+schema: public
+owner: imbi_owner
+comment: The isolation and authorization boundary. Every tenant-owned row carries
+  organization_id. Replaces the Organization node; the BELONGS_TO edges become organization_id
+  columns.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: tenant_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The tenant that owns the organization. Billing, quotas and later a tenant
+    data key attach to the tenant.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: URL-safe identifier, unique in the instance. UI routes and API paths start
+    with it.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: previous_slugs
+  data_type: TEXT[]
+  nullable: false
+  default: '''{}''::text[]'
+  comment: Slugs the organization had before a rename. The rename endpoint appends
+    the old slug. No lookup reads it yet; it keeps the data for redirects of old
+    URLs.
+- name: tag_formats
+  data_type: public.jsonb_array
+  nullable: false
+  default: '''[]''::jsonb'
+  comment: 'Release tag policy: a list of {label, pattern} objects. A tag is valid
+    when it fully matches one pattern. An empty list means no restriction. Promote
+    and release cut check new tags against it. JSONB because the list is always read
+    and written as a whole.'
+- name: document_analytics_identities
+  data_type: TEXT
+  nullable: false
+  default: '''authors_only''::text'
+  comment: 'Who can see which people read a document. Read counts are always visible.
+    enabled: holders of document:analytics:read_identities. authors_only: those,
+    plus the author. disabled: nobody.'
+- name: attributes
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: 'Values for the fields that enabled blueprints of this type add. The application
+    validates them against the blueprint JSON schemas. Scoring policies and list
+    filters read them. In the graph, these values are extra node properties. No GIN
+    index: under row-level security a jsonb condition is a filter, not an index condition.'
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - slug
+check_constraints:
+- name: document_analytics_valid
+  expression: (document_analytics_identities = ANY (ARRAY['enabled'::text, 'authors_only'::text,
+    'disabled'::text]))
+foreign_keys:
+- name: organizations_tenant_id_fkey
+  columns:
+  - tenant_id
+  references:
+    name: public.tenants
+    columns:
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: organizations_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: organizations_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - Organization
+  comment: Deletes the embeddings of a deleted Organization, also when a cascade
+    deletes it, so search cannot find its text.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: The organization set in imbi.organization_id.
+- name: principal_memberships
+  command: SELECT
+  using: "((id IN ( SELECT memberships.organization_id\n   FROM public.memberships\n\
+    \  WHERE (memberships.principal_id = ( SELECT public.current_principal_id() AS\
+    \ current_principal_id)))) AND (( SELECT public.current_organization_id() AS\
+    \ current_organization_id) IS NULL))"
+  comment: Before an organization is selected, a principal sees the organizations
+    it is a member of. Only while imbi.organization_id is not set.

@@ -1,0 +1,83 @@
+---
+name: issued_tokens
+schema: public
+owner: imbi_owner
+comment: 'An issued JWT. Authentication rejects a token that is revoked here, so
+  logout and refresh-token rotation take effect before the token expires. The graph
+  TokenMetadata label. No nanoid id: nothing reads one, and jti is already unique.'
+columns:
+- name: principal_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The user or service account the token is for. Replaces the ISSUED_TO edge.
+    Logout from all sessions revokes every token of the principal.
+- name: jti
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The JWT id claim and the primary key. Authentication finds the row by
+    it on each request.
+- name: token_type
+  data_type: TEXT
+  nullable: false
+  comment: access or refresh. Only a refresh token can get a new token pair.
+- name: family_id
+  data_type: TEXT
+  collation: pg_catalog."C"
+  comment: Links the tokens of one sign-in and every refresh after it. When a revoked
+    refresh token is used again, every token of the family is revoked. NULL for tokens
+    issued before families existed.
+- name: issued_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  comment: When the token was issued.
+- name: expires_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  comment: When the token expires. The JWT exp claim.
+- name: revoked_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When logout, refresh rotation or a reuse cascade revoked the token. NULL
+    while it is valid. Authentication rejects a token with revoked_at set. Replaces
+    the graph revoked flag.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+primary_key:
+- jti
+storage_parameters:
+  fillfactor: '90'
+check_constraints:
+- name: token_type_valid
+  expression: (token_type = ANY (ARRAY['access'::text, 'refresh'::text]))
+foreign_keys:
+- name: issued_tokens_principal_id_fkey
+  columns:
+  - principal_id
+  references:
+    name: public.principals
+    columns:
+    - id
+  on_delete: CASCADE
+indexes:
+- name: issued_tokens_principal_idx
+  method: btree
+  columns:
+  - name: principal_id
+  - name: revoked_at
+  comment: Revoke-all reads only the valid tokens of the principal (revoked_at IS
+    NULL is an index condition). The principal delete uses the leading column.
+- name: issued_tokens_family_idx
+  method: btree
+  columns:
+  - name: family_id
+  where: (family_id IS NOT NULL)
+- name: issued_tokens_expires_at_idx
+  method: btree
+  columns:
+  - name: expires_at
+row_level_security:
+  enabled: false

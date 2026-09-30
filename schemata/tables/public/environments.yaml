@@ -1,0 +1,145 @@
+---
+name: environments
+schema: public
+owner: imbi_owner
+comment: A deployment target, such as testing, staging or production. Replaces the
+  Environment node.
+columns:
+- name: id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Nanoid primary key. The application generates it. It does not change,
+    so UI routes, API paths and other rows can refer to it.
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: name
+  data_type: TEXT
+  nullable: false
+  comment: Display name in the UI.
+- name: slug
+  data_type: public.slug
+  nullable: false
+  collation: pg_catalog."C"
+  comment: URL-safe identifier. UI routes and API paths use it.
+- name: description
+  data_type: TEXT
+  comment: Markdown that the detail page shows.
+- name: icon
+  data_type: TEXT
+  comment: A URL or a CSS class name for the icon the UI shows next to the name.
+- name: sort_order
+  data_type: INTEGER
+  nullable: false
+  default: '0'
+  comment: Orders environments in lists and on the release train. A promotion goes
+    from one environment to the next by sort_order.
+- name: label_color
+  data_type: TEXT
+  comment: 'Hex color of the environment label in the UI, for example #3B82F6. NULL
+    means the default color.'
+- name: can_deploy
+  data_type: BOOLEAN
+  nullable: false
+  default: 'true'
+  comment: The release train shows Deploy for this environment. Default true because
+    all environments could deploy before the flag existed.
+- name: can_promote
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: The release train shows Promote for this environment. A promote cuts a
+    tag and a GitHub release, so an operator must opt in.
+- name: terminal
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: The promotion pipeline ends here. The next environment by sort_order starts
+    a new pipeline, so one list can hold several pipelines.
+- name: allow_autonomous
+  data_type: BOOLEAN
+  nullable: false
+  default: 'false'
+  comment: A principal without a user, such as a service account that uses an integration
+    credential, can deploy or promote here. Human callers need only can_deploy or
+    can_promote.
+- name: attributes
+  data_type: public.jsonb_object
+  nullable: false
+  default: '''{}''::jsonb'
+  comment: 'Values for the fields that enabled blueprints of this type add. The application
+    validates them against the blueprint JSON schemas. Scoring policies and list
+    filters read them. In the graph, these values are extra node properties. No GIN
+    index: under row-level security a jsonb condition is a filter, not an index condition.'
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- id
+unique_constraints:
+- - organization_id
+  - id
+- - organization_id
+  - slug
+check_constraints:
+- name: label_color_valid
+  expression: (label_color ~ '^#[0-9A-Fa-f]{6}$'::text)
+foreign_keys:
+- name: environments_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+triggers:
+- name: environments_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+- name: environments_delete_embeddings
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_embeddings()
+  arguments:
+  - Environment
+  comment: Deletes the embeddings of a deleted Environment, also when a cascade deletes
+    it, so search cannot find its text.
+- name: environments_delete_plugin_edges
+  when: AFTER
+  events:
+  - DELETE
+  for_each: ROW
+  function: public.delete_plugin_edges()
+  arguments:
+  - Environment
+  comment: Deletes the plugin edges whose source is a deleted Environment. A foreign
+    key removes the edges of a deleted target.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

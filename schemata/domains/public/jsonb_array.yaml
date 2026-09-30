@@ -1,0 +1,10 @@
+---
+name: jsonb_array
+schema: public
+owner: imbi_owner
+data_type: JSONB
+check_constraints:
+- name: jsonb_array_check
+  expression: (jsonb_typeof(VALUE) = 'array'::text)
+comment: A JSONB value that is an array. Use it for ordered lists, such as links,
+  history entries and tag formats.

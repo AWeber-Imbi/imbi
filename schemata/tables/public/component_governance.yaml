@@ -1,0 +1,67 @@
+---
+name: component_governance
+schema: public
+owner: imbi_owner
+comment: A deprecated or forbidden mark that an organization puts on a component,
+  to move projects off it. Every version inherits the mark. No row means current.
+  Clearing the mark deletes the row. Replaces the status, status_at and status_by
+  properties on the Component node.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: component_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The marked component.
+- name: governance_status
+  data_type: TEXT
+  nullable: false
+  comment: deprecated or forbidden. forbidden is stricter. Reports show the stricter
+    of this mark and the version mark.
+- name: status_by
+  data_type: TEXT
+  nullable: false
+  comment: The user email or service account slug that set the mark.
+- name: status_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the mark was set. Setting it again updates the time.
+primary_key:
+- organization_id
+- component_id
+check_constraints:
+- name: governance_status_valid
+  expression: (governance_status = ANY (ARRAY['deprecated'::text, 'forbidden'::text]))
+foreign_keys:
+- name: component_governance_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: component_governance_component_id_fkey
+  columns:
+  - component_id
+  references:
+    name: public.components
+    columns:
+    - id
+  on_delete: RESTRICT
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.

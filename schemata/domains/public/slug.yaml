@@ -1,0 +1,11 @@
+---
+name: slug
+schema: public
+owner: imbi_owner
+data_type: TEXT
+check_constraints:
+- name: slug_check
+  expression: (VALUE ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text)
+comment: 'A URL-safe identifier: lowercase letters and digits in groups that one
+  hyphen separates. The same form that python-slugify makes. It cannot be empty or
+  start or end with a hyphen.'

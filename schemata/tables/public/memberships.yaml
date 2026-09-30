@@ -1,0 +1,97 @@
+---
+name: memberships
+schema: public
+owner: imbi_owner
+comment: A principal in an organization, with its role there. The permissions of
+  a principal in an organization come from this role. Replaces the MEMBER_OF edge
+  from User or ServiceAccount to Organization.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: principal_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The user or service account that is a member.
+- name: role_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The role of the principal in this organization. Replaces the role slug
+    property on the MEMBER_OF edge.
+- name: created_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  nullable: false
+  default: CURRENT_TIMESTAMP
+  comment: When the row was inserted. The database sets it.
+- name: updated_at
+  data_type: TIMESTAMP WITH TIME ZONE
+  comment: When the row last changed. The set_updated_at trigger sets it on each
+    UPDATE that changes the row. NULL until the first such UPDATE.
+primary_key:
+- organization_id
+- principal_id
+foreign_keys:
+- name: memberships_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: memberships_principal_id_fkey
+  columns:
+  - principal_id
+  references:
+    name: public.principals
+    columns:
+    - id
+  on_delete: CASCADE
+- name: memberships_role_id_fkey
+  columns:
+  - organization_id
+  - role_id
+  references:
+    name: public.roles
+    columns:
+    - organization_id
+    - id
+  on_delete: RESTRICT
+indexes:
+- name: memberships_principal_idx
+  method: btree
+  columns:
+  - name: principal_id
+triggers:
+- name: memberships_set_updated_at
+  when: BEFORE
+  events:
+  - UPDATE
+  for_each: ROW
+  condition: (old.* IS DISTINCT FROM new.*)
+  function: public.set_updated_at()
+  comment: Sets updated_at on an UPDATE that changes the row. An UPDATE that changes
+    nothing keeps it.
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.
+- name: own_memberships
+  command: SELECT
+  using: ((principal_id = ( SELECT public.current_principal_id() AS current_principal_id))
+    AND (( SELECT public.current_organization_id() AS current_organization_id) IS
+    NULL))
+  comment: Before an organization is selected, a principal sees its own memberships
+    in every organization. Only while imbi.organization_id is not set, so in an organization
+    a query without an organization condition cannot return rows of other organizations.

@@ -1,0 +1,23 @@
+---
+name: upload_organization_id
+schema: public
+owner: imbi_definer
+parameters:
+- mode: IN
+  name: p_upload_id
+  data_type: text
+returns: text
+language: sql
+stable: true
+security: DEFINER
+configuration:
+  search_path: pg_temp
+definition: |2-
+   SELECT u.organization_id
+     FROM public.uploads AS u
+    WHERE u.id = p_upload_id;
+comment: The organization of an upload, or NULL when there is no such upload. GET
+  /uploads/{id} calls it, checks the membership of the caller, and then sets imbi.organization_id.
+dependencies:
+  tables:
+  - public.uploads

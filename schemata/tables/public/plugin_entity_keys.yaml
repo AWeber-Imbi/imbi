@@ -1,0 +1,78 @@
+---
+name: plugin_entity_keys
+schema: public
+owner: imbi_owner
+comment: A unique key that a manifest index declares, such as account_id. The unique
+  constraint rejects a second entity with the same key. Replaces indexes created
+  at runtime.
+columns:
+- name: organization_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The organization that owns the row. Row-level security compares it with
+    imbi.organization_id. Composite foreign keys include it, so a row cannot refer
+    to a row in a different organization.
+- name: entity_id
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: The entity the key is for.
+- name: plugin_slug
+  data_type: TEXT
+  nullable: false
+  collation: pg_catalog."C"
+  comment: Copied from the entity, so the unique constraint is per plugin.
+- name: label
+  data_type: TEXT
+  nullable: false
+  comment: Copied from the entity, so the unique constraint is per type.
+- name: index_name
+  data_type: TEXT
+  nullable: false
+  comment: The fields of the manifest index, joined with commas. One entity has one
+    row per unique index.
+- name: key_value
+  data_type: public.jsonb_array
+  nullable: false
+  comment: A JSON array of the indexed field values, in manifest order. JSONB keeps
+    the field types, so 1 and "1" are different keys.
+primary_key:
+- entity_id
+- index_name
+unique_constraints:
+- name: plugin_entity_keys_value_key
+  columns:
+  - organization_id
+  - plugin_slug
+  - label
+  - index_name
+  - key_value
+foreign_keys:
+- name: plugin_entity_keys_organization_id_fkey
+  columns:
+  - organization_id
+  references:
+    name: public.organizations
+    columns:
+    - id
+  on_delete: RESTRICT
+- name: plugin_entity_keys_entity_id_fkey
+  columns:
+  - organization_id
+  - entity_id
+  references:
+    name: public.plugin_entities
+    columns:
+    - organization_id
+    - id
+  on_delete: CASCADE
+row_level_security:
+  enabled: true
+  forced: true
+policies:
+- name: organization_isolation
+  using: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  with_check: (organization_id = ( SELECT public.current_organization_id() AS current_organization_id))
+  comment: Rows are visible and writable only in the organization that the transaction
+    sets in imbi.organization_id.
