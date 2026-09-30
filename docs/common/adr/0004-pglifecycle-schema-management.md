@@ -146,7 +146,7 @@ release (D27):
 
 - CI and the moon tasks build pglifecycle from one commit of `main`.
   WP0.4 pinned `4f6729c`. The pin is now `1e5b893` (the head of `main`
-  on 2026-09-30, with pglifecycle #115 to #118), and
+  on 2026-09-30, with pglifecycle #114 to #118), and
   `schemata/README.md` records the commit.
 - The rehearsal and the cutover use the same build as CI. The runbook
   records the SHA-256 of the binary.

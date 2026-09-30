@@ -259,6 +259,10 @@ attempt() {
 
   echo "== $name: second deploy equals the allowlist"
   deploy --allow-drop -o "$WORK/$name-second.sql"
+  # statements reads a missing file as no statements, so a deploy that
+  # wrote no plan would match an empty allowlist.
+  [ -s "$WORK/$name-second.sql" ] \
+    || fail "$name: the second deploy wrote no plan file"
   if ! diff <(statements "$ALLOWLIST") \
             <(statements "$WORK/$name-second.sql"); then
     fail "$name: the second deploy differs from $ALLOWLIST"
@@ -412,6 +416,7 @@ check_negative() {
     'GRANT imbi_trigger TO imbi_maintenance'
     'CREATE TABLE public.extra (id integer)'
     'ALTER FUNCTION public.principal_teams() RESET search_path'
+    'ALTER FUNCTION public.check_integration_scope() RESET search_path'
     'ALTER TABLE public.tags ADD CONSTRAINT x CHECK (true) NOT VALID'
     'DROP TABLE legacy.embeddings'
   )
