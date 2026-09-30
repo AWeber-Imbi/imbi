@@ -275,6 +275,19 @@ tasks:
       outputStyle: 'stream'
       runInCI: false
 
+  # The DDL steps of the AGE cutover runbook
+  # (docs/architecture/age-cutover-runbook.md) on an AGE-era fixture:
+  # freeze, pre-deploy, deploy, checks, the RLS probe, and the rollback,
+  # twice. It uses the same pglifecycle build and connection rules as the
+  # schema tasks, and makes and drops its own database (cutover_check, or
+  # CUTOVER_DB). Not in `moon ci`, for the same reason as schema-check.
+  cutover-check:
+    command: 'schemata/cutover/cutover-check.sh'
+    options:
+      cache: false
+      outputStyle: 'stream'
+      runInCI: false
+
   # Tear down the backing services and volumes.
   teardown:
     command: 'docker'

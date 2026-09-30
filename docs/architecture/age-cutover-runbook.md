@@ -8,8 +8,8 @@ of decisions D25, D27, and D28 of the execution plan
 (`meta:docs/age-to-relational-execution-plan.md`).
 
 The SQL of the runbook is in `schemata/cutover/`. The moon task
-`root:cutover-check` runs steps 4, 5, and 6 and the rollback on an
-AGE-era fixture. The rehearsal (WP3.2) runs the full runbook on a
+`root:cutover-check` runs steps 4, 5, and 6, the probe of step 9, and
+the rollback on an AGE-era fixture (see "Tests of this runbook"). The rehearsal (WP3.2) runs the full runbook on a
 production copy, and makes it fail after each of steps 5 to 12.
 
 ## Rules
@@ -40,9 +40,9 @@ step 1. A different value stops the cutover.
 
 | Item | Value | How to get it |
 |---|---|---|
-| pglifecycle commit | `4f6729cda43b1d8facdeed304e6adfeb4991d18a` (pinned by D27; `schemata/README.md` records the pin) | `git -C <pglifecycle checkout> rev-parse HEAD` |
-| pglifecycle build | `cargo build --release --locked` at that commit | |
-| pglifecycle binary SHA-256 | `fa39b633a28d87bb77265dc33071647f7e72d74628dd306914cef8ab3cdfe82a` (Darwin arm64, rustc 1.96.1, the build that `root:cutover-check` used on 2026-09-30). The value changes with the platform and the compiler: record the binary of the workstation that runs step 6 | `shasum -a 256 target/release/pglifecycle` |
+| pglifecycle commit | `4f6729cda43b1d8facdeed304e6adfeb4991d18a` (pinned by D27 in `schemata/scripts/install-pglifecycle.sh` and `schemata/README.md`) | `pglifecycle --version` does not show it; read the install script |
+| pglifecycle build | `schemata/scripts/install-pglifecycle.sh` (`cargo install --locked --git ... --rev <commit>`). Keep the binary file of the rehearsal and use that file at the cutover. Do not build again: two builds of the same commit on the same workstation gave different SHA-256 values on 2026-09-30 | the script prints the path |
+| pglifecycle binary SHA-256 | `e2ec81979d7e30a2df6c6e6c875988e794dc327a08a4cca67f642e3a44cb2f0e`: the build that `root:cutover-check` used on 2026-09-30 (Darwin arm64). Replace it with the SHA-256 of the binary of the rehearsal workstation; the cutover uses the same file | `shasum -a 256 <binary>`; `root:cutover-check` prints it |
 | New release image | the digest of the integration branch build (`ghcr.io/aweber-imbi/imbi@sha256:...`) | the release workflow output |
 | Previous release image | the digest of the AGE-era image that production runs before step 1 | `kubectl get deploy -o jsonpath='{..image}'`, then the digest from the registry |
 | Monorepo commit | the commit of the new release image; the operator runs every `schemata/` file and CLI from a checkout of this commit | `git rev-parse HEAD` |
@@ -62,6 +62,8 @@ export PGUSER=<operator role: a superuser, not AGE_LOGIN>
 export PGDATABASE=<the Imbi database>
 export PGLIFECYCLE=<path to the pinned pglifecycle binary>
 export CUTOVER=<an empty directory for the outputs of this cutover>
+export TENANT_SLUG=<slug of the tenant that the ETL creates>
+export TENANT_NAME=<name of that tenant>
 ```
 
 The operator reaches PostgreSQL through
@@ -91,9 +93,12 @@ page must come from a server that is not Imbi.
 `templates/deployment-iggy-connect.yaml` renders a second Deployment,
 `<release>-imbi-connect`, when `iggyConnect.enabled` is true. It drains
 the Iggy streams into ClickHouse and does not connect to PostgreSQL. It
-can stay up.
+can stay up. It reads its configuration from imbi-api only when it
+starts, so if it restarts while the API is stopped, it exits; restart it
+after step 13.
 
-All Imbi Deployments have the label `app.kubernetes.io/name=imbi`. The
+With the default chart name, all Imbi Deployments have the label
+`app.kubernetes.io/name=imbi`. The
 connectors runtime has `app.kubernetes.io/name=imbi-connect`, so the
 label selector below does not stop it.
 
@@ -148,9 +153,9 @@ ran `freeze.sql`).
 
 ## Steps
 
-Each step has a role, the action, and a check. "Duration" is the
-measured duration of the step at the last rehearsal. The rehearsal
-fills it in; this runbook gives no estimate.
+Each step has a role, the action, and a check. The rehearsal record
+gives the measured duration of each step; this runbook gives no
+estimate.
 
 ### 1. Announcement
 
@@ -210,7 +215,7 @@ fills it in; this runbook gives no estimate.
   checkout of the release commit:
 
   ```bash
-  uv run --frozen imbi-common etl audit <options of WP1.9> \
+  uv run --frozen imbi-common etl audit <options of the WP1.9 CLI> \
     > "$CUTOVER/03-audit.json"
   ```
 
@@ -267,10 +272,11 @@ fills it in; this runbook gives no estimate.
 - Check:
 
   ```bash
-  psql -At -c "SELECT count(*) FROM legacy.embeddings"
-  # expect: the row count of public.embeddings before this step
-  psql -At -c "SELECT vector_schema FROM legacy.cutover_state"
-  # expect: ag_catalog (the production dump of 2026-08-17 has it there)
+  psql -At -c "SELECT (SELECT count(*) FROM legacy.embeddings),
+                      embeddings_rows, vector_schema
+                 FROM legacy.cutover_state"
+  # expect: two equal row counts, and ag_catalog (the production dump of
+  # 2026-08-17 has vector there)
   ```
 
 ### 6. Deploy the schema
@@ -334,12 +340,21 @@ fills it in; this runbook gives no estimate.
   since step 4.
 
   ```bash
-  uv run --frozen imbi-common etl run <options of WP1.5> \
-    | tee "$CUTOVER/07-etl.txt"
+  # The passwords come from ~/.pgpass, not from the command line.
+  export IMBI_ETL_SOURCE_URL=postgresql://$PGUSER@$PGHOST:$PGPORT/$PGDATABASE
+  export IMBI_ETL_TARGET_URL=postgresql://imbi_maintenance@$PGHOST:$PGPORT/$PGDATABASE
+  uv run --frozen imbi-common etl run --graph imbi \
+    --tenant-slug "$TENANT_SLUG" --tenant-name "$TENANT_NAME" \
+    2>&1 | tee "$CUTOVER/07-etl.txt"
   ```
 
-  The ETL truncates the tables that it loads and inserts in foreign key
-  order, in one transaction. It can run again.
+  The options are those of the WP1.5 CLI on 2026-09-30 (agent D's
+  draft); the rehearsal confirms them. `TENANT_SLUG` and `TENANT_NAME`
+  name the one tenant that the ETL creates (Appendix E, E2); use the
+  same values in step 9. Never pass `--allow-pending` here: it lets
+  tables without a mapping stay empty. The ETL truncates the tables
+  that it loads and inserts in foreign key order, in one transaction.
+  It can run again.
 - Check: the exit code is 0.
 
 ### 8. Embeddings
@@ -361,7 +376,8 @@ fills it in; this runbook gives no estimate.
 - Action:
 
   ```bash
-  uv run --frozen imbi-common etl reconcile <options of WP1.6> \
+  uv run --frozen imbi-common etl reconcile --graph imbi \
+    --tenant-slug "$TENANT_SLUG" --tenant-name "$TENANT_NAME" \
     --output "$CUTOVER/09-reconcile.json"
   ```
 
@@ -726,7 +742,8 @@ Not adopted, with the reason:
    the chart or to the cluster setup?
 5. The restore of the step 4 backup: add it to the rehearsal, or accept
    it as not tested?
-6. pglifecycle: the binary SHA-256 depends on the platform. Run step 6
-   from the same workstation as the rehearsal, or from a pinned
-   container image?
+6. pglifecycle: two builds of the pinned commit give different
+   binaries, so the SHA-256 identifies one file, not the commit. Keep the
+   binary file of the rehearsal workstation for the cutover, or build a
+   container image with pglifecycle once and pin its digest?
 7. The 14 days of step 15 are a proposal.
