@@ -16,7 +16,7 @@ import typing
 import psycopg
 import typer
 
-from imbi.common.db.etl import graph, mapping, reconcile, runner
+from imbi.common.db.etl import audit, graph, mapping, reconcile, runner
 
 main = typer.Typer(no_args_is_help=True)
 etl = typer.Typer(no_args_is_help=True, help='Graph to relational ETL.')
@@ -229,3 +229,6 @@ async def _reconcile(
             schema_files=schema_files,
             only=only,
         )
+
+
+etl.command('audit')(audit.audit_command)

@@ -14,7 +14,13 @@ import typing
 import psycopg
 import typer
 
+from imbi.common.db.etl import graph
 from imbi.common.db.etl.audit import appendix_e, runner, sources
+
+
+def vertex_id(label: str, graph_id: int) -> str:
+    """The id that the ETL gives a vertex with no id (E36)."""
+    return graph.vertex_id(label, str(graph_id), {})
 
 
 async def _audit(
@@ -33,6 +39,7 @@ async def _audit(
             id_limit=id_limit,
             not_covered=sources.NOT_COVERED,
             covered=appendix_e.COVERED,
+            vertex_id=vertex_id,
         )
 
 
@@ -83,12 +90,3 @@ def audit_command(
         typer.echo(f'{result.rule.id}: {state}', err=True)
     if report.failed:
         raise typer.Exit(code=1)
-
-
-def _group() -> None:
-    """The pre-migration audit of the AGE graph."""
-
-
-app = typer.Typer(no_args_is_help=True)
-app.callback()(_group)
-app.command('audit')(audit_command)

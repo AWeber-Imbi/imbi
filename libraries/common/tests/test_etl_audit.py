@@ -13,6 +13,8 @@ import psycopg
 from psycopg import conninfo, sql
 from typer import testing
 
+from imbi.common.db.etl import cli as etl_cli
+from imbi.common.db.etl import graph
 from imbi.common.db.etl.audit import (
     appendix_e,
     checks,
@@ -195,13 +197,8 @@ async def _audit(database: str) -> runner.Report:
             not_covered=sources.NOT_COVERED,
             covered=appendix_e.COVERED,
             id_limit=1,
-            vertex_id=_vertex_id,
+            vertex_id=cli.vertex_id,
         )
-
-
-def _vertex_id(label: str, graph_id: int) -> str:
-    """A stand-in for the ETL id function, to show the mapping."""
-    return f'derived-{label}-{graph_id > 0}'
 
 
 async def _drop(database: str) -> None:
@@ -286,7 +283,22 @@ class AuditTestCase(unittest.TestCase):
         self.assertEqual((rule.covered_by, rule.fate), ('E39', 'blocking'))
 
     def test_node_with_no_id_reports_the_etl_id(self) -> None:
-        self.assertEqual(self.result('E36').ids, ['derived-Role-True'])
+        async def role_graph_id() -> int:
+            async with await psycopg.AsyncConnection.connect(
+                _url(self.database)
+            ) as conn:
+                cursor = await conn.execute(
+                    'SELECT id::text::bigint FROM imbi."Role"'
+                )
+                row = await cursor.fetchone()
+                assert row is not None
+                return int(row[0])
+
+        graph_id = asyncio.run(role_graph_id())
+        self.assertEqual(
+            self.result('E36').ids,
+            [graph.vertex_id('Role', str(graph_id), {})],
+        )
 
     def test_id_limit(self) -> None:
         result = self.result(
@@ -313,8 +325,9 @@ class AuditTestCase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory) / 'audit.json'
             result = testing.CliRunner().invoke(
-                cli.app,
+                etl_cli.main,
                 [
+                    'etl',
                     'audit',
                     '--source-url',
                     _url(self.database),
