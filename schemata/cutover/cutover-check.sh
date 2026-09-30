@@ -22,16 +22,25 @@
 #
 # The graph and the scheduler schema must not change in any step.
 #
+# Safety: the script drops and creates a database and login roles. It
+# refuses to run unless CUTOVER_CHECK_ALLOW=1, PGHOST is a loopback
+# address or a socket, and the login is not imbi_operator (the operator
+# login of the cutover runbook). Never run it in the shell of a cutover:
+# there, a loopback PGHOST is a port-forward to production.
+#
 # Connection: the libpq variables PGHOST, PGPORT, PGUSER, and
 # PGPASSWORD (a superuser). When PGHOST is not set, the script reads
 # POSTGRES_URL from .env.test, which `moon run root:services` writes, as
 # schemata/scripts/schema.sh does. The roles of
 # schemata/scripts/create-roles.sql must exist. Settings:
 #
+#   CUTOVER_CHECK_ALLOW  must be 1. Without it, the script does nothing.
+#                Never set it in the shell of a cutover.
 #   CUTOVER_DB   the scratch database (default cutover_check). The
-#                script drops and creates it. When it is the database
-#                that cron.database_name names, the fixture has pg_cron,
-#                as production has.
+#                script creates it with the comment "root:cutover-check
+#                fixture", and it drops or reuses only a database that has
+#                that comment. When it is the database that
+#                cron.database_name names, the fixture has pg_cron.
 #   PGLIFECYCLE  the pglifecycle binary (default: the pinned build of
 #                schemata/scripts/install-pglifecycle.sh).
 #   WORK_DIR     where the plans go (default a new temporary directory).
@@ -64,22 +73,71 @@ if [ -z "${PGHOST:-}" ] && [ -f "$REPO/.env.test" ]; then
     export PGHOST="${BASH_REMATCH[4]}" PGPORT="${BASH_REMATCH[5]}"
   fi
 fi
-PGLIFECYCLE=$("$SCHEMATA/scripts/install-pglifecycle.sh")
-
-# The stand-in roles of check_freeze are global; remove them on any exit.
-cleanup() {
-  local role
-  for role in age_member age_mid age_other age_app; do
-    psql -d postgres -X -q -c "DROP ROLE IF EXISTS ${DB}_$role" \
-      > /dev/null 2>&1 || true
-  done
-}
-trap cleanup EXIT
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
+
+# SQL on the maintenance database postgres.
+qp() {
+  psql -d postgres -X -At -v ON_ERROR_STOP=1 -c "$1"
+}
+
+MARKER='root:cutover-check fixture'
+STAND_INS=(age_member age_mid age_other age_app)
+
+[ "${CUTOVER_CHECK_ALLOW:-}" = 1 ] \
+  || fail 'set CUTOVER_CHECK_ALLOW=1 to run (never in a cutover shell)'
+case "${PGHOST:-}" in
+  ''|127.0.0.1|localhost|::1|/*) ;;
+  *) fail "PGHOST=$PGHOST is not a loopback address or a socket" ;;
+esac
+[[ $DB =~ ^[a-z_][a-z0-9_]*$ ]] || fail "CUTOVER_DB=$DB is not a plain name"
+[ "$(qp 'SELECT current_user')" != imbi_operator ] \
+  || fail 'the login is imbi_operator: this is a cutover shell'
+
+PGLIFECYCLE=$("$SCHEMATA/scripts/install-pglifecycle.sh")
+ROLE_PASSWORD=$(openssl rand -hex 16)
+
+# Drop the database only when it has the marker.
+drop_fixture_db() {
+  [ "$(qp "SELECT count(*) FROM pg_database WHERE datname = '$DB'")" = 1 ] \
+    || return 0
+  [ "$(qp "SELECT coalesce(shobj_description(oid, 'pg_database'), '')
+             FROM pg_database WHERE datname = '$DB'")" = "$MARKER" ] \
+    || fail "database $DB exists without the comment '$MARKER'; not dropped"
+  qp "DROP DATABASE $DB WITH (FORCE)" > /dev/null
+}
+
+# The stand-in roles of check_freeze are global. Drop only the ones with
+# the marker, at the start and on any exit.
+drop_stand_ins() {
+  local role name
+  for role in "${STAND_INS[@]}"; do
+    name=${DB}_$role
+    [ "$(qp "SELECT count(*) FROM pg_roles WHERE rolname = '$name'")" = 1 ] \
+      || continue
+    if [ "$(qp "SELECT coalesce(shobj_description(oid, 'pg_authid'), '')
+                  FROM pg_roles WHERE rolname = '$name'")" != "$MARKER" ]; then
+      echo "role $name exists without the comment '$MARKER'; not dropped" >&2
+      return 1
+    fi
+    qp "DROP ROLE $name" > /dev/null
+  done
+}
+
+# Make a stand-in role with the marker and the random password.
+make_role() {
+  qp "CREATE ROLE $1 $2 PASSWORD '$ROLE_PASSWORD'" > /dev/null
+  qp "COMMENT ON ROLE $1 IS '$MARKER'" > /dev/null
+}
+
+cleanup() {
+  drop_stand_ins > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+drop_stand_ins || fail 'a stand-in role name is in use'
 
 q() {
   psql -d "$DB" -X -At -v ON_ERROR_STOP=1 -c "$1"
@@ -210,7 +268,7 @@ attempt() {
 
 # Open a session of role $1 that waits. SESSION_PID is its job.
 open_session() {
-  PGPASSWORD=cutover psql -d "$DB" -U "$1" -X -q \
+  PGPASSWORD="$ROLE_PASSWORD" psql -d "$DB" -U "$1" -X -q \
     -c 'SELECT pg_sleep(600)' > /dev/null 2>&1 &
   SESSION_PID=$!
   local _
@@ -227,8 +285,8 @@ check_freeze() {
   echo '== freeze.sql'
   local login=${DB}_age_app member=${DB}_age_member mid=${DB}_age_mid
   local other=${DB}_age_other session other_session
-  q "CREATE ROLE $login LOGIN PASSWORD 'cutover'" > /dev/null
-  q "CREATE ROLE $other LOGIN PASSWORD 'cutover'" > /dev/null
+  make_role "$login" LOGIN
+  make_role "$other" LOGIN
   open_session "$login"
   session=$SESSION_PID
   expect 'open AGE-era session' \
@@ -250,7 +308,7 @@ check_freeze() {
   grep -q 'is a role of the relational schema' "$WORK/freeze.log" \
     || fail "freeze.sql failed for a different reason: $(cat "$WORK/freeze.log")"
   echo '  ok: freeze.sql refuses imbi_app'
-  q "CREATE ROLE $member LOGIN IN ROLE $login" > /dev/null
+  make_role "$member" "LOGIN IN ROLE $login"
   if freeze "$login"; then
     fail 'freeze.sql accepted a role with a login member'
   fi
@@ -258,8 +316,8 @@ check_freeze() {
     || fail "freeze.sql failed for a different reason: $(cat "$WORK/freeze.log")"
   echo '  ok: freeze.sql refuses a role with a direct login member'
   q "DROP ROLE $member" > /dev/null
-  q "CREATE ROLE $mid NOLOGIN IN ROLE $login" > /dev/null
-  q "CREATE ROLE $member LOGIN IN ROLE $mid" > /dev/null
+  make_role "$mid" "NOLOGIN IN ROLE $login"
+  make_role "$member" "LOGIN IN ROLE $mid"
   if freeze "$login"; then
     fail 'freeze.sql accepted a role with an indirect login member'
   fi
@@ -285,7 +343,7 @@ check_freeze() {
   echo '  ok: the AGE-era session ended'
   expect 'AGE-era login' \
     "$(q "SELECT rolcanlogin FROM pg_roles WHERE rolname = '$login'")" f
-  if PGPASSWORD=cutover psql -d "$DB" -U "$login" -X -c 'SELECT 1' \
+  if PGPASSWORD="$ROLE_PASSWORD" psql -d "$DB" -U "$login" -X -c 'SELECT 1' \
        > /dev/null 2>&1; then
     fail 'the AGE-era login can still connect'
   fi
@@ -301,7 +359,7 @@ check_freeze() {
   echo '== rollback step 3: LOGIN again'
   q "ALTER ROLE $login LOGIN" > /dev/null
   expect 'the AGE-era login connects' \
-    "$(PGPASSWORD=cutover psql -d "$DB" -U "$login" -X -At \
+    "$(PGPASSWORD="$ROLE_PASSWORD" psql -d "$DB" -U "$login" -X -At \
          -c 'SELECT 1')" 1
   q "DROP ROLE $login" > /dev/null
   q "DROP ROLE $other" > /dev/null
@@ -328,6 +386,8 @@ check_rls_probe() {
        -c 'CREATE POLICY cutover_leak ON public.tags USING (true)'; then
     fail 'rls-probe.sql passed with a policy that leaks'
   fi
+  grep -q 'rls probe:' "$WORK/probe.log" \
+    || fail "rls-probe.sql failed for another reason: $(cat "$WORK/probe.log")"
   echo '  ok: rls-probe.sql fails with a policy that leaks'
   expect 'the probe changed nothing' \
     "$(q "SELECT count(*) FROM pg_policies WHERE policyname = 'cutover_leak'")" 0
@@ -358,9 +418,11 @@ check_negative() {
   local defect
   for defect in "${defects[@]}"; do
     if psql -d "$DB" -X -q -v ON_ERROR_STOP=1 -1 -c "$defect" \
-         -f "$HERE/checks.sql" > /dev/null 2>&1; then
+         -f "$HERE/checks.sql" > "$WORK/negative.log" 2>&1; then
       fail "checks.sql passed with: $defect"
     fi
+    grep -q 'cutover check:' "$WORK/negative.log" \
+      || fail "checks.sql failed for another reason with: $defect: $(cat "$WORK/negative.log")"
     echo "  ok: fails with: $defect"
   done
 }
@@ -373,8 +435,9 @@ echo "pglifecycle sha256: $(shasum -a 256 "$PGLIFECYCLE" | cut -d' ' -f1)"
 echo "work dir: $WORK"
 
 echo "== fixture: $DB"
-psql -d postgres -X -q -v ON_ERROR_STOP=1 \
-  -c "DROP DATABASE IF EXISTS $DB WITH (FORCE)" -c "CREATE DATABASE $DB"
+drop_fixture_db
+qp "CREATE DATABASE $DB" > /dev/null
+qp "COMMENT ON DATABASE $DB IS '$MARKER'" > /dev/null
 run_sql -f "$HERE/fixture/age-era.sql"
 UNTOUCHED=$(untouched_state)
 LEGACY_OWNER=$(q "SELECT tableowner FROM pg_tables
@@ -397,6 +460,11 @@ expect 'vector schema recorded' \
   "$(q 'SELECT vector_schema FROM legacy.cutover_state')" ag_catalog
 run_sql -f "$HERE/rollback.sql"
 check_age_era
+expect 'rollback.sql refuses a legacy table without cutover_state' \
+  "$( (psql -d "$DB" -X -q -v ON_ERROR_STOP=1 -1 -f "$HERE/pre-deploy.sql" \
+         -c 'DROP TABLE legacy.cutover_state' -f "$HERE/rollback.sql" \
+         2>&1 || true) | grep -c 'cutover_state is missing')" 1
+check_age_era
 
 attempt first
 check_negative
@@ -418,6 +486,6 @@ expect 'pre-deploy.sql refuses a second run without rollback' \
 attempt second
 
 if [ "${KEEP_DB:-0}" != 1 ]; then
-  psql -d postgres -X -q -c "DROP DATABASE $DB WITH (FORCE)"
+  drop_fixture_db
 fi
 echo 'PASS: cutover-check'

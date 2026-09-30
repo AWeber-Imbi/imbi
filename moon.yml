@@ -280,7 +280,9 @@ tasks:
   # freeze, pre-deploy, deploy, checks, the RLS probe, and the rollback,
   # twice. It uses the same pglifecycle build and connection rules as the
   # schema tasks, and makes and drops its own database (cutover_check, or
-  # CUTOVER_DB). Not in `moon ci`, for the same reason as schema-check.
+  # CUTOVER_DB). It runs only with CUTOVER_CHECK_ALLOW=1 and a loopback
+  # PGHOST; never run it in the shell of a cutover. Not in `moon ci`, for
+  # the same reason as schema-check.
   cutover-check:
     command: 'schemata/cutover/cutover-check.sh'
     options:
