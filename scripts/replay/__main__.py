@@ -280,7 +280,9 @@ def command_scenarios(arguments: argparse.Namespace) -> int:
     variables.setdefault('run', arguments.run_token)
     files = [
         item
-        for item in scenarios.load(directory / 'scenarios')
+        for item in scenarios.load(
+            arguments.scenarios_dir or directory / 'scenarios'
+        )
         if fnmatch.fnmatchcase(item.domain, arguments.domain)
     ]
     api = client.Client(arguments.base_url, _token(arguments.token_env))
@@ -461,6 +463,11 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('--path-map', type=pathlib.Path)
     run.add_argument('--run-token', default='replay')
     run.add_argument('--domain', default='*', help='a glob on the domain')
+    run.add_argument(
+        '--scenarios-dir',
+        type=pathlib.Path,
+        help='read the scenario files here (for example seed/)',
+    )
     run.add_argument('--allow-failures', action='store_true')
     run.set_defaults(handler=command_scenarios)
 

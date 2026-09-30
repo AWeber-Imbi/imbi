@@ -66,6 +66,9 @@ path = "/api/organizations/{org_slug}/search"
 query = { q = "zebra quartz harmonica marmalade telescope", node_label = "Project", attribute = "description", limit = "1" }
 expect = 200
 wait_for = { pointer = "/0/node_id", not_equals = "{project_id}", timeout = 60 }
+# The top hit is now another entity. wait_for checks that it is not the
+# deleted project; its id is not part of the comparison.
+normalize = ["/*/node_id", "/*/project_id"]
 
 [[scenario.step]]
 name = "delete the team"

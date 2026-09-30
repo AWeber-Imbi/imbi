@@ -80,3 +80,20 @@ reason = "the time of the request"
 route = "GET /api/organizations/{org_slug}/pull-requests/pending-deploy"
 pointer = "/since"
 reason = "the start of a window that ends at the time of the request"
+
+# Found on a synthetic graph that the AGE-era API seeded itself.
+
+[[rule]]
+route = "GET /api/organizations/{org_slug}/projects/*"
+pointer = "/**/organization/id"
+reason = "the project read returns each nested organization with its name and slug only; the response model makes a new id for each response"
+
+[[rule]]
+route = "GET /api/organizations/{org_slug}/projects/*"
+pointer = "/**/organization/created_at"
+reason = "the project read returns each nested organization with its name and slug only; the response model uses the time of the response"
+
+[[rule]]
+route = "GET /api/admin/local-auth"
+pointer = "/updated_at"
+reason = "with no LocalAuthConfig node the response model uses the time of the response (cached in the process for a short time, so --repeat does not show it)"

@@ -32,7 +32,7 @@ report that others read.
 | `normalize.toml` | The only list of fields that the diff masks, each with a reason | Agent F, the orchestrator |
 | `expected/<domain>.toml` | The differences that the migration causes on purpose | The domain agent |
 | `scenarios/<domain>.toml` | The write scenarios | The domain agent |
-| `env/compose.yaml` | An API on a network with no internet access | Agent F |
+| `docker/compose.yaml` | An API on a network with no internet access | Agent F |
 
 ## Start an API for the replay
 
@@ -42,20 +42,30 @@ restored production copy holds production credentials, and the
 background workers of the API start at once; the network keeps them
 from reaching GitHub, Slack, or any other system.
 
-1. Clone the restored copy on the scratch server. The API writes to
-   the database at startup, so never point it at the restored copy
-   itself:
+1. Start a PostgreSQL container of its own for each database, with
+   the database named `imbi`. The AGE-era API runs `graph.initialize()`
+   at startup, which runs `CREATE EXTENSION IF NOT EXISTS pg_cron`, and
+   pg_cron can only be created in the database that
+   `cron.database_name` names (`imbi`). An API on a database with
+   another name does not start. The API also writes to the database at
+   startup, so never point it at a copy that must stay unchanged.
 
-   ```sql
-   CREATE DATABASE f_copy TEMPLATE prodcopy_20260817;
+   ```sh
+   docker run -d --name f-replay-pg -p 127.0.0.1:55433:5432 \
+     -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=imbi \
+     ghcr.io/aweber-imbi/postgres:latest
    ```
+
+   For the rehearsal, restore the production copy into such a
+   container (execution plan section 7). Without a copy, use the
+   synthetic organization (see "Synthetic data" below).
 
 2. Write an environment file (keep it outside the repository):
 
    ```sh
    IMBI_SOURCE=/Volumes/Users/gmr/Source/open-source/imbi-age-f-main
-   REPLAY_DATABASE=f_copy
-   REPLAY_PG_PORT=55432
+   REPLAY_DATABASE=imbi
+   REPLAY_PG_PORT=55433
    REPLAY_API_PORT=18000
    IMBI_AUTH_JWT_SECRET=<a random string>
    IMBI_AUTH_ENCRYPTION_KEY=<a Fernet key>
@@ -70,14 +80,14 @@ from reaching GitHub, Slack, or any other system.
 
    ```sh
    docker compose -p replay-old --env-file old.env \
-     -f scripts/replay/env/compose.yaml run --rm setup
+     -f scripts/replay/docker/compose.yaml run --rm setup
    ```
 
 4. Start the API. It listens on `127.0.0.1:$REPLAY_API_PORT`:
 
    ```sh
    docker compose -p replay-old --env-file old.env \
-     -f scripts/replay/env/compose.yaml up -d api api-relay
+     -f scripts/replay/docker/compose.yaml up -d api api-relay
    ```
 
 5. Sign a token for the first active admin user of the database, with
@@ -86,7 +96,7 @@ from reaching GitHub, Slack, or any other system.
    ```sh
    set -a; . ./old.env; set +a
    export REPLAY_TOKEN=$(uv run python -m scripts.replay token \
-     --dsn postgresql://postgres@127.0.0.1:55432/f_copy)
+     --dsn postgresql://postgres:secret@127.0.0.1:55433/imbi)
    ```
 
 Use a second project name (`replay-new`), port, and database for the
@@ -97,7 +107,7 @@ other side. `docker compose -p <name> ... down -v` removes a side.
 ```sh
 uv run python -m scripts.replay record --repeat 2 \
   --base-url http://127.0.0.1:18000 \
-  --dsn postgresql://postgres@127.0.0.1:55432/f_copy \
+  --dsn postgresql://postgres:secret@127.0.0.1:55433/imbi \
   --out ../replay-recordings/old-get
 
 uv run python -m scripts.replay replay --repeat 2 \
@@ -129,14 +139,14 @@ that it compared.
 
 ### Write scenarios
 
-Scenarios write, so run them on their own database clone, not on the
-clone of the `GET` recording. Run them against both sides with the
+Scenarios write, so run them on a database of their own (here on port
+55434), not on the database of the `GET` recording. Run them against both sides with the
 same run token:
 
 ```sh
 uv run python -m scripts.replay scenarios \
   --base-url http://127.0.0.1:18000 \
-  --dsn postgresql://postgres@127.0.0.1:55432/f_scenarios \
+  --dsn postgresql://postgres:secret@127.0.0.1:55434/imbi \
   --out ../replay-recordings/old-scenarios
 
 uv run python -m scripts.replay scenarios --allow-failures \
@@ -155,6 +165,32 @@ the AGE-era API. On the new side, use `--allow-failures`; the diff
 shows the differences. A scenario can leave rows behind in the AGE
 graph (see `restricted delete`), so a second run on the same database
 can give other results. Use a new clone for each run.
+
+### Synthetic data
+
+`seed/synthetic.toml` is a scenario that creates an organization with
+teams, environments, project types, tags, four projects with releases
+and documents, and a second organization. Run `imbi-api setup` in the
+API container first, and give the organization slug `synthetic`:
+
+```sh
+docker compose -p replay-old --env-file old.env \
+  -f scripts/replay/docker/compose.yaml exec api \
+  sh -c 'cd /src && uv run --frozen --no-sync imbi-api setup'
+```
+
+Then seed it:
+
+```sh
+uv run python -m scripts.replay scenarios --scenarios-dir scripts/replay/seed \
+  --var org_slug=synthetic --base-url http://127.0.0.1:18000 \
+  --dsn postgresql://postgres:secret@127.0.0.1:55433/imbi \
+  --out ../replay-recordings/seed
+```
+
+Give `--var org_slug=synthetic` to `record` and `scenarios` as well:
+the global `org_slug` is the first organization by slug, and `second`
+sorts before `synthetic`.
 
 ## Add a scenario
 

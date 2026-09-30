@@ -1,0 +1,239 @@
+# A synthetic organization for a proof of the replay without a
+# production copy. Run it once on a new AGE-era database after
+# `imbi-api setup` (organization `synthetic`):
+#
+#   uv run python -m scripts.replay scenarios --scenarios-dir scripts/replay/seed \
+#     --var org_slug=synthetic --var admin_email=admin@example.com \
+#     --base-url http://127.0.0.1:18009 --out ../replay-recordings/seed
+#
+# The steps do not clean up: the rows stay for `record`.
+
+domain = "seed"
+owner = "orchestrator"
+
+[[scenario]]
+name = "synthetic organization"
+description = "teams, environments, project types, tags, projects with releases and documents, and a second organization"
+
+[[scenario.step]]
+name = "team 1"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/"
+body = { name = "Team 1", slug = "team-1", description = "Synthetic team 1" }
+expect = 201
+
+[[scenario.step]]
+name = "environment 1"
+method = "POST"
+path = "/api/organizations/{org_slug}/environments/"
+body = { name = "Env 1", slug = "env-1", sort_order = 1 }
+expect = 201
+
+[[scenario.step]]
+name = "project type 1"
+method = "POST"
+path = "/api/organizations/{org_slug}/project-types/"
+body = { name = "Type 1", slug = "type-1", releasable = true }
+expect = 201
+
+[[scenario.step]]
+name = "tag 1"
+method = "POST"
+path = "/api/organizations/{org_slug}/tags/"
+body = { name = "Tag 1", slug = "tag-1" }
+expect = 201
+
+[[scenario.step]]
+name = "team 2"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/"
+body = { name = "Team 2", slug = "team-2", description = "Synthetic team 2" }
+expect = 201
+
+[[scenario.step]]
+name = "environment 2"
+method = "POST"
+path = "/api/organizations/{org_slug}/environments/"
+body = { name = "Env 2", slug = "env-2", sort_order = 2 }
+expect = 201
+
+[[scenario.step]]
+name = "project type 2"
+method = "POST"
+path = "/api/organizations/{org_slug}/project-types/"
+body = { name = "Type 2", slug = "type-2", releasable = true }
+expect = 201
+
+[[scenario.step]]
+name = "tag 2"
+method = "POST"
+path = "/api/organizations/{org_slug}/tags/"
+body = { name = "Tag 2", slug = "tag-2" }
+expect = 201
+
+[[scenario.step]]
+name = "link definition"
+method = "POST"
+path = "/api/organizations/{org_slug}/link-definitions/"
+body = { name = "Repository", slug = "repository", url_template = "https://example.com/repository" }
+expect = 201
+
+[[scenario.step]]
+name = "document template"
+method = "POST"
+path = "/api/organizations/{org_slug}/document-templates/"
+body = { name = "Runbook", slug = "runbook", title = "Runbook", content = "# Runbook" }
+expect = 201
+
+[[scenario.step]]
+name = "project 1"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/"
+body = { name = "Service 1", slug = "service-1", description = "Synthetic service number 1", team_slug = "team-2", project_type_slugs = [
+  "type-2"
+], environments = { env-1 = {  }, env-2 = {  } } }
+expect = 201
+save = { project_1 = "/id" }
+
+[[scenario.step]]
+name = "project 2"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/"
+body = { name = "Service 2", slug = "service-2", description = "Synthetic service number 2", team_slug = "team-1", project_type_slugs = [
+  "type-1"
+], environments = { env-1 = {  }, env-2 = {  } } }
+expect = 201
+save = { project_2 = "/id" }
+
+[[scenario.step]]
+name = "project 3"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/"
+body = { name = "Service 3", slug = "service-3", description = "Synthetic service number 3", team_slug = "team-2", project_type_slugs = [
+  "type-2"
+], environments = { env-1 = {  }, env-2 = {  } } }
+expect = 201
+save = { project_3 = "/id" }
+
+[[scenario.step]]
+name = "project 4"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/"
+body = { name = "Service 4", slug = "service-4", description = "Synthetic service number 4", team_slug = "team-1", project_type_slugs = [
+  "type-1"
+], environments = { env-1 = {  }, env-2 = {  } } }
+expect = 201
+save = { project_4 = "/id" }
+
+[[scenario.step]]
+name = "project 1 release 1.1.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_1}/releases/"
+body = { tag = "1.1.0", committish = "a1b2c3d", title = "Release 1.1.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 1 release 1.2.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_1}/releases/"
+body = { tag = "1.2.0", committish = "b2c3d4e", title = "Release 1.2.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 1 document"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_1}/documents/"
+body = { title = "Design notes", content = "Synthetic design notes", tags = [
+  "tag-1"
+] }
+expect = 201
+
+[[scenario.step]]
+name = "project 2 release 1.1.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_2}/releases/"
+body = { tag = "1.1.0", committish = "a1b2c3d", title = "Release 1.1.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 2 release 1.2.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_2}/releases/"
+body = { tag = "1.2.0", committish = "b2c3d4e", title = "Release 1.2.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 2 document"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_2}/documents/"
+body = { title = "Design notes", content = "Synthetic design notes", tags = [
+  "tag-1"
+] }
+expect = 201
+
+[[scenario.step]]
+name = "project 3 release 1.1.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_3}/releases/"
+body = { tag = "1.1.0", committish = "a1b2c3d", title = "Release 1.1.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 3 release 1.2.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_3}/releases/"
+body = { tag = "1.2.0", committish = "b2c3d4e", title = "Release 1.2.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 3 document"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_3}/documents/"
+body = { title = "Design notes", content = "Synthetic design notes", tags = [
+  "tag-1"
+] }
+expect = 201
+
+[[scenario.step]]
+name = "project 4 release 1.1.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_4}/releases/"
+body = { tag = "1.1.0", committish = "a1b2c3d", title = "Release 1.1.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 4 release 1.2.0"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_4}/releases/"
+body = { tag = "1.2.0", committish = "b2c3d4e", title = "Release 1.2.0" }
+expect = 201
+
+[[scenario.step]]
+name = "project 4 document"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/{project_4}/documents/"
+body = { title = "Design notes", content = "Synthetic design notes", tags = [
+  "tag-1"
+] }
+expect = 201
+
+[[scenario.step]]
+name = "project type document"
+method = "POST"
+path = "/api/organizations/{org_slug}/project-types/type-1/documents/"
+body = { title = "Type guide", content = "Synthetic guide", tags = [] }
+expect = 201
+
+[[scenario.step]]
+name = "second organization"
+method = "POST"
+path = "/api/organizations/"
+body = { name = "Second Org", slug = "second" }
+expect = 201
+
+[[scenario.step]]
+name = "team of the second organization"
+method = "POST"
+path = "/api/organizations/second/teams/"
+body = { name = "Other Team", slug = "other-team" }
+expect = 201

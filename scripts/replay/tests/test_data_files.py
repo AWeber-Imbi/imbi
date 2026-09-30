@@ -50,7 +50,9 @@ class DataFilesTestCase(unittest.TestCase):
             models.load_toml(models.ExpectedConfig, path)
             for path in sorted((ROOT / 'expected').glob('*.toml'))
         ]
-        self.scenarios = scenarios.load(ROOT / 'scenarios')
+        self.scenarios = scenarios.load(ROOT / 'scenarios') + scenarios.load(
+            ROOT / 'seed'
+        )
 
     def test_owner_letters_are_agents(self) -> None:
         agents = set(self.owners.agents)

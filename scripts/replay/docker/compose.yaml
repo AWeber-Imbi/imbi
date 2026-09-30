@@ -1,0 +1,189 @@
+# An API for the replay, on a network with no route to the internet.
+#
+# In the rehearsal, the database is a restored production copy. It
+# holds production integration credentials, webhooks, and identity
+# tokens. The API and
+# its background workers must not reach GitHub, Slack, PagerDuty, or
+# any other production system with them. So the API is only on the
+# `isolated` network (`internal: true`). Two relays connect it to the
+# host: one to the PostgreSQL server of the copy, one that publishes
+# the API port on 127.0.0.1.
+#
+# Variables (see ../README.md, "Start an API for the replay"):
+#
+#   IMBI_SOURCE       the monorepo worktree to run (read only)
+#   REPLAY_DATABASE   the database; `imbi` for the AGE-era API, because
+#                     graph.initialize() creates pg_cron, which works only
+#                     in the database that cron.database_name names
+#   REPLAY_PG_PORT    the host port of the PostgreSQL server
+#   REPLAY_API_PORT   the host port of the API (18000)
+#   IMBI_AUTH_JWT_SECRET, IMBI_AUTH_ENCRYPTION_KEY
+#
+# Run it with a project name for each side, for example
+# `docker compose -p replay-old -f scripts/replay/docker/compose.yaml up`.
+
+networks:
+  isolated:
+    internal: true
+  edge: {}
+
+volumes:
+  venv: {}
+  uv-cache: {}
+  fastembed: {}
+
+x-uv: &uv
+  image: ghcr.io/astral-sh/uv:python3.14-bookworm
+  working_dir: /src
+  environment: &uv-environment
+    UV_PROJECT_ENVIRONMENT: /venv
+    UV_CACHE_DIR: /uv-cache
+    UV_LINK_MODE: copy
+    FASTEMBED_CACHE_PATH: /fastembed
+  volumes:
+    - ${IMBI_SOURCE:?set IMBI_SOURCE}:/src:ro
+    - venv:/venv
+    - uv-cache:/uv-cache
+    - fastembed:/fastembed
+
+services:
+  # Installs the dependencies and the embedding model. This is the only
+  # container with internet access that runs Imbi code, and it does not
+  # connect to the database.
+  setup:
+    <<: *uv
+    networks: [edge]
+    command:
+      - sh
+      - -ec
+      - |
+        uv sync --frozen --all-packages --all-extras --no-dev
+        uv run --frozen --no-sync python -c "import fastembed; fastembed.TextEmbedding(model_name='BAAI/bge-small-en-v1.5')"
+
+  postgres:
+    image: alpine/socat:1.8.0.3
+    networks:
+      isolated:
+        aliases: [postgres]
+      edge: {}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command:
+      - TCP-LISTEN:5432,fork,reuseaddr
+      - TCP:host.docker.internal:${REPLAY_PG_PORT:?set REPLAY_PG_PORT}
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    networks: [isolated]
+    environment:
+      CLICKHOUSE_DB: imbi
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: password
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'"]
+      interval: 2s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    networks: [isolated]
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping"]
+      interval: 2s
+      retries: 30
+
+  iggy:
+    image: ghcr.io/aweber-imbi/iggy:0.9.0-edge.6-0
+    networks: [isolated]
+    environment:
+      IGGY_ROOT_USERNAME: iggy
+      IGGY_ROOT_PASSWORD: iggy
+      IGGY_HTTP_ENABLED: true
+      IGGY_HTTP_ADDRESS: 0.0.0.0:3000
+      IGGY_SYSTEM_SHARDING_CPU_ALLOCATION: 1
+      IGGY_SYSTEM_SHARDING_PIN_CORES: "false"
+      IGGY_TCP_ENABLED: true
+      IGGY_TCP_ADDRESS: 0.0.0.0:8090
+    cap_add:
+      - SYS_NICE
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD", "iggy", "ping"]
+      start_period: 15s
+      start_interval: 2s
+      interval: 10s
+      retries: 10
+
+  ministack:
+    image: ministackorg/ministack
+    networks: [isolated]
+    environment:
+      SERVICES: s3
+      DEBUG: "0"
+
+  mailpit:
+    image: axllent/mailpit:v1.21.5
+    networks: [isolated]
+
+  api:
+    <<: *uv
+    networks: [isolated]
+    depends_on:
+      postgres:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      iggy:
+        condition: service_healthy
+      ministack:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    environment:
+      <<: *uv-environment
+      HF_HUB_OFFLINE: "1"
+      POSTGRES_URL: postgresql://postgres:secret@postgres:5432/${REPLAY_DATABASE:?set REPLAY_DATABASE}
+      CLICKHOUSE_URL: clickhouse+http://default:password@clickhouse:8123/imbi
+      VALKEY_URL: valkey://valkey:6379
+      IGGY_URL: iggy+tcp://iggy:iggy@iggy:8090
+      S3_ENDPOINT_URL: http://ministack:4566
+      S3_ACCESS_KEY: test
+      S3_SECRET_KEY: test
+      S3_BUCKET: imbi-uploads
+      S3_REGION: us-east-1
+      IMBI_API_URL: http://localhost:${REPLAY_API_PORT:-18000}/api
+      IMBI_AUTH_JWT_SECRET: ${IMBI_AUTH_JWT_SECRET:?set IMBI_AUTH_JWT_SECRET}
+      IMBI_AUTH_ENCRYPTION_KEY: ${IMBI_AUTH_ENCRYPTION_KEY:?set IMBI_AUTH_ENCRYPTION_KEY}
+      IMBI_EMAIL_ENABLED: "true"
+      IMBI_EMAIL_SMTP_HOST: mailpit
+      IMBI_EMAIL_SMTP_PORT: "1025"
+      IMBI_EMAIL_SMTP_USE_TLS: "false"
+      IMBI_EMAIL_FROM_EMAIL: noreply@imbi.example
+      OTEL_SDK_DISABLED: "true"
+      OTEL_TRACES_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      SENTRY_DSN: ""
+      ANTHROPIC_API_KEY: ""
+    command:
+      - sh
+      - -ec
+      - |
+        uv run --frozen --no-sync imbi-api setup-clickhouse
+        exec uv run --frozen --no-sync imbi-api serve --host 0.0.0.0 --port 8000
+
+  api-relay:
+    image: alpine/socat:1.8.0.3
+    networks: [isolated, edge]
+    ports:
+      - 127.0.0.1:${REPLAY_API_PORT:-18000}:8000
+    command:
+      - TCP-LISTEN:8000,fork,reuseaddr
+      - TCP:api:8000
