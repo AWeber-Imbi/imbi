@@ -164,17 +164,27 @@ class Lifespan(dict[LifespanHook, object | None]):
             - Hooks are entered in the order provided to __init__
             - Duplicate hooks are detected and only executed once
             - Resources are cleaned up in LIFO order (last-in-first-out)
+            - After cleanup the resources are removed, so a second run of
+              the same app (a second TestClient) enters every hook again
             - Uses AsyncExitStack to ensure proper cleanup even if hooks
               raise exceptions
         """
 
         @contextlib.asynccontextmanager
         async def cm() -> abc.AsyncIterator[dict[str, Lifespan]]:
-            async with contextlib.AsyncExitStack() as stack:
-                for hook in self._hooks:
-                    if hook not in self:
-                        self[hook] = await stack.enter_async_context(hook())
-                yield {'lifespan_data': self}
+            try:
+                async with contextlib.AsyncExitStack() as stack:
+                    for hook in self._hooks:
+                        if hook not in self:
+                            self[hook] = await stack.enter_async_context(
+                                hook()
+                            )
+                    yield {'lifespan_data': self}
+            finally:
+                # The hooks are closed now. Remove their resources, so
+                # that the next run of the same app enters each hook
+                # again and does not serve a closed resource.
+                self.clear()
 
         return cm()
 

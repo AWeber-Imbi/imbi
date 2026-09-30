@@ -7,7 +7,8 @@ from collections import abc
 
 import fastapi.testclient
 
-from imbi.common import lifespan
+from imbi.common import db, lifespan
+from imbi.common.testing import databases
 
 
 class LifespanTests(unittest.IsolatedAsyncioTestCase):
@@ -222,3 +223,43 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 http.HTTPStatus.INTERNAL_SERVER_ERROR, response.status_code
             )
+
+    async def test_second_run_enters_each_hook_again(self) -> None:
+        calls = 0
+
+        @contextlib.asynccontextmanager
+        async def hook() -> abc.AsyncIterator[int]:
+            nonlocal calls
+            calls += 1
+            yield calls
+
+        func = lifespan.Lifespan(hook)
+        app = fastapi.FastAPI()
+        for run in (1, 2):
+            async with func(app) as result:
+                self.assertEqual({'lifespan_data': {hook: run}}, result)
+            self.assertEqual({}, func)
+        self.assertEqual(2, calls)
+
+
+class LifespanReuseTests(unittest.TestCase):
+    """One app, two lifespan runs (``SharedAppTestCase`` does this)."""
+
+    def test_each_run_gets_open_pools(self) -> None:
+        databases.isolated_database()
+        app = fastapi.FastAPI(lifespan=lifespan.Lifespan(db.database_lifespan))
+
+        @app.get('/')
+        async def opened(  # pyright: ignore[reportUnusedFunction]
+            database: db.Pool,
+        ) -> dict[str, bool]:
+            async with database.transaction():
+                pass
+            return {'opened': database.opened}
+
+        for run in (1, 2):
+            with self.subTest(run=run):
+                with fastapi.testclient.TestClient(app) as client:
+                    response = client.get('/')
+                self.assertEqual(200, response.status_code)
+                self.assertEqual({'opened': True}, response.json())
