@@ -69,7 +69,7 @@ execution plan (section 1) have the full text of each one.
 | D7 | `CAN_ACCESS` keeps `(resource_type, resource_slug)`, in `resource_acls`. |
 | D8 | Plugin data goes into `plugin_entities` and `plugin_edges` with JSONB payloads. Manifest keys are rows in `plugin_entity_keys`. The application creates no indexes at runtime. |
 | D9 | One `attributes` JSONB object column for each blueprint table. No GIN index. A generated column with a btree index is added for an attribute that lists filter or sort on often. |
-| D10 | The schema is the pglifecycle project at `schemata/`. Changes reach a database only through `pglifecycle deploy`, never at application startup. No Alembic, no ORM, no migration files. Automation never uses `--allow-drop`. |
+| D10 | The schema is the pglifecycle project at `schemata/`. Changes reach a database only through `pglifecycle deploy`, never at application startup. No Alembic, no ORM, no migration files. Automation never uses `--allow-drop`. Before the cutover, `deploy` runs only against new databases. The cutover is the first deploy into production. |
 | D15 | No ORM and no generic SQL generator: psycopg 3, `psycopg.sql` composables, bind parameters, and hand-written SQL for each repository. |
 
 ### Tenancy and access

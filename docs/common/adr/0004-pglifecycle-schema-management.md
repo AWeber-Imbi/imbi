@@ -40,10 +40,11 @@ reaches a database only through `pglifecycle deploy`, as a deployment
 step.
 
 - The scheduler's `schemata.toml` initializer moves into the project in
-  WP2.4 (execution plan agent O).
+  WP2.4.
 - The integration branch deletes the graph initializer and
-  `graph_lifespan()` before the cutover (execution plan Wave 3, agent
-  V). The first relational release does not run it.
+  `graph_lifespan()` before the cutover (the Wave 3 cleanup of the
+  execution plan, which does the WP4.3 deletions early). The first
+  relational release does not run it.
 
 ### How a change ships
 
@@ -138,12 +139,12 @@ owns runs as superuser.
 ### The pglifecycle pin
 
 No pglifecycle release has the features that the schema needs. The
-latest release is 2.0.0-alpha.2. So, until Gavin tags a release (D27):
+latest release is 2.0.0-alpha.2. So, until the maintainer tags a
+release (D27):
 
 - CI and the moon tasks build pglifecycle from one commit of `main`.
-  Agent A pins the head of `main` when WP0.4 starts (`4f6729c` on
-  2026-09-30) if `root:schema-check` passes with it, and records the
-  commit in `schemata/README.md`.
+  WP0.4 pinned `4f6729c` (the head of `main` on 2026-09-30), and
+  `schemata/README.md` records the commit.
 - The rehearsal and the cutover use the same build as CI. The runbook
   records the SHA-256 of the binary.
 - When a release is tagged, a PR changes the pin to the release, in

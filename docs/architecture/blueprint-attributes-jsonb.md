@@ -94,7 +94,7 @@ Example: `filter=deprecated:eq:true` becomes
 `a -> 'deprecated' = 'true'::jsonb`, with the value bound as
 `psycopg.types.json.Jsonb(True)`.
 
-Proposed for Gavin: the ETL conversion is new. Today the list filter
+Proposed for the maintainer: the ETL conversion is new. Today the list filter
 does not match a stored string `'true'`. After the conversion, it does.
 Before the conversion runs, the audit (WP1.9) counts, for each
 blueprint field of type `boolean`, the values that are JSON booleans,
@@ -289,38 +289,6 @@ p95 of the project list with a filter. If a filtered list is slower than
 its AGE-era side by more than 20 percent, the WP that owns the list
 (WP2.2) adds a generated column for the attributes that the slow
 requests use.
-
-## Rhona review
-
-Rhona reviewed this page on 2026-09-30 (session
-age-g-docs-2026-09-30).
-
-Adopted:
-
-- Safe casts: `jsonb_typeof()` does not prove that a value fits the
-  target type (the generated column limits).
-- An exact predicate for each filter operator and each case of a
-  missing or wrongly typed key, with a test for each (rule 8).
-- The boolean conversion: count first, convert only the exact strings,
-  keep the originals in the report, strict type after the migration
-  (rule 2).
-- The array type guard for `?` (rule 4), the top-level merge and key
-  order (rule 6), and measurement as `imbi_app` (Indexes).
-- `numeric` is a product choice, not a forbidden type.
-
-Not adopted:
-
-- A blueprint version for each row. The schema has no version column
-  (README Differences 10) because no code writes one. The audit counts
-  of rule 2 show whether a field changed type.
-- A review of `current_organization_id()` and the RLS context. README
-  "Row-level security" defines them (a STABLE SQL function,
-  transaction-local settings, USING and WITH CHECK), and WP1.1 tests
-  them. They are not part of the attribute rules.
-- A CHECK that rejects JSON null in `attributes`. A recursive check is
-  expensive on each write, and the repository and the ETL are the only
-  writers. The
-  reconciliation report can count null values after the ETL instead.
 
 ## Open points for review
 

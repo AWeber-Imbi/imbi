@@ -1,7 +1,7 @@
 # Graph Workbench Audit
 
-Status: Draft for Gavin's decision (implementation plan WP0.7, gate G6),
-2026-09-30.
+Status: Draft for the maintainer's decision (implementation plan WP0.7,
+gate G6), 2026-09-30.
 
 The graph workbench is the admin "Graph Query" page. It sends raw
 Cypher to `POST /admin/graph/query` and reads labels and counts from
@@ -9,23 +9,26 @@ Cypher to `POST /admin/graph/query` and reads labels and counts from
 0020), there is no graph to query. D13 gives two choices: retire the
 workbench, or replace it with a read-only SQL console outside the LLM
 toolset. This page answers the three WP0.7 questions and gives a
-recommendation. Gavin decides.
+recommendation. The maintainer decides.
 
 ## Result of the usage queries
 
-**The production usage counts are not in this document.** The agent
-could not run the queries: the permission system refused the read-only
-`kubectl exec` into the production ClickHouse pod. The agent did not
-try another path to production data. The exact queries are in
-"Queries for Gavin" below. When Gavin runs them, put the numbers in the
-table below and remove this paragraph.
+**The production usage counts are not in this document yet.** The
+permission system refused the read-only query of production data for
+this work package, so the queries were not run. The exact queries are
+in "Queries for the maintainer" below. After a person runs them, put the
+numbers in the table below and remove this paragraph.
+
+Four clients can call the route: the UI, the MCP server, the assistant,
+and the Slack bot.
 
 | Question | Source | Count (last 90 days) |
 |---|---|---|
-| Calls to `POST /api/admin/graph/query`, by principal | API access log (logz.io), query L1 | not run |
+| All calls to `POST /admin/graph/query`, by principal and status | API access log (logz.io), query L1 | not run |
 | Calls through the MCP server | MCP access log (logz.io), query L2 | not run |
 | Calls by the assistant | `Message.tool_use` in the production graph, query P1 | not run |
-| Calls from the UI | L1 minus L2 minus P1 | not run |
+| Calls by the Slack bot | API access log by client address, query L3; failed calls also in the Slack bot log | not run |
+| Calls from the UI | L1 minus L2, P1, and L3 | not run |
 | Rows in ClickHouse `events` or `operations_log` for the route | ClickHouse, query C1 | 0 by construction (see question 1) |
 
 ## Question 1: who called `POST /admin/graph/query`
@@ -41,20 +44,26 @@ These records do have the calls:
 
 1. **The API access log.** `imbi.common.access_log` writes one line for
    each request, in this form:
-   `<ip>:<port> - <principal> "POST /api/admin/graph/query HTTP/1.1" <status>`.
-   The principal is the local part of the JWT subject, or the API key
-   owner, or the key id.
+   `<ip>:<port> - <principal> "POST <prefix>/admin/graph/query HTTP/1.1" <status>`.
+   The path has the `/api` prefix or not, as `IMBI_API_URL` sets it at
+   startup (`apps/api/src/imbi/api/app.py`). The principal is the local
+   part of the JWT subject, or the API key owner, or the key id.
 2. **The API application log.** `run_graph_query()` logs
    `Graph query: principal=<name> columns=[...]` at INFO before it runs
    the query, and `Graph query failed: principal=<name> error=...` on a
    database error.
 3. **The MCP access log.** `AccessLogContextMiddleware` adds
    `(tool:<name>)` to the line of each MCP tool call.
+4. **The Slack bot log.** `apps/slackbot/src/imbi/slackbot/mcp.py` logs
+   only a failed tool call: `Tool returned error: <name>: ...` or
+   `Tool execution failed: <name>`. A successful call has no line of its
+   own.
 
-The MCP server and the assistant call the API on the internal URL with
-the caller's own token. So the API access log names the person for all
-three clients, but it does not name the client. The client split comes
-from L2 (MCP) and P1 (assistant). The rest are UI calls.
+The MCP server, the assistant, and the Slack bot call the API on the
+internal URL with the caller's own bearer token. So the API access log
+names the person for all four clients, but it does not name the client.
+The client split comes from L2 (MCP), P1 (assistant), and L3 (Slack
+bot). The rest are UI calls.
 
 ## Question 2: saved queries
 
@@ -69,12 +78,14 @@ history, the admin opens the browser developer tools and reads that
 key. A retire or a replace does not need to move it, and a Cypher query
 does not run on the SQL console.
 
-## Question 3: MCP server and assistant
+## Question 3: MCP server, assistant, and Slack bot
 
-Both can invoke the tool today, for an admin.
+All three can invoke the tool today, for an admin.
 
-- The route is a tool in both toolsets. `imbi.common.mcp` excludes only
-  the auth, MFA, status, and thumbnail routes, and the operations with
+- The route is a tool in each toolset. Each one builds its tools from
+  the API OpenAPI document with `excluded_route_maps()` and
+  `exclude_non_ai_tools()` from `imbi.common.mcp`. They exclude only the
+  auth, MFA, status, and thumbnail routes, and the operations with
   `x-imbi-ai-tool: false`. `AI_TOOL_EXCLUDED_TAGS` in
   `apps/api/src/imbi/api/openapi.py:65` has only
   `'Project: Configuration'`, not `'Admin: Graph Query'`. The tool name
@@ -84,8 +95,9 @@ Both can invoke the tool today, for an admin.
   `x-imbi-permission: ['admin']`, so only an admin sees the tool. The
   test `test_admin_sees_every_tool` in
   `libraries/common/tests/test_mcp.py` pins this.
-- The assistant (`apps/assistant/src/imbi/assistant/mcp.py`) builds its
-  toolset without the permission filter. Every assistant user gets the
+- The assistant (`apps/assistant/src/imbi/assistant/mcp.py`) and the
+  Slack bot (`apps/slackbot/src/imbi/slackbot/mcp.py`) build their
+  toolsets without the permission filter. Every user of each gets the
   tool definition, and the API returns 403 for a user who is not an
   admin.
 - `POST /admin/graph/query` runs the Cypher with no read-only
@@ -93,7 +105,8 @@ Both can invoke the tool today, for an admin.
   admin, or a model that acts for an admin, can write or delete graph
   data through it.
 
-Whether a model ever called it is a usage question: queries L2 and P1.
+Whether a model ever called it is a usage question: queries L2, P1,
+and L3.
 
 ## Recommendation
 
@@ -112,7 +125,7 @@ Reasons:
    security surface next to the one that ADR 0020 builds.
 3. Saved queries are only in browsers, so nothing is lost on the
    server.
-4. Today the tool is in the LLM toolsets and can write. D13 requires
+4. Today the tool is in three LLM toolsets and can write. D13 requires
    the opposite for a console that stays.
 5. Operators can already query production with `psql` through
    `kubectl exec` into the PostgreSQL pod. That path has its access
@@ -122,11 +135,12 @@ Without the counts, this page cannot say that nobody uses the
 workbench. The recommendation is to retire it unless the counts show a
 need. The steps:
 
-1. Gavin runs L1, L2, P1, and C1, and records the numbers here.
+1. A person with production access runs L1, L2, L3, P1, and C1, and
+   records the numbers here.
 2. The counts name the users. Ask them which queries they run, and
    whether a `psql` session or an API endpoint covers each one.
 3. Unless the counts show regular use by people other than the
-   platform team, agent V retires the workbench in Wave 3 (WP3.3).
+   platform team, the Wave 3 cleanup retires the workbench (WP3.3).
 4. If the counts show that need, keep the retire in the migration, and
    build a SQL console after the cutover as its own work package, with
    a security review. A role with a read-only name is not a security
@@ -137,24 +151,20 @@ need. The steps:
 
 Until the cutover, a small change to `main` removes the risk of point 4:
 add `'Admin: Graph Query'` to `AI_TOOL_EXCLUDED_TAGS`. That change is
-outside this work package and needs Gavin's approval.
+outside this work package and needs the maintainer's approval.
 
-Rhona reviewed this recommendation on 2026-09-30 (session
-age-g-docs-2026-09-30) and agreed with "retire" as the default. Rhona
-asked for the steps above in place of a claim that the workbench is not
-used, and for the interim tool exclusion. Both are adopted.
-
-## Queries for Gavin
+## Queries for the maintainer
 
 All queries read only. Run each one for the last 90 days
 (2026-07-02 to 2026-09-30).
 
 ### L1: API access log, by principal (logz.io)
 
-Search the imbi-api logs with this Lucene query:
+Search the imbi-api logs with this Lucene query. It has no `/api`
+prefix, so it matches both forms of the path:
 
 ```
-"POST /api/admin/graph/query"
+"admin/graph/query" AND "POST"
 ```
 
 Split the result by principal: the third field of the message, after
@@ -178,6 +188,20 @@ Search the imbi-mcp logs:
 
 Count the lines and split them by principal, as in L1.
 
+### L3: Slack bot calls (logz.io)
+
+First, the failed calls, from the imbi-slackbot logs:
+
+```
+"run_graph_query_api_admin_graph_query_post" AND ("Tool returned error" OR "Tool execution failed")
+```
+
+Then, all calls: split the L1 lines by the client address (the first
+field, `<ip>:<port>`). When the Slack bot runs in its own pod, its pod
+address marks its calls. When all services run in one container (the
+`all` mode), the address is the same for each client, and only the
+failed calls are countable.
+
 ### P1: assistant tool calls (production PostgreSQL, the AGE graph)
 
 The assistant stores each assistant message with its `tool_use` blocks
@@ -197,8 +221,8 @@ SELECT count(*) AS messages,
 ROLLBACK;
 ```
 
-The agent tested this query on a scratch AGE database with a fixture of
-four messages: it counted the two recent graph-query messages in one
+This query was tested on a scratch AGE database with a fixture of four
+messages: it counted the two recent graph-query messages in one
 conversation, and skipped the old one and the user message. This count
 misses conversations that users deleted: a conversation delete also
 deletes its messages.
