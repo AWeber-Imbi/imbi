@@ -911,46 +911,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/graph/query": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Run Graph Query
-         * @description Execute an ad-hoc Cypher query against the graph.
-         */
-        post: operations["run_graph_query_api_admin_graph_query_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/graph/schema": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Graph Schema
-         * @description Return labels, edge types, and sampled property keys.
-         */
-        get: operations["get_graph_schema_api_admin_graph_schema_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/local-auth": {
         parameters: {
             query?: never;
@@ -8613,16 +8573,6 @@ export interface components {
             };
         };
         /**
-         * EdgeTypeCount
-         * @description An edge type with its instance count.
-         */
-        EdgeTypeCount: {
-            /** Type */
-            type: string;
-            /** Count */
-            count: number;
-        };
-        /**
          * EnvironmentChip
          * @description An environment a package version is currently deployed into.
          *
@@ -8806,80 +8756,6 @@ export interface components {
             previous_score?: number | null;
             /** Change Reason */
             change_reason?: string | null;
-        };
-        /**
-         * GraphEdge
-         * @description An edge extracted from query results.
-         */
-        GraphEdge: {
-            /** Id */
-            id: string;
-            /** Type */
-            type: string;
-            /** Start */
-            start: string;
-            /** End */
-            end: string;
-            /** Properties */
-            properties: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * GraphNode
-         * @description A vertex extracted from query results.
-         */
-        GraphNode: {
-            /** Id */
-            id: string;
-            /** Labels */
-            labels: string[];
-            /** Properties */
-            properties: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * GraphQueryRequest
-         * @description Request body for ``POST /admin/graph/query``.
-         */
-        GraphQueryRequest: {
-            /** Query */
-            query: string;
-            /** Params */
-            params?: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * GraphQueryResponse
-         * @description Response body for a successful query.
-         */
-        GraphQueryResponse: {
-            /** Columns */
-            columns: string[];
-            /** Rows */
-            rows: {
-                [key: string]: unknown;
-            }[];
-            /** Nodes */
-            nodes: components["schemas"]["GraphNode"][];
-            /** Edges */
-            edges: components["schemas"]["GraphEdge"][];
-            /** Elapsed Ms */
-            elapsed_ms: number;
-        };
-        /**
-         * GraphSchemaResponse
-         * @description Response body for ``GET /admin/graph/schema``.
-         */
-        GraphSchemaResponse: {
-            /** Node Labels */
-            node_labels: components["schemas"]["LabelCount"][];
-            /** Edge Types */
-            edge_types: components["schemas"]["EdgeTypeCount"][];
-            /** Property Keys */
-            property_keys: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -9329,16 +9205,6 @@ export interface components {
             identifiers?: {
                 [key: string]: number | string;
             } | null;
-        };
-        /**
-         * LabelCount
-         * @description A node label with its instance count.
-         */
-        LabelCount: {
-            /** Label */
-            label: string;
-            /** Count */
-            count: number;
         };
         /**
          * LatestDeployment
@@ -15472,59 +15338,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    run_graph_query_api_admin_graph_query_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GraphQueryRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GraphQueryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_graph_schema_api_admin_graph_schema_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GraphSchemaResponse"];
                 };
             };
         };

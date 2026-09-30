@@ -104,7 +104,6 @@ Classification legend:
 | Detail views: `RoleDetail`, `UserDetail`, `TeamDetail`, `OrganizationDetail`, `EnvironmentDetail`, `WebhookDetail`, `ThirdPartyServiceDetail`, `BlueprintDetail` | text-loading or none | RoleDetail runs 5 queries |
 | `AnchorEdgesCard.tsx` | none | ⚠️ shows "Not mapped to any…" while loading |
 | `ServiceAccountForm` (edit-mode fetch) | none | |
-| `graph-query/ResultCard.tsx` (lazy ResultGraph) | spinner Suspense fallback | |
 
 ### Other surfaces
 
@@ -242,7 +241,7 @@ for the least code.
 - [ ] Dialogs (`NewProjectDialog`, `NewOpsLogDialog`, `EditRelationshipsDialog`):
       field/list skeletons inside the open dialog while `enabled: isOpen` queries run.
 - [ ] Lazy Suspense fallbacks: `LazyProjectsGraphCanvas`/`ProjectGraphView` (canvas-area
-      block, no spinner), `graph-query/ResultCard`, `LazyRichComposer` (composer-shaped
+      block, no spinner), `LazyRichComposer` (composer-shaped
       block, no text).
 
 ### Phase 5 — AI (Imbi Assistant) amber treatment
