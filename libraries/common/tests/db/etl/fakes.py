@@ -85,16 +85,16 @@ async def target(
 ) -> tuple[
     psycopg.AsyncConnection[typing.Any], psycopg.AsyncConnection[typing.Any]
 ]:
-    """Create a fake target database. Return (source, target) connections.
+    """Reset the fake target database. Return (source, target) connections.
 
     The mappings are static, so the source is a second connection to
     the same database.
 
     """
-    name = await support.create_database('fake')
-    case.addAsyncCleanup(support.drop_database, name)
+    name = await support.scratch_database()
     target_conn = await psycopg.AsyncConnection.connect(support.url(name))
     case.addAsyncCleanup(target_conn.close)
+    await support.reset(target_conn, 'other', 'g')
     await target_conn.execute(SCHEMA)
     await target_conn.commit()
     source_conn = await psycopg.AsyncConnection.connect(support.url(name))

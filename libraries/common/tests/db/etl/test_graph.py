@@ -47,12 +47,11 @@ class HelperTestCase(unittest.TestCase):
 
 class FakeGraphTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        self.database = await support.create_database('graph')
-        self.addAsyncCleanup(support.drop_database, self.database)
         self.conn = await psycopg.AsyncConnection.connect(
-            support.url(self.database)
+            support.url(await support.scratch_database())
         )
         self.addAsyncCleanup(self.conn.close)
+        await support.reset(self.conn, 'g')
         await support.fake_graph(
             self.conn,
             'g',
@@ -119,11 +118,11 @@ class AgeGraphTestCase(unittest.IsolatedAsyncioTestCase):
     """The reader on a real AGE graph: agtype text is JSON."""
 
     async def asyncSetUp(self) -> None:
-        self.database = await support.create_database('age')
-        self.addAsyncCleanup(support.drop_database, self.database)
+        self.database = await support.scratch_database()
         async with await psycopg.AsyncConnection.connect(
             support.url(self.database)
         ) as conn:
+            await support.reset(conn)
             await support.age_graph(
                 conn,
                 'imbi',

@@ -14,12 +14,11 @@ CREATED = '2026-01-01T00:00:00+00:00'
 
 class MappingsTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        self.database = await support.create_database('mappings')
-        self.addAsyncCleanup(support.drop_database, self.database)
         self.conn = await psycopg.AsyncConnection.connect(
-            support.url(self.database)
+            support.url(await support.scratch_database())
         )
         self.addAsyncCleanup(self.conn.close)
+        await support.reset(self.conn, 'g')
         self.registry = mappings.discover()
 
     async def _graph(

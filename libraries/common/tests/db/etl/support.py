@@ -5,6 +5,7 @@ drops them after. A fake graph is plain tables with the layout of the
 AGE label tables. An AGE graph is a real ``age`` extension graph.
 """
 
+import atexit
 import json
 import os
 import typing
@@ -70,6 +71,59 @@ async def drop_database(name: str) -> None:
                 sql.Identifier(name)
             )
         )
+
+
+_SCRATCH: list[str] = []
+
+
+async def scratch_database() -> str:
+    """Return one database for this test process, and make it once.
+
+    A ``DROP DATABASE`` waits for a WAL flush, which takes seconds on
+    some machines, so the tests share one database and reset its
+    schemas (:func:`reset`). It is dropped when the process exits.
+
+    """
+    if not _SCRATCH:
+        _SCRATCH.append(await create_database('scratch'))
+        atexit.register(_drop_scratch, _SCRATCH[0])
+    return _SCRATCH[0]
+
+
+def _drop_scratch(name: str) -> None:
+    with psycopg.connect(url('postgres'), autocommit=True) as conn:
+        conn.execute(
+            sql.SQL('DROP DATABASE IF EXISTS {} WITH (FORCE)').format(
+                sql.Identifier(name)
+            )
+        )
+
+
+async def reset(
+    conn: psycopg.AsyncConnection[typing.Any], *schemas: str
+) -> None:
+    """Drop *schemas* and the AGE graphs, and make ``public`` empty."""
+    await conn.execute(
+        'SELECT ag_catalog.drop_graph(name, true) FROM ag_catalog.ag_graph'
+        if await _has_age(conn)
+        else 'SELECT 1'
+    )
+    for schema in (*schemas, 'public'):
+        await conn.execute(
+            sql.SQL('DROP SCHEMA IF EXISTS {} CASCADE').format(
+                sql.Identifier(schema)
+            )
+        )
+    await conn.execute('CREATE SCHEMA public')
+    await conn.commit()
+
+
+async def _has_age(conn: psycopg.AsyncConnection[typing.Any]) -> bool:
+    cursor = await conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')"
+    )
+    row = await cursor.fetchone()
+    return bool(row and row[0])
 
 
 async def relational_database() -> str:
