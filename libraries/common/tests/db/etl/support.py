@@ -54,13 +54,24 @@ async def database_exists(name: str) -> bool:
 
 
 async def create_database(prefix: str, template: str | None = None) -> str:
-    """Create a database and return its name."""
+    """Create a database with the ``age`` extension and return its name.
+
+    With AGE 1.8.0 in ``shared_preload_libraries``, a ``TRUNCATE`` fails
+    with 'schema "ag_catalog" does not exist' in a database that does
+    not have the extension. At the cutover, the target database has it
+    (the graph is in the same database), so the tests have it too.
+
+    """
     name = f'etl_{prefix}_{os.getpid()}_{uuid.uuid4().hex[:8]}'
     statement = sql.SQL('CREATE DATABASE {}').format(sql.Identifier(name))
     if template is not None:
         statement += sql.SQL(' TEMPLATE {}').format(sql.Identifier(template))
     async with await _admin() as conn:
         await conn.execute(statement)
+    async with await psycopg.AsyncConnection.connect(
+        url(name), autocommit=True
+    ) as conn:
+        await conn.execute('CREATE EXTENSION IF NOT EXISTS age')
     return name
 
 
