@@ -80,11 +80,21 @@ def _system_auth() -> permissions.AuthContext:
     return principals.system_auth(REQUESTED_BY, 'Imbi Maintenance')
 
 
+_ACTIVE_PROJECT_IDS_QUERY: typing.LiteralString = (
+    'MATCH (p:Project) WHERE coalesce(p.archived, false) = false'
+    ' RETURN p.id AS id'
+)
+
+
 async def enumerate_all_projects(db: graph.Graph) -> list[str]:
-    """Every project id -- maintenance operations self-classify
-    inapplicable projects as skipped rather than pre-filtering (which
-    would cost a capability resolution per project up front)."""
-    return await score_queue.all_project_ids(db)
+    """Every non-archived project id.
+
+    Archived projects get no maintenance. Other inapplicable projects
+    self-classify as skipped rather than pre-filtering (which would
+    cost a capability resolution per project up front).
+    """
+    rows = await db.execute(_ACTIVE_PROJECT_IDS_QUERY, {}, ['id'])
+    return [v for r in rows if (v := graph.parse_agtype(r['id']))]
 
 
 async def _org_slug_for(db: graph.Graph, project_id: str) -> str | None:

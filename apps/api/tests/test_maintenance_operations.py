@@ -52,6 +52,16 @@ class SystemAuthTests(unittest.TestCase):
         self.assertFalse(auth.is_admin)
 
 
+class EnumerateAllProjectsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_excludes_archived_projects(self) -> None:
+        db = mock.AsyncMock()
+        db.execute.return_value = [{'id': '"p1"'}, {'id': '""'}]
+        items = await operations.enumerate_all_projects(db)
+        self.assertEqual(['p1'], items)
+        query = db.execute.await_args.args[0]
+        self.assertIn('coalesce(p.archived, false) = false', query)
+
+
 class ExecuteAnalysisTests(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_without_org(self) -> None:
         with mock.patch.object(operations, '_org_slug_for', _org_slug(None)):
