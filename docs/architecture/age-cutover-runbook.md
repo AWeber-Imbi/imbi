@@ -58,7 +58,7 @@ export KCTX=<kubectl context of production>
 export NS=<namespace of the Imbi releases>
 export AGE_LOGIN=<the login role in the AGE-era POSTGRES_URL>
 export PGHOST=127.0.0.1 PGPORT=<local port of the port-forward>
-export PGUSER=<operator role: a superuser, not AGE_LOGIN>
+export PGUSER=imbi_operator   # see "Prep: the operator role"
 export PGDATABASE=<the Imbi database>
 export PGLIFECYCLE=<path to the pinned pglifecycle binary>
 export CUTOVER=<an empty directory for the outputs of this cutover>
@@ -136,11 +136,11 @@ ran `freeze.sql`).
    `schemata/scripts/create-roles.sql`, with the passwords from the
    secret store. The secret of the new release has the `imbi_app` and
    `imbi_admin` URLs. The operator has the `imbi_maintenance` URL.
-5. `AGE_LOGIN` is not a superuser, is not the operator role, has no
-   login role as a member, and is not a role of `schemata/README.md`
-   "Roles". If production uses one role for the app and the operator,
-   create a separate operator role now. `freeze.sql` checks this again
-   in step 4.
+5. The operator role `imbi_operator` exists (see "Prep: the operator
+   role"), and `AGE_LOGIN` is not a superuser, is not the operator role,
+   has no login role as a member, and is not a role of
+   `schemata/README.md` "Roles". `freeze.sql` checks this again in step
+   4.
 6. Nothing starts the apps again by itself during the freeze: pause any
    GitOps sync or automated `helm upgrade` for the Imbi releases, and
    find each autoscaler, Job, and CronJob that uses the Imbi image or
@@ -150,6 +150,51 @@ ran `freeze.sql`).
    the operator has a list of those clients and stops them in step 2.
    `freeze.sql` stops the runbook in step 4 when any client that is not
    a superuser is still connected.
+
+## Prep: the operator role
+
+Production uses one login for the AGE-era app and for the operator
+(Gavin, 2026-09-30). Step 4 sets `AGE_LOGIN` to NOLOGIN, so the operator
+needs a second login before the cutover day. `freeze.sql` stops the
+runbook when the operator role and `AGE_LOGIN` are the same.
+
+- Who: Gavin, before the rehearsal of the cutover build (the rehearsal
+  uses the same role name on its copy).
+- How: connect as the cluster superuser (on CloudNativePG, `psql -U
+  postgres` through `kubectl exec` into the primary pod, local socket),
+  and run:
+
+  ```sql
+  -- The password goes into the secret store and into ~/.pgpass of the
+  -- operator workstation, not into the shell history.
+  CREATE ROLE imbi_operator LOGIN SUPERUSER PASSWORD '...';
+  COMMENT ON ROLE imbi_operator IS
+      'AGE cutover operator (runbook). Drop after WP4.2.';
+  ```
+
+- Why SUPERUSER: the runbook changes objects that `AGE_LOGIN` and the
+  extensions own (`public.embeddings`, `embedding_distance`, the `vector`
+  extension), sets `AGE_LOGIN` to NOLOGIN, ends its sessions, and runs a
+  deploy that sets owners to the `imbi_*` roles. A role without
+  SUPERUSER needs membership in `AGE_LOGIN` for this, and then NOLOGIN
+  does not separate the two: `freeze.sql` refuses a login that is a
+  member of `AGE_LOGIN`.
+- No grants: a superuser needs none. Do not grant `imbi_operator` to any
+  role, and do not use it in any app secret.
+- `AGE_LOGIN` must not be a superuser. If it is, stop and decide first:
+  NOLOGIN on the cluster superuser stops the tools of the database
+  cluster. `freeze.sql` refuses a superuser.
+- Check, as `imbi_operator`:
+
+  ```sql
+  SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user;
+  -- expect: imbi_operator | t
+  SELECT rolsuper FROM pg_roles WHERE rolname = '<AGE_LOGIN>';
+  -- expect: f
+  ```
+
+- After the cutover: drop the role in WP4.2, or set it NOLOGIN. Gavin
+  decides.
 
 ## Steps
 
@@ -408,12 +453,11 @@ estimate.
   1. Record the Valkey keys by prefix, for the log:
      `valkey-cli --scan --pattern '*' | cut -d: -f1-2 | sort | uniq -c`.
   2. Flush the Valkey database of Imbi (`FLUSHDB`). D30 keeps this
-     step at the cutover. If the Valkey server is shared with other
-     applications, delete the Imbi keys by prefix instead. The prefixes
-     are in "Valkey keys".
+     step at the cutover. The Valkey database holds only Imbi keys
+     (Gavin, 2026-09-30), so `FLUSHDB` is safe.
   3. ClickHouse, Iggy, and S3 need nothing at the cutover: WP3.4 is
      after the cutover (D30).
-- Check: `DBSIZE` returns 0 (or no key with an Imbi prefix remains).
+- Check: `DBSIZE` returns 0.
 
 ### 11. Record the write counters
 
@@ -734,18 +778,22 @@ Not adopted, with the reason:
 
 ## Questions for review
 
-1. `AGE_LOGIN`: which role is the AGE-era login in production, and is
-   it separate from the operator role? If it is named `imbi_app` or
-   `imbi_admin`, the relational roles cannot be created as written.
+Answered on 2026-09-30: production uses one login for the app and the
+operator (so "Prep: the operator role" is new), and Valkey holds only
+Imbi keys (so step 10 flushes it).
+
+1. `AGE_LOGIN`: what is its name, and is it a superuser? If it is a
+   superuser, step 4 cannot set it NOLOGIN (see "Prep: the operator
+   role"). If it is named `imbi_app` or `imbi_admin`, the relational
+   roles cannot be created as written.
 2. Production layout: one `all` release, or one release per service?
    Step 12 needs `api` and `ui` releases without the workers.
-3. Valkey: is the Valkey database only for Imbi (`FLUSHDB` in step 10)?
-4. The maintenance page: which server, and does the Ingress belong to
+3. The maintenance page: which server, and does the Ingress belong to
    the chart or to the cluster setup?
-5. The restore of the step 4 backup: add it to the rehearsal, or accept
+4. The restore of the step 4 backup: add it to the rehearsal, or accept
    it as not tested?
-6. pglifecycle: the SHA-256 depends on the platform and the build
+5. pglifecycle: the SHA-256 depends on the platform and the build
    command. Keep the binary file of the rehearsal workstation for the
    cutover, or build a container image with pglifecycle once and pin its
    digest?
-7. The 14 days of step 15 are a proposal.
+6. The 14 days of step 15 are a proposal.
