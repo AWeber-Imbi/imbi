@@ -134,9 +134,12 @@ async def relational_database() -> str:
 
     """
     if not await database_exists(RELATIONAL_TEMPLATE):
-        raise unittest.SkipTest(
+        message = (
             f'No {RELATIONAL_TEMPLATE} database: run moon run root:services'
         )
+        if os.environ.get('CI'):
+            raise AssertionError(message)
+        raise unittest.SkipTest(message)
     return await create_database('target', RELATIONAL_TEMPLATE)
 
 
@@ -148,10 +151,10 @@ async def fake_graph(
 ) -> None:
     """Create a fake graph: one plain table per label and edge type.
 
-    *vertices* gives the properties of each vertex, by label; each
-    vertex has an ``id`` property. *edges* gives
-    ``(start_label, start_id, end_label, end_id)`` by edge type, where
-    the ids are the ``id`` properties.
+    *vertices* gives the properties of each vertex, by label. *edges*
+    gives ``(start_label, start_ref, end_label, end_ref)`` by edge type.
+    A ref is the ``id`` property, or for a vertex with no ``id`` (E36)
+    its ``_ref`` key, which is not stored.
 
     """
     await conn.execute(
@@ -164,9 +167,10 @@ async def fake_graph(
                 'CREATE TABLE {} (id bigint PRIMARY KEY, properties text)'
             ).format(sql.Identifier(graph, label))
         )
-        for props in rows:
+        for row in rows:
+            props = {k: v for k, v in row.items() if k != '_ref'}
             graph_id = len(graph_ids) + 1
-            graph_ids[(label, str(props['id']))] = graph_id
+            graph_ids[(label, str(row.get('_ref', row.get('id'))))] = graph_id
             await conn.execute(
                 sql.SQL('INSERT INTO {} VALUES (%s, %s)').format(
                     sql.Identifier(graph, label)

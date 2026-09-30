@@ -1,0 +1,7 @@
+name: node
+columns:
+- name: id
+  nullable: false
+- name: parent_id
+primary_key:
+- id

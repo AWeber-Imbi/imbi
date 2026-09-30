@@ -1,0 +1,16 @@
+# The fake table has none of these constraints: each is a mismatch.
+name: loose
+columns:
+- name: id
+  nullable: false
+- name: name
+  nullable: false
+primary_key:
+- id
+unique_constraints:
+- - name
+indexes:
+- name: loose_lower
+  unique: true
+  columns:
+  - expression: lower(name)

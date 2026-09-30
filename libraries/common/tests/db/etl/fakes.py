@@ -1,12 +1,17 @@
 """A fake target schema and static mappings for the runner tests."""
 
 import collections.abc
+import pathlib
 import typing
 
 import psycopg
 
 from imbi.common.db.etl import mapping
 from libraries.common.tests.db.etl import support
+
+#: The YAML of the fake tables, as schemata/tables/public has for the
+#: real ones.
+SCHEMA_FILES = pathlib.Path(__file__).parent / 'schemata'
 
 SCHEMA = """
 CREATE TABLE parent (

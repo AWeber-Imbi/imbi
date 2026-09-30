@@ -1,6 +1,6 @@
 import unittest
 
-from imbi.common.db.etl import mapping, reconcile, runner
+from imbi.common.db.etl import mapping, reconcile, runner, schemata
 from libraries.common.tests.db.etl import fakes
 
 PAIR = """
@@ -17,6 +17,8 @@ CREATE TABLE uniq (
     UNIQUE (a, b)
 );
 CREATE UNIQUE INDEX uniq_live ON uniq (a) WHERE NOT deleted;
+CREATE UNIQUE INDEX uniq_lower ON uniq (lower(b));
+CREATE TABLE loose (id text PRIMARY KEY, name text);
 """
 
 
@@ -31,7 +33,11 @@ class ReconcileTestCase(unittest.IsolatedAsyncioTestCase):
             self.source, self.target, registry=registry, pending=()
         )
         report = await reconcile.reconcile(
-            self.source, self.target, registry=registry, pending=()
+            self.source,
+            self.target,
+            schema_files=fakes.SCHEMA_FILES,
+            registry=registry,
+            pending=(),
         )
         await self.target.rollback()
         return report
@@ -109,6 +115,7 @@ class ReconcileTestCase(unittest.IsolatedAsyncioTestCase):
         report = await reconcile.reconcile(
             self.source,
             self.target,
+            schema_files=fakes.SCHEMA_FILES,
             registry=fakes.registry(),
             pending=['x'],
             only=['node'],
@@ -121,6 +128,7 @@ class ReconcileTestCase(unittest.IsolatedAsyncioTestCase):
             await reconcile.reconcile(
                 self.source,
                 self.target,
+                schema_files=fakes.SCHEMA_FILES,
                 registry=fakes.registry(),
                 pending=(),
                 only=['x'],
@@ -129,7 +137,11 @@ class ReconcileTestCase(unittest.IsolatedAsyncioTestCase):
         registry['x'] = fakes.Static('x', ('id',), [])
         with self.assertRaisesRegex(mapping.EtlError, 'not in the target'):
             await reconcile.reconcile(
-                self.source, self.target, registry=registry, pending=()
+                self.source,
+                self.target,
+                schema_files=fakes.SCHEMA_FILES,
+                registry=registry,
+                pending=(),
             )
 
 
@@ -153,6 +165,7 @@ class ConstraintChecksTestCase(unittest.IsolatedAsyncioTestCase):
                 {'id': 'u2', 'a': 'x', 'b': None, 'deleted': True},
             ],
         )
+        self.registry['loose'] = fakes.Static('loose', ('id', 'name'), [])
         self.pairs = [
             {'parent_id': 'p1', 'node_id': 'n1'},
             {'parent_id': 'p1', 'node_id': 'n2'},
@@ -171,12 +184,26 @@ class ConstraintChecksTestCase(unittest.IsolatedAsyncioTestCase):
             self.source, self.target, registry=self.registry, pending=()
         )
         report = await reconcile.reconcile(
-            self.source, self.target, registry=self.registry, pending=()
+            self.source,
+            self.target,
+            schema_files=fakes.SCHEMA_FILES,
+            registry=self.registry,
+            pending=(),
         )
         self.assertTrue(report.tables['uniq'].clean, report.as_dict())
         self.assertEqual(
-            report.tables['uniq'].duplicates,
-            {'uniq_a_b_key': 0, 'uniq_live': 0, 'uniq_pkey': 0},
+            report.tables['uniq'].unique_keys,
+            {
+                'primary key (id)': 'schema-enforced',
+                'unique (a, b)': 'schema-enforced',
+                'uniq_a_b_named': 'schema-enforced',
+                'uniq_live': 'schema-enforced',
+                'uniq_lower': 'schema-enforced',
+            },
+        )
+        self.assertEqual(
+            report.tables['uniq'].not_null,
+            {'id': 'schema-enforced', 'deleted': 'schema-enforced'},
         )
         return report.tables['pair']
 
@@ -211,6 +238,7 @@ class ConstraintChecksTestCase(unittest.IsolatedAsyncioTestCase):
         report = await reconcile.reconcile(
             self.source,
             self.target,
+            schema_files=fakes.SCHEMA_FILES,
             registry=self.registry,
             pending=(),
             only=['pair'],
@@ -219,3 +247,99 @@ class ConstraintChecksTestCase(unittest.IsolatedAsyncioTestCase):
             report.tables['pair'].orphans,
             {'pair_node_id_fkey': 0, 'pair_parent_id_fkey': 1},
         )
+
+    async def test_declared_constraints_missing(self) -> None:
+        await self._report(None)
+        report = await reconcile.reconcile(
+            self.source,
+            self.target,
+            schema_files=fakes.SCHEMA_FILES,
+            registry=self.registry,
+            pending=(),
+            only=['loose'],
+        )
+        loose = report.tables['loose']
+        self.assertEqual(
+            loose.mismatches,
+            [
+                'NOT NULL column name missing from the target',
+                'unique (name) missing from the target',
+                'loose_lower missing from the target',
+            ],
+        )
+        self.assertEqual(
+            loose.unique_keys['primary key (id)'], 'schema-enforced'
+        )
+
+    async def test_no_schema_file(self) -> None:
+        with self.assertRaisesRegex(mapping.EtlError, 'No schema file'):
+            await reconcile.reconcile(
+                self.source,
+                self.target,
+                schema_files=fakes.SCHEMA_FILES / 'nowhere',
+                registry=self.registry,
+                pending=(),
+                only=['node'],
+            )
+
+
+class KeysTestCase(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.source, self.target = await fakes.target(self)
+
+    async def test_missing_and_extra_keys(self) -> None:
+        registry = fakes.registry(
+            parents=[fakes.parent('p1'), fakes.parent('p2')]
+        )
+        await runner.run(
+            self.source, self.target, registry=registry, pending=()
+        )
+        await self.target.execute("DELETE FROM parent WHERE id = 'p2'")
+        await self.target.execute(
+            "INSERT INTO parent (id, name) VALUES ('px', 'x')"
+        )
+        await self.target.commit()
+        report = await reconcile.reconcile(
+            self.source,
+            self.target,
+            schema_files=fakes.SCHEMA_FILES,
+            registry=registry,
+            pending=(),
+            only=['parent'],
+        )
+        parent = report.tables['parent']
+        self.assertEqual(parent.missing_keys, ['p2'])
+        self.assertEqual(parent.extra_keys, ['px'])
+        self.assertEqual(
+            parent.mismatches,
+            [
+                'keys missing from the target: 1',
+                'keys in the target that rows() does not give: 1',
+            ],
+        )
+
+    async def test_key_not_in_columns(self) -> None:
+        registry = fakes.registry()
+        registry['node'] = fakes.Static('node', ('parent_id',), [])
+        report = await reconcile.reconcile(
+            self.source,
+            self.target,
+            schema_files=fakes.SCHEMA_FILES,
+            registry=registry,
+            pending=(),
+            only=['node'],
+        )
+        self.assertEqual(
+            report.tables['node'].mismatches,
+            ['primary key not in the mapping columns: cannot compare keys'],
+        )
+
+
+class NormalizeTestCase(unittest.TestCase):
+    def test_normalize(self) -> None:
+        self.assertEqual(
+            schemata.normalize('((embedding)::vector(384))'),
+            'embedding)::vector(384',
+        )
+        self.assertEqual(schemata.normalize('lower(email)'), 'lower(email)')
+        self.assertEqual(schemata.normalize('( a )'), 'a')

@@ -1,11 +1,13 @@
 """``tags``: one row for each ``Tag`` vertex with an organization.
 
 ``organization_id`` comes from the ``BELONGS_TO`` edge to an
-``Organization``. A tag with no such edge is skipped
-(``no-organization``): ``tags.organization_id`` is NOT NULL, and plan O2
+``Organization``. A tag with no such edge is skipped and counted
+(Appendix E, E41): ``tags.organization_id`` is NOT NULL, and plan O2
 does not assign tags to the one organization. A tag with edges to two
 organizations stops the ETL, because no rule chooses one. ``Tag.icon``
-is not loaded; a value that is not NULL is logged (Appendix E, E35).
+is not loaded; a value that is not NULL is logged (E35). A tag with no
+``created_at`` gets the E40 fallback: its ``updated_at``, else the
+``created_at`` of its organization.
 """
 
 import collections.abc
@@ -13,8 +15,9 @@ import collections.abc
 from psycopg import sql
 
 from imbi.common.db.etl import graph, mapping
+from imbi.common.db.etl.mappings import _organizations
 
-NO_ORGANIZATION = 'no-organization'
+NO_ORGANIZATION = 'E41'
 
 
 class _Tags:
@@ -28,8 +31,8 @@ class _Tags:
         'created_at',
         'updated_at',
     )
-    source_labels = ('Tag', 'Organization')
-    source_edges = ('BELONGS_TO',)
+    source_labels = ('Tag', 'Organization', 'Team', 'Project', 'User')
+    source_edges = ('BELONGS_TO', 'OWNED_BY', 'MEMBER_OF')
 
     async def rows(
         self, context: mapping.Context
@@ -41,10 +44,11 @@ class _Tags:
             start_label='Tag',
             end_label='Organization',
         )
-        async for tag in graph.read_label(
+        organization_created = await _organizations.known_created_at(context)
+        async for vertex in graph.read_label(
             context.source, context.graph, 'Tag'
         ):
-            tag_id = str(tag.get('id'))
+            tag, tag_id = vertex.properties, vertex.id
             organizations = owners.get(tag_id, set())
             if not organizations:
                 yield mapping.Skip(NO_ORGANIZATION, tag_id)
@@ -54,15 +58,21 @@ class _Tags:
                     f'Tag {tag_id!r} belongs to {len(organizations)}'
                     ' organizations'
                 )
+            organization_id = next(iter(organizations))
             if tag.get('icon') is not None:
                 yield mapping.Change('E35', tag_id, 'icon not loaded')
             yield {
                 'id': tag_id,
-                'organization_id': next(iter(organizations)),
+                'organization_id': organization_id,
                 'name': tag.get('name'),
                 'slug': tag.get('slug'),
                 'description': tag.get('description'),
-                'created_at': graph.timestamp(tag.get('created_at')),
+                'created_at': graph.created_at(
+                    tag,
+                    context,
+                    organization_created.get(organization_id),
+                    what=f'Tag {tag_id!r}',
+                ),
                 'updated_at': graph.timestamp(tag.get('updated_at')),
             }
 
@@ -89,21 +99,20 @@ class _Tags:
             )
         cursor = await context.source.execute(
             sql.SQL(
-                'SELECT properties::text::jsonb ->> {key}, {owned}'
+                'SELECT t.id::text, t.properties::text::jsonb, {owned}'
                 ' FROM {tag} AS t'
             ).format(
-                key=sql.Literal('id'),
                 owned=owned,
                 tag=sql.Identifier(context.graph, 'Tag'),
             )
         )
         count = 0
         skipped: set[str] = set()
-        for tag_id, is_owned in await cursor.fetchall():
+        for graph_id, properties, is_owned in await cursor.fetchall():
             if is_owned:
                 count += 1
             else:
-                skipped.add(str(tag_id))
+                skipped.add(graph.vertex_id('Tag', str(graph_id), properties))
         return mapping.Expected(
             count=count, skipped={NO_ORGANIZATION: frozenset(skipped)}
         )

@@ -101,6 +101,7 @@ async def run(
     graph: str = 'imbi',
     tenant_slug: str = 'default',
     tenant_name: str = 'Default',
+    missing_timestamp: datetime.datetime | None = None,
     registry: collections.abc.Mapping[str, mapping.Mapping] | None = None,
     pending: collections.abc.Sequence[str] | None = None,
     allow_pending: bool = False,
@@ -128,6 +129,7 @@ async def run(
         graph=graph,
         tenant_slug=tenant_slug,
         tenant_name=tenant_name,
+        missing_timestamp=missing_timestamp,
     )
     async with target.transaction(), source.transaction():
         if dry_run is not None:

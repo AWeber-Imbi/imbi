@@ -10,6 +10,11 @@ from imbi.common.db.etl import ids, mapping, mappings, runner
 from libraries.common.tests.db.etl import support
 
 CREATED = '2026-01-01T00:00:00+00:00'
+MISSING = datetime.datetime(2026, 9, 30, tzinfo=datetime.UTC)
+
+
+def utc(*args: int) -> datetime.datetime:
+    return datetime.datetime(*args, tzinfo=datetime.UTC)
 
 
 class MappingsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -25,9 +30,12 @@ class MappingsTestCase(unittest.IsolatedAsyncioTestCase):
         self,
         vertices: dict[str, list[dict[str, typing.Any]]],
         edges: dict[str, list[tuple[str, str, str, str]]] | None = None,
+        missing_timestamp: datetime.datetime | None = None,
     ) -> mapping.Context:
         await support.fake_graph(self.conn, 'g', vertices, edges)
-        return mapping.Context(source=self.conn, graph='g')
+        return mapping.Context(
+            source=self.conn, graph='g', missing_timestamp=missing_timestamp
+        )
 
     async def _collect(
         self, table: str, context: mapping.Context
@@ -125,32 +133,31 @@ class MappingsTestCase(unittest.IsolatedAsyncioTestCase):
                     ('Tag', 't3', 'Team', 'team'),
                 ]
             },
+            missing_timestamp=MISSING,
         )
         collected, expected = await self._collect('tags', context)
+        self.assertEqual(
+            [r['created_at'] for r in collected.rows],
+            [utc(2026, 1, 1), MISSING],
+        )
         self.assertEqual(
             [(r['id'], r['organization_id']) for r in collected.rows],
             [('t1', 'o1'), ('t2', 'o2')],
         )
-        self.assertEqual(
-            collected.skips, [mapping.Skip('no-organization', 't3')]
-        )
+        self.assertEqual(collected.skips, [mapping.Skip('E41', 't3')])
         self.assertEqual(
             collected.changes, [mapping.Change('E35', 't2', 'icon not loaded')]
         )
         self.assertEqual(
             expected,
-            mapping.Expected(
-                count=2, skipped={'no-organization': frozenset({'t3'})}
-            ),
+            mapping.Expected(count=2, skipped={'E41': frozenset({'t3'})}),
         )
 
     async def test_tags_without_edges(self) -> None:
         context = await self._graph({'Tag': [{'id': 't1'}]})
         collected, expected = await self._collect('tags', context)
-        self.assertEqual(
-            collected.skips, [mapping.Skip('no-organization', 't1')]
-        )
-        self.assertEqual(expected.skipped, {'no-organization': {'t1'}})
+        self.assertEqual(collected.skips, [mapping.Skip('E41', 't1')])
+        self.assertEqual(expected.skipped, {'E41': {'t1'}})
 
     async def test_tag_in_two_organizations(self) -> None:
         context = await self._graph(
@@ -167,3 +174,109 @@ class MappingsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaisesRegex(mapping.EtlError, '2 organizations'):
             await self._collect('tags', context)
+
+    async def test_seeded_organization(self) -> None:
+        context = await self._graph(
+            {
+                'Organization': [
+                    {'_ref': 'seed', 'slug': 'seed', 'name': 'Seed'}
+                ],
+                'Team': [{'id': 'team', 'created_at': '2026-01-03T00:00:00Z'}],
+                'Project': [{'id': 'p', 'created_at': '2026-01-02T00:00:00Z'}],
+                'User': [{'id': 'u', 'created_at': '2026-01-05T00:00:00Z'}],
+                'Tag': [{'id': 't1', 'slug': 'a'}],
+            },
+            {
+                'BELONGS_TO': [
+                    ('Team', 'team', 'Organization', 'seed'),
+                    ('Tag', 't1', 'Organization', 'seed'),
+                ],
+                'OWNED_BY': [('Project', 'p', 'Team', 'team')],
+                'MEMBER_OF': [('User', 'u', 'Organization', 'seed')],
+            },
+        )
+        seed_id = ids.derive_id('Organization', '1')
+        collected, expected = await self._collect('organizations', context)
+        self.assertEqual(expected.count, 1)
+        [row] = collected.rows
+        self.assertEqual(row['id'], seed_id)
+        self.assertEqual(row['created_at'], utc(2026, 1, 2))
+        self.assertIsNone(row['updated_at'])
+        collected, _expected = await self._collect('tenants', context)
+        self.assertEqual(collected.rows[0]['created_at'], utc(2026, 1, 2))
+        collected, expected = await self._collect('tags', context)
+        self.assertEqual(
+            [(r['organization_id'], r['created_at']) for r in collected.rows],
+            [(seed_id, utc(2026, 1, 2))],
+        )
+        self.assertEqual(expected.count, 1)
+
+    async def test_member_times_count(self) -> None:
+        context = await self._graph(
+            {
+                'Organization': [{'_ref': 'seed'}],
+                'User': [{'id': 'u', 'updated_at': '2026-01-07T00:00:00Z'}],
+            },
+            {'MEMBER_OF': [('User', 'u', 'Organization', 'seed')]},
+        )
+        collected, _expected = await self._collect('organizations', context)
+        self.assertEqual(collected.rows[0]['created_at'], utc(2026, 1, 7))
+
+    async def test_seeded_organization_alone(self) -> None:
+        context = await self._graph(
+            {'Organization': [{'_ref': 'seed'}]}, missing_timestamp=MISSING
+        )
+        collected, _expected = await self._collect('organizations', context)
+        self.assertEqual(collected.rows[0]['created_at'], MISSING)
+        await support.reset(self.conn, 'g')
+        context = await self._graph({'Organization': [{'_ref': 'seed'}]})
+        with self.assertRaisesRegex(mapping.EtlError, 'missing-timestamp'):
+            await self._collect('organizations', context)
+
+    async def test_boolean_attributes(self) -> None:
+        schema = (
+            '{"properties": {"flag": {"type": "boolean"},'
+            ' "maybe": {"type": ["boolean", "null"]},'
+            ' "label": {"type": "string"}, "bad": 1}}'
+        )
+        context = await self._graph(
+            {
+                'Blueprint': [
+                    {
+                        'id': 'b1',
+                        'type': 'Organization',
+                        'json_schema': schema,
+                    },
+                    {
+                        'id': 'b2',
+                        'type': 'Team',
+                        'json_schema': {
+                            'properties': {'other': {'type': 'boolean'}}
+                        },
+                    },
+                    {
+                        'id': 'b3',
+                        'kind': 'relationship',
+                        'type': 'Organization',
+                        'json_schema': {
+                            'properties': {'other': {'type': 'boolean'}}
+                        },
+                    },
+                ],
+                'Organization': [
+                    {
+                        'id': 'o1',
+                        'created_at': CREATED,
+                        'flag': 'true',
+                        'maybe': 'false',
+                        'label': 'true',
+                        'other': 'true',
+                    }
+                ],
+            }
+        )
+        collected, _expected = await self._collect('organizations', context)
+        self.assertEqual(
+            collected.rows[0]['attributes'],
+            {'flag': True, 'label': 'true', 'maybe': False, 'other': 'true'},
+        )

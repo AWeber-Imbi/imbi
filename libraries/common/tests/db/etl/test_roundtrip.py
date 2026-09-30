@@ -16,10 +16,15 @@ import unittest
 import psycopg
 from typer import testing
 
-from imbi.common.db.etl import cli, ids, reconcile, runner
+from imbi.common.db.etl import catalog, cli, ids, reconcile, runner, schemata
 from libraries.common.tests.db.etl import support
 
 TABLES = ('tenants', 'organizations', 'tags')
+
+
+def utc(*args: int) -> datetime.datetime:
+    return datetime.datetime(*args, tzinfo=datetime.UTC)
+
 
 GRAPH = (
     "CREATE (:Organization {id: 'o1', name: 'One', slug: 'one',"
@@ -39,6 +44,19 @@ GRAPH = (
     " created_at: '2026-03-05T00:00:00+00:00'})-[:BELONGS_TO]->(o)",
     "CREATE (:Tag {id: 't3', name: 'Orphan', slug: 'orphan',"
     " created_at: '2026-03-06T00:00:00+00:00'})",
+    # The seeded Organization (seed.py): no id, no created_at (E36, E40).
+    "CREATE (o:Organization {slug: 'seed', name: 'Seed',"
+    " description: 'Seed organization'})"
+    "<-[:BELONGS_TO]-(:Team {id: 'team', slug: 'team',"
+    " created_at: '2026-02-01T00:00:00+00:00'})",
+    "MATCH (o:Organization {slug: 'seed'})"
+    " CREATE (:Tag {id: 't4', name: 'Delta', slug: 'delta'})"
+    '-[:BELONGS_TO]->(o)',
+)
+
+#: The table files of the relational schema.
+SCHEMA_FILES = (
+    pathlib.Path(__file__).resolve().parents[5] / 'schemata/tables/public'
 )
 
 
@@ -113,7 +131,9 @@ class RoundTripTestCase(unittest.IsolatedAsyncioTestCase):
             await psycopg.AsyncConnection.connect(self.source_url) as source,
             await psycopg.AsyncConnection.connect(self.target_url) as target,
         ):
-            return await reconcile.reconcile(source, target, only=TABLES)
+            return await reconcile.reconcile(
+                source, target, only=TABLES, schema_files=SCHEMA_FILES
+            )
 
     async def _rows(self, query: str) -> list[tuple[typing.Any, ...]]:
         async with await psycopg.AsyncConnection.connect(
@@ -121,6 +141,18 @@ class RoundTripTestCase(unittest.IsolatedAsyncioTestCase):
         ) as conn:
             cursor = await conn.execute(query)
             return await cursor.fetchall()
+
+    async def _seed_id(self) -> str:
+        async with await psycopg.AsyncConnection.connect(
+            self.source_url
+        ) as conn:
+            cursor = await conn.execute(
+                'SELECT id::text FROM imbi."Organization"'
+                " WHERE properties::text::jsonb ->> 'slug' = 'seed'"
+            )
+            row = await cursor.fetchone()
+        assert row is not None
+        return ids.derive_id('Organization', row[0])
 
     async def test_round_trip(self) -> None:
         result = await self._run()
@@ -132,9 +164,10 @@ class RoundTripTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             {t: result.tables[t].rows for t in TABLES},
-            {'tenants': 1, 'organizations': 2, 'tags': 2},
+            {'tenants': 1, 'organizations': 3, 'tags': 3},
         )
         tenant_id = ids.derive_id('tenants', 'default')
+        seed_id = await self._seed_id()
         self.assertEqual(
             await self._rows('SELECT id, slug, created_at FROM tenants'),
             [
@@ -149,7 +182,8 @@ class RoundTripTestCase(unittest.IsolatedAsyncioTestCase):
             await self._rows(
                 'SELECT id, tenant_id, slug, description, previous_slugs,'
                 ' tag_formats, document_analytics_identities, attributes,'
-                ' updated_at FROM organizations ORDER BY id'
+                ' updated_at FROM organizations'
+                " WHERE slug <> 'seed' ORDER BY id"
             ),
             [
                 (
@@ -180,16 +214,47 @@ class RoundTripTestCase(unittest.IsolatedAsyncioTestCase):
             await self._rows(
                 'SELECT id, organization_id, slug FROM tags ORDER BY id'
             ),
-            [('t1', 'o1', 'alpha'), ('t2', 'o2', 'beta')],
+            [
+                ('t1', 'o1', 'alpha'),
+                ('t2', 'o2', 'beta'),
+                ('t4', seed_id, 'delta'),
+            ],
         )
         self.assertEqual(
-            result.tables['tags'].skipped, {'no-organization': ['t3']}
+            await self._rows(
+                'SELECT id, created_at, updated_at FROM organizations'
+                " WHERE slug = 'seed'"
+            ),
+            [(seed_id, utc(2026, 2, 1), None)],
         )
+        self.assertEqual(
+            await self._rows("SELECT created_at FROM tags WHERE id = 't4'"),
+            [(utc(2026, 2, 1),)],
+        )
+        self.assertEqual(result.tables['tags'].skipped, {'E41': ['t3']})
         self.assertEqual(result.tables['tags'].changed, {'E35': 1})
 
         report = await self._reconcile()
         self.assertTrue(report.clean, json.dumps(report.as_dict(), indent=2))
         self.assertEqual(sorted(report.tables), sorted(TABLES))
+
+    async def test_declared_constraints_are_in_the_schema(self) -> None:
+        """Every NOT NULL column and unique key of the YAML is found."""
+        async with await psycopg.AsyncConnection.connect(
+            self.target_url
+        ) as conn:
+            tables = await catalog.load(conn)
+        self.assertEqual(len(tables), 74)
+        missing = [
+            f'{name}: {key}'
+            for name, table in sorted(tables.items())
+            for states in reconcile.declared_states(
+                schemata.load(SCHEMA_FILES, name), table
+            )
+            for key, state in states.items()
+            if state != schemata.ENFORCED
+        ]
+        self.assertEqual(missing, [])
 
     async def test_two_runs_give_the_same_checksums(self) -> None:
         await self._run()
@@ -209,8 +274,9 @@ class RoundTripTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(report.clean)
         self.assertEqual(
             report.tables['tags'].mismatches,
-            ['count: target 1, expected 2'],
+            ['count: target 2, expected 3', 'keys missing from the target: 1'],
         )
+        self.assertEqual(report.tables['tags'].missing_keys, ['t1'])
         self.assertTrue(report.tables['organizations'].clean)
 
 
@@ -240,11 +306,11 @@ class CommandTestCase(unittest.TestCase):
 
         loaded = self._invoke('run', '--allow-pending')
         self.assertEqual(loaded.exit_code, 0, loaded.output)
-        self.assertIn('tags: 2 rows, 1 skipped, 1 changed', loaded.output)
+        self.assertIn('tags: 3 rows, 1 skipped, 1 changed', loaded.output)
 
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'report.json'
-            options = ['--output', str(path)]
+            options = ['--output', str(path), '--schemata', str(SCHEMA_FILES)]
             for table in ('tenants', 'organizations', 'tags'):
                 options.extend(['--table', table])
             checked = self._invoke('reconcile', *options)
@@ -256,7 +322,11 @@ class CommandTestCase(unittest.TestCase):
             asyncio.run(self._delete_tag())
             failed = self._invoke('reconcile', *options)
             self.assertEqual(failed.exit_code, 1)
-            self.assertIn('tags: count: target 1, expected 2', failed.output)
+            self.assertIn(
+                'tags: count: target 2, expected 3;'
+                ' keys missing from the target: 1',
+                failed.output,
+            )
 
     def test_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -279,6 +349,8 @@ class CommandTestCase(unittest.TestCase):
             [
                 ('organizations', 'row'),
                 ('organizations', 'row'),
+                ('organizations', 'row'),
+                ('tags', 'row'),
                 ('tags', 'row'),
                 ('tags', 'row'),
                 ('tenants', 'row'),
@@ -286,9 +358,22 @@ class CommandTestCase(unittest.TestCase):
         )
 
     def test_dry_run_to_stdout(self) -> None:
-        result = self._invoke('run', '--allow-pending', '--dry-run')
+        result = self._invoke(
+            'run',
+            '--allow-pending',
+            '--dry-run',
+            '--missing-timestamp',
+            '2026-09-30T00:00:00',
+        )
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn('"kind": "row"', result.output)
+
+    def test_bad_missing_timestamp(self) -> None:
+        result = self._invoke(
+            'run', '--allow-pending', '--missing-timestamp', 'yesterday'
+        )
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn('not an ISO 8601 time', result.output)
 
     def test_bad_url(self) -> None:
         result = testing.CliRunner().invoke(

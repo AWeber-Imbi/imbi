@@ -7,13 +7,18 @@ refers to. The runner refuses to run while this list is not empty,
 unless the caller allows it (tests and rehearsals only).
 
 When you add the mapping module of a table, delete the table from your
-list here in the same commit. ``tests/db/etl/test_registry.py`` fails
-when a table is in both places, in neither, or here but not in
-``schemata/tables/public/``. Keep your key when its tuple is empty,
-and keep the blank lines between the lists: then the merges of two
-agents' deletions do not touch the same lines. The lists follow the
-execution plan section 5 and implementation plan section 5; move a
-table to another agent's list if the plans assign it there.
+list here in the same commit. ``libraries/common/tests/db/etl/
+test_registry.py`` fails when a table is in both places, in neither, or
+here but not in ``schemata/tables/public/``. Its ``test_nothing_pending``
+fails while any list has a table; it runs only with
+``IMBI_ETL_REQUIRE_COMPLETE=1``, which the Wave 2 exit sets.
+
+When your list is empty, keep your key with ``()`` and keep the comment
+line above each list. The comment lines are not changed by any agent,
+so the merges of two agents' deletions do not touch the same lines.
+The lists follow the execution plan section 5 and the implementation
+plan section 5; move a table to another agent's list if the plans
+assign it there.
 """
 
 PENDING: dict[str, tuple[str, ...]] = {

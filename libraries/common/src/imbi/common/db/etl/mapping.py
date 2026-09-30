@@ -16,6 +16,7 @@ target table and with the skips of ``rows()``.
 
 import collections.abc
 import dataclasses
+import datetime
 import typing
 
 import psycopg
@@ -101,6 +102,9 @@ class Context:
     #: The one tenant that the ETL creates (Appendix E, E2).
     tenant_slug: str = 'default'
     tenant_name: str = 'Default'
+    #: The ``created_at`` of a row that has none and no fallback
+    #: (Appendix E, E40). The runbook gives the freeze start.
+    missing_timestamp: datetime.datetime | None = None
 
 
 Event = Row | Skip | Change

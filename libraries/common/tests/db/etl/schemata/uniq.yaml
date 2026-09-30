@@ -1,0 +1,30 @@
+name: uniq
+columns:
+- name: id
+  nullable: false
+- name: a
+- name: b
+- name: deleted
+  nullable: false
+primary_key:
+- id
+unique_constraints:
+- - a
+  - b
+- name: uniq_a_b_named
+  columns:
+  - a
+  - b
+indexes:
+- name: uniq_live
+  unique: true
+  columns:
+  - name: a
+  where: (NOT deleted)
+- name: uniq_lower
+  unique: true
+  columns:
+  - expression: lower(b)
+- name: uniq_plain
+  columns:
+  - name: b

@@ -4,7 +4,7 @@ import unittest
 
 import psycopg
 
-from imbi.common.db.etl import graph, mapping
+from imbi.common.db.etl import graph, ids, mapping
 from libraries.common.tests.db.etl import support
 
 
@@ -45,6 +45,56 @@ class HelperTestCase(unittest.TestCase):
             graph.json_object('[1]')
 
 
+class VertexHelperTestCase(unittest.TestCase):
+    def test_vertex_id(self) -> None:
+        self.assertEqual(graph.vertex_id('Tag', '7', {'id': 'x'}), 'x')
+        self.assertEqual(
+            graph.vertex_id('Tag', '7', {'id': ''}),
+            ids.derive_id('Tag', '7'),
+        )
+        self.assertNotEqual(
+            graph.vertex_id('Tag', '7', {}), graph.vertex_id('Team', '7', {})
+        )
+
+    def test_created_at(self) -> None:
+        context = mapping.Context(source=typing.cast(typing.Any, None))
+        later = datetime.datetime(2026, 5, 1, tzinfo=datetime.UTC)
+        self.assertEqual(
+            graph.created_at(
+                {'updated_at': '2026-02-01T00:00:00Z'},
+                context,
+                later,
+                what='x',
+            ),
+            datetime.datetime(2026, 2, 1, tzinfo=datetime.UTC),
+        )
+        self.assertEqual(
+            graph.created_at({}, context, None, later, what='x'), later
+        )
+        with self.assertRaisesRegex(mapping.EtlError, 'x has no created_at'):
+            graph.created_at({}, context, None, what='x')
+        context = mapping.Context(
+            source=typing.cast(typing.Any, None), missing_timestamp=later
+        )
+        self.assertEqual(graph.created_at({}, context, what='x'), later)
+
+    def test_attributes(self) -> None:
+        self.assertEqual(
+            graph.attributes(
+                {
+                    'id': 'o',
+                    'on': 'true',
+                    'off': 'false',
+                    'text': 'true',
+                    'n': 1,
+                },
+                frozenset({'id'}),
+                frozenset({'on', 'off', 'n'}),
+            ),
+            {'n': 1, 'off': False, 'on': True, 'text': 'true'},
+        )
+
+
 class FakeGraphTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.conn = await psycopg.AsyncConnection.connect(
@@ -71,7 +121,10 @@ class FakeGraphTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
     async def _labels(self, label: str) -> list[dict[str, typing.Any]]:
-        return [row async for row in graph.read_label(self.conn, 'g', label)]
+        return [
+            vertex.properties
+            async for vertex in graph.read_label(self.conn, 'g', label)
+        ]
 
     async def test_read_label_in_graph_id_order(self) -> None:
         self.assertEqual(
@@ -84,8 +137,8 @@ class FakeGraphTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_read_edges(self) -> None:
         edges = [
-            (start['id'], end['id'])
-            async for start, _edge, end in graph.read_edges(
+            (edge.start.id, edge.end.id, edge.start.graph_id)
+            async for edge in graph.read_edges(
                 self.conn,
                 'g',
                 'BELONGS_TO',
@@ -93,7 +146,7 @@ class FakeGraphTestCase(unittest.IsolatedAsyncioTestCase):
                 end_label='Organization',
             )
         ]
-        self.assertEqual(edges, [('t2', 'o1'), ('t1', 'o1')])
+        self.assertEqual(edges, [('t2', 'o1', '3'), ('t1', 'o1', '2')])
 
     async def test_read_edges_other_labels(self) -> None:
         targets = await graph.edge_targets(
@@ -108,7 +161,7 @@ class FakeGraphTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_nested_reads(self) -> None:
         async with self.conn.transaction():
             pairs = [
-                (tag['id'], len(await self._labels('Organization')))
+                (tag.id, len(await self._labels('Organization')))
                 async for tag in graph.read_label(self.conn, 'g', 'Tag')
             ]
         self.assertEqual(pairs, [('t1', 1), ('t2', 1)])
@@ -131,6 +184,7 @@ class AgeGraphTestCase(unittest.IsolatedAsyncioTestCase):
                 ' count: 3, ratio: 1.5, flag: true, none: null})',
                 "MATCH (o:Organization {id: 'o1'})"
                 " CREATE (:Tag {id: 't1'})-[:BELONGS_TO {w: 1}]->(o)",
+                "CREATE (:Team {slug: 'no-id'})",
             )
         self.conn = await psycopg.AsyncConnection.connect(
             support.url(self.database)
@@ -139,8 +193,8 @@ class AgeGraphTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_read_label(self) -> None:
         rows = [
-            row
-            async for row in graph.read_label(
+            vertex.properties
+            async for vertex in graph.read_label(
                 self.conn, 'imbi', 'Organization'
             )
         ]
@@ -170,9 +224,17 @@ class AgeGraphTestCase(unittest.IsolatedAsyncioTestCase):
             )
         ]
         self.assertEqual(len(edges), 1)
-        self.assertEqual(edges[0][0], {'id': 't1'})
-        self.assertEqual(edges[0][1], {'w': 1})
-        self.assertEqual(edges[0][2]['id'], 'o1')
+        self.assertEqual(edges[0].start.properties, {'id': 't1'})
+        self.assertEqual(edges[0].properties, {'w': 1})
+        self.assertEqual(edges[0].end.id, 'o1')
+        self.assertTrue(edges[0].graph_id.isdigit())
+
+    async def test_vertex_without_id(self) -> None:
+        [vertex] = [
+            v async for v in graph.read_label(self.conn, 'imbi', 'Team')
+        ]
+        self.assertNotIn('id', vertex.properties)
+        self.assertEqual(vertex.id, ids.derive_id('Team', vertex.graph_id))
 
     async def test_only_organization_id(self) -> None:
         self.assertEqual(

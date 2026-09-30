@@ -1,5 +1,6 @@
 """Each table in ``schemata/tables/public/`` has a mapping module."""
 
+import os
 import pathlib
 import types
 import unittest
@@ -38,6 +39,17 @@ class RegistryTestCase(unittest.TestCase):
         extra = sorted(self.pending - self.tables)
         self.assertEqual(
             extra, [], f'Pending tables not in schemata/: {extra}'
+        )
+
+    @unittest.skipUnless(
+        os.environ.get('IMBI_ETL_REQUIRE_COMPLETE') == '1',
+        'The Wave 2 exit runs this with IMBI_ETL_REQUIRE_COMPLETE=1',
+    )
+    def test_nothing_pending(self) -> None:
+        self.assertEqual(
+            mappings.pending(),
+            (),
+            'Tables in mappings/_pending.py, with no mapping module yet',
         )
 
     def test_mapped_tables_are_not_pending(self) -> None:

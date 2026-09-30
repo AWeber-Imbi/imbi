@@ -7,6 +7,7 @@ at the cutover it is the same database.
 """
 
 import asyncio
+import datetime
 import json
 import pathlib
 import sys
@@ -15,7 +16,7 @@ import typing
 import psycopg
 import typer
 
-from imbi.common.db.etl import mapping, reconcile, runner
+from imbi.common.db.etl import graph, mapping, reconcile, runner
 
 main = typer.Typer(no_args_is_help=True)
 etl = typer.Typer(no_args_is_help=True, help='Graph to relational ETL.')
@@ -44,6 +45,24 @@ TenantSlug = typing.Annotated[
 TenantName = typing.Annotated[
     str, typer.Option(help='Name of the one tenant (Appendix E, E2).')
 ]
+MissingTimestamp = typing.Annotated[
+    str | None,
+    typer.Option(
+        help='ISO 8601 created_at for a row that has none and no fallback'
+        ' (Appendix E, E40). The runbook gives the freeze start. A time'
+        ' with no zone is UTC.'
+    ),
+]
+
+
+def _timestamp(value: str | None) -> datetime.datetime | None:
+    try:
+        return graph.timestamp(value)
+    except ValueError as error:
+        raise typer.BadParameter(
+            f'{value!r} is not an ISO 8601 time',
+            param_hint='--missing-timestamp',
+        ) from error
 
 
 @etl.command('run')
@@ -53,6 +72,7 @@ def run_command(
     graph: Graph = 'imbi',
     tenant_slug: TenantSlug = 'default',
     tenant_name: TenantName = 'Default',
+    missing_timestamp: MissingTimestamp = None,
     allow_pending: typing.Annotated[
         bool,
         typer.Option(
@@ -78,6 +98,7 @@ def run_command(
                 graph=graph,
                 tenant_slug=tenant_slug,
                 tenant_name=tenant_name,
+                missing_timestamp=_timestamp(missing_timestamp),
                 allow_pending=allow_pending,
                 dry_run=dry_run,
                 output=output,
@@ -107,6 +128,7 @@ async def _run(
     graph: str,
     tenant_slug: str,
     tenant_name: str,
+    missing_timestamp: datetime.datetime | None,
     allow_pending: bool,
     dry_run: bool,
     output: pathlib.Path | None,
@@ -119,6 +141,7 @@ async def _run(
             'graph': graph,
             'tenant_slug': tenant_slug,
             'tenant_name': tenant_name,
+            'missing_timestamp': missing_timestamp,
             'allow_pending': allow_pending,
         }
         if not dry_run:
@@ -141,6 +164,13 @@ def reconcile_command(
     graph: Graph = 'imbi',
     tenant_slug: TenantSlug = 'default',
     tenant_name: TenantName = 'Default',
+    missing_timestamp: MissingTimestamp = None,
+    schemata: typing.Annotated[
+        pathlib.Path,
+        typer.Option(
+            help='The table YAML files of the schema (schemata/tables/public).'
+        ),
+    ] = reconcile.SCHEMA_FILES,
     table: typing.Annotated[
         list[str] | None,
         typer.Option(help='Check only this table. Repeat for more.'),
@@ -155,6 +185,8 @@ def reconcile_command(
                 graph=graph,
                 tenant_slug=tenant_slug,
                 tenant_name=tenant_name,
+                missing_timestamp=_timestamp(missing_timestamp),
+                schema_files=schemata,
                 only=table,
             )
         )
@@ -179,6 +211,8 @@ async def _reconcile(
     graph: str,
     tenant_slug: str,
     tenant_name: str,
+    missing_timestamp: datetime.datetime | None,
+    schema_files: pathlib.Path,
     only: list[str] | None,
 ) -> reconcile.Report:
     async with (
@@ -191,5 +225,7 @@ async def _reconcile(
             graph=graph,
             tenant_slug=tenant_slug,
             tenant_name=tenant_name,
+            missing_timestamp=missing_timestamp,
+            schema_files=schema_files,
             only=only,
         )

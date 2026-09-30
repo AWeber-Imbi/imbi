@@ -3,9 +3,10 @@
 For each mapped table:
 
 - the target count against the expected count of the mapping;
-- the distinct primary key values against the count;
-- the NULL count of each NOT NULL column;
-- the duplicates of each unique key;
+- the primary key values of the target against the keys of the rows
+  that ``rows()`` yields: the missing and the extra keys;
+- each NOT NULL column and unique key that ``schemata/`` declares is in
+  the target catalog (then PostgreSQL enforces it: ``schema-enforced``);
 - the orphans of each foreign key;
 - the skips of ``rows()`` by reason against the expected skips, and
   no skipped id in the target;
@@ -20,12 +21,21 @@ when any table has a mismatch. It runs as ``imbi_maintenance``.
 
 import collections.abc
 import dataclasses
+import datetime
+import pathlib
 import typing
 
 import psycopg
 from psycopg import sql
 
-from imbi.common.db.etl import catalog, mapping, mappings, runner
+from imbi.common.db.etl import catalog, mapping, mappings, runner, schemata
+
+#: The table files, relative to the working directory (the repository
+#: root, or the directory of the cutover bundle).
+SCHEMA_FILES = pathlib.Path('schemata/tables/public')
+
+#: The most keys that the report lists for each difference.
+KEY_LIMIT = 100
 
 
 @dataclasses.dataclass(slots=True)
@@ -35,10 +45,11 @@ class TableReport:
     source_edges: list[str]
     expected_count: int
     target_count: int
-    distinct_keys: int
+    missing_keys: list[str]
+    extra_keys: list[str]
     checksum: str
-    null_counts: dict[str, int]
-    duplicates: dict[str, int]
+    not_null: dict[str, str]
+    unique_keys: dict[str, str]
     orphans: dict[str, int]
     json_not_container: dict[str, int]
     expected_skipped: dict[str, list[str]]
@@ -103,11 +114,17 @@ async def reconcile(
     graph: str = 'imbi',
     tenant_slug: str = 'default',
     tenant_name: str = 'Default',
+    missing_timestamp: datetime.datetime | None = None,
     registry: collections.abc.Mapping[str, mapping.Mapping] | None = None,
     pending: collections.abc.Sequence[str] | None = None,
     only: collections.abc.Collection[str] | None = None,
+    schema_files: pathlib.Path = SCHEMA_FILES,
 ) -> Report:
-    """Check each mapped table, or only the tables in *only*."""
+    """Check each mapped table, or only the tables in *only*.
+
+    *schema_files* is ``schemata/tables/public``, the YAML of each table.
+
+    """
     registry = mappings.discover() if registry is None else registry
     pending = tuple(mappings.pending() if pending is None else pending)
     names = sorted(registry if only is None else only)
@@ -121,6 +138,7 @@ async def reconcile(
         graph=graph,
         tenant_slug=tenant_slug,
         tenant_name=tenant_name,
+        missing_timestamp=missing_timestamp,
     )
     report = Report(tables={}, pending=list(pending))
     async with target.transaction(), source.transaction():
@@ -136,7 +154,11 @@ async def reconcile(
             )
         for name in names:
             report.tables[name] = await _table(
-                target, tables[name], registry[name], context
+                target,
+                tables[name],
+                schemata.load(schema_files, name),
+                registry[name],
+                context,
             )
     return report
 
@@ -144,6 +166,7 @@ async def reconcile(
 async def _table(
     target: psycopg.AsyncConnection[typing.Any],
     table: catalog.Table,
+    declared: schemata.Declared,
     item: mapping.Mapping,
     context: mapping.Context,
 ) -> TableReport:
@@ -152,31 +175,19 @@ async def _table(
     summary = runner.summarize(table.name, collected)
     ident = sql.Identifier(catalog.SCHEMA, table.name)
     key = table.primary_key
+    mismatches: list[str] = []
 
     target_count = await _scalar(
         target, sql.SQL('SELECT count(*) FROM {}').format(ident)
     )
-    distinct_keys = target_count
-    if key:
-        distinct_keys = await _scalar(
-            target,
-            sql.SQL('SELECT count(DISTINCT ({})) FROM {}').format(
-                sql.SQL(', ').join(sql.Identifier(c) for c in key), ident
-            ),
+    if target_count != expected.count:
+        mismatches.append(
+            f'count: target {target_count}, expected {expected.count}'
         )
-    null_counts = {
-        column: await _scalar(
-            target,
-            sql.SQL('SELECT count(*) FROM {} WHERE {} IS NULL').format(
-                ident, sql.Identifier(column)
-            ),
-        )
-        for column in table.not_null
-    }
-    duplicates = {
-        unique.name: await _scalar(target, _duplicates_query(ident, unique))
-        for unique in table.unique_keys
-    }
+    missing_keys, extra_keys = await _keys(
+        target, ident, key, item, collected.rows, mismatches
+    )
+    not_null, unique_keys = declared_states(declared, table)
     orphans = {
         fk.name: await _scalar(target, _orphans_query(ident, fk))
         for fk in table.foreign_keys
@@ -212,22 +223,15 @@ async def _table(
         )
         skipped_loaded = sorted(str(row[0]) for row in await cursor.fetchall())
 
-    mismatches: list[str] = []
-    if target_count != expected.count:
-        mismatches.append(
-            f'count: target {target_count}, expected {expected.count}'
-        )
-    if distinct_keys != target_count:
-        mismatches.append(
-            f'distinct keys: {distinct_keys} for {target_count} rows'
-        )
     mismatches.extend(
-        f'NULL in NOT NULL column {c}: {n}'
-        for c, n in null_counts.items()
-        if n
+        f'NOT NULL column {c} {state}'
+        for c, state in not_null.items()
+        if state != schemata.ENFORCED
     )
     mismatches.extend(
-        f'duplicates of {k}: {n}' for k, n in duplicates.items() if n
+        f'{k} {state}'
+        for k, state in unique_keys.items()
+        if state != schemata.ENFORCED
     )
     mismatches.extend(f'orphans of {k}: {n}' for k, n in orphans.items() if n)
     mismatches.extend(
@@ -249,10 +253,11 @@ async def _table(
         source_edges=list(item.source_edges),
         expected_count=expected.count,
         target_count=target_count,
-        distinct_keys=distinct_keys,
+        missing_keys=missing_keys,
+        extra_keys=extra_keys,
         checksum=await table_checksum(target, table.name),
-        null_counts=null_counts,
-        duplicates=duplicates,
+        not_null=not_null,
+        unique_keys=unique_keys,
         orphans=orphans,
         json_not_container=json_not_container,
         expected_skipped=expected_skipped,
@@ -262,6 +267,83 @@ async def _table(
         cardinality=cardinality,
         mismatches=mismatches,
     )
+
+
+def declared_states(
+    declared: schemata.Declared, table: catalog.Table
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Return the state of each declared NOT NULL column and unique key.
+
+    The state is ``schema-enforced`` when the target catalog has it, and
+    ``missing from the target`` when it does not. A unique key matches
+    on its keys (column names or expressions) and on whether it is
+    partial; the names can differ, because ``deploy`` names some keys.
+
+    """
+    not_null = {
+        column: (
+            schemata.ENFORCED if column in table.not_null else schemata.MISSING
+        )
+        for column in declared.not_null
+    }
+    found = {
+        (tuple(schemata.normalize(k) for k in u.keys), bool(u.predicate))
+        for u in table.unique_keys
+    }
+    unique_keys = {
+        u.label: (
+            schemata.ENFORCED
+            if (tuple(schemata.normalize(k) for k in u.keys), u.partial)
+            in found
+            else schemata.MISSING
+        )
+        for u in declared.unique_keys
+    }
+    return not_null, unique_keys
+
+
+async def _keys(
+    target: psycopg.AsyncConnection[typing.Any],
+    ident: sql.Identifier,
+    key: tuple[str, ...],
+    item: mapping.Mapping,
+    rows: list[mapping.Row],
+    mismatches: list[str],
+) -> tuple[list[str], list[str]]:
+    """Compare the primary keys of the target with the keys of *rows*.
+
+    Return the keys that ``rows()`` yields and the target does not have
+    (missing), and the keys that the target has and ``rows()`` does not
+    yield (extra), each sorted and cut to ``KEY_LIMIT``.
+
+    """
+    if not key or not set(key) <= set(item.columns):
+        mismatches.append(
+            'primary key not in the mapping columns: cannot compare keys'
+        )
+        return [], []
+    yielded = {'/'.join(str(row[c]) for c in key) for row in rows}
+    cursor = await target.execute(
+        sql.SQL('SELECT {} FROM {}').format(
+            sql.SQL(', ').join(
+                sql.SQL('{}::text').format(sql.Identifier(c)) for c in key
+            ),
+            ident,
+        )
+    )
+    loaded = {
+        '/'.join(str(value) for value in row)
+        for row in await cursor.fetchall()
+    }
+    missing = sorted(yielded - loaded)
+    extra = sorted(loaded - yielded)
+    if missing:
+        mismatches.append(f'keys missing from the target: {len(missing)}')
+    if extra:
+        mismatches.append(
+            f'keys in the target that rows() does not give: {len(extra)}'
+        )
+    return missing[:KEY_LIMIT], extra[:KEY_LIMIT]
 
 
 async def _cardinality(
@@ -303,26 +385,6 @@ async def _cardinality(
             f' {len(differences)} keys'
         )
     return differences
-
-
-def _duplicates_query(
-    ident: sql.Identifier, unique: catalog.UniqueKey
-) -> sql.Composed:
-    keys = [sql.SQL(k) for k in unique.keys]
-    conditions: list[sql.Composable] = []
-    if unique.predicate:
-        conditions.append(sql.SQL('({})').format(sql.SQL(unique.predicate)))
-    if not unique.nulls_not_distinct:
-        conditions.extend(sql.SQL('({}) IS NOT NULL').format(k) for k in keys)
-    where = (
-        sql.SQL(' WHERE ') + sql.SQL(' AND ').join(conditions)
-        if conditions
-        else sql.SQL('')
-    )
-    return sql.SQL(
-        'SELECT count(*) FROM (SELECT 1 FROM {}{} GROUP BY {}'
-        ' HAVING count(*) > 1) AS d'
-    ).format(ident, where, sql.SQL(', ').join(keys))
 
 
 def _orphans_query(

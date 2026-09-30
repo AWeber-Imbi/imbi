@@ -1,0 +1,9 @@
+name: child
+columns:
+- name: id
+  nullable: false
+- name: parent_id
+  nullable: false
+- name: created_at
+primary_key:
+- id

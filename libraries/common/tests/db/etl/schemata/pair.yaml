@@ -1,0 +1,9 @@
+name: pair
+columns:
+- name: parent_id
+  nullable: false
+- name: node_id
+  nullable: false
+primary_key:
+- parent_id
+- node_id

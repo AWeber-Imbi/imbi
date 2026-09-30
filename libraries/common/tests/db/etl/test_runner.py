@@ -289,3 +289,59 @@ class LoadOrderTestCase(unittest.TestCase):
         )
         self.assertTrue(table.is_join_table)
         self.assertFalse(self._table('a', 'b').is_join_table)
+
+
+class ParentsFirstTestCase(unittest.TestCase):
+    """The row order of a self-referencing table, without a database."""
+
+    table = catalog.Table(
+        name='roles',
+        columns=('organization_id', 'id', 'parent_id'),
+        not_null=('organization_id', 'id'),
+        json_columns=frozenset(),
+        foreign_keys=(
+            catalog.ForeignKey(
+                'roles_parent',
+                ('organization_id', 'parent_id'),
+                'roles',
+                ('organization_id', 'id'),
+            ),
+        ),
+        unique_keys=(),
+    )
+
+    @staticmethod
+    def _row(org: str, row_id: str, parent: str | None) -> mapping.Row:
+        return {'organization_id': org, 'id': row_id, 'parent_id': parent}
+
+    def _order(self, rows: list[mapping.Row]) -> list[str]:
+        return [
+            f'{r["organization_id"]}/{r["id"]}'
+            for r in runner._parents_first(self.table, rows)
+        ]
+
+    def test_parents_before_children(self) -> None:
+        rows = [
+            self._row('o', 'grandchild', 'child'),
+            self._row('o', 'child', 'root'),
+            self._row('o', 'other', None),
+            self._row('o', 'root', None),
+        ]
+        self.assertEqual(
+            self._order(rows), ['o/other', 'o/root', 'o/child', 'o/grandchild']
+        )
+
+    def test_parent_in_another_organization_is_no_dependency(self) -> None:
+        rows = [
+            self._row('o1', 'child', 'root'),
+            self._row('o2', 'root', None),
+        ]
+        self.assertEqual(self._order(rows), ['o1/child', 'o2/root'])
+
+    def test_self_parent_is_no_dependency(self) -> None:
+        self.assertEqual(self._order([self._row('o', 'a', 'a')]), ['o/a'])
+
+    def test_no_self_reference_keeps_order(self) -> None:
+        rows = [{'id': 'b'}, {'id': 'a'}]
+        table = LoadOrderTestCase._table('plain')
+        self.assertIs(runner._parents_first(table, rows), rows)
