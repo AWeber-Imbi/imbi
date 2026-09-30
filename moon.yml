@@ -191,8 +191,9 @@ tasks:
   # from .env.test. plan and apply need a database name:
   # `moon run root:schema-apply -- <database>`. check makes its own
   # database (imbi_schema_check, or the name after `--`) and drops it.
-  # test.yml runs schema-check in its own job, so none of them run in
-  # `moon ci`.
+  # None of them run in `moon ci`: the Schema job of test.yml calls the
+  # schema-check script directly, on the production Postgres image with a
+  # PostgreSQL 18 client.
   schema-plan:
     command: 'schemata/scripts/schema.sh'
     args:
