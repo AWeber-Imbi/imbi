@@ -243,8 +243,8 @@ class BuildCypherSqlTests(unittest.IsolatedAsyncioTestCase):
     async def test_raw_cypher_map_literal(self) -> None:
         """Raw Cypher with an un-escaped map literal.
 
-        This is the admin Graph Query workbench path: the user types
-        Cypher directly, braces and all, with ``raw=True``. The
+        With ``raw=True``, the caller gives Cypher text directly,
+        braces and all. The
         formatter must be skipped entirely — otherwise psycopg parses
         ``{name: "RabbitMQ"}`` as a placeholder with a format spec and
         raises ``ValueError('no format specification supported by SQL')``.

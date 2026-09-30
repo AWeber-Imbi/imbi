@@ -78,9 +78,8 @@ LOGGER = logging.getLogger(__name__)
 AI_TOOL_EXTENSION = 'x-imbi-ai-tool'
 
 #: OpenAPI operation extension imbi-api stamps with the list of
-#: permissions an operation requires (``['admin']`` for admin-only
-#: endpoints). Permission checks are FastAPI dependencies and so are
-#: otherwise invisible in the spec.
+#: permissions an operation requires. Permission checks are FastAPI
+#: dependencies and so are otherwise invisible in the spec.
 #: :class:`PermissionFilterMiddleware` reads it to filter a caller's
 #: toolset down to what that caller can actually invoke.
 PERMISSION_EXTENSION = 'x-imbi-permission'
@@ -271,8 +270,9 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
     the TTL.
     """
 
-    #: Sentinel permission meaning "admin only" -- no non-admin
-    #: principal can hold it, so such tools are always filtered out.
+    #: Sentinel permission meaning "admin only". No endpoint uses it
+    #: now. It stays as a defense: if an operation declares it, the
+    #: filter always removes that tool for non-admin callers.
     ADMIN_PERMISSION = 'admin'
 
     #: How long a resolved profile stays usable. Short, so revocations
@@ -357,7 +357,7 @@ class PermissionFilterMiddleware(fastmcp.server.middleware.Middleware):
         :data:`ADMIN_PERMISSION` is a sentinel rather than a real grant,
         so it is rejected outright -- admin callers never reach here,
         and a caller who happens to hold a permission literally named
-        ``admin`` must not thereby gain admin-only tools.
+        ``admin`` must not thereby gain a tool that declares it.
         """
         if self.ADMIN_PERMISSION in required:
             return False

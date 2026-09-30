@@ -233,9 +233,9 @@ def _permission_spec(prefix: str = '') -> dict[str, object]:
                     **OK,
                 },
             },
-            f'{prefix}/graph/query': {
+            f'{prefix}/admin/example': {
                 'post': {
-                    'operationId': 'graph_query',
+                    'operationId': 'admin_only_op',
                     'x-imbi-permission': ['admin'],
                     **OK,
                 }
@@ -324,7 +324,7 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
             self._profile(is_admin=True, permissions=[])
         )
         self.assertEqual(
-            {'list_projects', 'create_project', 'graph_query', 'ungated_op'},
+            {'list_projects', 'create_project', 'admin_only_op', 'ungated_op'},
             names,
         )
 
@@ -333,7 +333,7 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         names = await self._tool_names(
             self._profile(is_admin=False, permissions=['admin'])
         )
-        self.assertNotIn('graph_query', names)
+        self.assertNotIn('admin_only_op', names)
 
     async def test_fails_open_on_profile_error(self) -> None:
         """A failed lookup returns the unfiltered list, not an empty one."""
@@ -344,7 +344,7 @@ class PermissionFilterMiddlewareTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs('imbi.common.mcp', level='WARNING'):
             names = await self._tool_names(handler)
         self.assertEqual(
-            {'list_projects', 'create_project', 'graph_query', 'ungated_op'},
+            {'list_projects', 'create_project', 'admin_only_op', 'ungated_op'},
             names,
         )
 
@@ -462,7 +462,7 @@ class RequiredPermissionsTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.aclose()
         self.assertEqual(['project:read'], found['list_projects'])
-        self.assertEqual(['admin'], found['graph_query'])
+        self.assertEqual(['admin'], found['admin_only_op'])
         self.assertEqual([], found['ungated_op'])
 
     async def test_meta_survives_the_mcp_protocol(self) -> None:
