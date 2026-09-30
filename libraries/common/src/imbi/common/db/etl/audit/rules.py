@@ -29,7 +29,8 @@ from psycopg import sql
 
 Fate = typing.Literal['blocking', 'skipped', 'changed']
 
-#: A vertex with no ``id`` property gets ``gid:<graph id>`` as its id,
+#: A vertex with no ``id`` property, or ``''`` (as ``graph.vertex_id``
+#: of the ETL treats it), gets ``gid:<graph id>`` as its id,
 #: in place of the id that the ETL derives from the graph id (E36). So
 #: the rows that refer to it still join, and E36 counts it.
 DERIVED_ID_PREFIX = 'gid:'
@@ -88,7 +89,7 @@ def _relation(graph: str, name: str, exists: bool) -> sql.Composable:
             '(SELECT NULL::bigint AS gid, NULL::jsonb AS p WHERE false)'
         )
     return sql.SQL(
-        "(SELECT gid, CASE WHEN nullif(p->'id', 'null') IS NULL"
+        "(SELECT gid, CASE WHEN coalesce(p->>'id', '') = ''"
         " THEN p || jsonb_build_object('id', {} || gid::text) ELSE p END"
         ' AS p FROM (SELECT id::text::bigint AS gid,'
         ' properties::text::jsonb AS p FROM {}) AS raw)'
