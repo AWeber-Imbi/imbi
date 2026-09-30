@@ -42,7 +42,7 @@ CREATE (r1:Release {id: 'r1', title: 'One', committish: 'abc1234',
         created_by: 'someone', links: '[]',
         created_at: '2026-01-01T00:00:00+00:00'})
 CREATE (p1)-[:HAS_RELEASE]->(r1)
-CREATE (r2:Release {id: 'r2', title: 'Two', committish: 'abc1235',
+CREATE (r2:Release {id: 'r2', title: 'Two', committish: 'abc1235', tag: '',
         created_by: 'someone', links: '[]',
         created_at: '2026-01-01T00:00:00+00:00'})
 CREATE (:OAuthIdentity {id: 'oauth1'})
@@ -242,6 +242,8 @@ class AuditTestCase(unittest.TestCase):
             'E8': 1,
             'E13': 1,
             'E15.Release': 1,
+            'E30.json_text_added': 2,
+            'E30.empty_added': 1,
             'schema:projects.slug.domain': 1,
             'schema:projects.created_at.type': 1,
             'schema:teams.unique.teams_organization_id_slug_key': 2,

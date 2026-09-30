@@ -133,6 +133,41 @@ _EMPTY_TEXT = (
     " 'promote_from_environment']) k WHERE v.p->k = to_jsonb(''::text)"
 )
 
+#: JSON text that Appendix E, E30, does not list (WP1.9 research).
+_JSON_TEXT_ADDED = (
+    "SELECT 'Project.' || k || '/' || (v.p->>'id') AS id FROM {Project} v"
+    " CROSS JOIN unnest(ARRAY['links', 'identifiers']) k"
+    " WHERE jsonb_typeof(v.p->k) = 'string'"
+    " UNION ALL SELECT 'Integration.' || k || '/' || (v.p->>'id')"
+    " FROM {Integration} v CROSS JOIN unnest(ARRAY['options',"
+    " 'encrypted_credentials', 'capabilities', 'links', 'identifiers']) k"
+    " WHERE jsonb_typeof(v.p->k) = 'string'"
+    " UNION ALL SELECT 'IdentityConnection.metadata/' || (v.p->>'id')"
+    ' FROM {IdentityConnection} v'
+    " WHERE jsonb_typeof(v.p->'metadata') = 'string'"
+)
+
+#: Numbers that the graph keeps as text (a Decimal dumped as a string).
+_NUMERIC_TEXT = (
+    "SELECT 'AIModel.' || k || '/' || (v.p->>'id') AS id FROM {AIModel} v"
+    " CROSS JOIN unnest(ARRAY['input_cost_per_million',"
+    " 'output_cost_per_million', 'monthly_spend_cap']) k"
+    " WHERE jsonb_typeof(v.p->k) = 'string'"
+)
+
+#: '' values that Appendix E, E30, does not list: the set_status()
+#: writers of the sync and promotion state, and Release.tag.
+_EMPTY_TEXT_ADDED = (
+    "SELECT 'Project.' || k || '/' || (v.p->>'id') AS id FROM {Project} v"
+    " CROSS JOIN unnest(ARRAY['commit_sync_by', 'commit_sync_error',"
+    " 'deployment_sync_by', 'deployment_sync_error', 'pr_sync_by',"
+    " 'pr_sync_error', 'promote_by', 'promote_error', 'promote_tag',"
+    " 'promote_committish', 'promote_run_id', 'promote_run_url']) k"
+    " WHERE v.p->k = to_jsonb(''::text)"
+    " UNION ALL SELECT 'Release.tag/' || (v.p->>'id') FROM {Release} v"
+    " WHERE v.p->'tag' = to_jsonb(''::text)"
+)
+
 RULES: list[rules.Rule] = [
     _rule(
         'E1',
@@ -544,6 +579,29 @@ RULES: list[rules.Rule] = [
         'changed',
         _EMPTY_TEXT,
         'each WP of the label',
+    ),
+    _rule(
+        'E30.json_text_added',
+        'JSON text that E30 does not list: Project links and identifiers,'
+        ' five Integration maps, IdentityConnection.metadata',
+        'changed',
+        _JSON_TEXT_ADDED,
+        'WP2.2, WP2.3, WP2.7',
+    ),
+    _rule(
+        'E30.numeric_text',
+        'AIModel cost and spend cap values that the graph keeps as text',
+        'changed',
+        _NUMERIC_TEXT,
+        'WP2.8',
+    ),
+    _rule(
+        'E30.empty_added',
+        "'' values that E30 does not list: sync and promotion state,"
+        ' Release.tag',
+        'changed',
+        _EMPTY_TEXT_ADDED,
+        'WP2.2, WP2.4',
     ),
     _rule(
         'E31',
