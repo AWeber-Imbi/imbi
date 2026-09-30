@@ -1,34 +1,38 @@
 # Graph Workbench Audit
 
-Status: Draft for the maintainer's decision (implementation plan WP0.7,
-gate G6), 2026-09-30.
+Status: Decided (implementation plan WP0.7, gate G6), 2026-09-30.
+
+**Decision:** the maintainer decided to retire the workbench now. A
+separate PR to `main` deletes it (the WP3.3 "Retire" scope). The usage
+counts are not necessary for this decision. The queries stay on this
+page for the record.
 
 The graph workbench is the admin "Graph Query" page. It sends raw
 Cypher to `POST /admin/graph/query` and reads labels and counts from
 `GET /admin/graph/schema`. After the move to relational tables (ADR
 0020), there is no graph to query. D13 gives two choices: retire the
 workbench, or replace it with a read-only SQL console outside the LLM
-toolset. This page answers the three WP0.7 questions and gives a
-recommendation. The maintainer decides.
+toolset. This page answers the three WP0.7 questions and gives the
+recommendation that the maintainer accepted.
 
 ## Result of the usage queries
 
-**The production usage counts are not in this document yet.** The
+**The production usage counts are not in this document.** The
 permission system refused the read-only query of production data for
-this work package, so the queries were not run. The exact queries are
-in "Queries for the maintainer" below. After a person runs them, put the
-numbers in the table below and remove this paragraph.
+this work package, so the queries were not run. The decision does not
+need them. The exact queries are in "Usage queries (for the record)"
+below, if a person wants the numbers later.
 
 Four clients can call the route: the UI, the MCP server, the assistant,
 and the Slack bot.
 
 | Question | Source | Count (last 90 days) |
 |---|---|---|
-| All calls to `POST /admin/graph/query`, by principal and status | API access log (logz.io), query L1 | not run |
-| Calls through the MCP server | MCP access log (logz.io), query L2 | not run |
-| Calls by the assistant | `Message.tool_use` in the production graph, query P1 | not run |
-| Calls by the Slack bot | API access log by client address, query L3; failed calls also in the Slack bot log | not run |
-| Calls from the UI | L1 minus L2, P1, and L3 | not run |
+| All calls to `POST /admin/graph/query`, by principal and status | API access log (logz.io), query L1 | not run (not needed for the decision) |
+| Calls through the MCP server | MCP access log (logz.io), query L2 | not run (not needed for the decision) |
+| Calls by the assistant | `Message.tool_use` in the production graph, query P1 | not run (not needed for the decision) |
+| Calls by the Slack bot | API access log by client address, query L3; failed calls also in the Slack bot log | not run (not needed for the decision) |
+| Calls from the UI | L1 minus L2, P1, and L3 | not run (not needed for the decision) |
 | Rows in ClickHouse `events` or `operations_log` for the route | ClickHouse, query C1 | 0 by construction (see question 1) |
 
 ## Question 1: who called `POST /admin/graph/query`
@@ -75,8 +79,7 @@ stores up to 100 entries (`HISTORY_LIMIT`) in `localStorage`, under the
 key `imbi-cypher-history`, as `{query, executedAt}`. Each browser of
 each admin has its own history. Nothing sends it to the API. To see a
 history, the admin opens the browser developer tools and reads that
-key. A retire or a replace does not need to move it, and a Cypher query
-does not run on the SQL console.
+key. The retire does not need to move it.
 
 ## Question 3: MCP server, assistant, and Slack bot
 
@@ -111,6 +114,7 @@ and L3.
 ## Recommendation
 
 **Retire the workbench** (implementation plan WP3.3, "Retire").
+Accepted on 2026-09-30.
 
 Reasons:
 
@@ -131,32 +135,24 @@ Reasons:
    `kubectl exec` into the PostgreSQL pod. That path has its access
    control outside Imbi.
 
-Without the counts, this page cannot say that nobody uses the
-workbench. The recommendation is to retire it unless the counts show a
-need. The steps:
+The retire does not wait for the cutover. A separate PR to `main`
+deletes `endpoints/graph_query.py`, `ui/src/components/admin/graph-query/`,
+`ui/src/contexts/GraphQueryContext.tsx`, their tests, and the admin nav
+entry, as WP3.3 lists. That also removes the tool from the three LLM
+toolsets (point 4).
 
-1. A person with production access runs L1, L2, L3, P1, and C1, and
-   records the numbers here.
-2. The counts name the users. Ask them which queries they run, and
-   whether a `psql` session or an API endpoint covers each one.
-3. Unless the counts show regular use by people other than the
-   platform team, the Wave 3 cleanup retires the workbench (WP3.3).
-4. If the counts show that need, keep the retire in the migration, and
-   build a SQL console after the cutover as its own work package, with
-   a security review. A role with a read-only name is not a security
-   boundary: the console needs its own login, read-only transactions,
-   short statement and lock timeouts, row and output limits,
-   cancellation, a durable audit log, restricted schemas and functions,
-   and an explicit rule for access across organizations.
+If a need for a SQL console shows later, build it after the cutover as
+its own work package, with a security review. A role with a read-only
+name is not a security boundary: the console needs its own login,
+read-only transactions, short statement and lock timeouts, row and
+output limits, cancellation, a durable audit log, restricted schemas
+and functions, and an explicit rule for access across organizations.
 
-Until the cutover, a small change to `main` removes the risk of point 4:
-add `'Admin: Graph Query'` to `AI_TOOL_EXCLUDED_TAGS`. That change is
-outside this work package and needs the maintainer's approval.
+## Usage queries (for the record)
 
-## Queries for the maintainer
-
-All queries read only. Run each one for the last 90 days
-(2026-07-02 to 2026-09-30).
+The decision does not need these queries. They are here if a person
+wants the usage numbers later. All queries read only. Run each one for
+the last 90 days (2026-07-02 to 2026-09-30).
 
 ### L1: API access log, by principal (logz.io)
 

@@ -1,6 +1,7 @@
 # Blueprint Attributes in JSONB
 
-Status: Draft for review (implementation plan WP0.5), 2026-09-30.
+Status: Reviewed (implementation plan WP0.5), 2026-09-30. One point is
+still open (see "Decisions").
 
 Blueprints add fields to a project, an environment, a team, and the
 other blueprint tables. In the graph, each field is an extra property on
@@ -94,8 +95,9 @@ Example: `filter=deprecated:eq:true` becomes
 `a -> 'deprecated' = 'true'::jsonb`, with the value bound as
 `psycopg.types.json.Jsonb(True)`.
 
-Proposed for the maintainer: the ETL conversion is new. Today the list filter
-does not match a stored string `'true'`. After the conversion, it does.
+Accepted by the maintainer (2026-09-30): the ETL conversion is new.
+Today the list filter does not match a stored string `'true'`. After the
+conversion, it does.
 Before the conversion runs, the audit (WP1.9) counts, for each
 blueprint field of type `boolean`, the values that are JSON booleans,
 the exact strings `'true'` and `'false'`, and all other values (case or
@@ -136,7 +138,9 @@ keys), so guard each membership test with
 
 Today the list filter has no membership operator. `eq` on an array
 field compares the whole value with a string, so it never matches. A
-new membership operator is new API behavior, and needs a decision.
+new membership operator is new API behavior. It is still open: the
+maintainer wants more information before a decision (see "Decisions").
+Until then, the relational list keeps today's operators.
 
 ### 5. Defaults
 
@@ -290,12 +294,16 @@ its AGE-era side by more than 20 percent, the WP that owns the list
 (WP2.2) adds a generated column for the attributes that the slow
 requests use.
 
-## Open points for review
+## Decisions
 
-1. Rule 2: the ETL converts the strings `'true'` and `'false'` for a
-   `boolean` field. Accept, or keep the strings?
-2. Rule 4: a membership operator for array fields in the list filter is
-   new API behavior. Add it with the relational list, or later?
-3. Rule 5: the database does not store defaults. Scoring then sees a
-   default that the API response and the list filter do not show. This
-   is today's behavior. Keep it, or make the ETL write the defaults?
+The maintainer reviewed the three open points on 2026-09-30:
+
+1. Rule 2, **accepted**: the ETL converts the strings `'true'` and
+   `'false'` of a `boolean` attribute to JSON booleans, as rule 2
+   describes.
+2. Rule 4, **open**: a membership operator for array fields in the list
+   filter. The maintainer wants more information before a decision. The
+   relational list keeps today's operators until then.
+3. Rule 5, **accepted**: the database does not store defaults. This is
+   today's behavior: scoring sees a default that the API response and
+   the list filter do not show. The ETL does not write defaults.

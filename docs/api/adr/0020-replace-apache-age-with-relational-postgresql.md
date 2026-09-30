@@ -90,7 +90,7 @@ execution plan (section 1) have the full text of each one.
 |---|---|
 | D11 | Tests convert with the code. Test databases come from templates. |
 | D12 | The duplicate Release groups are gone (#277). The schema has the unique indexes. The audit asserts zero duplicates before the ETL. |
-| D13 | The Cypher workbench is audited. If it stays, it becomes a read-only SQL console outside the LLM toolset. |
+| D13 | The Cypher workbench is audited. If it stays, it becomes a read-only SQL console outside the LLM toolset. After the audit (`docs/architecture/graph-workbench-audit.md`), the workbench is retired, with no replacement. |
 | D14 | Each table has a reconciliation query, and each endpoint has a list of expected differences. The replay comparison (D25) is the gate. |
 | D20 | The cutover load is TRUNCATE plus plain INSERT, in foreign key order, as `imbi_maintenance`, inside the write freeze. No upsert and no delta load. |
 | D24 | For the cutover and the releases after it, the release workflow prints the production DDL plan, and an operator applies it with `psql -1` after review. A later work package adds a Helm `pre-upgrade` hook Job. |
