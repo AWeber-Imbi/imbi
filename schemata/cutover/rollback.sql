@@ -10,7 +10,8 @@
 -- What it does, where the object exists:
 --
 -- 1. Stops unless legacy.embeddings is the table that pre-deploy.sql
---    moved (the OID in legacy.cutover_state).
+--    moved (the OID in legacy.cutover_state), and stops when
+--    legacy.embeddings exists without legacy.cutover_state.
 -- 2. Drops the new public.embeddings (a different OID, with
 --    organization_id), and only when legacy.embeddings exists. It never
 --    drops the legacy table. The drop is RESTRICT: it fails if another
@@ -24,7 +25,7 @@
 --    schema is RESTRICT: it fails if anything else is in it.
 --
 -- The relational tables stay. The AGE-era code does not read them, and
--- a new attempt starts again at runbook step 3.
+-- a new attempt starts again at runbook step 1.
 SET LOCAL lock_timeout = '10s';
 
 DO $$
@@ -40,9 +41,14 @@ BEGIN
     END IF;
 
     IF to_regclass('legacy.embeddings') IS NOT NULL THEN
-        IF v_have_state
-           AND 'legacy.embeddings'::regclass::oid <> v_state.embeddings_oid
-        THEN
+        IF NOT v_have_state THEN
+            RAISE EXCEPTION
+                  'rollback: legacy.embeddings exists but '
+                  'legacy.cutover_state is missing'
+                  USING HINT = 'Stop. pre-deploy.sql did not make this '
+                               'state; a person must look at it.';
+        END IF;
+        IF 'legacy.embeddings'::regclass::oid <> v_state.embeddings_oid THEN
             RAISE EXCEPTION
                   'rollback: legacy.embeddings is not the moved table'
                   USING HINT = 'Stop. A person must look at it.';

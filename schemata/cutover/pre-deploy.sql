@@ -10,9 +10,9 @@
 --    rollback (rollback.sql), the database is in that state again.
 -- 2. Records in legacy.cutover_state what rollback.sql needs: the OID and
 --    the row count of the legacy table, and the schema of the vector
---    extension. In production that schema is ag_catalog: the graph
---    initializer creates the extension with ag_catalog first in its
---    search_path. The deploy moves the extension to public, and
+--    extension. In an AGE-era database that schema is ag_catalog: the
+--    graph initializer creates the extension with ag_catalog first in
+--    its search_path. The deploy moves the extension to public, and
 --    rollback.sql moves it back.
 -- 3. Moves public.embedding_distance(agtype, ...) into the schema legacy.
 --    Nothing calls it, and deploy would propose to drop it. A move, not

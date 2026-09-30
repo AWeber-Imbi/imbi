@@ -1,6 +1,7 @@
 -- The state of a database where the AGE-era apps have run, for
--- root:cutover-check. The DDL copies the production dump of 2026-08-17
--- (meta:backups/imbi.sql):
+-- root:cutover-check. The DDL is the DDL that the AGE-era graph
+-- initializer (libraries/common/src/imbi/common/graph/initializer.py)
+-- makes, in the form that pg_dump prints:
 --
 -- * age and vector are both in the schema ag_catalog. The graph
 --   initializer runs CREATE EXTENSION with search_path = ag_catalog
@@ -12,8 +13,8 @@
 -- * pg_cron is in pg_catalog, with its schema cron. pg_cron can be
 --   created only in the database that cron.database_name names, so the
 --   fixture creates it only there. In other databases, pg_cron is
---   missing, and this is the one difference from production apart from
---   the size of the graph.
+--   missing, and this is the one difference from an AGE-era database
+--   apart from the size of the graph.
 DO $$
 BEGIN
     IF current_setting('cron.database_name', true) = current_database()
@@ -30,7 +31,7 @@ SELECT ag_catalog.create_graph('imbi');
 SELECT ag_catalog.create_vlabel('imbi', 'Organization');
 SELECT ag_catalog.create_vlabel('imbi', 'Project');
 SELECT * FROM ag_catalog.cypher('imbi', $$
-    CREATE (:Organization {id: 'o1', slug: 'aweber'}),
+    CREATE (:Organization {id: 'o1', slug: 'example'}),
            (:Project {id: 'p1', slug: 'imbi'}),
            (:Project {id: 'p2', slug: 'imbi-ui'})
 $$) AS (v ag_catalog.agtype);

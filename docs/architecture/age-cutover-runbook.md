@@ -2,10 +2,8 @@
 
 Status: draft for review. This runbook moves a production Imbi database
 from the Apache AGE graph to the relational schema in `schemata/`. It is
-WP0.8 of the implementation plan
-(`meta:docs/age-to-relational-implementation-plan.md`), with the changes
-of decisions D25, D27, and D28 of the execution plan
-(`meta:docs/age-to-relational-execution-plan.md`).
+work package WP0.8 of the migration plan, with the changes of its
+decisions D25, D27, and D28.
 
 This runbook is generic. The parts that depend on one deployment are
 named placeholders, such as "the app Deployments", "the UI Deployment",
@@ -24,17 +22,23 @@ production copy, and makes it fail after each of steps 5 to 12.
    step before it passes.
 2. A failed check stops the runbook. Use the decision tree below. Do
    not repair and continue unless the step says so.
-3. Before step 13, every failure has a rollback. After step 13, there is
-   no rollback. Only forward fixes.
+3. Before step 13, action 2, every failure has a rollback. From step
+   13, action 2, there is no rollback. Only forward fixes.
 4. Write the time and the result of each check in the cutover log (a
    copy of the table in "Cutover log"). Keep every output file.
 5. Nobody writes to production outside these steps.
+6. Never run `root:cutover-check` or `schemata/cutover/cutover-check.sh`
+   in the shell of a cutover. The script drops and creates a database
+   and login roles on the server that `PGHOST` names, and in the cutover
+   shell a loopback `PGHOST` is a connection to production. The script
+   refuses to run without `CUTOVER_CHECK_ALLOW=1` and when the login is
+   `imbi_operator`, but do not rely on that.
 
 ## Roles
 
 | Role | Who | Does |
 |---|---|---|
-| Operator | Gavin | Runs every command that changes production: the commands of the environment document, `psql`, pglifecycle, and the ETL. Makes the go and no-go decisions. |
+| Operator | The maintainer of the deployment | Runs every command that changes production: the commands of the environment document, `psql`, pglifecycle, and the ETL. Makes the go and no-go decisions. |
 | Checker | A second person, or an agent session with read-only access | Reads each output and confirms each check. Does not change production. |
 | Communicator | The operator, or a person that the operator names | Sends the announcement (step 1) and the end notice (step 13 or the rollback). |
 
@@ -48,7 +52,7 @@ step 1. A different value stops the cutover.
 |---|---|---|
 | pglifecycle commit | `4f6729cda43b1d8facdeed304e6adfeb4991d18a` (pinned by D27 in `schemata/scripts/install-pglifecycle.sh` and `schemata/README.md`) | `pglifecycle --version` does not show it; read the install script |
 | pglifecycle build | `schemata/scripts/install-pglifecycle.sh` (`cargo install --locked --git ... --rev <commit>`). Keep the binary file of the rehearsal and use that file at the cutover. The script gives the same binary each time on one platform, but another build command gives another binary (a `cargo build --release` of the same commit had a different SHA-256 on 2026-09-30) | the script prints the path |
-| pglifecycle binary SHA-256 | Linux x86_64: `10b8f2d2ff0381c9378653f4867b30908c11c51c2f124ab9e2e1fc50fdf58561` (the CI Schema job). macOS arm64: `e2ec81979d7e30a2df6c6e6c875988e794dc327a08a4cca67f642e3a44cb2f0e` (the build that `root:cutover-check` used on 2026-09-30). Record the value of the rehearsal workstation; the cutover uses the same file | `shasum -a 256 <binary>`; `root:cutover-check` prints it |
+| pglifecycle binary SHA-256 | Linux x86_64: `10b8f2d2ff0381c9378653f4867b30908c11c51c2f124ab9e2e1fc50fdf58561` (the CI Schema job). macOS arm64: `e2ec81979d7e30a2df6c6e6c875988e794dc327a08a4cca67f642e3a44cb2f0e` (the build that `root:cutover-check` used on 2026-09-30). Record the value of the rehearsal workstation; the cutover uses the same file | `shasum -a 256 "$PGLIFECYCLE"` |
 | New release image | the digest of the image that the app Deployments run after the cutover (the integration branch build, or a deployment image built on it) | the environment document |
 | Previous release image | the digest of the AGE-era image that the app Deployments run before step 1 | the environment document |
 | Monorepo commit | the commit of the new release image; the operator runs every `schemata/` file and CLI from a checkout of this commit | `git rev-parse HEAD` |
@@ -68,6 +72,8 @@ export PGLIFECYCLE=<path to the pinned pglifecycle binary>
 export CUTOVER=<an empty directory for the outputs of this cutover>
 export TENANT_SLUG=<slug of the tenant that the ETL creates>
 export TENANT_NAME=<name of that tenant>
+# Set in step 2, when the app Deployments stop (UTC, ISO 8601):
+# export FREEZE_START=2026-10-01T14:00:00Z
 ```
 
 ## The processes
@@ -127,7 +133,7 @@ A check fails.
 +-- Did step 13 action 2 start (the database fence is removed)?
     |
     +-- No:  ROLLBACK (below). The relational tables stay. A new attempt
-    |        starts again at step 3, after the cause is fixed.
+    |        starts again at step 1, after the cause is fixed.
     |
     +-- Yes: NO ROLLBACK. FORWARD FIX (below). The AGE-era image cannot
              see the writes since step 13.
@@ -171,16 +177,16 @@ ran `freeze.sql`).
 
 ## Prep: the operator role
 
-Production uses one login for the AGE-era app and for the operator
-(Gavin, 2026-09-30). Step 4 sets `AGE_LOGIN` to NOLOGIN, so the operator
-needs a second login before the cutover day. `freeze.sql` stops the
-runbook when the operator role and `AGE_LOGIN` are the same.
+Step 4 sets `AGE_LOGIN` to NOLOGIN. When a deployment uses one login
+for the AGE-era app and for the operator, the operator needs a second
+login before the cutover day. `freeze.sql` stops the runbook when the
+operator role and `AGE_LOGIN` are the same. The environment document
+says whether the deployment needs this step.
 
-- Who: Gavin, before the rehearsal of the cutover build (the rehearsal
-  uses the same role name on its copy).
-- How: connect as the cluster superuser (on CloudNativePG, `psql -U
-  postgres` through `kubectl exec` into the primary pod, local socket),
-  and run:
+- Who: the maintainer, before the rehearsal of the cutover build (the
+  rehearsal uses the same role name on its copy).
+- How: connect as the cluster superuser (the environment document says
+  how), and run:
 
   ```sql
   -- The password goes into the secret store and into ~/.pgpass of the
@@ -199,10 +205,10 @@ runbook when the operator role and `AGE_LOGIN` are the same.
   member of `AGE_LOGIN`.
 - No grants: a superuser needs none. Do not grant `imbi_operator` to any
   role, and do not use it in any app secret.
-- `AGE_LOGIN` is not a superuser (Gavin, 2026-09-30), so step 4 can set
-  it NOLOGIN once `imbi_operator` exists. The operator fills
+- `AGE_LOGIN` must not be a superuser: NOLOGIN on the cluster superuser
+  stops the tools of the database cluster. The operator fills
   `AGE_LOGIN` from the user of the AGE-era `POSTGRES_URL`. `freeze.sql`
-  still refuses a superuser, in case this changes.
+  refuses a superuser.
 - Check, as `imbi_operator`:
 
   ```sql
@@ -212,8 +218,8 @@ runbook when the operator role and `AGE_LOGIN` are the same.
   -- expect: f
   ```
 
-- After the cutover: drop the role in WP4.2, or set it NOLOGIN. Gavin
-  decides.
+- After the cutover: drop the role in WP4.2, or set it NOLOGIN. The
+  maintainer decides.
 
 ## Steps
 
@@ -240,7 +246,9 @@ estimate.
      `$CUTOVER/02-before.txt`.
   2. Start the maintenance server, and do the maintenance switch. Wait
      until every host gives the marker text.
-  3. Stop the app Deployments, and wait until their pods are gone.
+  3. Stop the app Deployments, and wait until their pods are gone. Then
+     record the time: `export FREEZE_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)`,
+     and write it in the log. Steps 7 and 9 use it.
   4. Suspend each CronJob that uses the Imbi image or the database, and
      stop each other client of the list of "Before the cutover day". An
      autoscaler on an app Deployment must be removed or set to zero, or
@@ -255,9 +263,11 @@ estimate.
 
 - Role: operator.
 - Action: run the audit (WP1.9) on the frozen graph, from the monorepo
-  checkout of the release commit:
+  checkout of the release commit. The audit reads the graph through the
+  source URL of step 7, with the operator login:
 
   ```bash
+  export IMBI_ETL_SOURCE_URL=postgresql://$PGUSER@$PGHOST:$PGPORT/$PGDATABASE
   uv run --frozen imbi-common etl audit <options of the WP1.9 CLI> \
     > "$CUTOVER/03-audit.json"
   ```
@@ -270,7 +280,8 @@ estimate.
 - Role: operator.
 - Action:
   1. Check again that the app Deployments have zero pods (step 2
-     check).
+     check). The checker holds no database session from now until step
+     4 passes: `freeze.sql` stops on any client that is not a superuser.
   2. Block the AGE-era login and end its sessions. Do not use `-1`:
 
      ```bash
@@ -288,7 +299,7 @@ estimate.
      client is a writer that the inventory missed. Find it, stop it, and
      run the script again.
   3. Take a physical backup of the frozen database (the backup method of
-     the cluster, for example a CloudNativePG `Backup`). This backup is
+     the cluster, as the environment document says). This backup is
      the last resort of the forward-fix branch. It is not the rollback.
      A restore of it has `AGE_LOGIN` as NOLOGIN: after a restore, run
      rollback step 3.
@@ -318,15 +329,23 @@ estimate.
   psql -At -c "SELECT (SELECT count(*) FROM legacy.embeddings),
                       embeddings_rows, vector_schema
                  FROM legacy.cutover_state"
-  # expect: two equal row counts, and ag_catalog (the production dump of
-  # 2026-08-17 has vector there)
+  # expect: two equal row counts, and the schema of the extension
+  # before this step (ag_catalog, where the AGE-era graph initializer
+  # creates it, because its search_path starts with ag_catalog)
   ```
 
 ### 6. Deploy the schema
 
 - Role: operator (the checker reads the plan).
 - Action:
-  1. Make the plan. Never use `--allow-drop` here:
+  1. Check the binary, then make the plan. The SHA-256 must be the value
+     in "Build record"; a different value stops the cutover. Never use
+     `--allow-drop` here:
+
+     ```bash
+     shasum -a 256 "$PGLIFECYCLE"
+     ```
+
 
      ```bash
      "$PGLIFECYCLE" deploy -o "$CUTOVER/cutover.sql" \
@@ -379,10 +398,16 @@ estimate.
 ### 7. ETL
 
 - Role: operator.
-- Action: load the graph into the relational tables (WP1.5), as
-  `imbi_maintenance`. The source is the same database: the source
-  connection uses the operator role, because `AGE_LOGIN` cannot log in
-  since step 4.
+- Action: load the graph into the relational tables (WP1.5). The ETL
+  uses two logins on the same production database:
+  - the source URL, with the operator login (`imbi_operator`), reads
+    the graph and `legacy.embeddings`, in one REPEATABLE READ READ ONLY
+    transaction. `AGE_LOGIN` cannot log in since step 4.
+  - the target URL, with `imbi_maintenance`, writes only the tables in
+    `public`.
+
+  `imbi_maintenance` gets no grant on the schemas `imbi`, `ag_catalog`,
+  or `legacy`: it never reads them. Step 9 uses the same two URLs.
 
   ```bash
   # The passwords come from ~/.pgpass, not from the command line.
@@ -390,11 +415,15 @@ estimate.
   export IMBI_ETL_TARGET_URL=postgresql://imbi_maintenance@$PGHOST:$PGPORT/$PGDATABASE
   uv run --frozen imbi-common etl run --graph imbi \
     --tenant-slug "$TENANT_SLUG" --tenant-name "$TENANT_NAME" \
+    --missing-timestamp "$FREEZE_START" \
     2>&1 | tee "$CUTOVER/07-etl.txt"
   ```
 
-  The options are those of the WP1.5 CLI on 2026-09-30 (agent D's
-  draft); the rehearsal confirms them. `TENANT_SLUG` and `TENANT_NAME`
+  The options are those of the WP1.5 CLI; the rehearsal confirms
+  them. `--missing-timestamp` is the value for the
+  graph rows that have no timestamp (Appendix E, E40): the start of the
+  freeze. The load includes the embeddings copy (step 8), in the same
+  target transaction. `TENANT_SLUG` and `TENANT_NAME`
   name the one tenant that the ETL creates (Appendix E, E2); use the
   same values in step 9. Never pass `--allow-pending` here: it lets
   tables without a mapping stay empty. The ETL truncates the tables
@@ -405,15 +434,27 @@ estimate.
 ### 8. Embeddings
 
 - Role: operator.
-- Action: the WP2.10 mapping copies `legacy.embeddings` into
-  `public.embeddings`, with the `organization_id` from the loaded
-  tables. It skips the rows of entities that were not loaded and the
-  `Component` and `Role` rows (Appendix E, E29 and E32).
+- Action: none of its own. The `embeddings` mapping (WP2.10) runs inside
+  `etl run` of step 7, in the same transaction as the other tables. It
+  copies `legacy.embeddings` into `public.embeddings`, with the
+  `organization_id` from the loaded tables. It skips the rows of
+  entities that were not loaded and the `Component` and `Role` rows
+  (Appendix E, E29 and E32).
 - Check: the count of `public.embeddings` equals the count of
   `legacy.embeddings` minus the skipped rows in the ETL output.
-- If the copy fails: `search-reindex` rebuilds the index after step 13
-  instead. Record this in the log. Search returns fewer results until
-  the rebuild ends.
+- If the load of step 7 fails in the `embeddings` mapping, its one
+  transaction rolls back, and no table is loaded. Then:
+  1. Run step 7 again with `--skip-mapping embeddings`. The load then
+     leaves `public.embeddings` empty. This depends on that option,
+     which the WP2.10 work adds to the ETL; until it exists, the only
+     way is the rollback.
+  2. Continue with step 9. The reconciliation would report the empty
+     `embeddings` table as a mismatch (its expected count is the legacy
+     rows), so it must accept the skipped mapping in the same way (the
+     same Wave 2 work, confirmed at the rehearsal). Every other table
+     must be clean. Write the skip in the log.
+  3. After step 13, run `search-reindex` once for each organization, in
+     its context. Search returns no results until it finishes.
 
 ### 9. Reconciliation
 
@@ -423,11 +464,14 @@ estimate.
   ```bash
   uv run --frozen imbi-common etl reconcile --graph imbi \
     --tenant-slug "$TENANT_SLUG" --tenant-name "$TENANT_NAME" \
+    --missing-timestamp "$FREEZE_START" \
+    --schemata schemata/tables/public \
     --output "$CUTOVER/09-reconcile.json"
   ```
 
 - Check: the exit code is 0, and the report is clean: each count equals
   the expected count, and the skipped rows equal the expected skips.
+  The report is written also when the exit code is 1.
 - Action, second part: probe row-level security on the loaded data.
   Production has one organization, so step 12 cannot request a real row
   of another organization through the API. The probe tests the policies
@@ -450,12 +494,16 @@ estimate.
 - Action:
   1. Record the Valkey keys by prefix, for the log:
      `valkey-cli --scan --pattern '*' | cut -d: -f1-2 | sort | uniq -c`.
-  2. Flush the Valkey database of Imbi (`FLUSHDB`). D30 keeps this
-     step at the cutover. The Valkey database holds only Imbi keys
-     (Gavin, 2026-09-30), so `FLUSHDB` is safe.
+  2. Remove the Imbi keys. D30 keeps this step at the cutover. If the
+     environment document says that the Valkey database holds only Imbi
+     keys, run `FLUSHDB`. If not, delete the keys of each prefix in
+     "Valkey keys" (for example `valkey-cli --scan --pattern
+     'imbi:*' | xargs valkey-cli unlink`), and nothing else.
   3. ClickHouse, Iggy, and S3 need nothing at the cutover: WP3.4 is
      after the cutover (D30).
-- Check: `DBSIZE` returns 0.
+- Check: after `FLUSHDB`, `DBSIZE` returns 0; after the deletes by
+  prefix, `valkey-cli --scan --pattern '<prefix>*'` returns nothing for
+  each prefix.
 
 ### 11. Record the write counters
 
@@ -578,8 +626,9 @@ From now on, the decision tree has no rollback.
     "Sync Commits & Tags" and "Sync Deployments" for the projects;
   - the scheduler occurrences that the window missed, as the scheduler
     reports them;
-  - search returns results (if step 8 failed, run `search-reindex` for
-    each organization now);
+  - search returns results (if step 8 used the fallback, run
+    `search-reindex` once for each organization now, and check that
+    search returns results when it finishes);
   - when the watch is quiet, run the deployment automation of the new
     release, so the cluster matches the deployment configuration again
     (and `IMBI_READ_ONLY` is not set anywhere).
@@ -624,8 +673,8 @@ says no-go at step 13.
      -c "ALTER ROLE imbi_admin RESET default_transaction_read_only"
    ```
 
-4. Flush the Imbi Valkey keys again (step 10): the new image can have
-   written cache values in step 12.
+4. Remove the Imbi Valkey keys again, as in step 10: the new image can
+   have written cache values in step 12.
 5. Put the previous release image (the AGE-era digest in "Build
    record") back on the API and UI Deployments, and take
    `IMBI_READ_ONLY` away. Start the API Deployment, then the UI and the
@@ -643,7 +692,7 @@ Check after the rollback:
   opens, and search returns results;
 - one write through the UI works.
 
-A new attempt starts again at step 3, after the cause is fixed. Step 6 then creates only the new embeddings table (and moves
+A new attempt starts again at step 1, after the cause is fixed. Step 6 then creates only the new embeddings table (and moves
 `vector` again), and the ETL truncates the other tables.
 
 ## Forward fix (after step 13)
@@ -669,8 +718,8 @@ reverse ETL (decision O1). So:
 
 ## Valkey keys
 
-The prefixes that the code of 2026-09-30 writes. `FLUSHDB` in step 10
-removes all of them.
+The prefixes that the code of 2026-09-30 writes. Step 10 removes the
+keys of all of them.
 
 | Prefix | Use |
 |---|---|
@@ -710,7 +759,7 @@ Copy this table for each attempt.
 on a new database:
 
 1. It builds the AGE-era fixture (`schemata/cutover/fixture/age-era.sql`):
-   the DDL of the production dump of 2026-08-17, with `vector` in
+   the DDL that the AGE-era graph initializer makes, with `vector` in
    `ag_catalog`, the legacy `public.embeddings` with rows and its three
    indexes, `public.embedding_distance`, a small graph, and the schema
    `scheduler`. It adds `pg_cron` when the database is the one that
@@ -748,8 +797,8 @@ rehearsal covers them. It also measures the duration of each step.
 
 ## Review
 
-Rhona reviewed this runbook on 2026-09-30 (session
-age-cutover-runbook-2026-09-30), from a summary. Adopted:
+An external review of this runbook on 2026-09-30, from a summary.
+Adopted:
 
 - `embedding_distance` moves to `legacy` and back, not a drop.
 - A database fence for step 12 (`default_transaction_read_only` on the
@@ -803,10 +852,8 @@ deployment automation is the lock.
 
 ## Questions for review
 
-Answered on 2026-09-30: production uses one login for the app and the
-operator (so "Prep: the operator role" is new), that login is not a
-superuser (so step 4 can set it NOLOGIN), Valkey holds only Imbi keys
-(so step 10 flushes it), the environment-specific commands go into an
+Answered on 2026-09-30 for the hosted deployment (its environment
+document has the details): the environment-specific commands go into an
 environment document outside this repository, the test environment has
 its own database and runs the runbook first, and a hand-applied
 maintenance server with a routing switch is acceptable.

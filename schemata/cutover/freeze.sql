@@ -11,15 +11,15 @@
 -- 1. Stops unless the AGE-era login is a separate role: it exists, it
 --    is not the current user, it is not a superuser, and no other login
 --    role is a member of it, directly or through another role (SET
---    ROLE works through either). If production uses one role for the app
---    and the operator, create a separate operator role before the
+--    ROLE works through either). If a deployment uses one role for the
+--    app and the operator, create a separate operator role before the
 --    cutover.
 -- 2. ALTER ROLE ... NOLOGIN, so no new session can start. NOLOGIN does
 --    not end a session that is already open.
 -- 3. Ends the sessions of that role in every database.
 -- 4. Stops when a session of that role remains, or when any other
 --    client that is not a superuser is connected to this database.
-SELECT set_config('cutover.age_login', :'age_login', false) AS age_login_set \gset
+SELECT set_config('cutover.age_login', :'age_login', false) AS s \gset
 
 DO $$
 DECLARE
