@@ -16,6 +16,11 @@ runs regardless of subclass overrides:
   into the next test that reuses the cached app.
 * Any :class:`starlette.testclient.TestClient` stored as an instance
   attribute is closed so its portal thread/transport is not leaked.
+
+Before the app is built, :func:`isolated_database` gives the test
+process its own graph and relational databases, copied from the
+templates that ``moon run root:services`` builds. Two test processes
+then do not share a database.
 """
 
 import collections.abc
@@ -34,6 +39,15 @@ from imbi.common import clickhouse, iggy
 from imbi.common.iggy import client as iggy_client
 from imbi.common.plugins.base import Plugin, PluginManifest
 from imbi.common.plugins.registry import RegistryEntry
+from imbi.common.testing import databases
+
+
+def isolated_database() -> databases.IsolatedDatabases:
+    """Create the databases of this test process, once for each process.
+
+    See :func:`imbi.common.testing.databases.isolated_database`.
+    """
+    return databases.isolated_database()
 
 
 @functools.cache
@@ -95,6 +109,7 @@ class SharedAppTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
+        isolated_database()
         cls.test_app = shared_app()
 
     def run(
@@ -112,6 +127,7 @@ class SharedAppAsyncTestCase(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
+        isolated_database()
         cls.test_app = shared_app()
 
     def run(
