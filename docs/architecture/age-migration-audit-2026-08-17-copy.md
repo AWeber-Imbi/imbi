@@ -10,9 +10,9 @@ name, and no node id.
 
 The audit did not run on the production copy. The agent session refused
 the restore of `meta:backups/imbi.sql` into `prodcopy_20260817`, because
-the backup holds personal data. Nothing was restored. Every count in
-this document is "not measured" until a person with permission runs the
-steps below and fills in the counts.
+the backup holds personal data. Nothing was restored. The counts move to
+gate G2: Gavin decides which copy the audit runs on. Every count in this
+document is "not measured" until then.
 
 The audit code ran on a synthetic graph and on the test database (the
 tests in `libraries/common/tests/test_etl_audit.py`). It did not run on
@@ -50,7 +50,7 @@ Gavin).
 
 | Kind | Rules | Source |
 |---|---|---|
-| Appendix E | 46 queries (some rules have one query for each label or part) | `db/etl/audit/appendix_e.py` |
+| Appendix E | 54 queries (some rules have one query for each label or part) | `db/etl/audit/appendix_e.py` |
 | Schema | 1,447 rules for 68 tables: the type, NOT NULL, JSON text, domain, CHECK, UNIQUE, and foreign key rules | `db/etl/audit/checks.py`, from `schemata/` through `tables.py` |
 
 For each table, a source query gives the rows that the ETL would insert
@@ -88,8 +88,9 @@ write that needs Gavin's approval (WP3.0, step 3).
 | Rule | Count | Repair path |
 |---|---|---|
 | E1 more than one Organization | not measured | API: `DELETE /organizations/{slug}` (`endpoints/organizations.py:643`), UI: yes. The delete does not cascade: the children of the organization stay as orphans. Delete each child first through its own endpoint. A merge of two organizations needs a direct write. |
-| E3 duplicate slugs in one organization (schema UNIQUE rules on `(organization_id, slug)`) | not measured | For environments, project types, link definitions, tags, and document templates, the API addresses the row by slug, so a PATCH writes to both duplicates and a DELETE removes both. Direct write by id: `SET x.slug`. Webhooks, AI providers, AI models, and MCP servers: API by id. Scoring policies and blueprints: no rename (DELETE plus POST). The graph has unique slug indexes for Team, LinkDefinition, MCPServer, Role, ScoringPolicy, Integration, Webhook, and ServiceAccount; if they exist in production, these labels have no duplicates. |
-| E4 slugs that the `slug` domain or a slug CHECK rejects | not measured | Projects: API (`PATCH /organizations/{org}/projects/{id}`, `/slug`), UI: yes. A slug change sends a lifecycle event, and plugins can rename the remote repository. Organizations: API and UI. Webhooks: API and UI; a PATCH must replace `/slug` in the same patch. Integrations: no API path (a slug change is ignored); DELETE plus POST loses the connections and edges, so use a direct write. Service accounts: no API path (400); direct write. Roles: the PATCH makes a copy of the node (a defect); direct write, and update `MEMBER_OF.role`. |
+| E3 duplicate slugs in one organization (schema UNIQUE rules on `(organization_id, slug)`) | not measured | Webhooks, AI providers, AI models, and MCP servers: API by id. Link definitions and teams: the API writes by slug too, but the graph has unique slug indexes for them. Scoring policies and blueprints: no rename (DELETE plus POST). The graph has unique slug indexes for Team, LinkDefinition, MCPServer, Role, ScoringPolicy, Integration, Webhook, and ServiceAccount; if they exist in production, these labels have no duplicates. |
+| E39 duplicates that the API cannot split: environments, project types, tags, document templates | not measured | No API path: the API addresses these rows by slug, so a PATCH writes to both duplicates and a DELETE removes both. WP3.0 repairs them with a direct write by id (`SET x.slug`), each with Gavin's approval. |
+| E38.release_tag Releases whose tag is `''` | not measured | API: `PATCH` of the release (`endpoints/releases.py:1210`) with a new `/tag`. The PATCH does not normalize `''`, so check the value that it writes. || E4 slugs that the `slug` domain or a slug CHECK rejects | not measured | Projects: API (`PATCH /organizations/{org}/projects/{id}`, `/slug`), UI: yes. A slug change sends a lifecycle event, and plugins can rename the remote repository. Organizations: API and UI. Webhooks: API and UI; a PATCH must replace `/slug` in the same patch. Integrations: no API path (a slug change is ignored); DELETE plus POST loses the connections and edges, so use a direct write. Service accounts: no API path (400); direct write. Roles: the PATCH makes a copy of the node (a defect); direct write, and update `MEMBER_OF.role`. |
 | E5 emails that differ only in case | not measured | No API path to change an email or to merge users. `DELETE /users/{email}` removes one user and leaves its identity connections and conversations. A merge needs a direct write. |
 | E6 users with `is_service_account` | not measured | API: `PATCH /users/{email}` with `replace /is_service_account false`. UI: no (the list hides these users). O6 decides first. |
 | E8 projects with no `OWNED_BY` team | not measured | No API path. Every project route matches through `OWNED_BY`, so such a project returns 404. Direct write: create the `OWNED_BY` edge. Then the normal team change works. |
@@ -107,33 +108,31 @@ write that needs Gavin's approval (WP3.0, step 3).
 
 ## Findings for the plan
 
-These come from the code that writes each label. The counts will show
-how many rows each one has.
+These come from the code that writes each label. Gavin decided them on
+2026-09-30; plan Appendix E records the decisions.
 
-1. The seed code MERGEs the default `Organization` and the system
-   `Role` nodes by slug and sets no `id` (`auth/seed.py:955-966`,
-   `:1031-1036`). The setup admin `User` has no `id` until its first
-   sign-in (`entrypoint.py:437-441`). The schema rules
-   `organizations.id`, `roles.id`, and `users.id` NOT NULL count these
-   nodes as blocking. Appendix E has no rule for them. Proposal: the ETL
-   makes an id from the graph id, as for E22.
-2. E10 says that the timestamp wins. The internal service seed sets
-   `revoked = false` on a credential that it points again, and keeps
-   `revoked_at` (`auth/internal_services.py:283`, `:373`). The API
-   treats such a credential as live, but the rule loads it as revoked.
-3. E30 does not list these JSON text properties: `Project.links` and
-   `identifiers`; the `Integration` `options`, `encrypted_credentials`,
-   `capabilities`, `links`, and `identifiers`; `IdentityConnection.metadata`.
-   The schema `json_text` rules count them.
-4. The four `set_status()` writers write `''` for each empty value:
-   `*_by`, `*_error`, and for promotions also `tag`, `committish`,
-   `run_id`, and `run_url`. E30 names only the promotion environment
-   slugs. `Release.tag` can also be `''`, which the `tag_not_empty` check
-   rejects.
-5. A delete of a project, project type, user, or document leaves
-   `Document` and `CommentThread` nodes with no attachment. Appendix E
-   has no rule for them. The schema NOT NULL rules on `organization_id`
-   and `document_id` count them as blocking.
+1. Nodes with no `id` (E36, new): the seeded `Organization` and system
+   `Role`s, the setup admin `User` until its first sign-in, and every
+   `WebhookRule`, `AnalysisResult`, and `PluginRegistration`. The ETL
+   derives the id from the graph id. Not blocking. The audit gives such
+   a node the stand-in id `gid:<graph id>`, so the rows that refer to it
+   still join.
+2. E10 is corrected: the boolean wins, because the AGE-era code reads
+   it. A seeded internal-service credential can have `revoked = false`
+   and a kept `revoked_at` (`auth/internal_services.py:283`, `:373`);
+   "timestamp wins" would load it as revoked.
+3. Orphan documents and comment threads (E37, new): a delete of a
+   project, project type, user, or document leaves them. An orphan
+   document gets the one organization and no target. An orphan comment
+   thread is skipped, with its comments.
+4. JSON text and `''` that E30 does not list (E38, new):
+   `Project.links` and `identifiers`; the `Integration` `options`,
+   `encrypted_credentials`, `capabilities`, `links`, and `identifiers`;
+   `IdentityConnection.metadata`; the `AIModel` cost values as numeric
+   text; and the `''` values of the four `set_status()` writers. The ETL
+   parses them and writes NULL for `''`. `Release.tag = ''` is blocking.
+5. E3 duplicates that the API cannot split (E39, new): see the repair
+   table above.
 6. The graph keeps the last SBOM values of a component, not the first,
    so `component_overrides` cannot come from the graph (README
    Differences 6).
@@ -142,10 +141,8 @@ how many rows each one has.
 8. This code still embeds `Component` and `Role` (`models.py:1113`,
    `:1120`; `Role` is a `Node`). D23 says that search no longer embeds
    them; WP2.10 must change the embedded set.
-9. `WebhookRule`, `AnalysisResult`, and `PluginRegistration` have no
-   `id` property. `Integration`, `Webhook`, `ScoringPolicy`,
-   `PluginRegistration`, and `AwsAccount` have no `created_at`, so the
-   column default applies.
+9. `Integration`, `Webhook`, `ScoringPolicy`, `PluginRegistration`, and
+   `AwsAccount` have no `created_at`, so the column default applies.
 10. The graph unique index of `IdentityConnection` is on
     `(plugin_id, user_id)`, but the writer uses `integration_id`
     (`graph/schemata.toml:252-254`, `identity/repository.py:120`). The

@@ -46,8 +46,7 @@ DOCUMENT_ORG = (
     " WHEN pt.gid IS NOT NULL THEN (SELECT o.p->'id' FROM {BELONGS_TO} b"
     ' JOIN {Organization} o ON o.gid = b.t WHERE b.s = pt.gid'
     " ORDER BY o.p->>'id' LIMIT 1)"
-    f' WHEN u.gid IS NOT NULL THEN {ONE_ORG}'
-    ' END AS organization_id'
+    f' ELSE {ONE_ORG} END AS organization_id'
     ' FROM {Document} d LEFT JOIN {ATTACHED_TO} a ON a.s = d.gid'
     ' LEFT JOIN {Project} pr ON pr.gid = a.t'
     ' LEFT JOIN {ProjectType} pt ON pt.gid = a.t'
@@ -67,6 +66,21 @@ def _decoded(value: str) -> str:
         f"(CASE WHEN jsonb_typeof({value}) = 'string'"
         f" AND pg_input_is_valid({value} #>> '{{{{}}}}', 'jsonb')"
         f" THEN ({value} #>> '{{{{}}}}')::jsonb ELSE {value} END)"
+    )
+
+
+def state_at(alias: str, flag: str, stamp: str) -> str:
+    """E10: the boolean *flag* wins, because the AGE-era code reads it.
+
+    A false or missing flag gives NULL. A true flag keeps *stamp*, or
+    uses ``updated_at``, else ``created_at``.
+
+    """
+    return (
+        f"CASE WHEN {alias}.p->'{flag}' = 'true'::jsonb THEN coalesce("
+        f"nullif({alias}.p->'{stamp}', 'null'::jsonb),"
+        f" nullif({alias}.p->'updated_at', 'null'::jsonb),"
+        f" {alias}.p->'created_at') END AS {stamp}"
     )
 
 
@@ -148,11 +162,7 @@ DELIVERY = [
         " v.p->'links' AS links, v.p->'identifiers' AS identifiers,"
         f' v.p - ARRAY[{_PROJECT_KEYS}]::text[] AS attributes,'
         " v.p->'score' AS score, v.p->'previous_score' AS previous_score,"
-        " CASE WHEN v.p->'archived_at' IS NOT NULL"
-        " AND v.p->'archived_at' <> 'null'::jsonb THEN v.p->'archived_at'"
-        " WHEN v.p->'archived' = 'true'::jsonb"
-        " THEN coalesce(v.p->'updated_at', v.p->'created_at')"
-        ' END AS archived_at,'
+        f' {state_at("v", "archived", "archived_at")},'
         " v.p->'drift_verdicts_at' AS drift_verdicts_at,"
         " v.p->'created_at' AS created_at, v.p->'updated_at' AS updated_at,"
         " v.p->>'id' AS _src"
@@ -515,10 +525,7 @@ CONTENT = [
         " t.p->'anchor_suffix' AS anchor_suffix,"
         " t.p->'anchor_start' AS anchor_start,"
         " t.p->'resolved_by' AS resolved_by,"
-        " CASE WHEN nullif(t.p->'resolved_at', 'null'::jsonb) IS NOT NULL"
-        " THEN t.p->'resolved_at' WHEN t.p->'resolved' = 'true'::jsonb"
-        " THEN coalesce(nullif(t.p->'updated_at', 'null'::jsonb),"
-        " t.p->'created_at') END AS resolved_at,"
+        f' {state_at("t", "resolved", "resolved_at")},'
         " t.p->'created_by' AS created_by, t.p->'created_at' AS created_at,"
         " t.p->'updated_at' AS updated_at, t.p->>'id' AS _src"
         ' FROM {CommentThread} t LEFT JOIN {ON_DOCUMENT} e ON e.s = t.gid'
@@ -875,14 +882,7 @@ def _attributes(keys: str) -> str:
 
 
 def _revoked_at() -> str:
-    """E10: the timestamp wins; a revoked node with no timestamp gets
-    ``updated_at``, else ``created_at``."""
-    return (
-        "CASE WHEN nullif(v.p->'revoked_at', 'null'::jsonb) IS NOT NULL"
-        " THEN v.p->'revoked_at' WHEN v.p->'revoked' = 'true'::jsonb"
-        " THEN coalesce(nullif(v.p->'updated_at', 'null'::jsonb),"
-        " v.p->'created_at') END AS revoked_at"
-    )
+    return state_at('v', 'revoked', 'revoked_at')
 
 
 _NODE = (

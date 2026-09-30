@@ -133,7 +133,7 @@ _EMPTY_TEXT = (
     " 'promote_from_environment']) k WHERE v.p->k = to_jsonb(''::text)"
 )
 
-#: JSON text that Appendix E, E30, does not list (WP1.9 research).
+#: E38: JSON text that E30 does not list.
 _JSON_TEXT_ADDED = (
     "SELECT 'Project.' || k || '/' || (v.p->>'id') AS id FROM {Project} v"
     " CROSS JOIN unnest(ARRAY['links', 'identifiers']) k"
@@ -147,7 +147,7 @@ _JSON_TEXT_ADDED = (
     " WHERE jsonb_typeof(v.p->'metadata') = 'string'"
 )
 
-#: Numbers that the graph keeps as text (a Decimal dumped as a string).
+#: E38: numbers that the graph keeps as text (a Decimal as a string).
 _NUMERIC_TEXT = (
     "SELECT 'AIModel.' || k || '/' || (v.p->>'id') AS id FROM {AIModel} v"
     " CROSS JOIN unnest(ARRAY['input_cost_per_million',"
@@ -155,8 +155,8 @@ _NUMERIC_TEXT = (
     " WHERE jsonb_typeof(v.p->k) = 'string'"
 )
 
-#: '' values that Appendix E, E30, does not list: the set_status()
-#: writers of the sync and promotion state, and Release.tag.
+#: E38: the '' values of the set_status() writers of the sync and
+#: promotion state.
 _EMPTY_TEXT_ADDED = (
     "SELECT 'Project.' || k || '/' || (v.p->>'id') AS id FROM {Project} v"
     " CROSS JOIN unnest(ARRAY['commit_sync_by', 'commit_sync_error',"
@@ -164,9 +164,21 @@ _EMPTY_TEXT_ADDED = (
     " 'pr_sync_error', 'promote_by', 'promote_error', 'promote_tag',"
     " 'promote_committish', 'promote_run_id', 'promote_run_url']) k"
     " WHERE v.p->k = to_jsonb(''::text)"
-    " UNION ALL SELECT 'Release.tag/' || (v.p->>'id') FROM {Release} v"
-    " WHERE v.p->'tag' = to_jsonb(''::text)"
 )
+
+#: The labels whose ids E36 derives.
+_NO_ID_LABELS = (
+    'Organization',
+    'Role',
+    'User',
+    'WebhookRule',
+    'AnalysisResult',
+    'PluginRegistration',
+)
+
+#: E39: the labels whose API writes by slug, so it cannot split E3
+#: duplicates. Each has a BELONGS_TO edge to its organization.
+_SLUG_WRITE_LABELS = ('Environment', 'ProjectType', 'Tag', 'DocumentTemplate')
 
 RULES: list[rules.Rule] = [
     _rule(
@@ -581,7 +593,39 @@ RULES: list[rules.Rule] = [
         'each WP of the label',
     ),
     _rule(
-        'E30.json_text_added',
+        'E36',
+        'Nodes with no id property: the ETL derives the id from the graph id',
+        'changed',
+        ' UNION ALL '.join(
+            f"SELECT '{label}/' || v.gid::text AS id FROM {{{label}}} v"
+            f" WHERE v.p->>'id' LIKE '{rules.DERIVED_ID_PREFIX}%'"
+            for label in _NO_ID_LABELS
+        ),
+        'WP2.1, WP2.3, WP2.7, WP2.8',
+    ),
+    _rule(
+        'E37.Document',
+        'Documents with no ATTACHED_TO target: the one organization, no'
+        ' target',
+        'changed',
+        f'SELECT {_ID} AS id FROM {{Document}} v WHERE NOT EXISTS'
+        ' (SELECT 1 FROM {ATTACHED_TO} a WHERE a.s = v.gid AND ('
+        'EXISTS (SELECT 1 FROM {Project} x WHERE x.gid = a.t)'
+        ' OR EXISTS (SELECT 1 FROM {ProjectType} x WHERE x.gid = a.t)'
+        ' OR EXISTS (SELECT 1 FROM {User} x WHERE x.gid = a.t)))',
+        'WP2.6',
+    ),
+    _rule(
+        'E37.CommentThread',
+        'Comment threads with no document: skipped, with their comments',
+        'skipped',
+        f'SELECT {_ID} AS id FROM {{CommentThread}} v WHERE NOT EXISTS'
+        ' (SELECT 1 FROM {ON_DOCUMENT} e JOIN {Document} d ON d.gid = e.t'
+        ' WHERE e.s = v.gid)',
+        'WP2.6',
+    ),
+    _rule(
+        'E38.json_text',
         'JSON text that E30 does not list: Project links and identifiers,'
         ' five Integration maps, IdentityConnection.metadata',
         'changed',
@@ -589,19 +633,41 @@ RULES: list[rules.Rule] = [
         'WP2.2, WP2.3, WP2.7',
     ),
     _rule(
-        'E30.numeric_text',
+        'E38.numeric_text',
         'AIModel cost and spend cap values that the graph keeps as text',
         'changed',
         _NUMERIC_TEXT,
         'WP2.8',
     ),
     _rule(
-        'E30.empty_added',
-        "'' values that E30 does not list: sync and promotion state,"
-        ' Release.tag',
+        'E38.empty',
+        "'' values of the sync and promotion state; the ETL writes NULL",
         'changed',
         _EMPTY_TEXT_ADDED,
-        'WP2.2, WP2.4',
+        'WP2.2',
+    ),
+    _rule(
+        'E38.release_tag',
+        "Releases whose tag is ''",
+        'blocking',
+        f'SELECT {_ID} AS id FROM {{Release}} v'
+        " WHERE v.p->'tag' = to_jsonb(''::text)",
+        'WP3.0, WP2.4',
+    ),
+    _rule(
+        'E39',
+        'Duplicate slugs in one organization that the API cannot split'
+        ' (environments, project types, tags, templates)',
+        'blocking',
+        ' UNION ALL '.join(
+            'SELECT id FROM (SELECT'
+            f" '{label}/' || coalesce(v.p->>'id', v.gid::text) AS id,"
+            " count(*) OVER (PARTITION BY o.gid, v.p->>'slug') AS n"
+            f' FROM {{{label}}} v JOIN {{BELONGS_TO}} b ON b.s = v.gid'
+            ' JOIN {Organization} o ON o.gid = b.t) x WHERE n > 1'
+            for label in _SLUG_WRITE_LABELS
+        ),
+        'WP3.0',
     ),
     _rule(
         'E31',
@@ -648,6 +714,17 @@ RULES: list[rules.Rule] = [
 #: Schema rules whose rows an Appendix E rule already decides. The
 #: schema rule then takes the fate of that rule.
 COVERED: dict[str, str] = {
+    'schema:environments.unique.environments_organization_id_slug_key': 'E39',
+    'schema:project_types.unique.project_types_organization_id_slug_key': (
+        'E39'
+    ),
+    'schema:tags.unique.tags_organization_id_slug_key': 'E39',
+    'schema:document_templates.unique.'
+    'document_templates_organization_id_slug_key': 'E39',
+    'schema:releases.check.tag_not_empty': 'E38.release_tag',
+    'schema:comment_threads.document_id.not_null': 'E37.CommentThread',
+    'schema:comment_threads.organization_id.not_null': 'E37.CommentThread',
+    'schema:comments.organization_id.not_null': 'E37.CommentThread',
     'schema:users.unique.users_email_idx': 'E5',
     'schema:identity_connections.unique.'
     'identity_connections_integration_id_subject_key': 'E11',

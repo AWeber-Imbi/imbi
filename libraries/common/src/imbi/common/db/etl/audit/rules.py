@@ -10,7 +10,8 @@ table yet (AGE creates a label table at the first write):
 
 - ``{Project}``, a label, is
   ``(SELECT gid, p FROM <graph>."Project")``: ``gid`` is the graph id as
-  ``bigint`` and ``p`` is the property map as ``jsonb``.
+  ``bigint`` and ``p`` is the property map as ``jsonb``. A vertex with
+  no ``id`` property gets ``gid:<graph id>`` in ``p`` (E36).
 - ``{OWNED_BY}``, an edge type (upper case), is
   ``(SELECT gid, s, t, p FROM <graph>."OWNED_BY")``: ``s`` and ``t`` are
   the graph ids of the start and the end vertex.
@@ -27,6 +28,11 @@ import typing
 from psycopg import sql
 
 Fate = typing.Literal['blocking', 'skipped', 'changed']
+
+#: A vertex with no ``id`` property gets ``gid:<graph id>`` as its id,
+#: in place of the id that the ETL derives from the graph id (E36). So
+#: the rows that refer to it still join, and E36 counts it.
+DERIVED_ID_PREFIX = 'gid:'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -82,9 +88,11 @@ def _relation(graph: str, name: str, exists: bool) -> sql.Composable:
             '(SELECT NULL::bigint AS gid, NULL::jsonb AS p WHERE false)'
         )
     return sql.SQL(
-        '(SELECT id::text::bigint AS gid,'
-        ' properties::text::jsonb AS p FROM {})'
-    ).format(sql.Identifier(graph, name))
+        "(SELECT gid, CASE WHEN nullif(p->'id', 'null') IS NULL"
+        " THEN p || jsonb_build_object('id', {} || gid::text) ELSE p END"
+        ' AS p FROM (SELECT id::text::bigint AS gid,'
+        ' properties::text::jsonb AS p FROM {}) AS raw)'
+    ).format(sql.Literal(DERIVED_ID_PREFIX), sql.Identifier(graph, name))
 
 
 def expand(

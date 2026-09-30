@@ -46,6 +46,14 @@ CREATE (r2:Release {id: 'r2', title: 'Two', committish: 'abc1235', tag: '',
         created_by: 'someone', links: '[]',
         created_at: '2026-01-01T00:00:00+00:00'})
 CREATE (:OAuthIdentity {id: 'oauth1'})
+CREATE (:Role {slug: 'admin', name: 'Admin'})
+CREATE (g1:Tag {id: 'tag1', slug: 'dup', name: 'Dup'})
+CREATE (g2:Tag {id: 'tag2', slug: 'dup', name: 'Dup 2'})
+CREATE (g1)-[:BELONGS_TO]->(o)
+CREATE (g2)-[:BELONGS_TO]->(o)
+CREATE (:CommentThread {id: 'thread1', kind: 'page', created_by: 'x'})
+CREATE (k:APIKey {id: 'key1', revoked: false,
+        revoked_at: '2026-01-01T00:00:00+00:00'})
 RETURN 1
 """
 
@@ -242,8 +250,14 @@ class AuditTestCase(unittest.TestCase):
             'E8': 1,
             'E13': 1,
             'E15.Release': 1,
-            'E30.json_text_added': 2,
-            'E30.empty_added': 1,
+            'E36': 1,
+            'E37.CommentThread': 1,
+            'E38.json_text': 2,
+            'E38.release_tag': 1,
+            'E39': 2,
+            'E10.APIKey': 1,
+            'schema:roles.id.not_null': 0,
+            'schema:tags.unique.tags_organization_id_slug_key': 2,
             'schema:projects.slug.domain': 1,
             'schema:projects.created_at.type': 1,
             'schema:teams.unique.teams_organization_id_slug_key': 2,
@@ -258,6 +272,12 @@ class AuditTestCase(unittest.TestCase):
         result = self.result('schema:releases.project_id.not_null')
         self.assertEqual(result.rule.covered_by, 'E15.Release')
         self.assertEqual(result.rule.fate, 'skipped')
+
+    def test_e39_decides_the_tag_duplicates(self) -> None:
+        rule = self.result(
+            'schema:tags.unique.tags_organization_id_slug_key'
+        ).rule
+        self.assertEqual((rule.covered_by, rule.fate), ('E39', 'blocking'))
 
     def test_id_limit(self) -> None:
         result = self.result(
