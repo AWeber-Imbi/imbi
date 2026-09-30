@@ -247,27 +247,42 @@ def created_at(
     return context.missing_timestamp
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class Attributes:
+    """The ``attributes`` of a row, and the keys that the ETL converted."""
+
+    values: dict[str, typing.Any]
+    #: The keys whose ``'true'`` or ``'false'`` became a boolean (D32).
+    converted: tuple[str, ...]
+
+
 def attributes(
     properties: Properties,
     columns: collections.abc.Set[str],
     booleans: collections.abc.Set[str] = frozenset(),
-) -> dict[str, typing.Any]:
+) -> Attributes:
     """Return the blueprint attributes of a vertex.
 
-    Each property that is not in *columns* is an attribute. For a key in
-    *booleans* (a ``boolean`` field of a blueprint), the strings
-    ``'true'`` and ``'false'`` become JSON booleans (D32). Other values
-    stay as they are.
+    ``docs/architecture/blueprint-attributes-jsonb.md`` has the rules.
+    Each property that is not in *columns* is an attribute, also a key
+    that no blueprint names now (rule 6: it stays until a person removes
+    it). A key whose value is null is not loaded (rule 1). For a key in
+    *booleans* (a ``boolean`` field of a blueprint), only the exact
+    strings ``'true'`` and ``'false'`` become JSON booleans (rule 2,
+    D32); the mapping logs each conversion. Other values stay as they
+    are.
 
     """
-    result: dict[str, typing.Any] = {}
+    values: dict[str, typing.Any] = {}
+    converted: list[str] = []
     for key, value in sorted(properties.items()):
-        if key in columns:
+        if key in columns or value is None:
             continue
         if key in booleans and value in ('true', 'false'):
             value = value == 'true'
-        result[key] = value
-    return result
+            converted.append(key)
+        values[key] = value
+    return Attributes(values, tuple(converted))
 
 
 async def boolean_attributes(

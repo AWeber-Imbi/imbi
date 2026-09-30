@@ -4,8 +4,9 @@ Every organization belongs to the one tenant (Appendix E, E2). A vertex
 with no ``id`` (the seeded one) gets an id derived from its graph id
 (E36), and one with no ``created_at`` gets the E40 fallback. The graph
 keeps blueprint values as extra vertex properties; each property that
-is not a column goes into ``attributes``, with the ``'true'`` and
-``'false'`` strings of a boolean blueprint field as booleans (D32).
+is not a column goes into ``attributes`` (a null value does not), with
+the ``'true'`` and ``'false'`` strings of a boolean blueprint field as
+booleans (D32, logged as a change).
 ``tag_formats`` and ``previous_slugs`` can be JSON text (E30), so they
 are decoded. A missing ``document_analytics_identities`` gets the model
 default.
@@ -66,6 +67,13 @@ class _Organizations:
             context.source, context.graph, 'Organization'
         ):
             org = vertex.properties
+            attributes = graph.attributes(org, PROPERTIES, booleans)
+            for key in attributes.converted:
+                yield mapping.Change(
+                    'D32',
+                    vertex.id,
+                    f'attribute {key}: {org[key]!r} to boolean',
+                )
             yield {
                 'id': vertex.id,
                 'tenant_id': tenant_id,
@@ -81,7 +89,7 @@ class _Organizations:
                 'document_analytics_identities': (
                     org.get('document_analytics_identities') or 'authors_only'
                 ),
-                'attributes': graph.attributes(org, PROPERTIES, booleans),
+                'attributes': attributes.values,
                 'created_at': created[vertex.id],
                 'updated_at': graph.timestamp(org.get('updated_at')),
             }

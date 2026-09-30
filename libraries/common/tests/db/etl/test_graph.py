@@ -87,11 +87,22 @@ class VertexHelperTestCase(unittest.TestCase):
                     'off': 'false',
                     'text': 'true',
                     'n': 1,
+                    'upper': 'TRUE',
+                    'gone': None,
                 },
                 frozenset({'id'}),
-                frozenset({'on', 'off', 'n'}),
+                frozenset({'on', 'off', 'n', 'upper'}),
             ),
-            {'n': 1, 'off': False, 'on': True, 'text': 'true'},
+            graph.Attributes(
+                {
+                    'n': 1,
+                    'off': False,
+                    'on': True,
+                    'text': 'true',
+                    'upper': 'TRUE',
+                },
+                ('off', 'on'),
+            ),
         )
 
 

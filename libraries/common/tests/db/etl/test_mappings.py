@@ -280,3 +280,14 @@ class MappingsTestCase(unittest.IsolatedAsyncioTestCase):
             collected.rows[0]['attributes'],
             {'flag': True, 'label': 'true', 'maybe': False, 'other': 'true'},
         )
+        self.assertEqual(
+            collected.changes,
+            [
+                mapping.Change(
+                    'D32', 'o1', "attribute flag: 'true' to boolean"
+                ),
+                mapping.Change(
+                    'D32', 'o1', "attribute maybe: 'false' to boolean"
+                ),
+            ],
+        )
