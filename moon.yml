@@ -151,9 +151,16 @@ tasks:
       psql_admin() {
           psql -X -q -v ON_ERROR_STOP=1 -d postgres "$@"
       }
-      # Also drop the copies that a killed test process left, when no
-      # session uses them.
+      # Do not run this task while tests run on the same stack: it drops
+      # and builds the templates and imbi_test again, so a test process
+      # that copies a template or uses imbi_test at that time fails.
+      # (Tests on another stack, with another COMPOSE_PROJECT_NAME, are
+      # safe.) Also drop the copies that a killed test process left, when
+      # no session uses them. The exclusive advisory lock waits for each
+      # process that is creating its copies (CLEANUP_LOCK in
+      # imbi/common/testing/databases.py) and is held until psql exits.
       psql_admin <<-'SQL'
+      SELECT pg_advisory_lock(7351041) \gset
       SELECT format('DROP DATABASE %I', datname)
         FROM pg_database AS d
        WHERE (datname LIKE 'imbi\_test\_%' OR datname LIKE 'imbi\_graph\_test\_%')
