@@ -181,9 +181,10 @@ runbook when the operator role and `AGE_LOGIN` are the same.
   member of `AGE_LOGIN`.
 - No grants: a superuser needs none. Do not grant `imbi_operator` to any
   role, and do not use it in any app secret.
-- `AGE_LOGIN` must not be a superuser. If it is, stop and decide first:
-  NOLOGIN on the cluster superuser stops the tools of the database
-  cluster. `freeze.sql` refuses a superuser.
+- `AGE_LOGIN` is not a superuser (Gavin, 2026-09-30), so step 4 can set
+  it NOLOGIN once `imbi_operator` exists. The operator fills
+  `AGE_LOGIN` from the user of the AGE-era `POSTGRES_URL`. `freeze.sql`
+  still refuses a superuser, in case this changes.
 - Check, as `imbi_operator`:
 
   ```sql
@@ -779,21 +780,20 @@ Not adopted, with the reason:
 ## Questions for review
 
 Answered on 2026-09-30: production uses one login for the app and the
-operator (so "Prep: the operator role" is new), and Valkey holds only
-Imbi keys (so step 10 flushes it).
+operator (so "Prep: the operator role" is new), that login is not a
+superuser (so step 4 can set it NOLOGIN), and Valkey holds only Imbi
+keys (so step 10 flushes it).
 
-1. `AGE_LOGIN`: what is its name, and is it a superuser? If it is a
-   superuser, step 4 cannot set it NOLOGIN (see "Prep: the operator
-   role"). If it is named `imbi_app` or `imbi_admin`, the relational
-   roles cannot be created as written.
-2. Production layout: one `all` release, or one release per service?
-   Step 12 needs `api` and `ui` releases without the workers.
-3. The maintenance page: which server, and does the Ingress belong to
-   the chart or to the cluster setup?
-4. The restore of the step 4 backup: add it to the rehearsal, or accept
+1. Production layout: the commands of steps 2, 4, 12, and 13 for the
+   production deployment (its Deployment names, maintenance page, and
+   Ingress switch) are written, and wait for a decision on the
+   repository that keeps them. Step 12 needs the API and the UI without
+   the workers, in every layout.
+2. The maintenance page: which server, and who owns the Ingress?
+3. The restore of the step 4 backup: add it to the rehearsal, or accept
    it as not tested?
-5. pglifecycle: the SHA-256 depends on the platform and the build
+4. pglifecycle: the SHA-256 depends on the platform and the build
    command. Keep the binary file of the rehearsal workstation for the
    cutover, or build a container image with pglifecycle once and pin its
    digest?
-6. The 14 days of step 15 are a proposal.
+5. The 14 days of step 15 are a proposal.
