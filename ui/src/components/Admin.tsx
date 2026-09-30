@@ -15,7 +15,6 @@ import {
   Layers,
   LayoutDashboard,
   Link2,
-  Network,
   Puzzle,
   Shield,
   SlidersHorizontal,
@@ -39,7 +38,6 @@ import { BlueprintManagement } from './admin/BlueprintManagement'
 import { DefaultSettingsManagement } from './admin/DefaultSettingsManagement'
 import { DocumentTemplateManagement } from './admin/DocumentTemplateManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
-import { GraphQueryManagement } from './admin/GraphQueryManagement'
 import { IntegrationsManagement } from './admin/integrations/IntegrationsManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { MaintenanceManagement } from './admin/MaintenanceManagement'
@@ -60,7 +58,6 @@ type AdminSection =
   | 'default-settings'
   | 'document-templates'
   | 'environments'
-  | 'graph-query'
   | 'integrations'
   | 'link-definitions'
   | 'maintenance'
@@ -85,7 +82,6 @@ const VALID_SECTIONS: AdminSection[] = [
   'blueprints',
   'default-settings',
   'environments',
-  'graph-query',
   'integrations',
   'link-definitions',
   'document-templates',
@@ -231,13 +227,6 @@ export function Admin() {
       icon: KeyRound,
       id: 'oauth',
       label: 'Auth Providers',
-      scope: 'system',
-    },
-    {
-      description: 'Run ad-hoc Cypher queries against the graph database',
-      icon: Network,
-      id: 'graph-query',
-      label: 'Graph Query',
       scope: 'system',
     },
     {
@@ -439,7 +428,6 @@ export function Admin() {
             {currentSection === 'ai-models' && <AIModelsManagement />}
             {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
-            {currentSection === 'graph-query' && <GraphQueryManagement />}
             {currentSection === 'maintenance' && <MaintenanceManagement />}
             {currentSection === 'plugins' && <PluginsManagement />}
           </div>

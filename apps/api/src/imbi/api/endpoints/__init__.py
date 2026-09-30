@@ -15,7 +15,6 @@ from .blueprints import blueprint_router
 from .client_credentials import client_credentials_router
 from .dashboard import dashboard_router
 from .events import events_router
-from .graph_query import graph_query_router
 from .iggy_connectors import iggy_connectors_router
 from .local_auth import local_auth_router
 from .maintenance import maintenance_router
@@ -48,7 +47,6 @@ prefixed_routers: list[fastapi.APIRouter] = [
     client_credentials_router,
     dashboard_router,
     events_router,
-    graph_query_router,
     iggy_connectors_router,
     local_auth_router,
     maintenance_router,

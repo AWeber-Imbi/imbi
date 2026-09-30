@@ -12,7 +12,6 @@ import imbi.common.models
 from imbi.api import models as imbi_models
 from imbi.api import openapi
 from imbi.api.auth import permissions
-from imbi.api.endpoints import graph_query
 from imbi.common import graph
 
 
@@ -704,25 +703,6 @@ class MarkRequiredPermissionsTestCase(unittest.TestCase):
 
         self.assertNotIn(
             'x-imbi-permission', schema['paths']['/health']['get']
-        )
-
-    def test_admin_dependency_stamps_sentinel(self) -> None:
-        """require_admin is reported as the ``admin`` sentinel."""
-
-        @self.app.post('/graph/query')
-        async def query(
-            _auth: typing.Annotated[
-                permissions.AuthContext,
-                fastapi.Depends(graph_query.require_admin),
-            ],
-        ) -> dict:
-            return {}
-
-        schema = openapi.create_custom_openapi(self.app)()
-
-        self.assertEqual(
-            ['admin'],
-            schema['paths']['/graph/query']['post']['x-imbi-permission'],
         )
 
 

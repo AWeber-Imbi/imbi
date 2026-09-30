@@ -68,8 +68,6 @@ import type {
   DraftReleaseNotesResponse,
   Environment,
   EnvironmentCreate,
-  GraphQueryResult,
-  GraphSchema,
   IdentityConnectionPollResponse,
   IdentityConnectionResponse,
   IdentityConnectionStartRequest,
@@ -151,14 +149,6 @@ import { apiClient, apiUrl } from './client'
 
 // Re-export for backward compatibility with modules that import from here.
 export type { PatchOperation }
-
-export const executeGraphQuery = (
-  body: { params?: Record<string, unknown>; query: string },
-  signal?: AbortSignal,
-) => apiClient.post<GraphQueryResult>('/admin/graph/query', body, signal)
-
-export const getGraphSchema = (signal?: AbortSignal) =>
-  apiClient.get<GraphSchema>('/admin/graph/schema', undefined, signal)
 
 export const getAuthProviders = (signal?: AbortSignal) =>
   apiClient.get<{ default_redirect: string; providers: AuthProvider[] }>(

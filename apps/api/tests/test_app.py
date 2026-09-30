@@ -35,6 +35,20 @@ class CreateAppTestCase(unittest.TestCase):
         routes = [route.path for route in application.routes]
         self.assertIn('/status', routes)
 
+    def test_create_app_has_no_graph_query_routes(self) -> None:
+        """The retired Cypher workbench routes are not served.
+
+        The MCP server, the assistant, and the slackbot make one tool
+        for each OpenAPI operation, so a route here is a tool there.
+        """
+        application = app.create_app()
+        routes = [
+            path
+            for route in application.routes
+            if '/admin/graph' in (path := getattr(route, 'path', ''))
+        ]
+        self.assertEqual([], routes)
+
     def test_create_app_has_lifespan(self) -> None:
         """Test that the app has a lifespan context manager configured."""
         application = app.create_app()
