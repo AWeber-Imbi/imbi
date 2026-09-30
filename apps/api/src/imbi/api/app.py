@@ -8,6 +8,7 @@ from uvicorn.middleware import proxy_headers
 from imbi.api import endpoints, lifespans, openapi, settings, version
 from imbi.api.middleware import rate_limit
 from imbi.common import access_log, graph, lifespan, sentry, valkey
+from imbi.common.db import errors as db_errors
 from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginInstallationMissing,
@@ -109,6 +110,10 @@ def create_app() -> fastapi.FastAPI:
                 }
             },
         )
+
+    # Relational constraint violations: 23001, 23503, and 23505 give
+    # 409, 23514 gives 422.
+    db_errors.add_exception_handlers(app)
 
     # Phase 5: Setup rate limiting middleware
     rate_limit.setup_rate_limiting(app)
