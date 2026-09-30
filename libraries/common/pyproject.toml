@@ -34,6 +34,9 @@ dependencies = [
   "typer>=0.21.1",
 ]
 
+[project.scripts]
+imbi-common = "imbi.common.db.etl.cli:main"
+
 [project.optional-dependencies]
 databases = [
   "apache-iggy>=0.9.0.dev6",
@@ -41,6 +44,7 @@ databases = [
   "fastembed>=0.6",
   "pgvector>=0.3",
   "psycopg[binary,pool]>=3.3",
+  "pyyaml>=6",
   "valkey>=6",
 ]
 llm = [

@@ -1,0 +1,12 @@
+# The declared constraints of the fake table in fakes.SCHEMA.
+name: parent
+columns:
+- name: id
+  nullable: false
+- name: name
+  nullable: false
+- name: data
+- name: labels
+  nullable: false
+primary_key:
+- id
