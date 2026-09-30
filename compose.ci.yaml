@@ -158,6 +158,14 @@ services:
     environment:
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: imbi
+      # The logins of schemata/README.md "Roles", made at init by
+      # schemata/scripts/docker-create-roles.sh.
+      IMBI_APP_PASSWORD: secret
+      IMBI_ADMIN_PASSWORD: secret
+      IMBI_MAINTENANCE_PASSWORD: secret
+    volumes:
+      - ./schemata/scripts:/schemata/scripts:ro
+      - ./schemata/scripts/docker-create-roles.sh:/docker-entrypoint-initdb.d/10-create-roles.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       start_period: 30s

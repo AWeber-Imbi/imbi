@@ -18,8 +18,34 @@ the database match.
 
 The project needs a pglifecycle build that supports row-level security
 (`row_level_security` and `policies` in table files) and
-`on_delete_columns` on foreign keys. No release has these yet; pin the
-first release that does.
+`on_delete_columns` on foreign keys. No release has these yet, so the
+project is pinned to one commit of pglifecycle `main`:
+
+**Pinned pglifecycle commit:** `4f6729cda43b1d8facdeed304e6adfeb4991d18a`
+(2026-09-30, "Merge pull request #113"; the binary reports
+2.0.0-alpha.2).
+
+`scripts/install-pglifecycle.sh` holds the pin. It builds that commit
+with `cargo install` and prints the path of the binary. The moon tasks
+and CI use it, so they use the same build. When you change the pin,
+change it in the script and here in the same commit, and run
+`moon run root:schema-check`. The cutover runbook records the SHA-256 of
+the binary that the rehearsal and the cutover use.
+
+| moon task | What it does |
+|---|---|
+| `moon run root:schema-plan -- <database>` | Prints the DDL that makes the database match the project |
+| `moon run root:schema-apply -- <database>` | `deploy --apply`, then `scripts/set-owners.sql` |
+| `moon run root:schema-check` | `build`; a new database; `schema-apply`; a second deploy that must be equal to `tests/second-deploy-allowlist.sql`; the pgTAP files `tests/test_*.sql`; drops the database |
+
+The tasks connect with the libpq variables (`PGHOST`, `PGPORT`,
+`PGUSER`, `PGPASSWORD`). When `PGHOST` is not set, they use
+`POSTGRES_URL` from `.env.test` (`moon run root:services` writes it).
+`schema-apply` refuses a database that has the legacy `public.embeddings`
+table of the AGE-era app. `schema-check` puts a marker comment on each
+database that it makes (the check database and `<name>_test`), and drops
+only a database with that marker: it refuses a name that another
+database already has. It fails when `tests/` has no `test_*.sql` file.
 
 | Command | What it does |
 |---|---|
@@ -53,14 +79,24 @@ last flag keeps an existing pg_cron installation.
 | `roles/*.yaml` | `imbi_owner`, `imbi_definer`, `imbi_trigger`, and the `PUBLIC` revocations |
 | `users/*.yaml` | `imbi_app`, `imbi_admin`, `imbi_maintenance` and their grants |
 | `registry.toml` | The tenancy scope of every table |
+| `scripts/` | `create-roles.sql`, `set-owners.sql` (an owner check), the pglifecycle install script, and `schema.sh` for the moon tasks |
+| `tests/` | The pgTAP files of `root:schema-check`, and the second-deploy allowlist |
 
 All tables are in the `public` schema. The AGE graph uses the schema
 `imbi`, so the relational tables cannot use that name while both exist.
 
 ## Roles
 
-`deploy` applies grants, but it does not create roles and does not set
-owners. Create the roles before the first deploy:
+`deploy` applies grants and, in the pinned build, sets the owner that
+each YAML file names (pglifecycle commit `47c58cc`). It does not create
+roles. Create the roles before the first deploy with
+`scripts/create-roles.sql`, which takes the three login passwords from
+the psql variables `app_password`, `admin_password`, and
+`maintenance_password`, and creates only the roles that do not exist.
+It stops with an error, before it creates a role, when a variable is not
+set, and it stops when an existing role has `LOGIN`, `BYPASSRLS`, or
+`SUPERUSER` set differently from this list. The postgres service of `compose.ci.yaml` runs it at init, and
+`moon run root:services` runs it again. It has these statements:
 
 ```sql
 CREATE ROLE imbi_owner NOLOGIN;
@@ -80,7 +116,11 @@ CREATE ROLE imbi_maintenance LOGIN BYPASSRLS PASSWORD '...';
 | `imbi_admin` | The instance admin endpoints, in their own pool, after the application checks `users.is_admin`. Can read and write only the instance sign-in providers: `organization_isolation` on `integrations` applies to `imbi_app` only. The admin pool rejects an `imbi.organization_id` setting. No BYPASSRLS. |
 | `imbi_maintenance` | The data migration, the reconciliation report, and catalog cleanup. BYPASSRLS. The application never uses it. |
 
-After the first deploy, set the owners:
+The owners that the YAML files name, and that `deploy` sets, are these.
+`scripts/set-owners.sql` does not change owners: it stops with an error
+when an object in `public` has an owner that is not in this list. Run it
+after each deploy (`schema-apply` does). It makes no changes, so it can
+run in the cutover transaction.
 
 ```sql
 -- every table, and the functions that are not SECURITY DEFINER
@@ -99,7 +139,7 @@ ALTER FUNCTION public.delete_plugin_edges() OWNER TO imbi_trigger;
 ```
 
 A SECURITY DEFINER function that the deploying superuser still owns runs
-as superuser. Do not skip the second and third blocks.
+as superuser. Do not deploy with `-O` (`--no-owner`).
 
 `imbi_app` must not own the tables and must not have `BYPASSRLS`. If it
 owns a table, `FORCE ROW LEVEL SECURITY` still applies, but the owner can
@@ -460,8 +500,8 @@ These are design decisions to review:
 
 ## Known problems
 
-Tested with an unreleased pglifecycle build that reports
-2.0.0-alpha.2, against PostgreSQL 18.3 with pgvector 0.8.2.
+Tested with the pinned pglifecycle commit (see Tool), against
+PostgreSQL 18.3 with pgvector 0.8.2.
 
 1. **Function return types must be lower case.** `deploy` compares a
    function's `returns` as text, so `TEXT` does not match `text` and each

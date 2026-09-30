@@ -2,9 +2,6 @@
 name = "age"
 
 [[extensions]]
-name = "pg_cron"
-
-[[extensions]]
 name = "vector"
 
 [vlabels]
@@ -442,25 +439,3 @@ columns = ["node_label", "node_id"]
 [embeddings.hnsw_index]
 name = "embeddings_text_hnsw_idx"
 ops = "vector_cosine_ops"
-
-# UDF for Cypher-to-SQL bridge vector distance queries.
-[[functions]]
-name = "public.embedding_distance"
-language = "sql"
-args = """
-    p_node_label AGTYPE,
-    p_node_id    AGTYPE,
-    p_query_vec  AGTYPE,
-    p_model      AGTYPE
-"""
-returns = "AGTYPE"
-body = """
- SELECT COALESCE(
-            MIN(e.embedding <=> p_query_vec::text::vector),
-            1.0
-        )::float8::agtype
-   FROM public.embeddings e
-  WHERE e.node_label = p_node_label::text
-    AND e.node_id = p_node_id::text
-    AND e.model_name = p_model::text;
-"""

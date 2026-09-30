@@ -76,6 +76,9 @@ tasks:
       }
       docker compose -f compose.ci.yaml up -d --wait --wait-timeout 120 || (docker compose -f compose.ci.yaml logs && false)
       docker compose -f compose.ci.yaml exec -T clickhouse clickhouse client -q "CREATE DATABASE IF NOT EXISTS imbi"
+      # The init script makes the roles only in a new cluster; this also
+      # makes them in a container that existed before them.
+      docker compose -f compose.ci.yaml exec -T postgres sh /docker-entrypoint-initdb.d/10-create-roles.sh
       test_host="${TEST_HOST:-127.0.0.1}"
       if test -f .env.test; then
           if grep -q '^IMBI_AUTH_JWT_SECRET=' .env.test; then
@@ -180,6 +183,40 @@ tasks:
       - '.'
     options:
       cache: false
+      runInCI: false
+
+  # The relational schema (schemata/). The three tasks run
+  # schemata/scripts/schema.sh, which installs the pinned pglifecycle
+  # build and connects with the libpq PG* variables, or with POSTGRES_URL
+  # from .env.test. plan and apply need a database name:
+  # `moon run root:schema-apply -- <database>`. check makes its own
+  # database (imbi_schema_check, or the name after `--`) and drops it.
+  # None of them run in `moon ci`: the Schema job of test.yml calls the
+  # schema-check script directly, on the production Postgres image with a
+  # PostgreSQL 18 client.
+  schema-plan:
+    command: 'schemata/scripts/schema.sh'
+    args:
+      - 'plan'
+    options:
+      cache: false
+      runInCI: false
+
+  schema-apply:
+    command: 'schemata/scripts/schema.sh'
+    args:
+      - 'apply'
+    options:
+      cache: false
+      runInCI: false
+
+  schema-check:
+    command: 'schemata/scripts/schema.sh'
+    args:
+      - 'check'
+    options:
+      cache: false
+      outputStyle: 'stream'
       runInCI: false
 
   # Tear down the backing services and volumes.

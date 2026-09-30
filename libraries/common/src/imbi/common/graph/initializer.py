@@ -44,7 +44,6 @@ async def initialize() -> None:
                 cursor,
                 schemata,
             )
-            await _create_functions(cursor, schemata)
 
 
 async def _create_extensions(
@@ -236,24 +235,3 @@ async def _create_embeddings_table(
                     model=sql.Literal(model_name),
                 ),
             )
-
-
-async def _create_functions(
-    cursor: psycopg.AsyncCursor[typing.Any],
-    schemata: dict[str, typing.Any],
-) -> None:
-    for func in schemata.get('functions', []):
-        await cursor.execute(
-            sql.SQL(
-                'CREATE OR REPLACE FUNCTION {name}({args})'
-                ' RETURNS {returns}'
-                ' AS $${body}$$'
-                ' LANGUAGE {lang}',
-            ).format(
-                name=sql.SQL(func['name']),
-                args=sql.SQL(func['args']),
-                returns=sql.SQL(func['returns']),
-                body=sql.SQL(func['body']),
-                lang=sql.SQL(func['language']),
-            ),
-        )
