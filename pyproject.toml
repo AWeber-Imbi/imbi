@@ -50,6 +50,7 @@ dev = [
   "pytest-asyncio",
   "pytest-cov>=7.0.0",
   "python-dotenv>=1.1.0",
+  "pyyaml>=6",  # libraries/common/tests/test_schemata_registry.py
   "respx",
   "ruff~=0.14.6",
   "tomli-w~=1.2",
