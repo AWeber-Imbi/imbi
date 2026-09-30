@@ -354,6 +354,40 @@ Adds a per-organization catalog of configured providers and the models they serv
 
 ---
 
+#### [ADR 0019: Apache Iggy Message Streaming](adr/0019-apache-iggy-message-streaming.md)
+
+*Date: 2026-09-04 | Status: Accepted*
+
+Adopts Apache Iggy as the persistent message stream, and moves the ClickHouse writes onto it as its first use.
+
+**Key Decisions:**
+
+- One stream for each subject; the topics split a stream along a dimension that each stream selects
+- `imbi.common.iggy` publishes with the official `apache-iggy` SDK; `TOPICS` is the one list of streams and topics
+- The official ClickHouse sink runs in an Imbi-maintained Iggy image and gets its configuration from imbi-api
+- The read-after-write paths (operations log completion, scheduler runs, SBOM batches) tolerate sink lag
+- No table keeps a direct ClickHouse insert path after phase 4
+
+---
+
+### Data Storage
+
+#### [ADR 0020: Replace Apache AGE with Relational PostgreSQL](adr/0020-replace-apache-age-with-relational-postgresql.md)
+
+*Date: 2026-09-30 | Status: Accepted*
+
+Moves every domain entity out of the Apache AGE graph into relational PostgreSQL tables with row-level security, in one coordinated cutover.
+
+**Key Decisions:**
+
+- The schema of record is the pglifecycle project at `schemata/`; no migration files and no ORM
+- Nanoid text ids stay; every organization table has `organization_id`, composite foreign keys, and FORCE row-level security
+- Each domain replaces its Cypher with hand-written SQL in place; there is no store switch
+- One cutover with a write freeze that stops every app; TRUNCATE and INSERT in foreign key order
+- No reverse ETL: before the first relational write, the rollback starts the previous release image
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:
