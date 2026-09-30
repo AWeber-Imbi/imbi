@@ -23,10 +23,19 @@ class ApplicationLifespanTestCase(unittest.TestCase):
 
     def test_lifespan_opens_the_relational_database(self) -> None:
         """The app opens the relational pools, then closes them."""
-        with testclient.TestClient(app.create_app()):
-            database = db.Database.get_instance()
-            self.assertTrue(database.opened)
-        self.assertFalse(database.opened)
+        application = app.create_app()
+        opened: list[db.Database] = []
+
+        @application.get('/test-database')
+        async def test_database(  # pyright: ignore[reportUnusedFunction]
+            database: db.Pool,
+        ) -> bool:
+            opened.append(database)
+            return database.opened
+
+        with testclient.TestClient(application) as client:
+            self.assertIs(True, client.get('/test-database').json())
+        self.assertFalse(opened[0].opened)
 
     def test_clickhouse_initialization_failure(self) -> None:
         """Test initializing lifespan by fetching status."""

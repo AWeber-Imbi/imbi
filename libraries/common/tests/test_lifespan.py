@@ -241,6 +241,25 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual({}, func)
         self.assertEqual(2, calls)
 
+    async def test_nested_run_reuses_the_open_hooks(self) -> None:
+        calls = 0
+
+        @contextlib.asynccontextmanager
+        async def hook() -> abc.AsyncIterator[int]:
+            nonlocal calls
+            calls += 1
+            yield calls
+
+        func = lifespan.Lifespan(hook)
+        app = fastapi.FastAPI()
+        async with func(app) as outer:
+            async with func(app) as inner:
+                self.assertEqual({'lifespan_data': {hook: 1}}, inner)
+            # The nested run does not close the hooks of the first run.
+            self.assertEqual({'lifespan_data': {hook: 1}}, outer)
+        self.assertEqual({}, func)
+        self.assertEqual(1, calls)
+
 
 class LifespanReuseTests(unittest.TestCase):
     """One app, two lifespan runs (``SharedAppTestCase`` does this)."""

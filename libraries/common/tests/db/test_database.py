@@ -292,7 +292,14 @@ class LifecycleTestCase(unittest.IsolatedAsyncioTestCase):
             async with database.admin_transaction():
                 pass
 
+    def isolate_the_instance(self) -> None:
+        # Another app of this test process can hold the instance open.
+        patcher = mock.patch.object(db.Database, '_instance', None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def test_module_functions_use_the_instance(self) -> None:
+        self.isolate_the_instance()
         async with db.database_lifespan() as database:
             self.assertIs(database, db.Database.get_instance())
             self.assertTrue(database.opened)
@@ -306,6 +313,18 @@ class LifecycleTestCase(unittest.IsolatedAsyncioTestCase):
                 await tx.connection.execute('SELECT 1')
         self.assertFalse(database.opened)
         self.assertIsNot(database, db.Database.get_instance())
+
+    async def test_second_open_lifespan_gets_its_own_instance(self) -> None:
+        self.isolate_the_instance()
+        async with db.database_lifespan() as first:
+            async with db.database_lifespan() as second:
+                self.assertIsNot(first, second)
+                self.assertTrue(second.opened)
+            self.assertFalse(second.opened)
+            # Closing the second one leaves the process instance open.
+            self.assertTrue(first.opened)
+            self.assertIs(first, db.Database.get_instance())
+        self.assertFalse(first.opened)
 
 
 class DependencyTestCase(unittest.TestCase):

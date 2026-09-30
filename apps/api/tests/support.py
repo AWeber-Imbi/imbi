@@ -102,6 +102,12 @@ class SharedAppTestCase(unittest.TestCase):
     ``TestClient`` attributes) is registered as a cleanup so it runs even
     when subclasses override ``setUp``/``tearDown`` without calling
     ``super()``.
+
+    The app's lifespan runs once for each test class. A test's
+    ``with TestClient(self.test_app)`` is then a nested run: it reuses
+    the open pools and starts no hook again. The run closes in a class
+    cleanup, so the process singletons (ClickHouse, Iggy) do not stay
+    open, on this event loop, for the tests of other apps.
     """
 
     test_app: fastapi.FastAPI
@@ -111,6 +117,9 @@ class SharedAppTestCase(unittest.TestCase):
         super().setUpClass()
         isolated_database()
         cls.test_app = shared_app()
+        lifespan_run = contextlib.ExitStack()
+        lifespan_run.enter_context(testclient.TestClient(cls.test_app))
+        cls.addClassCleanup(lifespan_run.close)
 
     def run(
         self, result: unittest.result.TestResult | None = None

@@ -274,8 +274,16 @@ def admin_transaction() -> contextlib.AbstractAsyncContextManager[Transaction]:
 
 @contextlib.asynccontextmanager
 async def database_lifespan() -> abc.AsyncGenerator[Database]:
-    """Open the process-wide instance for the life of the app."""
+    """Open the process-wide instance for the life of the app.
+
+    When another app of the process has the instance open already (two
+    apps in one test process), this app gets an instance of its own.
+    Its pools then belong to the event loop of this app.
+
+    """
     database = Database.get_instance()
+    if database.opened:
+        database = Database()
     await database.open()
     try:
         yield database
