@@ -41,8 +41,8 @@ step 1. A different value stops the cutover.
 | Item | Value | How to get it |
 |---|---|---|
 | pglifecycle commit | `4f6729cda43b1d8facdeed304e6adfeb4991d18a` (pinned by D27 in `schemata/scripts/install-pglifecycle.sh` and `schemata/README.md`) | `pglifecycle --version` does not show it; read the install script |
-| pglifecycle build | `schemata/scripts/install-pglifecycle.sh` (`cargo install --locked --git ... --rev <commit>`). Keep the binary file of the rehearsal and use that file at the cutover. Do not build again: two builds of the same commit on the same workstation gave different SHA-256 values on 2026-09-30 | the script prints the path |
-| pglifecycle binary SHA-256 | `e2ec81979d7e30a2df6c6e6c875988e794dc327a08a4cca67f642e3a44cb2f0e`: the build that `root:cutover-check` used on 2026-09-30 (Darwin arm64). Replace it with the SHA-256 of the binary of the rehearsal workstation; the cutover uses the same file | `shasum -a 256 <binary>`; `root:cutover-check` prints it |
+| pglifecycle build | `schemata/scripts/install-pglifecycle.sh` (`cargo install --locked --git ... --rev <commit>`). Keep the binary file of the rehearsal and use that file at the cutover. The script gives the same binary each time on one platform, but another build command gives another binary (a `cargo build --release` of the same commit had a different SHA-256 on 2026-09-30) | the script prints the path |
+| pglifecycle binary SHA-256 | Linux x86_64: `10b8f2d2ff0381c9378653f4867b30908c11c51c2f124ab9e2e1fc50fdf58561` (the CI Schema job). macOS arm64: `e2ec81979d7e30a2df6c6e6c875988e794dc327a08a4cca67f642e3a44cb2f0e` (the build that `root:cutover-check` used on 2026-09-30). Record the value of the rehearsal workstation; the cutover uses the same file | `shasum -a 256 <binary>`; `root:cutover-check` prints it |
 | New release image | the digest of the integration branch build (`ghcr.io/aweber-imbi/imbi@sha256:...`) | the release workflow output |
 | Previous release image | the digest of the AGE-era image that production runs before step 1 | `kubectl get deploy -o jsonpath='{..image}'`, then the digest from the registry |
 | Monorepo commit | the commit of the new release image; the operator runs every `schemata/` file and CLI from a checkout of this commit | `git rev-parse HEAD` |
@@ -299,8 +299,10 @@ estimate.
           <(grep -v '^-- source:' <rehearsal>/cutover.sql)
      ```
 
-  3. Apply the plan, the owners, and the structure checks in one
-     transaction:
+  3. Apply the plan and the two checks in one transaction. Deploy at the
+     pinned commit sets the owners that the YAML names, so
+     `set-owners.sql` changes nothing: it fails the transaction when an
+     owner is wrong.
 
      ```bash
      PGOPTIONS='-c lock_timeout=10s' \
@@ -742,8 +744,8 @@ Not adopted, with the reason:
    the chart or to the cluster setup?
 5. The restore of the step 4 backup: add it to the rehearsal, or accept
    it as not tested?
-6. pglifecycle: two builds of the pinned commit give different
-   binaries, so the SHA-256 identifies one file, not the commit. Keep the
-   binary file of the rehearsal workstation for the cutover, or build a
-   container image with pglifecycle once and pin its digest?
+6. pglifecycle: the SHA-256 depends on the platform and the build
+   command. Keep the binary file of the rehearsal workstation for the
+   cutover, or build a container image with pglifecycle once and pin its
+   digest?
 7. The 14 days of step 15 are a proposal.
