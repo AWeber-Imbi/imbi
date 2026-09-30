@@ -432,9 +432,9 @@ END
 $$;
 
 -- 9. Every index is valid and ready, every constraint is validated, and
---    each SECURITY DEFINER function has search_path = pg_temp, so a
---    temporary object of the caller cannot shadow a name in its body
---    (schemata/README.md "Row-level security").
+--    each SECURITY DEFINER function has search_path = pg_catalog,
+--    pg_temp, so a temporary object of the caller cannot shadow a name
+--    in its body (schemata/README.md "Row-level security").
 DO $$
 DECLARE
     v_wrong text;
@@ -463,7 +463,8 @@ BEGIN
       FROM pg_catalog.pg_proc AS p
      WHERE p.pronamespace = 'public'::regnamespace
        AND p.prosecdef
-       AND p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_temp'];
+       AND p.proconfig IS DISTINCT FROM
+           ARRAY['search_path=pg_catalog, pg_temp'];
     IF v_wrong IS NOT NULL THEN
         RAISE EXCEPTION
               'cutover check: SECURITY DEFINER search_path is wrong'

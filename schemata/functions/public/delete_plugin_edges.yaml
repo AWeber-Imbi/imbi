@@ -6,7 +6,9 @@ returns: trigger
 language: plpgsql
 security: DEFINER
 configuration:
-  search_path: pg_temp
+  search_path:
+  - pg_catalog
+  - pg_temp
 definition: |-
   BEGIN
     IF TG_OP <> 'DELETE' OR TG_WHEN <> 'AFTER' OR TG_LEVEL <> 'ROW'

@@ -19,7 +19,7 @@
 set -euo pipefail
 
 PGLIFECYCLE_REPO='https://github.com/gmr/pglifecycle'
-PGLIFECYCLE_REV='4f6729cda43b1d8facdeed304e6adfeb4991d18a'
+PGLIFECYCLE_REV='1e5b893054271e30891682c00197606b0bdb0291'
 
 if test -n "${PGLIFECYCLE:-}"; then
     echo "$PGLIFECYCLE"

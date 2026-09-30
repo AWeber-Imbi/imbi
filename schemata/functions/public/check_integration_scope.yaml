@@ -5,7 +5,9 @@ owner: imbi_owner
 returns: trigger
 language: plpgsql
 configuration:
-  search_path: pg_temp
+  search_path:
+  - pg_catalog
+  - pg_temp
 definition: |-
   DECLARE
     v_integration_id text := to_jsonb(NEW) ->> TG_ARGV[0];

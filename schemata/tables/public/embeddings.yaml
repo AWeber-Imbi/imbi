@@ -73,8 +73,8 @@ indexes:
 - name: embeddings_text_hnsw_idx
   method: hnsw
   columns:
-  - expression: ((embedding)::vector(384))
-    opclass: vector_cosine_ops
+  - expression: (embedding)::public.vector(384)
+    opclass: public.vector_cosine_ops
   where: (model_name = 'text'::text)
   comment: BAAI/bge-small-en-v1.5, 384 dimensions.
 row_level_security:

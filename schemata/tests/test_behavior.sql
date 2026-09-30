@@ -1,4 +1,5 @@
--- Behavior tests T1 to T20 of the second schema review, as pgTAP.
+-- Behavior tests T1 to T20 of the second schema review, as pgTAP, and
+-- T21, the temporary type attack of that review (identity finding 1).
 --
 -- Converted from the meta repository
 -- docs/age-to-relational-schema-review/second-review/apply/behavior.sql,
@@ -13,7 +14,7 @@
 -- call finish(): a ROLLBACK removes the pgTAP state of the tests in it,
 -- so root:schema-check reads the TAP output instead.
 SET search_path = public, tap;
-SELECT plan(43);
+SELECT plan(45);
 GRANT ALL ON ALL TABLES IN SCHEMA pg_temp TO PUBLIC;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA pg_temp TO PUBLIC;
 
@@ -177,20 +178,18 @@ SELECT results_eq(
             OR p.proname IN ('check_integration_scope',
                              'delete_plugin_edges'))
      ORDER BY 1$$,
-  $$VALUES
-      ('check_integration_scope', false, 'imbi_owner',
-       '{search_path=pg_temp}'),
-      ('delete_embeddings', true, 'imbi_trigger', '{search_path=pg_temp}'),
-      ('delete_plugin_edges', true, 'imbi_trigger', '{search_path=pg_temp}'),
-      ('integration_organization_id', true, 'imbi_definer',
-       '{search_path=pg_temp}'),
-      ('principal_memberships', true, 'imbi_definer', '{search_path=pg_temp}'),
-      ('principal_permissions', true, 'imbi_definer', '{search_path=pg_temp}'),
-      ('principal_teams', true, 'imbi_definer', '{search_path=pg_temp}'),
-      ('upload_organization_id', true, 'imbi_definer',
-       '{search_path=pg_temp}'),
-      ('webhook_organization_id', true, 'imbi_definer',
-       '{search_path=pg_temp}')$$,
+  $$SELECT name, secdef, owner, '{"search_path=pg_catalog, pg_temp"}'
+      FROM (VALUES
+              ('check_integration_scope', false, 'imbi_owner'),
+              ('delete_embeddings', true, 'imbi_trigger'),
+              ('delete_plugin_edges', true, 'imbi_trigger'),
+              ('integration_organization_id', true, 'imbi_definer'),
+              ('principal_memberships', true, 'imbi_definer'),
+              ('principal_permissions', true, 'imbi_definer'),
+              ('principal_teams', true, 'imbi_definer'),
+              ('upload_organization_id', true, 'imbi_definer'),
+              ('webhook_organization_id', true, 'imbi_definer'))
+           AS expected (name, secdef, owner)$$,
   'T13 function security, owner and search_path');
 
 -- T14 A2
@@ -305,3 +304,24 @@ DELETE FROM public.t20_parent WHERE id = 'tp';
 SELECT is((SELECT count(*) FROM plugin_edges)::int, 0,
           'T20 an environment deleted by a cascade, with no organization '
           'setting, loses its edges');
+
+-- T21 second review, identity finding 1. A temporary type that the
+-- caller makes must not shadow a catalog type in a SECURITY DEFINER
+-- function: its CHECK would run as the owner of the function, with
+-- BYPASSRLS. With no principal, principal_memberships() casts '[]' to
+-- jsonb. Its search_path must be pg_catalog, then pg_temp. This file
+-- calls the function only here, so no cached plan hides the attack.
+BEGIN;
+SET LOCAL ROLE imbi_app;
+CREATE FUNCTION pg_temp.t21_raise(v pg_catalog.jsonb)
+  RETURNS pg_catalog.bool LANGUAGE plpgsql
+  AS $$BEGIN RAISE EXCEPTION 'T21 the temporary domain ran'; END$$;
+CREATE DOMAIN pg_temp.jsonb AS pg_catalog.jsonb
+  CHECK (pg_temp.t21_raise(VALUE));
+SELECT throws_ok($$SELECT '[]'::jsonb$$, 'P0001',
+                 'T21 the temporary domain ran',
+                 'T21 the temporary jsonb domain shadows jsonb for imbi_app');
+SELECT lives_ok($$SELECT public.principal_memberships()$$,
+                'T21 principal_memberships() does not use the temporary '
+                'jsonb domain');
+ROLLBACK;

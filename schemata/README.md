@@ -21,8 +21,8 @@ The project needs a pglifecycle build that supports row-level security
 `on_delete_columns` on foreign keys. No release has these yet, so the
 project is pinned to one commit of pglifecycle `main`:
 
-**Pinned pglifecycle commit:** `4f6729cda43b1d8facdeed304e6adfeb4991d18a`
-(2026-09-30, "Merge pull request #113"; the binary reports
+**Pinned pglifecycle commit:** `1e5b893054271e30891682c00197606b0bdb0291`
+(2026-09-30, "Merge pull request #118"; the binary reports
 2.0.0-alpha.2).
 
 `scripts/install-pglifecycle.sh` holds the pin. It builds that commit
@@ -220,7 +220,11 @@ disable it.
   `deploy` sees a change on every run. PostgreSQL adds a cast to the base
   type for a domain column, for example `((slug)::text ~ ...)`. `pull`
   reformats a SQL function body, for example with a leading space and a
-  trailing semicolon.
+  trailing semicolon. `deploy` runs its script with the empty
+  `search_path` of `pg_restore`, so an index expression and an operator
+  class name that are not built in include their schema, as `pull`
+  writes them: `(embedding)::public.vector(384)` and
+  `public.vector_cosine_ops`.
 - **Fill factor.** The ten tables whose rows the application updates
   (`api_keys`, `conversations`, `deployments`, `identity_connections`,
   `issued_tokens`, `project_environments`, `project_promotions`,
@@ -337,16 +341,16 @@ Other policies:
 
 Lookups before an organization is known use SECURITY DEFINER functions.
 Each returns only what its caller needs. They run as `imbi_definer`, with
-qualified names and `search_path = pg_temp`. That setting gives the
-order `pg_catalog`, then `pg_temp`: PostgreSQL searches `pg_catalog`
-first when the path does not name it, and searches a named `pg_temp` in
-its place. Without it, `pg_temp` is searched first, and a temporary type
-that `imbi_app` creates can shadow a catalog type in the function body
-and run code as `imbi_definer`. (`pg_catalog, pg_temp` is the usual
-form, but pglifecycle writes it as one quoted schema name; see Known
-problems.) `check_integration_scope()` and `delete_embeddings()` use the
-same setting. `PUBLIC` cannot execute the lookup functions; `imbi_app`
-can.
+qualified names and `search_path = pg_catalog, pg_temp`, which puts
+`pg_temp` last. When the path does not name `pg_temp`, PostgreSQL
+searches it first, and a temporary type that `imbi_app` creates can
+shadow a catalog type in the function body and run code as
+`imbi_definer`. The YAML writes the setting as a list
+(`search_path: [pg_catalog, pg_temp]`); pglifecycle refuses the string
+form with a comma. The pgTAP test T21 makes this attack.
+`check_integration_scope()`, `delete_embeddings()`, and
+`delete_plugin_edges()` use the same setting. `PUBLIC` cannot execute
+the lookup functions; `imbi_app` can.
 
 | Function | Caller |
 |---|---|
@@ -501,39 +505,31 @@ These are design decisions to review:
 ## Known problems
 
 Tested with the pinned pglifecycle commit (see Tool), against
-PostgreSQL 18.3 with pgvector 0.8.2.
+PostgreSQL 18.6 with pgvector 0.8.6 and AGE 1.8.0
+(`ghcr.io/aweber-imbi/postgres:latest`).
 
-1. **Function return types must be lower case.** `deploy` compares a
-   function's `returns` as text, so `TEXT` does not match `text` and each
-   deploy runs `CREATE OR REPLACE FUNCTION`. A `pg_catalog.` qualifier in
-   the body has the same effect. The function files use the form that
-   `pull` writes. Column and domain types can be upper case: a second
-   deploy is empty except for item 2.
-2. **The HNSW expression index changes on every deploy.** `pull` records
-   the expression as `(embedding)::vector(384)`. `build` and `deploy`
-   write it without the outer parentheses, and PostgreSQL rejects that
-   form. The project keeps `((embedding)::vector(384))`, which creates
-   correctly but never matches.
-3. **A SQL function body is checked when the function is created.**
-   `deploy` creates functions before tables, so each SECURITY DEFINER
-   function lists the tables it reads under `dependencies`. It also
-   lists the functions it calls, by name only
-   (`public.current_principal_id`). `build` does not find an entry with
-   an argument list: it skips the entry with a warning, and the order of
-   the names then decides.
-4. **The HNSW index has a fixed dimension** (384, for the default
+1. **A `pg_catalog.` qualifier in a SQL-standard function body changes
+   on every deploy.** PostgreSQL does not keep the qualifier, so
+   `RETURN pg_catalog.current_setting(...)` never matches, and each
+   deploy runs `CREATE OR REPLACE FUNCTION`. The function files use the
+   form that `pull` writes, with no qualifier.
+2. **The HNSW index has a fixed dimension** (384, for the default
    `BAAI/bge-small-en-v1.5` model). Today the application creates it at
    startup from settings. A different model needs a change to this
    project.
-5. **Storage parameter values must be strings.** `pull` reports
-   `fillfactor: '90'`. An integer `90` does not match, and each deploy
-   drops and creates the table.
-6. **A list setting cannot be written.** `deploy` writes a function
-   `configuration` value as one quoted string, so
-   `search_path: pg_catalog, pg_temp` becomes the single schema name
-   `"pg_catalog, pg_temp"`, and a YAML list becomes `ARRAY[...]`, which
-   `SET` rejects. The functions use `search_path: pg_temp`, which gives
-   the same order (see Row-level security).
+
+The pinned commit fixes the earlier problems, and the second deploy is
+empty (tested 2026-09-30):
+
+- The HNSW expression index, and a storage parameter written as a
+  number, changed on every deploy (pglifecycle #117).
+- A `dependencies` entry with an argument list was skipped
+  (pglifecycle #118). `pull` writes no `dependencies` for a function
+  with a string body; the function files keep their entries.
+- A list setting, such as `search_path: [pg_catalog, pg_temp]`, was
+  written as one quoted schema name (pglifecycle #116).
+- An upper case function return type already matched at the earlier
+  pin (`4f6729c`).
 
 ## Open questions
 

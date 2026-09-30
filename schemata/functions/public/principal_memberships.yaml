@@ -7,7 +7,9 @@ language: sql
 stable: true
 security: DEFINER
 configuration:
-  search_path: pg_temp
+  search_path:
+  - pg_catalog
+  - pg_temp
 definition: |2-
    SELECT COALESCE( jsonb_agg(jsonb_build_object( 'organization_id', o.id, 'organization_name', o.name, 'organization_slug', o.slug, 'role_slug', r.slug) ORDER BY o.slug), '[]'::jsonb)
      FROM public.memberships AS m

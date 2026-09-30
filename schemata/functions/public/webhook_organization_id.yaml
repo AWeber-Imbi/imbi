@@ -11,7 +11,9 @@ language: sql
 stable: true
 security: DEFINER
 configuration:
-  search_path: pg_temp
+  search_path:
+  - pg_catalog
+  - pg_temp
 definition: |2-
    SELECT w.organization_id
      FROM public.webhooks AS w

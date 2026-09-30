@@ -7,7 +7,9 @@ language: sql
 stable: true
 security: DEFINER
 configuration:
-  search_path: pg_temp
+  search_path:
+  - pg_catalog
+  - pg_temp
 definition: |2-
    WITH RECURSIVE chain(role_id) AS (
            SELECT m.role_id
