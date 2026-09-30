@@ -6,41 +6,39 @@ WP3.0 and the decisions O3 to O6 and O10 (plan section 8).
 This document has counts only. It has no personal data: no email, no
 name, and no node id.
 
-## Status: the counts are not measured
+## Status: the maintainer's run gives the production counts
 
-The audit did not run on the production copy. The agent session refused
-the restore of `meta:backups/imbi.sql` into `prodcopy_20260817`, because
-the backup holds personal data. Nothing was restored. The counts move to
-gate G2: Gavin decides which copy the audit runs on. Every count in this
-document is "not measured" until then.
+No agent uses production data (decision D35). The WP1.9 exit is met on
+synthetic data: the audit tests in
+`libraries/common/tests/test_etl_audit.py` make an AGE graph with one
+row for most rules, and check the counts. The production counts come
+from a run that the maintainer does (gate G2). Every count in this
+document is "not measured" until that run.
 
-The audit code ran on a synthetic graph and on the test database (the
-tests in `libraries/common/tests/test_etl_audit.py`). It did not run on
-production data.
+## How to run it (the maintainer)
 
-## How to run it
-
-On the scratch server, as a person who is permitted to restore the
-backup:
-
-1. Restore the backup into `prodcopy_20260817`, with the AGE catalog
-   repair of the `meta:Justfile` recipe `restore-dev-postgres` (the
-   graph oid rewrite, the missing labels, and the duplicate edge rows).
-   Do not run the recipe itself: it writes to the dev cluster.
-2. Clone the copy, and run the audit on the clone:
+1. Restore the production backup into a new database on a scratch
+   server, with the AGE catalog repair of the `meta:Justfile` recipe
+   `restore-dev-postgres` (the graph oid rewrite, the missing labels,
+   and the duplicate edge rows). Do not run the recipe itself: it
+   writes to the dev cluster.
+2. Run the audit on that database (or on production, with a read-only
+   login):
 
    ```bash
-   psql -h 127.0.0.1 -p 55432 -U postgres \
-     -c 'CREATE DATABASE e_copy TEMPLATE prodcopy_20260817'
-   uv run python -m imbi.common.db.etl.audit audit \
-     --source-url postgresql://postgres@127.0.0.1:55432/e_copy \
-     --output audit-2026-08-17.json
+   IMBI_ETL_SOURCE_URL='postgresql://<user>@<host>:<port>/<database>' \
+     uv run imbi-common etl audit --output audit.json
    ```
 
-   After the ETL command merges, the same command is
-   `imbi-common etl audit`.
-3. Keep the JSON file out of the repository: its `ids` are node ids.
-   Copy only the counts into the tables below.
+   It prints one line for each rule that has rows, and exits 1 when a
+   blocking rule has rows or a rule fails.
+3. Keep `audit.json` out of the repository: its `ids` are node ids.
+   Copy only the counts into the tables below:
+
+   ```bash
+   jq -r '.rules[] | select(.count > 0) | [.id, .fate, .count] | @tsv' \
+     audit.json
+   ```
 
 The command reads only. It sets its transaction read only, so it can
 also run on production with a read-only login (a later step, with
