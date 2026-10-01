@@ -1,0 +1,54 @@
+# The routes that D17 moves under `/organizations/{org_slug}`
+# (implementation plan WP1.10). `replay` and `scenarios --path-map`
+# send a request of the old API to the new path. The exchange keeps
+# its old key, so the diff compares the old path with the new path.
+#
+# `old` matches the start of the request path. `{org_slug}` in `new`
+# comes from the global variables of the recording.
+#
+# The owner agent confirms the new path when it moves the router, and
+# changes this file in the same PR if the path is different.
+
+[[move]]
+old = "/api/roles"
+new = "/api/organizations/{org_slug}/roles"
+owner = "M"
+note = "endpoints/roles.py:19"
+
+[[move]]
+old = "/api/blueprints"
+new = "/api/organizations/{org_slug}/blueprints"
+owner = "L"
+note = "endpoints/blueprints.py:20"
+
+[[move]]
+old = "/api/scoring/policies"
+new = "/api/organizations/{org_slug}/scoring/policies"
+owner = "L"
+note = "endpoints/scoring_policies.py:25"
+
+[[move]]
+old = "/api/mcp-servers"
+new = "/api/organizations/{org_slug}/mcp-servers"
+owner = "S"
+note = "endpoints/mcp_servers.py:28"
+
+[[move]]
+old = "/api/admin/plugins/{slug}/entities"
+new = "/api/organizations/{org_slug}/plugins/{slug}/entities"
+owner = "T"
+note = "endpoints/plugin_entities.py:36; the new path is a proposal"
+
+# Only the POST moves. `GET /uploads/{id}` stays at the top level,
+# because the UI stores icons as `/uploads/{id}`.
+[[move]]
+old = "/api/uploads/"
+new = "/api/organizations/{org_slug}/uploads/"
+methods = ["POST"]
+exact = true
+owner = "Q"
+note = "endpoints/uploads.py:34"
+
+# The assistant /conversations routes also move (WP1.10). They are
+# not API routes, so the replay does not send them; see
+# process-matrix.md.

@@ -1,0 +1,85 @@
+# Write scenarios for search (agent U). See ../README.md, "Add a
+# scenario".
+#
+# The API embeds a project after the response, so the search steps
+# use `wait_for`.
+
+domain = "search"
+owner = "U"
+
+[[scenario]]
+name = "search after delete"
+description = "search finds a new project; after its delete, the same search does not"
+
+[[scenario.step]]
+name = "create a team"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/"
+body = { name = "Replay Search Team {run}", slug = "replay-search-team-{run}" }
+expect = 201
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "create a project type"
+method = "POST"
+path = "/api/organizations/{org_slug}/project-types/"
+body = { name = "Replay Search Type {run}", slug = "replay-search-type-{run}" }
+expect = 201
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "create a project with a distinct description"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/"
+body = { name = "Zebra Quartz Harmonica {run}", slug = "replay-search-{run}", description = "Zebra quartz harmonica marmalade telescope", team_slug = "replay-search-team-{run}", project_type_slugs = [
+  "replay-search-type-{run}"
+] }
+expect = 201
+save = { project_id = "/id" }
+normalize = [
+  "/**/id",
+  "/**/created_at",
+  "/**/updated_at",
+  "/relationships/**/href"
+]
+
+[[scenario.step]]
+name = "search finds the project"
+method = "GET"
+path = "/api/organizations/{org_slug}/search"
+query = { q = "zebra quartz harmonica marmalade telescope", node_label = "Project", attribute = "description", limit = "1" }
+expect = 200
+wait_for = { pointer = "/0/node_id", equals = "{project_id}", timeout = 120 }
+normalize = ["/*/node_id", "/*/project_id", "/*/distance"]
+
+[[scenario.step]]
+name = "delete the project that search found"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/projects/{project_id}"
+expect = 200
+always = true
+
+[[scenario.step]]
+name = "the same search does not find it"
+method = "GET"
+path = "/api/organizations/{org_slug}/search"
+query = { q = "zebra quartz harmonica marmalade telescope", node_label = "Project", attribute = "description", limit = "1" }
+expect = 200
+wait_for = { pointer = "/0/node_id", not_equals = "{project_id}", timeout = 60 }
+# The top hit is now another entity. wait_for checks that it is not the
+# deleted project; its id is not part of the comparison.
+normalize = ["/*/node_id", "/*/project_id"]
+
+[[scenario.step]]
+name = "delete the team"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/teams/replay-search-team-{run}"
+expect = 204
+always = true
+
+[[scenario.step]]
+name = "delete the project type"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/project-types/replay-search-type-{run}"
+expect = 204
+always = true

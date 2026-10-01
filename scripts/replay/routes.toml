@@ -1,0 +1,763 @@
+# How `record` builds the requests of each GET route.
+#
+# A route with no path parameter (other than a global variable such as
+# `org_slug`) needs no entry: the recorder sends one request. Every
+# other route needs an entry, with a `source` or a `skip` reason. The
+# recorder stops when a route has neither (see `plan.py`).
+#
+# Sources run against the AGE-era database of the recording. `$name`
+# in a query is the quoted value of a global variable. The columns of
+# a source row bind the path and query parameters of the same name.
+# Each query sorts its rows, so that two recordings of one database get
+# the same requests.
+
+graph = "imbi"
+
+[globals]
+sources = ["organization", "admin_email"]
+
+# -- sources -----------------------------------------------------------
+
+[sources.organization]
+cypher = "MATCH (o:Organization) RETURN o.slug ORDER BY o.slug"
+columns = ["org_slug"]
+
+[sources.organization_as_slug]
+cypher = "MATCH (o:Organization) RETURN o.slug ORDER BY o.slug"
+columns = ["slug"]
+
+# The user of the recording token (`token --dsn`), and the user that
+# the scenarios add to a team.
+[sources.admin_email]
+cypher = '''
+MATCH (u:User)-[:MEMBER_OF]->(:Organization)
+WHERE u.is_admin = true AND u.is_active = true
+RETURN u.email ORDER BY u.email'''
+columns = ["admin_email"]
+
+[sources.user]
+cypher = '''
+MATCH (u:User)-[:MEMBER_OF]->(:Organization {slug: $org_slug})
+RETURN u.email ORDER BY u.email'''
+columns = ["email"]
+
+[sources.service_account]
+cypher = "MATCH (s:ServiceAccount) RETURN s.slug ORDER BY s.slug"
+columns = ["slug"]
+
+[sources.user_identity]
+cypher = '''
+MATCH (:User)-[:HAS_IDENTITY]->(c:IdentityConnection),
+      (i:Integration {id: c.integration_id})
+RETURN i.slug, c.subject ORDER BY i.slug, c.subject'''
+columns = ["integration_slug", "subject"]
+
+[sources.team]
+cypher = '''
+MATCH (t:Team)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN t.slug ORDER BY t.slug'''
+columns = ["slug"]
+
+[sources.environment]
+cypher = '''
+MATCH (e:Environment)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN e.slug ORDER BY e.slug'''
+columns = ["slug"]
+
+[sources.environment_edge]
+cypher = '''
+MATCH (e:Environment)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN e.slug, 'MAPS_TO' ORDER BY e.slug'''
+columns = ["slug", "rel_type"]
+
+[sources.link_definition]
+cypher = '''
+MATCH (l:LinkDefinition)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN l.slug ORDER BY l.slug'''
+columns = ["slug"]
+
+[sources.project_type]
+cypher = '''
+MATCH (t:ProjectType)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN t.slug ORDER BY t.slug'''
+columns = ["slug"]
+
+[sources.project_type_as_type_slug]
+cypher = '''
+MATCH (t:ProjectType)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN t.slug ORDER BY t.slug'''
+columns = ["type_slug"]
+
+[sources.project]
+cypher = '''
+MATCH (p:Project)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN p.id ORDER BY p.id'''
+columns = ["project_id"]
+
+[sources.project_with_type]
+cypher = '''
+MATCH (p:Project)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug}),
+      (p)-[:TYPE]->(t:ProjectType)
+RETURN p.id, t.slug ORDER BY p.id, t.slug'''
+columns = ["project_id", "project_type_slugs"]
+
+[sources.project_ref]
+cypher = '''
+MATCH (p:Project)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN p.id, 'main' ORDER BY p.id'''
+columns = ["project_id", "ref"]
+
+[sources.release]
+cypher = '''
+MATCH (p:Project)-[:HAS_RELEASE]->(r:Release),
+      (p)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN p.id, r.id ORDER BY p.id, r.id'''
+columns = ["project_id", "release_id"]
+
+[sources.release_tag]
+cypher = '''
+MATCH (p:Project)-[:HAS_RELEASE]->(r:Release),
+      (p)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN p.id, r.tag ORDER BY p.id, r.tag'''
+columns = ["project_id", "tag"]
+
+[sources.release_committish]
+cypher = '''
+MATCH (p:Project)-[:HAS_RELEASE]->(r:Release),
+      (p)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN p.id, r.committish ORDER BY p.id, r.committish'''
+columns = ["project_id", "committish"]
+
+[sources.release_environment]
+cypher = '''
+MATCH (p:Project)-[:HAS_RELEASE]->(r:Release)-[:HAS_DEPLOYMENT]->
+      (:Deployment)-[:TARGETS]->(e:Environment),
+      (p)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN DISTINCT p.id, r.id, e.slug ORDER BY p.id, r.id, e.slug'''
+columns = ["project_id", "release_id", "env_slug"]
+
+[sources.deployment_run]
+cypher = '''
+MATCH (p:Project)-[:HAS_RELEASE]->(:Release)-[:HAS_DEPLOYMENT]->
+      (d:Deployment),
+      (p)-[:OWNED_BY]->(:Team)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+WHERE d.run_id IS NOT NULL
+RETURN p.id, d.run_id ORDER BY p.id, d.run_id'''
+columns = ["project_id", "run_id"]
+
+[sources.integration]
+cypher = '''
+MATCH (i:Integration)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN i.slug ORDER BY i.slug'''
+columns = ["slug"]
+
+[sources.integration_capability]
+cypher = '''
+MATCH ()-[u:USES]->(i:Integration)
+      -[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN DISTINCT i.slug, u.capability ORDER BY i.slug, u.capability'''
+columns = ["slug", "kind"]
+
+[sources.login_provider]
+cypher = """
+MATCH (i:Integration)
+OPTIONAL MATCH (i)-[b:BELONGS_TO]->(:Organization)
+WITH i, b WHERE b IS NULL
+RETURN i.slug ORDER BY i.slug"""
+columns = ["slug"]
+
+[sources.webhook]
+cypher = '''
+MATCH (w:Webhook)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN w.slug ORDER BY w.slug'''
+columns = ["webhook"]
+
+[sources.tag]
+cypher = '''
+MATCH (t:Tag)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN t.slug ORDER BY t.slug'''
+columns = ["tag_slug"]
+
+[sources.document]
+cypher = '''
+MATCH (d:Document)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN d.id ORDER BY d.id'''
+columns = ["document_id"]
+
+[sources.document_version]
+cypher = '''
+MATCH (d:Document)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN d.id, '1' ORDER BY d.id'''
+columns = ["document_id", "version"]
+
+[sources.project_document]
+cypher = '''
+MATCH (d:Document)-[:ATTACHED_TO]->(p:Project)
+RETURN p.id, d.id ORDER BY p.id, d.id'''
+columns = ["project_id", "document_id"]
+
+[sources.document_template]
+cypher = '''
+MATCH (t:DocumentTemplate)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN t.slug ORDER BY t.slug'''
+columns = ["slug"]
+
+[sources.upload]
+cypher = "MATCH (u:Upload) RETURN u.id ORDER BY u.id"
+columns = ["upload_id"]
+
+[sources.ai_provider]
+cypher = '''
+MATCH (p:AIProvider)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN p.id ORDER BY p.id'''
+columns = ["id"]
+
+[sources.ai_model]
+cypher = '''
+MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {slug: $org_slug})
+RETURN m.id ORDER BY m.id'''
+columns = ["id"]
+
+[sources.mcp_server]
+cypher = "MATCH (m:MCPServer) RETURN m.id ORDER BY m.id"
+columns = ["id"]
+
+[sources.role]
+cypher = "MATCH (r:Role) RETURN r.slug ORDER BY r.slug"
+columns = ["slug"]
+
+[sources.blueprint_type]
+cypher = "MATCH (b:Blueprint) RETURN DISTINCT b.type ORDER BY b.type"
+columns = ["type"]
+
+[sources.blueprint]
+cypher = "MATCH (b:Blueprint) RETURN b.type, b.slug ORDER BY b.type, b.slug"
+columns = ["type", "slug"]
+
+[sources.scoring_policy]
+cypher = "MATCH (s:ScoringPolicy) RETURN s.slug ORDER BY s.slug"
+columns = ["slug"]
+
+[sources.component]
+cypher = "MATCH (c:Component) RETURN c.id ORDER BY c.id"
+columns = ["component_id"]
+
+[sources.component_release]
+cypher = "MATCH (c:ComponentRelease) RETURN c.id ORDER BY c.id"
+columns = ["component_release_id"]
+
+[sources.plugin]
+rows = [
+  { slug = "aws" },
+  { slug = "github" },
+  { slug = "google" },
+  { slug = "logzio" },
+  { slug = "oidc" },
+  { slug = "pagerduty" },
+  { slug = "sonarqube" },
+]
+
+[sources.plugin_edge]
+rows = [{ slug = "aws", rel_type = "MAPS_TO" }]
+
+[sources.plugin_label]
+rows = [{ slug = "aws", label = "AwsAccount" }]
+
+[sources.plugin_entity]
+cypher = "MATCH (a:AwsAccount) RETURN 'aws', 'AwsAccount', a.id ORDER BY a.id"
+columns = ["slug", "label", "id"]
+
+[sources.maintenance_operation]
+rows = [
+  { slug = "commit-pushed-at-check" },
+  { slug = "commit-pushed-at-repair" },
+  { slug = "commit-sync" },
+  { slug = "deployment-resync" },
+  { slug = "deployment-status-repair" },
+  { slug = "deployment-sweep" },
+  { slug = "opslog-backfill" },
+  { slug = "orphan-release-check" },
+  { slug = "orphan-release-purge" },
+  { slug = "pr-sync" },
+  { slug = "remediate" },
+  { slug = "rescore" },
+  { slug = "run-analysis" },
+  { slug = "search-reindex" },
+  { slug = "sync-fixes" },
+]
+
+# ClickHouse ids. The local ClickHouse of a recording is empty, so these
+# routes get one request with the placeholder id.
+[sources.clickhouse_id]
+rows = []
+
+# -- skipped routes ----------------------------------------------------
+
+[[route]]
+path = "/api/auth/authorize"
+skip = "OAuth authorization: a redirect to an identity provider"
+
+[[route]]
+path = "/api/auth/oauth/{provider}"
+skip = "OAuth sign-in: a redirect to an identity provider"
+
+[[route]]
+path = "/api/auth/oauth/{provider}/callback"
+skip = "OAuth callback: needs a code from an identity provider"
+
+[[route]]
+path = "/api/me/identities/{integration_id}/callback"
+skip = "OAuth callback: needs a code from an identity provider"
+
+# -- instance routes ---------------------------------------------------
+
+[[route]]
+path = "/api/admin/plugins/{slug}"
+source = "plugin"
+
+[[route]]
+path = "/api/admin/plugins/{slug}/edges"
+source = "plugin_edge"
+query = { rel_type = "{rel_type}", org_slug = "{org_slug}" }
+
+[[route]]
+path = "/api/plugins/{slug}/manifest"
+source = "plugin"
+
+[[route]]
+path = "/api/admin/plugins/{slug}/entities/{label}/_schema"
+source = "plugin_label"
+
+[[route]]
+path = "/api/admin/plugins/{slug}/entities/{label}"
+source = "plugin_label"
+
+[[route]]
+path = "/api/admin/plugins/{slug}/entities/{label}/{id}"
+source = "plugin_entity"
+
+[[route]]
+path = "/api/login-providers/{slug}"
+source = "login_provider"
+
+[[route]]
+path = "/api/blueprints/{type}"
+source = "blueprint_type"
+
+[[route]]
+path = "/api/blueprints/{type}/{slug}"
+source = "blueprint"
+
+[[route]]
+path = "/api/service-accounts/{slug}"
+source = "service_account"
+
+[[route]]
+path = "/api/service-accounts/{slug}/client-credentials"
+source = "service_account"
+
+[[route]]
+path = "/api/service-accounts/{slug}/api-keys"
+source = "service_account"
+
+[[route]]
+path = "/api/events/{event_id}"
+source = "clickhouse_id"
+
+[[route]]
+path = "/api/operations-log/{entry_id}"
+source = "clickhouse_id"
+
+[[route]]
+path = "/api/maintenance/operations/{slug}"
+source = "maintenance_operation"
+
+[[route]]
+path = "/api/mcp-servers/{id}"
+source = "mcp_server"
+
+[[route]]
+path = "/api/roles/{slug}"
+source = "role"
+
+[[route]]
+path = "/api/roles/{slug}/users"
+source = "role"
+
+[[route]]
+path = "/api/roles/{slug}/service-accounts"
+source = "role"
+
+[[route]]
+path = "/api/scoring/policies/{slug}"
+source = "scoring_policy"
+
+[[route]]
+path = "/api/scores/rollup"
+query = { org = "{org_slug}" }
+
+[[route]]
+path = "/api/scores/monthly-improvement"
+query = { org = "{org_slug}", year = "2026", month = "8" }
+
+[[route]]
+path = "/api/scores/history-by-team"
+query = { org = "{org_slug}" }
+
+[[route]]
+path = "/api/scores/history-feed"
+query = { org = "{org_slug}" }
+
+[[route]]
+path = "/api/uploads/{upload_id}"
+source = "upload"
+
+[[route]]
+path = "/api/uploads/{upload_id}/meta"
+source = "upload"
+
+[[route]]
+path = "/api/uploads/{upload_id}/thumbnail"
+source = "upload"
+
+[[route]]
+path = "/api/users/by-identity"
+source = "user_identity"
+query = { integration_slug = "{integration_slug}", subject = "{subject}" }
+
+[[route]]
+path = "/api/users/{email}"
+source = "user"
+
+[[route]]
+path = "/api/users/{email}/contributions"
+source = "user"
+
+[[route]]
+path = "/api/users/{email}/stats"
+source = "user"
+
+[[route]]
+path = "/api/users/{email}/identities"
+source = "user"
+
+[[route]]
+path = "/api/users/{email}/activity"
+source = "user"
+
+[[route]]
+path = "/api/organizations/{slug}"
+source = "organization_as_slug"
+
+[[route]]
+path = "/api/organizations/{slug}/members"
+source = "organization_as_slug"
+
+# -- organization structure --------------------------------------------
+
+[[route]]
+path = "/api/organizations/{org_slug}/teams/{slug}"
+source = "team"
+
+[[route]]
+path = "/api/organizations/{org_slug}/teams/{slug}/members"
+source = "team"
+
+[[route]]
+path = "/api/organizations/{org_slug}/environments/{slug}"
+source = "environment"
+
+[[route]]
+path = "/api/organizations/{org_slug}/environments/{slug}/edges/{rel_type}"
+source = "environment_edge"
+
+[[route]]
+path = "/api/organizations/{org_slug}/link-definitions/{slug}"
+source = "link_definition"
+
+[[route]]
+path = "/api/organizations/{org_slug}/project-types/{slug}"
+source = "project_type"
+
+[[route]]
+path = "/api/organizations/{org_slug}/tags/{tag_slug}"
+source = "tag"
+
+[[route]]
+path = "/api/organizations/{org_slug}/search"
+query = { q = "api" }
+
+# -- AI ----------------------------------------------------------------
+
+[[route]]
+path = "/api/organizations/{org_slug}/ai-providers/{id}"
+source = "ai_provider"
+
+[[route]]
+path = "/api/organizations/{org_slug}/ai-models/{id}"
+source = "ai_model"
+
+# -- integrations ------------------------------------------------------
+
+[[route]]
+path = "/api/organizations/{org_slug}/integrations/{slug}"
+source = "integration"
+
+[[route]]
+path = "/api/organizations/{org_slug}/integrations/{slug}/capabilities/{kind}/assignments"
+source = "integration_capability"
+
+[[route]]
+path = "/api/organizations/{org_slug}/webhooks/{webhook}"
+source = "webhook"
+
+# -- projects ----------------------------------------------------------
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/schema"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/relationships"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/lifecycle/preview"
+source = "project_with_type"
+query = { project_type_slugs = "{project_type_slugs}" }
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/events/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/operations-log/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/services/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/configuration/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/configuration/prefix"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/logs/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/logs/histogram"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/logs/schema"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/incidents/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/analysis/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/commits/sync-status"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/pull-requests/sync-status"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/pull-requests/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/integrations/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/plugins/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/score/history"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/score/trend"
+source = "project"
+
+# -- releases and deployments ------------------------------------------
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/releases/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/releases/current"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}"
+source = "release"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments"
+source = "release"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/environments/{env_slug}"
+source = "release_environment"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/releases/{release_id}/dependencies"
+source = "release"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/refs"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/refs/{ref}/commits"
+source = "project_ref"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/commits/{committish}"
+source = "release_committish"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/compare"
+source = "project_ref"
+query = { base = "{ref}", head = "{ref}" }
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/check-status"
+source = "release_committish"
+query = { committish = "{committish}" }
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/sync-status"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/promote-status"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/runs/{run_id}"
+source = "deployment_run"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/tag-formats"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/promotion-options"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/recent-commits"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/release-drift"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/release-history"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/deployments/releases/{tag}/blockers"
+source = "release_tag"
+
+# -- documents ---------------------------------------------------------
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}"
+source = "document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}/versions"
+source = "document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}/versions/{version}"
+source = "document_version"
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}/editing"
+source = "document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}/likes"
+source = "document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}/analytics"
+source = "document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}/analytics/readers"
+source = "document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/documents/{document_id}/comments"
+source = "document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/documents/"
+source = "project"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}"
+source = "project_document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/projects/{project_id}/documents/{document_id}/comments"
+source = "project_document"
+
+[[route]]
+path = "/api/organizations/{org_slug}/project-types/{type_slug}/documents/"
+source = "project_type_as_type_slug"
+
+[[route]]
+path = "/api/organizations/{org_slug}/users/{email}/documents/"
+source = "user"
+
+[[route]]
+path = "/api/organizations/{org_slug}/document-templates/{slug}"
+source = "document_template"
+
+# -- SBOM --------------------------------------------------------------
+
+[[route]]
+path = "/api/organizations/{org_slug}/components/{component_id}/usage"
+source = "component"
+
+[[route]]
+path = "/api/organizations/{org_slug}/component-releases/{component_release_id}/notes"
+source = "component_release"
+
+[[route]]
+path = "/api/organizations/{org_slug}/component-releases/{component_release_id}/advisories"
+source = "component_release"

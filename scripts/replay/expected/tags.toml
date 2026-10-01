@@ -1,0 +1,22 @@
+# Differences that the relational tags table causes on purpose (agent
+# J). See ../README.md, "Add an expected difference".
+
+domain = "tags"
+owner = "J"
+
+# `Tag` is not declared in graph/schemata.toml, so the graph has no
+# unique index on its slug, and the AGE-era API creates a second tag
+# with the same slug. `tags` has UNIQUE (organization_id, slug).
+[[difference]]
+key = "scenario:tags/tag lifecycle#05 *"
+field = "status"
+old = 201
+new = 409
+reason = "tags has UNIQUE (organization_id, slug); the graph had no unique index on Tag.slug"
+
+[[difference]]
+key = "scenario:tags/tag lifecycle#05 *"
+field = "body"
+old_status = 201
+new_status = 409
+reason = "the 409 error body, not the duplicate tag"

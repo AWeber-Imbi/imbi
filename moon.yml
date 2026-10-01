@@ -222,6 +222,24 @@ tasks:
     outputs:
       - 'build/coverage.xml'
 
+  # The replay comparison tool of the AGE to relational migration
+  # (scripts/replay/). It is not a workspace member, so no member task
+  # lints, type checks, or tests it. Its tests need no database and no
+  # API, so this task has no dependency on `services`.
+  replay-test:
+    script: |
+      set -e
+      uv run --frozen ruff check scripts/replay
+      uv run --frozen ruff format --check scripts/replay
+      uv run --frozen basedpyright scripts/replay
+      uv run --frozen pytest scripts/replay/tests
+    deps:
+      - '~:setup-env'
+    inputs:
+      - '/scripts/replay/**/*'
+    options:
+      runInCI: true
+
   # Build the production Docker image (Dockerfile lives in container/) for
   # local use. CI validates the image via test.yml's Image job instead, which
   # exercises release.yml's docker/build-push-action configuration and writes

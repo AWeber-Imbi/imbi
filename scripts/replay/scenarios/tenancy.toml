@@ -1,0 +1,246 @@
+# Write scenarios for the organization structure (agent K). See
+# ../README.md, "Add a scenario".
+#
+# `{org_slug}` is the organization of the recording, `{admin_email}` is
+# the user of the token, and `{run}` is the run token.
+
+domain = "tenancy"
+owner = "K"
+
+[[scenario]]
+name = "team lifecycle"
+description = "create, a duplicate (409), a failed patch (422), update, an idempotent member add, delete"
+
+[[scenario.step]]
+name = "create"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/"
+body = { name = "Replay Team {run}", slug = "replay-team-{run}" }
+expect = 201
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "a duplicate slug is 409"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/"
+body = { name = "Replay Team {run}", slug = "replay-team-{run}" }
+expect = 409
+
+[[scenario.step]]
+name = "a failed patch test operation is 422"
+method = "PATCH"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}"
+body = [{ op = "test", path = "/name", value = "not the name" }]
+expect = 422
+
+[[scenario.step]]
+name = "update the description"
+method = "PATCH"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}"
+body = [{ op = "add", path = "/description", value = "changed" }]
+expect = 200
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "read the change"
+method = "GET"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}"
+expect = 200
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "add a member"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}/members"
+body = { email = "{admin_email}" }
+expect = [200, 201]
+
+[[scenario.step]]
+name = "the retry of the member add is idempotent"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}/members"
+body = { email = "{admin_email}" }
+expect = [200, 201]
+
+[[scenario.step]]
+name = "the team has one member"
+method = "GET"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}/members"
+expect = 200
+
+[[scenario.step]]
+name = "delete"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}"
+expect = 204
+always = true
+
+[[scenario.step]]
+name = "the deleted team is gone"
+method = "GET"
+path = "/api/organizations/{org_slug}/teams/replay-team-{run}"
+expect = 404
+always = true
+
+[[scenario]]
+name = "another organization"
+description = "a row of another organization is not visible through this organization"
+
+[[scenario.step]]
+name = "create a second organization"
+method = "POST"
+path = "/api/organizations/"
+body = { name = "Replay Other {run}", slug = "replay-other-{run}" }
+expect = 201
+normalize = ["/id", "/created_at", "/updated_at"]
+
+[[scenario.step]]
+name = "create a team in it"
+method = "POST"
+path = "/api/organizations/replay-other-{run}/teams/"
+body = { name = "Replay Other Team {run}", slug = "replay-other-team-{run}" }
+expect = 201
+normalize = [
+  "/id",
+  "/created_at",
+  "/updated_at",
+  "/organization/id",
+  "/organization/created_at",
+  "/organization/updated_at"
+]
+
+[[scenario.step]]
+name = "read it through this organization"
+method = "GET"
+path = "/api/organizations/{org_slug}/teams/replay-other-team-{run}"
+expect = 404
+
+[[scenario.step]]
+name = "update it through this organization"
+method = "PATCH"
+path = "/api/organizations/{org_slug}/teams/replay-other-team-{run}"
+body = [{ op = "add", path = "/description", value = "changed" }]
+expect = 404
+
+[[scenario.step]]
+name = "delete it through this organization"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/teams/replay-other-team-{run}"
+expect = 404
+
+[[scenario.step]]
+name = "it is still there"
+method = "GET"
+path = "/api/organizations/replay-other-{run}/teams/replay-other-team-{run}"
+expect = 200
+normalize = [
+  "/id",
+  "/created_at",
+  "/updated_at",
+  "/organization/id",
+  "/organization/created_at",
+  "/organization/updated_at"
+]
+
+[[scenario.step]]
+name = "delete the team"
+method = "DELETE"
+path = "/api/organizations/replay-other-{run}/teams/replay-other-team-{run}"
+expect = 204
+always = true
+
+[[scenario.step]]
+name = "delete the organization"
+method = "DELETE"
+path = "/api/organizations/replay-other-{run}"
+expect = 204
+always = true
+
+[[scenario]]
+name = "restricted delete"
+description = "a team and a project type that a project uses cannot be deleted (RESTRICT on the relational side)"
+
+[[scenario.step]]
+name = "create a team"
+method = "POST"
+path = "/api/organizations/{org_slug}/teams/"
+body = { name = "Replay Owner {run}", slug = "replay-owner-{run}" }
+expect = 201
+normalize = ["/**/id", "/**/created_at", "/**/updated_at"]
+
+[[scenario.step]]
+name = "create a project type"
+method = "POST"
+path = "/api/organizations/{org_slug}/project-types/"
+body = { name = "Replay Type {run}", slug = "replay-type-{run}" }
+expect = 201
+normalize = ["/**/id", "/**/created_at", "/**/updated_at"]
+
+[[scenario.step]]
+name = "create a project that the team owns"
+method = "POST"
+path = "/api/organizations/{org_slug}/projects/"
+body = { name = "Replay Owned {run}", slug = "replay-owned-{run}", team_slug = "replay-owner-{run}", project_type_slugs = [
+  "replay-type-{run}"
+] }
+expect = 201
+save = { project_id = "/id" }
+normalize = [
+  "/**/id",
+  "/**/created_at",
+  "/**/updated_at",
+  "/relationships/**/href"
+]
+
+# The AGE-era API deletes the team (204) and leaves the project with no
+# team, so the project routes cannot find it any more (404). The
+# relational API refuses the delete (409). expected/tenancy.toml lists
+# these differences.
+[[scenario.step]]
+name = "delete the team"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/teams/replay-owner-{run}"
+expect = [204, 409]
+
+[[scenario.step]]
+name = "delete the project type"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/project-types/replay-type-{run}"
+expect = [204, 409]
+
+[[scenario.step]]
+name = "read the project"
+method = "GET"
+path = "/api/organizations/{org_slug}/projects/{project_id}"
+expect = [200, 404]
+# "/detail": the 404 error message names the generated project id.
+normalize = [
+  "/**/id",
+  "/**/created_at",
+  "/**/updated_at",
+  "/relationships/**/href",
+  "/detail"
+]
+
+[[scenario.step]]
+name = "delete the project"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/projects/{project_id}"
+expect = [200, 404]
+always = true
+# "/detail": the 404 error message names the generated project id.
+normalize = ["/detail"]
+
+[[scenario.step]]
+name = "delete the team after the project"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/teams/replay-owner-{run}"
+expect = [204, 404]
+always = true
+
+[[scenario.step]]
+name = "delete the project type after the project"
+method = "DELETE"
+path = "/api/organizations/{org_slug}/project-types/replay-type-{run}"
+expect = [204, 404]
+always = true
