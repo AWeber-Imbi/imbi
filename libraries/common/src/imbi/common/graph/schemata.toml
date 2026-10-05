@@ -40,6 +40,8 @@ name = [
   "PluginRegistration",
   "Project",
   "ProjectType",
+  "Prompt",
+  "PromptVersion",
   "Release",
   "Role",
   "ScoringPolicy",
@@ -320,6 +322,29 @@ attributes = ["name"]
 [[vlabel_indexes]]
 vlabel = "Project"
 attributes = ["slug"]
+
+# ``(namespace, slug)`` is unique per organization, not globally, so
+# the endpoint enforces it and these are lookup indexes only.
+[[vlabel_indexes]]
+vlabel = "Prompt"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Prompt"
+attributes = ["namespace", "slug"]
+
+# Two concurrent saves compute the same next ``n``; this index makes
+# the second CREATE fail instead of writing a duplicate version.
+[[vlabel_indexes]]
+vlabel = "PromptVersion"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "PromptVersion"
+attributes = ["prompt_id", "n"]
+unique = true
 
 # Per-project uniqueness of `Release.tag` is enforced at the
 # application layer — two projects may share e.g. "1.0.0" so a

@@ -2734,6 +2734,38 @@ async def get_project(
     breakdown: bool = False,
 ) -> ProjectResponse:
     """Get a project by ID."""
+    response = await fetch_project(db, org_slug, project_id, request)
+    if breakdown:
+        try:
+            score, bd = await compute_score(db, project_id)
+            if score is not None:
+                response.score = score
+                response.breakdown = bd
+        except ValueError:
+            LOGGER.warning(
+                'compute_score failed for project %s',
+                project_id,
+                exc_info=True,
+            )
+    return response
+
+
+async def fetch_project(
+    db: graph.Graph,
+    org_slug: str,
+    project_id: str,
+    request: fastapi.Request,
+) -> ProjectResponse:
+    """Read one project, as ``GET /projects/{id}`` returns it.
+
+    The caller checks ``project:read``. The prompt CMS ``project()``
+    template provider also uses this function.
+
+    Raises:
+        fastapi.HTTPException: 404 when the project is not in the
+            organization.
+
+    """
     query: typing.LiteralString = (
         """
     MATCH (p:Project {{id: {project_id}}})
@@ -2766,20 +2798,7 @@ async def get_project(
         graph.parse_agtype(records[0]['outbound_count']),
         graph.parse_agtype(records[0]['inbound_count']),
     )
-    response = ProjectResponse.model_validate(project_data)
-    if breakdown:
-        try:
-            score, bd = await compute_score(db, project_id)
-            if score is not None:
-                response.score = score
-                response.breakdown = bd
-        except ValueError:
-            LOGGER.warning(
-                'compute_score failed for project %s',
-                project_id,
-                exc_info=True,
-            )
-    return response
+    return ProjectResponse.model_validate(project_data)
 
 
 class ProjectRelationshipSummary(pydantic.BaseModel):

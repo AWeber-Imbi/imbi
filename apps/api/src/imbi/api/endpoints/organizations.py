@@ -50,6 +50,7 @@ from .project_logs import project_logs_router
 from .project_pr_sync import project_pr_sync_router
 from .project_types import project_types_router
 from .projects import projects_router
+from .prompts import prompts_router
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
@@ -80,6 +81,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     ai_models_router,
     prefix='/{org_slug}/ai-models',
+)
+organizations_router.include_router(
+    prompts_router,
+    prefix='/{org_slug}/prompts',
 )
 organizations_router.include_router(
     environments_router,

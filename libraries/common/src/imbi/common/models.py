@@ -52,6 +52,12 @@ __all__ = [
     'ProjectEnvironmentEdge',
     'ProjectRelationships',
     'ProjectType',
+    'Prompt',
+    'PromptLabel',
+    'PromptMessage',
+    'PromptParams',
+    'PromptVariable',
+    'PromptVersion',
     'PullRequestRecord',
     'RelationshipEdge',
     'RelationshipLink',
@@ -690,6 +696,124 @@ class AIModel(Node):
     monthly_spend_cap: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
+
+
+#: Namespaces, prompt slugs, and label names share one shape, so a
+#: reference such as ``mender/core@stable`` splits without ambiguity.
+PROMPT_NAME_PATTERN = r'^[a-z0-9][a-z0-9._-]*$'
+
+PromptName = typing.Annotated[
+    str, pydantic.Field(pattern=PROMPT_NAME_PATTERN, max_length=128)
+]
+
+
+def _parse_json(value: object) -> object:
+    """Parse a JSON string; Apache AGE stores nested values as strings."""
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
+class PromptLabel(pydantic.BaseModel):
+    """A movable pointer from a label name to one prompt version."""
+
+    name: PromptName
+    version: int = pydantic.Field(gt=0)
+    updated_by: str
+    updated_at: datetime.datetime
+
+
+class Prompt(Node):
+    """A versioned prompt in the prompt CMS.
+
+    A prompt does not know who consumes it. ``namespace`` groups
+    prompts (``imbi-assistant``, ``mender``) and, with ``slug``, is
+    unique within the organization; the endpoint enforces that.
+    The body, model, and parameters live on :class:`PromptVersion`.
+    """
+
+    organization: BelongsToOrganization
+    namespace: PromptName
+    #: Organizing facet only (``core_system``, ``edge_case``).
+    type: str | None = None
+    #: Resolution falls back to this label when a caller names none,
+    #: or names a label the prompt does not have.
+    default_label: PromptName = 'stable'
+    labels: list[PromptLabel] = []
+
+    @pydantic.field_validator('labels', mode='before')
+    @classmethod
+    def _parse_labels(cls, value: object) -> object:
+        return _parse_json(value)
+
+
+class PromptMessage(pydantic.BaseModel):
+    """One message template that follows the system prompt."""
+
+    role: typing.Literal['user', 'assistant']
+    content: str
+
+
+class PromptParams(pydantic.BaseModel):
+    """Model parameters. Unknown keys pass through to the provider."""
+
+    model_config = pydantic.ConfigDict(extra='allow')
+
+    max_tokens: int | None = pydantic.Field(default=None, gt=0)
+    temperature: float | None = pydantic.Field(default=None, ge=0, le=2)
+    top_p: float | None = pydantic.Field(default=None, ge=0, le=1)
+    stop_sequences: list[str] = []
+
+
+class PromptVariable(pydantic.BaseModel):
+    """The declared type of one template variable."""
+
+    type: typing.Literal['str', 'int', 'float', 'bool', 'list', 'object']
+    required: bool = False
+    description: str | None = None
+
+
+class PromptVersion(GraphModel):
+    """One immutable version of a :class:`Prompt`.
+
+    The body, the model, and the parameters version as one unit, so a
+    version is reproducible. ``eval_summary`` is the only field that
+    changes after the version is written: it caches the latest
+    evaluation verdict, which the evaluation system owns.
+    """
+
+    prompt: typing.Annotated[
+        Prompt, Edge(rel_type='VERSION_OF', direction='OUTGOING')
+    ]
+    #: Denormalised so ``(prompt_id, n)`` can carry a unique index.
+    prompt_id: str
+    n: int = pydantic.Field(gt=0)
+    #: A short note that tells what changed in this version.
+    summary: str | None = None
+    system: str = ''
+    messages: list[PromptMessage] = []
+    tools: list[dict[str, typing.Any]] = []
+    #: ``AIModel.slug`` in the organization's model catalog.
+    model: str | None = None
+    #: ``AIModel.model_id`` when the version was written.
+    model_id: str | None = None
+    params: PromptParams = pydantic.Field(default_factory=PromptParams)
+    variable_schema: dict[str, PromptVariable] = {}
+    content_sha256: str
+    eval_summary: dict[str, typing.Any] | None = None
+    created_by: str
+
+    @pydantic.field_validator(
+        'messages',
+        'tools',
+        'params',
+        'variable_schema',
+        'eval_summary',
+        mode='before',
+    )
+    @classmethod
+    def _parse_json_fields(cls, value: object) -> object:
+        return _parse_json(value)
 
 
 class LinkDefinition(Node):
