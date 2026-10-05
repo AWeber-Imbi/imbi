@@ -40,8 +40,9 @@ export function AssistantPromptTab() {
         style={{ borderWidth: '0.5px' }}
       >
         <Info className="size-3.5 flex-none" />
-        imbi-assistant reads this prompt after the CMS adoption change ships;
-        until then it uses its built-in prompt.
+        imbi-assistant uses the version the stable label points at. Until this
+        prompt exists, it uses its built-in prompt; run imbi-api setup-prompts
+        to create it.
       </div>
       <PromptEditor
         emptyState={
