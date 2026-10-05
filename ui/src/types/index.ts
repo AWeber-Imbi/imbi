@@ -50,6 +50,7 @@ export interface AIModel {
   kind: AIModelKind
   max_output_tokens: null | number
   model_id: string
+  model_type: AIModelType
   monthly_spend_cap: null | number | string
   name: string
   output_cost_per_million: null | number | string
@@ -73,6 +74,8 @@ export interface AIModelCreate {
   kind?: AIModelKind
   max_output_tokens?: null | number
   model_id: string
+  /** Omitted: the provider driver's default model type. */
+  model_type?: AIModelType | null
   monthly_spend_cap?: null | number
   name: string
   output_cost_per_million?: null | number
@@ -98,6 +101,9 @@ export interface AIModelImportResult {
 }
 
 export type AIModelKind = 'chat' | 'completion'
+
+/** `generative` returns text; `decision` returns typed judgments. */
+export type AIModelType = 'decision' | 'generative'
 
 export interface AIProvider {
   auth_kind: AIProviderAuthKind
@@ -138,6 +144,8 @@ export interface AIProviderDriver {
   description: string
   /** lucide-react icon name. */
   icon: string
+  /** The model types this driver serves; the first is the default. */
+  model_types: AIModelType[]
   name: string
   requires_base_url: boolean
   slug: AIProviderDriverSlug
@@ -150,6 +158,7 @@ export type AIProviderDriverSlug =
   | 'bedrock'
   | 'openai'
   | 'openai_compatible'
+  | 'typesafe'
   | 'vertex'
 
 export interface AITeamRef {

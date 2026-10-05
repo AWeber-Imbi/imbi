@@ -20,7 +20,10 @@ interface AIModelSelectProps {
   value: null | string
 }
 
-/** Pick a model from the organization's AI Models catalog, by slug. */
+/**
+ * Pick a generative model from the AI Models catalog, by slug. Prompt
+ * versions hold text prompts, which decision models cannot run.
+ */
 export function AIModelSelect({
   className,
   disabled = false,
@@ -50,7 +53,10 @@ export function AIModelSelect({
           <SelectItem value={value}>{value} (not in catalog)</SelectItem>
         )}
         {models
-          .filter((m) => m.enabled || m.slug === value)
+          .filter(
+            (m) =>
+              m.model_type !== 'decision' && (m.enabled || m.slug === value),
+          )
           .map((m) => (
             <SelectItem key={m.id} value={m.slug}>
               {m.slug}

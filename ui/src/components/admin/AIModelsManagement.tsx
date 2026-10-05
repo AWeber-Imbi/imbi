@@ -89,6 +89,7 @@ const MODEL_PATCH_FIELDS = [
   'kind',
   'max_output_tokens',
   'model_id',
+  'model_type',
   'monthly_spend_cap',
   'name',
   'output_cost_per_million',
@@ -195,6 +196,7 @@ export function AIModelsManagement() {
         kind: values.kind,
         max_output_tokens: values.max_output_tokens,
         model_id: values.model_id,
+        model_type: values.model_type,
         monthly_spend_cap: values.monthly_spend_cap,
         name: values.name,
         output_cost_per_million: values.output_cost_per_million,
@@ -435,6 +437,7 @@ export function AIModelsManagement() {
       {modelDialogOpen && (action !== 'edit' || editingModel) && (
         <ModelDialog
           defaultProviderId={searchParams.get('provider') ?? undefined}
+          drivers={drivers}
           error={
             createModelMutation.error ??
             updateModelMutation.error ??
@@ -549,6 +552,7 @@ function currentModelState(
     kind: model.kind,
     max_output_tokens: model.max_output_tokens,
     model_id: model.model_id,
+    model_type: model.model_type,
     monthly_spend_cap: decimalToNumber(model.monthly_spend_cap),
     name: model.name,
     output_cost_per_million: decimalToNumber(model.output_cost_per_million),
