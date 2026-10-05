@@ -283,9 +283,21 @@ class CheckTestCase(unittest.TestCase):
         for source in (
             '{% set x %}body{% endset %}{{ x }}',
             '{% filter upper %}body{% endfilter %}',
+            '{% block b %}x{% endblock %}{{ self.b() }}',
         ):
             with self.subTest(source=source):
                 with self.assertRaisesRegex(rendering.RenderError, 'Block'):
+                    rendering.check_syntax({'system': source})
+
+    def test_rejects_template_composition(self) -> None:
+        for source in (
+            "{% extends 'base' %}",
+            "{% include 'other' %}",
+            "{% import 'm' as m %}",
+            "{% from 'm' import x %}",
+        ):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(rendering.RenderError, 'allowed'):
                     rendering.check_syntax({'system': source})
 
     def test_variable_names(self) -> None:

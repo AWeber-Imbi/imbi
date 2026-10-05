@@ -676,11 +676,30 @@ def _check_structure(node: jinja2.nodes.Node, depth: int = 0) -> None:
     """
     if isinstance(node, (jinja2.nodes.Macro, jinja2.nodes.CallBlock)):
         raise RenderError('Macros are not allowed')
-    # Both collect their body in memory, outside the streamed output cap.
-    if isinstance(node, (jinja2.nodes.AssignBlock, jinja2.nodes.FilterBlock)):
+    # These collect a body in memory, outside the streamed output cap
+    # (``self.name()`` renders a block to a string).
+    if isinstance(
+        node,
+        (
+            jinja2.nodes.AssignBlock,
+            jinja2.nodes.FilterBlock,
+            jinja2.nodes.Block,
+        ),
+    ):
         raise RenderError(
-            'Block assignments and filter blocks are not allowed'
+            'Blocks, block assignments, and filter blocks are not allowed'
         )
+    # A prompt is one template; there is no loader to pull in others.
+    if isinstance(
+        node,
+        (
+            jinja2.nodes.Extends,
+            jinja2.nodes.Include,
+            jinja2.nodes.Import,
+            jinja2.nodes.FromImport,
+        ),
+    ):
+        raise RenderError('extends, include, and import are not allowed')
     if isinstance(node, jinja2.nodes.For):
         if node.recursive:
             raise RenderError('Recursive loops are not allowed')
