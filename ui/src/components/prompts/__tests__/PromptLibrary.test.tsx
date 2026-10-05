@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
@@ -45,6 +45,12 @@ async function renderLibrary(path = '/admin/prompts', namespace?: string) {
 }
 
 describe('PromptLibrary', () => {
+  // Load the component once, outside the 5 s test timeout. On CI the
+  // cold import of the CodeMirror prompt editor takes longer than that.
+  beforeAll(async () => {
+    await import('../PromptLibrary')
+  }, 60_000)
+
   beforeEach(async () => {
     auth.user = { is_admin: true, permissions: [] }
     const endpoints = await import('@/api/endpoints')

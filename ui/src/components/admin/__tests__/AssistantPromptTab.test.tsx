@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '@/api/client'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
@@ -22,6 +22,12 @@ vi.mock('@/hooks/useAuth', () => ({
 }))
 
 describe('AssistantPromptTab', () => {
+  // Load the component once, outside the 5 s test timeout. On CI the
+  // cold import of the CodeMirror prompt editor takes longer than that.
+  beforeAll(async () => {
+    await import('../AssistantPromptTab')
+  }, 60_000)
+
   beforeEach(async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listAIModels).mockResolvedValue([])
