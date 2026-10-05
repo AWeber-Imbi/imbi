@@ -66,6 +66,49 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                 "{% for i in range(1000) %}{{ 'x' * 1000 }}{% endfor %}"
             )
 
+    async def test_caps_repetition_before_it_runs(self) -> None:
+        with self.assertRaisesRegex(rendering.RenderError, 'limit'):
+            await self.render("{{ 'x' * 1000000000 }}")
+
+    async def test_caps_concatenation(self) -> None:
+        with self.assertRaisesRegex(rendering.RenderError, 'limit'):
+            await self.render("{% set s = 'x' * 200000 %}{{ s + s }}")
+
+    async def test_caps_exponent(self) -> None:
+        with self.assertRaisesRegex(rendering.RenderError, 'Exponent'):
+            await self.render('{{ 10 ** 100000000 }}')
+
+    async def test_blocks_padding(self) -> None:
+        for source in (
+            "{{ 'x'.center(1000000000) }}",
+            "{{ '%1000000000s' % 'x' }}",
+            "{{ '{:>1000000000}'.format('x') }}",
+            "{{ 'x'|indent(1000000000) }}",
+            "{{ range(1000)|join('x' * 200000) }}",
+            '{{ lipsum(1000000) }}',
+        ):
+            with self.subTest(source=source):
+                with self.assertRaises(rendering.RenderError):
+                    await self.render(source)
+
+    async def test_ordinary_filters_still_work(self) -> None:
+        text = await self.render(
+            "{{ range(3)|join(', ') }}|{{ range(3)|map('string')|join }}"
+            "|{{ 'a\\nb'|indent(2) }}"
+        )
+        self.assertEqual(text, '0, 1, 2|012|a\n  b')
+
+    async def test_namespace_is_not_available(self) -> None:
+        with self.assertRaises(rendering.RenderError):
+            await self.render('{% set ns = namespace(s=1) %}{{ ns.s }}')
+
+    async def test_streamed_output_is_capped(self) -> None:
+        with self.assertRaisesRegex(rendering.RenderError, 'limit'):
+            await self.render(
+                '{% for i in range(1000) %}{% for j in range(1000) %}'
+                'x{% endfor %}{% endfor %}'
+            )
+
     async def test_wrong_type_is_an_error(self) -> None:
         with self.assertRaisesRegex(rendering.RenderError, 'type int'):
             await self.render(
@@ -91,6 +134,20 @@ class CheckTestCase(unittest.TestCase):
     def test_syntax_error_names_the_field(self) -> None:
         with self.assertRaisesRegex(rendering.RenderError, 'messages\\[0\\]'):
             rendering.check_syntax({'messages[0]': '{% if %}'})
+
+    def test_rejects_macros(self) -> None:
+        with self.assertRaisesRegex(rendering.RenderError, 'Macros'):
+            rendering.check_syntax(
+                {'system': '{% macro m() %}x{% endmacro %}{{ m() }}'}
+            )
+
+    def test_rejects_deep_loops(self) -> None:
+        source = (
+            '{% for a in range(2) %}{% for b in range(2) %}'
+            '{% for c in range(2) %}x{% endfor %}{% endfor %}{% endfor %}'
+        )
+        with self.assertRaisesRegex(rendering.RenderError, 'nest'):
+            rendering.check_syntax({'system': source})
 
     def test_variable_names(self) -> None:
         with self.assertRaises(rendering.RenderError):

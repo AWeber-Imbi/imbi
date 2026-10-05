@@ -831,16 +831,17 @@ async def patch_prompt(
     """Change a prompt's metadata with JSON Patch (RFC 6902).
 
     Renaming ``namespace`` or ``slug`` changes the reference every
-    consumer uses.
+    consumer uses, and frees the old reference for another prompt. So
+    a rename requires ``prompt:promote``, like a label move.
 
     Raises:
         400: Invalid patch or a read-only path.
+        403: A rename without ``prompt:promote``.
         404: No such prompt.
         409: The new ``namespace/slug`` is taken.
         422: The patched values are not valid.
 
     """
-    _ = auth
     prompt, latest = await _fetch_prompt(db, org_slug, namespace, slug)
     document = prompt.model_dump(mode='json', include=set(_PATCHABLE_FIELDS))
     patched = json_patch.apply_patch(document, operations, _READONLY_PATHS)
@@ -855,6 +856,11 @@ async def patch_prompt(
     except pydantic.ValidationError as e:
         raise _unprocessable(f'Validation error: {e.errors()}') from e
     if (updated.namespace, updated.slug) != (namespace, slug):
+        if not (auth.is_admin or 'prompt:promote' in auth.permissions):
+            raise fastapi.HTTPException(
+                status_code=403,
+                detail='Renaming a prompt requires prompt:promote',
+            )
         await _assert_ref_free(
             db, org_slug, updated.namespace, updated.slug, prompt.id
         )

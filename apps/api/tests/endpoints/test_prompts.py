@@ -7,7 +7,7 @@ from unittest import mock
 import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
-from imbi.api.endpoints import prompts, projects
+from imbi.api.endpoints import projects, prompts
 
 ORG = provider_tests.ORG
 BASE = f'/organizations/{ORG}/prompts'
@@ -79,7 +79,9 @@ def prompt_props(**overrides: typing.Any) -> dict[str, typing.Any]:
     return data
 
 
-def version_props(n: int = 1, **overrides: typing.Any) -> dict[str, typing.Any]:
+def version_props(
+    n: int = 1, **overrides: typing.Any
+) -> dict[str, typing.Any]:
     """Return a PromptVersion vertex property dict, as AGE stores it."""
     data: dict[str, typing.Any] = {
         'id': f'ver-{n}',
@@ -274,9 +276,7 @@ class CreateVersionTestCase(PromptTestBase):
         'system': 'You triage {{ project_slug }}.',
         'model': 'default-chat',
         'params': {'max_tokens': 4096, 'temperature': 1.0},
-        'variable_schema': {
-            'project_slug': {'type': 'str', 'required': True}
-        },
+        'variable_schema': {'project_slug': {'type': 'str', 'required': True}},
     }
 
     def test_cuts_next_version(self) -> None:
@@ -413,13 +413,7 @@ class LabelTestCase(PromptTestBase):
             (GET_PROMPT, prompt_row(2, labels=labels)),
             (
                 SET_LABELS,
-                [
-                    {
-                        'p': prompt_props(
-                            labels=labels, default_label='canary'
-                        )
-                    }
-                ],
+                [{'p': prompt_props(labels=labels, default_label='canary')}],
             ),
         )
         response = self.client.put(
@@ -430,6 +424,50 @@ class LabelTestCase(PromptTestBase):
         self.assertEqual(
             router.params_for(SET_LABELS)['default_label'], 'canary'
         )
+
+
+class PatchPromptTestCase(PromptTestBase):
+    URL = BASE + '/mender/core'
+
+    def test_update_can_change_name(self) -> None:
+        self.as_principal('prompt:update')
+        self.route((GET_PROMPT, prompt_row()))
+        response = self.client.patch(
+            self.URL, json=[{'op': 'replace', 'path': '/name', 'value': 'X'}]
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['name'], 'X')
+
+    def test_rename_needs_promote(self) -> None:
+        self.as_principal('prompt:update')
+        self.route((GET_PROMPT, prompt_row()))
+        response = self.client.patch(
+            self.URL,
+            json=[{'op': 'replace', 'path': '/slug', 'value': 'other'}],
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_rename_to_taken_ref_is_409(self) -> None:
+        self.route(
+            (
+                GET_PROMPT,
+                lambda params: prompt_row(
+                    id='prm-1' if params['slug'] == 'core' else 'prm-2'
+                ),
+            )
+        )
+        response = self.client.patch(
+            self.URL,
+            json=[{'op': 'replace', 'path': '/slug', 'value': 'other'}],
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_labels_are_read_only(self) -> None:
+        self.route((GET_PROMPT, prompt_row()))
+        response = self.client.patch(
+            self.URL, json=[{'op': 'replace', 'path': '/labels', 'value': []}]
+        )
+        self.assertEqual(response.status_code, 400)
 
 
 class ResolveTestCase(PromptTestBase):
@@ -556,7 +594,9 @@ class EvaluationAndDeleteTestCase(PromptTestBase):
         self.assertEqual(response.status_code, 200, response.text)
         stored = json.loads(router.params_for(SET_EVAL)['eval_summary'])
         self.assertEqual(stored['verdict'], 'pass')
-        self.assertEqual(response.json()['eval_summary']['run_id'], 'eval-7d4f2a')
+        self.assertEqual(
+            response.json()['eval_summary']['run_id'], 'eval-7d4f2a'
+        )
 
     def test_delete_removes_versions_then_prompt(self) -> None:
         router = self.route((GET_PROMPT, prompt_row()))
