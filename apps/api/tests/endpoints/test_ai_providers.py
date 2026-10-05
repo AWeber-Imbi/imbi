@@ -67,6 +67,7 @@ LIST_PROVIDERS = ai_providers._LIST_QUERY
 SLUG_TAKEN = ai_providers._SLUG_TAKEN_QUERY
 COUNTS = ai_providers._COUNTS_QUERY
 CONFIGURED = ai_providers._CONFIGURED_QUERY
+MODEL_TYPES = ai_providers._MODEL_TYPES_QUERY
 CREATE = 'CREATE (p:AIProvider'
 UPDATE = 'SET p.'
 DELETE = 'DETACH DELETE p'
@@ -462,6 +463,33 @@ class PatchProviderTestCase(AIProviderTestBase):
             json=[{'op': 'replace', 'path': '/slug', 'value': 'openai'}],
         )
         self.assertEqual(response.status_code, 409)
+
+    def test_patch_driver_rejects_unserved_model_type(self) -> None:
+        """A new driver must serve the type of every served model."""
+        self.route(
+            (GET_PROVIDER, [{'p': provider_props()}]),
+            (MODEL_TYPES, [{'model_type': 'generative'}]),
+        )
+        response = self.client.patch(
+            f'{BASE}/prv-1',
+            json=[{'op': 'replace', 'path': '/driver', 'value': 'typesafe'}],
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("'generative'", response.json()['detail'])
+
+    def test_patch_driver_allows_served_model_types(self) -> None:
+        """A driver change is accepted when it serves every model."""
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_props()}]),
+            (MODEL_TYPES, [{'model_type': 'generative'}]),
+            (UPDATE, [{'p': provider_props(driver='openai')}]),
+        )
+        response = self.client.patch(
+            f'{BASE}/prv-1',
+            json=[{'op': 'replace', 'path': '/driver', 'value': 'openai'}],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(router.params_for(MODEL_TYPES)['id'], 'prv-1')
 
     def test_patch_invalid_base_url_is_422(self) -> None:
         """A patched base URL is validated like a created one."""

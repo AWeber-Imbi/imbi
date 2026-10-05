@@ -268,6 +268,37 @@ async def _assert_slug_free(
             )
 
 
+_MODEL_TYPES_QUERY: typing.LiteralString = """
+MATCH (m:AIModel)-[:SERVED_BY]->(:AIProvider {{id: {id}}})
+RETURN m.model_type AS model_type
+"""
+
+
+async def _assert_driver_serves_models(
+    db: graph.Graph, provider_id: str, driver: str
+) -> None:
+    """Raise 409 when ``driver`` cannot serve a model of the provider.
+
+    A provider keeps its models when its driver changes, so the new
+    driver must serve the model type of each one.
+    """
+    info = drivers.get_driver(driver)
+    supported = info.model_types if info else ('generative',)
+    records = await db.execute(
+        _MODEL_TYPES_QUERY, {'id': provider_id}, ['model_type']
+    )
+    for record in records:
+        model_type = graph.parse_agtype(record['model_type']) or 'generative'
+        if model_type not in supported:
+            raise fastapi.HTTPException(
+                status_code=409,
+                detail=(
+                    f'Driver {driver!r} does not serve {model_type!r} '
+                    'models; change or move those models first'
+                ),
+            )
+
+
 def _build(payload: dict[str, typing.Any]) -> models.AIProvider:
     """Validate provider properties into a node or raise 422."""
     try:
@@ -443,7 +474,8 @@ async def patch_ai_provider(
     Raises:
         400: Invalid patch or a read-only path.
         404: No such provider.
-        409: The new slug is taken.
+        409: The new slug is taken, or the new driver does not serve
+            the model type of a model of this provider.
         422: The patched configuration is invalid.
 
     """
@@ -461,6 +493,8 @@ async def patch_ai_provider(
 
     if node.slug != existing.slug:
         await _assert_slug_free(db, node.slug, exclude_id=id)
+    if node.driver != existing.driver:
+        await _assert_driver_serves_models(db, id, node.driver)
     counts = await model_counts(db)
     return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
