@@ -612,11 +612,12 @@ def validate_provider_base_url(value: str) -> str:
 
 
 class AIProvider(Node):
-    """A configured instance of an LLM provider for one organization.
+    """A configured instance of an LLM provider.
 
-    The driver catalog (:mod:`imbi.common.llm.drivers`) is static code;
-    an ``AIProvider`` node exists only once an admin configures one, so
-    creating an organization does not imply any AI configuration.
+    Providers are global: one installation serves every organization
+    from the same company account. The driver catalog
+    (:mod:`imbi.common.llm.drivers`) is static code; an ``AIProvider``
+    node exists only once an admin configures one.
 
     ``credentials_encrypted`` holds Fernet *ciphertext* (see
     :mod:`imbi.common.auth.encryption`); plaintext must never be
@@ -624,7 +625,6 @@ class AIProvider(Node):
     the key, stored in the clear so an admin can tell two keys apart.
     """
 
-    organization: BelongsToOrganization
     driver: AIProviderDriver
     #: ``None`` means "use the driver's default endpoint".
     base_url: str | None = None
@@ -653,24 +653,23 @@ class AIProvider(Node):
 
 
 class AIModel(Node):
-    """One model an organization may call, served by an ``AIProvider``.
+    """One model Imbi may call, served by an ``AIProvider``.
 
-    ``slug`` is a stable org-scoped alias (``default-chat``) so agent
-    configuration need not name a vendor model id, while ``model_id`` is
-    the identifier actually sent to the provider.  Both are unique
-    within their scope, enforced in the endpoint rather than by a graph
-    index: ``slug`` per organization and ``model_id`` per provider.
+    The catalog is global. ``slug`` is a stable alias
+    (``default-chat``) so agent configuration need not name a vendor
+    model id, while ``model_id`` is the identifier actually sent to the
+    provider. ``slug`` is unique by a graph index; ``model_id`` is
+    unique per provider, which the endpoint enforces.
 
     ``access_scope`` is explicit rather than inferred from the presence
     of ``ALLOWED_FOR`` edges, so "every team" and "no team has been
-    picked yet" stay distinguishable.
+    picked yet" stay distinguishable. The value ``organization`` means
+    "available to everyone"; the name is kept for API compatibility.
     """
 
     provider: typing.Annotated[
         AIProvider, Edge(rel_type='SERVED_BY', direction='OUTGOING')
     ]
-    #: Denormalised from the provider so scoping queries need one hop.
-    organization: BelongsToOrganization
     model_id: str
     kind: typing.Literal['chat', 'completion'] = 'chat'
     enabled: bool = True
@@ -726,13 +725,12 @@ class PromptLabel(pydantic.BaseModel):
 class Prompt(Node):
     """A versioned prompt in the prompt CMS.
 
-    A prompt does not know who consumes it. ``namespace`` groups
-    prompts (``imbi-assistant``, ``mender``) and, with ``slug``, is
-    unique within the organization; the endpoint enforces that.
+    Prompts are global, and a prompt does not know who consumes it.
+    ``namespace`` groups prompts (``imbi-assistant``, ``mender``) and,
+    with ``slug``, is unique by a graph index.
     The body, model, and parameters live on :class:`PromptVersion`.
     """
 
-    organization: BelongsToOrganization
     namespace: PromptName
     #: Organizing facet only (``core_system``, ``edge_case``).
     type: str | None = None
@@ -793,7 +791,7 @@ class PromptVersion(GraphModel):
     system: str = ''
     messages: list[PromptMessage] = []
     tools: list[dict[str, typing.Any]] = []
-    #: ``AIModel.slug`` in the organization's model catalog.
+    #: ``AIModel.slug`` in the model catalog.
     model: str | None = None
     #: ``AIModel.model_id`` when the version was written.
     model_id: str | None = None

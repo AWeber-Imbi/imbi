@@ -113,6 +113,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai-models/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ai Models
+         * @description List the model catalog, ordered by name.
+         *
+         *     Returns:
+         *         Every configured model with its provider and allowed teams.
+         */
+        get: operations["list_ai_models_api_ai_models__get"];
+        put?: never;
+        /**
+         * Create Ai Model
+         * @description Add a model to the catalog.
+         *
+         *     ``allowed_team_ids`` is still validated when ``access_scope`` is
+         *     ``organization``, but no ``ALLOWED_FOR`` edge is written: the model
+         *     is available to everyone and the response reports an empty
+         *     ``allowed_teams``.
+         *
+         *     Parameters:
+         *         data: Model configuration.
+         *
+         *     Returns:
+         *         The created model.
+         *
+         *     Raises:
+         *         404: The provider does not exist.
+         *         409: The slug is taken, or the provider already serves this
+         *             ``model_id``.
+         *         422: A team does not exist, or ``restricted`` was requested with
+         *             no teams.
+         */
+        post: operations["create_ai_model_api_ai_models__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-models/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Model
+         * @description Get one model.
+         *
+         *     Parameters:
+         *         id: Model id.
+         *
+         *     Returns:
+         *         The model with its provider and allowed teams.
+         *
+         *     Raises:
+         *         404: No such model.
+         */
+        get: operations["get_ai_model_api_ai_models__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Ai Model
+         * @description Delete a model.
+         *
+         *     Parameters:
+         *         id: Model id.
+         *
+         *     Raises:
+         *         404: No such model.
+         */
+        delete: operations["delete_ai_model_api_ai_models__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Ai Model
+         * @description Partially update a model using JSON Patch (RFC 6902).
+         *
+         *     ``provider_id`` and ``allowed_team_ids`` are patchable alongside the
+         *     properties; the team list is replaced as a set, so patching it to
+         *     ``[]`` removes every ``ALLOWED_FOR`` edge. Patching ``access_scope``
+         *     to ``organization`` clears them too, whatever the team list holds.
+         *
+         *     Parameters:
+         *         id: Model id.
+         *         operations: JSON Patch operations.
+         *
+         *     Returns:
+         *         The updated model.
+         *
+         *     Raises:
+         *         400: Invalid patch or a read-only path.
+         *         404: No such model, or no such new provider.
+         *         409: The new slug or ``model_id`` collides.
+         *         422: A team does not exist, ``restricted`` was left
+         *             with no teams, or the patched values are invalid.
+         */
+        patch: operations["patch_ai_model_api_ai_models__id__patch"];
+        trace?: never;
+    };
     "/api/ai-provider-drivers": {
         parameters: {
             query?: never;
@@ -130,6 +237,235 @@ export interface paths {
         get: operations["list_ai_provider_drivers_api_ai_provider_drivers_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-providers/{id}/import-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ai Models
+         * @description Create models from a discovery result.
+         *
+         *     Every imported model lands enabled, ``chat``, and available to
+         *     everyone;
+         *     an admin narrows it afterwards. A ``model_id`` the provider already
+         *     serves is reported in ``skipped`` rather than failing the batch, so
+         *     re-importing after adding one model is not an error.
+         *
+         *     Answers 201 when at least one model was created and 200 when every
+         *     requested model was skipped, since nothing came into existence.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *         data: The models selected from the discovery result.
+         *
+         *     Returns:
+         *         The models created, and the ``model_id`` values skipped.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        post: operations["import_ai_models_api_ai_providers__id__import_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-providers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ai Providers
+         * @description List the configured providers, ordered by name.
+         *
+         *     Returns:
+         *         Every configured provider, without credentials.
+         */
+        get: operations["list_ai_providers_api_ai_providers__get"];
+        put?: never;
+        /**
+         * Create Ai Provider
+         * @description Configure a provider.
+         *
+         *     Parameters:
+         *         data: Provider configuration. ``api_key`` is plaintext and is
+         *             encrypted before persistence.
+         *
+         *     Returns:
+         *         The created provider, without credentials.
+         *
+         *     Raises:
+         *         409: A provider with the same slug exists.
+         *         422: Invalid configuration (bad ``base_url``, or
+         *             ``openai_compatible`` without one).
+         */
+        post: operations["create_ai_provider_api_ai_providers__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Provider
+         * @description Get one configured provider.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Returns:
+         *         The provider, without credentials.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        get: operations["get_ai_provider_api_ai_providers__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Ai Provider
+         * @description Delete a provider that serves no models.
+         *
+         *     There is deliberately no cascade: models outlive the provider row an
+         *     operator happens to be editing, so they must be deleted or moved
+         *     first.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Raises:
+         *         404: No such provider.
+         *         409: The provider still serves models.
+         */
+        delete: operations["delete_ai_provider_api_ai_providers__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Ai Provider
+         * @description Partially update a provider using JSON Patch (RFC 6902).
+         *
+         *     Only the configuration fields are patchable; credentials are
+         *     reachable solely through the credentials routes, which carry their
+         *     own permission.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *         operations: JSON Patch operations.
+         *
+         *     Returns:
+         *         The updated provider, without credentials.
+         *
+         *     Raises:
+         *         400: Invalid patch or a read-only path.
+         *         404: No such provider.
+         *         409: The new slug is taken.
+         *         422: The patched configuration is invalid.
+         */
+        patch: operations["patch_ai_provider_api_ai_providers__id__patch"];
+        trace?: never;
+    };
+    "/api/ai-providers/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Ai Provider Credentials
+         * @description Set or replace a provider's API key.
+         *
+         *     The plaintext key is encrypted immediately and never echoed; only
+         *     its last four characters are retained, as ``credential_hint``.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *         data: The plaintext API key.
+         *
+         *     Returns:
+         *         The provider, with refreshed credential metadata.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        put: operations["set_ai_provider_credentials_api_ai_providers__id__credentials_put"];
+        post?: never;
+        /**
+         * Delete Ai Provider Credentials
+         * @description Remove a provider's stored API key.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Returns:
+         *         The provider, with credential metadata cleared.
+         *
+         *     Raises:
+         *         404: No such provider.
+         */
+        delete: operations["delete_ai_provider_credentials_api_ai_providers__id__credentials_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-providers/{id}/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover Ai Provider Models
+         * @description Pull a provider's model list using its stored credentials.
+         *
+         *     Doubles as a connection test. Nothing is written: the caller picks
+         *     from the result and posts to ``/import-models``, so the route shares
+         *     that route's ``ai_model:create`` gate. ``ai_model:read`` alone must
+         *     not let every default-role user spend the provider's key against
+         *     an admin-supplied endpoint. Errors from the provider are sanitized to
+         *     a status line so a failing call can never surface the key.
+         *
+         *     Parameters:
+         *         id: Provider id.
+         *
+         *     Returns:
+         *         The provider's models, each flagged with whether it is already
+         *         configured.
+         *
+         *     Raises:
+         *         404: No such provider.
+         *         409: The provider has no stored credentials.
+         *         422: The driver does not support discovery.
+         *         502: The provider rejected or failed the call.
+         */
+        post: operations["discover_ai_provider_models_api_ai_providers__id__discover_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1848,420 +2184,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/organizations/{org_slug}/ai-providers/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Ai Providers
-         * @description List an organization's configured providers, ordered by name.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *
-         *     Returns:
-         *         Every configured provider, without credentials.
-         */
-        get: operations["list_ai_providers_api_organizations__org_slug__ai_providers__get"];
-        put?: never;
-        /**
-         * Create Ai Provider
-         * @description Configure a provider for an organization.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         data: Provider configuration. ``api_key`` is plaintext and is
-         *             encrypted before persistence.
-         *
-         *     Returns:
-         *         The created provider, without credentials.
-         *
-         *     Raises:
-         *         404: The organization does not exist.
-         *         409: A provider with the same slug exists in this organization.
-         *         422: Invalid configuration (bad ``base_url``, or
-         *             ``openai_compatible`` without one).
-         */
-        post: operations["create_ai_provider_api_organizations__org_slug__ai_providers__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/ai-providers/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Ai Provider
-         * @description Get one configured provider.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Provider id.
-         *
-         *     Returns:
-         *         The provider, without credentials.
-         *
-         *     Raises:
-         *         404: No such provider in this organization.
-         */
-        get: operations["get_ai_provider_api_organizations__org_slug__ai_providers__id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Ai Provider
-         * @description Delete a provider that serves no models.
-         *
-         *     There is deliberately no cascade: models outlive the provider row an
-         *     operator happens to be editing, so they must be deleted or moved
-         *     first.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Provider id.
-         *
-         *     Raises:
-         *         404: No such provider in this organization.
-         *         409: The provider still serves models.
-         */
-        delete: operations["delete_ai_provider_api_organizations__org_slug__ai_providers__id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Ai Provider
-         * @description Partially update a provider using JSON Patch (RFC 6902).
-         *
-         *     Only the configuration fields are patchable; credentials are
-         *     reachable solely through the credentials routes, which carry their
-         *     own permission.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Provider id.
-         *         operations: JSON Patch operations.
-         *
-         *     Returns:
-         *         The updated provider, without credentials.
-         *
-         *     Raises:
-         *         400: Invalid patch or a read-only path.
-         *         404: No such provider in this organization.
-         *         409: The new slug collides within this organization.
-         *         422: The patched configuration is invalid.
-         */
-        patch: operations["patch_ai_provider_api_organizations__org_slug__ai_providers__id__patch"];
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/ai-providers/{id}/credentials": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Ai Provider Credentials
-         * @description Set or replace a provider's API key.
-         *
-         *     The plaintext key is encrypted immediately and never echoed; only
-         *     its last four characters are retained, as ``credential_hint``.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Provider id.
-         *         data: The plaintext API key.
-         *
-         *     Returns:
-         *         The provider, with refreshed credential metadata.
-         *
-         *     Raises:
-         *         404: No such provider in this organization.
-         */
-        put: operations["set_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_put"];
-        post?: never;
-        /**
-         * Delete Ai Provider Credentials
-         * @description Remove a provider's stored API key.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Provider id.
-         *
-         *     Returns:
-         *         The provider, with credential metadata cleared.
-         *
-         *     Raises:
-         *         404: No such provider in this organization.
-         */
-        delete: operations["delete_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/ai-providers/{id}/discover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Discover Ai Provider Models
-         * @description Pull a provider's model list using its stored credentials.
-         *
-         *     Doubles as a connection test. Nothing is written: the caller picks
-         *     from the result and posts to ``/import-models``, so the route shares
-         *     that route's ``ai_model:create`` gate. ``ai_model:read`` alone must
-         *     not let every default-role user spend the organization's key against
-         *     an admin-supplied endpoint. Errors from the provider are sanitized to
-         *     a status line so a failing call can never surface the key.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Provider id.
-         *
-         *     Returns:
-         *         The provider's models, each flagged with whether it is already
-         *         configured in this organization.
-         *
-         *     Raises:
-         *         404: No such provider in this organization.
-         *         409: The provider has no stored credentials.
-         *         422: The driver does not support discovery.
-         *         502: The provider rejected or failed the call.
-         */
-        post: operations["discover_ai_provider_models_api_organizations__org_slug__ai_providers__id__discover_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/ai-providers/{id}/import-models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import Ai Models
-         * @description Create models from a discovery result.
-         *
-         *     Every imported model lands enabled, ``chat``, and organization-wide;
-         *     an admin narrows it afterwards. A ``model_id`` the provider already
-         *     serves is reported in ``skipped`` rather than failing the batch, so
-         *     re-importing after adding one model is not an error.
-         *
-         *     Answers 201 when at least one model was created and 200 when every
-         *     requested model was skipped, since nothing came into existence.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Provider id.
-         *         data: The models selected from the discovery result.
-         *
-         *     Returns:
-         *         The models created, and the ``model_id`` values skipped.
-         *
-         *     Raises:
-         *         404: No such provider in this organization.
-         */
-        post: operations["import_ai_models_api_organizations__org_slug__ai_providers__id__import_models_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/ai-models/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Ai Models
-         * @description List an organization's models, ordered by name.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *
-         *     Returns:
-         *         Every configured model with its provider and allowed teams.
-         */
-        get: operations["list_ai_models_api_organizations__org_slug__ai_models__get"];
-        put?: never;
-        /**
-         * Create Ai Model
-         * @description Add a model to an organization's catalog.
-         *
-         *     ``allowed_team_ids`` is still validated against the organization
-         *     when ``access_scope`` is ``organization``, but no ``ALLOWED_FOR``
-         *     edge is written: the model is available org-wide and the response
-         *     reports an empty ``allowed_teams``.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         data: Model configuration.
-         *
-         *     Returns:
-         *         The created model.
-         *
-         *     Raises:
-         *         404: The provider does not exist in this organization.
-         *         409: The slug is taken in this organization, or the provider
-         *             already serves this ``model_id``.
-         *         422: A team is outside the organization, or ``restricted`` was
-         *             requested with no teams.
-         */
-        post: operations["create_ai_model_api_organizations__org_slug__ai_models__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/ai-models/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Ai Model
-         * @description Get one model.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Model id.
-         *
-         *     Returns:
-         *         The model with its provider and allowed teams.
-         *
-         *     Raises:
-         *         404: No such model in this organization.
-         */
-        get: operations["get_ai_model_api_organizations__org_slug__ai_models__id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Ai Model
-         * @description Delete a model.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Model id.
-         *
-         *     Raises:
-         *         404: No such model in this organization.
-         */
-        delete: operations["delete_ai_model_api_organizations__org_slug__ai_models__id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Ai Model
-         * @description Partially update a model using JSON Patch (RFC 6902).
-         *
-         *     ``provider_id`` and ``allowed_team_ids`` are patchable alongside the
-         *     properties; the team list is replaced as a set, so patching it to
-         *     ``[]`` removes every ``ALLOWED_FOR`` edge. Patching ``access_scope``
-         *     to ``organization`` clears them too, whatever the team list holds.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         id: Model id.
-         *         operations: JSON Patch operations.
-         *
-         *     Returns:
-         *         The updated model.
-         *
-         *     Raises:
-         *         400: Invalid patch or a read-only path.
-         *         404: No such model, or the new provider is outside the org.
-         *         409: The new slug or ``model_id`` collides.
-         *         422: A team is outside the organization, ``restricted`` was left
-         *             with no teams, or the patched values are invalid.
-         */
-        patch: operations["patch_ai_model_api_organizations__org_slug__ai_models__id__patch"];
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Prompts
-         * @description List prompts, ordered by namespace and slug.
-         *
-         *     Parameters:
-         *         org_slug: Organization slug from the URL path.
-         *         namespace: Only list prompts in this namespace.
-         */
-        get: operations["list_prompts_api_organizations__org_slug__prompts__get"];
-        put?: never;
-        /**
-         * Create Prompt
-         * @description Create a prompt with its first version.
-         *
-         *     The default label points at version 1.
-         *
-         *     Raises:
-         *         404: The organization does not exist.
-         *         409: ``namespace/slug`` is taken in this organization.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
-         */
-        post: operations["create_prompt_api_organizations__org_slug__prompts__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/resolve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Resolve Prompt
-         * @description Resolve ``namespace/slug@label`` or ``@n`` to one version.
-         *
-         *     Raises:
-         *         404: No such prompt, version, or usable label.
-         *         422: The reference is not valid.
-         */
-        get: operations["resolve_prompt_api_organizations__org_slug__prompts_resolve_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/organizations/{org_slug}/prompts/render": {
         parameters: {
             query?: never;
@@ -2285,178 +2207,6 @@ export interface paths {
          *             template fails.
          */
         post: operations["render_prompt_api_organizations__org_slug__prompts_render_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/{namespace}/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Prompt
-         * @description Get one prompt with its labels.
-         */
-        get: operations["get_prompt_api_organizations__org_slug__prompts__namespace___slug__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Prompt
-         * @description Delete a prompt and every version of it.
-         */
-        delete: operations["delete_prompt_api_organizations__org_slug__prompts__namespace___slug__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Prompt
-         * @description Change a prompt's metadata with JSON Patch (RFC 6902).
-         *
-         *     Renaming ``namespace`` or ``slug`` changes the reference every
-         *     consumer uses.
-         *
-         *     Raises:
-         *         400: Invalid patch or a read-only path.
-         *         404: No such prompt.
-         *         409: The new ``namespace/slug`` is taken.
-         *         422: The patched values are not valid.
-         */
-        patch: operations["patch_prompt_api_organizations__org_slug__prompts__namespace___slug__patch"];
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/{namespace}/{slug}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Prompt Versions
-         * @description List every version of a prompt, newest first.
-         */
-        get: operations["list_prompt_versions_api_organizations__org_slug__prompts__namespace___slug__versions_get"];
-        put?: never;
-        /**
-         * Create Prompt Version
-         * @description Save a new version. Versions are never changed after this.
-         *
-         *     When the content is the same as the newest version, nothing is
-         *     written and the newest version is returned with status 200.
-         *
-         *     Raises:
-         *         404: No such prompt.
-         *         409: Another version was saved at the same time.
-         *         422: A template does not parse, or the model is not in the
-         *             catalog.
-         */
-        post: operations["create_prompt_version_api_organizations__org_slug__prompts__namespace___slug__versions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/{namespace}/{slug}/versions/{n}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Prompt Version
-         * @description Get one version of a prompt.
-         */
-        get: operations["get_prompt_version_api_organizations__org_slug__prompts__namespace___slug__versions__n__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/{namespace}/{slug}/versions/{n}/evaluation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Prompt Version Evaluation
-         * @description Record the latest evaluation result for a version.
-         *
-         *     This is a cache for display. It never gates a promotion.
-         */
-        put: operations["set_prompt_version_evaluation_api_organizations__org_slug__prompts__namespace___slug__versions__n__evaluation_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/{namespace}/{slug}/labels/{label}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Prompt Label
-         * @description Point a label at a version, creating the label if needed.
-         *
-         *     This changes what every consumer of ``namespace/slug@label`` gets.
-         *
-         *     Raises:
-         *         404: No such prompt or version.
-         *         409: The prompt changed while this request ran.
-         */
-        put: operations["set_prompt_label_api_organizations__org_slug__prompts__namespace___slug__labels__label__put"];
-        post?: never;
-        /**
-         * Delete Prompt Label
-         * @description Remove a label. The default label cannot be removed.
-         *
-         *     Raises:
-         *         404: No such prompt or label.
-         *         409: The label is the default label, or the prompt changed
-         *             while this request ran.
-         */
-        delete: operations["delete_prompt_label_api_organizations__org_slug__prompts__namespace___slug__labels__label__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/organizations/{org_slug}/prompts/{namespace}/{slug}/default-label": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Prompt Default Label
-         * @description Set the label used when a reference names no usable label.
-         *
-         *     Raises:
-         *         404: No such prompt.
-         *         409: The prompt changed while this request ran.
-         *         422: The prompt has no such label.
-         */
-        put: operations["set_prompt_default_label_api_organizations__org_slug__prompts__namespace___slug__default_label_put"];
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5946,6 +5696,238 @@ export interface paths {
          */
         get: operations["get_plugin_manifest_api_plugins__slug__manifest_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Prompts
+         * @description List prompts, ordered by namespace and slug.
+         *
+         *     Parameters:
+         *         namespace: Only list prompts in this namespace.
+         */
+        get: operations["list_prompts_api_prompts__get"];
+        put?: never;
+        /**
+         * Create Prompt
+         * @description Create a prompt with its first version.
+         *
+         *     The default label points at version 1.
+         *
+         *     Raises:
+         *         409: ``namespace/slug`` is taken.
+         *         422: A template does not parse, or the model is not in the
+         *             catalog.
+         */
+        post: operations["create_prompt_api_prompts__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Prompt
+         * @description Resolve ``namespace/slug@label`` or ``@n`` to one version.
+         *
+         *     Raises:
+         *         404: No such prompt, version, or usable label.
+         *         422: The reference is not valid.
+         */
+        get: operations["resolve_prompt_api_prompts_resolve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/{namespace}/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Prompt
+         * @description Get one prompt with its labels.
+         */
+        get: operations["get_prompt_api_prompts__namespace___slug__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Prompt
+         * @description Delete a prompt and every version of it.
+         */
+        delete: operations["delete_prompt_api_prompts__namespace___slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Prompt
+         * @description Change a prompt's metadata with JSON Patch (RFC 6902).
+         *
+         *     Renaming ``namespace`` or ``slug`` changes the reference every
+         *     consumer uses, and frees the old reference for another prompt. So
+         *     a rename requires ``prompt:promote``, like a label move.
+         *
+         *     Raises:
+         *         400: Invalid patch or a read-only path.
+         *         403: A rename without ``prompt:promote``.
+         *         404: No such prompt.
+         *         409: The new ``namespace/slug`` is taken.
+         *         422: The patched values are not valid.
+         */
+        patch: operations["patch_prompt_api_prompts__namespace___slug__patch"];
+        trace?: never;
+    };
+    "/api/prompts/{namespace}/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Prompt Versions
+         * @description List every version of a prompt, newest first.
+         */
+        get: operations["list_prompt_versions_api_prompts__namespace___slug__versions_get"];
+        put?: never;
+        /**
+         * Create Prompt Version
+         * @description Save a new version. Versions are never changed after this.
+         *
+         *     When the content is the same as the newest version, nothing is
+         *     written and the newest version is returned with status 200.
+         *
+         *     Raises:
+         *         404: No such prompt.
+         *         409: Another version was saved at the same time.
+         *         422: A template does not parse, or the model is not in the
+         *             catalog.
+         */
+        post: operations["create_prompt_version_api_prompts__namespace___slug__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/{namespace}/{slug}/versions/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Prompt Version
+         * @description Get one version of a prompt.
+         */
+        get: operations["get_prompt_version_api_prompts__namespace___slug__versions__n__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/{namespace}/{slug}/versions/{n}/evaluation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Prompt Version Evaluation
+         * @description Record the latest evaluation result for a version.
+         *
+         *     This is a cache for display. It never gates a promotion.
+         */
+        put: operations["set_prompt_version_evaluation_api_prompts__namespace___slug__versions__n__evaluation_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/{namespace}/{slug}/labels/{label}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Prompt Label
+         * @description Point a label at a version, creating the label if needed.
+         *
+         *     This changes what every consumer of ``namespace/slug@label`` gets.
+         *
+         *     Raises:
+         *         404: No such prompt or version.
+         *         409: The prompt changed while this request ran.
+         */
+        put: operations["set_prompt_label_api_prompts__namespace___slug__labels__label__put"];
+        post?: never;
+        /**
+         * Delete Prompt Label
+         * @description Remove a label. The default label cannot be removed.
+         *
+         *     Raises:
+         *         404: No such prompt or label.
+         *         409: The label is the default label, or the prompt changed
+         *             while this request ran.
+         */
+        delete: operations["delete_prompt_label_api_prompts__namespace___slug__labels__label__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/{namespace}/{slug}/default-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Prompt Default Label
+         * @description Set the label used when a reference names no usable label.
+         *
+         *     Raises:
+         *         404: No such prompt.
+         *         409: The prompt changed while this request ran.
+         *         422: The prompt has no such label.
+         */
+        put: operations["set_prompt_default_label_api_prompts__namespace___slug__default_label_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -15832,6 +15814,154 @@ export interface operations {
             };
         };
     };
+    list_ai_models_api_ai_models__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"][];
+                };
+            };
+        };
+    };
+    create_ai_model_api_ai_models__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIModelCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_model_api_ai_models__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_model_api_ai_models__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_ai_model_api_ai_models__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_ai_provider_drivers_api_ai_provider_drivers_get: {
         parameters: {
             query?: never;
@@ -15848,6 +15978,286 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriverInfo"][];
+                };
+            };
+        };
+    };
+    import_ai_models_api_ai_providers__id__import_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ai_providers_api_ai_providers__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"][];
+                };
+            };
+        };
+    };
+    create_ai_provider_api_ai_providers__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_provider_api_ai_providers__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_provider_api_ai_providers__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_ai_provider_api_ai_providers__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ai_provider_credentials_api_ai_providers__id__credentials_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCredentials"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ai_provider_credentials_api_ai_providers__id__credentials_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_ai_provider_models_api_ai_providers__id__discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -18190,571 +18600,6 @@ export interface operations {
             };
         };
     };
-    list_ai_providers_api_organizations__org_slug__ai_providers__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_ai_provider_api_organizations__org_slug__ai_providers__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AIProviderCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ai_provider_api_organizations__org_slug__ai_providers__id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_provider_api_organizations__org_slug__ai_providers__id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_ai_provider_api_organizations__org_slug__ai_providers__id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchOperation"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AIProviderCredentials"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_provider_credentials_api_organizations__org_slug__ai_providers__id__credentials_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIProviderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    discover_ai_provider_models_api_organizations__org_slug__ai_providers__id__discover_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscoveryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_ai_models_api_organizations__org_slug__ai_providers__id__import_models_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImportModelsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_ai_models_api_organizations__org_slug__ai_models__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_ai_model_api_organizations__org_slug__ai_models__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AIModelCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ai_model_api_organizations__org_slug__ai_models__id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_model_api_organizations__org_slug__ai_models__id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_ai_model_api_organizations__org_slug__ai_models__id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchOperation"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AIModelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_prompts_api_organizations__org_slug__prompts__get: {
-        parameters: {
-            query?: {
-                namespace?: string | null;
-            };
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_prompt_api_organizations__org_slug__prompts__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PromptCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resolve_prompt_api_organizations__org_slug__prompts_resolve_get: {
-        parameters: {
-            query: {
-                ref: string;
-            };
-            header?: never;
-            path: {
-                org_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Resolution"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     render_prompt_api_organizations__org_slug__prompts_render_post: {
         parameters: {
             query?: never;
@@ -18777,358 +18622,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenderResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_prompt_api_organizations__org_slug__prompts__namespace___slug__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_prompt_api_organizations__org_slug__prompts__namespace___slug__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_prompt_api_organizations__org_slug__prompts__namespace___slug__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PatchOperation"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_prompt_versions_api_organizations__org_slug__prompts__namespace___slug__versions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptVersionResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_prompt_version_api_organizations__org_slug__prompts__namespace___slug__versions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PromptVersionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptVersionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_prompt_version_api_organizations__org_slug__prompts__namespace___slug__versions__n__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-                n: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptVersionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_prompt_version_evaluation_api_organizations__org_slug__prompts__namespace___slug__versions__n__evaluation_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-                n: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EvalSummary"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptVersionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_prompt_label_api_organizations__org_slug__prompts__namespace___slug__labels__label__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-                label: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LabelUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_prompt_label_api_organizations__org_slug__prompts__namespace___slug__labels__label__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-                label: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_prompt_default_label_api_organizations__org_slug__prompts__namespace___slug__default_label_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                org_slug: string;
-                namespace: string;
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DefaultLabelUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PromptResponse"];
                 };
             };
             /** @description Validation Error */
@@ -25647,6 +25140,443 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_prompts_api_prompts__get: {
+        parameters: {
+            query?: {
+                namespace?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_prompt_api_prompts__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromptCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_prompt_api_prompts_resolve_get: {
+        parameters: {
+            query: {
+                ref: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Resolution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_prompt_api_prompts__namespace___slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_prompt_api_prompts__namespace___slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_prompt_api_prompts__namespace___slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_prompt_versions_api_prompts__namespace___slug__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptVersionResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_prompt_version_api_prompts__namespace___slug__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromptVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_prompt_version_api_prompts__namespace___slug__versions__n__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_prompt_version_evaluation_api_prompts__namespace___slug__versions__n__evaluation_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvalSummary"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_prompt_label_api_prompts__namespace___slug__labels__label__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_prompt_label_api_prompts__namespace___slug__labels__label__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_prompt_default_label_api_prompts__namespace___slug__default_label_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultLabelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptResponse"];
                 };
             };
             /** @description Validation Error */

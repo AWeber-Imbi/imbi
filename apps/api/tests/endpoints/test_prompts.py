@@ -10,7 +10,9 @@ from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api.endpoints import projects, prompts
 
 ORG = provider_tests.ORG
-BASE = f'/organizations/{ORG}/prompts'
+BASE = '/prompts'
+#: Rendering stays org-scoped: ``project()`` reads organization data.
+RENDER_URL = f'/organizations/{ORG}/prompts/render'
 
 GET_PROMPT = prompts._PROMPT_QUERY
 LIST_PROMPTS = prompts._LIST_QUERY
@@ -166,12 +168,6 @@ class ReadPromptTestCase(PromptTestBase):
             router.params_for(LIST_NAMESPACE)['namespace'], 'mender'
         )
 
-    def test_get_cross_org_is_404(self) -> None:
-        router = self.route()
-        response = self.client.get('/organizations/other/prompts/mender/core')
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROMPT, 'other')
-
     def test_list_versions_newest_first_with_labels(self) -> None:
         self.route(
             (GET_PROMPT, prompt_row(2)),
@@ -228,6 +224,16 @@ class CreatePromptTestCase(PromptTestBase):
 
     def test_duplicate_is_409(self) -> None:
         self.route((MODEL, MODEL_ROW), (GET_PROMPT, prompt_row()))
+        response = self.client.post(BASE + '/', json=self._body())
+        self.assertEqual(response.status_code, 409)
+
+    def test_concurrent_duplicate_is_409(self) -> None:
+        """A ref claimed between the check and the write is a 409."""
+
+        def collide(_params: dict[str, typing.Any]) -> list[dict]:
+            raise psycopg.errors.UniqueViolation('duplicate key')
+
+        self.route((MODEL, MODEL_ROW), (CREATE_PROMPT, collide))
         response = self.client.post(BASE + '/', json=self._body())
         self.assertEqual(response.status_code, 409)
 
@@ -294,7 +300,6 @@ class CreateVersionTestCase(PromptTestBase):
         self.assertEqual(response.json()['summary'], 'Tighten rules')
         params = router.params_for(CREATE_VERSION)
         self.assertEqual(params['n'], 4)
-        self.assertEqual(params['org_slug'], ORG)
 
     def test_same_content_is_a_no_op(self) -> None:
         sha = prompts.content_sha256(
@@ -521,7 +526,7 @@ class RenderTestCase(PromptTestBase):
 
     def render(self, **variables: typing.Any) -> typing.Any:
         return self.client.post(
-            BASE + '/render',
+            RENDER_URL,
             json={'ref': 'mender/core@stable', 'variables': variables},
         )
 

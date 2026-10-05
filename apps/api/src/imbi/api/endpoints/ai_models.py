@@ -1,13 +1,14 @@
-"""Org-scoped CRUD for the AI model catalog.
+"""Global CRUD for the AI model catalog.
 
-An :class:`imbi.common.models.AIModel` names one model an organization
-may call and the :class:`~imbi.common.models.AIProvider` that serves it.
-``slug`` is a stable org-scoped alias so agent configuration can say
-``default-chat``; ``model_id`` is what actually goes on the wire.
+An :class:`imbi.common.models.AIModel` names one model Imbi may call
+and the :class:`~imbi.common.models.AIProvider` that serves it. The
+catalog is global, like the providers. ``slug`` is a stable alias so
+agent configuration can say ``default-chat``; ``model_id`` is what
+actually goes on the wire.
 
-Both uniqueness rules are enforced here rather than by a graph index,
-because both are scoped: ``slug`` within the organization and
-``model_id`` within the provider.
+``slug`` is unique by a graph index; the endpoint also checks it first
+for a clear 409 message. ``model_id`` is unique within its provider,
+which only the endpoint enforces.
 """
 
 import datetime
@@ -28,11 +29,13 @@ from imbi.common import patch as json_patch
 
 LOGGER = logging.getLogger(__name__)
 
-ai_models_router = fastapi.APIRouter(tags=['AI Models'])
+ai_models_router = fastapi.APIRouter(prefix='/ai-models', tags=['AI Models'])
 
-#: Mounted alongside ``ai_providers_router``: the route is addressed by
-#: provider, but its whole job is creating models.
-ai_provider_imports_router = fastapi.APIRouter(tags=['AI Models'])
+#: Shares the ``/ai-providers`` prefix with ``ai_providers_router``: the
+#: route is addressed by provider, but its whole job is creating models.
+ai_provider_imports_router = fastapi.APIRouter(
+    prefix='/ai-providers', tags=['AI Models']
+)
 
 #: Model fields an admin may set through create / patch. ``provider_id``
 #: and ``allowed_team_ids`` are edges rather than properties and are
@@ -61,7 +64,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
 #: are derived, and patching one would be dropped silently and answered
 #: 200, which reads as "applied".
 _READONLY_PATHS: frozenset[str] = json_patch.READONLY_PATHS | frozenset(
-    ['/allowed_teams', '/organization', '/provider', '/provider_name']
+    ['/allowed_teams', '/provider', '/provider_name']
 )
 
 ModelKind = typing.Literal['chat', 'completion']
@@ -165,23 +168,19 @@ class ImportResult(pydantic.BaseModel):
 
 
 _LIST_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-MATCH (m)-[:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider)
 OPTIONAL MATCH (m)-[:ALLOWED_FOR]->(t:Team)
 RETURN m, p, t
 """
 
 _GET_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{id: {id}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-MATCH (m)-[:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel {{id: {id}}})-[:SERVED_BY]->(p:AIProvider)
 OPTIONAL MATCH (m)-[:ALLOWED_FOR]->(t:Team)
 RETURN m, p, t
 """
 
 _SLUG_TAKEN_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN m.id AS id
 """
 
@@ -193,33 +192,24 @@ RETURN m.id AS id
 
 _TEAM_QUERY: typing.LiteralString = """
 MATCH (t:Team {{id: {team_id}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN t
 """
 
-# Every edge write carries the BELONGS_TO hop for the same reason the
-# reads do: an id alone is global, so without it a caller in one
-# organization could rewire a model, or attach a team, belonging to
-# another.
 _CLEAR_TEAMS_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{id: {id}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-MATCH (m)-[r:ALLOWED_FOR]->(:Team)
+MATCH (m:AIModel {{id: {id}}})-[r:ALLOWED_FOR]->(:Team)
 DELETE r
 """
 
 _ADD_TEAM_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{id: {id}}})
-      -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-MATCH (t:Team {{id: {team_id}}})-[:BELONGS_TO]->(o)
+MATCH (t:Team {{id: {team_id}}})
 MERGE (m)-[:ALLOWED_FOR]->(t)
 RETURN t.id AS id
 """
 
 _LINK_PROVIDER_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{id: {id}}})
-      -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-MATCH (p:AIProvider {{id: {provider_id}}})-[:BELONGS_TO]->(o)
+MATCH (p:AIProvider {{id: {provider_id}}})
 MERGE (m)-[:SERVED_BY]->(p)
 RETURN p.id AS id
 """
@@ -230,9 +220,7 @@ RETURN p.id AS id
 #: edges (repairable by another PATCH) rather than none (invisible to
 #: ``_LIST_QUERY`` and ``_GET_QUERY``).
 _UNLINK_OTHER_PROVIDERS_QUERY: typing.LiteralString = """
-MATCH (m:AIModel {{id: {id}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-MATCH (m)-[r:SERVED_BY]->(p:AIProvider)
+MATCH (m:AIModel {{id: {id}}})-[r:SERVED_BY]->(p:AIProvider)
 WHERE p.id <> {provider_id}
 DELETE r
 """
@@ -273,23 +261,13 @@ def _to_response(
 def parse_model(
     props: dict[str, typing.Any],
     provider_props: dict[str, typing.Any],
-    org_slug: str,
 ) -> models.AIModel:
     """Build an ``AIModel`` from the properties of one graph row.
 
-    Edges are stored as relationships, not properties, so the two edge
-    fields the model declares are reconstructed from the same row: the
-    provider vertex it was matched through, and the organization the
-    request is scoped to.
+    The provider edge is a relationship, not a property, so it is
+    reconstructed from the provider vertex the row was matched through.
     """
-    org = {'name': '', 'slug': org_slug}
-    return models.AIModel.model_validate(
-        {
-            **props,
-            'organization': org,
-            'provider': {**provider_props, 'organization': org},
-        }
-    )
+    return models.AIModel.model_validate({**props, 'provider': provider_props})
 
 
 def _props(raw: typing.Any) -> dict[str, typing.Any] | None:
@@ -304,7 +282,7 @@ def _team_ref(raw: typing.Any) -> TeamRef | None:
     """Build a :class:`TeamRef` from an agtype vertex, if there is one.
 
     The team comes from an ``OPTIONAL MATCH``, so a null is expected
-    whenever the model is organization-wide.
+    whenever the model is available to everyone.
     """
     props = _props(raw)
     if props is None or not props.get('id'):
@@ -318,7 +296,6 @@ def _team_ref(raw: typing.Any) -> TeamRef | None:
 
 def _rows_to_responses(
     records: list[dict[str, typing.Any]],
-    org_slug: str,
 ) -> list[AIModelResponse]:
     """Fold ``(m, p, t)`` rows into one response per model.
 
@@ -335,7 +312,7 @@ def _rows_to_responses(
         provider_props = _props(record.get('p'))
         if props is None or provider_props is None:
             continue
-        node = parse_model(props, provider_props, org_slug)
+        node = parse_model(props, provider_props)
         if node.id not in nodes:
             order.append(node.id)
             nodes[node.id] = node
@@ -359,29 +336,22 @@ def _rows_to_responses(
 
 
 async def _resolve_teams(
-    db: graph.Graph, org_slug: str, team_ids: list[str]
+    db: graph.Graph, team_ids: list[str]
 ) -> list[TeamRef]:
-    """Resolve team ids to references, rejecting any outside the org.
+    """Resolve team ids to references, rejecting any that do not exist.
 
     Raises:
-        fastapi.HTTPException: 422 when a team is unknown or belongs to
-            another organization — the two are indistinguishable here on
-            purpose, so the error cannot be used to probe other orgs.
+        fastapi.HTTPException: 422 when a team is unknown.
 
     """
     refs: list[TeamRef] = []
     for team_id in dict.fromkeys(team_ids):
-        records = await db.execute(
-            _TEAM_QUERY, {'team_id': team_id, 'org_slug': org_slug}, ['t']
-        )
+        records = await db.execute(_TEAM_QUERY, {'team_id': team_id}, ['t'])
         team = _team_ref(records[0]['t']) if records else None
         if team is None:
             raise fastapi.HTTPException(
                 status_code=422,
-                detail=(
-                    f'Team {team_id!r} is not part of organization '
-                    f'{org_slug!r}'
-                ),
+                detail=f'Team {team_id!r} does not exist',
             )
         refs.append(team)
     return refs
@@ -402,7 +372,8 @@ def _teams_for_scope(access_scope: str, teams: list[TeamRef]) -> list[TeamRef]:
     """Return the teams that may actually hold an ``ALLOWED_FOR`` edge.
 
     The server's invariant is that edges exist if and only if the model
-    is ``restricted``, so an ``organization``-wide model is stored with
+    is ``restricted``, so a model with ``access_scope`` ``organization``
+    (available to everyone) is stored with
     no edges however many team ids the request supplied. Enforcing it
     here rather than trusting the caller keeps "who may use this model"
     answerable from ``access_scope`` alone, and makes patching the scope
@@ -413,7 +384,6 @@ def _teams_for_scope(access_scope: str, teams: list[TeamRef]) -> list[TeamRef]:
 
 async def _replace_team_edges(
     db: graph.Graph,
-    org_slug: str,
     model_id: str,
     teams: list[TeamRef],
     clear_existing: bool = True,
@@ -426,33 +396,24 @@ async def _replace_team_edges(
     cannot have edges yet.
     """
     if clear_existing:
-        await db.execute(
-            _CLEAR_TEAMS_QUERY, {'id': model_id, 'org_slug': org_slug}, []
-        )
+        await db.execute(_CLEAR_TEAMS_QUERY, {'id': model_id}, [])
     for team in teams:
         await db.execute(
-            _ADD_TEAM_QUERY,
-            {'id': model_id, 'team_id': team.id, 'org_slug': org_slug},
-            ['id'],
+            _ADD_TEAM_QUERY, {'id': model_id, 'team_id': team.id}, ['id']
         )
 
 
 async def _assert_slug_free(
-    db: graph.Graph, org_slug: str, slug: str, exclude_id: str | None = None
+    db: graph.Graph, slug: str, exclude_id: str | None = None
 ) -> None:
-    """Raise 409 when ``slug`` is taken elsewhere in the organization."""
-    records = await db.execute(
-        _SLUG_TAKEN_QUERY, {'slug': slug, 'org_slug': org_slug}, ['id']
-    )
+    """Raise 409 when ``slug`` is taken by another model."""
+    records = await db.execute(_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
     for record in records:
         found = graph.parse_agtype(record['id'])
         if found and str(found) != exclude_id:
             raise fastapi.HTTPException(
                 status_code=409,
-                detail=(
-                    f'AI model with slug {slug!r} already exists in '
-                    f'organization {org_slug!r}'
-                ),
+                detail=f'AI model with slug {slug!r} already exists',
             )
 
 
@@ -481,17 +442,11 @@ async def _assert_model_id_free(
 
 
 def _build(
-    payload: dict[str, typing.Any],
-    provider: models.AIProvider,
-    org_slug: str,
+    payload: dict[str, typing.Any], provider: models.AIProvider
 ) -> models.AIModel:
     """Validate model properties into a node or raise 422."""
     try:
-        return models.AIModel(
-            organization=models.Organization(name='', slug=org_slug),
-            provider=provider,
-            **payload,
-        )
+        return models.AIModel(provider=provider, **payload)
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=422,
@@ -501,7 +456,6 @@ def _build(
 
 async def _insert(
     db: graph.Graph,
-    org_slug: str,
     node: models.AIModel,
     provider: models.AIProvider,
     teams: list[TeamRef],
@@ -510,14 +464,10 @@ async def _insert(
     now = datetime.datetime.now(datetime.UTC)
     node.created_at = now
     node.updated_at = now
-    props = node.model_dump(
-        mode='json', exclude={'organization', 'provider', 'allowed_teams'}
-    )
+    props = node.model_dump(mode='json', exclude={'provider', 'allowed_teams'})
     query = (
-        f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
-        f' MATCH (p:AIProvider {{{{id: {{provider_id}}}}}})-[:BELONGS_TO]->(o)'
+        f'MATCH (p:AIProvider {{{{id: {{provider_id}}}}}})'
         f' CREATE (m:AIModel {props_template(props)})'
-        f' CREATE (m)-[:BELONGS_TO]->(o)'
         f' CREATE (m)-[:SERVED_BY]->(p)'
         f' RETURN m'
     )
@@ -525,22 +475,18 @@ async def _insert(
         f'AI model with slug {node.slug!r} already exists'
     ):
         records = await db.execute(
-            query,
-            {**props, 'org_slug': org_slug, 'provider_id': provider.id},
-            ['m'],
+            query, {**props, 'provider_id': provider.id}, ['m']
         )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {provider.id!r} not found',
         )
-    # A node created moments ago has no edges to clear, and an
-    # organization-wide model has none to write, so skip the round trip
+    # A node created moments ago has no edges to clear, and a model
+    # available to everyone has none to write, so skip the round trip
     # entirely in the common case.
     if teams:
-        await _replace_team_edges(
-            db, org_slug, node.id, teams, clear_existing=False
-        )
+        await _replace_team_edges(db, node.id, teams, clear_existing=False)
     stored = _props(records[0]['m'])
     if stored is None:
         raise fastapi.HTTPException(
@@ -551,11 +497,7 @@ async def _insert(
     # ``openai_compatible`` provider must carry a ``base_url``), so a
     # partial dict fails validation and 500s the create.
     return _to_response(
-        parse_model(
-            stored,
-            provider.model_dump(mode='json', exclude={'organization'}),
-            org_slug,
-        ),
+        parse_model(stored, provider.model_dump(mode='json')),
         provider.id,
         provider.name,
         teams,
@@ -564,35 +506,25 @@ async def _insert(
 
 @ai_models_router.get('/', response_model=list[AIModelResponse])
 async def list_ai_models(
-    org_slug: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ai_model:read')),
     ],
 ) -> list[AIModelResponse]:
-    """List an organization's models, ordered by name.
-
-    Parameters:
-        org_slug: Organization slug from the URL path.
+    """List the model catalog, ordered by name.
 
     Returns:
         Every configured model with its provider and allowed teams.
 
     """
     _ = auth
-    records = await db.execute(
-        _LIST_QUERY, {'org_slug': org_slug}, ['m', 'p', 't']
-    )
-    return sorted(
-        _rows_to_responses(records, org_slug),
-        key=lambda r: r.name.lower(),
-    )
+    records = await db.execute(_LIST_QUERY, {}, ['m', 'p', 't'])
+    return sorted(_rows_to_responses(records), key=lambda r: r.name.lower())
 
 
 @ai_models_router.post('/', response_model=AIModelResponse, status_code=201)
 async def create_ai_model(
-    org_slug: str,
     data: AIModelCreate,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -600,33 +532,30 @@ async def create_ai_model(
         fastapi.Depends(permissions.require_permission('ai_model:create')),
     ],
 ) -> AIModelResponse:
-    """Add a model to an organization's catalog.
+    """Add a model to the catalog.
 
-    ``allowed_team_ids`` is still validated against the organization
-    when ``access_scope`` is ``organization``, but no ``ALLOWED_FOR``
-    edge is written: the model is available org-wide and the response
-    reports an empty ``allowed_teams``.
+    ``allowed_team_ids`` is still validated when ``access_scope`` is
+    ``organization``, but no ``ALLOWED_FOR`` edge is written: the model
+    is available to everyone and the response reports an empty
+    ``allowed_teams``.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         data: Model configuration.
 
     Returns:
         The created model.
 
     Raises:
-        404: The provider does not exist in this organization.
-        409: The slug is taken in this organization, or the provider
-            already serves this ``model_id``.
-        422: A team is outside the organization, or ``restricted`` was
-            requested with no teams.
+        404: The provider does not exist.
+        409: The slug is taken, or the provider already serves this
+            ``model_id``.
+        422: A team does not exist, or ``restricted`` was requested with
+            no teams.
 
     """
     _ = auth
-    provider = await ai_providers.fetch_provider(
-        db, org_slug, data.provider_id
-    )
-    teams = await _resolve_teams(db, org_slug, data.allowed_team_ids)
+    provider = await ai_providers.fetch_provider(db, data.provider_id)
+    teams = await _resolve_teams(db, data.allowed_team_ids)
     _validate_access(data.access_scope, teams)
     teams = _teams_for_scope(data.access_scope, teams)
 
@@ -634,16 +563,15 @@ async def create_ai_model(
         exclude={'provider_id', 'allowed_team_ids', 'slug'}
     )
     payload['slug'] = data.slug or slugify.slugify(data.name)
-    node = _build(payload, provider, org_slug)
+    node = _build(payload, provider)
 
-    await _assert_slug_free(db, org_slug, node.slug)
+    await _assert_slug_free(db, node.slug)
     await _assert_model_id_free(db, provider.id, node.model_id)
-    return await _insert(db, org_slug, node, provider, teams)
+    return await _insert(db, node, provider, teams)
 
 
 @ai_models_router.get('/{id}', response_model=AIModelResponse)
 async def get_ai_model(
-    org_slug: str,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -654,28 +582,23 @@ async def get_ai_model(
     """Get one model.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Model id.
 
     Returns:
         The model with its provider and allowed teams.
 
     Raises:
-        404: No such model in this organization.
+        404: No such model.
 
     """
     _ = auth
-    return await _fetch_response(db, org_slug, id)
+    return await _fetch_response(db, id)
 
 
-async def _fetch_response(
-    db: graph.Graph, org_slug: str, id: str
-) -> AIModelResponse:
-    """Read one model scoped to ``org_slug`` or raise 404."""
-    records = await db.execute(
-        _GET_QUERY, {'id': id, 'org_slug': org_slug}, ['m', 'p', 't']
-    )
-    responses = _rows_to_responses(records, org_slug)
+async def _fetch_response(db: graph.Graph, id: str) -> AIModelResponse:
+    """Read one model or raise 404."""
+    records = await db.execute(_GET_QUERY, {'id': id}, ['m', 'p', 't'])
+    responses = _rows_to_responses(records)
     if not responses:
         raise fastapi.HTTPException(
             status_code=404,
@@ -686,7 +609,6 @@ async def _fetch_response(
 
 @ai_models_router.patch('/{id}', response_model=AIModelResponse)
 async def patch_ai_model(
-    org_slug: str,
     id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
@@ -703,7 +625,6 @@ async def patch_ai_model(
     to ``organization`` clears them too, whatever the team list holds.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Model id.
         operations: JSON Patch operations.
 
@@ -712,14 +633,14 @@ async def patch_ai_model(
 
     Raises:
         400: Invalid patch or a read-only path.
-        404: No such model, or the new provider is outside the org.
+        404: No such model, or no such new provider.
         409: The new slug or ``model_id`` collides.
-        422: A team is outside the organization, ``restricted`` was left
+        422: A team does not exist, ``restricted`` was left
             with no teams, or the patched values are invalid.
 
     """
     _ = auth
-    current_response = await _fetch_response(db, org_slug, id)
+    current_response = await _fetch_response(db, id)
     document: dict[str, typing.Any] = current_response.model_dump(
         mode='json',
         include={*_PATCHABLE_FIELDS, 'provider_id'},
@@ -732,7 +653,7 @@ async def patch_ai_model(
     provider_id = str(
         patched.get('provider_id') or current_response.provider_id
     )
-    provider = await ai_providers.fetch_provider(db, org_slug, provider_id)
+    provider = await ai_providers.fetch_provider(db, provider_id)
     try:
         team_ids = _TEAM_IDS.validate_python(
             patched.get('allowed_team_ids') or []
@@ -742,11 +663,10 @@ async def patch_ai_model(
             status_code=422,
             detail=f'allowed_team_ids must be a list of ids: {e.errors()}',
         ) from e
-    teams = await _resolve_teams(db, org_slug, team_ids)
+    teams = await _resolve_teams(db, team_ids)
     node = _build(
         {k: v for k, v in patched.items() if k in _PATCHABLE_FIELDS},
         provider,
-        org_slug,
     )
     _validate_access(node.access_scope, teams)
     teams = _teams_for_scope(node.access_scope, teams)
@@ -754,7 +674,7 @@ async def patch_ai_model(
     node.created_at = current_response.created_at or node.created_at
 
     if node.slug != current_response.slug:
-        await _assert_slug_free(db, org_slug, node.slug, exclude_id=id)
+        await _assert_slug_free(db, node.slug, exclude_id=id)
     if (
         node.model_id != current_response.model_id
         or provider.id != current_response.provider_id
@@ -766,42 +686,29 @@ async def patch_ai_model(
     node.updated_at = datetime.datetime.now(datetime.UTC)
     props = node.model_dump(
         mode='json',
-        exclude={
-            'organization',
-            'provider',
-            'allowed_teams',
-            'id',
-            'created_at',
-        },
+        exclude={'provider', 'allowed_teams', 'id', 'created_at'},
     )
     set_stmt = set_clause('m', props)
-    query = (
-        f'MATCH (m:AIModel {{{{id: {{id}}}}}})'
-        f' -[:BELONGS_TO]->(:Organization {{{{slug: {{org_slug}}}}}})'
-        f' {set_stmt} RETURN m'
-    )
+    query = f'MATCH (m:AIModel {{{{id: {{id}}}}}}) {set_stmt} RETURN m'
     with conflict_on_unique_violation(
         f'AI model with slug {node.slug!r} already exists'
     ):
-        records = await db.execute(
-            query, {**props, 'id': id, 'org_slug': org_slug}, ['m']
-        )
+        records = await db.execute(query, {**props, 'id': id}, ['m'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI model with id {id!r} not found',
         )
     if provider.id != current_response.provider_id:
-        params = {'id': id, 'provider_id': provider.id, 'org_slug': org_slug}
+        params = {'id': id, 'provider_id': provider.id}
         await db.execute(_LINK_PROVIDER_QUERY, params, ['id'])
         await db.execute(_UNLINK_OTHER_PROVIDERS_QUERY, params, [])
-    await _replace_team_edges(db, org_slug, id, teams)
+    await _replace_team_edges(db, id, teams)
     return _to_response(node, provider.id, provider.name, teams)
 
 
 @ai_models_router.delete('/{id}', status_code=204)
 async def delete_ai_model(
-    org_slug: str,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -812,21 +719,19 @@ async def delete_ai_model(
     """Delete a model.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Model id.
 
     Raises:
-        404: No such model in this organization.
+        404: No such model.
 
     """
     _ = auth
     query: typing.LiteralString = """
     MATCH (m:AIModel {{id: {id}}})
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     DETACH DELETE m
     RETURN m
     """
-    records = await db.execute(query, {'id': id, 'org_slug': org_slug})
+    records = await db.execute(query, {'id': id})
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -838,7 +743,6 @@ async def delete_ai_model(
     '/{id}/import-models', response_model=ImportResult, status_code=201
 )
 async def import_ai_models(
-    org_slug: str,
     id: str,
     data: ImportModelsRequest,
     response: fastapi.Response,
@@ -850,7 +754,8 @@ async def import_ai_models(
 ) -> ImportResult:
     """Create models from a discovery result.
 
-    Every imported model lands enabled, ``chat``, and organization-wide;
+    Every imported model lands enabled, ``chat``, and available to
+    everyone;
     an admin narrows it afterwards. A ``model_id`` the provider already
     serves is reported in ``skipped`` rather than failing the batch, so
     re-importing after adding one model is not an error.
@@ -859,7 +764,6 @@ async def import_ai_models(
     requested model was skipped, since nothing came into existence.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Provider id.
         data: The models selected from the discovery result.
 
@@ -867,13 +771,13 @@ async def import_ai_models(
         The models created, and the ``model_id`` values skipped.
 
     Raises:
-        404: No such provider in this organization.
+        404: No such provider.
 
     """
     _ = auth
-    provider = await ai_providers.fetch_provider(db, org_slug, id)
+    provider = await ai_providers.fetch_provider(db, id)
     existing = await _existing_model_ids(db, provider.id)
-    taken = await _taken_slugs(db, org_slug)
+    taken = await _taken_slugs(db)
 
     created: list[AIModelResponse] = []
     skipped: list[str] = []
@@ -892,9 +796,8 @@ async def import_ai_models(
                 'max_output_tokens': item.max_output_tokens,
             },
             provider,
-            org_slug,
         )
-        created.append(await _insert(db, org_slug, node, provider, []))
+        created.append(await _insert(db, node, provider, []))
         existing.add(item.model_id)
         taken.add(slug)
     if not created:
@@ -918,7 +821,7 @@ RETURN m.model_id AS model_id
 """
 
 _TAKEN_SLUGS_QUERY: typing.LiteralString = """
-MATCH (m:AIModel)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+MATCH (m:AIModel)
 RETURN m.slug AS slug
 """
 
@@ -937,11 +840,9 @@ async def _existing_model_ids(db: graph.Graph, provider_id: str) -> set[str]:
     }
 
 
-async def _taken_slugs(db: graph.Graph, org_slug: str) -> set[str]:
-    """Return every model slug already used in the organization."""
-    records = await db.execute(
-        _TAKEN_SLUGS_QUERY, {'org_slug': org_slug}, ['slug']
-    )
+async def _taken_slugs(db: graph.Graph) -> set[str]:
+    """Return every model slug already in use."""
+    records = await db.execute(_TAKEN_SLUGS_QUERY, {}, ['slug'])
     return {
         str(value)
         for value in (graph.parse_agtype(record['slug']) for record in records)

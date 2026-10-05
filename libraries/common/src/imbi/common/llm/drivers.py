@@ -1,8 +1,8 @@
 """Static catalog of the LLM provider drivers Imbi knows how to talk to.
 
 Drivers are code, not graph nodes: adding one is a release, not a
-backfill, and an organization gets an ``AIProvider`` node only when an
-admin configures one.  The catalog is what lets the admin UI render an
+backfill, and an ``AIProvider`` node exists only when an admin
+configures one.  The catalog is what lets the admin UI render an
 unconfigured driver as a "Set up" row and hide actions the driver does
 not support.
 """

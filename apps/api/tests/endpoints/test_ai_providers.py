@@ -1,10 +1,11 @@
-"""Tests for the org-scoped AI provider endpoints."""
+"""Tests for the global AI provider endpoints."""
 
 import datetime
 import typing
 from unittest import mock
 
 import fastapi.testclient
+import psycopg.errors
 
 from apps.api.tests import support
 from imbi.api import models
@@ -13,8 +14,9 @@ from imbi.api.endpoints import ai_providers
 from imbi.common import graph
 from imbi.common.llm import discovery
 
+#: Organization slug for tests that still need one (prompt render).
 ORG = 'acme'
-BASE = f'/organizations/{ORG}/ai-providers'
+BASE = '/ai-providers'
 
 
 class QueryRouter:
@@ -138,18 +140,6 @@ class AIProviderTestBase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = router
         return router
 
-    def assert_scoped(
-        self, router: QueryRouter, needle: str, org_slug: str
-    ) -> None:
-        """Assert a query ran and carried ``org_slug``.
-
-        The router answers an unmatched query with ``[]``, so a cross-org
-        test would pass even if the ``BELONGS_TO`` hop were dropped from
-        the Cypher. Asserting the parameter reached the query is what
-        makes those tests mean something.
-        """
-        self.assertEqual(router.params_for(needle)['org_slug'], org_slug)
-
 
 class DriverCatalogTestCase(AIProviderTestBase):
     """The static driver catalog endpoint."""
@@ -176,7 +166,7 @@ class DriverCatalogTestCase(AIProviderTestBase):
 
 
 class CreateProviderTestCase(AIProviderTestBase):
-    """``POST /organizations/{org}/ai-providers``."""
+    """``POST /ai-providers``."""
 
     def test_create_encrypts_key_and_never_echoes_it(self) -> None:
         """The plaintext key is encrypted, hinted, and not returned."""
@@ -314,21 +304,37 @@ class CreateProviderTestCase(AIProviderTestBase):
         self.assertEqual(response.status_code, 201)
         self.assertFalse(response.json()['is_builtin_driver'])
 
-    def test_duplicate_slug_in_org_conflicts(self) -> None:
-        """Slugs are unique per organization."""
+    def test_duplicate_slug_conflicts(self) -> None:
+        """Slugs are unique across the installation."""
         self.route((SLUG_TAKEN, [{'id': 'prv-other'}]))
         response = self.client.post(
             BASE + '/', json={'name': 'Anthropic', 'driver': 'anthropic'}
         )
         self.assertEqual(response.status_code, 409)
 
-    def test_unknown_organization_is_404(self) -> None:
-        """A create against a missing organization matches nothing."""
-        self.route()
+    def test_concurrent_duplicate_slug_conflicts(self) -> None:
+        """A slug claimed between the check and the write is a 409.
+
+        The pre-check cannot see a concurrent create; the unique graph
+        index can, and its violation must map to 409, not 500.
+        """
+        router = QueryRouter()
+
+        def execute(
+            query: str,
+            params: dict[str, typing.Any] | None = None,
+            columns: list[str] | None = None,
+            raw: bool = False,
+        ) -> list[dict[str, typing.Any]]:
+            if CREATE in query:
+                raise psycopg.errors.UniqueViolation('duplicate key')
+            return router(query, params, columns, raw)
+
+        self.mock_db.execute.side_effect = execute
         response = self.client.post(
             BASE + '/', json={'name': 'Anthropic', 'driver': 'anthropic'}
         )
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 409)
 
 
 class ReadProviderTestCase(AIProviderTestBase):
@@ -370,24 +376,11 @@ class ReadProviderTestCase(AIProviderTestBase):
         )
 
     def test_get_returns_provider(self) -> None:
-        """A provider in this organization is returned."""
+        """A configured provider is returned."""
         self.route((GET_PROVIDER, [{'p': provider_props()}]))
         response = self.client.get(f'{BASE}/prv-1')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['id'], 'prv-1')
-
-    def test_get_scopes_query_to_org(self) -> None:
-        """The organization slug is part of the match."""
-        router = self.route((GET_PROVIDER, [{'p': provider_props()}]))
-        self.client.get(f'{BASE}/prv-1')
-        self.assertEqual(router.params_for(GET_PROVIDER)['org_slug'], ORG)
-
-    def test_get_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.get('/organizations/other/ai-providers/prv-1')
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
 
 
 class PatchProviderTestCase(AIProviderTestBase):
@@ -477,16 +470,6 @@ class PatchProviderTestCase(AIProviderTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_patch_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.patch(
-            '/organizations/other/ai-providers/prv-1',
-            json=[{'op': 'replace', 'path': '/name', 'value': 'X'}],
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
-
 
 class DeleteProviderTestCase(AIProviderTestBase):
     """``DELETE`` and its no-cascade rule."""
@@ -508,15 +491,6 @@ class DeleteProviderTestCase(AIProviderTestBase):
         )
         response = self.client.delete(f'{BASE}/prv-1')
         self.assertEqual(response.status_code, 409)
-
-    def test_delete_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.delete(
-            '/organizations/other/ai-providers/prv-1'
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
 
 
 class CredentialsTestCase(AIProviderTestBase):
@@ -613,25 +587,6 @@ class CredentialsTestCase(AIProviderTestBase):
         self.assertIsNone(persisted['credential_hint'])
         self.assertIsNone(persisted['credential_updated_at'])
 
-    def test_put_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.put(
-            '/organizations/other/ai-providers/prv-1/credentials',
-            json={'api_key': 'sk-test-1234'},
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
-
-    def test_delete_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.delete(
-            '/organizations/other/ai-providers/prv-1/credentials'
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
-
 
 class DiscoveryTestCase(AIProviderTestBase):
     """``POST /{id}/discover``."""
@@ -726,15 +681,6 @@ class DiscoveryTestCase(AIProviderTestBase):
             {'claude-opus-5': True, 'claude-haiku-4-5': False},
         )
         self.assertEqual(data[0]['context_window'], 200000)
-
-    def test_discover_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.post(
-            '/organizations/other/ai-providers/prv-1/discover'
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
 
 
 class ProviderPermissionTestCase(AIProviderTestBase):
