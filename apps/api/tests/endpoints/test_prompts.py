@@ -292,6 +292,12 @@ class CreatePromptTestCase(PromptTestBase):
         response = self.client.post(BASE + '/', json=body)
         self.assertEqual(response.status_code, 422)
 
+    def test_digit_only_default_label_is_422(self) -> None:
+        body = self._body()
+        body['default_label'] = '2026'
+        response = self.client.post(BASE + '/', json=body)
+        self.assertEqual(response.status_code, 422)
+
 
 class CreateVersionTestCase(PromptTestBase):
     URL = BASE + '/mender/core/versions'
@@ -405,6 +411,13 @@ class LabelTestCase(PromptTestBase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_digit_only_label_is_422(self) -> None:
+        self.route((GET_PROMPT, prompt_row(2)), (GET_VERSION, version_row(2)))
+        response = self.client.put(
+            BASE + '/mender/core/labels/2026', json={'version': 2}
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_promote_needs_promote_permission(self) -> None:
         self.as_principal('prompt:read', 'prompt:update')
         response = self.client.put(
@@ -483,6 +496,15 @@ class PatchPromptTestCase(PromptTestBase):
             json=[{'op': 'replace', 'path': '/slug', 'value': 'other'}],
         )
         self.assertEqual(response.status_code, 409)
+
+    def test_rename_to_invalid_slug_is_422(self) -> None:
+        self.route((GET_PROMPT, prompt_row()))
+        for value in ('Core', 'a/b'):
+            response = self.client.patch(
+                self.URL,
+                json=[{'op': 'replace', 'path': '/slug', 'value': value}],
+            )
+            self.assertEqual(response.status_code, 422, value)
 
     def test_labels_are_read_only(self) -> None:
         self.route((GET_PROMPT, prompt_row()))

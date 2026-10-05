@@ -387,6 +387,19 @@ def _unprocessable(detail: str) -> fastapi.HTTPException:
     return fastapi.HTTPException(status_code=422, detail=detail)
 
 
+def _check_label_name(label: str) -> None:
+    """Reject a label made only of digits.
+
+    A reference resolves ``@<digits>`` as a version number, so such a
+    label could never be resolved.
+    """
+    if label.isdigit():
+        raise _unprocessable(
+            f'Label {label!r} is not valid; a label made only of digits '
+            'is read as a version number'
+        )
+
+
 def _check_templates(content: PromptVersionContent) -> None:
     """Reject a version whose templates or variable names are invalid."""
     sources = {'system': content.system} | {
@@ -641,6 +654,7 @@ async def create_prompt(
     slug = data.slug or slugify.slugify(data.name)
     if not re.match(models.PROMPT_NAME_PATTERN, slug):
         raise _unprocessable(f'Slug {slug!r} is not valid')
+    _check_label_name(data.default_label)
     _check_templates(data.version)
     model_id = await _model_id_for(db, data.version.model)
     await _assert_ref_free(db, data.namespace, slug)
@@ -834,6 +848,8 @@ async def patch_prompt(
         )
     except pydantic.ValidationError as e:
         raise _unprocessable(f'Validation error: {e.errors()}') from e
+    if not re.match(models.PROMPT_NAME_PATTERN, updated.slug):
+        raise _unprocessable(f'Slug {updated.slug!r} is not valid')
     if (updated.namespace, updated.slug) != (namespace, slug):
         if not (auth.is_admin or 'prompt:promote' in auth.permissions):
             raise fastapi.HTTPException(
@@ -1045,8 +1061,10 @@ async def set_prompt_label(
     Raises:
         404: No such prompt or version.
         409: The prompt changed while this request ran.
+        422: The label is made only of digits.
 
     """
+    _check_label_name(label)
     prompt, latest = await _fetch_prompt(db, namespace, slug)
     await _fetch_version(db, prompt, data.version)
     labels = [item for item in prompt.labels if item.name != label]
