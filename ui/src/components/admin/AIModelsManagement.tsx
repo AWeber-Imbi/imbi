@@ -279,7 +279,7 @@ export function AIModelsManagement() {
   const providerDialogOpen = slug === 'new-provider' && listsReady
   const providerEditOpen = action === 'edit-provider' && listsReady
   const modelDialogOpen =
-    (slug === 'new-model' || action === 'edit') && providersQuery.isSuccess
+    (slug === 'new-model' || action === 'edit') && listsReady
 
   // A stale or mistyped id resolves to nothing once the list has loaded.
   const missingModel =
