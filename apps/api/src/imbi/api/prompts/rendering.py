@@ -10,20 +10,28 @@ it cannot stop a CPU-bound template. The limits are applied where the
 work happens instead, and use allowlists, not denylists:
 
 - Size: one measure, :func:`_measure`, is applied before ``~``, ``+``,
-  ``*``, ``join``, ``replace``, ``indent``, and ``string`` build a
-  value, and to each ``{{ }}`` value before it becomes text. Integer
-  ``*`` and ``**`` are limited by bit length. Only the ``str`` methods
-  in :data:`_STR_METHODS` and the filters in :data:`_FILTERS` are
+  ``*``, ``join``, ``replace``, ``indent``, ``string``, and ``tojson``
+  build a value, and to each ``{{ }}`` value before it becomes text.
+  ``tojson`` does not accept ``indent``. Integer ``*`` and ``**`` are
+  limited by bit length. Only the ``str`` methods in
+  :data:`_STR_METHODS` and the filters in :data:`_FILTERS` are
   available. The output streams and stops at :data:`MAX_OUTPUT`.
-- Time: ``range()`` is capped at :data:`MAX_RANGE`, loops may nest
-  :data:`MAX_LOOP_DEPTH` deep, and macros and recursive loops are not
-  allowed. These are checked when a version is saved and again before
-  it renders.
+- Time: one render may spend at most :data:`MAX_WORK` units of work.
+  Each loop iteration costs :data:`ITERATION_COST`. Each call, filter,
+  and operator costs 1, plus the length of the value it works on: the
+  string a ``str`` method is called on, the value a filter receives
+  (one unit for each item of an iterator), and the value that ``~``,
+  ``+``, ``*``, or ``%`` builds. ``range()`` is capped at
+  :data:`MAX_RANGE`, loops may nest :data:`MAX_LOOP_DEPTH` deep, and
+  macros and recursive loops are not allowed. The structure is checked
+  when a version is saved and again before it renders.
 - Only principals with ``prompt:update`` can save a template.
 """
 
 import asyncio
 import collections.abc
+import contextvars
+import functools
 import re
 import typing
 
@@ -52,6 +60,20 @@ MAX_INT_BITS = 4096
 
 #: Seconds a render may wait, including provider calls.
 RENDER_TIMEOUT = 2.0
+
+#: Highest number of work units one render may spend. An ``asyncio``
+#: timeout cannot stop a template that never awaits, so this budget
+#: is what limits CPU time.
+MAX_WORK = 4 * 1024 * 1024
+
+#: Work units one loop iteration costs. Comparisons and tests are not
+#: counted one by one, so an iteration costs enough to cover them.
+ITERATION_COST = 256
+
+#: Work units left in the current render. :func:`render` sets it.
+_work: contextvars.ContextVar[list[int]] = contextvars.ContextVar(
+    'prompt_render_work'
+)
 
 #: Variable names must be usable as Jinja identifiers.
 _VARIABLE_NAME = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
@@ -124,7 +146,6 @@ _FILTERS = frozenset(
         'striptags',
         'sum',
         'title',
-        'tojson',
         'trim',
         'truncate',
         'unique',
@@ -206,6 +227,102 @@ def _safe_range(*args: int) -> range:
             f'range() is limited to {MAX_RANGE} items, got {len(rng)}'
         )
     return rng
+
+
+def _spend(cost: int) -> None:
+    """Take ``cost`` units from the work budget of the current render."""
+    remaining = _work.get()
+    remaining[0] -= cost
+    if remaining[0] < 0:
+        raise RenderError(
+            f'The template does more work than the limit of {MAX_WORK} units'
+        )
+
+
+def _remaining() -> int:
+    return max(_work.get()[0], 0)
+
+
+def _shallow_size(value: object) -> int:
+    if isinstance(value, collections.abc.Sized) and not isinstance(
+        value, jinja2.Undefined
+    ):
+        return len(value)
+    return 0
+
+
+def _counted_iter(
+    items: collections.abc.Iterable[object], cost: int
+) -> collections.abc.Iterator[object]:
+    for item in items:
+        _spend(cost)
+        yield item
+
+
+async def _counted_aiter(
+    items: collections.abc.AsyncIterable[object], cost: int
+) -> collections.abc.AsyncIterator[object]:
+    async for item in items:
+        _spend(cost)
+        yield item
+
+
+def _charge(value: object) -> object:
+    """Charge for the value a filter receives.
+
+    An iterator is wrapped so that each item it gives costs one unit,
+    because its length is not known before it is consumed.
+    """
+    if isinstance(value, collections.abc.AsyncIterator):
+        return _counted_aiter(
+            typing.cast('collections.abc.AsyncIterator[object]', value), 1
+        )
+    if isinstance(value, collections.abc.Iterator):
+        return _counted_iter(
+            typing.cast('collections.abc.Iterator[object]', value), 1
+        )
+    _spend(1 + _shallow_size(value))
+    return value
+
+
+_PASS_ARGS = (
+    jinja2.runtime.Context,
+    jinja2.nodes.EvalContext,
+    jinja2.Environment,
+)
+
+
+def _charged_filter(
+    fn: collections.abc.Callable[..., object],
+) -> collections.abc.Callable[..., object]:
+    """Wrap a filter so it charges for the value it receives.
+
+    :func:`functools.wraps` copies the Jinja ``pass_*`` marker, so the
+    wrapper receives the same arguments as ``fn``.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: object, **kwargs: object) -> object:
+        values = list(args)
+        for i, arg in enumerate(values):
+            if not isinstance(arg, _PASS_ARGS):
+                values[i] = _charge(arg)
+                break
+        return fn(*values, **kwargs)
+
+    return wrapper
+
+
+def _safe_tojson(
+    eval_ctx: jinja2.nodes.EvalContext, value: object, indent: object = None
+) -> str:
+    # ``json.dumps`` writes ``indent`` once for each line, so a large
+    # indent makes a huge value before any check can run.
+    if indent is not None:
+        raise RenderError('tojson does not accept an indent')
+    _check_size(value)
+    _spend(_measure(value))
+    return jinja2.filters.do_tojson(eval_ctx, value)
 
 
 def _safe_indent(
@@ -293,7 +410,35 @@ class _Sandbox(jinja2.sandbox.ImmutableSandboxedEnvironment):
     def checked_concat(values: collections.abc.Iterable[object]) -> str:
         items = list(values)
         _check_size(*items)
-        return ''.join(str(item) for item in items)
+        text = ''.join(str(item) for item in items)
+        _spend(1 + len(text))
+        return text
+
+    @staticmethod
+    def checked_iter(iterable: object) -> object:
+        """Charge :data:`ITERATION_COST` for each loop iteration."""
+        if isinstance(iterable, collections.abc.AsyncIterable):
+            return _counted_aiter(
+                typing.cast('collections.abc.AsyncIterable[object]', iterable),
+                ITERATION_COST,
+            )
+        return _counted_iter(
+            typing.cast('collections.abc.Iterable[object]', iterable),
+            ITERATION_COST,
+        )
+
+    def call(
+        self,
+        context: jinja2.runtime.Context,
+        obj: typing.Any,
+        /,
+        *args: typing.Any,
+        **kwargs: typing.Any,
+    ) -> typing.Any:
+        # Only ``str`` methods do work in proportion to their input.
+        owner = getattr(obj, '__self__', None)
+        _spend(1 + (len(owner) if isinstance(owner, str) else 0))
+        return super().call(context, obj, *args, **kwargs)
 
     def call_binop(
         self,
@@ -322,7 +467,9 @@ class _Sandbox(jinja2.sandbox.ImmutableSandboxedEnvironment):
                 raise RenderError('The exponent is too large')
         elif operator == '%' and not isinstance(left, (int, float)):
             raise RenderError('% is allowed only on numbers')
-        return super().call_binop(context, operator, left, right)
+        result = super().call_binop(context, operator, left, right)
+        _spend(1 if ints else 1 + _measure(result, _remaining()))
+        return result
 
     def is_safe_attribute(self, obj: object, attr: str, value: object) -> bool:
         if isinstance(obj, (str, bytes, bytearray)):
@@ -350,6 +497,11 @@ def _environment() -> _Sandbox:
     env_filters['join'] = jinja2.pass_eval_context(_safe_join)
     env_filters['replace'] = jinja2.pass_eval_context(_safe_replace)
     env_filters['string'] = _safe_string
+    env_filters['tojson'] = jinja2.pass_eval_context(_safe_tojson)
+    for name, fn in list(env_filters.items()):
+        env_filters[name] = _charged_filter(
+            typing.cast('collections.abc.Callable[..., object]', fn)
+        )
     return env
 
 
@@ -382,6 +534,17 @@ def _check_structure(node: jinja2.nodes.Node, depth: int = 0) -> None:
 def _parse(source: str) -> jinja2.nodes.Template:
     tree = _ENV.parse(source)
     _check_structure(tree)
+    # Send each loop's iterable through ``checked_iter``, so that every
+    # iteration takes from the work budget.
+    for loop in tree.find_all(jinja2.nodes.For):
+        loop.iter = jinja2.nodes.Call(
+            jinja2.nodes.EnvironmentAttribute('checked_iter'),
+            [loop.iter],
+            [],
+            None,
+            None,
+            lineno=loop.lineno,
+        )
     return tree
 
 
@@ -519,6 +682,7 @@ async def render(
             raise RenderError(f'{type(e).__name__}: {e}') from e
         return ''.join(parts)
 
+    token = _work.set([MAX_WORK])
     try:
         async with asyncio.timeout(RENDER_TIMEOUT):
             system = await one(version.system)
@@ -530,4 +694,6 @@ async def render(
         raise RenderError(
             f'Render took longer than {RENDER_TIMEOUT} seconds'
         ) from e
+    finally:
+        _work.reset(token)
     return RenderedPrompt(system=system, messages=messages)

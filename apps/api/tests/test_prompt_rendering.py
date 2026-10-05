@@ -121,6 +121,46 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(rendering.RenderError):
                     await self.render(source)
 
+    async def test_tojson_rejects_indent(self) -> None:
+        for source in (
+            '{{ range(1000)|list|tojson(indent=100000000) }}',
+            "{{ [1, 2]|tojson('x' * 200000) }}",
+        ):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(rendering.RenderError, 'indent'):
+                    await self.render(source)
+
+    async def test_tojson_still_works(self) -> None:
+        text = await self.render("{{ {'a': [1, 2]}|tojson }}")
+        self.assertEqual(text, '{"a": [1, 2]}')
+
+    async def test_caps_work_in_silent_loops(self) -> None:
+        for source in (
+            # Nested loops over a large split, with no output.
+            "{% set xs = ('x' * 200000).split('x') %}"
+            '{% for a in xs %}{% for b in xs %}{% if b %}{% endif %}'
+            '{% endfor %}{% endfor %}',
+            # Expensive work in each iteration of one loop.
+            "{% set s = 'x' * 200000 %}"
+            '{% for a in s.split("x") %}{% if s.split("x") %}{% endif %}'
+            '{% endfor %}',
+            "{% set xs = ('x' * 200000).split('x') %}"
+            '{% for a in xs %}{% if xs|sort %}{% endif %}{% endfor %}',
+        ):
+            with self.subTest(source=source[:60]):
+                with self.assertRaisesRegex(rendering.RenderError, 'work'):
+                    await self.render(source)
+
+    async def test_ordinary_loops_fit_the_budget(self) -> None:
+        text = await self.render(
+            '{% for i in range(100) %}{% for j in range(100) %}'
+            '{% endfor %}{% endfor %}'
+            '{% for item in items %}{{ item.name|upper }} {% endfor %}',
+            {'items': [{'name': f'n{i}'} for i in range(500)]},
+            items=models.PromptVariable(type='list'),
+        )
+        self.assertTrue(text.startswith('N0 N1 '))
+
     async def test_namespace_is_not_available(self) -> None:
         with self.assertRaises(rendering.RenderError):
             await self.render('{% set ns = namespace(s=1) %}{{ ns.s }}')
