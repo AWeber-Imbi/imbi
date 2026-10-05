@@ -33,6 +33,7 @@ const drivers: AIProviderDriver[] = [
     default_base_url: 'https://api.anthropic.com',
     description: 'Claude models from Anthropic.',
     icon: 'Sparkles',
+    model_types: ['generative'],
     name: 'Anthropic',
     requires_base_url: false,
     slug: 'anthropic',
@@ -43,10 +44,22 @@ const drivers: AIProviderDriver[] = [
     default_base_url: 'https://api.openai.com/v1',
     description: 'GPT models from OpenAI.',
     icon: 'Bot',
+    model_types: ['generative'],
     name: 'OpenAI',
     requires_base_url: false,
     slug: 'openai',
     supports_discovery: true,
+    supports_iam: false,
+  },
+  {
+    default_base_url: 'https://api.typesafe.ai/v1',
+    description: 'System One decision models, such as Jev.',
+    icon: 'Scale',
+    model_types: ['decision'],
+    name: 'TypeSafe',
+    requires_base_url: false,
+    slug: 'typesafe',
+    supports_discovery: false,
     supports_iam: false,
   },
 ]
@@ -82,12 +95,25 @@ const model: AIModel = {
   kind: 'chat',
   max_output_tokens: 8192,
   model_id: 'claude-fable-5-1',
+  model_type: 'generative',
   monthly_spend_cap: 4000,
   name: 'Claude Fable 5.1',
   output_cost_per_million: 15,
   provider_id: 'prov-1',
   provider_name: 'Anthropic',
   slug: 'claude-fable-5-1',
+}
+
+const typesafe: AIProvider = {
+  ...provider,
+  base_url: null,
+  description: null,
+  driver: 'typesafe',
+  enabled_model_count: 0,
+  id: 'prov-ts',
+  model_count: 0,
+  name: 'TypeSafe',
+  slug: 'typesafe',
 }
 
 const team = { id: 'team-1', name: 'Platform', slug: 'platform' } as Team
@@ -160,9 +186,11 @@ describe('AIModelsManagement', () => {
     await waitFor(() =>
       expect(screen.getByText('Anthropic')).toBeInTheDocument(),
     )
-    // OpenAI has no configured provider, so it renders as a ghost row.
+    // OpenAI and TypeSafe have no configured provider, so each renders
+    // as a ghost row.
     expect(screen.getByText('OpenAI')).toBeInTheDocument()
-    expect(screen.getByText('Set up')).toBeInTheDocument()
+    expect(screen.getByText('TypeSafe')).toBeInTheDocument()
+    expect(screen.getAllByText('Set up')).toHaveLength(2)
     expect(screen.getByText('Key set')).toBeInTheDocument()
     expect(screen.getByText('••••abcd')).toBeInTheDocument()
     // Anthropic has credentials and a discovery-capable driver.
@@ -187,6 +215,7 @@ describe('AIModelsManagement', () => {
     expect(screen.getByText('claude-fable-5-1')).toBeInTheDocument()
     expect(screen.getByText('All teams')).toBeInTheDocument()
     expect(screen.getByText('$4,000/mo')).toBeInTheDocument()
+    expect(screen.getByText('Generative')).toBeInTheDocument()
   })
 
   it('patches enabled when a model switch is toggled', async () => {
@@ -208,7 +237,7 @@ describe('AIModelsManagement', () => {
     )
 
     await waitFor(() =>
-      expect(endpoints.updateAIModel).toHaveBeenCalledWith('acme', 'model-1', [
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
         { op: 'replace', path: '/enabled', value: false },
       ]),
     )
@@ -232,7 +261,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.createAIModel).toHaveBeenCalledWith(
-        'acme',
         expect.objectContaining({
           access_scope: 'restricted',
           allowed_team_ids: ['team-1'],
@@ -241,6 +269,64 @@ describe('AIModelsManagement', () => {
         }),
       ),
     )
+  })
+
+  it('creates a decision model on a TypeSafe provider', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider, typesafe])
+    await mountAt('/admin/ai-models/new-model?provider=prov-ts')
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'Decision' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    )
+    expect(screen.getByRole('radio', { name: 'Generative' })).toBeDisabled()
+    expect(
+      screen.getByText('This provider serves only decision models.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Interface')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/model name or url/i), {
+      target: { value: 'jev-latest' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() =>
+      expect(screen.getByText('Allowed teams')).toBeInTheDocument(),
+    )
+    expect(
+      screen.queryByLabelText('Default temperature'),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Create model' }))
+
+    await waitFor(() =>
+      expect(endpoints.createAIModel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          default_temperature: null,
+          default_top_p: null,
+          model_id: 'jev-latest',
+          model_type: 'decision',
+          provider_id: 'prov-ts',
+        }),
+      ),
+    )
+  })
+
+  it('switches the model type when the provider changes driver', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.listAIProviders).mockResolvedValue([provider, typesafe])
+    await mountAt('/admin/ai-models/new-model?provider=prov-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'Generative' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    )
+    expect(screen.getByRole('radio', { name: 'Decision' })).toBeDisabled()
+    expect(screen.getByText('Interface')).toBeInTheDocument()
   })
 
   it('patches only the changed fields when a model is edited', async () => {
@@ -263,7 +349,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.updateAIModel).toHaveBeenCalledWith(
-        'acme',
         'model-1',
         expect.arrayContaining([
           { op: 'replace', path: '/name', value: 'Fable 5.1' },
@@ -272,7 +357,7 @@ describe('AIModelsManagement', () => {
       ),
     )
     // Untouched fields must stay out of the patch.
-    const ops = vi.mocked(endpoints.updateAIModel).mock.calls[0][2]
+    const ops = vi.mocked(endpoints.updateAIModel).mock.calls[0][1]
     expect(ops.map((op) => op.path).sort()).toEqual([
       '/context_window',
       '/name',
@@ -325,7 +410,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(confirm.getByRole('button', { name: 'Delete model' }))
 
     await waitFor(() =>
-      expect(endpoints.deleteAIModel).toHaveBeenCalledWith('acme', 'model-1'),
+      expect(endpoints.deleteAIModel).toHaveBeenCalledWith('model-1'),
     )
   })
 
@@ -345,11 +430,9 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() =>
-      expect(endpoints.updateAIProvider).toHaveBeenCalledWith(
-        'acme',
-        'prov-1',
-        [{ op: 'replace', path: '/name', value: 'Anthropic Production' }],
-      ),
+      expect(endpoints.updateAIProvider).toHaveBeenCalledWith('prov-1', [
+        { op: 'replace', path: '/name', value: 'Anthropic Production' },
+      ]),
     )
   })
 
@@ -379,7 +462,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.setAIProviderCredentials).toHaveBeenCalledWith(
-        'acme',
         'prov-1',
         'sk-new-key',
       ),
@@ -393,7 +475,7 @@ describe('AIModelsManagement', () => {
     await waitFor(() =>
       expect(screen.getByText('Claude Opus 5')).toBeInTheDocument(),
     )
-    expect(endpoints.discoverAIModels).toHaveBeenCalledWith('acme', 'prov-1')
+    expect(endpoints.discoverAIModels).toHaveBeenCalledWith('prov-1')
     // The already-configured model is listed but cannot be selected.
     expect(screen.getByText('Already configured')).toBeInTheDocument()
     expect(
@@ -404,7 +486,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 model' }))
 
     await waitFor(() =>
-      expect(endpoints.importAIModels).toHaveBeenCalledWith('acme', 'prov-1', {
+      expect(endpoints.importAIModels).toHaveBeenCalledWith('prov-1', {
         models: [
           expect.objectContaining({
             display_name: 'Claude Opus 5',
@@ -434,7 +516,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.deleteAIProviderCredentials).toHaveBeenCalledWith(
-        'acme',
         'prov-1',
       ),
     )

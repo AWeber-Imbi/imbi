@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { render, screen, waitFor } from '@/test/utils'
 import type { MCPServer } from '@/types'
@@ -33,6 +33,12 @@ const sampleServer = (overrides: Partial<MCPServer> = {}): MCPServer => ({
 })
 
 describe('AssistantManagement', () => {
+  // Load the component once, outside the 5 s test timeout. On CI the
+  // cold import of the CodeMirror prompt editor takes longer than that.
+  beforeAll(async () => {
+    await import('../AssistantManagement')
+  }, 60_000)
+
   it('lists configured servers with status and the sub-tabs', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.listMcpServers).mockResolvedValue([sampleServer()])
@@ -41,7 +47,7 @@ describe('AssistantManagement', () => {
 
     await waitFor(() => expect(screen.getByText('GitHub')).toBeInTheDocument())
     expect(screen.getByText('MCP Servers')).toBeInTheDocument()
-    expect(screen.getByText('System Prompts')).toBeInTheDocument()
+    expect(screen.getByText('Prompt')).toBeInTheDocument()
     expect(screen.getByText('Healthy')).toBeInTheDocument()
     expect(screen.getByText('mcp.github.com/v1/stream')).toBeInTheDocument()
     expect(

@@ -50,6 +50,7 @@ export interface AIModel {
   kind: AIModelKind
   max_output_tokens: null | number
   model_id: string
+  model_type: AIModelType
   monthly_spend_cap: null | number | string
   name: string
   output_cost_per_million: null | number | string
@@ -73,6 +74,8 @@ export interface AIModelCreate {
   kind?: AIModelKind
   max_output_tokens?: null | number
   model_id: string
+  /** Omitted: the provider driver's default model type. */
+  model_type?: AIModelType | null
   monthly_spend_cap?: null | number
   name: string
   output_cost_per_million?: null | number
@@ -98,6 +101,9 @@ export interface AIModelImportResult {
 }
 
 export type AIModelKind = 'chat' | 'completion'
+
+/** `generative` returns text; `decision` returns typed judgments. */
+export type AIModelType = 'decision' | 'generative'
 
 export interface AIProvider {
   auth_kind: AIProviderAuthKind
@@ -138,6 +144,8 @@ export interface AIProviderDriver {
   description: string
   /** lucide-react icon name. */
   icon: string
+  /** The model types this driver serves; the first is the default. */
+  model_types: AIModelType[]
   name: string
   requires_base_url: boolean
   slug: AIProviderDriverSlug
@@ -150,6 +158,7 @@ export type AIProviderDriverSlug =
   | 'bedrock'
   | 'openai'
   | 'openai_compatible'
+  | 'typesafe'
   | 'vertex'
 
 export interface AITeamRef {
@@ -333,18 +342,15 @@ export interface LinkPresenceScoringPolicy extends ScoringPolicyBase {
   missing_score?: null | number
   present_score?: null | number
 }
-
 export interface LinkPresenceScoringPolicyCreate extends ScoringPolicyCreateBase {
   category: 'link_presence'
   link_slug: string
   missing_score?: null | number
   present_score?: null | number
 }
-
 export interface NotCondition {
   not: Condition
 }
-
 // Activity feed projection; distinct from `OperationsLogRecord`.
 export interface OperationsLogEntry {
   change_type:
@@ -387,27 +393,23 @@ export interface PendingDeployPullRequest {
   title: string
   url: string
 }
-
 export interface PendingDeployResponse {
   data: PendingDeployPullRequest[]
   environments: string[]
   since: string
 }
-
 export interface PresenceScoringPolicy extends ScoringPolicyBase {
   attribute_name: string
   category: 'presence'
   missing_score?: null | number
   present_score?: null | number
 }
-
 export interface PresenceScoringPolicyCreate extends ScoringPolicyCreateBase {
   attribute_name: string
   category: 'presence'
   missing_score?: null | number
   present_score?: null | number
 }
-
 // `Project` keeps its hand-written shape: it has UI-only convenience fields
 // (`project_type`, `[key: string]: unknown` for blueprint-defined extras) and
 // a looser `relationships` shape than the generated `ProjectResponse`.
@@ -469,7 +471,6 @@ export interface Project {
   viewer_closed_pr_count?: number
   viewer_open_pr_count?: number
 }
-
 // `ProjectCreate` stays hand-written: the UI sends `environment_slugs` (a
 // flat slug list) whereas the generated `ProjectCreate` expects an
 // `environments` map of edge-property dicts + a required `project_type_slugs`.
@@ -484,7 +485,6 @@ export interface ProjectCreate {
   slug: string
   team_slug: string
 }
-
 // Response from DELETE /projects/{id} (post-2.7).  Body carries only
 // the per-plugin lifecycle results -- the project node is gone by the
 // time the response is built.  Empty ``lifecycle_results`` means the
@@ -494,7 +494,6 @@ export interface ProjectCreate {
 export interface ProjectDeletedResponse {
   lifecycle_results: LifecycleInvocation[]
 }
-
 // Activity feed projection for the dashboard — not a 1:1 backend shape.
 export interface ProjectFeedEntry {
   display_name: string
@@ -534,6 +533,30 @@ export interface ProjectTypeCreate {
   slug: string
   tag_formats?: TagFormat[]
 }
+
+// Prompt CMS
+export type Prompt = Schemas['PromptResponse']
+export type PromptCreate = Schemas['PromptCreate']
+
+export type PromptEvalSummary = Schemas['EvalSummary']
+
+export type PromptLabel = Schemas['PromptLabel']
+
+export type PromptMessage = Schemas['PromptMessage']
+
+export type PromptParams = Schemas['PromptParams']
+
+export type PromptRenderRequest = Schemas['RenderRequest']
+
+export type PromptRenderResponse = Schemas['RenderResponse']
+
+export type PromptResolution = Schemas['Resolution']
+
+export type PromptVariable = Schemas['PromptVariable']
+
+export type PromptVersion = Schemas['PromptVersionResponse']
+
+export type PromptVersionCreate = Schemas['PromptVersionCreate']
 
 export interface PullRequest {
   additions: number

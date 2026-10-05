@@ -1,13 +1,14 @@
-"""Tests for the org-scoped AI model catalog endpoints."""
+"""Tests for the global AI model catalog endpoints."""
 
 import typing
+
+import psycopg.errors
 
 from apps.api.tests.endpoints import test_ai_providers as provider_tests
 from imbi.api.endpoints import ai_models, ai_providers
 
-ORG = provider_tests.ORG
-BASE = f'/organizations/{ORG}/ai-models'
-IMPORT_BASE = f'/organizations/{ORG}/ai-providers'
+BASE = '/ai-models'
+IMPORT_BASE = '/ai-providers'
 
 # Matched by exact template where a substring rule would be shadowed by
 # the write queries that embed the same ``MATCH``.
@@ -115,7 +116,7 @@ class ReadModelTestCase(AIModelTestBase):
         self.assertEqual(response.json()[0]['allowed_teams'], [])
 
     def test_get_returns_model(self) -> None:
-        """A model in this organization is returned with its costs."""
+        """A configured model is returned with its costs."""
         self.route(
             (
                 GET_MODEL,
@@ -135,16 +136,9 @@ class ReadModelTestCase(AIModelTestBase):
         self.assertEqual(data['model_id'], 'claude-opus-5')
         self.assertEqual(data['input_cost_per_million'], '3')
 
-    def test_get_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.get('/organizations/other/ai-models/mdl-1')
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_MODEL, 'other')
-
 
 class CreateModelTestCase(AIModelTestBase):
-    """``POST /organizations/{org}/ai-models``."""
+    """``POST /ai-models``."""
 
     def _body(self, **overrides: typing.Any) -> dict[str, typing.Any]:
         body: dict[str, typing.Any] = {
@@ -165,6 +159,73 @@ class CreateModelTestCase(AIModelTestBase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()['slug'], 'default-chat')
         self.assertEqual(router.params_for(CREATE)['slug'], 'default-chat')
+
+    def test_create_defaults_model_type_from_driver(self) -> None:
+        """A generative driver yields a generative model by default."""
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
+            (CREATE, [{'m': model_props()}]),
+        )
+        response = self.client.post(BASE + '/', json=self._body())
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(router.params_for(CREATE)['model_type'], 'generative')
+
+    def test_create_decision_model_on_typesafe(self) -> None:
+        """A TypeSafe model is a decision model without saying so."""
+        provider = provider_tests.provider_props(
+            driver='typesafe', name='TypeSafe', slug='typesafe'
+        )
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider}]),
+            (
+                CREATE,
+                [
+                    {
+                        'm': model_props(
+                            model_id='jev-latest', model_type='decision'
+                        )
+                    }
+                ],
+            ),
+        )
+        response = self.client.post(
+            BASE + '/', json=self._body(name='Jev', model_id='jev-latest')
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(router.params_for(CREATE)['model_type'], 'decision')
+        self.assertEqual(response.json()['model_type'], 'decision')
+
+    def test_generative_model_on_typesafe_is_422(self) -> None:
+        """TypeSafe serves only decision models."""
+        provider = provider_tests.provider_props(
+            driver='typesafe', name='TypeSafe', slug='typesafe'
+        )
+        self.route((GET_PROVIDER, [{'p': provider}]))
+        response = self.client.post(
+            BASE + '/', json=self._body(model_type='generative')
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('decision', response.json()['detail'])
+
+    def test_decision_model_on_anthropic_is_422(self) -> None:
+        """Anthropic serves only generative models."""
+        self.route((GET_PROVIDER, [{'p': provider_tests.provider_props()}]))
+        response = self.client.post(
+            BASE + '/', json=self._body(model_type='decision')
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_decision_model_with_temperature_is_422(self) -> None:
+        """Sampling defaults do not apply to a decision model."""
+        provider = provider_tests.provider_props(
+            driver='typesafe', name='TypeSafe', slug='typesafe'
+        )
+        self.route((GET_PROVIDER, [{'p': provider}]))
+        response = self.client.post(
+            BASE + '/', json=self._body(default_temperature=0.5)
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('generative', response.json()['detail'])
 
     def test_create_attaches_allowed_teams(self) -> None:
         """Restricted access writes one ALLOWED_FOR edge per team."""
@@ -236,22 +297,6 @@ class CreateModelTestCase(AIModelTestBase):
         self.client.post(BASE + '/', json=self._body())
         self.assertNotIn(CLEAR_TEAMS, [query for query, _ in router.calls])
 
-    def test_team_edges_are_scoped_to_the_org(self) -> None:
-        """The ALLOWED_FOR write carries the BELONGS_TO hop."""
-        router = self.route(
-            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
-            (TEAM, [{'t': team_props()}]),
-            (CREATE, [{'m': model_props(access_scope='restricted')}]),
-        )
-        response = self.client.post(
-            BASE + '/',
-            json=self._body(
-                access_scope='restricted', allowed_team_ids=['tm-1']
-            ),
-        )
-        self.assertEqual(response.status_code, 201)
-        self.assert_scoped(router, ADD_TEAM, ORG)
-
     def test_restricted_without_teams_is_422(self) -> None:
         """Restricted access with nobody allowed is rejected."""
         self.route((GET_PROVIDER, [{'p': provider_tests.provider_props()}]))
@@ -260,8 +305,8 @@ class CreateModelTestCase(AIModelTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_team_outside_org_is_422(self) -> None:
-        """A team from another organization cannot be granted access."""
+    def test_unknown_team_is_422(self) -> None:
+        """A team that does not exist cannot be granted access."""
         self.route((GET_PROVIDER, [{'p': provider_tests.provider_props()}]))
         response = self.client.post(
             BASE + '/',
@@ -272,24 +317,37 @@ class CreateModelTestCase(AIModelTestBase):
         self.assertEqual(response.status_code, 422)
 
     def test_unknown_provider_is_404(self) -> None:
-        """The provider must exist in this organization."""
+        """The provider must exist."""
         self.route()
         response = self.client.post(BASE + '/', json=self._body())
         self.assertEqual(response.status_code, 404)
 
-    def test_provider_in_another_org_is_404(self) -> None:
-        """A provider id valid elsewhere is not found here."""
-        router = self.route()
-        response = self.client.post(BASE + '/', json=self._body())
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(router.params_for(GET_PROVIDER)['org_slug'], ORG)
-
-    def test_duplicate_slug_in_org_conflicts(self) -> None:
-        """Model slugs are unique per organization."""
+    def test_duplicate_slug_conflicts(self) -> None:
+        """Model slugs are unique across the installation."""
         self.route(
             (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
             (SLUG_TAKEN, [{'id': 'mdl-other'}]),
         )
+        response = self.client.post(BASE + '/', json=self._body())
+        self.assertEqual(response.status_code, 409)
+
+    def test_concurrent_duplicate_slug_conflicts(self) -> None:
+        """A slug claimed between the check and the write is a 409."""
+        router = provider_tests.QueryRouter(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}])
+        )
+
+        def execute(
+            query: str,
+            params: dict[str, typing.Any] | None = None,
+            columns: list[str] | None = None,
+            raw: bool = False,
+        ) -> list[dict[str, typing.Any]]:
+            if CREATE in query:
+                raise psycopg.errors.UniqueViolation('duplicate key')
+            return router(query, params, columns, raw)
+
+        self.mock_db.execute.side_effect = execute
         response = self.client.post(BASE + '/', json=self._body())
         self.assertEqual(response.status_code, 409)
 
@@ -317,15 +375,6 @@ class CreateModelTestCase(AIModelTestBase):
             BASE + '/', json=self._body(input_cost_per_million='-1')
         )
         self.assertEqual(response.status_code, 422)
-
-    def test_create_cross_org_is_404(self) -> None:
-        """Creating under an organization without the provider is 404."""
-        router = self.route()
-        response = self.client.post(
-            '/organizations/other/ai-models/', json=self._body()
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
 
 
 class PatchModelTestCase(AIModelTestBase):
@@ -425,7 +474,7 @@ class PatchModelTestCase(AIModelTestBase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['allowed_teams'], [])
-        self.assertEqual(router.params_for(CLEAR_TEAMS)['org_slug'], ORG)
+        self.assertEqual(router.params_for(CLEAR_TEAMS)['id'], 'mdl-1')
         self.assertNotIn(ADD_TEAM, [query for query, _ in router.calls])
 
     def test_patch_rejects_a_derived_path(self) -> None:
@@ -454,8 +503,8 @@ class PatchModelTestCase(AIModelTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_patch_team_outside_org_is_422(self) -> None:
-        """A team from another organization cannot be granted access."""
+    def test_patch_unknown_team_is_422(self) -> None:
+        """A team that does not exist cannot be granted access."""
         self.route(
             (
                 GET_MODEL,
@@ -503,16 +552,6 @@ class PatchModelTestCase(AIModelTestBase):
         )
         self.assertEqual(response.status_code, 409)
 
-    def test_patch_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.patch(
-            '/organizations/other/ai-models/mdl-1',
-            json=[{'op': 'replace', 'path': '/enabled', 'value': False}],
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_MODEL, 'other')
-
 
 class DeleteModelTestCase(AIModelTestBase):
     """``DELETE``."""
@@ -522,13 +561,6 @@ class DeleteModelTestCase(AIModelTestBase):
         self.route((DELETE, [{'m': model_props()}]))
         response = self.client.delete(f'{BASE}/mdl-1')
         self.assertEqual(response.status_code, 204)
-
-    def test_delete_cross_org_is_404(self) -> None:
-        """A valid id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.delete('/organizations/other/ai-models/mdl-1')
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, DELETE, 'other')
 
 
 class ImportModelsTestCase(AIModelTestBase):
@@ -588,16 +620,6 @@ class ImportModelsTestCase(AIModelTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['created'], [])
         self.assertEqual(response.json()['skipped'], ['claude-opus-5'])
-
-    def test_import_cross_org_is_404(self) -> None:
-        """A valid provider id under the wrong organization is not found."""
-        router = self.route()
-        response = self.client.post(
-            '/organizations/other/ai-providers/prv-1/import-models',
-            json={'models': [{'model_id': 'claude-opus-5'}]},
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assert_scoped(router, GET_PROVIDER, 'other')
 
 
 class ModelPermissionTestCase(AIModelTestBase):

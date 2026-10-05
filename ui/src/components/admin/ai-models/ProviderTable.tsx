@@ -383,6 +383,9 @@ function ModelRow({
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-1">
+        <Badge variant={model.model_type === 'decision' ? 'info' : 'neutral'}>
+          {model.model_type === 'decision' ? 'Decision' : 'Generative'}
+        </Badge>
         {teamChips(model).map((chip) => (
           <Badge key={chip} variant="neutral">
             {chip}

@@ -7,7 +7,8 @@ from . import (
 )
 from .admin import admin_router
 from .admin_plugins import admin_plugins_router
-from .ai_providers import ai_provider_drivers_router
+from .ai_models import ai_models_router, ai_provider_imports_router
+from .ai_providers import ai_provider_drivers_router, ai_providers_router
 from .api_keys import api_keys_router
 from .auth import auth_router
 from .auth_providers import auth_providers_router
@@ -28,6 +29,7 @@ from .plugin_entities import plugin_entities_router
 from .plugins import plugins_router
 from .project_integrations import project_integrations_router
 from .project_plugins import project_plugins_router
+from .prompts import prompts_router
 from .roles import roles_router
 from .sa_api_keys import sa_api_keys_router
 from .scoring import scoring_router
@@ -40,7 +42,10 @@ from .users import users_router
 prefixed_routers: list[fastapi.APIRouter] = [
     admin_plugins_router,
     admin_router,
+    ai_models_router,
     ai_provider_drivers_router,
+    ai_provider_imports_router,
+    ai_providers_router,
     api_keys_router,
     auth_providers_router,
     auth_router,
@@ -59,6 +64,7 @@ prefixed_routers: list[fastapi.APIRouter] = [
     organizations_router,
     plugin_entities_router,
     plugins_router,
+    prompts_router,
     project_integrations_router,
     project_plugins_router,
     roles_router,

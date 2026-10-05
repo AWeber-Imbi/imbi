@@ -40,6 +40,8 @@ name = [
   "PluginRegistration",
   "Project",
   "ProjectType",
+  "Prompt",
+  "PromptVersion",
   "Release",
   "Role",
   "ScoringPolicy",
@@ -61,9 +63,9 @@ name = [
 # `attributes` lists one or more property names; multiple names
 # produce a composite index.
 
-# ``AIProvider`` / ``AIModel`` slugs are unique per *organization*, not
-# globally, so these are plain lookup indexes; the endpoint enforces
-# uniqueness within the org (and ``model_id`` within a provider).
+# ``AIProvider`` and ``AIModel`` are global, so their slugs are unique
+# across the installation. ``model_id`` is unique only within a
+# provider, which the endpoint enforces.
 [[vlabel_indexes]]
 vlabel = "AIProvider"
 attributes = ["id"]
@@ -72,6 +74,7 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "AIProvider"
 attributes = ["slug"]
+unique = true
 
 [[vlabel_indexes]]
 vlabel = "AIModel"
@@ -81,6 +84,7 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "AIModel"
 attributes = ["slug"]
+unique = true
 
 [[vlabel_indexes]]
 vlabel = "AIModel"
@@ -320,6 +324,30 @@ attributes = ["name"]
 [[vlabel_indexes]]
 vlabel = "Project"
 attributes = ["slug"]
+
+# Prompts are global, so ``(namespace, slug)`` is unique across the
+# installation.
+[[vlabel_indexes]]
+vlabel = "Prompt"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Prompt"
+attributes = ["namespace", "slug"]
+unique = true
+
+# Two concurrent saves compute the same next ``n``; this index makes
+# the second CREATE fail instead of writing a duplicate version.
+[[vlabel_indexes]]
+vlabel = "PromptVersion"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "PromptVersion"
+attributes = ["prompt_id", "n"]
+unique = true
 
 # Per-project uniqueness of `Release.tag` is enforced at the
 # application layer — two projects may share e.g. "1.0.0" so a

@@ -9,6 +9,7 @@ export const queryKeys = {
   adminLocalAuth: () => ['admin', 'local-auth'] as const,
   adminPlugin: (slug: string) => ['admin-plugin', slug] as const,
   adminPlugins: () => ['admin-plugins'] as const,
+  aiModels: () => ['ai-models'] as const,
   anchorEdges: (
     kind: string,
     orgSlug: string,
@@ -55,6 +56,13 @@ export const queryKeys = {
   pluginPackages: () => ['plugin-packages'] as const,
   problemPackages: (orgSlug: string) => ['problemPackages', orgSlug] as const,
   projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
+  // Nested under `prompts` so invalidating the list also refreshes
+  // every open prompt.
+  prompt: (namespace: string, slug: string) =>
+    ['prompts', namespace, slug] as const,
+  prompts: () => ['prompts'] as const,
+  promptVersions: (namespace: string, slug: string) =>
+    ['promptVersions', namespace, slug] as const,
   // Login form's view of providers (/auth/providers, public payload with
   // default_redirect). Distinct from adminAuthProviders, which lists admin
   // metadata from /admin/auth-providers — different endpoint, different shape,

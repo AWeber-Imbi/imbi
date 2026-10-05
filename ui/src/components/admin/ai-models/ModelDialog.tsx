@@ -29,7 +29,9 @@ import type {
   AIModel,
   AIModelAccessScope,
   AIModelKind,
+  AIModelType,
   AIProvider,
+  AIProviderDriver,
   Team,
 } from '@/types'
 
@@ -46,6 +48,7 @@ export interface ModelFormValues {
   kind: AIModelKind
   max_output_tokens: null | number
   model_id: string
+  model_type: AIModelType
   monthly_spend_cap: null | number
   name: string
   output_cost_per_million: null | number
@@ -54,6 +57,8 @@ export interface ModelFormValues {
 
 interface ModelDialogProps {
   defaultProviderId?: string
+  /** The driver catalog; it sets which model types a provider serves. */
+  drivers?: AIProviderDriver[]
   error?: unknown
   isPending: boolean
   model: AIModel | null
@@ -91,6 +96,7 @@ const NUMERIC_KEYS: NumericKey[] = [
 
 export function ModelDialog({
   defaultProviderId,
+  drivers = [],
   error,
   isPending,
   model,
@@ -133,9 +139,31 @@ export function ModelDialog({
     if (trimmed === '' || !Number.isNaN(Number(trimmed))) return undefined
     return 'Enter a number.'
   }
-  const hasNumericErrors = NUMERIC_KEYS.some((key) => numericError(key))
 
   const canContinue = !!values.provider_id && values.model_id.trim().length > 0
+
+  const typesFor = (providerId: string): AIModelType[] => {
+    const provider = providers.find((p) => p.id === providerId)
+    const driver = drivers.find((d) => d.slug === provider?.driver)
+    return driver?.model_types?.length ? driver.model_types : ['generative']
+  }
+  const supportedTypes = typesFor(values.provider_id)
+  // Derived, not stored: the provider list and driver catalog may load
+  // after the dialog opens, and a provider change must not leave a type
+  // the new driver cannot serve.
+  const modelType = supportedTypes.includes(values.model_type)
+    ? values.model_type
+    : supportedTypes[0]
+  const isDecision = modelType === 'decision'
+  // Sampling fields are not rendered for decision models, so their
+  // leftover text must not block the save.
+  const hasNumericErrors = NUMERIC_KEYS.some(
+    (key) =>
+      !(
+        isDecision &&
+        (key === 'default_temperature' || key === 'default_top_p')
+      ) && numericError(key),
+  )
 
   const toggleTeam = (teamId: string) => {
     const selected = values.allowed_team_ids.includes(teamId)
@@ -160,6 +188,10 @@ export function ModelDialog({
       ...values,
       allowed_team_ids:
         values.access_scope === 'restricted' ? values.allowed_team_ids : [],
+      // Sampling defaults do not apply to decision models.
+      default_temperature: isDecision ? null : values.default_temperature,
+      default_top_p: isDecision ? null : values.default_top_p,
+      model_type: modelType,
       name: values.name.trim() || values.model_id.trim(),
     })
   }
@@ -180,7 +212,7 @@ export function ModelDialog({
           <DialogDescription>
             {step === 1
               ? 'Identify the model and the provider that serves it.'
-              : 'Limits, cost and who inside the organization may use it.'}
+              : 'Limits, cost and which teams may use it.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -228,18 +260,53 @@ export function ModelDialog({
                   value={values.name}
                 />
               </FormField>
-              <FormField label="Interface">
+              <FormField
+                description={
+                  supportedTypes.length === 1
+                    ? `This provider serves only ${supportedTypes[0]} models.`
+                    : isDecision
+                      ? 'Returns typed judgments and probabilities, not text.'
+                      : 'Returns text.'
+                }
+                label="Model type"
+              >
                 <SegmentedControl
-                  ariaLabel="Interface"
-                  onValueChange={(v) => set('kind', v as AIModelKind)}
-                  value={values.kind}
+                  ariaLabel="Model type"
+                  onValueChange={(v) => set('model_type', v as AIModelType)}
+                  value={modelType}
                 >
-                  <SegmentedControlItem value="chat">Chat</SegmentedControlItem>
-                  <SegmentedControlItem value="completion">
-                    Completion
+                  <SegmentedControlItem
+                    className="disabled:pointer-events-none disabled:opacity-40"
+                    disabled={!supportedTypes.includes('generative')}
+                    value="generative"
+                  >
+                    Generative
+                  </SegmentedControlItem>
+                  <SegmentedControlItem
+                    className="disabled:pointer-events-none disabled:opacity-40"
+                    disabled={!supportedTypes.includes('decision')}
+                    value="decision"
+                  >
+                    Decision
                   </SegmentedControlItem>
                 </SegmentedControl>
               </FormField>
+              {!isDecision && (
+                <FormField label="Interface">
+                  <SegmentedControl
+                    ariaLabel="Interface"
+                    onValueChange={(v) => set('kind', v as AIModelKind)}
+                    value={values.kind}
+                  >
+                    <SegmentedControlItem value="chat">
+                      Chat
+                    </SegmentedControlItem>
+                    <SegmentedControlItem value="completion">
+                      Completion
+                    </SegmentedControlItem>
+                  </SegmentedControl>
+                </FormField>
+              )}
             </>
           ) : (
             <>
@@ -273,23 +340,27 @@ export function ModelDialog({
                   value={text.output_cost_per_million}
                 />
               </div>
-              <div className="border-tertiary border-t" />
-              <div className="grid grid-cols-2 gap-4">
-                <NumberField
-                  error={numericError('default_temperature')}
-                  id="ai-model-temp"
-                  label="Default temperature"
-                  onChange={(raw) => setNumeric('default_temperature', raw)}
-                  value={text.default_temperature}
-                />
-                <NumberField
-                  error={numericError('default_top_p')}
-                  id="ai-model-top-p"
-                  label="Default top_p"
-                  onChange={(raw) => setNumeric('default_top_p', raw)}
-                  value={text.default_top_p}
-                />
-              </div>
+              {!isDecision && (
+                <>
+                  <div className="border-tertiary border-t" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <NumberField
+                      error={numericError('default_temperature')}
+                      id="ai-model-temp"
+                      label="Default temperature"
+                      onChange={(raw) => setNumeric('default_temperature', raw)}
+                      value={text.default_temperature}
+                    />
+                    <NumberField
+                      error={numericError('default_top_p')}
+                      id="ai-model-top-p"
+                      label="Default top_p"
+                      onChange={(raw) => setNumeric('default_top_p', raw)}
+                      value={text.default_top_p}
+                    />
+                  </div>
+                </>
+              )}
               <NumberField
                 description={CAP_HELP}
                 error={numericError('monthly_spend_cap')}
@@ -301,7 +372,7 @@ export function ModelDialog({
               <FormField
                 description={
                   values.access_scope === 'organization'
-                    ? 'Available to every team in the organization.'
+                    ? 'Available to all teams.'
                     : `${values.allowed_team_ids.length} team(s) selected.`
                 }
                 label="Allowed teams"
@@ -446,6 +517,7 @@ function initialValues(
       kind: 'chat',
       max_output_tokens: null,
       model_id: '',
+      model_type: 'generative',
       monthly_spend_cap: null,
       name: '',
       output_cost_per_million: null,
@@ -463,6 +535,7 @@ function initialValues(
     kind: model.kind,
     max_output_tokens: model.max_output_tokens,
     model_id: model.model_id,
+    model_type: model.model_type ?? 'generative',
     monthly_spend_cap: decimalToNumber(model.monthly_spend_cap),
     name: model.name,
     output_cost_per_million: decimalToNumber(model.output_cost_per_million),

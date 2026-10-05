@@ -13,8 +13,6 @@ from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 
-from .ai_models import ai_models_router, ai_provider_imports_router
-from .ai_providers import ai_providers_router
 from .comments import comments_router
 from .components import (
     component_releases_router,
@@ -50,6 +48,7 @@ from .project_logs import project_logs_router
 from .project_pr_sync import project_pr_sync_router
 from .project_types import project_types_router
 from .projects import projects_router
+from .prompts import prompt_render_router
 from .pull_requests import pull_requests_project_router, pull_requests_router
 from .releases import releases_router
 from .search import search_router
@@ -67,19 +66,11 @@ organizations_router.include_router(
     teams_router,
     prefix='/{org_slug}/teams',
 )
+# Prompts are global; only rendering is org-scoped, because the
+# ``project()`` template provider reads organization data.
 organizations_router.include_router(
-    ai_providers_router,
-    prefix='/{org_slug}/ai-providers',
-)
-# Addressed by provider but creates models, so it lives with the model
-# endpoints; mounted here on the provider prefix.
-organizations_router.include_router(
-    ai_provider_imports_router,
-    prefix='/{org_slug}/ai-providers',
-)
-organizations_router.include_router(
-    ai_models_router,
-    prefix='/{org_slug}/ai-models',
+    prompt_render_router,
+    prefix='/{org_slug}/prompts',
 )
 organizations_router.include_router(
     environments_router,

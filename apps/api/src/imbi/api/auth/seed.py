@@ -146,6 +146,30 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'credentials',
         'Set or remove AI provider credentials',
     ),
+    # Prompt CMS. ``promote`` is separate from ``update``: moving a
+    # label changes what every consumer of that label runs, without
+    # any change to a prompt body.
+    ('prompt:create', 'prompt', 'create', 'Create prompts'),
+    ('prompt:read', 'prompt', 'read', 'View prompts and their versions'),
+    (
+        'prompt:update',
+        'prompt',
+        'update',
+        'Edit prompts and save new versions',
+    ),
+    (
+        'prompt:promote',
+        'prompt',
+        'promote',
+        'Move prompt labels and set the default label',
+    ),
+    ('prompt:delete', 'prompt', 'delete', 'Delete prompts'),
+    (
+        'prompt:evaluate',
+        'prompt',
+        'evaluate',
+        'Record evaluation results against prompt versions',
+    ),
     # Environment management
     (
         'environment:create',
@@ -665,6 +689,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'project:read',
             'project:write',
             'ai_model:read',
+            'prompt:create',
+            'prompt:read',
+            'prompt:update',
             'environment:read',
             'link_definition:read',
             'link_definition:write',
@@ -716,6 +743,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'document:analytics:read',
             'document_template:read',
             'ai_model:read',
+            'prompt:read',
             'environment:read',
             'link_definition:read',
             'me:identities:manage',
@@ -745,6 +773,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             'blueprint:read',
             'component:read',
             'ai_model:read',
+            'prompt:read',
             'environment:read',
             'link_definition:read',
             'operations_log:read',

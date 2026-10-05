@@ -140,6 +140,11 @@ async def _create_vlabel_indexes(
             for attr in attrs
         )
 
+        if unique:
+            await _assert_no_duplicates(
+                cursor, graph_name, vlabel, attrs, idx_name, cols
+            )
+
         unique_clause = sql.SQL('UNIQUE ') if unique else sql.SQL('')
 
         await cursor.execute(
@@ -154,6 +159,66 @@ async def _create_vlabel_indexes(
                 cols=cols,
             ),
         )
+
+
+async def _assert_no_duplicates(
+    cursor: psycopg.AsyncCursor[typing.Any],
+    graph_name: str,
+    vlabel: str,
+    attrs: list[str],
+    idx_name: str,
+    cols: sql.Composable,
+) -> None:
+    """Fail with a clear message when a new unique index cannot build.
+
+    ``CREATE UNIQUE INDEX`` fails with a bare unique violation when
+    existing rows repeat a value, for example when a schema change
+    makes slugs unique across the install that were unique only per
+    organization. The check runs only while the index does not exist,
+    so a normal restart does not scan the table.
+
+    Raises:
+        RuntimeError: Rows repeat the indexed values.
+
+    """
+    await cursor.execute(
+        'SELECT 1 FROM pg_indexes WHERE schemaname = %s AND indexname = %s',
+        (graph_name, idx_name),
+    )
+    if await cursor.fetchone() is not None:
+        return
+    # A unique index treats NULLs as distinct, so they are not counted.
+    not_null = sql.SQL(' AND ').join(
+        sql.SQL(
+            'ag_catalog.agtype_access_operator('
+            'properties, \'"{}"\'::agtype) IS NOT NULL',
+        ).format(sql.SQL(attr))
+        for attr in attrs
+    )
+    await cursor.execute(
+        sql.SQL(
+            'SELECT {cols}, count(*) FROM {schema}.{table}'
+            ' WHERE {not_null} GROUP BY {cols}'
+            ' HAVING count(*) > 1 LIMIT 10',
+        ).format(
+            cols=cols,
+            schema=sql.Identifier(graph_name),
+            table=sql.Identifier(vlabel),
+            not_null=not_null,
+        ),
+    )
+    duplicates = await cursor.fetchall()
+    if not duplicates:
+        return
+    values = '; '.join(
+        ', '.join(str(value) for value in row[:-1]) + f' ({row[-1]} rows)'
+        for row in duplicates
+    )
+    raise RuntimeError(
+        f'Cannot create unique index {idx_name}: {vlabel} rows repeat '
+        f'({", ".join(attrs)}): {values}. Rename or remove the duplicates, '
+        'then restart.'
+    )
 
 
 async def _create_embeddings_table(

@@ -8,6 +8,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  FileCode2,
   FileJson,
   FolderTree,
   Globe,
@@ -52,6 +53,7 @@ import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { UserManagement } from './admin/UserManagement'
 import { Webhooks } from './admin/Webhooks'
+import { PromptLibrary } from './prompts/PromptLibrary'
 
 type AdminSection =
   | 'ai-models'
@@ -69,6 +71,7 @@ type AdminSection =
   | 'overview'
   | 'plugins'
   | 'project-types'
+  | 'prompts'
   | 'roles'
   | 'scoring-policies'
   | 'service-accounts'
@@ -95,6 +98,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'overview',
   'plugins',
   'project-types',
+  'prompts',
   'roles',
   'scoring-policies',
   'service-accounts',
@@ -196,13 +200,6 @@ export function Admin() {
       scope: 'org',
     },
     {
-      description: 'LLM providers and the model catalog for this organization',
-      icon: Sparkles,
-      id: 'ai-models',
-      label: 'AI Models',
-      scope: 'org',
-    },
-    {
       description: 'Manage teams',
       icon: UsersRound,
       id: 'teams',
@@ -219,6 +216,14 @@ export function Admin() {
   ]
 
   const systemAdminSections: SectionDef[] = [
+    {
+      description:
+        'LLM providers and the model catalog, shared by every organization',
+      icon: Sparkles,
+      id: 'ai-models',
+      label: 'AI Models',
+      scope: 'system',
+    },
     {
       description: 'Configure the AI assistant and its MCP servers',
       icon: Sparkles,
@@ -259,6 +264,13 @@ export function Admin() {
       icon: Puzzle,
       id: 'plugins',
       label: 'Plugins',
+      scope: 'system',
+    },
+    {
+      description: 'Versioned prompts, labels, and model settings',
+      icon: FileCode2,
+      id: 'prompts',
+      label: 'Prompts',
       scope: 'system',
     },
     {
@@ -437,6 +449,7 @@ export function Admin() {
               <ScoringPolicyManagement />
             )}
             {currentSection === 'ai-models' && <AIModelsManagement />}
+            {currentSection === 'prompts' && <PromptLibrary />}
             {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
             {currentSection === 'graph-query' && <GraphQueryManagement />}

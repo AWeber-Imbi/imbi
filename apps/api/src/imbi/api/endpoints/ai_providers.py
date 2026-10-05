@@ -1,4 +1,8 @@
-"""Org-scoped CRUD for configured LLM providers.
+"""Global CRUD for configured LLM providers.
+
+Providers are global: one Imbi installation serves every organization
+from the same AI services (the assistant, the slackbot), and a provider
+holds one API key for the company account.
 
 An :class:`imbi.common.models.AIProvider` is one configured instance of
 a *driver* — the drivers themselves are static code
@@ -39,7 +43,10 @@ ai_provider_drivers_router = fastapi.APIRouter(
     tags=['AI Models'],
 )
 
-ai_providers_router = fastapi.APIRouter(tags=['AI Models'])
+ai_providers_router = fastapi.APIRouter(
+    prefix='/ai-providers',
+    tags=['AI Models'],
+)
 
 AuthKind = typing.Literal['api_key', 'iam', 'none']
 
@@ -73,7 +80,6 @@ _READONLY_PATHS: frozenset[str] = json_patch.READONLY_PATHS | frozenset(
         '/has_credentials',
         '/is_builtin_driver',
         '/model_count',
-        '/organization',
     ]
 )
 
@@ -192,43 +198,34 @@ def to_response(
 
 
 _LIST_QUERY: typing.LiteralString = """
-MATCH (p:AIProvider)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+MATCH (p:AIProvider)
 RETURN p
 """
 
 _GET_QUERY: typing.LiteralString = """
 MATCH (p:AIProvider {{id: {id}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN p
 """
 
 _SLUG_TAKEN_QUERY: typing.LiteralString = """
 MATCH (p:AIProvider {{slug: {slug}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN p.id AS id
 """
 
 _COUNTS_QUERY: typing.LiteralString = """
 MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider)
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN p.id AS provider_id, m.enabled AS enabled
 """
 
 
-async def model_counts(
-    db: graph.Graph, org_slug: str
-) -> dict[str, tuple[int, int]]:
+async def model_counts(db: graph.Graph) -> dict[str, tuple[int, int]]:
     """Return ``{provider_id: (model_count, enabled_model_count)}``.
 
     Counted in Python from one flat row set rather than with Cypher
     aggregation: AGE drops ``ORDER BY`` ahead of an aggregate and the
-    volume here is a handful of rows per organization.
+    volume here is a handful of rows.
     """
-    records = await db.execute(
-        _COUNTS_QUERY,
-        {'org_slug': org_slug},
-        ['provider_id', 'enabled'],
-    )
+    records = await db.execute(_COUNTS_QUERY, {}, ['provider_id', 'enabled'])
     counts: dict[str, tuple[int, int]] = {}
     for record in records:
         provider_id = graph.parse_agtype(record['provider_id'])
@@ -240,63 +237,72 @@ async def model_counts(
     return counts
 
 
-def _parse(raw: typing.Any, org_slug: str) -> models.AIProvider:
-    """Parse an agtype vertex into an ``AIProvider``.
-
-    The ``BELONGS_TO`` edge is a relationship, not a property, so the
-    organization is reattached from the scope the row was matched under.
-    """
+def _parse(raw: typing.Any) -> models.AIProvider:
+    """Parse an agtype vertex into an ``AIProvider``."""
     props: typing.Any = graph.parse_agtype(raw)
-    return models.AIProvider.model_validate(
-        {**props, 'organization': {'name': '', 'slug': org_slug}}
-    )
+    return models.AIProvider.model_validate(props)
 
 
-async def fetch_provider(
-    db: graph.Graph, org_slug: str, id: str
-) -> models.AIProvider:
-    """Fetch a provider scoped to ``org_slug`` or raise 404.
-
-    The organization edge is part of the match, so a valid id under the
-    wrong organization is indistinguishable from a missing one.
-    """
-    records = await db.execute(
-        _GET_QUERY, {'id': id, 'org_slug': org_slug}, ['p']
-    )
+async def fetch_provider(db: graph.Graph, id: str) -> models.AIProvider:
+    """Fetch a provider or raise 404."""
+    records = await db.execute(_GET_QUERY, {'id': id}, ['p'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {id!r} not found',
         )
-    return _parse(records[0]['p'], org_slug)
+    return _parse(records[0]['p'])
 
 
 async def _assert_slug_free(
-    db: graph.Graph, org_slug: str, slug: str, exclude_id: str | None = None
+    db: graph.Graph, slug: str, exclude_id: str | None = None
 ) -> None:
-    """Raise 409 when ``slug`` is already used in this organization."""
-    records = await db.execute(
-        _SLUG_TAKEN_QUERY, {'slug': slug, 'org_slug': org_slug}, ['id']
-    )
+    """Raise 409 when ``slug`` is already used by another provider."""
+    records = await db.execute(_SLUG_TAKEN_QUERY, {'slug': slug}, ['id'])
     for record in records:
         existing = graph.parse_agtype(record['id'])
         if existing and str(existing) != exclude_id:
             raise fastapi.HTTPException(
                 status_code=409,
+                detail=f'AI provider with slug {slug!r} already exists',
+            )
+
+
+_MODEL_TYPES_QUERY: typing.LiteralString = """
+MATCH (m:AIModel)-[:SERVED_BY]->(:AIProvider {{id: {id}}})
+RETURN m.model_type AS model_type
+"""
+
+
+async def _assert_driver_serves_models(
+    db: graph.Graph, provider_id: str, driver: str
+) -> None:
+    """Raise 409 when ``driver`` cannot serve a model of the provider.
+
+    A provider keeps its models when its driver changes, so the new
+    driver must serve the model type of each one.
+    """
+    info = drivers.get_driver(driver)
+    supported = info.model_types if info else ('generative',)
+    records = await db.execute(
+        _MODEL_TYPES_QUERY, {'id': provider_id}, ['model_type']
+    )
+    for record in records:
+        model_type = graph.parse_agtype(record['model_type']) or 'generative'
+        if model_type not in supported:
+            raise fastapi.HTTPException(
+                status_code=409,
                 detail=(
-                    f'AI provider with slug {slug!r} already exists in '
-                    f'organization {org_slug!r}'
+                    f'Driver {driver!r} does not serve {model_type!r} '
+                    'models; change or move those models first'
                 ),
             )
 
 
-def _build(payload: dict[str, typing.Any], org_slug: str) -> models.AIProvider:
+def _build(payload: dict[str, typing.Any]) -> models.AIProvider:
     """Validate provider properties into a node or raise 422."""
     try:
-        return models.AIProvider(
-            organization=models.Organization(name='', slug=org_slug),
-            **payload,
-        )
+        return models.AIProvider(**payload)
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=422,
@@ -340,28 +346,24 @@ async def list_ai_provider_drivers(
 
 @ai_providers_router.get('/', response_model=list[AIProviderResponse])
 async def list_ai_providers(
-    org_slug: str,
     db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('ai_model:read')),
     ],
 ) -> list[AIProviderResponse]:
-    """List an organization's configured providers, ordered by name.
-
-    Parameters:
-        org_slug: Organization slug from the URL path.
+    """List the configured providers, ordered by name.
 
     Returns:
         Every configured provider, without credentials.
 
     """
     _ = auth
-    records = await db.execute(_LIST_QUERY, {'org_slug': org_slug}, ['p'])
-    counts = await model_counts(db, org_slug)
+    records = await db.execute(_LIST_QUERY, {}, ['p'])
+    counts = await model_counts(db)
     responses = [
         to_response(node, *counts.get(node.id, (0, 0)))
-        for node in (_parse(record['p'], org_slug) for record in records)
+        for node in (_parse(record['p']) for record in records)
     ]
     return sorted(responses, key=lambda r: r.name.lower())
 
@@ -370,7 +372,6 @@ async def list_ai_providers(
     '/', response_model=AIProviderResponse, status_code=201
 )
 async def create_ai_provider(
-    org_slug: str,
     data: AIProviderCreate,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -378,10 +379,9 @@ async def create_ai_provider(
         fastapi.Depends(permissions.require_permission('ai_model:create')),
     ],
 ) -> AIProviderResponse:
-    """Configure a provider for an organization.
+    """Configure a provider.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         data: Provider configuration. ``api_key`` is plaintext and is
             encrypted before persistence.
 
@@ -389,8 +389,7 @@ async def create_ai_provider(
         The created provider, without credentials.
 
     Raises:
-        404: The organization does not exist.
-        409: A provider with the same slug exists in this organization.
+        409: A provider with the same slug exists.
         422: Invalid configuration (bad ``base_url``, or
             ``openai_compatible`` without one).
 
@@ -398,41 +397,32 @@ async def create_ai_provider(
     _ = auth
     payload = data.model_dump(exclude={'api_key', 'slug'})
     payload['slug'] = data.slug or slugify.slugify(data.name)
-    node = _build(payload, org_slug)
+    node = _build(payload)
     if data.api_key:
         node.credentials_encrypted = encrypt_config_value(data.api_key)
         node.credential_hint = credential_hint(data.api_key)
         node.credential_updated_at = datetime.datetime.now(datetime.UTC)
 
-    await _assert_slug_free(db, org_slug, node.slug)
+    await _assert_slug_free(db, node.slug)
 
     now = datetime.datetime.now(datetime.UTC)
     node.created_at = now
     node.updated_at = now
-    props = node.model_dump(mode='json', exclude={'organization'})
-    query = (
-        f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
-        f' CREATE (p:AIProvider {props_template(props)})'
-        f' CREATE (p)-[:BELONGS_TO]->(o)'
-        f' RETURN p'
-    )
+    props = node.model_dump(mode='json')
+    query = f'CREATE (p:AIProvider {props_template(props)}) RETURN p'
     with conflict_on_unique_violation(
         f'AI provider with slug {node.slug!r} already exists'
     ):
-        records = await db.execute(
-            query, {**props, 'org_slug': org_slug}, ['p']
-        )
+        records = await db.execute(query, props, ['p'])
     if not records:
         raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Organization with slug {org_slug!r} not found',
+            status_code=500, detail='AI provider create returned no row'
         )
-    return to_response(_parse(records[0]['p'], org_slug))
+    return to_response(_parse(records[0]['p']))
 
 
 @ai_providers_router.get('/{id}', response_model=AIProviderResponse)
 async def get_ai_provider(
-    org_slug: str,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -443,25 +433,23 @@ async def get_ai_provider(
     """Get one configured provider.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Provider id.
 
     Returns:
         The provider, without credentials.
 
     Raises:
-        404: No such provider in this organization.
+        404: No such provider.
 
     """
     _ = auth
-    node = await fetch_provider(db, org_slug, id)
-    counts = await model_counts(db, org_slug)
+    node = await fetch_provider(db, id)
+    counts = await model_counts(db)
     return to_response(node, *counts.get(node.id, (0, 0)))
 
 
 @ai_providers_router.patch('/{id}', response_model=AIProviderResponse)
 async def patch_ai_provider(
-    org_slug: str,
     id: str,
     operations: list[json_patch.PatchOperation],
     db: graph.Pool,
@@ -477,7 +465,6 @@ async def patch_ai_provider(
     own permission.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Provider id.
         operations: JSON Patch operations.
 
@@ -486,20 +473,18 @@ async def patch_ai_provider(
 
     Raises:
         400: Invalid patch or a read-only path.
-        404: No such provider in this organization.
-        409: The new slug collides within this organization.
+        404: No such provider.
+        409: The new slug is taken, or the new driver does not serve
+            the model type of a model of this provider.
         422: The patched configuration is invalid.
 
     """
     _ = auth
-    existing = await fetch_provider(db, org_slug, id)
+    existing = await fetch_provider(db, id)
     current = {field: getattr(existing, field) for field in _PATCHABLE_FIELDS}
     current['icon'] = None if existing.icon is None else str(existing.icon)
     patched = json_patch.apply_patch(current, operations, _READONLY_PATHS)
-    node = _build(
-        {k: v for k, v in patched.items() if k in _PATCHABLE_FIELDS},
-        org_slug,
-    )
+    node = _build({k: v for k, v in patched.items() if k in _PATCHABLE_FIELDS})
     node.id = existing.id
     node.created_at = existing.created_at
     node.credentials_encrypted = existing.credentials_encrypted
@@ -507,16 +492,15 @@ async def patch_ai_provider(
     node.credential_updated_at = existing.credential_updated_at
 
     if node.slug != existing.slug:
-        await _assert_slug_free(db, org_slug, node.slug, exclude_id=id)
-    counts = await model_counts(db, org_slug)
-    return to_response(
-        await persist(db, org_slug, node), *counts.get(id, (0, 0))
-    )
+        await _assert_slug_free(db, node.slug, exclude_id=id)
+    if node.driver != existing.driver:
+        await _assert_driver_serves_models(db, id, node.driver)
+    counts = await model_counts(db)
+    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
 @ai_providers_router.delete('/{id}', status_code=204)
 async def delete_ai_provider(
-    org_slug: str,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -531,17 +515,16 @@ async def delete_ai_provider(
     first.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Provider id.
 
     Raises:
-        404: No such provider in this organization.
+        404: No such provider.
         409: The provider still serves models.
 
     """
     _ = auth
-    await fetch_provider(db, org_slug, id)
-    counts = await model_counts(db, org_slug)
+    await fetch_provider(db, id)
+    counts = await model_counts(db)
     total = counts.get(id, (0, 0))[0]
     if total:
         raise fastapi.HTTPException(
@@ -553,11 +536,10 @@ async def delete_ai_provider(
         )
     query: typing.LiteralString = """
     MATCH (p:AIProvider {{id: {id}}})
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
     DETACH DELETE p
     RETURN p
     """
-    records = await db.execute(query, {'id': id, 'org_slug': org_slug})
+    records = await db.execute(query, {'id': id})
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
@@ -569,7 +551,6 @@ async def delete_ai_provider(
     '/{id}/credentials', response_model=AIProviderResponse
 )
 async def set_ai_provider_credentials(
-    org_slug: str,
     id: str,
     data: AIProviderCredentials,
     db: graph.Pool,
@@ -586,7 +567,6 @@ async def set_ai_provider_credentials(
     its last four characters are retained, as ``credential_hint``.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Provider id.
         data: The plaintext API key.
 
@@ -594,30 +574,23 @@ async def set_ai_provider_credentials(
         The provider, with refreshed credential metadata.
 
     Raises:
-        404: No such provider in this organization.
+        404: No such provider.
 
     """
     _ = auth
-    node = await fetch_provider(db, org_slug, id)
+    node = await fetch_provider(db, id)
     node.credentials_encrypted = encrypt_config_value(data.api_key)
     node.credential_hint = credential_hint(data.api_key)
     node.credential_updated_at = datetime.datetime.now(datetime.UTC)
-    LOGGER.info(
-        'Replaced credentials for AI provider %s in organization %s',
-        id,
-        org_slug,
-    )
-    counts = await model_counts(db, org_slug)
-    return to_response(
-        await persist(db, org_slug, node), *counts.get(id, (0, 0))
-    )
+    LOGGER.info('Replaced credentials for AI provider %s', id)
+    counts = await model_counts(db)
+    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
 @ai_providers_router.delete(
     '/{id}/credentials', response_model=AIProviderResponse
 )
 async def delete_ai_provider_credentials(
-    org_slug: str,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -630,35 +603,27 @@ async def delete_ai_provider_credentials(
     """Remove a provider's stored API key.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Provider id.
 
     Returns:
         The provider, with credential metadata cleared.
 
     Raises:
-        404: No such provider in this organization.
+        404: No such provider.
 
     """
     _ = auth
-    node = await fetch_provider(db, org_slug, id)
+    node = await fetch_provider(db, id)
     node.credentials_encrypted = None
     node.credential_hint = None
     node.credential_updated_at = None
-    LOGGER.info(
-        'Removed credentials for AI provider %s in organization %s',
-        id,
-        org_slug,
-    )
-    counts = await model_counts(db, org_slug)
-    return to_response(
-        await persist(db, org_slug, node), *counts.get(id, (0, 0))
-    )
+    LOGGER.info('Removed credentials for AI provider %s', id)
+    counts = await model_counts(db)
+    return to_response(await persist(db, node), *counts.get(id, (0, 0)))
 
 
 @ai_providers_router.post('/{id}/discover', response_model=DiscoveryResponse)
 async def discover_ai_provider_models(
-    org_slug: str,
     id: str,
     db: graph.Pool,
     auth: typing.Annotated[
@@ -671,27 +636,26 @@ async def discover_ai_provider_models(
     Doubles as a connection test. Nothing is written: the caller picks
     from the result and posts to ``/import-models``, so the route shares
     that route's ``ai_model:create`` gate. ``ai_model:read`` alone must
-    not let every default-role user spend the organization's key against
+    not let every default-role user spend the provider's key against
     an admin-supplied endpoint. Errors from the provider are sanitized to
     a status line so a failing call can never surface the key.
 
     Parameters:
-        org_slug: Organization slug from the URL path.
         id: Provider id.
 
     Returns:
         The provider's models, each flagged with whether it is already
-        configured in this organization.
+        configured.
 
     Raises:
-        404: No such provider in this organization.
+        404: No such provider.
         409: The provider has no stored credentials.
         422: The driver does not support discovery.
         502: The provider rejected or failed the call.
 
     """
     _ = auth
-    node = await fetch_provider(db, org_slug, id)
+    node = await fetch_provider(db, id)
     info = drivers.get_driver(node.driver)
     if info is None or not info.supports_discovery:
         raise fastapi.HTTPException(
@@ -716,7 +680,7 @@ async def discover_ai_provider_models(
     except discovery.DiscoveryError as exc:
         raise fastapi.HTTPException(status_code=502, detail=str(exc)) from exc
 
-    configured = await _configured_model_ids(db, org_slug, id)
+    configured = await _configured_model_ids(db, id)
     return DiscoveryResponse(
         models=[
             DiscoveredModel(
@@ -735,19 +699,14 @@ async def discover_ai_provider_models(
 
 _CONFIGURED_QUERY: typing.LiteralString = """
 MATCH (m:AIModel)-[:SERVED_BY]->(p:AIProvider {{id: {id}}})
-      -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
 RETURN m.model_id AS model_id
 """
 
 
-async def _configured_model_ids(
-    db: graph.Graph, org_slug: str, provider_id: str
-) -> set[str]:
+async def _configured_model_ids(db: graph.Graph, provider_id: str) -> set[str]:
     """Return the ``model_id`` values already configured on a provider."""
     records = await db.execute(
-        _CONFIGURED_QUERY,
-        {'id': provider_id, 'org_slug': org_slug},
-        ['model_id'],
+        _CONFIGURED_QUERY, {'id': provider_id}, ['model_id']
     )
     found: set[str] = set()
     for record in records:
@@ -758,31 +717,23 @@ async def _configured_model_ids(
 
 
 async def persist(
-    db: graph.Graph, org_slug: str, node: models.AIProvider
+    db: graph.Graph, node: models.AIProvider
 ) -> models.AIProvider:
-    """Write a mutated provider back, scoped to its organization."""
+    """Write a mutated provider back."""
     node.updated_at = datetime.datetime.now(datetime.UTC)
-    props = node.model_dump(
-        mode='json', exclude={'organization', 'id', 'created_at'}
-    )
+    props = node.model_dump(mode='json', exclude={'id', 'created_at'})
     set_stmt = set_clause('p', props)
-    query = (
-        f'MATCH (p:AIProvider {{{{id: {{id}}}}}})'
-        f' -[:BELONGS_TO]->(:Organization {{{{slug: {{org_slug}}}}}})'
-        f' {set_stmt} RETURN p'
-    )
+    query = f'MATCH (p:AIProvider {{{{id: {{id}}}}}}) {set_stmt} RETURN p'
     with conflict_on_unique_violation(
         f'AI provider with slug {node.slug!r} already exists'
     ):
-        records = await db.execute(
-            query, {**props, 'id': node.id, 'org_slug': org_slug}, ['p']
-        )
+        records = await db.execute(query, {**props, 'id': node.id}, ['p'])
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'AI provider with id {node.id!r} not found',
         )
-    return _parse(records[0]['p'], org_slug)
+    return _parse(records[0]['p'])
 
 
 __all__ = [

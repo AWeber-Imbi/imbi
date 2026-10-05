@@ -26,7 +26,6 @@ interface DiscoverModelsDialogProps {
   onClose: () => void
   onImport: (models: AIModelImport[]) => void
   open: boolean
-  orgSlug: string
   provider: AIProvider
 }
 
@@ -36,7 +35,6 @@ export function DiscoverModelsDialog({
   onClose,
   onImport,
   open,
-  orgSlug,
   provider,
 }: DiscoverModelsDialogProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -46,8 +44,8 @@ export function DiscoverModelsDialog({
   // the provider's key, so never refetch it behind the admin's back.
   const discovery = useQuery({
     gcTime: 0,
-    queryFn: () => discoverAIModels(orgSlug, provider.id),
-    queryKey: ['ai-model-discovery', orgSlug, provider.id],
+    queryFn: () => discoverAIModels(provider.id),
+    queryKey: ['ai-model-discovery', provider.id],
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     retry: false,
@@ -102,7 +100,7 @@ export function DiscoverModelsDialog({
           <DialogTitle>Discover models from {provider.name}</DialogTitle>
           <DialogDescription>
             Imbi asked {provider.name} for the models it serves. Pick the ones
-            to add to this organization&rsquo;s catalog.
+            to add to the shared catalog.
           </DialogDescription>
         </DialogHeader>
 
