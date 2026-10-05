@@ -897,6 +897,37 @@ class SendMessageEndpointTestCase(
         self.assertEqual(result.media_type, 'text/event-stream')
 
 
+class PromptParamsTestCase(unittest.TestCase):
+    """_prompt_params applies version settings only to their model."""
+
+    def _prompt(self, model_id: str | None) -> prompt_system.SystemPrompt:
+        return prompt_system.SystemPrompt(
+            text='x',
+            source='cms',
+            model_id=model_id,
+            max_tokens=512,
+            temperature=0.2,
+        )
+
+    def test_matching_model_uses_version_settings(self) -> None:
+        self.assertEqual(
+            endpoints._prompt_params(self._prompt('m1'), 'm1', 4096),
+            (512, 0.2),
+        )
+
+    def test_version_without_model_uses_version_settings(self) -> None:
+        self.assertEqual(
+            endpoints._prompt_params(self._prompt(None), 'm1', 4096),
+            (512, 0.2),
+        )
+
+    def test_other_model_drops_version_settings(self) -> None:
+        self.assertEqual(
+            endpoints._prompt_params(self._prompt('m2'), 'm1', 4096),
+            (4096, None),
+        )
+
+
 class StreamResponseTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):

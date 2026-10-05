@@ -765,6 +765,24 @@ async def _stream_response(
         yield _sse_event('title_updated', {'title': title})
 
 
+def _prompt_params(
+    prompt: prompt_system.SystemPrompt,
+    model: str,
+    default_max_tokens: int,
+) -> tuple[int, float | None]:
+    """Return the ``max_tokens`` and ``temperature`` for a turn.
+
+    The prompt version's settings apply only when the version names no
+    model or names the conversation's model. A conversation can use a
+    different model (the caller chose one, or the version changed after
+    the conversation started), and settings for one model can be
+    invalid for another.
+    """
+    if prompt.model_id is not None and prompt.model_id != model:
+        return default_max_tokens, None
+    return prompt.max_tokens or default_max_tokens, prompt.temperature
+
+
 @assistant_router.post(
     '/conversations/{conversation_id}/messages',
 )
@@ -819,6 +837,9 @@ async def send_message(
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None
+    max_tokens, temperature = _prompt_params(
+        prompt, conv.model, assistant_settings.max_tokens
+    )
 
     return responses.StreamingResponse(
         _stream_response(
@@ -828,12 +849,12 @@ async def send_message(
             api_messages=api_messages,
             system=prompt.text,
             model=conv.model,
-            max_tokens=prompt.max_tokens or assistant_settings.max_tokens,
+            max_tokens=max_tokens,
             is_first_exchange=is_first_exchange,
             user_message_content=body.content,
             tools=tools,
             auth_token=auth_token,
-            temperature=prompt.temperature,
+            temperature=temperature,
         ),
         media_type='text/event-stream',
         headers={
