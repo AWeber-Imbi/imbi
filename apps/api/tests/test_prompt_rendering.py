@@ -75,7 +75,7 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
             await self.render("{% set s = 'x' * 200000 %}{{ s + s }}")
 
     async def test_caps_exponent(self) -> None:
-        with self.assertRaisesRegex(rendering.RenderError, 'Exponent'):
+        with self.assertRaisesRegex(rendering.RenderError, 'too large'):
             await self.render('{{ 10 ** 100000000 }}')
 
     async def test_blocks_padding(self) -> None:
@@ -97,6 +97,29 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
             "|{{ 'a\\nb'|indent(2) }}"
         )
         self.assertEqual(text, '0, 1, 2|012|a\n  b')
+
+    async def test_blocks_size_bypasses(self) -> None:
+        for source in (
+            # Nested list repetition: short outer list, huge str().
+            "{{ [['x' * 200000]] * 1000 }}",
+            "{{ ([['x' * 200000]] * 1000)|string }}",
+            # Concatenation with ~ in one expression.
+            "{% set s = 'x' * 200000 %}{{ s ~ s ~ s }}",
+            # bytes have no checks, so encode must not be reachable.
+            "{{ 'x'.encode() * 1000000000 }}",
+            # replace with an empty pattern multiplies the input.
+            "{{ ('x' * 1000)|replace('', 'y' * 1000) }}",
+            # Integer growth by bit length, not exponent.
+            '{{ ((2 ** 64) ** 64) ** 64 }}',
+            '{{ (10 ** 64) * (10 ** 64) * (10 ** 2000) }}',
+            # Filters with caller-sized output are not available.
+            "{{ range(10)|batch(1000000000, 'x')|list }}",
+            "{{ range(10)|slice(1000000000, 'x')|list }}",
+            "{{ 'x'|wordwrap(1, wrapstring='y' * 1000000) }}",
+        ):
+            with self.subTest(source=source):
+                with self.assertRaises(rendering.RenderError):
+                    await self.render(source)
 
     async def test_namespace_is_not_available(self) -> None:
         with self.assertRaises(rendering.RenderError):
@@ -147,6 +170,11 @@ class CheckTestCase(unittest.TestCase):
             '{% for c in range(2) %}x{% endfor %}{% endfor %}{% endfor %}'
         )
         with self.assertRaisesRegex(rendering.RenderError, 'nest'):
+            rendering.check_syntax({'system': source})
+
+    def test_rejects_recursive_loops(self) -> None:
+        source = '{% for x in [1] recursive %}{{ loop([x]) }}{% endfor %}'
+        with self.assertRaisesRegex(rendering.RenderError, 'Recursive'):
             rendering.check_syntax({'system': source})
 
     def test_variable_names(self) -> None:
