@@ -1911,6 +1911,14 @@ export const listPrompts = async (
   return Array.isArray(response) ? response : []
 }
 
+export const getPrompt = (
+  orgSlug: string,
+  namespace: string,
+  slug: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<Prompt>(promptPath(orgSlug, namespace, slug), undefined, signal)
+
 export const createPrompt = (orgSlug: string, prompt: PromptCreate) =>
   apiClient.post<Prompt>(
     `/organizations/${encodeURIComponent(orgSlug)}/prompts/`,

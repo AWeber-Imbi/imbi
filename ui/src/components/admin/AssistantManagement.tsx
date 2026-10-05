@@ -23,11 +23,14 @@ import { useAdminNav } from '@/hooks/useAdminNav'
 import type { MCPServer, MCPServerUpdate } from '@/types'
 
 import { AdminSection } from './AdminSection'
+import { AssistantPromptTab } from './AssistantPromptTab'
 import {
   McpServerForm,
   type McpServerSaveData,
 } from './mcp-servers/McpServerForm'
 import { McpServerStatusPill } from './mcp-servers/McpServerStatusPill'
+
+type AssistantTab = 'mcp' | 'prompt'
 
 type Filter = 'all' | 'disabled' | 'enabled' | 'issues'
 
@@ -38,6 +41,7 @@ export function AssistantManagement() {
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
+  const [tab, setTab] = useState<AssistantTab>('mcp')
 
   const {
     createMutation,
@@ -119,7 +123,7 @@ export function AssistantManagement() {
 
   return (
     <div className="space-y-6">
-      <Tabs value="mcp">
+      <Tabs onValueChange={(v) => setTab(v as AssistantTab)} value={tab}>
         <TabsList>
           <TabsTrigger value="mcp">
             <Server className="mr-2 size-4" />
@@ -128,17 +132,16 @@ export function AssistantManagement() {
               {servers.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger disabled value="prompts">
+          <TabsTrigger value="prompt">
             <ScrollText className="mr-2 size-4" />
-            System Prompts
-            <Badge className="ml-2" variant="neutral">
-              Soon
-            </Badge>
+            Prompt
           </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {servers.length === 0 && !isLoading && !error ? (
+      {tab === 'prompt' ? (
+        <AssistantPromptTab />
+      ) : servers.length === 0 && !isLoading && !error ? (
         <McpEmptyState onCreate={goToCreate} />
       ) : (
         <AdminSection

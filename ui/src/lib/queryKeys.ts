@@ -55,6 +55,10 @@ export const queryKeys = {
   pluginPackages: () => ['plugin-packages'] as const,
   problemPackages: (orgSlug: string) => ['problemPackages', orgSlug] as const,
   projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
+  // Nested under `prompts` so invalidating the list also refreshes
+  // every open prompt.
+  prompt: (orgSlug: string, namespace: string, slug: string) =>
+    ['prompts', orgSlug, namespace, slug] as const,
   prompts: (orgSlug: string) => ['prompts', orgSlug] as const,
   promptVersions: (orgSlug: string, namespace: string, slug: string) =>
     ['promptVersions', orgSlug, namespace, slug] as const,

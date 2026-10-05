@@ -7,7 +7,6 @@ import {
   BarChart3,
   Building2,
   ChevronDown,
-  FileCode2,
   FileText,
   FolderKanban,
   LogOut,
@@ -24,7 +23,6 @@ import logoLight from '@/assets/logo-light.svg'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
-import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
 import type { Organization } from '@/types'
 import { UserResponse } from '@/types'
@@ -57,7 +55,6 @@ export function Navigation({ currentView }: NavigationProps) {
 
   // Check if user is admin (safely cast to UserResponse to access is_admin)
   const isAdmin = (user as null | UserResponse)?.is_admin === true
-  const canReadPrompts = useHasPermission('prompt:read')
 
   // Memoize navItems to avoid array mutation on every render
   const navItems = useMemo(() => {
@@ -83,15 +80,6 @@ export function Navigation({ currentView }: NavigationProps) {
       { icon: BarChart3, id: 'reports', label: 'Reports', path: '/reports' },
     ]
 
-    if (canReadPrompts) {
-      items.push({
-        icon: FileCode2,
-        id: 'prompts',
-        label: 'Prompts',
-        path: '/prompts',
-      })
-    }
-
     // Add Admin nav item if user is admin
     if (isAdmin) {
       items.push({
@@ -103,7 +91,7 @@ export function Navigation({ currentView }: NavigationProps) {
     }
 
     return items
-  }, [canReadPrompts, isAdmin])
+  }, [isAdmin])
 
   // Determine active view from route if not explicitly provided
   const activeView =

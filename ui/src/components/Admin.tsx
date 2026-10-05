@@ -8,6 +8,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  FileCode2,
   FileJson,
   FolderTree,
   Globe,
@@ -52,6 +53,7 @@ import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { TeamManagement } from './admin/TeamManagement'
 import { UserManagement } from './admin/UserManagement'
 import { Webhooks } from './admin/Webhooks'
+import { PromptLibrary } from './prompts/PromptLibrary'
 
 type AdminSection =
   | 'ai-models'
@@ -69,6 +71,7 @@ type AdminSection =
   | 'overview'
   | 'plugins'
   | 'project-types'
+  | 'prompts'
   | 'roles'
   | 'scoring-policies'
   | 'service-accounts'
@@ -95,6 +98,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'overview',
   'plugins',
   'project-types',
+  'prompts',
   'roles',
   'scoring-policies',
   'service-accounts',
@@ -200,6 +204,13 @@ export function Admin() {
       icon: Sparkles,
       id: 'ai-models',
       label: 'AI Models',
+      scope: 'org',
+    },
+    {
+      description: 'Versioned prompts, labels, and model settings',
+      icon: FileCode2,
+      id: 'prompts',
+      label: 'Prompts',
       scope: 'org',
     },
     {
@@ -437,6 +448,7 @@ export function Admin() {
               <ScoringPolicyManagement />
             )}
             {currentSection === 'ai-models' && <AIModelsManagement />}
+            {currentSection === 'prompts' && <PromptLibrary />}
             {currentSection === 'assistant' && <AssistantManagement />}
             {currentSection === 'oauth' && <AuthProvidersManagement />}
             {currentSection === 'graph-query' && <GraphQueryManagement />}

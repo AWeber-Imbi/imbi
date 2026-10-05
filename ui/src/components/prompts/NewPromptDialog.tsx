@@ -17,7 +17,18 @@ import { AIModelSelect } from './AIModelSelect'
 
 const NAME = /^[a-z0-9][a-z0-9._-]*$/
 
+export interface NewPromptDefaults {
+  name?: string
+  namespace?: string
+  slug?: string
+  type?: string
+}
+
 interface NewPromptDialogProps {
+  /** Prefilled values. */
+  defaults?: NewPromptDefaults
+  /** When true, the prefilled fields cannot be changed. */
+  locked?: boolean
   namespaces: string[]
   onClose: () => void
   onSubmit: (prompt: PromptCreate) => void
@@ -27,6 +38,8 @@ interface NewPromptDialogProps {
 }
 
 export function NewPromptDialog({
+  defaults,
+  locked = false,
   namespaces,
   onClose,
   onSubmit,
@@ -34,10 +47,12 @@ export function NewPromptDialog({
   orgSlug,
   pending,
 }: NewPromptDialogProps) {
-  const [namespace, setNamespace] = useState('')
-  const [name, setName] = useState('')
-  const [slug, setSlug] = useState('')
-  const [type, setType] = useState('')
+  const [namespace, setNamespace] = useState(defaults?.namespace ?? '')
+  const [name, setName] = useState(defaults?.name ?? '')
+  const [slug, setSlug] = useState(defaults?.slug ?? '')
+  const [type, setType] = useState(defaults?.type ?? '')
+  const isLocked = (field: keyof NewPromptDefaults) =>
+    locked && defaults?.[field] !== undefined
   const [defaultLabel, setDefaultLabel] = useState('stable')
   const [model, setModel] = useState<null | string>(null)
 
@@ -92,6 +107,7 @@ export function NewPromptDialog({
           >
             <Input
               className="font-mono"
+              disabled={isLocked('namespace')}
               id="prompt-namespace"
               list="prompt-namespaces"
               onChange={(e) => setNamespace(e.target.value)}
@@ -105,6 +121,7 @@ export function NewPromptDialog({
           </FormField>
           <FormField htmlFor="prompt-name" label="Name" required>
             <Input
+              disabled={isLocked('name')}
               id="prompt-name"
               onChange={(e) => setName(e.target.value)}
               value={name}
@@ -120,6 +137,7 @@ export function NewPromptDialog({
             >
               <Input
                 className="font-mono"
+                disabled={isLocked('slug')}
                 id="prompt-slug"
                 onChange={(e) => setSlug(e.target.value)}
                 value={slug}
@@ -128,6 +146,7 @@ export function NewPromptDialog({
             <FormField htmlFor="prompt-type" label="Type">
               <Input
                 className="font-mono"
+                disabled={isLocked('type')}
                 id="prompt-type"
                 onChange={(e) => setType(e.target.value)}
                 placeholder="core_system"

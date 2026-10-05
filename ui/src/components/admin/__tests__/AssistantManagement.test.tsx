@@ -41,7 +41,7 @@ describe('AssistantManagement', () => {
 
     await waitFor(() => expect(screen.getByText('GitHub')).toBeInTheDocument())
     expect(screen.getByText('MCP Servers')).toBeInTheDocument()
-    expect(screen.getByText('System Prompts')).toBeInTheDocument()
+    expect(screen.getByText('Prompt')).toBeInTheDocument()
     expect(screen.getByText('Healthy')).toBeInTheDocument()
     expect(screen.getByText('mcp.github.com/v1/stream')).toBeInTheDocument()
     expect(
