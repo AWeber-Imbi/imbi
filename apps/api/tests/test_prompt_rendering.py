@@ -1,5 +1,6 @@
 """Tests for prompt CMS template rendering."""
 
+import time
 import typing
 import unittest
 
@@ -150,6 +151,55 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
             with self.subTest(source=source[:60]):
                 with self.assertRaisesRegex(rendering.RenderError, 'work'):
                     await self.render(source)
+
+    async def test_caps_operand_sized_work(self) -> None:
+        big = "{% set xs = ('x' * 200000).split('x') %}"
+        loop = '{% for a in range(1000) %}{% for b in range(1000) %}'
+        end = '{% endfor %}{% endfor %}'
+        for source in (
+            # ``in`` against a large container inside nested loops.
+            big + loop + "{% if 'y' in xs %}{% endif %}" + end,
+            # A test with a large operand, called once per item.
+            big + "{% for a in range(1000) %}{{ range(1000)|select('in', xs)"
+            '|list|length }}{% endfor %}',
+            # Slicing copies a large list in every iteration.
+            big + loop + '{% if xs[0:200000] %}{% endif %}' + end,
+            # Sorting cost grows faster than the input.
+            big + '{% for a in range(1000) %}{% if xs|unique|list %}'
+            '{% endif %}{% endfor %}',
+        ):
+            with self.subTest(source=source[:70]):
+                started = time.monotonic()
+                with self.assertRaisesRegex(rendering.RenderError, 'work'):
+                    await self.render(source)
+                self.assertLess(time.monotonic() - started, 2.0)
+
+    async def test_blocks_container_methods(self) -> None:
+        for source in (
+            '{{ [3, 1, 2].index(1) }}',
+            '{{ (1, 2).count(1) }}',
+            '{{ {"a": 1}.copy() }}',
+        ):
+            with self.subTest(source=source):
+                with self.assertRaises(rendering.RenderError):
+                    await self.render(source)
+
+    async def test_ordinary_compares_tests_and_methods(self) -> None:
+        text = await self.render(
+            "{% if 'a' in items %}yes{% endif %}"
+            '|{{ people|selectattr("on")|map(attribute="n")|join(",") }}'
+            "|{{ project.get('name') }}|{% if 1 < 2 < 3 %}ok{% endif %}"
+            '|{{ items[0:2]|join }}|{{ items|sort|join }}',
+            {
+                'items': ['c', 'a', 'b'],
+                'people': [{'n': 'x', 'on': True}, {'n': 'y', 'on': False}],
+                'project': {'name': 'billing'},
+            },
+            items=models.PromptVariable(type='list'),
+            people=models.PromptVariable(type='list'),
+            project=models.PromptVariable(type='object'),
+        )
+        self.assertEqual(text, 'yes|x|billing|ok|ca|abc')
 
     async def test_ordinary_loops_fit_the_budget(self) -> None:
         text = await self.render(

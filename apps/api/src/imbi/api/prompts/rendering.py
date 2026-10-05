@@ -155,6 +155,9 @@ _FILTERS = frozenset(
     }
 )
 
+#: ``dict`` methods a template may call; each pays for the dict size.
+_DICT_METHODS = frozenset({'get', 'items', 'keys', 'values'})
+
 #: Built-in globals a template may use, besides ``range``.
 _GLOBALS = frozenset({'cycler', 'dict', 'joiner'})
 
@@ -304,13 +307,92 @@ def _charged_filter(
     @functools.wraps(fn)
     def wrapper(*args: object, **kwargs: object) -> object:
         values = list(args)
+        charged_input = False
         for i, arg in enumerate(values):
-            if not isinstance(arg, _PASS_ARGS):
+            if isinstance(arg, _PASS_ARGS):
+                continue
+            if not charged_input:
                 values[i] = _charge(arg)
-                break
+                charged_input = True
+            else:
+                _spend(_shallow_size(arg))
+        for arg in kwargs.values():
+            _spend(_shallow_size(arg))
         return fn(*values, **kwargs)
 
     return wrapper
+
+
+def _charged_test(
+    fn: collections.abc.Callable[..., object],
+) -> collections.abc.Callable[..., object]:
+    """Wrap a test so each call pays for the size of its operands.
+
+    ``select``, ``reject``, and the ``in`` test call a test once for
+    each item, so an uncharged test against a large operand would do
+    work the budget never sees.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: object, **kwargs: object) -> object:
+        _spend(
+            1
+            + sum(
+                _shallow_size(arg)
+                for arg in args
+                if not isinstance(arg, _PASS_ARGS)
+            )
+            + sum(_shallow_size(arg) for arg in kwargs.values())
+        )
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def _sort_cost(value: object) -> None:
+    """Charge ``n * log2(n)`` for a sort over ``n`` items."""
+    n = _shallow_size(value)
+    _spend(n * max(n.bit_length(), 1))
+
+
+def _sorting_filter(
+    fn: collections.abc.Callable[..., object],
+) -> collections.abc.Callable[..., object]:
+    """Wrap ``sort``, ``unique``, or ``dictsort`` with a sort charge.
+
+    An iterator is read into a list first (one unit per item), so its
+    length is known before the sort.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: object, **kwargs: object) -> object:
+        values = list(args)
+        for i, arg in enumerate(values):
+            if isinstance(arg, _PASS_ARGS):
+                continue
+            if isinstance(arg, collections.abc.Iterator):
+                arg = values[i] = list(
+                    _counted_iter(
+                        typing.cast('collections.abc.Iterator[object]', arg), 1
+                    )
+                )
+            _sort_cost(arg)
+            break
+        return fn(*values, **kwargs)
+
+    return wrapper
+
+
+_COMPARE: dict[str, collections.abc.Callable[[object, object], object]] = {
+    'eq': lambda a, b: a == b,
+    'ne': lambda a, b: a != b,
+    'gt': lambda a, b: a > b,  # type: ignore[operator]
+    'gteq': lambda a, b: a >= b,  # type: ignore[operator]
+    'lt': lambda a, b: a < b,  # type: ignore[operator]
+    'lteq': lambda a, b: a <= b,  # type: ignore[operator]
+    'in': lambda a, b: a in b,  # type: ignore[operator]
+    'notin': lambda a, b: a not in b,  # type: ignore[operator]
+}
 
 
 def _safe_tojson(
@@ -399,6 +481,40 @@ class _CodeGenerator(jinja2.compiler.CodeGenerator):
             self.write(', ')
         self.write('))')
 
+    def visit_Getitem(  # noqa: N802 - overrides the Jinja visitor
+        self, node: jinja2.nodes.Getitem, frame: jinja2.compiler.Frame
+    ) -> None:
+        # Jinja compiles a slice to a plain Python subscript, which skips
+        # ``environment.getitem``. Send it through ``checked_slice``.
+        if not isinstance(node.arg, jinja2.nodes.Slice):
+            super().visit_Getitem(node, frame)
+            return
+        self.write('environment.checked_slice(')
+        self.visit(node.node, frame)
+        self.write(', slice(')
+        for part in (node.arg.start, node.arg.stop, node.arg.step):
+            if part is None:
+                self.write('None')
+            else:
+                self.visit(part, frame)
+            self.write(', ')
+        self.write('))')
+
+    def visit_Compare(  # noqa: N802 - overrides the Jinja visitor
+        self, node: jinja2.nodes.Compare, frame: jinja2.compiler.Frame
+    ) -> None:
+        # Every operand is evaluated before the comparison, so a chain
+        # such as ``a < b < c`` does not short-circuit. Template
+        # expressions have no side effects, so only the cost differs.
+        self.write('environment.checked_compare(')
+        self.visit(node.expr, frame)
+        self.write(', (')
+        for operand in node.ops:
+            self.write(f'({operand.op!r}, ')
+            self.visit(operand.expr, frame)
+            self.write('), ')
+        self.write('))')
+
 
 class _Sandbox(jinja2.sandbox.ImmutableSandboxedEnvironment):
     """Sandbox that checks the size of values before it builds them."""
@@ -413,6 +529,18 @@ class _Sandbox(jinja2.sandbox.ImmutableSandboxedEnvironment):
         text = ''.join(str(item) for item in items)
         _spend(1 + len(text))
         return text
+
+    @staticmethod
+    def checked_compare(
+        left: object, ops: collections.abc.Iterable[tuple[str, object]]
+    ) -> bool:
+        """Compare like Python, paying for the size of each operand."""
+        for op, right in ops:
+            _spend(1 + _shallow_size(left) + _shallow_size(right))
+            if not _COMPARE[op](left, right):
+                return False
+            left = right
+        return True
 
     @staticmethod
     def checked_iter(iterable: object) -> object:
@@ -435,9 +563,10 @@ class _Sandbox(jinja2.sandbox.ImmutableSandboxedEnvironment):
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> typing.Any:
-        # Only ``str`` methods do work in proportion to their input.
+        # A method can do work in proportion to the object it is
+        # bound to, so the call pays for that object's size.
         owner = getattr(obj, '__self__', None)
-        _spend(1 + (len(owner) if isinstance(owner, str) else 0))
+        _spend(1 + _shallow_size(owner))
         return super().call(context, obj, *args, **kwargs)
 
     def call_binop(
@@ -471,9 +600,21 @@ class _Sandbox(jinja2.sandbox.ImmutableSandboxedEnvironment):
         _spend(1 if ints else 1 + _measure(result, _remaining()))
         return result
 
+    @staticmethod
+    def checked_slice(obj: typing.Any, index: slice) -> typing.Any:
+        """Slice ``obj``, paying for the size of the copy before it."""
+        size = _shallow_size(obj)
+        _spend(1 + len(range(*index.indices(size))))
+        target: typing.Any = obj
+        return target[index]
+
     def is_safe_attribute(self, obj: object, attr: str, value: object) -> bool:
         if isinstance(obj, (str, bytes, bytearray)):
             return attr in _STR_METHODS and isinstance(obj, str)
+        if isinstance(obj, (list, tuple)):
+            return False
+        if isinstance(obj, dict):
+            return attr in _DICT_METHODS
         return super().is_safe_attribute(obj, attr, value)
 
 
@@ -498,8 +639,19 @@ def _environment() -> _Sandbox:
     env_filters['replace'] = jinja2.pass_eval_context(_safe_replace)
     env_filters['string'] = _safe_string
     env_filters['tojson'] = jinja2.pass_eval_context(_safe_tojson)
+    for name in ('sort', 'unique', 'dictsort'):
+        env_filters[name] = _sorting_filter(
+            typing.cast(
+                'collections.abc.Callable[..., object]', env_filters[name]
+            )
+        )
     for name, fn in list(env_filters.items()):
         env_filters[name] = _charged_filter(
+            typing.cast('collections.abc.Callable[..., object]', fn)
+        )
+    env_tests = typing.cast('dict[str, object]', env.tests)  # type: ignore[redundant-cast]
+    for name, fn in list(env_tests.items()):
+        env_tests[name] = _charged_test(
             typing.cast('collections.abc.Callable[..., object]', fn)
         )
     return env
