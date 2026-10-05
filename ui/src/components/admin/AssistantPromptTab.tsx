@@ -40,9 +40,10 @@ export function AssistantPromptTab() {
         style={{ borderWidth: '0.5px' }}
       >
         <Info className="size-3.5 flex-none" />
-        imbi-assistant uses the version the stable label points at. Until this
-        prompt exists, it uses its built-in prompt; run imbi-api setup-prompts
-        to create it.
+        imbi-assistant uses the version the stable label points at. Until a
+        version of this prompt has the stable label, it uses its built-in
+        prompt. Run imbi-api setup-prompts to create a missing prompt, or
+        promote a version to stable if the prompt exists without that label.
       </div>
       <PromptEditor
         emptyState={
