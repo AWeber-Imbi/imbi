@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { queryKeys } from '@/lib/queryKeys'
 import { cn } from '@/lib/utils'
 
 // Radix Select reserves the empty string, so "no model" needs a sentinel.
@@ -32,7 +33,7 @@ export function AIModelSelect({
 }: AIModelSelectProps) {
   const { data: models = [] } = useQuery({
     queryFn: ({ signal }) => listAIModels(signal),
-    queryKey: ['ai-models'],
+    queryKey: queryKeys.aiModels(),
   })
   const known = value == null || models.some((m) => m.slug === value)
   return (

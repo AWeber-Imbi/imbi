@@ -9,6 +9,7 @@ export const queryKeys = {
   adminLocalAuth: () => ['admin', 'local-auth'] as const,
   adminPlugin: (slug: string) => ['admin-plugin', slug] as const,
   adminPlugins: () => ['admin-plugins'] as const,
+  aiModels: () => ['ai-models'] as const,
   anchorEdges: (
     kind: string,
     orgSlug: string,

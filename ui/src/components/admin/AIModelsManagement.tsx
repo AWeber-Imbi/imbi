@@ -33,6 +33,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { buildDiffPatch } from '@/lib/json-patch'
+import { queryKeys } from '@/lib/queryKeys'
 import type {
   AIModel,
   AIModelImport,
@@ -118,7 +119,7 @@ export function AIModelsManagement() {
   })
   const modelsQuery = useQuery({
     queryFn: ({ signal }) => listAIModels(signal),
-    queryKey: ['ai-models'],
+    queryKey: queryKeys.aiModels(),
   })
   // Models are global, but teams belong to an organization, so the
   // team picker lists the selected organization's teams.
@@ -135,7 +136,7 @@ export function AIModelsManagement() {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['ai-providers'] })
-    queryClient.invalidateQueries({ queryKey: ['ai-models'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.aiModels() })
   }
   const goToList = () => navigate(LIST_PATH)
   const closeAndRefresh = () => {

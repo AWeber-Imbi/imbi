@@ -100,7 +100,8 @@ function downloadJson(filename: string, data: unknown) {
   anchor.href = url
   anchor.download = filename
   anchor.click()
-  URL.revokeObjectURL(url)
+  // Some browsers start the download after click() returns.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 function PromptView({
