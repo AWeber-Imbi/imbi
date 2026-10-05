@@ -1,6 +1,7 @@
 from unittest import mock
 
 from apps.slackbot.tests import helpers
+from imbi.common.prompts import system as prompt_system
 from imbi.slackbot import identity, inflight, settings, slack_handler
 
 
@@ -192,7 +193,11 @@ class HandleEventTests(helpers.TestCase):
         system_prompt_patch = mock.patch.object(
             slack_handler.system_prompt,
             'build_system_prompt',
-            return_value='sys',
+            new=mock.AsyncMock(
+                return_value=prompt_system.SystemPrompt(
+                    text='sys', source='fallback'
+                )
+            ),
         )
         manager_patch = mock.patch.object(
             slack_handler.mcp, 'get_manager', return_value=FakeManager()
@@ -237,6 +242,39 @@ class HandleEventTests(helpers.TestCase):
             [('add', mock.ANY), ('remove', mock.ANY)], client.reactions
         )
         self.assertEqual(1, len(client.deletes))
+
+    async def test_prompt_settings_reach_run_turn(self) -> None:
+        user = identity.ImbiUser('ada@example.com', 'Ada')
+        event = {'channel': 'C', 'ts': '1', 'user': 'U1', 'text': '<@BOT> hi'}
+        prompt = prompt_system.SystemPrompt(
+            text='cms text',
+            source='cms',
+            model_id='claude-opus-5-5',
+            max_tokens=2048,
+            temperature=0.3,
+        )
+        run_turn = mock.AsyncMock(return_value='ok')
+        with (
+            mock.patch.object(
+                slack_handler.identity,
+                'resolve',
+                new=mock.AsyncMock(return_value=user),
+            ),
+            mock.patch.object(
+                slack_handler.system_prompt,
+                'build_system_prompt',
+                new=mock.AsyncMock(return_value=prompt),
+            ),
+            mock.patch.object(slack_handler.agent, 'run_turn', new=run_turn),
+        ):
+            await slack_handler.handle_event(
+                event, FakeSlackClient(replies=[]), bot_user_id='BOT'
+            )
+        kwargs = run_turn.await_args.kwargs
+        self.assertEqual(kwargs['system'], 'cms text')
+        self.assertEqual(kwargs['model'], 'claude-opus-5-5')
+        self.assertEqual(kwargs['max_tokens'], 2048)
+        self.assertEqual(kwargs['temperature'], 0.3)
 
     async def test_run_turn_failure_posts_fallback(self) -> None:
         user = identity.ImbiUser('ada@example.com', 'Ada')

@@ -64,6 +64,11 @@ def set_graph(db: graph.Graph) -> None:
     _graph = db
 
 
+def get_graph() -> graph.Graph | None:
+    """Return the shared graph connection, or ``None`` before startup."""
+    return _graph
+
+
 async def on_graph_ready(db: graph.Graph) -> None:
     """``graph.set_on_startup`` callback that captures the connection."""
     set_graph(db)

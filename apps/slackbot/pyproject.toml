@@ -44,5 +44,4 @@ show_missing = true
 packages = ["src/imbi"]
 include = [
   "src/imbi/slackbot/py.typed",
-  "src/imbi/slackbot/system_prompt.md",
 ]

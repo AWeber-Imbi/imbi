@@ -42,5 +42,4 @@ show_missing = true
 packages = ["src/imbi"]
 include = [
   "src/imbi/assistant/py.typed",
-  "src/imbi/assistant/system_prompt.md",
 ]
