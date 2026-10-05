@@ -31,10 +31,11 @@ export function AIModelSelect({
   onChange,
   value,
 }: AIModelSelectProps) {
-  const { data: models = [] } = useQuery({
+  const { data: models = [], isSuccess } = useQuery({
     queryFn: ({ signal }) => listAIModels(signal),
     queryKey: queryKeys.aiModels(),
   })
+  // Until the catalog has loaded, a value cannot be judged unknown.
   const known = value == null || models.some((m) => m.slug === value)
   return (
     <Select
@@ -51,7 +52,9 @@ export function AIModelSelect({
       <SelectContent>
         <SelectItem value={NONE}>No model</SelectItem>
         {!known && value != null && (
-          <SelectItem value={value}>{value} (not in catalog)</SelectItem>
+          <SelectItem value={value}>
+            {isSuccess ? `${value} (not in catalog)` : value}
+          </SelectItem>
         )}
         {models
           .filter(

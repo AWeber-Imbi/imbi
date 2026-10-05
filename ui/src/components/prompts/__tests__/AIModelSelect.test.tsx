@@ -65,4 +65,27 @@ describe('AIModelSelect', () => {
       screen.queryByRole('option', { name: /jev/ }),
     ).not.toBeInTheDocument()
   })
+
+  it('shows the current slug, not "not in catalog", while loading', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.listAIModels).mockReturnValue(new Promise(() => {}))
+    const { AIModelSelect } = await import('../AIModelSelect')
+    render(<AIModelSelect onChange={vi.fn()} value="default-chat" />)
+
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+      'default-chat',
+    )
+    expect(screen.queryByText(/not in catalog/)).not.toBeInTheDocument()
+  })
+
+  it('marks a slug missing from a loaded catalog', async () => {
+    const { AIModelSelect } = await import('../AIModelSelect')
+    render(<AIModelSelect onChange={vi.fn()} value="gone-model" />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+        'gone-model (not in catalog)',
+      ),
+    )
+  })
 })
