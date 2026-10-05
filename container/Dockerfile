@@ -33,6 +33,10 @@ RUN pip install uv \
 # stage copies only the resulting venv.
 RUN curl -fsS https://sh.rustup.rs | sh -s -- -y --profile minimal
 ENV PATH="/root/.cargo/bin:$PATH"
+# The sdist makes some lints errors, so a lint that a new stable Rust
+# adds (such as a new deprecation) stops the build. Cap all lints at
+# warnings.
+ENV RUSTFLAGS="--cap-lints=warn"
 
 # Build a wheel for every workspace member plus the imbi meta-package
 COPY pyproject.toml uv.lock README.md LICENSE /tmp/build/
