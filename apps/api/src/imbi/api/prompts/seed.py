@@ -50,6 +50,8 @@ async def seed_default_prompts(db: graph.Graph) -> list[SeedResult]:
                 ),
             ),
             SEED_AUTHOR,
+            # An operator action, run with system authority.
+            label_first_version=True,
         )
         results.append(SeedResult(default.ref, created=True))
     return results

@@ -169,6 +169,25 @@ class LoadSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.source, 'fallback')
 
 
+class UnlabelledPromptTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_prompt_without_labels_uses_the_fallback(self) -> None:
+        # A prompt created without promote authority has no labels, so
+        # it must not reach consumers until someone promotes a version.
+        prompt, _version_node, _ = _version()
+        prompt.labels = []
+        db = mock.AsyncMock()
+        db.execute.return_value = [
+            {'p': prompt.model_dump(mode='json'), 'latest': 1}
+        ]
+        with mock.patch.object(
+            resolve.graph, 'parse_agtype', side_effect=lambda value: value
+        ):
+            result = await system.load_system_prompt(
+                db, REF, VARIABLES, system.ASSISTANT
+            )
+        self.assertEqual(result.source, 'fallback')
+
+
 class ResolveTestCase(unittest.IsolatedAsyncioTestCase):
     def test_parse_ref(self) -> None:
         self.assertEqual(

@@ -6,6 +6,12 @@ parameters as one unit, and cannot change after it is saved. A **label**
 (for example `stable`) points at one version. Consumers ask for
 `namespace/slug@label`.
 
+Moving a label changes what consumers run, so it needs the
+`prompt:promote` permission. A prompt created by someone without that
+permission has no labels: its version 1 exists, but no reference
+resolves until a promote holder points a label at a version. Until
+then, a consumer such as the assistant keeps using its packaged prompt.
+
 Open the full library at **Admin > Global Admin > Prompts**. The
 assistant's prompt is also on the **Prompt** tab of **Admin > Global
 Admin > Assistant**.

@@ -31,6 +31,7 @@ class SeedDefaultPromptsTestCase(unittest.IsolatedAsyncioTestCase):
         insert.assert_awaited_once()
         _db, data, author = insert.await_args.args
         self.assertEqual(author, 'imbi-setup')
+        self.assertTrue(insert.await_args.kwargs['label_first_version'])
         self.assertEqual(
             (data.namespace, data.slug), ('imbi-assistant', 'system')
         )

@@ -582,7 +582,12 @@ async def create_prompt(
 ) -> PromptResponse:
     """Create a prompt with its first version.
 
-    The default label points at version 1.
+    When the caller may promote (``prompt:promote``, or an admin), the
+    default label points at version 1. Otherwise the prompt is created
+    with no labels: pointing a label at a version changes what consumers
+    run, and only ``promote`` may do that. Until a promote holder sets a
+    label, a reference to the prompt does not resolve, and a consumer
+    such as the assistant uses its packaged prompt.
 
     Raises:
         409: ``namespace/slug`` is taken.
@@ -590,16 +595,27 @@ async def create_prompt(
             catalog.
 
     """
-    return await insert_prompt(db, data, auth.principal_name)
+    can_promote = auth.is_admin or 'prompt:promote' in auth.permissions
+    return await insert_prompt(
+        db, data, auth.principal_name, label_first_version=can_promote
+    )
 
 
 async def insert_prompt(
-    db: graph.Graph, data: PromptCreate, created_by: str
+    db: graph.Graph,
+    data: PromptCreate,
+    created_by: str,
+    *,
+    label_first_version: bool,
 ) -> PromptResponse:
     """Validate and write a prompt with its first version.
 
     ``imbi-api setup-prompts`` uses this too, so a seeded prompt is
     written exactly like one created through the API.
+
+    Parameters:
+        label_first_version: Point the default label at version 1. Only
+            a caller with promote authority may do this.
 
     Raises:
         fastapi.HTTPException: 409 when ``namespace/slug`` is taken, 422
@@ -623,14 +639,18 @@ async def insert_prompt(
         icon=data.icon,
         type=data.type,
         default_label=data.default_label,
-        labels=[
-            models.PromptLabel(
-                name=data.default_label,
-                version=1,
-                updated_by=created_by,
-                updated_at=now,
-            )
-        ],
+        labels=(
+            [
+                models.PromptLabel(
+                    name=data.default_label,
+                    version=1,
+                    updated_by=created_by,
+                    updated_at=now,
+                )
+            ]
+            if label_first_version
+            else []
+        ),
         created_at=now,
         updated_at=now,
     )
