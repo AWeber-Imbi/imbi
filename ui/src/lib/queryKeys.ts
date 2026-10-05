@@ -55,6 +55,9 @@ export const queryKeys = {
   pluginPackages: () => ['plugin-packages'] as const,
   problemPackages: (orgSlug: string) => ['problemPackages', orgSlug] as const,
   projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
+  prompts: (orgSlug: string) => ['prompts', orgSlug] as const,
+  promptVersions: (orgSlug: string, namespace: string, slug: string) =>
+    ['promptVersions', orgSlug, namespace, slug] as const,
   // Login form's view of providers (/auth/providers, public payload with
   // default_redirect). Distinct from adminAuthProviders, which lists admin
   // metadata from /admin/auth-providers — different endpoint, different shape,

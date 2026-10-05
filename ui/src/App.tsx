@@ -33,6 +33,9 @@ const DocumentsIndexPage = lazy(() =>
     default: m.DocumentsIndexPage,
   })),
 )
+const PromptsPage = lazy(() =>
+  import('./pages/PromptsPage').then((m) => ({ default: m.PromptsPage })),
+)
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 )
@@ -131,6 +134,14 @@ function App() {
                     </ProtectedRoute>
                   }
                   path="/documents/:subId?/:subAction?"
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <PromptsPage />
+                    </ProtectedRoute>
+                  }
+                  path="/prompts/:namespace?/:slug?"
                 />
                 <Route
                   element={

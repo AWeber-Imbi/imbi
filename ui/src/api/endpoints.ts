@@ -116,6 +116,10 @@ import type {
   ProjectServiceEdgeCreate,
   ProjectType,
   ProjectTypeCreate,
+  Prompt,
+  PromptCreate,
+  PromptVersion,
+  PromptVersionCreate,
   PullRequestListResponse,
   RecentCommit,
   Release,
@@ -1888,6 +1892,95 @@ export const updateAIModel = (
 export const deleteAIModel = (orgSlug: string, id: string) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/ai-models/${encodeURIComponent(id)}`,
+  )
+
+// Prompt CMS. A prompt is addressed by `namespace/slug`; versions are
+// immutable, and labels are movable pointers to one version.
+const promptPath = (orgSlug: string, namespace: string, slug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/prompts/${encodeURIComponent(namespace)}/${encodeURIComponent(slug)}`
+
+export const listPrompts = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Prompt[]> => {
+  const response = await apiClient.get<Prompt[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/prompts/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createPrompt = (orgSlug: string, prompt: PromptCreate) =>
+  apiClient.post<Prompt>(
+    `/organizations/${encodeURIComponent(orgSlug)}/prompts/`,
+    prompt,
+  )
+
+export const deletePrompt = (
+  orgSlug: string,
+  namespace: string,
+  slug: string,
+) => apiClient.delete<void>(promptPath(orgSlug, namespace, slug))
+
+export const listPromptVersions = async (
+  orgSlug: string,
+  namespace: string,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<PromptVersion[]> => {
+  const response = await apiClient.get<PromptVersion[]>(
+    `${promptPath(orgSlug, namespace, slug)}/versions`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+// Answers 201 with the new version, or 200 with the newest version
+// when the content did not change.
+export const createPromptVersion = (
+  orgSlug: string,
+  namespace: string,
+  slug: string,
+  version: PromptVersionCreate,
+) =>
+  apiClient.post<PromptVersion>(
+    `${promptPath(orgSlug, namespace, slug)}/versions`,
+    version,
+  )
+
+export const setPromptLabel = (
+  orgSlug: string,
+  namespace: string,
+  slug: string,
+  label: string,
+  version: number,
+) =>
+  apiClient.put<Prompt>(
+    `${promptPath(orgSlug, namespace, slug)}/labels/${encodeURIComponent(label)}`,
+    { version },
+  )
+
+export const deletePromptLabel = (
+  orgSlug: string,
+  namespace: string,
+  slug: string,
+  label: string,
+) =>
+  apiClient.delete<Prompt>(
+    `${promptPath(orgSlug, namespace, slug)}/labels/${encodeURIComponent(label)}`,
+  )
+
+export const setPromptDefaultLabel = (
+  orgSlug: string,
+  namespace: string,
+  slug: string,
+  label: string,
+) =>
+  apiClient.put<Prompt>(
+    `${promptPath(orgSlug, namespace, slug)}/default-label`,
+    { label },
   )
 
 // Discovery is a POST because it makes an outbound call with the
