@@ -145,7 +145,7 @@ class DriverCatalogTestCase(AIProviderTestBase):
     """The static driver catalog endpoint."""
 
     def test_lists_every_driver(self) -> None:
-        """All five drivers are returned with their capability flags."""
+        """Every driver is returned with its capability flags."""
         response = self.client.get('/ai-provider-drivers')
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -157,12 +157,20 @@ class DriverCatalogTestCase(AIProviderTestBase):
                 'openai_compatible',
                 'bedrock',
                 'vertex',
+                'typesafe',
             },
         )
         by_slug = {entry['slug']: entry for entry in data}
         self.assertTrue(by_slug['openai_compatible']['requires_base_url'])
         self.assertTrue(by_slug['bedrock']['supports_iam'])
         self.assertFalse(by_slug['bedrock']['supports_discovery'])
+        self.assertEqual(by_slug['anthropic']['model_types'], ['generative'])
+        self.assertEqual(by_slug['typesafe']['model_types'], ['decision'])
+        self.assertFalse(by_slug['typesafe']['supports_discovery'])
+        self.assertEqual(
+            by_slug['typesafe']['default_base_url'],
+            'https://api.typesafe.ai/v1',
+        )
 
 
 class CreateProviderTestCase(AIProviderTestBase):

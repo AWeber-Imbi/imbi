@@ -7133,6 +7133,8 @@ export interface components {
             description?: string | null;
             /** Icon */
             icon?: string | null;
+            /** Model Type */
+            model_type?: ("generative" | "decision") | null;
             /**
              * Kind
              * @default chat
@@ -7189,6 +7191,12 @@ export interface components {
             /** Model Id */
             model_id: string;
             /**
+             * Model Type
+             * @default generative
+             * @enum {string}
+             */
+            model_type: "generative" | "decision";
+            /**
              * Kind
              * @default chat
              * @enum {string}
@@ -7240,7 +7248,7 @@ export interface components {
              * Driver
              * @enum {string}
              */
-            driver: "anthropic" | "openai" | "openai_compatible" | "bedrock" | "vertex";
+            driver: "anthropic" | "openai" | "openai_compatible" | "bedrock" | "vertex" | "typesafe";
             /** Slug */
             slug?: string | null;
             /** Base Url */
@@ -7288,7 +7296,7 @@ export interface components {
              * Driver
              * @enum {string}
              */
-            driver: "anthropic" | "openai" | "openai_compatible" | "bedrock" | "vertex";
+            driver: "anthropic" | "openai" | "openai_compatible" | "bedrock" | "vertex" | "typesafe";
             /** Base Url */
             base_url?: string | null;
             /**
@@ -9571,6 +9579,13 @@ export interface components {
              * @default false
              */
             supports_discovery: boolean;
+            /**
+             * Model Types
+             * @default [
+             *       "generative"
+             *     ]
+             */
+            model_types: ("generative" | "decision")[];
             /** Icon */
             icon: string;
         };

@@ -253,6 +253,23 @@ class CreatePromptTestCase(PromptTestBase):
         response = self.client.post(BASE + '/', json=self._body(model=None))
         self.assertEqual(response.status_code, 201, response.text)
 
+    def test_decision_model_is_422(self) -> None:
+        self.route(
+            (
+                MODEL,
+                [
+                    {
+                        'model_id': 'jev-latest',
+                        'enabled': True,
+                        'model_type': 'decision',
+                    }
+                ],
+            )
+        )
+        response = self.client.post(BASE + '/', json=self._body())
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('Decision models', response.json()['detail'])
+
     def test_template_syntax_error_is_422(self) -> None:
         self.route((MODEL, MODEL_ROW))
         response = self.client.post(

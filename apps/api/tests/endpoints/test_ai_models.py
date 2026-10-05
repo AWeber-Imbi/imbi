@@ -160,6 +160,73 @@ class CreateModelTestCase(AIModelTestBase):
         self.assertEqual(response.json()['slug'], 'default-chat')
         self.assertEqual(router.params_for(CREATE)['slug'], 'default-chat')
 
+    def test_create_defaults_model_type_from_driver(self) -> None:
+        """A generative driver yields a generative model by default."""
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
+            (CREATE, [{'m': model_props()}]),
+        )
+        response = self.client.post(BASE + '/', json=self._body())
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(router.params_for(CREATE)['model_type'], 'generative')
+
+    def test_create_decision_model_on_typesafe(self) -> None:
+        """A TypeSafe model is a decision model without saying so."""
+        provider = provider_tests.provider_props(
+            driver='typesafe', name='TypeSafe', slug='typesafe'
+        )
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider}]),
+            (
+                CREATE,
+                [
+                    {
+                        'm': model_props(
+                            model_id='jev-latest', model_type='decision'
+                        )
+                    }
+                ],
+            ),
+        )
+        response = self.client.post(
+            BASE + '/', json=self._body(name='Jev', model_id='jev-latest')
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(router.params_for(CREATE)['model_type'], 'decision')
+        self.assertEqual(response.json()['model_type'], 'decision')
+
+    def test_generative_model_on_typesafe_is_422(self) -> None:
+        """TypeSafe serves only decision models."""
+        provider = provider_tests.provider_props(
+            driver='typesafe', name='TypeSafe', slug='typesafe'
+        )
+        self.route((GET_PROVIDER, [{'p': provider}]))
+        response = self.client.post(
+            BASE + '/', json=self._body(model_type='generative')
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('decision', response.json()['detail'])
+
+    def test_decision_model_on_anthropic_is_422(self) -> None:
+        """Anthropic serves only generative models."""
+        self.route((GET_PROVIDER, [{'p': provider_tests.provider_props()}]))
+        response = self.client.post(
+            BASE + '/', json=self._body(model_type='decision')
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_decision_model_with_temperature_is_422(self) -> None:
+        """Sampling defaults do not apply to a decision model."""
+        provider = provider_tests.provider_props(
+            driver='typesafe', name='TypeSafe', slug='typesafe'
+        )
+        self.route((GET_PROVIDER, [{'p': provider}]))
+        response = self.client.post(
+            BASE + '/', json=self._body(default_temperature=0.5)
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('generative', response.json()['detail'])
+
     def test_create_attaches_allowed_teams(self) -> None:
         """Restricted access writes one ALLOWED_FOR edge per team."""
         router = self.route(

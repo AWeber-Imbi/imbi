@@ -1,15 +1,14 @@
 # AI Models
 
-The **AI Models** section holds the catalog of large language models an
-organization may call. The catalog has two levels. A **provider** is one
+The **AI Models** section holds the catalog of AI models Imbi may call. The catalog has two levels. A **provider** is one
 configured endpoint, with its own credential. A **model** is one model that
 provider serves.
 
-The catalog is scoped to a single organization. Two organizations in the same
-Imbi deployment keep separate providers, separate credentials, and separate
-models.
+The catalog is global. Every organization in the deployment shares the same
+providers, credentials, and models. Use [Team access](#team-access) to limit a
+model to some teams.
 
-Open the section at **Admin > AI Models**.
+Open the section at **Admin > Global Admin > AI Models**.
 
 !!! note
     The catalog is configuration. Imbi's assistant and Slack bot still read
@@ -27,6 +26,7 @@ built in. You cannot add one from the UI.
 | OpenAI-compatible | **Required** | API key | Yes |
 | AWS Bedrock | Not used | API key, or the runtime IAM role | No |
 | Google Vertex AI | Not used | API key, or the runtime IAM role | No |
+| TypeSafe | Optional. Defaults to `https://api.typesafe.ai/v1` | API key | No |
 
 Use **OpenAI-compatible** for any endpoint that implements the OpenAI
 chat-completions API, such as vLLM, Ollama, or a gateway.
@@ -35,6 +35,10 @@ AWS Bedrock and Google Vertex AI can authenticate from the credentials of the
 process Imbi runs as. A provider on either driver with no stored key reports
 **IAM role**. Setting a key overrides the role for every model under that
 provider.
+
+TypeSafe serves **decision models**, such as Jev (`jev-latest`). A decision
+model returns typed judgments and probabilities instead of text. TypeSafe has
+no model-list endpoint, so add each model manually.
 
 The section lists every driver. A driver with no provider configured appears
 as a greyed row with a **Set up** action.
@@ -101,7 +105,8 @@ two steps.
 | Provider | The provider that serves this model. Required. |
 | Model name or URL | The identifier Imbi sends to the provider, such as `claude-sonnet-4-5`. A self-hosted gateway accepts a full inference URL. Required. |
 | Display name | What engineers see in the model picker. Defaults to the model identifier. |
-| Interface | `Chat` or `Completion`. |
+| Model type | `Generative` (returns text) or `Decision` (returns typed judgments and probabilities). The driver sets the default; TypeSafe allows only `Decision`, every other driver only `Generative`. |
+| Interface | `Chat` or `Completion`. Generative models only. |
 
 ### Step 2: limits, cost, and access
 
@@ -111,8 +116,8 @@ two steps.
 | Max output tokens | Maximum tokens the model returns in one response. |
 | Input cost / 1M tokens | USD per one million input tokens. |
 | Output cost / 1M tokens | USD per one million output tokens. |
-| Default temperature | Between 0 and 2. |
-| Default top_p | Between 0 and 1. |
+| Default temperature | Between 0 and 2. Generative models only. |
+| Default top_p | Between 0 and 1. Generative models only. |
 | Monthly spend cap | USD per month. |
 | Allowed teams | See [Team access](#team-access). |
 | Enable immediately | Makes the model selectable as soon as it is created. |
@@ -126,7 +131,7 @@ unknown or set by contract. Enter `0` for a self-hosted model.
     on.
 
 Two rules apply within the catalog. A model's display name must produce a slug
-that is unique in the organization. A model identifier must be unique within
+that is unique in the catalog. A model identifier must be unique within
 its provider. Imbi returns `409` when either rule fails.
 
 ## Discover and import models
@@ -159,13 +164,14 @@ rejected the call.
 
 ## Team access
 
-A model is available either to the whole organization or to named teams.
+A model is available either to every team or to named teams.
 
-- **All teams** makes the model available to every team in the organization.
-  This is the default.
+- **All teams** makes the model available to every team in every
+  organization. This is the default.
 - **Selecting one or more teams** restricts the model to those teams.
 
-Select the **All teams** chip to return to organization-wide access. A
+Select the **All teams** chip to return to access for every team. The team
+picker lists the teams of the organization you have selected. A
 restricted model must name at least one team. Imbi rejects an empty team list
 with `422`.
 
@@ -188,7 +194,7 @@ then click **Delete model**.
 Providers are deleted through the API, not the UI:
 
 ```http
-DELETE /organizations/{org_slug}/ai-providers/{id}
+DELETE /ai-providers/{id}
 ```
 
 The request returns `409` while the provider still serves models. Delete the
@@ -210,7 +216,7 @@ Administrators hold all five. The Developer, Default, and Read Only roles hold
 
 `ai_model:credentials` is deliberately separate from `ai_model:update`.
 Changing a model's temperature must not imply the right to replace the
-organization's production key.
+production key.
 
 See [Roles and Permissions](roles-and-permissions.md) to grant these to a
 custom role.

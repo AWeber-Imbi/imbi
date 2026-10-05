@@ -259,7 +259,8 @@ RETURN v
 
 _MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})
-RETURN m.model_id AS model_id, m.enabled AS enabled
+RETURN m.model_id AS model_id, m.enabled AS enabled,
+       m.model_type AS model_type
 """
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
@@ -407,12 +408,18 @@ async def _model_id_for(db: graph.Graph, model: str | None) -> str | None:
     records = await db.execute(
         _MODEL_QUERY,
         {'slug': model},
-        ['model_id', 'enabled'],
+        ['model_id', 'enabled', 'model_type'],
     )
     if not records:
         raise _unprocessable(f'AI model {model!r} is not in the catalog')
     if graph.parse_agtype(records[0]['enabled']) is False:
         raise _unprocessable(f'AI model {model!r} is disabled')
+    # A version holds a system prompt and messages, which only a
+    # generative model can use. A missing value predates model_type.
+    if graph.parse_agtype(records[0].get('model_type')) == 'decision':
+        raise _unprocessable(
+            'Decision models are not supported in prompt versions yet'
+        )
     return str(graph.parse_agtype(records[0]['model_id']))
 
 

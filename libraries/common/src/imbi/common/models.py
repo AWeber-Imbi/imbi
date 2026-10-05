@@ -16,6 +16,7 @@ from imbi.common import versioning
 
 __all__ = [
     'AIModel',
+    'AIModelType',
     'AIProvider',
     'Advisory',
     'Blueprint',
@@ -588,7 +589,13 @@ AIProviderDriver = typing.Literal[
     'openai_compatible',
     'bedrock',
     'vertex',
+    'typesafe',
 ]
+
+#: ``generative`` models produce text (chat or completion).
+#: ``decision`` models, such as TypeSafe's Jev, return typed judgments
+#: and probabilities instead of text.
+AIModelType = typing.Literal['generative', 'decision']
 
 
 def validate_provider_base_url(value: str) -> str:
@@ -665,12 +672,17 @@ class AIModel(Node):
     of ``ALLOWED_FOR`` edges, so "every team" and "no team has been
     picked yet" stay distinguishable. The value ``organization`` means
     "available to everyone"; the name is kept for API compatibility.
+
+    ``model_type`` tells generative models from decision models. ``kind``,
+    ``default_temperature``, and ``default_top_p`` apply only to
+    generative models.
     """
 
     provider: typing.Annotated[
         AIProvider, Edge(rel_type='SERVED_BY', direction='OUTGOING')
     ]
     model_id: str
+    model_type: AIModelType = 'generative'
     kind: typing.Literal['chat', 'completion'] = 'chat'
     enabled: bool = True
     access_scope: typing.Literal['organization', 'restricted'] = 'organization'

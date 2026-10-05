@@ -26,6 +26,7 @@ from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
+from imbi.common.llm import drivers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
     'description',
     'icon',
     'model_id',
+    'model_type',
     'kind',
     'enabled',
     'access_scope',
@@ -68,6 +70,7 @@ _READONLY_PATHS: frozenset[str] = json_patch.READONLY_PATHS | frozenset(
 )
 
 ModelKind = typing.Literal['chat', 'completion']
+ModelType = typing.Literal['generative', 'decision']
 AccessScope = typing.Literal['organization', 'restricted']
 
 #: Validates the patched ``allowed_team_ids`` back into a typed list —
@@ -94,6 +97,8 @@ class AIModelCreate(pydantic.BaseModel):
     slug: str | None = None
     description: str | None = None
     icon: str | None = None
+    #: ``None`` takes the provider driver's default model type.
+    model_type: ModelType | None = None
     kind: ModelKind = 'chat'
     enabled: bool = True
     access_scope: AccessScope = 'organization'
@@ -128,6 +133,7 @@ class AIModelResponse(pydantic.BaseModel):
     provider_id: str
     provider_name: str
     model_id: str
+    model_type: ModelType = 'generative'
     kind: ModelKind = 'chat'
     enabled: bool = True
     access_scope: AccessScope = 'organization'
@@ -242,6 +248,7 @@ def _to_response(
         provider_id=provider_id,
         provider_name=provider_name,
         model_id=node.model_id,
+        model_type=node.model_type,
         kind=node.kind,
         enabled=node.enabled,
         access_scope=node.access_scope,
@@ -444,14 +451,42 @@ async def _assert_model_id_free(
 def _build(
     payload: dict[str, typing.Any], provider: models.AIProvider
 ) -> models.AIModel:
-    """Validate model properties into a node or raise 422."""
+    """Validate model properties into a node or raise 422.
+
+    A missing ``model_type`` takes the driver's first model type, so a
+    TypeSafe model is a decision model without the caller saying so.
+    """
+    driver = drivers.get_driver(provider.driver)
+    supported = driver.model_types if driver else ('generative',)
+    if payload.get('model_type') is None:
+        payload = {**payload, 'model_type': supported[0]}
     try:
-        return models.AIModel(provider=provider, **payload)
+        node = models.AIModel(provider=provider, **payload)
     except pydantic.ValidationError as e:
         raise fastapi.HTTPException(
             status_code=422,
             detail=f'Validation error: {e.errors()}',
         ) from e
+    if node.model_type not in supported:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=(
+                f'Driver {provider.driver!r} serves only '
+                f'{" and ".join(supported)} models, not '
+                f'{node.model_type!r}'
+            ),
+        )
+    if node.model_type == 'decision' and (
+        node.default_temperature is not None or node.default_top_p is not None
+    ):
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=(
+                'default_temperature and default_top_p apply only to '
+                'generative models'
+            ),
+        )
+    return node
 
 
 async def _insert(

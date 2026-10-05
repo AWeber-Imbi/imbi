@@ -7,6 +7,8 @@ unconfigured driver as a "Set up" row and hide actions the driver does
 not support.
 """
 
+import typing
+
 import pydantic
 
 __all__ = [
@@ -39,6 +41,10 @@ class DriverInfo(pydantic.BaseModel):
     #: A model list can be pulled from the provider (see the
     #: ``/discover`` endpoint).
     supports_discovery: bool = False
+    #: The model types (see ``AIModel.model_type``) this driver serves.
+    model_types: tuple[typing.Literal['generative', 'decision'], ...] = (
+        'generative',
+    )
     #: lucide-react icon name for the admin UI.
     icon: str
 
@@ -87,6 +93,17 @@ DRIVERS: tuple[DriverInfo, ...] = (
         description='Models served through Google Cloud Vertex AI.',
         supports_iam=True,
         icon='Cloud',
+    ),
+    DriverInfo(
+        slug='typesafe',
+        name='TypeSafe',
+        description=(
+            'System One decision models, such as Jev, that return typed '
+            'judgments and probabilities instead of text.'
+        ),
+        default_base_url='https://api.typesafe.ai/v1',
+        model_types=('decision',),
+        icon='Scale',
     ),
 )
 
