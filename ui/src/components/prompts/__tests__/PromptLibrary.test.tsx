@@ -19,11 +19,6 @@ vi.mock('@/api/endpoints', () => ({
 }))
 
 // fallow-ignore-next-line unresolved-import
-vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
-}))
-
-// fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDarkMode: false }),
 }))

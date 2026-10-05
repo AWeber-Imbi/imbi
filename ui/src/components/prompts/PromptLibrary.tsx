@@ -17,7 +17,6 @@ import { createPrompt, listPrompts } from '@/api/endpoints'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Input } from '@/components/ui/input'
-import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
@@ -41,17 +40,14 @@ interface PromptTreeProps {
  * the `?prompt=namespace/slug` search param, so it works on any route.
  */
 export function PromptLibrary({ namespace }: { namespace?: string }) {
-  const { selectedOrganization } = useOrganization()
-  const orgSlug = selectedOrganization?.slug
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const canCreate = useHasPermission('prompt:create')
   const [creating, setCreating] = useState(false)
 
   const promptsQuery = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listPrompts(orgSlug!, signal),
-    queryKey: queryKeys.prompts(orgSlug ?? ''),
+    queryFn: ({ signal }) => listPrompts(signal),
+    queryKey: queryKeys.prompts(),
   })
   const prompts = useMemo(
     () =>
@@ -75,18 +71,16 @@ export function PromptLibrary({ namespace }: { namespace?: string }) {
     )
 
   const create = useMutation({
-    mutationFn: (body: PromptCreate) => createPrompt(orgSlug!, body),
+    mutationFn: (body: PromptCreate) => createPrompt(body),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
     onSuccess: async (created) => {
       setCreating(false)
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.prompts(orgSlug!),
+        queryKey: queryKeys.prompts(),
       })
       select(created.ref)
     },
   })
-
-  if (!orgSlug) return null
 
   return (
     <div
@@ -131,7 +125,6 @@ export function PromptLibrary({ namespace }: { namespace?: string }) {
           onClose={() => setCreating(false)}
           onSubmit={(body) => create.mutate(body)}
           open
-          orgSlug={orgSlug}
           pending={create.isPending}
         />
       )}

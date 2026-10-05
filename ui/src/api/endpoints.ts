@@ -1810,135 +1810,92 @@ export const listAIProviderDrivers = async (
 }
 
 export const listAIProviders = async (
-  orgSlug: string,
   signal?: AbortSignal,
 ): Promise<AIProvider[]> => {
   const response = await apiClient.get<AIProvider[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/`,
+    `/ai-providers/`,
     undefined,
     signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const createAIProvider = (orgSlug: string, provider: AIProviderCreate) =>
-  apiClient.post<AIProvider>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/`,
-    provider,
-  )
+export const createAIProvider = (provider: AIProviderCreate) =>
+  apiClient.post<AIProvider>(`/ai-providers/`, provider)
 
-export const updateAIProvider = (
-  orgSlug: string,
-  id: string,
-  operations: PatchOperation[],
-) =>
+export const updateAIProvider = (id: string, operations: PatchOperation[]) =>
   apiClient.patch<AIProvider>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}`,
+    `/ai-providers/${encodeURIComponent(id)}`,
     operations,
   )
 
-export const deleteAIProvider = (orgSlug: string, id: string) =>
-  apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}`,
-  )
+export const deleteAIProvider = (id: string) =>
+  apiClient.delete<void>(`/ai-providers/${encodeURIComponent(id)}`)
 
 // The key is write-only: responses only ever carry `has_credentials`,
 // `credential_hint` and `credential_updated_at`.
-export const setAIProviderCredentials = (
-  orgSlug: string,
-  id: string,
-  apiKey: string,
-) =>
+export const setAIProviderCredentials = (id: string, apiKey: string) =>
   apiClient.put<AIProvider>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}/credentials`,
+    `/ai-providers/${encodeURIComponent(id)}/credentials`,
     { api_key: apiKey },
   )
 
 // Unlike the other deletes this one answers 200 with the updated
 // provider, so `has_credentials` comes back already flipped to false.
-export const deleteAIProviderCredentials = (orgSlug: string, id: string) =>
+export const deleteAIProviderCredentials = (id: string) =>
   apiClient.delete<AIProvider>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(id)}/credentials`,
+    `/ai-providers/${encodeURIComponent(id)}/credentials`,
   )
 
 export const listAIModels = async (
-  orgSlug: string,
   signal?: AbortSignal,
 ): Promise<AIModel[]> => {
   const response = await apiClient.get<AIModel[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/`,
+    `/ai-models/`,
     undefined,
     signal,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const createAIModel = (orgSlug: string, model: AIModelCreate) =>
-  apiClient.post<AIModel>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/`,
-    model,
-  )
+export const createAIModel = (model: AIModelCreate) =>
+  apiClient.post<AIModel>(`/ai-models/`, model)
 
-export const updateAIModel = (
-  orgSlug: string,
-  id: string,
-  operations: PatchOperation[],
-) =>
-  apiClient.patch<AIModel>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/${encodeURIComponent(id)}`,
-    operations,
-  )
+export const updateAIModel = (id: string, operations: PatchOperation[]) =>
+  apiClient.patch<AIModel>(`/ai-models/${encodeURIComponent(id)}`, operations)
 
-export const deleteAIModel = (orgSlug: string, id: string) =>
-  apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-models/${encodeURIComponent(id)}`,
-  )
+export const deleteAIModel = (id: string) =>
+  apiClient.delete<void>(`/ai-models/${encodeURIComponent(id)}`)
 
 // Prompt CMS. A prompt is addressed by `namespace/slug`; versions are
 // immutable, and labels are movable pointers to one version.
-const promptPath = (orgSlug: string, namespace: string, slug: string) =>
-  `/organizations/${encodeURIComponent(orgSlug)}/prompts/${encodeURIComponent(namespace)}/${encodeURIComponent(slug)}`
+const promptPath = (namespace: string, slug: string) =>
+  `/prompts/${encodeURIComponent(namespace)}/${encodeURIComponent(slug)}`
 
-export const listPrompts = async (
-  orgSlug: string,
-  signal?: AbortSignal,
-): Promise<Prompt[]> => {
-  const response = await apiClient.get<Prompt[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/prompts/`,
-    undefined,
-    signal,
-  )
+export const listPrompts = async (signal?: AbortSignal): Promise<Prompt[]> => {
+  const response = await apiClient.get<Prompt[]>(`/prompts/`, undefined, signal)
   return Array.isArray(response) ? response : []
 }
 
 export const getPrompt = (
-  orgSlug: string,
   namespace: string,
   slug: string,
   signal?: AbortSignal,
-) =>
-  apiClient.get<Prompt>(promptPath(orgSlug, namespace, slug), undefined, signal)
+) => apiClient.get<Prompt>(promptPath(namespace, slug), undefined, signal)
 
-export const createPrompt = (orgSlug: string, prompt: PromptCreate) =>
-  apiClient.post<Prompt>(
-    `/organizations/${encodeURIComponent(orgSlug)}/prompts/`,
-    prompt,
-  )
+export const createPrompt = (prompt: PromptCreate) =>
+  apiClient.post<Prompt>(`/prompts/`, prompt)
 
-export const deletePrompt = (
-  orgSlug: string,
-  namespace: string,
-  slug: string,
-) => apiClient.delete<void>(promptPath(orgSlug, namespace, slug))
+export const deletePrompt = (namespace: string, slug: string) =>
+  apiClient.delete<void>(promptPath(namespace, slug))
 
 export const listPromptVersions = async (
-  orgSlug: string,
   namespace: string,
   slug: string,
   signal?: AbortSignal,
 ): Promise<PromptVersion[]> => {
   const response = await apiClient.get<PromptVersion[]>(
-    `${promptPath(orgSlug, namespace, slug)}/versions`,
+    `${promptPath(namespace, slug)}/versions`,
     undefined,
     signal,
   )
@@ -1948,63 +1905,57 @@ export const listPromptVersions = async (
 // Answers 201 with the new version, or 200 with the newest version
 // when the content did not change.
 export const createPromptVersion = (
-  orgSlug: string,
   namespace: string,
   slug: string,
   version: PromptVersionCreate,
 ) =>
   apiClient.post<PromptVersion>(
-    `${promptPath(orgSlug, namespace, slug)}/versions`,
+    `${promptPath(namespace, slug)}/versions`,
     version,
   )
 
 export const setPromptLabel = (
-  orgSlug: string,
   namespace: string,
   slug: string,
   label: string,
   version: number,
 ) =>
   apiClient.put<Prompt>(
-    `${promptPath(orgSlug, namespace, slug)}/labels/${encodeURIComponent(label)}`,
+    `${promptPath(namespace, slug)}/labels/${encodeURIComponent(label)}`,
     { version },
   )
 
 export const deletePromptLabel = (
-  orgSlug: string,
   namespace: string,
   slug: string,
   label: string,
 ) =>
   apiClient.delete<Prompt>(
-    `${promptPath(orgSlug, namespace, slug)}/labels/${encodeURIComponent(label)}`,
+    `${promptPath(namespace, slug)}/labels/${encodeURIComponent(label)}`,
   )
 
 export const setPromptDefaultLabel = (
-  orgSlug: string,
   namespace: string,
   slug: string,
   label: string,
 ) =>
-  apiClient.put<Prompt>(
-    `${promptPath(orgSlug, namespace, slug)}/default-label`,
-    { label },
-  )
+  apiClient.put<Prompt>(`${promptPath(namespace, slug)}/default-label`, {
+    label,
+  })
 
 // Discovery is a POST because it makes an outbound call with the
 // provider's stored credentials; nothing is cached server-side.
-export const discoverAIModels = (orgSlug: string, providerId: string) =>
+export const discoverAIModels = (providerId: string) =>
   apiClient.post<AIDiscoveryResponse>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(providerId)}/discover`,
+    `/ai-providers/${encodeURIComponent(providerId)}/discover`,
   )
 
 export const importAIModels = (
-  orgSlug: string,
   providerId: string,
   body: AIModelImportRequest,
 ) =>
   apiClient.post<AIModelImportResult>(
-    `/organizations/${encodeURIComponent(orgSlug)}/ai-providers/${encodeURIComponent(providerId)}/import-models`,
+    `/ai-providers/${encodeURIComponent(providerId)}/import-models`,
     body,
   )
 

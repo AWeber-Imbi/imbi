@@ -26,7 +26,6 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { Sk } from '@/components/ui/skeleton'
-import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
@@ -59,19 +58,14 @@ export function PromptEditor({
   onDeleted,
   slug,
 }: PromptEditorProps) {
-  const { selectedOrganization } = useOrganization()
-  const orgSlug = selectedOrganization?.slug
   const promptQuery = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => getPrompt(orgSlug!, namespace, slug, signal),
-    queryKey: queryKeys.prompt(orgSlug ?? '', namespace, slug),
+    queryFn: ({ signal }) => getPrompt(namespace, slug, signal),
+    queryKey: queryKeys.prompt(namespace, slug),
     // A missing prompt is an answer, not a failure: show the empty state
     // at once instead of retrying.
     retry: (failures, error) =>
       !(error instanceof ApiError && error.status === 404) && failures < 1,
   })
-
-  if (!orgSlug) return null
   // ``isPending``, not ``isLoading``: a retry paused while the window is
   // not focused is pending but not loading, and must not render nothing.
   if (promptQuery.isPending) return <Sk className="h-40 w-full" />
@@ -92,7 +86,6 @@ export function PromptEditor({
       className={className}
       key={promptQuery.data.id}
       onDeleted={onDeleted}
-      orgSlug={orgSlug}
       prompt={promptQuery.data}
     />
   )
@@ -113,12 +106,10 @@ function downloadJson(filename: string, data: unknown) {
 function PromptView({
   className,
   onDeleted,
-  orgSlug,
   prompt,
 }: {
   className?: string
   onDeleted?: () => void
-  orgSlug: string
   prompt: Prompt
 }) {
   const queryClient = useQueryClient()
@@ -129,14 +120,10 @@ function PromptView({
   const [promoting, setPromoting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const versionsKey = queryKeys.promptVersions(
-    orgSlug,
-    prompt.namespace,
-    prompt.slug,
-  )
+  const versionsKey = queryKeys.promptVersions(prompt.namespace, prompt.slug)
   const versionsQuery = useQuery({
     queryFn: ({ signal }) =>
-      listPromptVersions(orgSlug, prompt.namespace, prompt.slug, signal),
+      listPromptVersions(prompt.namespace, prompt.slug, signal),
     queryKey: versionsKey,
   })
   const versions = useMemo(() => versionsQuery.data ?? [], [versionsQuery.data])
@@ -147,26 +134,20 @@ function PromptView({
 
   const invalidate = () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.prompts(orgSlug) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts() }),
       queryClient.invalidateQueries({ queryKey: versionsKey }),
     ])
 
   const promote = useMutation({
     mutationFn: async (values: PromoteValues) => {
       await setPromptLabel(
-        orgSlug,
         prompt.namespace,
         prompt.slug,
         values.label,
         values.version,
       )
       if (values.makeDefault) {
-        await setPromptDefaultLabel(
-          orgSlug,
-          prompt.namespace,
-          prompt.slug,
-          values.label,
-        )
+        await setPromptDefaultLabel(prompt.namespace, prompt.slug, values.label)
       }
       return values
     },
@@ -182,19 +163,19 @@ function PromptView({
 
   const removeLabel = useMutation({
     mutationFn: (label: string) =>
-      deletePromptLabel(orgSlug, prompt.namespace, prompt.slug, label),
+      deletePromptLabel(prompt.namespace, prompt.slug, label),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
     onSuccess: invalidate,
   })
 
   const remove = useMutation({
-    mutationFn: () => deletePrompt(orgSlug, prompt.namespace, prompt.slug),
+    mutationFn: () => deletePrompt(prompt.namespace, prompt.slug),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
     onSuccess: async () => {
       setConfirmDelete(false)
       toast.success(`Deleted ${prompt.ref}`)
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.prompts(orgSlug),
+        queryKey: queryKeys.prompts(),
       })
       onDeleted?.()
     },
@@ -334,7 +315,6 @@ function PromptView({
             canEdit={canUpdate}
             key={`${prompt.id}@${version.n}`}
             onSaved={setSelectedN}
-            orgSlug={orgSlug}
             prompt={prompt}
             version={version}
           />

@@ -17,7 +17,6 @@ interface AIModelSelectProps {
   className?: string
   disabled?: boolean
   onChange: (slug: null | string) => void
-  orgSlug: string
   value: null | string
 }
 
@@ -26,12 +25,11 @@ export function AIModelSelect({
   className,
   disabled = false,
   onChange,
-  orgSlug,
   value,
 }: AIModelSelectProps) {
   const { data: models = [] } = useQuery({
-    queryFn: ({ signal }) => listAIModels(orgSlug, signal),
-    queryKey: ['ai-models', orgSlug],
+    queryFn: ({ signal }) => listAIModels(signal),
+    queryKey: ['ai-models'],
   })
   const known = value == null || models.some((m) => m.slug === value)
   return (

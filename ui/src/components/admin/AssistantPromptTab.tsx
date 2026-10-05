@@ -8,7 +8,6 @@ import { createPrompt } from '@/api/endpoints'
 import { NewPromptDialog } from '@/components/prompts/NewPromptDialog'
 import { PromptEditor } from '@/components/prompts/PromptEditor'
 import { Button } from '@/components/ui/button'
-import { useOrganization } from '@/contexts/OrganizationContext'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { queryKeys } from '@/lib/queryKeys'
@@ -19,24 +18,20 @@ const SLUG = 'system'
 
 /** The assistant's system prompt, edited in place through the CMS. */
 export function AssistantPromptTab() {
-  const { selectedOrganization } = useOrganization()
-  const orgSlug = selectedOrganization?.slug
   const queryClient = useQueryClient()
   const canCreate = useHasPermission('prompt:create')
   const [creating, setCreating] = useState(false)
 
   const create = useMutation({
-    mutationFn: (body: PromptCreate) => createPrompt(orgSlug!, body),
+    mutationFn: (body: PromptCreate) => createPrompt(body),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
     onSuccess: async () => {
       setCreating(false)
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.prompts(orgSlug!),
+        queryKey: queryKeys.prompts(),
       })
     },
   })
-
-  if (!orgSlug) return null
 
   return (
     <div className="space-y-4">
@@ -90,7 +85,6 @@ export function AssistantPromptTab() {
           onClose={() => setCreating(false)}
           onSubmit={(body) => create.mutate(body)}
           open
-          orgSlug={orgSlug}
           pending={create.isPending}
         />
       )}

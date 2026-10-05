@@ -200,20 +200,6 @@ export function Admin() {
       scope: 'org',
     },
     {
-      description: 'LLM providers and the model catalog for this organization',
-      icon: Sparkles,
-      id: 'ai-models',
-      label: 'AI Models',
-      scope: 'org',
-    },
-    {
-      description: 'Versioned prompts, labels, and model settings',
-      icon: FileCode2,
-      id: 'prompts',
-      label: 'Prompts',
-      scope: 'org',
-    },
-    {
       description: 'Manage teams',
       icon: UsersRound,
       id: 'teams',
@@ -230,6 +216,14 @@ export function Admin() {
   ]
 
   const systemAdminSections: SectionDef[] = [
+    {
+      description:
+        'LLM providers and the model catalog, shared by every organization',
+      icon: Sparkles,
+      id: 'ai-models',
+      label: 'AI Models',
+      scope: 'system',
+    },
     {
       description: 'Configure the AI assistant and its MCP servers',
       icon: Sparkles,
@@ -270,6 +264,13 @@ export function Admin() {
       icon: Puzzle,
       id: 'plugins',
       label: 'Plugins',
+      scope: 'system',
+    },
+    {
+      description: 'Versioned prompts, labels, and model settings',
+      icon: FileCode2,
+      id: 'prompts',
+      label: 'Prompts',
       scope: 'system',
     },
     {

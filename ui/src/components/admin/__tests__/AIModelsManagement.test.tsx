@@ -208,7 +208,7 @@ describe('AIModelsManagement', () => {
     )
 
     await waitFor(() =>
-      expect(endpoints.updateAIModel).toHaveBeenCalledWith('acme', 'model-1', [
+      expect(endpoints.updateAIModel).toHaveBeenCalledWith('model-1', [
         { op: 'replace', path: '/enabled', value: false },
       ]),
     )
@@ -232,7 +232,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.createAIModel).toHaveBeenCalledWith(
-        'acme',
         expect.objectContaining({
           access_scope: 'restricted',
           allowed_team_ids: ['team-1'],
@@ -263,7 +262,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.updateAIModel).toHaveBeenCalledWith(
-        'acme',
         'model-1',
         expect.arrayContaining([
           { op: 'replace', path: '/name', value: 'Fable 5.1' },
@@ -272,7 +270,7 @@ describe('AIModelsManagement', () => {
       ),
     )
     // Untouched fields must stay out of the patch.
-    const ops = vi.mocked(endpoints.updateAIModel).mock.calls[0][2]
+    const ops = vi.mocked(endpoints.updateAIModel).mock.calls[0][1]
     expect(ops.map((op) => op.path).sort()).toEqual([
       '/context_window',
       '/name',
@@ -325,7 +323,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(confirm.getByRole('button', { name: 'Delete model' }))
 
     await waitFor(() =>
-      expect(endpoints.deleteAIModel).toHaveBeenCalledWith('acme', 'model-1'),
+      expect(endpoints.deleteAIModel).toHaveBeenCalledWith('model-1'),
     )
   })
 
@@ -345,11 +343,9 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() =>
-      expect(endpoints.updateAIProvider).toHaveBeenCalledWith(
-        'acme',
-        'prov-1',
-        [{ op: 'replace', path: '/name', value: 'Anthropic Production' }],
-      ),
+      expect(endpoints.updateAIProvider).toHaveBeenCalledWith('prov-1', [
+        { op: 'replace', path: '/name', value: 'Anthropic Production' },
+      ]),
     )
   })
 
@@ -379,7 +375,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.setAIProviderCredentials).toHaveBeenCalledWith(
-        'acme',
         'prov-1',
         'sk-new-key',
       ),
@@ -393,7 +388,7 @@ describe('AIModelsManagement', () => {
     await waitFor(() =>
       expect(screen.getByText('Claude Opus 5')).toBeInTheDocument(),
     )
-    expect(endpoints.discoverAIModels).toHaveBeenCalledWith('acme', 'prov-1')
+    expect(endpoints.discoverAIModels).toHaveBeenCalledWith('prov-1')
     // The already-configured model is listed but cannot be selected.
     expect(screen.getByText('Already configured')).toBeInTheDocument()
     expect(
@@ -404,7 +399,7 @@ describe('AIModelsManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 model' }))
 
     await waitFor(() =>
-      expect(endpoints.importAIModels).toHaveBeenCalledWith('acme', 'prov-1', {
+      expect(endpoints.importAIModels).toHaveBeenCalledWith('prov-1', {
         models: [
           expect.objectContaining({
             display_name: 'Claude Opus 5',
@@ -434,7 +429,6 @@ describe('AIModelsManagement', () => {
 
     await waitFor(() =>
       expect(endpoints.deleteAIProviderCredentials).toHaveBeenCalledWith(
-        'acme',
         'prov-1',
       ),
     )

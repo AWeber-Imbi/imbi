@@ -112,15 +112,15 @@ export function AIModelsManagement() {
     queryKey: ['ai-provider-drivers'],
   })
   const providersQuery = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listAIProviders(orgSlug!, signal),
-    queryKey: ['ai-providers', orgSlug],
+    queryFn: ({ signal }) => listAIProviders(signal),
+    queryKey: ['ai-providers'],
   })
   const modelsQuery = useQuery({
-    enabled: !!orgSlug,
-    queryFn: ({ signal }) => listAIModels(orgSlug!, signal),
-    queryKey: ['ai-models', orgSlug],
+    queryFn: ({ signal }) => listAIModels(signal),
+    queryKey: ['ai-models'],
   })
+  // Models are global, but teams belong to an organization, so the
+  // team picker lists the selected organization's teams.
   const teamsQuery = useQuery({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => listTeams(orgSlug!, signal),
@@ -133,8 +133,8 @@ export function AIModelsManagement() {
   const teams = teamsQuery.data ?? NO_TEAMS
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['ai-providers', orgSlug] })
-    queryClient.invalidateQueries({ queryKey: ['ai-models', orgSlug] })
+    queryClient.invalidateQueries({ queryKey: ['ai-providers'] })
+    queryClient.invalidateQueries({ queryKey: ['ai-models'] })
   }
   const goToList = () => navigate(LIST_PATH)
   const closeAndRefresh = () => {
@@ -149,15 +149,13 @@ export function AIModelsManagement() {
     toast.error(extractApiErrorDetail(err))
 
   const createProviderMutation = useMutation({
-    mutationFn: (values: AIProviderCreate) =>
-      createAIProvider(orgSlug!, values),
+    mutationFn: (values: AIProviderCreate) => createAIProvider(values),
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
   const updateProviderMutation = useMutation({
     mutationFn: ({ id, values }: { id: string; values: ProviderFormValues }) =>
       updateAIProvider(
-        orgSlug!,
         id,
         buildDiffPatch(
           currentProviderState(providers.find((p) => p.id === id)),
@@ -169,24 +167,24 @@ export function AIModelsManagement() {
     onSuccess: closeAndRefresh,
   })
   const deleteProviderMutation = useMutation({
-    mutationFn: (id: string) => deleteAIProvider(orgSlug!, id),
+    mutationFn: (id: string) => deleteAIProvider(id),
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
   const setCredentialsMutation = useMutation({
     mutationFn: ({ apiKey, id }: { apiKey: string; id: string }) =>
-      setAIProviderCredentials(orgSlug!, id, apiKey),
+      setAIProviderCredentials(id, apiKey),
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
   const removeCredentialsMutation = useMutation({
-    mutationFn: (id: string) => deleteAIProviderCredentials(orgSlug!, id),
+    mutationFn: (id: string) => deleteAIProviderCredentials(id),
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
   const createModelMutation = useMutation({
     mutationFn: (values: ModelFormValues) =>
-      createAIModel(orgSlug!, {
+      createAIModel({
         access_scope: values.access_scope,
         allowed_team_ids: values.allowed_team_ids,
         context_window: values.context_window,
@@ -208,7 +206,6 @@ export function AIModelsManagement() {
   const updateModelMutation = useMutation({
     mutationFn: ({ id, values }: { id: string; values: ModelFormValues }) =>
       updateAIModel(
-        orgSlug!,
         id,
         buildDiffPatch(
           currentModelState(models.find((m) => m.id === id)),
@@ -220,15 +217,13 @@ export function AIModelsManagement() {
     onSuccess: closeAndRefresh,
   })
   const deleteModelMutation = useMutation({
-    mutationFn: (id: string) => deleteAIModel(orgSlug!, id),
+    mutationFn: (id: string) => deleteAIModel(id),
     onError: onMutationError,
     onSuccess: closeAndRefresh,
   })
   const toggleModelMutation = useMutation({
     mutationFn: ({ enabled, id }: { enabled: boolean; id: string }) =>
-      updateAIModel(orgSlug!, id, [
-        { op: 'replace', path: '/enabled', value: enabled },
-      ]),
+      updateAIModel(id, [{ op: 'replace', path: '/enabled', value: enabled }]),
     onError: onMutationError,
     onSuccess: invalidate,
   })
@@ -240,7 +235,7 @@ export function AIModelsManagement() {
     }: {
       models: AIModelImport[]
       providerId: string
-    }) => importAIModels(orgSlug!, providerId, { models: selected }),
+    }) => importAIModels(providerId, { models: selected }),
     onError: onMutationError,
     onSuccess: (result, { providerId }) => {
       toast.success(importSummary(result.created.length, result.skipped.length))
@@ -294,14 +289,6 @@ export function AIModelsManagement() {
     providersQuery.isSuccess &&
     !providers.some((p) => p.id === slug)
 
-  if (!orgSlug) {
-    return (
-      <div className="text-tertiary py-12 text-center">
-        Select an organization to manage AI models.
-      </div>
-    )
-  }
-
   const listError =
     providersQuery.error ??
     modelsQuery.error ??
@@ -311,7 +298,7 @@ export function AIModelsManagement() {
   return (
     <div className="space-y-6">
       <p className="text-secondary max-w-3xl text-sm">
-        Providers and models available to this organization. Enabling a model
+        Providers and models shared by every organization. Enabling a model
         makes it selectable in prompts, assistants and automations; disabling it
         hides it everywhere without deleting its configuration.
       </p>
@@ -512,7 +499,6 @@ export function AIModelsManagement() {
             })
           }
           open
-          orgSlug={orgSlug}
           provider={discoverProvider}
         />
       )}

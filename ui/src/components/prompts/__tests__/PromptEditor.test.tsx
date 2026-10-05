@@ -18,11 +18,6 @@ vi.mock('@/api/endpoints', () => ({
 }))
 
 // fallow-ignore-next-line unresolved-import
-vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
-}))
-
-// fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDarkMode: false }),
 }))
@@ -60,7 +55,6 @@ describe('PromptEditor', () => {
       expect(screen.getByText('mender/core@2')).toBeInTheDocument(),
     )
     expect(endpoints.getPrompt).toHaveBeenCalledWith(
-      'acme',
       'mender',
       'core',
       expect.anything(),
@@ -102,7 +96,6 @@ describe('PromptEditor', () => {
 
     await waitFor(() =>
       expect(endpoints.createPromptVersion).toHaveBeenCalledWith(
-        'acme',
         'mender',
         'core',
         expect.objectContaining({

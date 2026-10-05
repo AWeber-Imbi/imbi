@@ -132,7 +132,6 @@ const CARD_STYLE = { borderWidth: '0.5px' }
 interface VersionWorkspaceProps {
   canEdit: boolean
   onSaved: (n: number) => void
-  orgSlug: string
   prompt: Prompt
   version: PromptVersion
 }
@@ -144,7 +143,6 @@ interface VersionWorkspaceProps {
 export function VersionWorkspace({
   canEdit,
   onSaved,
-  orgSlug,
   prompt,
   version,
 }: VersionWorkspaceProps) {
@@ -161,7 +159,6 @@ export function VersionWorkspace({
   const save = useMutation({
     mutationFn: () =>
       createPromptVersion(
-        orgSlug,
         prompt.namespace,
         prompt.slug,
         toVersion(draft, version, summary.trim()),
@@ -175,13 +172,9 @@ export function VersionWorkspace({
       }
       setSummary('')
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.prompts(orgSlug) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.prompts() }),
         queryClient.invalidateQueries({
-          queryKey: queryKeys.promptVersions(
-            orgSlug,
-            prompt.namespace,
-            prompt.slug,
-          ),
+          queryKey: queryKeys.promptVersions(prompt.namespace, prompt.slug),
         }),
       ])
       onSaved(saved.n)
@@ -229,7 +222,6 @@ export function VersionWorkspace({
               className="w-56"
               disabled={!canEdit}
               onChange={(v) => set('model', v)}
-              orgSlug={orgSlug}
               value={draft.model}
             />
           </span>

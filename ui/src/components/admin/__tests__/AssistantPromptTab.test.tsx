@@ -12,11 +12,6 @@ vi.mock('@/api/endpoints', () => ({
 }))
 
 // fallow-ignore-next-line unresolved-import
-vi.mock('@/contexts/OrganizationContext', () => ({
-  useOrganization: () => ({ selectedOrganization: { slug: 'acme' } }),
-}))
-
-// fallow-ignore-next-line unresolved-import
 vi.mock('@/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDarkMode: false }),
 }))
@@ -49,7 +44,6 @@ describe('AssistantPromptTab', () => {
       screen.getByText(/reads this prompt after the CMS adoption change ships/),
     ).toBeInTheDocument()
     expect(endpoints.getPrompt).toHaveBeenCalledWith(
-      'acme',
       'imbi-assistant',
       'system',
       expect.anything(),
@@ -80,7 +74,6 @@ describe('AssistantPromptTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create prompt' }))
     await waitFor(() =>
       expect(endpoints.createPrompt).toHaveBeenCalledWith(
-        'acme',
         expect.objectContaining({
           name: 'Assistant system prompt',
           namespace: 'imbi-assistant',

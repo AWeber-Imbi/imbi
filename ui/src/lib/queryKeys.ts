@@ -57,11 +57,11 @@ export const queryKeys = {
   projectTypes: (orgSlug: string) => ['projectTypes', orgSlug] as const,
   // Nested under `prompts` so invalidating the list also refreshes
   // every open prompt.
-  prompt: (orgSlug: string, namespace: string, slug: string) =>
-    ['prompts', orgSlug, namespace, slug] as const,
-  prompts: (orgSlug: string) => ['prompts', orgSlug] as const,
-  promptVersions: (orgSlug: string, namespace: string, slug: string) =>
-    ['promptVersions', orgSlug, namespace, slug] as const,
+  prompt: (namespace: string, slug: string) =>
+    ['prompts', namespace, slug] as const,
+  prompts: () => ['prompts'] as const,
+  promptVersions: (namespace: string, slug: string) =>
+    ['promptVersions', namespace, slug] as const,
   // Login form's view of providers (/auth/providers, public payload with
   // default_redirect). Distinct from adminAuthProviders, which lists admin
   // metadata from /admin/auth-providers — different endpoint, different shape,

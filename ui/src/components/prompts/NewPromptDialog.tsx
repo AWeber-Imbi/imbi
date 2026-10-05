@@ -33,7 +33,6 @@ interface NewPromptDialogProps {
   onClose: () => void
   onSubmit: (prompt: PromptCreate) => void
   open: boolean
-  orgSlug: string
   pending: boolean
 }
 
@@ -44,7 +43,6 @@ export function NewPromptDialog({
   onClose,
   onSubmit,
   open,
-  orgSlug,
   pending,
 }: NewPromptDialogProps) {
   const [namespace, setNamespace] = useState(defaults?.namespace ?? '')
@@ -170,11 +168,7 @@ export function NewPromptDialog({
               />
             </FormField>
             <FormField label="Model">
-              <AIModelSelect
-                onChange={setModel}
-                orgSlug={orgSlug}
-                value={model}
-              />
+              <AIModelSelect onChange={setModel} value={model} />
             </FormField>
           </div>
         </div>

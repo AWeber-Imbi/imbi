@@ -180,7 +180,7 @@ export function ModelDialog({
           <DialogDescription>
             {step === 1
               ? 'Identify the model and the provider that serves it.'
-              : 'Limits, cost and who inside the organization may use it.'}
+              : 'Limits, cost and which teams may use it.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -301,7 +301,7 @@ export function ModelDialog({
               <FormField
                 description={
                   values.access_scope === 'organization'
-                    ? 'Available to every team in the organization.'
+                    ? 'Available to all teams.'
                     : `${values.allowed_team_ids.length} team(s) selected.`
                 }
                 label="Allowed teams"
