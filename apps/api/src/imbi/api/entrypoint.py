@@ -9,6 +9,7 @@ from imbi.api import models
 from imbi.api.auth import internal_services, seed
 from imbi.api.auth import password as password_auth
 from imbi.api.graph_sql import set_clause
+from imbi.api.prompts import seed as prompt_seed
 from imbi.common import clickhouse, graph, server
 
 main = typer.Typer(no_args_is_help=True)
@@ -123,6 +124,46 @@ async def _setup_permissions_async() -> None:
             '  ✓ Permissions and roles already exist (no new entities created)'
         )
     typer.echo('\n✓ Permissions and roles are up to date')
+
+
+@main.command('setup-prompts')
+def setup_prompts() -> None:
+    """Seed the prompts Imbi ships into the prompt CMS.
+
+    Creates ``imbi-assistant/system`` and ``imbi-slackbot/system`` from
+    the packaged templates when they do not exist, each with version 1
+    and a ``stable`` label. An existing prompt is never changed.
+    Requires ``setup-postgres``. Idempotent.
+    """
+    asyncio.run(_setup_prompts_async())
+
+
+async def _setup_prompts_async() -> None:
+    """Async body of ``setup-prompts``."""
+    db = graph.Graph()
+    try:
+        await db.open()
+    except Exception as e:
+        typer.echo(f'✗ Failed to connect to PostgreSQL: {e}', err=True)
+        raise typer.Exit(code=1) from e
+
+    try:
+        results = await prompt_seed.seed_default_prompts(db)
+    except Exception as e:
+        typer.echo(f'✗ Failed to seed prompts: {e}', err=True)
+        raise typer.Exit(code=1) from e
+    finally:
+        await db.close()
+
+    _report_prompts(results)
+    typer.echo('\n✓ Default prompts are in place')
+
+
+def _report_prompts(results: list[prompt_seed.SeedResult]) -> None:
+    """Print one line per default prompt."""
+    for result in results:
+        state = 'created' if result.created else 'already exists, unchanged'
+        typer.echo(f'  ✓ {result.ref}: {state}')
 
 
 @main.command('setup-service-accounts')
@@ -375,8 +416,17 @@ async def _setup_async() -> None:
             raise typer.Exit(code=1) from e
         _report_service_accounts(seeded)
 
-        # Step 4: Set up ClickHouse schema
-        typer.echo('\nStep 4: Setting up ClickHouse schema...')
+        # Step 4: Seed the prompts Imbi ships
+        typer.echo('\nStep 4: Seeding default prompts...')
+        try:
+            prompts = await prompt_seed.seed_default_prompts(db)
+        except Exception as e:
+            typer.echo(f'✗ Failed to seed prompts: {e}', err=True)
+            raise typer.Exit(code=1) from e
+        _report_prompts(prompts)
+
+        # Step 5: Set up ClickHouse schema
+        typer.echo('\nStep 5: Setting up ClickHouse schema...')
         await _apply_clickhouse_schema()
 
         # Success message

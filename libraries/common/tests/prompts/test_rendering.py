@@ -4,8 +4,8 @@ import time
 import typing
 import unittest
 
-from imbi.api.prompts import rendering
 from imbi.common import models
+from imbi.common.prompts import rendering
 
 
 def version(

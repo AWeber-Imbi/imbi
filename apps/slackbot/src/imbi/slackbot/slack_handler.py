@@ -221,19 +221,20 @@ async def _process(
         token = identity.mint_token(user)
         manager = mcp.get_manager()
         tools = manager.get_tools() or None
-        system = system_prompt.build_system_prompt(
+        prompt = await system_prompt.build_system_prompt(
             user, manager.get_tool_names()
         )
         answer = await agent.run_turn(
             messages=convo,
-            system=system,
+            system=prompt.text,
             tools=tools,
             auth_token=token,
-            model=slackbot_settings.model,
-            max_tokens=slackbot_settings.max_tokens,
+            model=prompt.model_id or slackbot_settings.model,
+            max_tokens=prompt.max_tokens or slackbot_settings.max_tokens,
             max_rounds=slackbot_settings.max_tool_rounds,
             max_tool_result_chars=slackbot_settings.max_tool_result_chars,
             on_status=reporter.update,
+            temperature=prompt.temperature,
         )
     except Exception:
         LOGGER.exception('Failed to handle event in %s/%s', channel, ts)

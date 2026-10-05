@@ -29,20 +29,15 @@ from imbi.api.auth import permissions
 from imbi.api.endpoints import projects
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
-from imbi.api.prompts import rendering
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
+from imbi.common.prompts import rendering
+from imbi.common.prompts import resolve as prompt_resolve
 
 prompts_router = fastapi.APIRouter(prefix='/prompts', tags=['Prompts'])
 
 #: Mounted under ``/organizations/{org_slug}/prompts``.
 prompt_render_router = fastapi.APIRouter(tags=['Prompts'])
-
-#: ``namespace/slug``, then ``@label`` or ``@n``.
-_REF_PATTERN = re.compile(
-    r'^(?P<namespace>[a-z0-9][a-z0-9._-]*)/(?P<slug>[a-z0-9][a-z0-9._-]*)'
-    r'(?:@(?P<label>[a-z0-9][a-z0-9._-]*))?$'
-)
 
 #: Prompt fields a JSON Patch may change. Labels and the default label
 #: change only through the ``promote`` endpoints.
@@ -228,11 +223,7 @@ class RenderResponse(pydantic.BaseModel):
 
 # --- Queries -----------------------------------------------------------
 
-_PROMPT_QUERY: typing.LiteralString = """
-MATCH (p:Prompt {{namespace: {namespace}, slug: {slug}}})
-OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
-RETURN p, max(v.n) AS latest
-"""
+_PROMPT_QUERY = prompt_resolve.PROMPT_QUERY
 
 _LIST_QUERY: typing.LiteralString = """
 MATCH (p:Prompt)
@@ -246,11 +237,7 @@ OPTIONAL MATCH (v:PromptVersion)-[:VERSION_OF]->(p)
 RETURN p, max(v.n) AS latest
 """
 
-_VERSION_QUERY: typing.LiteralString = """
-MATCH (v:PromptVersion {{prompt_id: {prompt_id}, n: {n}}})
-      -[:VERSION_OF]->(:Prompt {{id: {prompt_id}}})
-RETURN v
-"""
+_VERSION_QUERY = prompt_resolve.VERSION_QUERY
 
 _VERSIONS_QUERY: typing.LiteralString = """
 MATCH (v:PromptVersion)-[:VERSION_OF]->(:Prompt {{id: {prompt_id}}})
@@ -300,12 +287,9 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
 
 
-def _props(raw: typing.Any) -> dict[str, typing.Any] | None:
-    """Return an agtype vertex's properties, or ``None`` for a null."""
-    parsed: typing.Any = graph.parse_agtype(raw)
-    if not isinstance(parsed, dict):
-        return None
-    return typing.cast('dict[str, typing.Any]', parsed)
+_props = prompt_resolve.vertex_props
+_parse_prompt = prompt_resolve.parse_prompt
+_parse_version = prompt_resolve.parse_version
 
 
 def _to_json_props(
@@ -316,16 +300,6 @@ def _to_json_props(
         k: json.dumps(v) if k in fields and v is not None else v
         for k, v in props.items()
     }
-
-
-def _parse_prompt(props: dict[str, typing.Any]) -> models.Prompt:
-    return models.Prompt.model_validate(props)
-
-
-def _parse_version(
-    props: dict[str, typing.Any], prompt: models.Prompt
-) -> models.PromptVersion:
-    return models.PromptVersion.model_validate({**props, 'prompt': prompt})
 
 
 def _prompt_response(prompt: models.Prompt, latest: int) -> PromptResponse:
@@ -440,37 +414,20 @@ async def _fetch_prompt(
     db: graph.Graph, namespace: str, slug: str
 ) -> tuple[models.Prompt, int]:
     """Read a prompt and its newest version number, or raise 404."""
-    records = await db.execute(
-        _PROMPT_QUERY,
-        {'namespace': namespace, 'slug': slug},
-        ['p', 'latest'],
-    )
-    props = _props(records[0]['p']) if records else None
-    if props is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=f'Prompt {namespace}/{slug} not found',
-        )
-    latest = graph.parse_agtype(records[0]['latest'])
-    return _parse_prompt(props), int(latest or 0)
+    try:
+        return await prompt_resolve.fetch_prompt(db, namespace, slug)
+    except prompt_resolve.PromptNotFound as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e)) from e
 
 
 async def _fetch_version(
     db: graph.Graph, prompt: models.Prompt, n: int
 ) -> models.PromptVersion:
     """Read version ``n`` of a prompt, or raise 404."""
-    records = await db.execute(
-        _VERSION_QUERY, {'prompt_id': prompt.id, 'n': n}, ['v']
-    )
-    props = _props(records[0]['v']) if records else None
-    if props is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(
-                f'Prompt {prompt.namespace}/{prompt.slug} has no version {n}'
-            ),
-        )
-    return _parse_version(props, prompt)
+    try:
+        return await prompt_resolve.fetch_version(db, prompt, n)
+    except prompt_resolve.PromptNotFound as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e)) from e
 
 
 async def _assert_ref_free(
@@ -557,40 +514,22 @@ async def _write_labels(
 
 def parse_ref(ref: str) -> tuple[str, str, str | None]:
     """Split ``namespace/slug@label`` into its parts, or raise 422."""
-    match = _REF_PATTERN.match(ref)
-    if match is None:
-        raise _unprocessable(
-            f'Invalid prompt reference {ref!r}; expected '
-            'namespace/slug, namespace/slug@label, or namespace/slug@n'
-        )
-    return match['namespace'], match['slug'], match['label']
+    try:
+        return prompt_resolve.parse_ref(ref)
+    except prompt_resolve.InvalidRef as e:
+        raise _unprocessable(str(e)) from e
 
 
 async def _resolve(
     db: graph.Graph, ref: str
 ) -> tuple[models.Prompt, models.PromptVersion, str | None]:
-    """Find the version a reference names.
-
-    ``@n`` names a version. ``@label`` names a label; a label the
-    prompt does not have, or no ``@`` at all, falls back to the
-    prompt's default label.
-    """
-    namespace, slug, selector = parse_ref(ref)
-    prompt, _latest = await _fetch_prompt(db, namespace, slug)
-    if selector is not None and selector.isascii() and selector.isdigit():
-        return prompt, await _fetch_version(db, prompt, int(selector)), None
-    by_name = {label.name: label for label in prompt.labels}
-    label = by_name.get(selector or '') or by_name.get(prompt.default_label)
-    if label is None:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(
-                f'Prompt {namespace}/{slug} has no label {selector!r} '
-                f'and no default label {prompt.default_label!r}'
-            ),
-        )
-    version = await _fetch_version(db, prompt, label.version)
-    return prompt, version, label.name
+    """Find the version a reference names, or raise 404 / 422."""
+    try:
+        return await prompt_resolve.resolve(db, ref)
+    except prompt_resolve.InvalidRef as e:
+        raise _unprocessable(str(e)) from e
+    except prompt_resolve.PromptNotFound as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e)) from e
 
 
 # --- Prompt endpoints --------------------------------------------------
@@ -643,12 +582,44 @@ async def create_prompt(
 ) -> PromptResponse:
     """Create a prompt with its first version.
 
-    The default label points at version 1.
+    When the caller may promote (``prompt:promote``, or an admin), the
+    default label points at version 1. Otherwise the prompt is created
+    with no labels: pointing a label at a version changes what consumers
+    run, and only ``promote`` may do that. Until a promote holder sets a
+    label, a reference to the prompt does not resolve, and a consumer
+    such as the assistant uses its packaged prompt.
 
     Raises:
         409: ``namespace/slug`` is taken.
         422: A template does not parse, or the model is not in the
             catalog.
+
+    """
+    can_promote = auth.is_admin or 'prompt:promote' in auth.permissions
+    return await insert_prompt(
+        db, data, auth.principal_name, label_first_version=can_promote
+    )
+
+
+async def insert_prompt(
+    db: graph.Graph,
+    data: PromptCreate,
+    created_by: str,
+    *,
+    label_first_version: bool,
+) -> PromptResponse:
+    """Validate and write a prompt with its first version.
+
+    ``imbi-api setup-prompts`` uses this too, so a seeded prompt is
+    written exactly like one created through the API.
+
+    Parameters:
+        label_first_version: Point the default label at version 1. Only
+            a caller with promote authority may do this.
+
+    Raises:
+        fastapi.HTTPException: 409 when ``namespace/slug`` is taken, 422
+            when a template or the model is not valid.
 
     """
     slug = data.slug or slugify.slugify(data.name)
@@ -668,14 +639,18 @@ async def create_prompt(
         icon=data.icon,
         type=data.type,
         default_label=data.default_label,
-        labels=[
-            models.PromptLabel(
-                name=data.default_label,
-                version=1,
-                updated_by=auth.principal_name,
-                updated_at=now,
-            )
-        ],
+        labels=(
+            [
+                models.PromptLabel(
+                    name=data.default_label,
+                    version=1,
+                    updated_by=created_by,
+                    updated_at=now,
+                )
+            ]
+            if label_first_version
+            else []
+        ),
         created_at=now,
         updated_at=now,
     )
@@ -684,7 +659,7 @@ async def create_prompt(
         _PROMPT_JSON_FIELDS,
     )
     _version, version_props = _version_props(
-        prompt, 1, data.version, model_id, auth.principal_name
+        prompt, 1, data.version, model_id, created_by
     )
     # Both nodes are written in one statement, so the parameter names
     # of the version are prefixed to keep them apart from the prompt's.

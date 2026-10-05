@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from imbi.assistant import auth, settings, system_prompt
+from imbi.common.prompts import resolve
 
 
 def _make_auth_context(
@@ -24,70 +25,68 @@ def _make_auth_context(
     )
 
 
-class LoadTemplateTestCase(unittest.TestCase):
-    """Test cases for _load_template."""
-
-    def setUp(self) -> None:
-        system_prompt._prompt_template = None
-        settings._assistant_settings = None
-
-    def tearDown(self) -> None:
-        system_prompt._prompt_template = None
-        settings._assistant_settings = None
-
-    @mock.patch.dict(os.environ, {}, clear=True)
-    def test_load_from_file(self) -> None:
-        template = system_prompt._load_template()
-        self.assertIsInstance(template, str)
-        self.assertTrue(len(template) > 0)
-
-    @mock.patch.dict(os.environ, {}, clear=True)
-    def test_load_caches_template(self) -> None:
-        t1 = system_prompt._load_template()
-        t2 = system_prompt._load_template()
-        self.assertIs(t1, t2)
-
-    @mock.patch.dict(
-        os.environ,
-        {
-            'IMBI_ASSISTANT_SYSTEM_PROMPT': ('Custom prompt {display_name}'),
-        },
-        clear=True,
+def _no_cms() -> mock._patch[mock.AsyncMock]:
+    """Make the CMS lookup report that the prompt is not seeded."""
+    return mock.patch.object(
+        resolve,
+        'resolve',
+        mock.AsyncMock(side_effect=resolve.PromptNotFound('not seeded')),
     )
-    def test_load_from_env(self) -> None:
-        template = system_prompt._load_template()
-        self.assertEqual(template, 'Custom prompt {display_name}')
 
 
-class BuildSystemPromptTestCase(unittest.TestCase):
+class BuildSystemPromptTestCase(unittest.IsolatedAsyncioTestCase):
     """Test cases for build_system_prompt."""
 
     def setUp(self) -> None:
-        system_prompt._prompt_template = None
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
-        system_prompt._prompt_template = None
         settings._assistant_settings = None
+
+    async def build(self, auth_ctx: auth.AuthContext, tools: list[str]) -> str:
+        with _no_cms():
+            result = await system_prompt.build_system_prompt(
+                mock.AsyncMock(), auth_ctx, tools
+            )
+        return result.text
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    async def test_packaged_prompt_without_cms(self) -> None:
+        with _no_cms():
+            result = await system_prompt.build_system_prompt(
+                mock.AsyncMock(), _make_auth_context(), []
+            )
+        self.assertEqual(result.source, 'fallback')
+        self.assertIn('Test User', result.text)
+        self.assertIn('NO tools available', result.text)
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    async def test_reads_the_configured_ref(self) -> None:
+        found = mock.AsyncMock(side_effect=resolve.PromptNotFound('x'))
+        with mock.patch.object(resolve, 'resolve', found):
+            await system_prompt.build_system_prompt(
+                mock.AsyncMock(), _make_auth_context(), []
+            )
+        self.assertEqual(
+            found.await_args.args[1], 'imbi-assistant/system@stable'
+        )
 
     @mock.patch.dict(
         os.environ,
         {
             'IMBI_ASSISTANT_SYSTEM_PROMPT': (
-                'Hello {display_name} ({email})'
-                '{admin_flag}. '
-                '{perms_section} {tools_section}'
+                'Hello {{ display_name }} ({{ email }})'
+                '{{ admin_flag }}. '
+                '{{ perms_section }} {{ tools_section }}'
             ),
         },
         clear=True,
     )
-    def test_build_with_tools_and_perms(self) -> None:
+    async def test_build_with_tools_and_perms(self) -> None:
         auth_ctx = _make_auth_context(
             perms={'project:read', 'team:read'},
         )
-        result = system_prompt.build_system_prompt(
-            auth_ctx, ['list_projects', 'list_teams']
-        )
+        result = await self.build(auth_ctx, ['list_projects', 'list_teams'])
         self.assertIn('Test User', result)
         self.assertIn('test@example.com', result)
         self.assertIn('list_projects', result)
@@ -97,30 +96,28 @@ class BuildSystemPromptTestCase(unittest.TestCase):
         os.environ,
         {
             'IMBI_ASSISTANT_SYSTEM_PROMPT': (
-                'Hello {display_name}{admin_flag}. '
-                '{perms_section} {tools_section}'
+                'Hello {{ display_name }}{{ admin_flag }}. '
+                '{{ perms_section }} {{ tools_section }}'
             ),
         },
         clear=True,
     )
-    def test_build_admin_flag(self) -> None:
-        auth_ctx = _make_auth_context(is_admin=True)
-        result = system_prompt.build_system_prompt(auth_ctx, [])
+    async def test_build_admin_flag(self) -> None:
+        result = await self.build(_make_auth_context(is_admin=True), [])
         self.assertIn('[Admin]', result)
 
     @mock.patch.dict(
         os.environ,
         {
             'IMBI_ASSISTANT_SYSTEM_PROMPT': (
-                'Hello {display_name}{admin_flag}. '
-                '{perms_section} {tools_section}'
+                'Hello {{ display_name }}{{ admin_flag }}. '
+                '{{ perms_section }} {{ tools_section }}'
             ),
         },
         clear=True,
     )
-    def test_build_no_tools_no_perms(self) -> None:
-        auth_ctx = _make_auth_context()
-        result = system_prompt.build_system_prompt(auth_ctx, [])
+    async def test_build_no_tools_no_perms(self) -> None:
+        result = await self.build(_make_auth_context(), [])
         self.assertIn('Test User', result)
         self.assertNotIn('[Admin]', result)
 
@@ -128,11 +125,20 @@ class BuildSystemPromptTestCase(unittest.TestCase):
         os.environ,
         {
             'IMBI_UI_URL': 'https://imbi.example.com',
-            'IMBI_ASSISTANT_SYSTEM_PROMPT': '{links_section}',
+            'IMBI_ASSISTANT_SYSTEM_PROMPT': '{{ links_section }}',
         },
         clear=True,
     )
-    def test_build_injects_base_url(self) -> None:
-        auth_ctx = _make_auth_context()
-        result = system_prompt.build_system_prompt(auth_ctx, [])
+    async def test_build_injects_base_url(self) -> None:
+        result = await self.build(_make_auth_context(), [])
         self.assertIn('https://imbi.example.com', result)
+
+    @mock.patch.dict(
+        os.environ,
+        {'IMBI_ASSISTANT_SYSTEM_PROMPT': 'Old style {display_name} {{'},
+        clear=True,
+    )
+    async def test_broken_override_uses_the_packaged_prompt(self) -> None:
+        result = await self.build(_make_auth_context(), [])
+        self.assertIn('Test User', result)
+        self.assertNotIn('Old style', result)

@@ -245,14 +245,36 @@ function PromptView({
         style={HAIRLINE}
       >
         <TriangleAlert className="size-3.5 flex-none" />
-        <span>
-          Promoting {prompt.default_label} changes what every consumer of{' '}
-          <span className="font-mono">
-            {prompt.ref}@{prompt.default_label}
-          </span>{' '}
-          receives.
-        </span>
+        {prompt.labels.length === 0 ? (
+          <span>
+            No label points at a version yet, so{' '}
+            <span className="font-mono">
+              {prompt.ref}@{prompt.default_label}
+            </span>{' '}
+            does not resolve. Promote a version to put it in use.
+          </span>
+        ) : (
+          <span>
+            Promoting {prompt.default_label} changes what every consumer of{' '}
+            <span className="font-mono">
+              {prompt.ref}@{prompt.default_label}
+            </span>{' '}
+            receives.
+          </span>
+        )}
       </div>
+
+      {prompt.labels.length === 0 && (
+        <div
+          className="border-tertiary text-tertiary mb-4 rounded-lg border border-dashed px-3.5 py-3 text-sm"
+          style={HAIRLINE}
+        >
+          No labels yet.
+          {canPromote
+            ? ' Use Promote to point a label at a version.'
+            : ' Someone with promote permission must point a label at a version.'}
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-1 gap-2.5 md:grid-cols-3">
         {prompt.labels.map((label) => {

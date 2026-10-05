@@ -70,6 +70,18 @@ describe('PromptEditor', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
   })
 
+  it('renders a prompt that has no labels yet', async () => {
+    const endpoints = await import('@/api/endpoints')
+    vi.mocked(endpoints.getPrompt).mockResolvedValue(prompt({ labels: [] }))
+    await renderEditor()
+    await waitFor(() =>
+      expect(screen.getByText(/No labels yet/)).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/does not resolve/)).toBeInTheDocument()
+    expect(screen.queryByText(/changes what every consumer/)).toBeNull()
+    expect(screen.getByRole('button', { name: /promote/i })).toBeInTheDocument()
+  })
+
   it('renders the empty state when the prompt does not exist', async () => {
     const endpoints = await import('@/api/endpoints')
     vi.mocked(endpoints.getPrompt).mockRejectedValue(

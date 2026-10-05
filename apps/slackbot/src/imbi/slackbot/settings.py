@@ -35,7 +35,11 @@ class Slackbot(pydantic_settings.BaseSettings):
     # How long (seconds) to cache a Slack -> Imbi user resolution before
     # re-checking the directory and graph.
     identity_cache_ttl: int = 900
+    #: Replaces the CMS prompt and the packaged one. Jinja syntax, for
+    #: example ``{{ display_name }}``.
     system_prompt: str | None = None
+    #: The prompt CMS reference the bot reads its prompt from.
+    prompt_ref: str = 'imbi-slackbot/system@stable'
 
     # Slack credentials. These use the conventional ``SLACK_`` env names
     # rather than the ``IMBI_SLACKBOT_`` prefix.

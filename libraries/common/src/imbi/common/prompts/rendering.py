@@ -629,7 +629,7 @@ def _environment() -> _Sandbox:
     )
     # The stubs type these mappings by their default values only.
     env_globals = typing.cast('dict[str, object]', env.globals)  # type: ignore[redundant-cast]
-    env_filters = typing.cast('dict[str, object]', env.filters)  # type: ignore[redundant-cast]
+    env_filters = typing.cast('dict[str, object]', env.filters)
     for name in set(env_globals) - _GLOBALS:
         del env_globals[name]
     for name in set(env_filters) - _FILTERS:
@@ -650,7 +650,7 @@ def _environment() -> _Sandbox:
         env_filters[name] = _charged_filter(
             typing.cast('collections.abc.Callable[..., object]', fn)
         )
-    env_tests = typing.cast('dict[str, object]', env.tests)  # type: ignore[redundant-cast]
+    env_tests = typing.cast('dict[str, object]', env.tests)
     for name, fn in list(env_tests.items()):
         env_tests[name] = _charged_test(
             typing.cast('collections.abc.Callable[..., object]', fn)

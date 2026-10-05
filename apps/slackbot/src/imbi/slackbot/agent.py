@@ -125,6 +125,7 @@ async def run_turn(
     max_rounds: int,
     on_status: StatusCallback | None = None,
     max_tool_result_chars: int = _DEFAULT_MAX_TOOL_RESULT_CHARS,
+    temperature: float | None = None,
 ) -> str:
     """Run one user turn through Claude and the tool loop.
 
@@ -141,6 +142,8 @@ async def run_turn(
             string each time tools are about to run.
         max_tool_result_chars: Tool results larger than this are replaced
             with an error to protect the context window.
+        temperature: Sampling temperature, or ``None`` for the model
+            default.
 
     Returns:
         The assistant's final text (concatenated across rounds).
@@ -162,6 +165,8 @@ async def run_turn(
         }
         if tools:
             kwargs['tools'] = tools
+        if temperature is not None:
+            kwargs['temperature'] = temperature
 
         try:
             response = typing.cast(

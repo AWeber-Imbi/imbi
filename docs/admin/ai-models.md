@@ -11,8 +11,9 @@ model to some teams.
 Open the section at **Admin > Global Admin > AI Models**.
 
 !!! note
-    The catalog is configuration. Imbi's assistant and Slack bot still read
-    their model from the environment. Nothing calls a catalog model yet.
+    The assistant and the Slack bot use a catalog model when their prompt
+    version names one that an Anthropic provider serves. See
+    [Prompts](prompts.md#model-and-parameters).
 
 ## Drivers
 

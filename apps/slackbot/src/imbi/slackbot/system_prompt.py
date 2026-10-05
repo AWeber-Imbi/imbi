@@ -1,52 +1,21 @@
-"""Dynamic system prompt builder for the Slack bot."""
+"""Dynamic system prompt builder for the Slack bot.
 
-import logging
-import pathlib
+The template comes from the prompt CMS (``IMBI_SLACKBOT_PROMPT_REF``,
+default ``imbi-slackbot/system@stable``). When the CMS has no usable
+version, the template packaged in :mod:`imbi.common.prompts` is used.
+``IMBI_SLACKBOT_SYSTEM_PROMPT`` overrides both; it uses Jinja syntax,
+for example ``{{ display_name }}``. A prompt that fails to render never
+fails an event: the packaged prompt is used instead.
+"""
 
+from imbi.common.prompts import system
 from imbi.slackbot import identity, links, settings
 
-LOGGER = logging.getLogger(__name__)
 
-_PROMPT_PATH = pathlib.Path(__file__).parent / 'system_prompt.md'
-_prompt_template: str | None = None
-
-
-def _load_template() -> str:
-    """Load the system prompt template from disk.
-
-    Falls back to ``IMBI_SLACKBOT_SYSTEM_PROMPT`` if set.
-
-    Returns:
-        The prompt template string with format placeholders.
-
-    """
-    global _prompt_template
-    if _prompt_template is not None:
-        return _prompt_template
-
-    slackbot_settings = settings.get_slackbot_settings()
-    if slackbot_settings.system_prompt:
-        _prompt_template = slackbot_settings.system_prompt
-        return _prompt_template
-
-    _prompt_template = _PROMPT_PATH.read_text(encoding='utf-8')
-    return _prompt_template
-
-
-def build_system_prompt(
-    user: identity.ImbiUser,
-    tool_names: list[str],
-) -> str:
-    """Build a dynamic system prompt for the resolved Slack user.
-
-    Args:
-        user: The resolved Imbi user.
-        tool_names: Names of tools available to this user.
-
-    Returns:
-        The system prompt string.
-
-    """
+def _variables(
+    user: identity.ImbiUser, tool_names: list[str]
+) -> dict[str, str]:
+    """Build the template variables for the resolved Slack user."""
     if tool_names:
         tools_list = ', '.join(tool_names)
         tools_section = (
@@ -75,18 +44,34 @@ def build_system_prompt(
             f'configured, so mention the path):\n\n{patterns}'
         )
 
-    template = _load_template()
-    try:
-        return template.format(
-            display_name=user.display_name,
-            email=user.email,
-            admin_flag='  [Admin]' if user.is_admin else '',
-            tools_section=tools_section,
-            links_section=links_section,
-        )
-    except (KeyError, ValueError, IndexError):
-        # An operator-supplied override with stray/unescaped braces would
-        # otherwise break prompt construction for every event. Fall back
-        # to the unformatted template rather than failing the request.
-        LOGGER.exception('Failed to format system prompt template')
-        return template
+    return {
+        'display_name': user.display_name,
+        'email': user.email,
+        'admin_flag': '  [Admin]' if user.is_admin else '',
+        'tools_section': tools_section,
+        'links_section': links_section,
+    }
+
+
+async def build_system_prompt(
+    user: identity.ImbiUser,
+    tool_names: list[str],
+) -> system.SystemPrompt:
+    """Build the system prompt for the resolved Slack user.
+
+    Args:
+        user: The resolved Imbi user.
+        tool_names: Names of tools available to this user.
+
+    Returns:
+        The rendered prompt with the model settings of its version.
+
+    """
+    slackbot_settings = settings.get_slackbot_settings()
+    return await system.load_system_prompt(
+        identity.get_graph(),
+        slackbot_settings.prompt_ref,
+        _variables(user, tool_names),
+        system.SLACKBOT,
+        override=slackbot_settings.system_prompt,
+    )

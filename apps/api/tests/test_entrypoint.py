@@ -127,6 +127,20 @@ class SetupTestCase(unittest.TestCase):
             self.seeded_services
         )
 
+        # Default prompts
+        self.mock_seed_prompts = self.enterContext(
+            mock.patch.object(
+                entrypoint.prompt_seed,
+                'seed_default_prompts',
+                new_callable=mock.AsyncMock,
+                return_value=[
+                    entrypoint.prompt_seed.SeedResult(
+                        'imbi-assistant/system', created=True
+                    )
+                ],
+            )
+        )
+
         # Password input (getpass reads /dev/tty, not stdin)
         self.mock_getpass = self.enterContext(
             mock.patch.object(
@@ -143,6 +157,8 @@ class SetupTestCase(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
+        self.mock_seed_prompts.assert_awaited_once()
+        self.assertIn('imbi-assistant/system: created', result.output)
         self.assertIn('Setup complete', result.output)
         self.assertIn('Created organization: AWeber (aweber)', result.output)
         self.assertIn('Created 5 permissions and 3 roles', result.output)
@@ -380,6 +396,55 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('Failed to seed service accounts', result.output)
         self.assertIn('connection reset', result.output)
         self.mock_ch_schema.assert_not_awaited()
+
+
+class SetupPromptsTestCase(unittest.TestCase):
+    """Test cases for the ``setup-prompts`` command."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.runner = typer.testing.CliRunner()
+        self.mock_graph = mock.MagicMock()
+        self.mock_graph.open = mock.AsyncMock()
+        self.mock_graph.close = mock.AsyncMock()
+        self.enterContext(
+            mock.patch.object(
+                entrypoint.graph, 'Graph', return_value=self.mock_graph
+            )
+        )
+
+    def test_reports_each_prompt(self) -> None:
+        with mock.patch.object(
+            entrypoint.prompt_seed,
+            'seed_default_prompts',
+            new_callable=mock.AsyncMock,
+            return_value=[
+                entrypoint.prompt_seed.SeedResult(
+                    'imbi-assistant/system', created=True
+                ),
+                entrypoint.prompt_seed.SeedResult(
+                    'imbi-slackbot/system', created=False
+                ),
+            ],
+        ):
+            result = self.runner.invoke(entrypoint.main, ['setup-prompts'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('imbi-assistant/system: created', result.output)
+        self.assertIn(
+            'imbi-slackbot/system: already exists, unchanged', result.output
+        )
+        self.mock_graph.close.assert_awaited_once()
+
+    def test_failure_exits_non_zero(self) -> None:
+        with mock.patch.object(
+            entrypoint.prompt_seed,
+            'seed_default_prompts',
+            new_callable=mock.AsyncMock,
+            side_effect=RuntimeError('boom'),
+        ):
+            result = self.runner.invoke(entrypoint.main, ['setup-prompts'])
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('Failed to seed prompts: boom', result.output)
 
 
 class SetupServiceAccountsTestCase(unittest.TestCase):

@@ -1,54 +1,21 @@
-"""Dynamic system prompt builder for the AI assistant."""
+"""Dynamic system prompt builder for the AI assistant.
 
-import pathlib
+The template comes from the prompt CMS (``IMBI_ASSISTANT_PROMPT_REF``,
+default ``imbi-assistant/system@stable``). When the CMS has no usable
+version, the template packaged in :mod:`imbi.common.prompts` is used.
+``IMBI_ASSISTANT_SYSTEM_PROMPT`` overrides both; it uses Jinja syntax,
+for example ``{{ display_name }}``.
+"""
 
 from imbi.assistant import auth, links, settings
-
-_PROMPT_PATH = pathlib.Path(__file__).parent / 'system_prompt.md'
-_prompt_template: str | None = None
-
-
-def _load_template() -> str:
-    """Load the system prompt template from disk.
-
-    Falls back to IMBI_ASSISTANT_SYSTEM_PROMPT env var if the
-    markdown file is missing.
-
-    Returns:
-        The prompt template string with format placeholders.
-
-    """
-    global _prompt_template
-    if _prompt_template is not None:
-        return _prompt_template
-
-    assistant_settings = settings.get_assistant_settings()
-    if assistant_settings.system_prompt:
-        _prompt_template = assistant_settings.system_prompt
-        return _prompt_template
-
-    _prompt_template = _PROMPT_PATH.read_text(encoding='utf-8')
-    return _prompt_template
+from imbi.common import graph
+from imbi.common.prompts import system
 
 
-def build_system_prompt(
-    auth_context: auth.AuthContext,
-    tool_names: list[str],
-) -> str:
-    """Build a dynamic system prompt based on user context.
-
-    Loads the template from ``system_prompt.md`` (next to this
-    module) and fills in user-specific placeholders. The template
-    can be overridden via ``IMBI_ASSISTANT_SYSTEM_PROMPT``.
-
-    Args:
-        auth_context: The authenticated user's context.
-        tool_names: Names of tools available to this user.
-
-    Returns:
-        The system prompt string.
-
-    """
+def _variables(
+    auth_context: auth.AuthContext, tool_names: list[str]
+) -> dict[str, str]:
+    """Build the template variables for the current user."""
     user = auth_context.require_user
     perms = sorted(auth_context.permissions)
 
@@ -88,12 +55,37 @@ def build_system_prompt(
             f'at a page:\n\n{patterns}'
         )
 
-    template = _load_template()
-    return template.format(
-        display_name=user.display_name,
-        email=user.email,
-        admin_flag='  [Admin]' if user.is_admin else '',
-        perms_section=perms_section,
-        tools_section=tools_section,
-        links_section=links_section,
+    return {
+        'display_name': user.display_name,
+        'email': user.email,
+        'admin_flag': '  [Admin]' if user.is_admin else '',
+        'perms_section': perms_section,
+        'tools_section': tools_section,
+        'links_section': links_section,
+    }
+
+
+async def build_system_prompt(
+    db: graph.Graph,
+    auth_context: auth.AuthContext,
+    tool_names: list[str],
+) -> system.SystemPrompt:
+    """Build the system prompt for the current user.
+
+    Args:
+        db: The graph, for reading the prompt from the CMS.
+        auth_context: The authenticated user's context.
+        tool_names: Names of tools available to this user.
+
+    Returns:
+        The rendered prompt with the model settings of its version.
+
+    """
+    assistant_settings = settings.get_assistant_settings()
+    return await system.load_system_prompt(
+        db,
+        assistant_settings.prompt_ref,
+        _variables(auth_context, tool_names),
+        system.ASSISTANT,
+        override=assistant_settings.system_prompt,
     )

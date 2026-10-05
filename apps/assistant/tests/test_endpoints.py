@@ -19,6 +19,8 @@ from imbi.assistant import (
     models,
     settings,
 )
+from imbi.common.prompts import resolve
+from imbi.common.prompts import system as prompt_system
 
 
 def _make_user() -> auth.User:
@@ -421,11 +423,50 @@ class CreateConversationEndpointTestCase(
         conv = _make_conversation()
         mock_create.return_value = conv
         db = mock.AsyncMock()
-        with mock.patch.dict('os.environ', {}, clear=True):
+        with (
+            mock.patch.dict('os.environ', {}, clear=True),
+            mock.patch.object(
+                prompt_system,
+                'load_model_id',
+                mock.AsyncMock(return_value=None),
+            ),
+        ):
             result = await endpoints.create_conversation(
                 db=db, auth_ctx=auth_ctx, body=None
             )
         self.assertEqual(result.id, 'conv-123')
+        mock_create.assert_called_once_with(
+            mock.ANY,
+            user_email='test@example.com',
+            model='claude-sonnet-4-6',
+        )
+
+    @mock.patch(
+        'imbi.assistant.age_ops.create_conversation',
+    )
+    async def test_create_conversation_uses_the_prompt_model(
+        self,
+        mock_create: mock.AsyncMock,
+    ) -> None:
+        client._client = mock.MagicMock()
+        mock_create.return_value = _make_conversation()
+        with (
+            mock.patch.dict('os.environ', {}, clear=True),
+            mock.patch.object(
+                prompt_system,
+                'load_model_id',
+                mock.AsyncMock(return_value='claude-opus-5-5'),
+            ) as load,
+        ):
+            await endpoints.create_conversation(
+                db=mock.AsyncMock(), auth_ctx=_make_auth_context(), body=None
+            )
+        load.assert_awaited_once_with(mock.ANY, 'imbi-assistant/system@stable')
+        mock_create.assert_called_once_with(
+            mock.ANY,
+            user_email='test@example.com',
+            model='claude-opus-5-5',
+        )
 
     @mock.patch(
         'imbi.assistant.age_ops.create_conversation',
@@ -856,6 +897,37 @@ class SendMessageEndpointTestCase(
         self.assertEqual(result.media_type, 'text/event-stream')
 
 
+class PromptParamsTestCase(unittest.TestCase):
+    """_prompt_params applies version settings only to their model."""
+
+    def _prompt(self, model_id: str | None) -> prompt_system.SystemPrompt:
+        return prompt_system.SystemPrompt(
+            text='x',
+            source='cms',
+            model_id=model_id,
+            max_tokens=512,
+            temperature=0.2,
+        )
+
+    def test_matching_model_uses_version_settings(self) -> None:
+        self.assertEqual(
+            endpoints._prompt_params(self._prompt('m1'), 'm1', 4096),
+            (512, 0.2),
+        )
+
+    def test_version_without_model_uses_version_settings(self) -> None:
+        self.assertEqual(
+            endpoints._prompt_params(self._prompt(None), 'm1', 4096),
+            (512, 0.2),
+        )
+
+    def test_other_model_drops_version_settings(self) -> None:
+        self.assertEqual(
+            endpoints._prompt_params(self._prompt('m2'), 'm1', 4096),
+            (4096, None),
+        )
+
+
 class StreamResponseTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
@@ -1163,7 +1235,7 @@ class BuildToolsAndSystemTestCase(unittest.IsolatedAsyncioTestCase):
         external_mcp._manager = self._original_ext
         settings._assistant_settings = None
 
-    def test_external_tools_included(self) -> None:
+    async def test_external_tools_included(self) -> None:
         mcp_manager = _make_mock_mcp_manager()
         ext_manager = _make_mock_external_manager()
         ext_manager.get_tools.return_value = [
@@ -1176,14 +1248,18 @@ class BuildToolsAndSystemTestCase(unittest.IsolatedAsyncioTestCase):
         ext_manager.get_tool_names.return_value = ['mcp_svc_thing']
         mcp._manager = mcp_manager
         external_mcp._manager = ext_manager
-        with mock.patch.dict('os.environ', {}, clear=True):
-            tools, system = endpoints._build_tools_and_system(
-                mcp_manager, _make_auth_context()
+        missing = mock.AsyncMock(side_effect=resolve.PromptNotFound('x'))
+        with (
+            mock.patch.dict('os.environ', {}, clear=True),
+            mock.patch.object(resolve, 'resolve', missing),
+        ):
+            tools, system = await endpoints._build_tools_and_system(
+                mock.AsyncMock(), mcp_manager, _make_auth_context()
             )
         assert tools is not None
         names = [t['name'] for t in tools]
         self.assertIn('mcp_svc_thing', names)
-        self.assertIn('mcp_svc_thing', system)
+        self.assertIn('mcp_svc_thing', system.text)
 
 
 class DispatchToolUsesTestCase(unittest.IsolatedAsyncioTestCase):

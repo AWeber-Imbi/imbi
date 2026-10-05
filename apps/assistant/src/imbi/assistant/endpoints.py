@@ -22,6 +22,7 @@ from imbi.assistant import (
     system_prompt,
 )
 from imbi.common import graph
+from imbi.common.prompts import system as prompt_system
 
 if typing.TYPE_CHECKING:
     import collections.abc
@@ -63,7 +64,16 @@ async def create_conversation(
     """Create a new conversation."""
     _require_assistant()
     assistant_settings = settings.get_assistant_settings()
-    model = body.model if body and body.model else assistant_settings.model
+    model = body.model if body and body.model else None
+    if model is None:
+        # A new conversation takes the model of the prompt version when
+        # it names one the assistant can call.
+        model = (
+            await prompt_system.load_model_id(
+                db, assistant_settings.prompt_ref
+            )
+            or assistant_settings.model
+        )
     conv = await age_ops.create_conversation(
         db,
         user_email=auth_ctx.require_user.email,
@@ -329,10 +339,11 @@ def _build_assistant_message(
     return {'role': 'assistant', 'content': content}
 
 
-def _build_tools_and_system(
+async def _build_tools_and_system(
+    db: graph.Graph,
     mcp_manager: mcp.MCPManager,
     auth_ctx: auth.AuthContext,
-) -> tuple[list[dict[str, typing.Any]] | None, str]:
+) -> tuple[list[dict[str, typing.Any]] | None, prompt_system.SystemPrompt]:
     """Build the Anthropic tool payload and system prompt from
     the current MCP, server, and client tool sets.
     """
@@ -343,7 +354,8 @@ def _build_tools_and_system(
         + client_tools.get_tools()
         + ext_manager.get_tools()
     )
-    system = system_prompt.build_system_prompt(
+    system = await system_prompt.build_system_prompt(
+        db,
         auth_ctx,
         tool_names=[
             *mcp_manager.get_tool_names(),
@@ -489,8 +501,10 @@ async def _run_server_tool(
     # union of refreshed sources, even if only one source refreshed
     # cleanly.
     if openapi_success or external_success:
-        tools, system = _build_tools_and_system(mcp_manager, auth_ctx)
-        rebuild['tools'], rebuild['system'] = tools, system
+        tools, prompt = await _build_tools_and_system(
+            db, mcp_manager, auth_ctx
+        )
+        rebuild['tools'], rebuild['system'] = tools, prompt.text
     payload: dict[str, typing.Any] = {
         'success': openapi_success and external_success,
         'tool_count': openapi_count + external_count,
@@ -618,6 +632,7 @@ async def _stream_response(
     user_message_content: str,
     tools: list[dict[str, typing.Any]] | None = None,
     auth_token: str | None = None,
+    temperature: float | None = None,
 ) -> collections.abc.AsyncIterator[str]:
     """Stream an SSE response from the Anthropic API."""
     api_client = client.get_client()
@@ -652,6 +667,8 @@ async def _stream_response(
         }
         if tools:
             kwargs['tools'] = tools
+        if temperature is not None:
+            kwargs['temperature'] = temperature
 
         try:
             async with api_client.messages.stream(
@@ -748,6 +765,24 @@ async def _stream_response(
         yield _sse_event('title_updated', {'title': title})
 
 
+def _prompt_params(
+    prompt: prompt_system.SystemPrompt,
+    model: str,
+    default_max_tokens: int,
+) -> tuple[int, float | None]:
+    """Return the ``max_tokens`` and ``temperature`` for a turn.
+
+    The prompt version's settings apply only when the version names no
+    model or names the conversation's model. A conversation can use a
+    different model (the caller chose one, or the version changed after
+    the conversation started), and settings for one model can be
+    invalid for another.
+    """
+    if prompt.model_id is not None and prompt.model_id != model:
+        return default_max_tokens, None
+    return prompt.max_tokens or default_max_tokens, prompt.temperature
+
+
 @assistant_router.post(
     '/conversations/{conversation_id}/messages',
 )
@@ -798,10 +833,13 @@ async def send_message(
     ]
 
     mcp_manager = mcp.get_manager()
-    tools, system = _build_tools_and_system(mcp_manager, auth_ctx)
+    tools, prompt = await _build_tools_and_system(db, mcp_manager, auth_ctx)
 
     is_first_exchange = len(all_msgs) <= 2
     auth_token = credentials.credentials if credentials else None
+    max_tokens, temperature = _prompt_params(
+        prompt, conv.model, assistant_settings.max_tokens
+    )
 
     return responses.StreamingResponse(
         _stream_response(
@@ -809,13 +847,14 @@ async def send_message(
             conversation_id=conversation_id,
             auth_ctx=auth_ctx,
             api_messages=api_messages,
-            system=system,
+            system=prompt.text,
             model=conv.model,
-            max_tokens=assistant_settings.max_tokens,
+            max_tokens=max_tokens,
             is_first_exchange=is_first_exchange,
             user_message_content=body.content,
             tools=tools,
             auth_token=auth_token,
+            temperature=temperature,
         ),
         media_type='text/event-stream',
         headers={

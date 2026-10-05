@@ -222,6 +222,39 @@ class CreatePromptTestCase(PromptTestBase):
         self.assertEqual(json.loads(params['labels'])[0]['name'], 'stable')
         self.assertEqual(len(params['v_content_sha256']), 64)
 
+    def test_create_without_promote_sets_no_label(self) -> None:
+        # A developer may create a prompt, but pointing a label at a
+        # version changes what consumers run, which needs promote.
+        self.as_principal('prompt:create', 'prompt:update')
+        router = self.route(
+            (MODEL, MODEL_ROW), (CREATE_PROMPT, [{'p': prompt_props()}])
+        )
+        response = self.client.post(BASE + '/', json=self._body())
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['labels'], [])
+        self.assertEqual(response.json()['default_label'], 'stable')
+        params = router.params_for(CREATE_PROMPT)
+        self.assertEqual(json.loads(params['labels']), [])
+
+    def test_create_with_promote_labels_version_one(self) -> None:
+        self.as_principal('prompt:create', 'prompt:promote')
+        self.route(
+            (MODEL, MODEL_ROW), (CREATE_PROMPT, [{'p': prompt_props()}])
+        )
+        response = self.client.post(BASE + '/', json=self._body())
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [(lb['name'], lb['version']) for lb in response.json()['labels']],
+            [('stable', 1)],
+        )
+
+    def test_unlabelled_prompt_does_not_resolve(self) -> None:
+        self.route((GET_PROMPT, prompt_row(1, labels=json.dumps([]))))
+        response = self.client.get(
+            BASE + '/resolve', params={'ref': 'mender/core@stable'}
+        )
+        self.assertEqual(response.status_code, 404)
+
     def test_duplicate_is_409(self) -> None:
         self.route((MODEL, MODEL_ROW), (GET_PROMPT, prompt_row()))
         response = self.client.post(BASE + '/', json=self._body())

@@ -47,7 +47,7 @@ describe('AssistantPromptTab', () => {
       ).toBeInTheDocument(),
     )
     expect(
-      screen.getByText(/reads this prompt after the CMS adoption change ships/),
+      screen.getByText(/its configured prompt reference points at/),
     ).toBeInTheDocument()
     expect(endpoints.getPrompt).toHaveBeenCalledWith(
       'imbi-assistant',

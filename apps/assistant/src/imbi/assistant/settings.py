@@ -34,7 +34,11 @@ class Assistant(pydantic_settings.BaseSettings):
     # bricks the conversation permanently. Roughly 4 chars/token, so the
     # default is about 30k tokens per result.
     max_tool_result_chars: int = 120_000
+    #: Replaces the CMS prompt and the packaged one. Jinja syntax, for
+    #: example ``{{ display_name }}``.
     system_prompt: str | None = None
+    #: The prompt CMS reference the assistant reads its prompt from.
+    prompt_ref: str = 'imbi-assistant/system@stable'
     # Where the assistant reaches the Imbi REST API. Distinct from
     # ``IMBI_API_URL`` (which carries the API's *public* URL for OAuth
     # redirect URIs and hypermedia links) — this is the in-cluster /

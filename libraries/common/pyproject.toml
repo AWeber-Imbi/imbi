@@ -21,6 +21,7 @@ dependencies = [
   "argon2-cffi>=23.1",
   "cryptography>=42.0.4",
   "httpx>=0.28.1,<1",
+  "jinja2~=3.1",
   "jsonpatch>=1.33",
   "jsonpointer>=3.1.1",
   "jsonschema-models",
@@ -93,4 +94,5 @@ include = [
   "src/imbi/common/log-config.toml",
   "src/imbi/common/clickhouse/schemata.toml",
   "src/imbi/common/graph/schemata.toml",
+  "src/imbi/common/prompts/defaults/*.md",
 ]
