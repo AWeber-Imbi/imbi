@@ -590,6 +590,22 @@ async def create_prompt(
             catalog.
 
     """
+    return await insert_prompt(db, data, auth.principal_name)
+
+
+async def insert_prompt(
+    db: graph.Graph, data: PromptCreate, created_by: str
+) -> PromptResponse:
+    """Validate and write a prompt with its first version.
+
+    ``imbi-api setup-prompts`` uses this too, so a seeded prompt is
+    written exactly like one created through the API.
+
+    Raises:
+        fastapi.HTTPException: 409 when ``namespace/slug`` is taken, 422
+            when a template or the model is not valid.
+
+    """
     slug = data.slug or slugify.slugify(data.name)
     if not re.match(models.PROMPT_NAME_PATTERN, slug):
         raise _unprocessable(f'Slug {slug!r} is not valid')
@@ -611,7 +627,7 @@ async def create_prompt(
             models.PromptLabel(
                 name=data.default_label,
                 version=1,
-                updated_by=auth.principal_name,
+                updated_by=created_by,
                 updated_at=now,
             )
         ],
@@ -623,7 +639,7 @@ async def create_prompt(
         _PROMPT_JSON_FIELDS,
     )
     _version, version_props = _version_props(
-        prompt, 1, data.version, model_id, auth.principal_name
+        prompt, 1, data.version, model_id, created_by
     )
     # Both nodes are written in one statement, so the parameter names
     # of the version are prefixed to keep them apart from the prompt's.
