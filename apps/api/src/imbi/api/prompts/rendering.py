@@ -466,6 +466,7 @@ def _safe_string(value: object) -> str:
 def _finalize(value: object) -> object:
     """Check each ``{{ }}`` value before it is turned into text."""
     _check_size(value)
+    _spend(_measure(value))
     return value
 
 
@@ -670,9 +671,16 @@ _TYPES: dict[str, tuple[type, ...]] = {
 
 
 def _check_structure(node: jinja2.nodes.Node, depth: int = 0) -> None:
-    """Reject macros, recursive loops, and loops nested too deep."""
+    """Reject macros, block assignments, filter blocks, recursive loops,
+    and loops nested too deep.
+    """
     if isinstance(node, (jinja2.nodes.Macro, jinja2.nodes.CallBlock)):
         raise RenderError('Macros are not allowed')
+    # Both collect their body in memory, outside the streamed output cap.
+    if isinstance(node, (jinja2.nodes.AssignBlock, jinja2.nodes.FilterBlock)):
+        raise RenderError(
+            'Block assignments and filter blocks are not allowed'
+        )
     if isinstance(node, jinja2.nodes.For):
         if node.recursive:
             raise RenderError('Recursive loops are not allowed')

@@ -211,6 +211,18 @@ class RenderTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(text.startswith('N0 N1 '))
 
+    async def test_output_values_pay_for_their_size(self) -> None:
+        # The output cap or the work budget stops it; either is fast.
+        started = time.monotonic()
+        with self.assertRaisesRegex(rendering.RenderError, 'work|limit'):
+            await self.render(
+                '{% for a in range(1000) %}{% for b in range(1000) %}'
+                '{{ d }}{% endfor %}{% endfor %}',
+                {'d': {'s': 'x' * 200000}},
+                d=models.PromptVariable(type='object'),
+            )
+        self.assertLess(time.monotonic() - started, 2.0)
+
     async def test_namespace_is_not_available(self) -> None:
         with self.assertRaises(rendering.RenderError):
             await self.render('{% set ns = namespace(s=1) %}{{ ns.s }}')
@@ -266,6 +278,15 @@ class CheckTestCase(unittest.TestCase):
         source = '{% for x in [1] recursive %}{{ loop([x]) }}{% endfor %}'
         with self.assertRaisesRegex(rendering.RenderError, 'Recursive'):
             rendering.check_syntax({'system': source})
+
+    def test_rejects_block_assignments_and_filter_blocks(self) -> None:
+        for source in (
+            '{% set x %}body{% endset %}{{ x }}',
+            '{% filter upper %}body{% endfilter %}',
+        ):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(rendering.RenderError, 'Block'):
+                    rendering.check_syntax({'system': source})
 
     def test_variable_names(self) -> None:
         with self.assertRaises(rendering.RenderError):
