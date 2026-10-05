@@ -393,7 +393,7 @@ def _check_label_name(label: str) -> None:
     A reference resolves ``@<digits>`` as a version number, so such a
     label could never be resolved.
     """
-    if label.isdigit():
+    if label.isascii() and label.isdigit():
         raise _unprocessable(
             f'Label {label!r} is not valid; a label made only of digits '
             'is read as a version number'
@@ -577,7 +577,7 @@ async def _resolve(
     """
     namespace, slug, selector = parse_ref(ref)
     prompt, _latest = await _fetch_prompt(db, namespace, slug)
-    if selector is not None and selector.isdigit():
+    if selector is not None and selector.isascii() and selector.isdigit():
         return prompt, await _fetch_version(db, prompt, int(selector)), None
     by_name = {label.name: label for label in prompt.labels}
     label = by_name.get(selector or '') or by_name.get(prompt.default_label)

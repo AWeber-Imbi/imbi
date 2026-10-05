@@ -153,12 +153,12 @@ function PromptView({
       return values
     },
     onError: (err) => toast.error(extractApiErrorDetail(err)),
-    onSuccess: async (values) => {
+    onSettled: () => invalidate(),
+    onSuccess: (values) => {
       setPromoting(false)
       toast.success(
         `${prompt.ref}@${values.label} now points at v${values.version}`,
       )
-      await invalidate()
     },
   })
 
