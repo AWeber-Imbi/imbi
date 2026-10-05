@@ -65,10 +65,16 @@ export function PromptEditor({
     enabled: !!orgSlug,
     queryFn: ({ signal }) => getPrompt(orgSlug!, namespace, slug, signal),
     queryKey: queryKeys.prompt(orgSlug ?? '', namespace, slug),
+    // A missing prompt is an answer, not a failure: show the empty state
+    // at once instead of retrying.
+    retry: (failures, error) =>
+      !(error instanceof ApiError && error.status === 404) && failures < 1,
   })
 
   if (!orgSlug) return null
-  if (promptQuery.isLoading) return <Sk className="h-40 w-full" />
+  // ``isPending``, not ``isLoading``: a retry paused while the window is
+  // not focused is pending but not loading, and must not render nothing.
+  if (promptQuery.isPending) return <Sk className="h-40 w-full" />
   if (
     promptQuery.error instanceof ApiError &&
     promptQuery.error.status === 404
