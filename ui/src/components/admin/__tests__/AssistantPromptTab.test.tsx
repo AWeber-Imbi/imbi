@@ -47,7 +47,7 @@ describe('AssistantPromptTab', () => {
       ).toBeInTheDocument(),
     )
     expect(
-      screen.getByText(/uses the version the stable label points at/),
+      screen.getByText(/its configured prompt reference points at/),
     ).toBeInTheDocument()
     expect(endpoints.getPrompt).toHaveBeenCalledWith(
       'imbi-assistant',
