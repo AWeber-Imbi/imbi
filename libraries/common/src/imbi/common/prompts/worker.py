@@ -152,6 +152,9 @@ async def _serve(channel: _Channel) -> None:
         message = await channel.receive()
         if message is None:
             return
+        if message.get('type') == 'call_result':
+            # A provider reply that came after this render timed out.
+            continue
         if message.get('type') != 'render':
             raise ValueError(f'unexpected message {message.get("type")!r}')
         try:

@@ -202,6 +202,24 @@ class FailureTestCase(PoolTestCase):
                     )
         self.assertEqual(await self.render('ok'), 'ok')
 
+    async def test_late_provider_reply_does_not_break_the_worker(
+        self,
+    ) -> None:
+        # The provider answers after the worker's own timeout but before
+        # the parent's, so the parent sends a reply the worker no longer
+        # waits for. The kept worker must ignore it on the next render.
+        async def project(project_id: object) -> object:
+            await asyncio.sleep(rendering.RENDER_TIMEOUT + pool.KILL_GRACE / 2)
+            return {'name': 'x'}
+
+        with self.assertRaisesRegex(rendering.RenderError, 'longer than'):
+            await self.render(
+                '{{ project(1).name }}', providers={'project': project}
+            )
+        pids = pool.get_pool().pids
+        self.assertEqual(await self.render('ok'), 'ok')
+        self.assertEqual(pool.get_pool().pids, pids)
+
     async def test_crashed_worker_is_replaced(self) -> None:
         async def project(project_id: object) -> object:
             for pid in pool.get_pool().pids:
