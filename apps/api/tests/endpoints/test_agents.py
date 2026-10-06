@@ -468,6 +468,21 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('DETACH DELETE v', delete[0])
         self.assertEqual(delete[1], {'id': 'agent-1', 'n': 2})
 
+    def test_put_set_failure_removes_new_version(self) -> None:
+        # fetch, version, set (fails), delete v2
+        self.mock_db.execute.side_effect = [
+            [self._row()],
+            [{'n': 2}],
+            psycopg.errors.InternalError('Entity failed to be updated'),
+            [],
+        ]
+        with self.assertRaises(psycopg.errors.InternalError):
+            self.client.put(BASE + '/triage', json={'name': 'New'})
+        self.assertEqual(self.mock_db.execute.await_count, 4)
+        delete = self.mock_db.execute.await_args_list[3].args
+        self.assertIn('DETACH DELETE v', delete[0])
+        self.assertEqual(delete[1], {'id': 'agent-1', 'n': 2})
+
     def test_put_null_name_rejected(self) -> None:
         self.mock_db.execute.return_value = [self._row()]
         response = self.client.put(BASE + '/triage', json={'name': None})
@@ -552,19 +567,19 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     # -- Delete --------------------------------------------------------
 
     def test_delete_removes_versions_then_agent(self) -> None:
-        self.mock_db.execute.side_effect = [
-            [{'id': 'agent-1'}],
-            [],
-            [{'deleted': 1}],
-        ]
+        self.mock_db.execute.return_value = [{'id': 'agent-1'}]
         response = self.client.delete(BASE + '/triage')
         self.assertEqual(response.status_code, 204)
-        queries = self._queries()
-        self.assertIn('AgentVersion', queries[1])
-        self.assertIn('DETACH DELETE v', queries[1])
-        self.assertIn('DETACH DELETE a', queries[2])
-        for call in self.mock_db.execute.await_args_list[1:]:
-            self.assertEqual(call.args[1], {'id': 'agent-1'})
+        # Both deletes run in one transaction.
+        self.assertEqual(self.mock_db.execute.await_count, 1)
+        self.mock_db._execute_batch.assert_awaited_once()
+        statements = self.mock_db._execute_batch.await_args.args[0]
+        self.assertEqual(len(statements), 2)
+        self.assertIn('AgentVersion', statements[0].cypher)
+        self.assertIn('DETACH DELETE v', statements[0].cypher)
+        self.assertIn('DETACH DELETE a', statements[1].cypher)
+        for stmt in statements:
+            self.assertEqual(stmt.params, {'id': 'agent-1'})
 
     def test_delete_not_found(self) -> None:
         self.mock_db.execute.return_value = []

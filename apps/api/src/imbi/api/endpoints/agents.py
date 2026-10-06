@@ -24,6 +24,7 @@ from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
+from imbi.common.graph import cypher as graph_cypher
 from imbi.common import patch as json_patch
 from imbi.common.prompts import resolve as prompt_resolve
 
@@ -587,9 +588,9 @@ async def _apply(
             }
         )
 
-    # The properties are set before the edges change. If the
-    # ``(org_id, slug)`` unique index stops the write, only the new
-    # version must be removed.
+    # The properties are set before the edges change. If the write
+    # fails for any reason (for example, the ``(org_id, slug)`` unique
+    # index), only the new version must be removed.
     query = (
         'MATCH (a:Agent {{id: {agent_id}}})'
         f' {set_clause("a", props)}'
@@ -600,7 +601,7 @@ async def _apply(
             records = await db.execute(
                 query, {**props, 'agent_id': agent_id}, ['slug']
             )
-    except fastapi.HTTPException:
+    except Exception:
         if n is not None:
             await db.execute(
                 _DELETE_VERSION_QUERY, {'id': agent_id, 'n': n}, []
@@ -830,10 +831,15 @@ async def delete_agent(
     if not records:
         raise _not_found(slug)
     params = {'id': str(graph.parse_agtype(records[0]['id']))}
-    # Versions first: a failure between the two writes leaves an agent
-    # with no versions, which a second DELETE removes.
-    await db.execute(_DELETE_VERSIONS_QUERY, params, [])
-    await db.execute(_DELETE_AGENT_QUERY, params, ['deleted'])
+    # One transaction: the versions and the agent go together, or
+    # neither goes. ``_execute_batch`` is the transactional primitive
+    # that other endpoints also use.
+    await db._execute_batch(  # pyright: ignore[reportPrivateUsage]
+        [
+            graph_cypher.Statement(_DELETE_VERSIONS_QUERY, params),
+            graph_cypher.Statement(_DELETE_AGENT_QUERY, params),
+        ]
+    )
 
 
 # --- Version endpoints -------------------------------------------------
