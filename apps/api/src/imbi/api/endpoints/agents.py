@@ -67,12 +67,14 @@ PromptRef = typing.Annotated[
 # --- Schemas -----------------------------------------------------------
 
 
-class TeamRef(pydantic.BaseModel):
+# The ``Agent`` prefix keeps these schema names unique in the OpenAPI
+# document. Other endpoints have a different ``TeamRef`` and ``TagRef``.
+class AgentTeamRef(pydantic.BaseModel):
     name: str
     slug: str
 
 
-class TagRef(pydantic.BaseModel):
+class AgentTagRef(pydantic.BaseModel):
     name: str
     slug: str
     color: str | None = None
@@ -160,8 +162,8 @@ class AgentResponse(pydantic.BaseModel):
     slug: str
     description: str | None = None
     icon: str | None = None
-    team: TeamRef | None = None
-    tags: list[TagRef] = []
+    team: AgentTeamRef | None = None
+    tags: list[AgentTagRef] = []
     enabled: bool = True
     slack_channel: str | None = None
     prompt_ref: str | None = None
