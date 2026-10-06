@@ -544,6 +544,34 @@ class ProjectModelTestCase(unittest.TestCase):
         self.assertEqual('12345', project.identifiers['github'])
 
 
+class TagModelTestCase(unittest.TestCase):
+    """Test cases for the Tag model."""
+
+    def _org(self) -> models.Organization:
+        return models.Organization(name='Org', slug='org')
+
+    def test_color_defaults_to_none(self) -> None:
+        tag = models.Tag(name='ADR', slug='adr', organization=self._org())
+        self.assertIsNone(tag.color)
+
+    def test_color_accepts_hex(self) -> None:
+        tag = models.Tag(
+            name='ADR', slug='adr', organization=self._org(), color='#3b82F6'
+        )
+        self.assertEqual(tag.color, '#3b82F6')
+
+    def test_color_rejects_invalid(self) -> None:
+        for color in ('blue', '#3B82F', '#3B82F6AA', '3B82F6'):
+            with self.subTest(color=color):
+                with self.assertRaises(pydantic.ValidationError):
+                    models.Tag(
+                        name='ADR',
+                        slug='adr',
+                        organization=self._org(),
+                        color=color,
+                    )
+
+
 class DocumentTemplateModelTestCase(unittest.TestCase):
     """Test cases for DocumentTemplate model."""
 

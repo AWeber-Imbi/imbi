@@ -967,6 +967,15 @@ class Project(Node):
 class Tag(Node):
     organization: BelongsToOrganization
 
+    color: typing.Annotated[
+        str | None,
+        pydantic.Field(
+            default=None,
+            pattern=r'^#[0-9A-Fa-f]{6}$',
+            description='Hex color for tag labels (e.g. #3B82F6)',
+        ),
+    ]
+
 
 class Document(GraphModel):
     """A free-form, taggable document.
