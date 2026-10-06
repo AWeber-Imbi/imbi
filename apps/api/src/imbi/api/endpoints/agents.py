@@ -18,6 +18,7 @@ import typing
 
 import fastapi
 import nanoid
+import psycopg.errors
 import pydantic
 
 from imbi.api.auth import permissions
@@ -298,11 +299,6 @@ DETACH DELETE a
 RETURN 1 AS deleted
 """
 
-_DELETE_VERSION_QUERY: typing.LiteralString = """
-MATCH (v:AgentVersion {{agent_id: {id}, n: {n}}})
-DETACH DELETE v
-"""
-
 
 # --- Helpers -----------------------------------------------------------
 
@@ -498,27 +494,21 @@ async def _validate_tag_slugs(
         raise _unprocessable(f'Tag slug(s) not found: {sorted(missing)!r}')
 
 
-async def _replace_tags(
-    db: graph.Pool, agent_id: str, tag_slugs: list[str]
-) -> None:
-    await db.execute(_DETACH_TAGS_QUERY, {'id': agent_id}, ['removed'])
-    if tag_slugs:
-        await db.execute(
-            _ATTACH_TAGS_QUERY,
-            {'id': agent_id, 'tag_slugs': tag_slugs},
-            ['attached'],
-        )
+def _version_conflict_detail(n: int) -> str:
+    return (
+        f'Version {n} of this agent was saved by another request; '
+        'reload the agent and try again'
+    )
 
 
-async def _write_version(
-    db: graph.Pool,
+def _version_statement(
     agent_id: str,
     n: int,
     snapshot: AgentSnapshot,
     summary: str | None,
     created_by: str,
-) -> None:
-    """Write version ``n``, or raise 409 when it exists already."""
+) -> graph_cypher.Statement:
+    """Return the statement that writes version ``n`` of an agent."""
     props: dict[str, typing.Any] = {
         'id': nanoid.generate(),
         'agent_id': agent_id,
@@ -534,11 +524,21 @@ async def _write_version(
         ' CREATE (v)-[:VERSION_OF]->(a)'
         ' RETURN v.n AS n'
     )
-    with conflict_on_unique_violation(
-        f'Version {n} of this agent was saved by another request; '
-        'reload the agent and try again'
-    ):
-        await db.execute(query, props, ['n'])
+    return graph_cypher.Statement(query, props)
+
+
+async def _write_version(
+    db: graph.Pool,
+    agent_id: str,
+    n: int,
+    snapshot: AgentSnapshot,
+    summary: str | None,
+    created_by: str,
+) -> None:
+    """Write version ``n``, or raise 409 when it exists already."""
+    stmt = _version_statement(agent_id, n, snapshot, summary, created_by)
+    with conflict_on_unique_violation(_version_conflict_detail(n)):
+        await db.execute(stmt.cypher, stmt.params, ['n'])
 
 
 async def _apply(
@@ -552,7 +552,8 @@ async def _apply(
 ) -> dict[str, typing.Any]:
     """Write ``target`` and ``enabled`` over the stored agent.
 
-    A new version is written only when the snapshot changes.
+    A new version is written only when the snapshot changes. All the
+    writes run in one transaction.
     """
     current = _snapshot_of(existing)
     config_changed = target != current
@@ -561,12 +562,14 @@ async def _apply(
         return existing
 
     agent_id = str(existing['id'])
+    ids = {'id': agent_id}
     props: dict[str, typing.Any] = {'enabled': enabled, 'updated_at': _now()}
-    team_id: str | None = None
+    statements: list[graph_cypher.Statement] = []
     n: int | None = None
     if config_changed:
         if target.slug != current.slug:
             await _assert_slug_free(db, org_slug, target.slug)
+        team_id: str | None = None
         if target.team != current.team:
             team_id = await _team_id(db, org_slug, target.team)
         if target.tags != current.tags:
@@ -574,7 +577,24 @@ async def _apply(
         n = int(existing['_latest']) + 1
         # The version is written first. Its unique index stops a
         # concurrent save before that save changes the agent.
-        await _write_version(db, agent_id, n, target, summary, principal)
+        statements.append(
+            _version_statement(agent_id, n, target, summary, principal)
+        )
+        if team_id is not None:
+            statements += [
+                graph_cypher.Statement(_DETACH_TEAM_QUERY, ids),
+                graph_cypher.Statement(
+                    _ATTACH_TEAM_QUERY, {**ids, 'team_id': team_id}
+                ),
+            ]
+        if target.tags != current.tags:
+            statements.append(graph_cypher.Statement(_DETACH_TAGS_QUERY, ids))
+            if target.tags:
+                statements.append(
+                    graph_cypher.Statement(
+                        _ATTACH_TAGS_QUERY, {**ids, 'tag_slugs': target.tags}
+                    )
+                )
         props.update(
             {
                 'name': target.name,
@@ -588,37 +608,28 @@ async def _apply(
             }
         )
 
-    # The properties are set before the edges change. If the write
-    # fails for any reason (for example, the ``(org_id, slug)`` unique
-    # index), only the new version must be removed.
-    query = (
-        'MATCH (a:Agent {{id: {agent_id}}})'
-        f' {set_clause("a", props)}'
-        ' RETURN a.slug AS slug'
-    )
-    try:
-        with conflict_on_unique_violation(_slug_taken_detail(target.slug)):
-            records = await db.execute(
-                query, {**props, 'agent_id': agent_id}, ['slug']
-            )
-    except Exception:
-        if n is not None:
-            await db.execute(
-                _DELETE_VERSION_QUERY, {'id': agent_id, 'n': n}, []
-            )
-        raise
-    if not records:
-        raise _not_found(str(existing['slug']))
-
-    if team_id is not None:
-        await db.execute(_DETACH_TEAM_QUERY, {'id': agent_id}, ['removed'])
-        await db.execute(
-            _ATTACH_TEAM_QUERY,
-            {'id': agent_id, 'team_id': team_id},
-            ['team_id'],
+    statements.append(
+        graph_cypher.Statement(
+            'MATCH (a:Agent {{id: {agent_id}}})'
+            f' {set_clause("a", props)}'
+            ' RETURN a.slug AS slug',
+            {**props, 'agent_id': agent_id},
         )
-    if config_changed and target.tags != current.tags:
-        await _replace_tags(db, agent_id, target.tags)
+    )
+    # One transaction: the version, the properties, and the edges are
+    # all written, or none is. If the agent was deleted, every MATCH
+    # finds nothing, nothing is written, and the read below gives 404.
+    try:
+        await db._execute_batch(statements)  # pyright: ignore[reportPrivateUsage]
+    except psycopg.errors.UniqueViolation as exc:
+        if n is not None and (
+            target.slug == current.slug
+            or exc.diag.table_name == 'AgentVersion'
+        ):
+            detail = _version_conflict_detail(n)
+        else:
+            detail = _slug_taken_detail(target.slug)
+        raise fastapi.HTTPException(status_code=409, detail=detail) from exc
     return await _fetch_agent(db, org_slug, target.slug)
 
 

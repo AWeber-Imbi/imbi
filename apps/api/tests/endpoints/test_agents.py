@@ -127,11 +127,22 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def _queries(self) -> list[str]:
         return [c.args[0] for c in self.mock_db.execute.await_args_list]
 
+    def _batch(self) -> list[typing.Any]:
+        """Return the statements of the one transactional write."""
+        self.mock_db._execute_batch.assert_awaited_once()
+        return list(self.mock_db._execute_batch.await_args.args[0])
+
     def _version_writes(self) -> list[dict[str, typing.Any]]:
-        return [
-            c.args[1]
+        writes = [
+            (c.args[0], c.args[1])
             for c in self.mock_db.execute.await_args_list
-            if 'CREATE (v:AgentVersion' in c.args[0]
+        ]
+        for c in self.mock_db._execute_batch.await_args_list:
+            writes += [(s.cypher, s.params) for s in c.args[0]]
+        return [
+            params
+            for cypher, params in writes
+            if 'CREATE (v:AgentVersion' in cypher
         ]
 
     # -- Create --------------------------------------------------------
@@ -346,11 +357,9 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     # -- Update --------------------------------------------------------
 
     def test_put_change_writes_new_version(self) -> None:
-        # fetch, version, set, fetch
+        # fetch, batch (version, set), fetch
         self.mock_db.execute.side_effect = [
             [self._row(latest=3)],
-            [{'n': 4}],
-            [{'slug': 'triage'}],
             [self._row(latest=4, slack_channel='#triage')],
         ]
         response = self.client.put(
@@ -364,7 +373,9 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(version['summary'], 'Move')
         snapshot = json.loads(version['snapshot'])
         self.assertEqual(snapshot['slack_channel'], '#triage')
-        set_params = self.mock_db.execute.await_args_list[2].args[1]
+        statements = self._batch()
+        self.assertEqual(len(statements), 2)
+        set_params = statements[1].params
         self.assertEqual(set_params['version'], 4)
         self.assertEqual(set_params['slack_channel'], '#triage')
 
@@ -385,30 +396,24 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_put_enabled_only_writes_no_version(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._row()],
-            [{'slug': 'triage'}],
             [self._row(enabled=False)],
         ]
         response = self.client.put(BASE + '/triage', json={'enabled': False})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()['enabled'])
         self.assertEqual(self._version_writes(), [])
-        set_params = self.mock_db.execute.await_args_list[1].args[1]
+        (set_stmt,) = self._batch()
+        set_params = set_stmt.params
         self.assertEqual(
             set(set_params), {'enabled', 'updated_at', 'agent_id'}
         )
 
     def test_put_team_and_tags_change(self) -> None:
-        # fetch, team, tags, version, set, team x2, tags x2, fetch
+        # fetch, team, tags, batch (version, team x2, tags x2, set), fetch
         self.mock_db.execute.side_effect = [
             [self._row(tags=['red'])],
             [{'team_id': 'team-2'}],
             [{'tag_slug': 'blue', 'found': True}],
-            [{'n': 2}],
-            [{'slug': 'triage'}],
-            [{'removed': 1}],
-            [{'team_id': 'team-2'}],
-            [{'removed': 1}],
-            [{'attached': 1}],
             [self._row(team='dev', tags=['blue'], latest=2)],
         ]
         response = self.client.put(
@@ -419,6 +424,23 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         snapshot = json.loads(self._version_writes()[0]['snapshot'])
         self.assertEqual(snapshot['team'], 'dev')
         self.assertEqual(snapshot['tags'], ['blue'])
+        # The version, the edges, and the properties are one
+        # transaction, so a failed edge write keeps the old state.
+        statements = self._batch()
+        self.assertEqual(len(statements), 6)
+        self.assertIn('CREATE (v:AgentVersion', statements[0].cypher)
+        self.assertIn('OWNED_BY', statements[1].cypher)
+        self.assertEqual(statements[2].params['team_id'], 'team-2')
+        self.assertIn('TAGGED_WITH', statements[3].cypher)
+        self.assertEqual(statements[4].params['tag_slugs'], ['blue'])
+        self.assertIn('SET', statements[5].cypher)
+
+    def test_put_deleted_agent_is_not_found(self) -> None:
+        # fetch, batch (matches nothing), fetch (agent is gone)
+        self.mock_db.execute.side_effect = [[self._row()], []]
+        response = self.client.put(BASE + '/triage', json={'name': 'New'})
+        self.assertEqual(response.status_code, 404)
+        self.mock_db._execute_batch.assert_awaited_once()
 
     def test_put_unknown_team(self) -> None:
         self.mock_db.execute.side_effect = [
@@ -439,49 +461,39 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(self._version_writes(), [])
 
     def test_put_concurrent_version_conflict(self) -> None:
-        self.mock_db.execute.side_effect = [
-            [self._row()],
-            psycopg.errors.UniqueViolation(),
-        ]
+        self.mock_db.execute.side_effect = [[self._row()]]
+        self.mock_db._execute_batch.side_effect = (
+            psycopg.errors.UniqueViolation()
+        )
         response = self.client.put(BASE + '/triage', json={'name': 'New'})
         self.assertEqual(response.status_code, 409)
-        # The agent itself is not changed after the failed version.
-        self.assertEqual(self.mock_db.execute.await_count, 2)
+        self.assertIn('Version 2', response.json()['detail'])
+        # The transaction rolls back, and nothing else is written.
+        self.assertEqual(self.mock_db.execute.await_count, 1)
 
     def test_put_concurrent_slug_conflict(self) -> None:
-        # fetch, slug check, version, set (unique violation), delete v2
-        self.mock_db.execute.side_effect = [
-            [self._row(tags=['red'])],
-            [],
-            [{'n': 2}],
-            psycopg.errors.UniqueViolation(),
-            [],
-        ]
+        # fetch, slug check, batch (unique violation)
+        self.mock_db.execute.side_effect = [[self._row(tags=['red'])], []]
+        self.mock_db._execute_batch.side_effect = (
+            psycopg.errors.UniqueViolation()
+        )
         response = self.client.put(
             BASE + '/triage', json={'slug': 'taken', 'tags': []}
         )
         self.assertEqual(response.status_code, 409)
         self.assertIn('already exists', response.json()['detail'])
-        # The new version is removed, and the edges do not change.
-        self.assertEqual(self.mock_db.execute.await_count, 5)
-        delete = self.mock_db.execute.await_args_list[4].args
-        self.assertIn('DETACH DELETE v', delete[0])
-        self.assertEqual(delete[1], {'id': 'agent-1', 'n': 2})
+        # The transaction rolls back, so no clean-up write is needed.
+        self.assertEqual(self.mock_db.execute.await_count, 2)
 
-    def test_put_set_failure_removes_new_version(self) -> None:
-        # fetch, version, set (fails), delete v2
-        self.mock_db.execute.side_effect = [
-            [self._row()],
-            [{'n': 2}],
-            psycopg.errors.InternalError('Entity failed to be updated'),
-            [],
-        ]
+    def test_put_write_failure_propagates(self) -> None:
+        self.mock_db.execute.side_effect = [[self._row()]]
+        self.mock_db._execute_batch.side_effect = psycopg.errors.InternalError(
+            'Entity failed to be updated'
+        )
         with self.assertRaises(psycopg.errors.InternalError):
             self.client.put(BASE + '/triage', json={'name': 'New'})
-        self.assertEqual(self.mock_db.execute.await_count, 4)
-        delete = self.mock_db.execute.await_args_list[3].args
-        self.assertIn('DETACH DELETE v', delete[0])
-        self.assertEqual(delete[1], {'id': 'agent-1', 'n': 2})
+        # The transaction rolls back, so no clean-up write is needed.
+        self.assertEqual(self.mock_db.execute.await_count, 1)
 
     def test_put_null_name_rejected(self) -> None:
         self.mock_db.execute.return_value = [self._row()]
@@ -498,8 +510,6 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_change_writes_new_version(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._row()],
-            [{'n': 2}],
-            [{'slug': 'triage'}],
             [self._row(latest=2, prompt_ref='agents/triage@canary')],
         ]
         response = self.client.patch(
@@ -525,7 +535,6 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     def test_patch_enabled_only_writes_no_version(self) -> None:
         self.mock_db.execute.side_effect = [
             [self._row()],
-            [{'slug': 'triage'}],
             [self._row(enabled=False)],
         ]
         response = self.client.patch(
@@ -613,12 +622,10 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_restore_writes_new_version(self) -> None:
-        # fetch, version, version write, set, fetch
+        # fetch, version, batch (version write, set), fetch
         self.mock_db.execute.side_effect = [
             [self._row(latest=3, slack_channel='#new')],
             [self._version(1)],
-            [{'n': 4}],
-            [{'slug': 'triage'}],
             [self._row(latest=4)],
         ]
         response = self.client.post(BASE + '/triage/versions/1/restore')
@@ -630,7 +637,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(
             json.loads(version['snapshot'])['slack_channel'], '#ops'
         )
-        set_params = self.mock_db.execute.await_args_list[3].args[1]
+        set_params = self._batch()[1].params
         self.assertEqual(set_params['slack_channel'], '#ops')
         self.assertTrue(set_params['enabled'])
 
