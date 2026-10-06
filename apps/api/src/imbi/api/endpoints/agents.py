@@ -297,6 +297,11 @@ DETACH DELETE a
 RETURN 1 AS deleted
 """
 
+_DELETE_VERSION_QUERY: typing.LiteralString = """
+MATCH (v:AgentVersion {{agent_id: {id}, n: {n}}})
+DETACH DELETE v
+"""
+
 
 # --- Helpers -----------------------------------------------------------
 
@@ -434,14 +439,23 @@ def _current_document(agent: dict[str, typing.Any]) -> dict[str, typing.Any]:
     }
 
 
+def _slug_taken_detail(slug: str) -> str:
+    return f'Agent with slug {slug!r} already exists'
+
+
 async def _assert_slug_free(db: graph.Pool, org_slug: str, slug: str) -> None:
+    """Raise 409 when the org has an agent with ``slug``.
+
+    This check gives a fast, clear error. It is not sufficient by
+    itself, because two concurrent requests can both pass it. The
+    ``(org_id, slug)`` unique index stops the second write.
+    """
     records = await db.execute(
         _SLUG_TAKEN_QUERY, {'slug': slug, 'org_slug': org_slug}, ['id']
     )
     if records:
         raise fastapi.HTTPException(
-            status_code=409,
-            detail=f'Agent with slug {slug!r} already exists',
+            status_code=409, detail=_slug_taken_detail(slug)
         )
 
 
@@ -547,10 +561,11 @@ async def _apply(
 
     agent_id = str(existing['id'])
     props: dict[str, typing.Any] = {'enabled': enabled, 'updated_at': _now()}
+    team_id: str | None = None
+    n: int | None = None
     if config_changed:
         if target.slug != current.slug:
             await _assert_slug_free(db, org_slug, target.slug)
-        team_id: str | None = None
         if target.team != current.team:
             team_id = await _team_id(db, org_slug, target.team)
         if target.tags != current.tags:
@@ -571,26 +586,38 @@ async def _apply(
                 'version': n,
             }
         )
-        if team_id is not None:
-            await db.execute(_DETACH_TEAM_QUERY, {'id': agent_id}, ['removed'])
-            await db.execute(
-                _ATTACH_TEAM_QUERY,
-                {'id': agent_id, 'team_id': team_id},
-                ['team_id'],
-            )
-        if target.tags != current.tags:
-            await _replace_tags(db, agent_id, target.tags)
 
+    # The properties are set before the edges change. If the
+    # ``(org_id, slug)`` unique index stops the write, only the new
+    # version must be removed.
     query = (
         'MATCH (a:Agent {{id: {agent_id}}})'
         f' {set_clause("a", props)}'
         ' RETURN a.slug AS slug'
     )
-    records = await db.execute(
-        query, {**props, 'agent_id': agent_id}, ['slug']
-    )
+    try:
+        with conflict_on_unique_violation(_slug_taken_detail(target.slug)):
+            records = await db.execute(
+                query, {**props, 'agent_id': agent_id}, ['slug']
+            )
+    except fastapi.HTTPException:
+        if n is not None:
+            await db.execute(
+                _DELETE_VERSION_QUERY, {'id': agent_id, 'n': n}, []
+            )
+        raise
     if not records:
         raise _not_found(str(existing['slug']))
+
+    if team_id is not None:
+        await db.execute(_DETACH_TEAM_QUERY, {'id': agent_id}, ['removed'])
+        await db.execute(
+            _ATTACH_TEAM_QUERY,
+            {'id': agent_id, 'team_id': team_id},
+            ['team_id'],
+        )
+    if config_changed and target.tags != current.tags:
+        await _replace_tags(db, agent_id, target.tags)
     return await _fetch_agent(db, org_slug, target.slug)
 
 
@@ -619,7 +646,6 @@ async def create_agent(
     snapshot = _snapshot_from(data)
     team_id = await _team_id(db, org_slug, data.team)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
-    # Slugs are unique per org, not globally, so app code enforces it.
     await _assert_slug_free(db, org_slug, data.slug)
 
     now = _now()
@@ -638,31 +664,51 @@ async def create_agent(
         'created_at': now,
         'updated_at': now,
     }
+    # ``org_id`` is copied from the organization so that the
+    # ``(org_id, slug)`` unique index stops a concurrent create.
     query = (
         'MATCH (o:Organization {{slug: {org_slug}}}),'
         ' (t:Team {{id: {team_id}}})'
         f' CREATE (a:Agent {props_template(props)})'
+        ' SET a.org_id = o.id'
         ' CREATE (a)-[:BELONGS_TO]->(o)'
         ' CREATE (a)-[:OWNED_BY]->(t)'
         ' RETURN a.id AS id'
     )
-    records = await db.execute(
-        query, {**props, 'org_slug': org_slug, 'team_id': team_id}, ['id']
-    )
+    with conflict_on_unique_violation(_slug_taken_detail(snapshot.slug)):
+        records = await db.execute(
+            query,
+            {**props, 'org_slug': org_slug, 'team_id': team_id},
+            ['id'],
+        )
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Organization with slug {org_slug!r} not found',
         )
-    if snapshot.tags:
-        await db.execute(
-            _ATTACH_TAGS_QUERY,
-            {'id': agent_id, 'tag_slugs': snapshot.tags},
-            ['attached'],
+    # The graph has no transaction across these writes. If a write
+    # fails, remove the agent, so that no agent exists without its
+    # version 1.
+    try:
+        if snapshot.tags:
+            await db.execute(
+                _ATTACH_TAGS_QUERY,
+                {'id': agent_id, 'tag_slugs': snapshot.tags},
+                ['attached'],
+            )
+        await _write_version(
+            db,
+            agent_id,
+            1,
+            snapshot,
+            data.version_summary,
+            auth.principal_name,
         )
-    await _write_version(
-        db, agent_id, 1, snapshot, data.version_summary, auth.principal_name
-    )
+    except Exception:
+        LOGGER.warning('Removing agent %s after a failed create', agent_id)
+        await db.execute(_DELETE_VERSIONS_QUERY, {'id': agent_id}, [])
+        await db.execute(_DELETE_AGENT_QUERY, {'id': agent_id}, ['deleted'])
+        raise
     return await _fetch_agent(db, org_slug, snapshot.slug)
 
 

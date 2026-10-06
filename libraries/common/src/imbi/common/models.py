@@ -917,8 +917,8 @@ class Agent(Node):
     """The definition of an agent in an organization.
 
     Only the definition is stored here; nothing runs an agent yet.
-    ``slug`` is unique per organization, which the endpoint enforces.
-    ``prompt_ref`` is a prompt CMS reference
+    ``slug`` is unique per organization: the ``(org_id, slug)`` unique
+    index enforces it. ``prompt_ref`` is a prompt CMS reference
     (``namespace/slug@label``). The prompt CMS owns the model and the
     model parameters, so the agent does not store them. ``version`` is
     the ``n`` of the newest :class:`AgentVersion`. Each change to the
@@ -927,6 +927,8 @@ class Agent(Node):
     """
 
     organization: BelongsToOrganization
+    #: Denormalised so ``(org_id, slug)`` can carry a unique index.
+    org_id: str | None = None
     team: typing.Annotated[
         Team, Edge(rel_type='OWNED_BY', direction='OUTGOING')
     ]

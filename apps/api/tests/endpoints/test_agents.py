@@ -201,6 +201,56 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn('already exists', response.json()['detail'])
 
+    def test_create_copies_org_id(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [],
+            [{'id': 'agent-1'}],
+            [{'n': 1}],
+            [self._row()],
+        ]
+        response = self.client.post(
+            BASE + '/', json={'name': 'T', 'slug': 'triage', 'team': 'ops'}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIn('SET a.org_id = o.id', self._queries()[2])
+
+    def test_create_concurrent_slug_conflict(self) -> None:
+        # The slug check passes, then the unique index stops the create.
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [],
+            psycopg.errors.UniqueViolation(),
+        ]
+        response = self.client.post(
+            BASE + '/', json={'name': 'T', 'slug': 'triage', 'team': 'ops'}
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+        self.assertEqual(self._version_writes(), [])
+
+    def test_create_removes_agent_when_version_fails(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            [],
+            [{'id': 'agent-1'}],
+            RuntimeError('version write failed'),
+            [],
+            [{'deleted': 1}],
+        ]
+        with self.assertRaises(RuntimeError):
+            self.client.post(
+                BASE + '/',
+                json={'name': 'T', 'slug': 'triage', 'team': 'ops'},
+            )
+        queries = self._queries()
+        self.assertIn('DETACH DELETE v', queries[4])
+        self.assertIn('DETACH DELETE a', queries[5])
+        agent_id = self.mock_db.execute.await_args_list[2].args[1]['id']
+        self.assertEqual(
+            self.mock_db.execute.await_args_list[5].args[1], {'id': agent_id}
+        )
+
     def test_create_unknown_team(self) -> None:
         self.mock_db.execute.return_value = [{'team_id': None}]
         response = self.client.post(
@@ -348,17 +398,17 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         )
 
     def test_put_team_and_tags_change(self) -> None:
-        # fetch, team, tags, version, team x2, tags x2, set, fetch
+        # fetch, team, tags, version, set, team x2, tags x2, fetch
         self.mock_db.execute.side_effect = [
             [self._row(tags=['red'])],
             [{'team_id': 'team-2'}],
             [{'tag_slug': 'blue', 'found': True}],
             [{'n': 2}],
+            [{'slug': 'triage'}],
             [{'removed': 1}],
             [{'team_id': 'team-2'}],
             [{'removed': 1}],
             [{'attached': 1}],
-            [{'slug': 'triage'}],
             [self._row(team='dev', tags=['blue'], latest=2)],
         ]
         response = self.client.put(
@@ -397,6 +447,26 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 409)
         # The agent itself is not changed after the failed version.
         self.assertEqual(self.mock_db.execute.await_count, 2)
+
+    def test_put_concurrent_slug_conflict(self) -> None:
+        # fetch, slug check, version, set (unique violation), delete v2
+        self.mock_db.execute.side_effect = [
+            [self._row(tags=['red'])],
+            [],
+            [{'n': 2}],
+            psycopg.errors.UniqueViolation(),
+            [],
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'slug': 'taken', 'tags': []}
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+        # The new version is removed, and the edges do not change.
+        self.assertEqual(self.mock_db.execute.await_count, 5)
+        delete = self.mock_db.execute.await_args_list[4].args
+        self.assertIn('DETACH DELETE v', delete[0])
+        self.assertEqual(delete[1], {'id': 'agent-1', 'n': 2})
 
     def test_put_null_name_rejected(self) -> None:
         self.mock_db.execute.return_value = [self._row()]

@@ -93,8 +93,9 @@ vlabel = "AIModel"
 attributes = ["model_id"]
 
 # ``Agent`` slugs are unique per organization, not across the
-# installation, so the endpoint enforces uniqueness and the slug index
-# is not unique.
+# installation, so the slug index is not unique. ``org_id`` is a copy
+# of the organization id, so ``(org_id, slug)`` can carry the unique
+# index that stops two concurrent writes with the same slug.
 [[vlabel_indexes]]
 vlabel = "Agent"
 attributes = ["id"]
@@ -103,6 +104,11 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "Agent"
 attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "Agent"
+attributes = ["org_id", "slug"]
+unique = true
 
 # Two concurrent saves compute the same next ``n``; this index makes
 # the second CREATE fail instead of writing a duplicate version.
