@@ -32,6 +32,7 @@ import asyncio
 import collections.abc
 import contextvars
 import functools
+import json
 import re
 import typing
 
@@ -816,12 +817,51 @@ class RenderedPrompt(typing.NamedTuple):
     messages: list[models.PromptMessage]
 
 
-async def render(
+class RenderedDecision(typing.NamedTuple):
+    #: A ``dict`` or ``list`` when the state renders to JSON, else text.
+    state: object
+    questions: dict[str, models.DecisionQuestion]
+
+
+def decision_sources(
+    version: models.PromptVersion,
+) -> dict[str, str]:
+    """Return every template of a decision version, by field label.
+
+    The labels (``state``, ``questions.<id>.instructions``,
+    ``questions.<id>.criteria.<key>``) name the field in an error.
+    Choice option names are not templates: code reads them.
+    """
+    sources = {'state': version.state}
+    for qid, question in version.questions.items():
+        base = f'questions.{qid}'
+        sources[f'{base}.instructions'] = question.instructions
+        match question:
+            case models.NoulQuestion(criteria=models.NoulCriteria() as c):
+                sources[f'{base}.criteria.true'] = c.true
+                sources[f'{base}.criteria.false'] = c.false
+            case models.ChoiceQuestion(criteria=options):
+                for key, text in options.items():
+                    if text is not None:
+                        sources[f'{base}.criteria.{key}'] = text
+            case models.ScoreQuestion(criteria=levels):
+                for index, text in enumerate(levels):
+                    sources[f'{base}.criteria.{index}'] = text
+            case _:
+                pass
+    return sources
+
+
+async def _render_sources(
     version: models.PromptVersion,
     variables: collections.abc.Mapping[str, object],
     providers: collections.abc.Mapping[str, Provider],
-) -> RenderedPrompt:
-    """Render the system prompt and each message of ``version``.
+    sources: collections.abc.Mapping[str, str],
+) -> dict[str, str]:
+    """Render each template in ``sources`` under one set of limits.
+
+    All templates of one render share the output budget, the work
+    budget, and the timeout.
 
     Raises:
         RenderError: The variables are not valid, the template fails or
@@ -864,15 +904,103 @@ async def render(
     token = _work.set([MAX_WORK])
     try:
         async with asyncio.timeout(RENDER_TIMEOUT):
-            system = await one(version.system)
-            messages = [
-                models.PromptMessage(role=m.role, content=await one(m.content))
-                for m in version.messages
-            ]
+            return {key: await one(text) for key, text in sources.items()}
     except TimeoutError as e:
         raise RenderError(
             f'Render took longer than {RENDER_TIMEOUT} seconds'
         ) from e
     finally:
         _work.reset(token)
-    return RenderedPrompt(system=system, messages=messages)
+
+
+async def render(
+    version: models.PromptVersion,
+    variables: collections.abc.Mapping[str, object],
+    providers: collections.abc.Mapping[str, Provider],
+) -> RenderedPrompt:
+    """Render the system prompt and each message of ``version``.
+
+    Raises:
+        RenderError: The variables are not valid, the template fails or
+            breaks a limit, the render takes too long, or the output is
+            too large.
+
+    """
+    sources = {'system': version.system} | {
+        f'messages.{i}': m.content for i, m in enumerate(version.messages)
+    }
+    rendered = await _render_sources(version, variables, providers, sources)
+    return RenderedPrompt(
+        system=rendered['system'],
+        messages=[
+            models.PromptMessage(
+                role=m.role, content=rendered[f'messages.{i}']
+            )
+            for i, m in enumerate(version.messages)
+        ],
+    )
+
+
+def _state_value(text: str) -> object:
+    """Send the state as JSON when it is a JSON object or array."""
+    try:
+        value: object = json.loads(text)
+    except ValueError:
+        return text
+    return value if isinstance(value, (dict, list)) else text
+
+
+async def render_decision(
+    version: models.PromptVersion,
+    variables: collections.abc.Mapping[str, object],
+    providers: collections.abc.Mapping[str, Provider],
+) -> RenderedDecision:
+    """Render the state and every question template of ``version``.
+
+    Raises:
+        RenderError: As :func:`render`.
+
+    """
+    rendered = await _render_sources(
+        version, variables, providers, decision_sources(version)
+    )
+    questions: dict[str, models.DecisionQuestion] = {}
+    for qid, question in version.questions.items():
+        base = f'questions.{qid}'
+        instructions = rendered[f'{base}.instructions']
+        match question:
+            case models.NoulQuestion():
+                criteria = (
+                    None
+                    if question.criteria is None
+                    else models.NoulCriteria(
+                        true=rendered[f'{base}.criteria.true'],
+                        false=rendered[f'{base}.criteria.false'],
+                    )
+                )
+                questions[qid] = models.NoulQuestion(
+                    instructions=instructions, criteria=criteria
+                )
+            case models.ChoiceQuestion():
+                questions[qid] = models.ChoiceQuestion(
+                    instructions=instructions,
+                    criteria={
+                        key: (
+                            None
+                            if text is None
+                            else rendered[f'{base}.criteria.{key}']
+                        )
+                        for key, text in question.criteria.items()
+                    },
+                )
+            case models.ScoreQuestion():
+                questions[qid] = models.ScoreQuestion(
+                    instructions=instructions,
+                    criteria=[
+                        rendered[f'{base}.criteria.{i}']
+                        for i in range(len(question.criteria))
+                    ],
+                )
+    return RenderedDecision(
+        state=_state_value(rendered['state']), questions=questions
+    )
