@@ -44,7 +44,8 @@ import {
 
 export interface AdminTableColumn<T> {
   cellAlign?: 'center' | 'left' | 'right'
-  header: string
+  // A node, so a header can hold a control such as a FilterPopover.
+  header: ReactNode
   headerAlign?: 'center' | 'left' | 'right'
   // When the cell renders its own interactive content (links, buttons,
   // toggles), set this so the cell stacks above the row link overlay and

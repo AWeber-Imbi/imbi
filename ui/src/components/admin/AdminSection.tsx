@@ -10,7 +10,7 @@ interface AdminSectionProps {
   /** List content (stats, table, etc.). */
   children: ReactNode
   /** Label for the create button, e.g. "New Team". */
-  createLabel: string
+  createLabel?: string
   /** List query error, if any. */
   error?: unknown
   /** Error banner title, e.g. "Failed to load teams". */
@@ -19,7 +19,8 @@ interface AdminSectionProps {
   headerActions?: ReactNode
   /** Optional extra controls rendered in the header (filters, etc.). */
   headerExtras?: ReactNode
-  onCreate: () => void
+  /** Omit to hide the create button, e.g. without create permission. */
+  onCreate?: () => void
   onSearchChange: (value: string) => void
   /** Controlled search value. */
   search: string
@@ -69,13 +70,15 @@ export function AdminSection({
         </div>
         <div className="flex items-center gap-2">
           {headerActions}
-          <Button
-            className="bg-action text-action-foreground hover:bg-action-hover"
-            onClick={onCreate}
-          >
-            <Plus className="mr-2 size-4" />
-            {createLabel}
-          </Button>
+          {onCreate && (
+            <Button
+              className="bg-action text-action-foreground hover:bg-action-hover"
+              onClick={onCreate}
+            >
+              <Plus className="mr-2 size-4" />
+              {createLabel}
+            </Button>
+          )}
         </div>
       </div>
 
