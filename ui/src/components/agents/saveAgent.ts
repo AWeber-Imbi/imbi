@@ -63,7 +63,8 @@ export class AgentSaveError extends Error {
  * Save the editor draft. When the system prompt, the model, or a model
  * parameter changed, write a new prompt version (create the prompt if
  * it does not exist), then move the `stable` label to it. Then create or
- * update the agent with `prompt_ref` set to `<namespace>/<slug>@stable`
+ * update the agent with `prompt_ref` set to
+ * `<namespace>/<org-slug>.<slug>@stable`
  * and `prompt_version` set to the new version, so that one save writes
  * one agent version that records both.
  *
@@ -80,10 +81,14 @@ export async function saveAgent({
   existing,
   orgSlug,
 }: SaveAgentArgs): Promise<SaveAgentResult> {
+  // Prompts are global, but agent slugs are unique only in an
+  // organization. A new prompt slug starts with the organization slug,
+  // so that an agent cannot write to the prompt of an agent in another
+  // organization that has the same slug.
   const target = (existing?.prompt_ref &&
     parsePromptRef(existing.prompt_ref)) || {
     namespace: AGENT_PROMPT_NAMESPACE,
-    slug: existing?.slug ?? draft.slug,
+    slug: `${orgSlug}.${existing?.slug ?? draft.slug}`,
   }
   let promptRef = existing?.prompt_ref ?? null
   let promptVersion: null | number = null

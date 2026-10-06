@@ -172,11 +172,11 @@ describe('saveAgent', () => {
       default_label: 'stable',
       kind: 'generative',
       namespace: 'agents',
-      slug: 'herald',
+      slug: 'acme.herald',
     })
     expect(endpoints.setPromptLabel).toHaveBeenCalledWith(
       'agents',
-      'herald',
+      'acme.herald',
       'stable',
       1,
     )
@@ -184,7 +184,7 @@ describe('saveAgent', () => {
     expect(doc).toMatchObject({
       enabled: true,
       name: 'Herald',
-      prompt_ref: 'agents/herald@stable',
+      prompt_ref: 'agents/acme.herald@stable',
       prompt_version: 1,
       slug: 'herald',
       team: 'platform',
