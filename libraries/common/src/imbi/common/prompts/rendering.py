@@ -859,7 +859,42 @@ async def _render_sources(
     providers: collections.abc.Mapping[str, Provider],
     sources: collections.abc.Mapping[str, str],
 ) -> dict[str, str]:
+    """Render each template in ``sources`` in a worker process.
+
+    The worker (:mod:`.worker`) runs :func:`render_sources_local`; the
+    parent can kill it, so a template that escapes the sandbox budgets
+    costs one disposable process. Providers still run here, in the
+    caller's process, with the caller's permissions.
+
+    Raises:
+        RenderError: As :func:`render_sources_local`, or the worker was
+            killed or stopped.
+
+    """
+    # Imported here: the pool imports this module.
+    from imbi.common.prompts import pool
+
+    validate_variables(version.variable_schema, variables)
+    if pool.in_process():
+        return await render_sources_local(
+            version.variable_schema, variables, providers, sources
+        )
+    return await pool.get_pool().render_sources(
+        version.variable_schema, variables, providers, sources
+    )
+
+
+async def render_sources_local(
+    schema: collections.abc.Mapping[str, models.PromptVariable],
+    variables: collections.abc.Mapping[str, object],
+    providers: collections.abc.Mapping[str, Provider],
+    sources: collections.abc.Mapping[str, str],
+) -> dict[str, str]:
     """Render each template in ``sources`` under one set of limits.
+
+    This is the sandbox itself. Services call :func:`render` and
+    :func:`render_decision`, which run it in a worker process; only the
+    worker and the in-process escape hatch call it directly.
 
     All templates of one render share the output budget, the work
     budget, and the timeout.
@@ -870,7 +905,7 @@ async def _render_sources(
             too large.
 
     """
-    validate_variables(version.variable_schema, variables)
+    validate_variables(schema, variables)
     context: dict[str, object] = {
         **{name: memoize(fn) for name, fn in providers.items()},
         **variables,
