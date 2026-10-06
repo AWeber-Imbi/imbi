@@ -94,6 +94,7 @@ describe('saveAgent', () => {
     const [, agentSlug, doc] = vi.mocked(endpoints.updateAgent).mock.calls[0]
     expect(agentSlug).toBe('mender')
     expect(doc.prompt_ref).toBe('agents/mender@stable')
+    expect(doc.prompt_version).toBe(4)
     expect(doc.version_summary).toBe('prompt v4')
   })
 
@@ -130,7 +131,20 @@ describe('saveAgent', () => {
     expect(calls).toEqual(['updateAgent'])
     const doc = vi.mocked(endpoints.updateAgent).mock.calls[0][2]
     expect(doc.prompt_ref).toBe('agents/mender@stable')
+    expect(doc.prompt_version).toBe(7)
     expect(doc.version_summary).toBe('Changed description')
+  })
+
+  it('records the loaded prompt version when the agent has none', async () => {
+    const existing = agent({ prompt_version: null })
+    const baseline = promptVersion()
+    const draft = draftFromAgent(existing, baseline)
+    draft.description = 'New description'
+
+    await saveAgent({ baseline, draft, existing, orgSlug: 'acme' })
+
+    const doc = vi.mocked(endpoints.updateAgent).mock.calls[0][2]
+    expect(doc.prompt_version).toBe(2)
   })
 
   it('creates the prompt when it does not exist yet', async () => {
@@ -171,6 +185,7 @@ describe('saveAgent', () => {
       enabled: true,
       name: 'Herald',
       prompt_ref: 'agents/herald@stable',
+      prompt_version: 1,
       slug: 'herald',
       team: 'platform',
     })

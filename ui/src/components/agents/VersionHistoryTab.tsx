@@ -21,6 +21,7 @@ import { formatRelativeDate } from '@/lib/formatDate'
 import { queryKeys } from '@/lib/queryKeys'
 import type { Agent } from '@/types'
 
+import { AGENT_PROMPT_LABEL } from './agentDraft'
 import { agentsPath } from './agentsNav'
 
 interface VersionHistoryTabProps {
@@ -54,6 +55,8 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
       toast.error(`Failed to restore: ${extractApiErrorDetail(error)}`),
     onSuccess: (restored, n) => {
       refresh()
+      // A restore can move the prompt label, so reload the prompts.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.prompts() })
       toast.success(`Restored v${n}`)
       navigate(agentsPath('manage', restored.slug))
     },
@@ -101,6 +104,8 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
                   </div>
                   <div className="text-tertiary text-xs">
                     {formatRelativeDate(v.created_at)} · {v.created_by}
+                    {v.snapshot.prompt_version != null &&
+                      ` · prompt v${v.snapshot.prompt_version}`}
                   </div>
                 </div>
                 {!current && canWrite && (
@@ -143,7 +148,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
 
       <ConfirmDialog
         confirmLabel="Restore"
-        description={`This writes a new version with the configuration of v${restoreTarget}. The system prompt and model are not part of an agent version, so they do not change. Unsaved edits on this page are lost.`}
+        description={`This writes a new version with the configuration of v${restoreTarget}. The system prompt and model come back too: the ${AGENT_PROMPT_LABEL} label of the agent's prompt moves to the prompt version that v${restoreTarget} recorded. Unsaved edits on this page are lost.`}
         onCancel={() => setRestoreTarget(null)}
         onConfirm={() => {
           if (restoreTarget !== null) restore.mutate(restoreTarget)

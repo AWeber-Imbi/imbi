@@ -178,6 +178,34 @@ describe('AgentsArea', () => {
     expect(window.location.pathname).toBe('/agents/manage/mender/edit')
   })
 
+  it('shows the prompt version of each agent version', async () => {
+    const snapshot = { name: 'Mender', slug: 'mender', team: 'platform' }
+    vi.mocked(endpoints.listAgentVersions).mockResolvedValue([
+      {
+        created_at: '2026-10-02T12:00:00Z',
+        created_by: 'gavin@example.com',
+        n: 3,
+        snapshot: { ...snapshot, prompt_version: 7 },
+        summary: 'prompt v7',
+      },
+      {
+        created_at: '2026-10-01T12:00:00Z',
+        created_by: 'gavin@example.com',
+        n: 2,
+        snapshot: { ...snapshot, prompt_version: 4 },
+        summary: 'Changed name',
+      },
+    ])
+    renderAt('/agents/manage/mender/edit')
+    await screen.findByText('Edit Mender')
+    fireEvent.click(screen.getByRole('tab', { name: 'Version history' }))
+    expect(await screen.findByText(/· prompt v4$/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    expect(
+      await screen.findByText(/The system prompt and model come back too/),
+    ).toBeInTheDocument()
+  })
+
   it('blocks a save with no name and no team', async () => {
     renderAt('/agents/manage/new')
     await screen.findByText('New Agent')

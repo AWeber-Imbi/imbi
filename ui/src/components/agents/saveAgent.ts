@@ -63,7 +63,13 @@ export class AgentSaveError extends Error {
  * Save the editor draft. When the system prompt, the model, or a model
  * parameter changed, write a new prompt version (create the prompt if
  * it does not exist), then move the `stable` label to it. Then create or
- * update the agent with `prompt_ref` set to `<namespace>/<slug>@stable`.
+ * update the agent with `prompt_ref` set to `<namespace>/<slug>@stable`
+ * and `prompt_version` set to the new version, so that one save writes
+ * one agent version that records both.
+ *
+ * When the prompt did not change, `prompt_version` stays as it is. An
+ * agent saved before `prompt_version` existed has none; it then gets
+ * the number of the version that the editor loaded.
  *
  * Each step runs only when the step before it succeeded. A failure
  * throws AgentSaveError with the step that failed.
@@ -112,6 +118,7 @@ export async function saveAgent({
     icon: draft.icon || null,
     name: draft.name.trim(),
     prompt_ref: promptRef,
+    prompt_version: promptVersion ?? currentPromptVersion(existing, baseline),
     settings: settingsFromDraft(draft.settings),
     slack_channel: draft.slackChannel.trim() || null,
     slug: existing?.slug ?? draft.slug,
@@ -127,6 +134,15 @@ export async function saveAgent({
   } catch (error) {
     throw new AgentSaveError('agent', error, promptVersion)
   }
+}
+
+/** The prompt version that a stored agent uses now, if known. */
+function currentPromptVersion(
+  existing: Agent | null,
+  baseline: null | PromptVersion,
+): null | number {
+  if (!existing?.prompt_ref) return null
+  return existing.prompt_version ?? baseline?.n ?? null
 }
 
 function saveErrorMessage(

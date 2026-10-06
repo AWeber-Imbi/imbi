@@ -11,6 +11,7 @@ export function agent(overrides: Partial<Agent> = {}): Agent {
     name: 'Mender',
     organization: { name: 'Acme', slug: 'acme' },
     prompt_ref: 'agents/mender@stable',
+    prompt_version: 7,
     settings: {
       max_concurrent_tasks: 3,
       monthly_cost_cap: '400.00',
