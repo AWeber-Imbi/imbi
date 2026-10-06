@@ -913,6 +913,38 @@ class AgentSettings(pydantic.BaseModel):
     response_sla: typing.Literal['4h', '8h', '24h', '3d', 'none'] | None = None
 
 
+class AgentRateLimit(pydantic.BaseModel):
+    """The maximum number of calls to one tool in one period."""
+
+    count: int = pydantic.Field(gt=0)
+    per: typing.Literal['minute', 'hour', 'day']
+
+
+class AgentToolConfig(pydantic.BaseModel):
+    """The configuration of one tool that an agent can use.
+
+    Nothing applies these limits yet, because nothing runs an agent.
+    """
+
+    #: A person must approve each call before it runs.
+    approval: bool = False
+    #: Environment slugs in the organization. ``None`` means all.
+    environments: list[str] | None = pydantic.Field(default=None, min_length=1)
+    rate_limit: AgentRateLimit | None = None
+
+    @pydantic.field_validator('environments')
+    @classmethod
+    def _sort_environments(cls, value: list[str] | None) -> list[str] | None:
+        """Sort and remove duplicates, so equal configs compare equal."""
+        return None if value is None else sorted(set(value))
+
+
+#: An agent tool key: ``<server slug>.<tool name>``.
+AgentToolKey = typing.Annotated[
+    str, pydantic.StringConstraints(pattern=r'^[^.\s]+\.\S+$')
+]
+
+
 class Agent(Node):
     """The definition of an agent in an organization.
 
@@ -942,9 +974,12 @@ class Agent(Node):
     prompt_ref: str | None = None
     prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: AgentSettings = pydantic.Field(default_factory=AgentSettings)
+    #: The tools that the agent can use, by tool key. A tool that is
+    #: not in this map is off.
+    tools: dict[AgentToolKey, AgentToolConfig] = {}
     version: int = pydantic.Field(default=1, gt=0)
 
-    @pydantic.field_validator('settings', mode='before')
+    @pydantic.field_validator('settings', 'tools', mode='before')
     @classmethod
     def _parse_settings(cls, value: object) -> object:
         return _parse_json(value)
@@ -955,7 +990,8 @@ class AgentVersion(GraphModel):
 
     ``snapshot`` holds the full configuration that a user can edit:
     name, slug, description, icon, team slug, tag slugs,
-    slack_channel, prompt_ref, prompt_version, and settings. It does
+    slack_channel, prompt_ref, prompt_version, settings, and tools. It
+    does
     not hold ``enabled``, the id, or the timestamps.
     """
 

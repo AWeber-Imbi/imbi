@@ -617,6 +617,43 @@ class AgentModelTestCase(unittest.TestCase):
                 with self.assertRaises(pydantic.ValidationError):
                     models.AgentSettings.model_validate({field: value})
 
+    def test_tools_parse_json_string(self) -> None:
+        agent = self._agent(
+            tools=json.dumps(
+                {
+                    'github.read_file': {},
+                    'imbi.update_project': {
+                        'approval': True,
+                        'environments': ['staging', 'prod', 'staging'],
+                        'rate_limit': {'count': 6, 'per': 'hour'},
+                    },
+                }
+            ),
+        )
+        self.assertFalse(agent.tools['github.read_file'].approval)
+        self.assertIsNone(agent.tools['github.read_file'].environments)
+        config = agent.tools['imbi.update_project']
+        self.assertTrue(config.approval)
+        self.assertEqual(config.environments, ['prod', 'staging'])
+        self.assertEqual(
+            config.rate_limit, models.AgentRateLimit(count=6, per='hour')
+        )
+
+    def test_tools_default_empty(self) -> None:
+        self.assertEqual(self._agent().tools, {})
+
+    def test_tools_reject_invalid_values(self) -> None:
+        for tools in (
+            {'no-server': {}},
+            {'github.read file': {}},
+            {'github.read_file': {'environments': []}},
+            {'github.read_file': {'rate_limit': {'count': 0, 'per': 'hour'}}},
+            {'github.read_file': {'rate_limit': {'count': 1, 'per': 'week'}}},
+        ):
+            with self.subTest(tools=tools):
+                with self.assertRaises(pydantic.ValidationError):
+                    self._agent(tools=tools)
+
     def test_version_parses_snapshot_json(self) -> None:
         agent = self._agent()
         version = models.AgentVersion(
