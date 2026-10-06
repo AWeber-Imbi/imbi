@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
   BarChart3,
+  Bot,
   Building2,
   ChevronDown,
   FileText,
@@ -23,10 +24,12 @@ import logoLight from '@/assets/logo-light.svg'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
 import type { Organization } from '@/types'
 import { UserResponse } from '@/types'
 
+import { AGENTS_NAV, agentsPath } from './agents/agentsNav'
 import { NewOpsLogDialog } from './NewOpsLogDialog'
 import { NewProjectDialog } from './NewProjectDialog'
 import { Button } from './ui/button'
@@ -55,6 +58,7 @@ export function Navigation({ currentView }: NavigationProps) {
 
   // Check if user is admin (safely cast to UserResponse to access is_admin)
   const isAdmin = (user as null | UserResponse)?.is_admin === true
+  const canReadAgents = useHasPermission('agent:read')
 
   // Memoize navItems to avoid array mutation on every render
   const navItems = useMemo(() => {
@@ -124,6 +128,9 @@ export function Navigation({ currentView }: NavigationProps) {
 
             {/* Navigation Items */}
             <div className="hidden items-center gap-1 md:flex">
+              {canReadAgents && (
+                <AgentsMenu isActive={activeView === 'agents'} />
+              )}
               {navItems.map((item) => {
                 const Icon = item.icon
                 const isActive = activeView === item.id
@@ -312,6 +319,50 @@ export function Navigation({ currentView }: NavigationProps) {
         onClose={() => setNewOpsEntryOpen(false)}
       />
     </>
+  )
+}
+
+/** The Agents entry: a menu of the pages in the Agents area. */
+function AgentsMenu({ isActive }: { isActive: boolean }) {
+  const navigate = useNavigate()
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          className={`h-auto rounded-lg px-4 py-2 transition-colors ${
+            isActive
+              ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
+              : 'text-secondary hover:bg-secondary hover:text-primary'
+          }`}
+          variant="ghost"
+        >
+          <Bot className="size-4" />
+          <span>Agents</span>
+          <ChevronDown className="size-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        {AGENTS_NAV.map((item, i) => {
+          const Icon = item.icon
+          const newGroup = i > 0 && AGENTS_NAV[i - 1].group !== item.group
+          return (
+            <div key={item.id}>
+              {newGroup && <DropdownMenuSeparator />}
+              <DropdownMenuItem
+                className="gap-3 py-2"
+                onClick={() => navigate(agentsPath(item.id))}
+              >
+                <Icon className="text-tertiary size-4" />
+                <span className="flex flex-col">
+                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-tertiary text-xs">{item.note}</span>
+                </span>
+              </DropdownMenuItem>
+            </div>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
