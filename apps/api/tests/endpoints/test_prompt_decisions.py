@@ -361,6 +361,28 @@ class DecisionRunTestCase(base.PromptTestBase):
         )
         self.assertEqual(self.run_ref().status_code, 422)
 
+    def test_disabled_provider_is_422(self) -> None:
+        self.route_run(
+            (
+                GET_PROVIDER,
+                [
+                    {
+                        'p': provider_tests.provider_props(
+                            id='prv-ts',
+                            slug='typesafe',
+                            driver='typesafe',
+                            enabled=False,
+                            credentials_encrypted='ciphertext',
+                        )
+                    }
+                ],
+            )
+        )
+        response = self.run_ref()
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('is disabled', response.json()['detail'])
+        self.decide.assert_not_awaited()
+
     def test_upstream_error_is_502(self) -> None:
         self.decide.side_effect = typesafe.DecisionError(
             'TypeSafe returned HTTP 429'

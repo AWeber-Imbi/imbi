@@ -992,6 +992,8 @@ async def run_prompt(
     provider = await ai_providers.fetch_provider(
         db, str(graph.parse_agtype(record['provider_id']))
     )
+    if not provider.enabled:
+        raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
     if (
         graph.parse_agtype(record['model_type']) != 'decision'
         or provider.driver != 'typesafe'

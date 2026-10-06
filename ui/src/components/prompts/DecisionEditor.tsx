@@ -323,7 +323,9 @@ export function RunPanel({
         if (value !== undefined) vars[v.name] = value
       }
     } catch {
-      setInputError('List and object variables must be valid JSON')
+      setInputError(
+        'Number variables must be valid numbers (whole numbers for int); list and object variables must be valid JSON',
+      )
       return
     }
     setInputError(null)
@@ -595,7 +597,13 @@ function parseValue(
   if (type === 'bool') return raw === true
   const text = String(raw)
   if (text.trim() === '') return undefined
-  if (type === 'int' || type === 'float') return Number(text)
+  if (type === 'int' || type === 'float') {
+    const n = Number(text)
+    if (Number.isNaN(n) || (type === 'int' && !Number.isInteger(n))) {
+      throw new Error('invalid number')
+    }
+    return n
+  }
   if (type === 'list' || type === 'object') return JSON.parse(text)
   return text
 }
