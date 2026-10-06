@@ -4248,12 +4248,21 @@ export interface paths {
          * @description Apply the snapshot of version ``n`` and write a new version.
          *
          *     The new version has the summary ``Restored v{n}``. When the
-         *     snapshot is the same as the configuration now, nothing is written.
-         *     ``enabled`` does not change.
+         *     snapshot is the same as the configuration now, no version is
+         *     written. ``enabled`` does not change.
+         *
+         *     When the snapshot has ``prompt_ref`` and ``prompt_version``, the
+         *     label that the reference names (the default label when it names
+         *     none) moves to that prompt version in the same transaction. This
+         *     needs ``prompt:promote``, as a label move in the prompt CMS does.
+         *     A reference that names a version number moves no label.
          *
          *     Raises:
+         *         403: The label must move and the caller cannot promote.
          *         404: No such agent or version.
-         *         409: The snapshot slug is taken by another agent.
+         *         409: The snapshot slug is taken by another agent, the prompt
+         *             or its version no longer exists, or the prompt changed
+         *             while this request ran.
          *         422: The snapshot team or a snapshot tag no longer exists.
          */
         post: operations["restore_agent_version_api_organizations__org_slug__agents__slug__versions__n__restore_post"];
@@ -7794,6 +7803,11 @@ export interface components {
              * @description Prompt CMS reference: namespace/slug@label.
              */
             prompt_ref?: string | null;
+            /**
+             * Prompt Version
+             * @description The prompt CMS version that the agent uses.
+             */
+            prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Input"];
             /**
              * Version Summary
@@ -7828,6 +7842,8 @@ export interface components {
             slack_channel?: string | null;
             /** Prompt Ref */
             prompt_ref?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Output"];
             /** Version */
             version: number;
@@ -7899,6 +7915,8 @@ export interface components {
             slack_channel?: string | null;
             /** Prompt Ref */
             prompt_ref?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Output"];
         };
         /** AgentTagRef */
@@ -7940,6 +7958,8 @@ export interface components {
             slack_channel?: string | null;
             /** Prompt Ref */
             prompt_ref?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Input"] | null;
             /** Version Summary */
             version_summary?: string | null;
