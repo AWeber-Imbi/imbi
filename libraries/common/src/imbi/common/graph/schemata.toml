@@ -13,6 +13,8 @@ name = [
   "AIProvider",
   "APIKey",
   "Advisory",
+  "Agent",
+  "AgentVersion",
   "AnalysisReport",
   "AnalysisResult",
   "Blocker",
@@ -89,6 +91,30 @@ unique = true
 [[vlabel_indexes]]
 vlabel = "AIModel"
 attributes = ["model_id"]
+
+# ``Agent`` slugs are unique per organization, not across the
+# installation, so the endpoint enforces uniqueness and the slug index
+# is not unique.
+[[vlabel_indexes]]
+vlabel = "Agent"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Agent"
+attributes = ["slug"]
+
+# Two concurrent saves compute the same next ``n``; this index makes
+# the second CREATE fail instead of writing a duplicate version.
+[[vlabel_indexes]]
+vlabel = "AgentVersion"
+attributes = ["id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "AgentVersion"
+attributes = ["agent_id", "n"]
+unique = true
 
 [[vlabel_indexes]]
 vlabel = "APIKey"

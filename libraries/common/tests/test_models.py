@@ -572,6 +572,74 @@ class TagModelTestCase(unittest.TestCase):
                     )
 
 
+class AgentModelTestCase(unittest.TestCase):
+    """Test cases for the Agent and AgentVersion models."""
+
+    def _org(self) -> models.Organization:
+        return models.Organization(name='Org', slug='org')
+
+    def _agent(self, **kwargs: typing.Any) -> models.Agent:
+        org = self._org()
+        return models.Agent(
+            name='Triage',
+            slug='triage',
+            organization=org,
+            team=models.Team(name='Ops', slug='ops', organization=org),
+            **kwargs,
+        )
+
+    def test_defaults(self) -> None:
+        agent = self._agent()
+        self.assertTrue(agent.enabled)
+        self.assertEqual(agent.tags, [])
+        self.assertEqual(agent.version, 1)
+        self.assertIsNone(agent.prompt_ref)
+        self.assertIsNone(agent.slack_channel)
+        self.assertEqual(agent.settings, models.AgentSettings())
+
+    def test_settings_parse_json_string(self) -> None:
+        agent = self._agent(
+            settings=json.dumps(
+                {'monthly_cost_cap': '125.50', 'response_sla': '24h'}
+            ),
+        )
+        self.assertEqual(str(agent.settings.monthly_cost_cap), '125.50')
+        self.assertEqual(agent.settings.response_sla, '24h')
+
+    def test_settings_reject_invalid_values(self) -> None:
+        for field, value in (
+            ('monthly_cost_cap', -1),
+            ('max_concurrent_tasks', 0),
+            ('task_timeout_seconds', 0),
+            ('response_sla', '1w'),
+        ):
+            with self.subTest(field=field):
+                with self.assertRaises(pydantic.ValidationError):
+                    models.AgentSettings.model_validate({field: value})
+
+    def test_version_parses_snapshot_json(self) -> None:
+        agent = self._agent()
+        version = models.AgentVersion(
+            agent=agent,
+            agent_id=agent.id,
+            n=2,
+            snapshot=json.dumps({'name': 'Triage', 'tags': ['ops']}),
+            created_by='admin@example.com',
+        )
+        self.assertEqual(version.snapshot['tags'], ['ops'])
+        self.assertIsNone(version.summary)
+
+    def test_version_n_must_be_positive(self) -> None:
+        agent = self._agent()
+        with self.assertRaises(pydantic.ValidationError):
+            models.AgentVersion(
+                agent=agent,
+                agent_id=agent.id,
+                n=0,
+                created_by='admin@example.com',
+            )
+
+
 class DocumentTemplateModelTestCase(unittest.TestCase):
     """Test cases for DocumentTemplate model."""
 
