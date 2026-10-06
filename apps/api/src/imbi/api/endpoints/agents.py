@@ -24,10 +24,12 @@ import nanoid
 import psycopg.errors
 import pydantic
 
+from imbi.api import agent_tools
 from imbi.api.auth import permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.scoring import OptionalValkeyClient
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.graph import cypher as graph_cypher
@@ -859,6 +861,34 @@ async def list_agents(
     agents = [_parse_row(record) for record in records]
     agents.sort(key=lambda a: str(a.get('name', '')).lower())
     return agents
+
+
+@agents_router.get(
+    '/tool-catalog', response_model=agent_tools.AgentToolCatalog
+)
+async def get_agent_tool_catalog(
+    org_slug: str,
+    request: fastapi.Request,
+    db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent:read')),
+    ],
+    refresh: bool = False,
+) -> agent_tools.AgentToolCatalog:
+    """List the tools that an agent can use, in groups by server.
+
+    The groups are the Imbi tools and the tools of each enabled MCP
+    server. A server that fails gives its group with ``error`` and no
+    tools. The catalog is kept for five minutes; ``refresh=true``
+    lists it again. The catalog is the same in each organization,
+    because MCP servers are global.
+    """
+    _ = org_slug
+    return await agent_tools.get_catalog(
+        db, valkey_client, request.app.openapi, refresh=refresh
+    )
 
 
 @agents_router.get('/{slug}', response_model=AgentResponse)

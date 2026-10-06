@@ -1165,3 +1165,48 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         ]
         body = self.client.get(BASE + '/triage/versions/2').json()
         self.assertEqual(body['snapshot']['tools'], self._STORED_TOOLS)
+
+    # -- Tool catalog --------------------------------------------------
+
+    def test_tool_catalog(self) -> None:
+        from imbi.api import agent_tools, scoring
+
+        valkey_client = mock.AsyncMock()
+        self.test_app.dependency_overrides[scoring._inject_optional_client] = (
+            lambda: valkey_client
+        )
+        self.addCleanup(
+            self.test_app.dependency_overrides.pop,
+            scoring._inject_optional_client,
+        )
+        catalog = agent_tools.AgentToolCatalog(
+            groups=[
+                agent_tools.AgentToolGroup(
+                    server=agent_tools.AgentToolServer(
+                        slug='sentry', name='Sentry', transport='mcp/http'
+                    ),
+                    error='Timed out after 10s',
+                )
+            ],
+            generated_at=datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC),
+        )
+        with mock.patch.object(
+            agent_tools, 'get_catalog', return_value=catalog
+        ) as get_catalog:
+            response = self.client.get(BASE + '/tool-catalog?refresh=true')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['groups'][0]['server']['slug'], 'sentry')
+        self.assertEqual(body['groups'][0]['tools'], [])
+        self.assertEqual(body['groups'][0]['error'], 'Timed out after 10s')
+        args = get_catalog.await_args
+        self.assertIs(args.args[0], self.mock_db)
+        self.assertIs(args.args[1], valkey_client)
+        self.assertTrue(args.kwargs['refresh'])
+        # The OpenAPI document of this app is the source of Imbi tools.
+        self.assertIn('paths', args.args[2]())
+
+    def test_tool_catalog_requires_read(self) -> None:
+        self.auth_context.permissions = set()
+        response = self.client.get(BASE + '/tool-catalog')
+        self.assertEqual(response.status_code, 403)
