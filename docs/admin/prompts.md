@@ -78,3 +78,47 @@ both the CMS and the packaged template.
     earlier release with `{display_name}` must change to
     `{{ display_name }}`. An override that does not render is ignored,
     and the packaged template is used.
+
+## Decision prompts
+
+A prompt has a kind, chosen when it is created and fixed after that:
+
+- **generative**: a system prompt and messages for a text model.
+- **decision**: a state and typed questions for a decision model, such
+  as a TypeSafe System One model (`jev-latest`).
+
+Every version of a prompt has the prompt's kind, so moving a label never
+changes the shape of the answer a consumer receives. A decision version
+must use a decision model, and a generative version a generative model.
+
+### State
+
+The state is one template. When it renders to a JSON object or array,
+it is sent as JSON; otherwise it is sent as text. Use `tojson` to place
+values safely:
+
+```text
+{"service": {{ service | tojson }}, "ticket": {{ ticket | tojson }}}
+```
+
+### Questions
+
+Each question has an id (a code identifier), instructions, and criteria
+for its type. Instructions and criteria are templates too.
+
+| Type | Answer | Criteria |
+|---|---|---|
+| `noul` | Probability of yes | Optional: what yes and no mean |
+| `choice` | One of the options, with probabilities | 1 to 255 named options; a description is optional |
+| `score` | A position on ordered levels | 2 to 10 levels, lowest first |
+
+The same template limits apply as for generative prompts.
+
+### Run
+
+The editor's Run panel renders the version on screen, saved or not, and
+calls its decision model with the provider's stored API key. It shows
+each typed answer, the token usage, and the request that was sent.
+Running needs `prompt:update`, because each run uses provider credit.
+The API is `POST /api/organizations/{org}/prompts/run`, with either a
+`ref` or an unsaved `draft`, plus `variables`.

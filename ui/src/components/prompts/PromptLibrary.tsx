@@ -279,6 +279,11 @@ function PromptTree({
                       >
                         {p.slug}
                       </span>
+                      {p.kind === 'decision' && (
+                        <span className="text-tertiary font-mono text-[10px] uppercase">
+                          decision
+                        </span>
+                      )}
                       <span className="text-tertiary ml-auto font-mono text-xs">
                         v{p.latest_version}
                       </span>

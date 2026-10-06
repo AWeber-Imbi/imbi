@@ -17,17 +17,20 @@ const NONE = '__none__'
 interface AIModelSelectProps {
   className?: string
   disabled?: boolean
+  /** Only models of this type are offered. A prompt's kind sets it. */
+  modelType?: 'decision' | 'generative'
   onChange: (slug: null | string) => void
   value: null | string
 }
 
 /**
- * Pick a generative model from the AI Models catalog, by slug. Prompt
- * versions hold text prompts, which decision models cannot run.
+ * Pick a model from the AI Models catalog, by slug. A generative prompt
+ * needs a generative model and a decision prompt a decision model.
  */
 export function AIModelSelect({
   className,
   disabled = false,
+  modelType = 'generative',
   onChange,
   value,
 }: AIModelSelectProps) {
@@ -59,7 +62,8 @@ export function AIModelSelect({
         {models
           .filter(
             (m) =>
-              m.model_type !== 'decision' && (m.enabled || m.slug === value),
+              (m.model_type ?? 'generative') === modelType &&
+              (m.enabled || m.slug === value),
           )
           .map((m) => (
             <SelectItem key={m.id} value={m.slug}>

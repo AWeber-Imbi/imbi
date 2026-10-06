@@ -118,6 +118,8 @@ import type {
   ProjectTypeCreate,
   Prompt,
   PromptCreate,
+  PromptRunRequest,
+  PromptRunResponse,
   PromptVersion,
   PromptVersionCreate,
   PullRequestListResponse,
@@ -1942,6 +1944,14 @@ export const setPromptDefaultLabel = (
   apiClient.put<Prompt>(`${promptPath(namespace, slug)}/default-label`, {
     label,
   })
+
+// Runs a decision prompt (a saved version or an unsaved draft) against its
+// TypeSafe model. Org-scoped because the project() provider reads org data.
+export const runPrompt = (orgSlug: string, body: PromptRunRequest) =>
+  apiClient.post<PromptRunResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/prompts/run`,
+    body,
+  )
 
 // Discovery is a POST because it makes an outbound call with the
 // provider's stored credentials; nothing is cached server-side.

@@ -18,6 +18,7 @@ a convention only.
 import datetime
 import hashlib
 import json
+import logging
 import re
 import typing
 
@@ -26,13 +27,17 @@ import pydantic
 import slugify
 
 from imbi.api.auth import permissions
-from imbi.api.endpoints import projects
+from imbi.api.endpoints import ai_providers, projects
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
+from imbi.common.auth.encryption import decrypt_config_value
+from imbi.common.llm import drivers, typesafe
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
+
+LOGGER = logging.getLogger(__name__)
 
 prompts_router = fastapi.APIRouter(prefix='/prompts', tags=['Prompts'])
 
@@ -53,6 +58,7 @@ _PATCHABLE_FIELDS: tuple[str, ...] = (
 _READONLY_PATHS: frozenset[str] = json_patch.READONLY_PATHS | frozenset(
     [
         '/default_label',
+        '/kind',
         '/labels',
         '/latest_version',
         '/ref',
@@ -68,6 +74,7 @@ _VERSION_JSON_FIELDS: tuple[str, ...] = (
     'tools',
     'params',
     'variable_schema',
+    'questions',
     'eval_summary',
 )
 
@@ -99,6 +106,10 @@ class PromptVersionContent(pydantic.BaseModel):
         default_factory=models.PromptParams
     )
     variable_schema: dict[str, models.PromptVariable] = {}
+    #: Decision prompts only.
+    state: str = ''
+    #: Decision prompts only.
+    questions: dict[models.DecisionQuestionId, models.DecisionQuestion] = {}
 
 
 class PromptVersionCreate(PromptVersionContent):
@@ -116,6 +127,7 @@ class PromptCreate(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     type: str | None = None
+    kind: models.PromptKind = 'generative'
     default_label: models.PromptName = 'stable'
     version: PromptVersionCreate = pydantic.Field(
         default_factory=PromptVersionCreate
@@ -133,6 +145,7 @@ class PromptResponse(pydantic.BaseModel):
     description: str | None = None
     icon: str | None = None
     type: str | None = None
+    kind: models.PromptKind = 'generative'
     default_label: str
     labels: list[models.PromptLabel] = []
     latest_version: int = 0
@@ -205,13 +218,18 @@ class RenderRequest(pydantic.BaseModel):
 
 
 class RenderResponse(pydantic.BaseModel):
-    """A prompt ready to send to a model."""
+    """A prompt ready to send to a model.
+
+    A ``generative`` prompt fills ``system``, ``messages``, and
+    ``tools``; a ``decision`` prompt fills ``state`` and ``questions``.
+    """
 
     model_config = pydantic.ConfigDict(protected_namespaces=())
 
     ref: str
     label: str | None
     n: int
+    kind: models.PromptKind = 'generative'
     content_sha256: str
     model: str | None
     model_id: str | None
@@ -219,6 +237,54 @@ class RenderResponse(pydantic.BaseModel):
     system: str
     messages: list[models.PromptMessage]
     tools: list[dict[str, typing.Any]]
+    #: Decision prompts: an object or array when the state renders to
+    #: JSON, else the text.
+    state: typing.Any = None
+    questions: dict[str, models.DecisionQuestion] = {}
+
+
+class RunDraft(pydantic.BaseModel):
+    """Unsaved version content of an existing prompt, to run as is."""
+
+    namespace: str
+    slug: str
+    version: PromptVersionContent
+
+
+class RunRequest(pydantic.BaseModel):
+    """Run a decision prompt: a saved version (``ref``) or a draft."""
+
+    ref: str | None = None
+    draft: RunDraft | None = None
+    variables: dict[str, typing.Any] = {}
+
+    @pydantic.model_validator(mode='after')
+    def _one_source(self) -> typing.Self:
+        if (self.ref is None) == (self.draft is None):
+            raise ValueError('Send exactly one of ref or draft')
+        return self
+
+
+class RunRequestBody(pydantic.BaseModel):
+    """The request sent to the decision model."""
+
+    state: typing.Any
+    questions: dict[str, typing.Any]
+
+
+class RunResponse(pydantic.BaseModel):
+    """The typed answers of one decision run."""
+
+    model_config = pydantic.ConfigDict(protected_namespaces=())
+
+    ref: str
+    #: The version run, or ``None`` for a draft.
+    n: int | None
+    model: str
+    model_id: str
+    request: RunRequestBody
+    answers: dict[str, typing.Any]
+    usage: dict[str, typing.Any]
 
 
 # --- Queries -----------------------------------------------------------
@@ -248,6 +314,12 @@ _MODEL_QUERY: typing.LiteralString = """
 MATCH (m:AIModel {{slug: {slug}}})
 RETURN m.model_id AS model_id, m.enabled AS enabled,
        m.model_type AS model_type
+"""
+
+_RUN_MODEL_QUERY: typing.LiteralString = """
+MATCH (m:AIModel {{slug: {slug}}})-[:SERVED_BY]->(p:AIProvider)
+RETURN m.model_id AS model_id, m.enabled AS enabled,
+       m.model_type AS model_type, p.id AS provider_id
 """
 
 _DELETE_VERSIONS_QUERY: typing.LiteralString = """
@@ -312,6 +384,7 @@ def _prompt_response(prompt: models.Prompt, latest: int) -> PromptResponse:
         description=prompt.description,
         icon=None if prompt.icon is None else str(prompt.icon),
         type=prompt.type,
+        kind=prompt.kind,
         default_label=prompt.default_label,
         labels=sorted(prompt.labels, key=lambda label: label.name),
         latest_version=latest,
@@ -335,6 +408,8 @@ def _version_response(
         model_id=version.model_id,
         params=version.params,
         variable_schema=version.variable_schema,
+        state=version.state,
+        questions=version.questions,
         content_sha256=version.content_sha256,
         eval_summary=version.eval_summary,
         created_by=version.created_by,
@@ -346,14 +421,19 @@ def _version_response(
 
 
 def content_sha256(content: PromptVersionContent) -> str:
-    """Hash the canonical JSON of a version's content."""
-    canonical = json.dumps(
-        PromptVersionContent.model_validate(content.model_dump()).model_dump(
-            mode='json'
-        ),
-        sort_keys=True,
-        separators=(',', ':'),
-    )
+    """Hash the canonical JSON of a version's content.
+
+    Empty decision fields are left out, so a generative version hashes
+    as it did before decision prompts existed and an unchanged save
+    stays a no-op.
+    """
+    document = PromptVersionContent.model_validate(
+        content.model_dump()
+    ).model_dump(mode='json')
+    for key in ('state', 'questions'):
+        if not document[key]:
+            del document[key]
+    canonical = json.dumps(document, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -374,11 +454,31 @@ def _check_label_name(label: str) -> None:
         )
 
 
+def _check_kind(
+    kind: models.PromptKind, content: PromptVersionContent
+) -> None:
+    """Reject content that does not fit the prompt's kind."""
+    if kind == 'generative':
+        if content.state or content.questions:
+            raise _unprocessable(
+                'A generative prompt cannot have a state or questions'
+            )
+        return
+    if content.system or content.messages or content.tools:
+        raise _unprocessable(
+            'A decision prompt cannot have a system prompt, messages, or tools'
+        )
+    if content.params.model_dump(exclude_defaults=True):
+        raise _unprocessable('A decision prompt takes no model parameters')
+
+
 def _check_templates(content: PromptVersionContent) -> None:
     """Reject a version whose templates or variable names are invalid."""
-    sources = {'system': content.system} | {
-        f'messages[{i}]': m.content for i, m in enumerate(content.messages)
-    }
+    sources = (
+        {'system': content.system}
+        | {f'messages[{i}]': m.content for i, m in enumerate(content.messages)}
+        | rendering.decision_sources(content.state, content.questions)
+    )
     try:
         rendering.check_syntax(sources)
         rendering.check_variable_schema(
@@ -388,8 +488,13 @@ def _check_templates(content: PromptVersionContent) -> None:
         raise _unprocessable(str(e)) from e
 
 
-async def _model_id_for(db: graph.Graph, model: str | None) -> str | None:
-    """Return the catalog ``model_id`` for a model slug, or raise 422."""
+async def _model_id_for(
+    db: graph.Graph, model: str | None, kind: models.PromptKind
+) -> str | None:
+    """Return the catalog ``model_id`` for a model slug, or raise 422.
+
+    The model's type must match the prompt's kind.
+    """
     if model is None:
         return None
     records = await db.execute(
@@ -401,11 +506,13 @@ async def _model_id_for(db: graph.Graph, model: str | None) -> str | None:
         raise _unprocessable(f'AI model {model!r} is not in the catalog')
     if graph.parse_agtype(records[0]['enabled']) is False:
         raise _unprocessable(f'AI model {model!r} is disabled')
-    # A version holds a system prompt and messages, which only a
-    # generative model can use. A missing value predates model_type.
-    if graph.parse_agtype(records[0].get('model_type')) == 'decision':
+    # A missing value predates model_type, when every model was
+    # generative.
+    model_type = graph.parse_agtype(records[0].get('model_type'))
+    if (model_type or 'generative') != kind:
         raise _unprocessable(
-            'Decision models are not supported in prompt versions yet'
+            f'AI model {model!r} is a {model_type or "generative"} model; '
+            f'a {kind} prompt needs a {kind} model'
         )
     return str(graph.parse_agtype(records[0]['model_id']))
 
@@ -626,8 +733,9 @@ async def insert_prompt(
     if not re.match(models.PROMPT_NAME_PATTERN, slug):
         raise _unprocessable(f'Slug {slug!r} is not valid')
     _check_label_name(data.default_label)
+    _check_kind(data.kind, data.version)
     _check_templates(data.version)
-    model_id = await _model_id_for(db, data.version.model)
+    model_id = await _model_id_for(db, data.version.model, data.kind)
     await _assert_ref_free(db, data.namespace, slug)
 
     now = _now()
@@ -638,6 +746,7 @@ async def insert_prompt(
         description=data.description,
         icon=data.icon,
         type=data.type,
+        kind=data.kind,
         default_label=data.default_label,
         labels=(
             [
@@ -738,6 +847,45 @@ async def render_prompt(
 
     """
     prompt, version, label = await _resolve(db, data.ref)
+    providers = _providers(auth, db, org_slug, request)
+    response = RenderResponse(
+        ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
+        label=label,
+        n=version.n,
+        kind=prompt.kind,
+        content_sha256=version.content_sha256,
+        model=version.model,
+        model_id=version.model_id,
+        params=version.params,
+        system='',
+        messages=[],
+        tools=version.tools,
+    )
+    try:
+        if prompt.kind == 'decision':
+            decision = await rendering.render_decision(
+                version, data.variables, providers
+            )
+            response.state = decision.state
+            response.questions = decision.questions
+        else:
+            rendered = await rendering.render(
+                version, data.variables, providers
+            )
+            response.system = rendered.system
+            response.messages = rendered.messages
+    except rendering.RenderError as e:
+        raise _unprocessable(str(e)) from e
+    return response
+
+
+def _providers(
+    auth: permissions.AuthContext,
+    db: graph.Graph,
+    org_slug: str,
+    request: fastapi.Request,
+) -> dict[str, rendering.Provider]:
+    """The template providers for a render in ``org_slug``."""
 
     async def project(project_id: object) -> object:
         if not (auth.is_admin or 'project:read' in auth.permissions):
@@ -750,23 +898,155 @@ async def render_prompt(
         )
         return found.model_dump(mode='json')
 
+    return {'project': project}
+
+
+def _wire_question(question: models.DecisionQuestion) -> dict[str, typing.Any]:
+    """A question in the shape the decision API takes."""
+    wire: dict[str, typing.Any] = {
+        'type': question.type,
+        'instructions': question.instructions,
+    }
+    if question.criteria is not None:
+        wire['criteria'] = (
+            question.criteria.model_dump()
+            if isinstance(question.criteria, models.NoulCriteria)
+            else question.criteria
+        )
+    return wire
+
+
+async def _run_target(
+    db: graph.Graph, data: RunRequest, principal: str
+) -> tuple[models.Prompt, models.PromptVersion, int | None]:
+    """The prompt and version a run uses: saved, or the draft."""
+    if data.ref is not None:
+        prompt, version, _label = await _resolve(db, data.ref)
+        return prompt, version, version.n
+    draft = typing.cast('RunDraft', data.draft)
+    prompt, latest = await _fetch_prompt(db, draft.namespace, draft.slug)
+    _check_kind(prompt.kind, draft.version)
+    _check_templates(draft.version)
+    version = models.PromptVersion.model_validate(
+        {
+            **draft.version.model_dump(),
+            'prompt': prompt,
+            'prompt_id': prompt.id,
+            'n': latest + 1,
+            'content_sha256': content_sha256(draft.version),
+            'created_by': principal,
+        }
+    )
+    return prompt, version, None
+
+
+@prompt_render_router.post('/run', response_model=RunResponse)
+async def run_prompt(
+    org_slug: str,
+    data: RunRequest,
+    request: fastapi.Request,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('prompt:update')),
+    ],
+) -> RunResponse:
+    """Run a decision prompt against its model and return the answers.
+
+    Renders the saved version ``ref``, or the unsaved ``draft``, then
+    calls the version's decision model with its provider's stored key.
+    Only prompt authors (``prompt:update``) may run a prompt, because a
+    run spends provider credit.
+
+    Raises:
+        403: A template calls ``project()`` without ``project:read``.
+        404: No such prompt, version, label, or project.
+        409: The model's provider has no stored credentials.
+        422: The prompt is not a decision prompt, has no questions or no
+            model, the model cannot run it, or the render fails.
+        502: The decision model rejected or failed the call.
+
+    """
+    prompt, version, n = await _run_target(db, data, auth.principal_name)
+    ref = f'{prompt.namespace}/{prompt.slug}' + (
+        f'@{n}' if n is not None else ' (draft)'
+    )
+    if prompt.kind != 'decision':
+        raise _unprocessable('Only decision prompts can be run')
+    if not version.questions:
+        raise _unprocessable('The prompt has no questions to ask')
+    if version.model is None:
+        raise _unprocessable('Choose a decision model to run the prompt')
+    records = await db.execute(
+        _RUN_MODEL_QUERY,
+        {'slug': version.model},
+        ['model_id', 'enabled', 'model_type', 'provider_id'],
+    )
+    if not records:
+        raise _unprocessable(
+            f'AI model {version.model!r} is not in the catalog'
+        )
+    record = records[0]
+    if graph.parse_agtype(record['enabled']) is False:
+        raise _unprocessable(f'AI model {version.model!r} is disabled')
+    provider = await ai_providers.fetch_provider(
+        db, str(graph.parse_agtype(record['provider_id']))
+    )
+    if not provider.enabled:
+        raise _unprocessable(f'AI provider {provider.slug!r} is disabled')
+    if (
+        graph.parse_agtype(record['model_type']) != 'decision'
+        or provider.driver != 'typesafe'
+    ):
+        raise _unprocessable(
+            f'AI model {version.model!r} is not a TypeSafe decision model'
+        )
     try:
-        rendered = await rendering.render(
-            version, data.variables, {'project': project}
+        decision = await rendering.render_decision(
+            version,
+            data.variables,
+            _providers(auth, db, org_slug, request),
         )
     except rendering.RenderError as e:
         raise _unprocessable(str(e)) from e
-    return RenderResponse(
-        ref=f'{prompt.namespace}/{prompt.slug}@{version.n}',
-        label=label,
-        n=version.n,
-        content_sha256=version.content_sha256,
+    api_key = decrypt_config_value(provider.credentials_encrypted)
+    if not api_key:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'AI provider {provider.slug!r} has no stored credentials'
+            ),
+        )
+    model_id = str(graph.parse_agtype(record['model_id']))
+    questions = {
+        qid: _wire_question(question)
+        for qid, question in decision.questions.items()
+    }
+    base_url = drivers.resolve_base_url(provider.driver, provider.base_url)
+    try:
+        result = await typesafe.decide(
+            api_key,
+            base_url or '',
+            model_id,
+            decision.state,
+            questions,
+        )
+    except typesafe.DecisionError as e:
+        raise fastapi.HTTPException(status_code=502, detail=str(e)) from e
+    LOGGER.info(
+        'Ran decision prompt %s with %s for %s',
+        ref,
+        model_id,
+        auth.principal_name,
+    )
+    return RunResponse(
+        ref=ref,
+        n=n,
         model=version.model,
-        model_id=version.model_id,
-        params=version.params,
-        system=rendered.system,
-        messages=rendered.messages,
-        tools=version.tools,
+        model_id=model_id,
+        request=RunRequestBody(state=decision.state, questions=questions),
+        answers=result['answers'],
+        usage=result['usage'],
     )
 
 
@@ -948,13 +1228,14 @@ async def create_prompt_version(
 
     """
     prompt, latest = await _fetch_prompt(db, namespace, slug)
+    _check_kind(prompt.kind, data)
     _check_templates(data)
     if latest:
         newest = await _fetch_version(db, prompt, latest)
         if newest.content_sha256 == content_sha256(data):
             response.status_code = 200
             return _version_response(newest, prompt)
-    model_id = await _model_id_for(db, data.model)
+    model_id = await _model_id_for(db, data.model, prompt.kind)
     version, props = _version_props(
         prompt, latest + 1, data, model_id, auth.principal_name
     )

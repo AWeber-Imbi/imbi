@@ -1,5 +1,6 @@
 """Tests for prompt CMS template rendering."""
 
+import json
 import time
 import typing
 import unittest
@@ -305,3 +306,153 @@ class CheckTestCase(unittest.TestCase):
             rendering.check_variable_schema(
                 {'bad-name': models.PromptVariable(type='str')}, set()
             )
+
+
+def decision(
+    state: str,
+    questions: dict[str, typing.Any],
+    **schema: models.PromptVariable,
+) -> models.PromptVersion:
+    prompt = models.Prompt(
+        namespace='demo', name='Demo', slug='triage', kind='decision'
+    )
+    return models.PromptVersion.model_validate(
+        {
+            'prompt': prompt,
+            'prompt_id': prompt.id,
+            'n': 1,
+            'state': state,
+            'questions': questions,
+            'variable_schema': schema,
+            'content_sha256': 'x',
+            'created_by': 'test',
+        }
+    )
+
+
+QUESTIONS: dict[str, typing.Any] = {
+    'urgent': {
+        'type': 'noul',
+        'instructions': 'Is {{ name }} urgent?',
+        'criteria': {'true': 'Down for {{ name }}', 'false': 'Not down'},
+    },
+    'team': {
+        'type': 'choice',
+        'instructions': 'Which team owns it?',
+        'criteria': {'payments': 'Billing for {{ name }}', 'other': None},
+    },
+    'impact': {
+        'type': 'score',
+        'instructions': 'How bad is it?',
+        'criteria': ['None', 'Some for {{ name }}', 'All'],
+    },
+}
+
+
+class DecisionModelTestCase(unittest.TestCase):
+    def test_validates_question_shapes(self) -> None:
+        for questions in (
+            {'bad id': {'type': 'noul', 'instructions': 'x'}},
+            {'q': {'type': 'choice', 'instructions': 'x', 'criteria': {}}},
+            {
+                'q': {
+                    'type': 'choice',
+                    'instructions': 'x',
+                    'criteria': {str(i): None for i in range(256)},
+                }
+            },
+            {'q': {'type': 'score', 'instructions': 'x', 'criteria': ['a']}},
+            {
+                'q': {
+                    'type': 'score',
+                    'instructions': 'x',
+                    'criteria': [str(i) for i in range(11)],
+                }
+            },
+            {'q': {'type': 'noul', 'instructions': ''}},
+            {'q': {'type': 'other', 'instructions': 'x'}},
+        ):
+            with self.subTest(questions=str(questions)[:60]):
+                with self.assertRaises(ValueError):
+                    decision('', questions)
+
+    def test_parses_stored_json(self) -> None:
+        version = decision('', json.dumps(QUESTIONS))  # type: ignore[arg-type]
+        self.assertIsInstance(
+            version.questions['impact'], models.ScoreQuestion
+        )
+
+
+class RenderDecisionTestCase(unittest.IsolatedAsyncioTestCase):
+    async def test_renders_state_and_every_template(self) -> None:
+        result = await rendering.render_decision(
+            decision(
+                '{"service": {{ name | tojson }}}',
+                QUESTIONS,
+                name=models.PromptVariable(type='str', required=True),
+            ),
+            {'name': 'billing'},
+            {},
+        )
+        self.assertEqual(result.state, {'service': 'billing'})
+        urgent = result.questions['urgent']
+        assert isinstance(urgent, models.NoulQuestion)
+        self.assertEqual(urgent.instructions, 'Is billing urgent?')
+        assert urgent.criteria is not None
+        self.assertEqual(urgent.criteria.true, 'Down for billing')
+        team = result.questions['team']
+        assert isinstance(team, models.ChoiceQuestion)
+        self.assertEqual(
+            team.criteria, {'payments': 'Billing for billing', 'other': None}
+        )
+        impact = result.questions['impact']
+        assert isinstance(impact, models.ScoreQuestion)
+        self.assertEqual(impact.criteria[1], 'Some for billing')
+
+    async def test_state_json_rule(self) -> None:
+        for source, expected in (
+            ('[1, 2]', [1, 2]),
+            ('plain text', 'plain text'),
+            ('"a json string"', '"a json string"'),
+            ('42', '42'),
+            ('{not json', '{not json'),
+        ):
+            with self.subTest(source=source):
+                result = await rendering.render_decision(
+                    decision(
+                        source,
+                        QUESTIONS,
+                        name=models.PromptVariable(type='str'),
+                    ),
+                    {'name': 'x'},
+                    {},
+                )
+                self.assertEqual(result.state, expected)
+
+    async def test_sandbox_limits_apply(self) -> None:
+        with self.assertRaises(rendering.RenderError):
+            await rendering.render_decision(
+                decision(
+                    "{{ 'x' * 1000000000 }}",
+                    {'q': {'type': 'noul', 'instructions': 'x'}},
+                ),
+                {},
+                {},
+            )
+        with self.assertRaises(rendering.RenderError):
+            await rendering.render_decision(
+                decision(
+                    'ok',
+                    {'q': {'type': 'noul', 'instructions': '{{ missing }}'}},
+                ),
+                {},
+                {},
+            )
+
+    def test_sources_name_each_field(self) -> None:
+        questions = decision('s', QUESTIONS).questions
+        sources = rendering.decision_sources('s', questions)
+        self.assertIn('questions.urgent.criteria.true', sources)
+        self.assertIn('questions.team.criteria.payments', sources)
+        self.assertNotIn('questions.team.criteria.other', sources)
+        self.assertIn('questions.impact.criteria.2', sources)

@@ -194,6 +194,9 @@ function PromptView({
               {prompt.ref}
             </h1>
             {prompt.type && <Badge variant="neutral">{prompt.type}</Badge>}
+            {prompt.kind === 'decision' && (
+              <Badge variant="info">decision</Badge>
+            )}
           </div>
           <p className="text-secondary mt-1 text-sm">
             {prompt.name}

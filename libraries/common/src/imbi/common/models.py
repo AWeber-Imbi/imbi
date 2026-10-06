@@ -23,6 +23,7 @@ __all__ = [
     'BlueprintAssignment',
     'BlueprintEdge',
     'BlueprintFilter',
+    'ChoiceQuestion',
     'Comment',
     'CommentThread',
     'CommitRecord',
@@ -31,6 +32,8 @@ __all__ = [
     'ComponentNote',
     'ComponentRelease',
     'ComponentStatus',
+    'DecisionQuestion',
+    'DecisionQuestionId',
     'DeploymentEvent',
     'Document',
     'DocumentTemplate',
@@ -46,6 +49,8 @@ __all__ = [
     'MCPServer',
     'MembershipProperties',
     'Node',
+    'NoulCriteria',
+    'NoulQuestion',
     'OperationLog',
     'Organization',
     'OrganizationEdge',
@@ -54,6 +59,7 @@ __all__ = [
     'ProjectRelationships',
     'ProjectType',
     'Prompt',
+    'PromptKind',
     'PromptLabel',
     'PromptMessage',
     'PromptParams',
@@ -69,6 +75,7 @@ __all__ = [
     'ReleaseDeploymentEdge',
     'ReleaseLink',
     'Schema',
+    'ScoreQuestion',
     'ServiceAccount',
     'Tag',
     'TagFormat',
@@ -734,6 +741,17 @@ class PromptLabel(pydantic.BaseModel):
     updated_at: datetime.datetime
 
 
+#: ``generative`` prompts hold a system prompt and messages for a text
+#: model; ``decision`` prompts hold a state template and typed questions
+#: for a decision model (TypeSafe System One). A prompt's kind is fixed
+#: when it is created, so moving a label never changes the shape of the
+#: answer a consumer receives.
+PromptKind = typing.Literal['generative', 'decision']
+
+#: Question ids are map keys in the decision request; code reads them.
+DECISION_QUESTION_ID_PATTERN = r'^[A-Za-z_][A-Za-z0-9_]*$'
+
+
 class Prompt(Node):
     """A versioned prompt in the prompt CMS.
 
@@ -744,6 +762,7 @@ class Prompt(Node):
     """
 
     namespace: PromptName
+    kind: PromptKind = 'generative'
     #: Organizing facet only (``core_system``, ``edge_case``).
     type: str | None = None
     #: Resolution falls back to this label when a caller names none,
@@ -783,6 +802,52 @@ class PromptVariable(pydantic.BaseModel):
     description: str | None = None
 
 
+class NoulCriteria(pydantic.BaseModel):
+    """What a yes and a no mean for a ``noul`` question."""
+
+    true: str
+    false: str
+
+
+class NoulQuestion(pydantic.BaseModel):
+    """A yes/no question; the answer is the probability of yes."""
+
+    type: typing.Literal['noul'] = 'noul'
+    instructions: str = pydantic.Field(min_length=1)
+    criteria: NoulCriteria | None = None
+
+
+class ChoiceQuestion(pydantic.BaseModel):
+    """Pick one of up to 255 named options."""
+
+    type: typing.Literal['choice'] = 'choice'
+    instructions: str = pydantic.Field(min_length=1)
+    criteria: dict[str, str | None] = pydantic.Field(
+        min_length=1, max_length=255
+    )
+
+
+class ScoreQuestion(pydantic.BaseModel):
+    """A position on 2 to 10 ordered levels."""
+
+    type: typing.Literal['score'] = 'score'
+    instructions: str = pydantic.Field(min_length=1)
+    criteria: list[str] = pydantic.Field(min_length=2, max_length=10)
+
+
+DecisionQuestion = typing.Annotated[
+    NoulQuestion | ChoiceQuestion | ScoreQuestion,
+    pydantic.Field(discriminator='type'),
+]
+
+DecisionQuestionId = typing.Annotated[
+    str,
+    pydantic.StringConstraints(
+        pattern=DECISION_QUESTION_ID_PATTERN, max_length=64
+    ),
+]
+
+
 class PromptVersion(GraphModel):
     """One immutable version of a :class:`Prompt`.
 
@@ -803,6 +868,12 @@ class PromptVersion(GraphModel):
     system: str = ''
     messages: list[PromptMessage] = []
     tools: list[dict[str, typing.Any]] = []
+    #: Decision prompts only: a template for the state the questions are
+    #: asked about. It is sent as JSON when it renders to an object or
+    #: an array, otherwise as text.
+    state: str = ''
+    #: Decision prompts only: the typed questions, by id.
+    questions: dict[DecisionQuestionId, DecisionQuestion] = {}
     #: ``AIModel.slug`` in the model catalog.
     model: str | None = None
     #: ``AIModel.model_id`` when the version was written.
@@ -818,6 +889,7 @@ class PromptVersion(GraphModel):
         'tools',
         'params',
         'variable_schema',
+        'questions',
         'eval_summary',
         mode='before',
     )

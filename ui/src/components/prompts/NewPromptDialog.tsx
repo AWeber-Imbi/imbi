@@ -11,7 +11,14 @@ import {
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
-import type { PromptCreate } from '@/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import type { PromptCreate, PromptKind } from '@/types'
 
 import { AIModelSelect } from './AIModelSelect'
 
@@ -52,6 +59,7 @@ export function NewPromptDialog({
   const isLocked = (field: keyof NewPromptDefaults) =>
     locked && defaults?.[field] !== undefined
   const [defaultLabel, setDefaultLabel] = useState('stable')
+  const [kind, setKind] = useState<PromptKind>('generative')
   const [model, setModel] = useState<null | string>(null)
 
   const namespaceOk = NAME.test(namespace)
@@ -62,6 +70,7 @@ export function NewPromptDialog({
   const submit = () =>
     onSubmit({
       default_label: defaultLabel,
+      kind,
       name: name.trim(),
       namespace,
       slug: slug || null,
@@ -69,6 +78,8 @@ export function NewPromptDialog({
       version: {
         messages: [],
         model,
+        questions: {},
+        state: '',
         system: '',
         tools: [],
         variable_schema: {},
@@ -167,10 +178,38 @@ export function NewPromptDialog({
                 value={defaultLabel}
               />
             </FormField>
-            <FormField label="Model">
-              <AIModelSelect onChange={setModel} value={model} />
-            </FormField>
+            {/* A locked dialog seeds a known consumer prompt, which is
+                generative. */}
+            {!locked && (
+              <FormField
+                description={
+                  kind === 'decision'
+                    ? 'A state and typed questions for a decision model.'
+                    : 'A system prompt and messages for a text model.'
+                }
+                label="Kind"
+              >
+                <Select
+                  onValueChange={(next) => {
+                    setKind(next as PromptKind)
+                    setModel(null)
+                  }}
+                  value={kind}
+                >
+                  <SelectTrigger aria-label="Kind" className="font-mono">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="generative">generative</SelectItem>
+                    <SelectItem value="decision">decision</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
           </div>
+          <FormField label="Model">
+            <AIModelSelect modelType={kind} onChange={setModel} value={model} />
+          </FormField>
         </div>
         <DialogFooter>
           <Button onClick={onClose} size="sm" variant="ghost">
