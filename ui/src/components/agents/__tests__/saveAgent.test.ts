@@ -54,7 +54,7 @@ describe('saveAgent', () => {
   })
 
   it('writes the prompt version, moves stable, then updates the agent', async () => {
-    const existing = agent()
+    const existing = agent({ prompt_ref: 'agents/acme.mender@stable' })
     const baseline = promptVersion()
     const draft = draftFromAgent(existing, baseline)
     draft.prompt.system = 'You fix bugs carefully.'
@@ -74,13 +74,13 @@ describe('saveAgent', () => {
     expect(result.promptVersion).toBe(4)
     expect(endpoints.setPromptLabel).toHaveBeenCalledWith(
       'agents',
-      'mender',
+      'acme.mender',
       'stable',
       4,
     )
     const [ns, slug, body] = vi.mocked(endpoints.createPromptVersion).mock
       .calls[0]
-    expect([ns, slug]).toEqual(['agents', 'mender'])
+    expect([ns, slug]).toEqual(['agents', 'acme.mender'])
     expect(body.system).toBe('You fix bugs carefully.')
     expect(body.model).toBe('claude-sonnet')
     // Content that the agent editor does not show is kept.
@@ -93,7 +93,7 @@ describe('saveAgent', () => {
     })
     const [, agentSlug, doc] = vi.mocked(endpoints.updateAgent).mock.calls[0]
     expect(agentSlug).toBe('mender')
-    expect(doc.prompt_ref).toBe('agents/mender@stable')
+    expect(doc.prompt_ref).toBe('agents/acme.mender@stable')
     expect(doc.prompt_version).toBe(4)
     expect(doc.version_summary).toBe('prompt v4')
   })
@@ -206,7 +206,7 @@ describe('saveAgent', () => {
   })
 
   it('keeps using the stored prompt after the agent slug changes', async () => {
-    const existing = agent({ prompt_ref: 'agents/old-name@stable' })
+    const existing = agent({ prompt_ref: 'agents/acme.old-name@stable' })
     const baseline = promptVersion()
     const draft = draftFromAgent(existing, baseline)
     draft.prompt.model = 'claude-haiku'
@@ -214,10 +214,47 @@ describe('saveAgent', () => {
     await saveAgent({ baseline, draft, existing, orgSlug: 'acme' })
 
     expect(vi.mocked(endpoints.createPromptVersion).mock.calls[0][1]).toBe(
-      'old-name',
+      'acme.old-name',
     )
     expect(vi.mocked(endpoints.updateAgent).mock.calls[0][2].prompt_ref).toBe(
-      'agents/old-name@stable',
+      'agents/acme.old-name@stable',
+    )
+  })
+
+  it('moves an unscoped agent prompt to the organization on change', async () => {
+    const existing = agent({ prompt_ref: 'agents/mender@stable' })
+    const baseline = promptVersion()
+    const draft = draftFromAgent(existing, baseline)
+    draft.prompt.model = 'claude-haiku'
+
+    await saveAgent({ baseline, draft, existing, orgSlug: 'acme' })
+
+    expect(vi.mocked(endpoints.createPromptVersion).mock.calls[0][1]).toBe(
+      'acme.mender',
+    )
+    expect(endpoints.setPromptLabel).toHaveBeenCalledWith(
+      'agents',
+      'acme.mender',
+      'stable',
+      4,
+    )
+    expect(vi.mocked(endpoints.updateAgent).mock.calls[0][2].prompt_ref).toBe(
+      'agents/acme.mender@stable',
+    )
+  })
+
+  it('keeps a stored prompt in another namespace', async () => {
+    const existing = agent({ prompt_ref: 'shared/triage@stable' })
+    const baseline = promptVersion()
+    const draft = draftFromAgent(existing, baseline)
+    draft.prompt.model = 'claude-haiku'
+
+    await saveAgent({ baseline, draft, existing, orgSlug: 'acme' })
+
+    const [ns, slug] = vi.mocked(endpoints.createPromptVersion).mock.calls[0]
+    expect([ns, slug]).toEqual(['shared', 'triage'])
+    expect(vi.mocked(endpoints.updateAgent).mock.calls[0][2].prompt_ref).toBe(
+      'shared/triage@stable',
     )
   })
 

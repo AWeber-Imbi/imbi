@@ -150,7 +150,7 @@ describe('AgentsArea', () => {
     expect(order).toEqual(['version', 'label', 'agent'])
     expect(vi.mocked(endpoints.setPromptLabel).mock.calls[0]).toEqual([
       'agents',
-      'mender',
+      'acme.mender',
       'stable',
       3,
     ])

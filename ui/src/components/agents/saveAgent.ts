@@ -81,15 +81,7 @@ export async function saveAgent({
   existing,
   orgSlug,
 }: SaveAgentArgs): Promise<SaveAgentResult> {
-  // Prompts are global, but agent slugs are unique only in an
-  // organization. A new prompt slug starts with the organization slug,
-  // so that an agent cannot write to the prompt of an agent in another
-  // organization that has the same slug.
-  const target = (existing?.prompt_ref &&
-    parsePromptRef(existing.prompt_ref)) || {
-    namespace: AGENT_PROMPT_NAMESPACE,
-    slug: `${orgSlug}.${existing?.slug ?? draft.slug}`,
-  }
+  const target = promptTarget(existing, draft.slug, orgSlug)
   let promptRef = existing?.prompt_ref ?? null
   let promptVersion: null | number = null
 
@@ -148,6 +140,35 @@ function currentPromptVersion(
 ): null | number {
   if (!existing?.prompt_ref) return null
   return existing.prompt_version ?? baseline?.n ?? null
+}
+
+/**
+ * The prompt that a save writes to. Prompts are global, but agent slugs
+ * are unique only in an organization. Thus a prompt slug in the agent
+ * namespace starts with the organization slug, so that an agent cannot
+ * write to the prompt of an agent in another organization that has the
+ * same slug. A stored reference to an unscoped agent prompt (from
+ * before this rule) moves to the scoped prompt on the next prompt
+ * change. A reference to a different namespace stays as it is.
+ */
+function promptTarget(
+  existing: Agent | null,
+  draftSlug: string,
+  orgSlug: string,
+): { namespace: string; slug: string } {
+  const stored = existing?.prompt_ref
+    ? parsePromptRef(existing.prompt_ref)
+    : null
+  if (
+    stored &&
+    (stored.namespace !== AGENT_PROMPT_NAMESPACE ||
+      stored.slug.startsWith(`${orgSlug}.`))
+  )
+    return stored
+  return {
+    namespace: AGENT_PROMPT_NAMESPACE,
+    slug: `${orgSlug}.${stored?.slug ?? existing?.slug ?? draftSlug}`,
+  }
 }
 
 function saveErrorMessage(
