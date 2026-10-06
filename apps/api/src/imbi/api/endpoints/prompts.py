@@ -33,6 +33,7 @@ from imbi.api.graph_sql import escape_prop, props_template, set_clause
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.auth.encryption import decrypt_config_value
+from imbi.common.graph import cypher as graph_cypher
 from imbi.common.llm import drivers, typesafe
 from imbi.common.prompts import rendering
 from imbi.common.prompts import resolve as prompt_resolve
@@ -584,15 +585,23 @@ def _version_props(
     return version, props
 
 
-async def _write_labels(
-    db: graph.Graph,
+PROMPT_CHANGED_DETAIL = (
+    'The prompt changed while this request ran; reload it and try again'
+)
+
+
+def labels_statement(
     prompt: models.Prompt,
     labels: list[models.PromptLabel],
     default_label: str,
-) -> models.Prompt:
-    """Replace a prompt's labels, or raise 409 on a concurrent write."""
-    now = _now()
-    records = await db.execute(
+) -> graph_cypher.Statement:
+    """Return the statement that replaces a prompt's labels.
+
+    The statement returns no rows when another write changed the
+    prompt after ``prompt`` was read. It has ``expect_rows`` set, so a
+    batch that runs it then rolls back.
+    """
+    return graph_cypher.Statement(
         _SET_LABELS_QUERY,
         {
             'id': prompt.id,
@@ -603,18 +612,44 @@ async def _write_labels(
                 [label.model_dump(mode='json') for label in labels]
             ),
             'default_label': default_label,
-            'updated_at': _DATETIME.dump_python(now, mode='json'),
+            'updated_at': _DATETIME.dump_python(_now(), mode='json'),
         },
-        ['p'],
+        expect_rows=True,
     )
+
+
+def moved_labels(
+    prompt: models.Prompt, label: str, version: int, updated_by: str
+) -> list[models.PromptLabel]:
+    """Return the prompt's labels with ``label`` pointed at ``version``.
+
+    The label is created when the prompt does not have it.
+    """
+    labels = [item for item in prompt.labels if item.name != label]
+    labels.append(
+        models.PromptLabel(
+            name=label,
+            version=version,
+            updated_by=updated_by,
+            updated_at=_now(),
+        )
+    )
+    return labels
+
+
+async def _write_labels(
+    db: graph.Graph,
+    prompt: models.Prompt,
+    labels: list[models.PromptLabel],
+    default_label: str,
+) -> models.Prompt:
+    """Replace a prompt's labels, or raise 409 on a concurrent write."""
+    stmt = labels_statement(prompt, labels, default_label)
+    records = await db.execute(stmt.cypher, stmt.params, ['p'])
     props = _props(records[0]['p']) if records else None
     if props is None:
         raise fastapi.HTTPException(
-            status_code=409,
-            detail=(
-                'The prompt changed while this request ran; reload it '
-                'and try again'
-            ),
+            status_code=409, detail=PROMPT_CHANGED_DETAIL
         )
     return _parse_prompt(props)
 
@@ -1323,15 +1358,7 @@ async def set_prompt_label(
     _check_label_name(label)
     prompt, latest = await _fetch_prompt(db, namespace, slug)
     await _fetch_version(db, prompt, data.version)
-    labels = [item for item in prompt.labels if item.name != label]
-    labels.append(
-        models.PromptLabel(
-            name=label,
-            version=data.version,
-            updated_by=auth.principal_name,
-            updated_at=_now(),
-        )
-    )
+    labels = moved_labels(prompt, label, data.version, auth.principal_name)
     updated = await _write_labels(db, prompt, labels, prompt.default_label)
     return _prompt_response(updated, latest)
 

@@ -920,7 +920,9 @@ class Agent(Node):
     ``slug`` is unique per organization: the ``(org_id, slug)`` unique
     index enforces it. ``prompt_ref`` is a prompt CMS reference
     (``namespace/slug@label``). The prompt CMS owns the model and the
-    model parameters, so the agent does not store them. ``version`` is
+    model parameters, so the agent does not store them.
+    ``prompt_version`` is the prompt CMS version that the configuration
+    uses. A restore moves the label back to it. ``version`` is
     the ``n`` of the newest :class:`AgentVersion`. Each change to the
     configuration writes a new version; a change to ``enabled`` only
     does not.
@@ -938,6 +940,7 @@ class Agent(Node):
     enabled: bool = True
     slack_channel: str | None = None
     prompt_ref: str | None = None
+    prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: AgentSettings = pydantic.Field(default_factory=AgentSettings)
     version: int = pydantic.Field(default=1, gt=0)
 
@@ -952,8 +955,8 @@ class AgentVersion(GraphModel):
 
     ``snapshot`` holds the full configuration that a user can edit:
     name, slug, description, icon, team slug, tag slugs,
-    slack_channel, prompt_ref, and settings. It does not hold
-    ``enabled``, the id, or the timestamps.
+    slack_channel, prompt_ref, prompt_version, and settings. It does
+    not hold ``enabled``, the id, or the timestamps.
     """
 
     agent: typing.Annotated[
