@@ -10,6 +10,7 @@ export const queryKeys = {
   adminPlugin: (slug: string) => ['admin-plugin', slug] as const,
   adminPlugins: () => ['admin-plugins'] as const,
   agents: (orgSlug: string) => ['agents', orgSlug] as const,
+  agentToolCatalog: (orgSlug: string) => ['agentToolCatalog', orgSlug] as const,
   agentVersions: (orgSlug: string, slug: string) =>
     ['agentVersions', orgSlug, slug] as const,
   aiModels: () => ['ai-models'] as const,

@@ -10,6 +10,7 @@ import type {
   Advisory,
   Agent,
   AgentCreate,
+  AgentToolCatalog,
   AgentUpdate,
   AgentVersion,
   AIDiscoveryResponse,
@@ -3570,6 +3571,18 @@ export const listAgentVersions = async (
   )
   return Array.isArray(response) ? response : []
 }
+
+/** The tools an agent can use. `refresh` lists them again on the server. */
+export const getAgentToolCatalog = (
+  orgSlug: string,
+  refresh = false,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AgentToolCatalog>(
+    `${agentsPath(orgSlug)}/tool-catalog`,
+    refresh ? { refresh: true } : undefined,
+    signal,
+  )
 
 export const restoreAgentVersion = (orgSlug: string, slug: string, n: number) =>
   apiClient.post<Agent>(`${agentPath(orgSlug, slug)}/versions/${n}/restore`)

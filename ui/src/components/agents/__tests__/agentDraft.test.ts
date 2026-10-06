@@ -7,9 +7,11 @@ import {
   emptyDraft,
   formatDuration,
   isPromptChanged,
+  normalizeTools,
   parseDuration,
   parseMoney,
   settingsFromDraft,
+  versionSummary,
 } from '../agentDraft'
 import { agent, promptVersion } from './fixtures'
 
@@ -80,6 +82,55 @@ describe('agentDraft', () => {
     expect(draftErrors(draft)).toEqual({
       'param.maxTokens': 'Enter a whole number above 0',
       taskTimeout: 'Enter a duration, for example 30m or 2h',
+    })
+  })
+
+  it('maps tools to the draft and names a tool change', () => {
+    const tools = {
+      'imbi.update_project': {
+        approval: true,
+        environments: ['staging', 'production'],
+        rate_limit: { count: 6, per: 'hour' as const },
+      },
+    }
+    const existing = agent({ tools })
+    const draft = draftFromAgent(existing, null)
+    expect(draft.tools).toEqual(tools)
+    expect(emptyDraft().tools).toEqual({})
+    expect(duplicateDraft(existing, null).tools).toEqual(tools)
+    expect(versionSummary(existing, draft, null)).toBe('Saved')
+
+    // The same tools in another order are not a change.
+    draft.tools = {
+      'imbi.update_project': {
+        approval: true,
+        environments: ['production', 'staging'],
+        rate_limit: { count: 6, per: 'hour' },
+      },
+    }
+    expect(versionSummary(existing, draft, null)).toBe('Saved')
+
+    draft.tools = { ...draft.tools, 'github.read_file': { approval: false } }
+    expect(versionSummary(existing, draft, null)).toBe('Changed tools')
+    draft.name = 'Fixer'
+    expect(versionSummary(existing, draft, 2)).toBe(
+      'Changed name, tools; prompt v2',
+    )
+  })
+
+  it('normalizes tools to the stored form', () => {
+    expect(
+      normalizeTools({
+        'a.tool': { approval: true },
+        'z.tool': { approval: false, environments: ['b', 'a', 'b'] },
+      }),
+    ).toEqual({
+      'a.tool': { approval: true, environments: null, rate_limit: null },
+      'z.tool': {
+        approval: false,
+        environments: ['a', 'b'],
+        rate_limit: null,
+      },
     })
   })
 })

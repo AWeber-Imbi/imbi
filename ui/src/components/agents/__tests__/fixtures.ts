@@ -1,4 +1,4 @@
-import type { Agent, PromptVersion } from '@/types'
+import type { Agent, AgentToolCatalog, PromptVersion } from '@/types'
 
 export function agent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -22,9 +22,57 @@ export function agent(overrides: Partial<Agent> = {}): Agent {
     slug: 'mender',
     tags: [{ color: '#5A89C9', name: 'Routing', slug: 'routing' }],
     team: { name: 'Platform', slug: 'platform' },
+    tools: {},
     updated_by: 'gavin@example.com',
     version: 3,
     ...overrides,
+  }
+}
+
+export function catalog(): AgentToolCatalog {
+  return {
+    generated_at: '2026-10-06T12:00:00Z',
+    groups: [
+      {
+        server: { name: 'Imbi', slug: 'imbi', transport: 'internal' },
+        tools: [
+          {
+            capability: 'destructive',
+            description: 'Delete a project.',
+            key: 'imbi.delete_project',
+            name: 'delete_project',
+          },
+          {
+            capability: 'read',
+            description: 'Search the service catalog.',
+            key: 'imbi.list_projects',
+            name: 'list_projects',
+          },
+        ],
+      },
+      {
+        server: { name: 'GitHub', slug: 'github', transport: 'mcp/http' },
+        tools: [
+          {
+            capability: 'write',
+            description: 'Open a pull request.',
+            key: 'github.create_pull_request',
+            name: 'create_pull_request',
+          },
+          {
+            capability: 'unknown',
+            description: 'Read a file at a ref.',
+            key: 'github.read_file',
+            name: 'read_file',
+          },
+        ],
+      },
+      {
+        error: 'Timed out after 10s',
+        server: { name: 'Sentry', slug: 'sentry', transport: 'mcp/http' },
+        tools: [],
+      },
+    ],
   }
 }
 

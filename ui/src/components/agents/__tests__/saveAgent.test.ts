@@ -333,4 +333,30 @@ describe('saveAgent', () => {
       "Saved prompt version 4 and moved stable to it, but could not save the agent: Team 'x' not found.",
     )
   })
+
+  it('sends the tools with the agent', async () => {
+    const existing = agent()
+    const draft = draftFromAgent(existing, promptVersion())
+    draft.tools = {
+      'github.read_file': {
+        approval: true,
+        environments: null,
+        rate_limit: null,
+      },
+    }
+    await saveAgent({
+      baseline: promptVersion(),
+      draft,
+      existing,
+      orgSlug: 'acme',
+    })
+    expect(endpoints.updateAgent).toHaveBeenCalledWith(
+      'acme',
+      'mender',
+      expect.objectContaining({
+        tools: draft.tools,
+        version_summary: 'Changed tools',
+      }),
+    )
+  })
 })
