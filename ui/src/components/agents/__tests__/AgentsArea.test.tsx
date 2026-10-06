@@ -248,6 +248,26 @@ describe('AgentsArea', () => {
     expect(endpoints.createAgent).not.toHaveBeenCalled()
   })
 
+  it('shows the enabled tools by server on the detail page', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent({
+        tools: {
+          'github.read_file': { approval: false },
+          'imbi.delete_project': { approval: true },
+          'imbi.list_projects': { approval: false },
+        },
+      }),
+    ])
+    renderAt('/agents/manage/mender')
+    expect(await screen.findByText('3 of 4 enabled')).toBeInTheDocument()
+    expect(screen.getByText('Tools and MCP access')).toBeInTheDocument()
+    expect(
+      screen.getByText('delete_project, list_projects'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('GitHub')).toBeInTheDocument()
+    expect(screen.getByText('read_file')).toBeInTheDocument()
+  })
+
   it('saves a tool change from the Tools and MCPs tab', async () => {
     vi.mocked(endpoints.updateAgent).mockResolvedValue(agent())
     renderAt('/agents/manage/mender/edit')
