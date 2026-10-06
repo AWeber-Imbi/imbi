@@ -13,6 +13,7 @@ from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 
+from .agents import agents_router
 from .comments import comments_router
 from .components import (
     component_releases_router,
@@ -170,6 +171,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     document_templates_router,
     prefix='/{org_slug}/document-templates',
+)
+organizations_router.include_router(
+    agents_router,
+    prefix='/{org_slug}/agents',
 )
 organizations_router.include_router(
     project_configuration_router,

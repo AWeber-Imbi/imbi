@@ -203,6 +203,24 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
             'Readonly role should only have read or self-service permissions',
         )
 
+    def test_agent_permission_grants(self) -> None:
+        """Agent permissions go to the roles the Agents UI needs."""
+        perm_names = {p[0] for p in seed.STANDARD_PERMISSIONS}
+        for action in ('create', 'read', 'write', 'delete'):
+            self.assertIn(f'agent:{action}', perm_names)
+        roles = {r[0]: set(r[4]) for r in seed.DEFAULT_ROLES}
+        self.assertLessEqual(
+            {'agent:create', 'agent:read', 'agent:write'}, roles['developer']
+        )
+        self.assertNotIn('agent:delete', roles['developer'])
+        for slug in ('default', 'readonly', 'imbi-scheduler'):
+            with self.subTest(role=slug):
+                self.assertIn('agent:read', roles[slug])
+                self.assertFalse(
+                    {'agent:create', 'agent:write', 'agent:delete'}
+                    & roles[slug]
+                )
+
     def test_read_only_roles_can_read_the_schedule(self) -> None:
         """Every read-only role grants ``scheduled_task:read``.
 

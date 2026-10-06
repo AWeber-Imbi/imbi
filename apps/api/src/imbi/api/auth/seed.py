@@ -457,6 +457,11 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete document templates',
     ),
+    # Agent definitions
+    ('agent:create', 'agent', 'create', 'Create agents'),
+    ('agent:read', 'agent', 'read', 'View agents and their versions'),
+    ('agent:write', 'agent', 'write', 'Update and restore agents'),
+    ('agent:delete', 'agent', 'delete', 'Delete agents'),
     # Plugin management
     (
         'admin:plugins:read',
@@ -683,6 +688,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         'Standard developer access to projects and blueprints',
         500,
         [
+            'agent:create',
+            'agent:read',
+            'agent:write',
             'blueprint:read',
             'blueprint:write',
             'project:create',
@@ -737,6 +745,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         'Baseline access granted automatically on first login',
         150,
         [
+            'agent:read',
             'blueprint:read',
             'component:read',
             'document:read',
@@ -770,6 +779,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
         'Read-only access to all resources',
         100,
         [
+            'agent:read',
             'blueprint:read',
             'component:read',
             'ai_model:read',
@@ -817,6 +827,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str], bool]] = [
             # `system` tasks belong to no user, so firing and managing
             # them is an :admin operation by definition.
             'scheduled_task:admin',
+            'agent:read',
             'blueprint:read',
             'document:read',
             'document_template:read',
