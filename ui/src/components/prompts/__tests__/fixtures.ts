@@ -4,6 +4,7 @@ export const prompt = (overrides: Partial<Prompt> = {}): Prompt => ({
   created_at: '2026-10-01T12:00:00Z',
   default_label: 'stable',
   id: 'prm-1',
+  kind: 'generative',
   labels: [
     {
       name: 'stable',
@@ -34,7 +35,9 @@ export const version = (n: number): PromptVersion => ({
   model_id: null,
   n,
   params: { max_tokens: 4096, stop_sequences: [], temperature: 1 },
+  questions: {},
   ref: `mender/core@${n}`,
+  state: '',
   summary: `Change ${n}`,
   system: `You triage v${n}.`,
   tools: [],

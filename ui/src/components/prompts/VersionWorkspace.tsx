@@ -29,6 +29,14 @@ import type {
 } from '@/types'
 
 import { AIModelSelect } from './AIModelSelect'
+import {
+  questionErrors,
+  type QuestionRow,
+  questionRowsFrom,
+  QuestionsCard,
+  questionsFrom,
+  RunPanel,
+} from './DecisionEditor'
 import { PromptBodyEditor } from './PromptBodyEditor'
 
 const VARIABLE_TYPES: PromptVariable['type'][] = [
@@ -45,6 +53,10 @@ interface Draft {
   maxTokens: string
   messages: PromptMessage[]
   model: null | string
+  /** Decision prompts only. */
+  questions: QuestionRow[]
+  /** Decision prompts only. */
+  state: string
   system: string
   temperature: string
   variables: VariableRow[]
@@ -57,8 +69,8 @@ interface VariableRow {
   type: PromptVariable['type']
 }
 
-function draftErrors(draft: Draft): string[] {
-  const errors: string[] = []
+function draftErrors(draft: Draft, decision: boolean): string[] {
+  const errors: string[] = decision ? questionErrors(draft.questions) : []
   const temperature = toNumber(draft.temperature)
   if (
     temperature != null &&
@@ -85,6 +97,8 @@ function draftFrom(version: PromptVersion): Draft {
     maxTokens: version.params?.max_tokens?.toString() ?? '',
     messages: version.messages.map((m) => ({ ...m })),
     model: version.model ?? null,
+    questions: questionRowsFrom(version.questions),
+    state: version.state ?? '',
     system: version.system,
     temperature: version.params?.temperature?.toString() ?? '',
     variables: Object.entries(version.variable_schema).map(([name, v]) => ({
@@ -104,7 +118,29 @@ function toVersion(
   draft: Draft,
   base: PromptVersion,
   summary: string,
+  decision: boolean,
 ): PromptVersionCreate {
+  const variableSchema = Object.fromEntries(
+    draft.variables.map((v) => [
+      v.name,
+      { description: v.description, required: v.required, type: v.type },
+    ]),
+  )
+  if (decision) {
+    // A decision version has no system prompt, messages, tools, or
+    // model parameters; the API rejects them.
+    return {
+      messages: [],
+      model: draft.model,
+      params: { stop_sequences: [] },
+      questions: questionsFrom(draft.questions),
+      state: draft.state,
+      summary,
+      system: '',
+      tools: [],
+      variable_schema: variableSchema,
+    }
+  }
   return {
     messages: draft.messages,
     model: draft.model,
@@ -114,15 +150,12 @@ function toVersion(
       stop_sequences: base.params?.stop_sequences ?? [],
       temperature: toNumber(draft.temperature),
     },
+    questions: {},
+    state: '',
     summary,
     system: draft.system,
     tools: base.tools,
-    variable_schema: Object.fromEntries(
-      draft.variables.map((v) => [
-        v.name,
-        { description: v.description, required: v.required, type: v.type },
-      ]),
-    ),
+    variable_schema: variableSchema,
   }
 }
 
@@ -150,8 +183,9 @@ export function VersionWorkspace({
   const base = useMemo(() => draftFrom(version), [version])
   const [draft, setDraft] = useState<Draft>(base)
   const [summary, setSummary] = useState('')
+  const decision = prompt.kind === 'decision'
   const dirty = JSON.stringify(draft) !== JSON.stringify(base)
-  const errors = draftErrors(draft)
+  const errors = draftErrors(draft, decision)
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -161,7 +195,7 @@ export function VersionWorkspace({
       createPromptVersion(
         prompt.namespace,
         prompt.slug,
-        toVersion(draft, version, summary.trim()),
+        toVersion(draft, version, summary.trim(), decision),
       ),
     onError: (err) => toast.error(extractApiErrorDetail(err)),
     onSuccess: async (saved) => {
@@ -194,144 +228,206 @@ export function VersionWorkspace({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3.5">
-      <section className={`${CARD} overflow-hidden`} style={CARD_STYLE}>
-        <header
-          className="border-tertiary flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b px-4 py-2.5"
-          style={{ borderBottomWidth: '0.5px' }}
-        >
-          <span className="text-primary text-[15px] font-medium">Body</span>
-          <span className="text-tertiary font-mono text-xs">{version.ref}</span>
-          <span className="text-tertiary ml-auto flex items-center gap-1.5 text-xs whitespace-nowrap">
-            <Lock className="size-3" />
-            immutable · edit cuts v{prompt.latest_version + 1}
-          </span>
-        </header>
-        <PromptBodyEditor
-          ariaLabel="System prompt"
-          onChange={(v) => set('system', v)}
-          readOnly={!canEdit}
-          value={draft.system}
-        />
-        <footer
-          className="border-tertiary bg-secondary flex flex-wrap items-center gap-4 border-t px-4 py-2.5"
-          style={{ borderTopWidth: '0.5px' }}
-        >
-          <span className="text-secondary flex items-center gap-1.5 text-xs">
-            <Cpu className="size-3.5" />
-            <AIModelSelect
-              className="w-56"
-              disabled={!canEdit}
-              onChange={(v) => set('model', v)}
-              value={draft.model}
-            />
-          </span>
-          <label className="text-secondary flex items-center gap-1.5 text-xs">
-            <Thermometer className="size-3.5" />
-            <span className="font-mono">temperature</span>
-            <Input
-              aria-label="Temperature"
-              className="h-8 w-20 font-mono text-xs"
-              disabled={!canEdit}
-              inputMode="decimal"
-              onChange={(e) => set('temperature', e.target.value)}
-              value={draft.temperature}
-            />
-          </label>
-          <label className="text-secondary flex items-center gap-1.5 text-xs">
-            <Ruler className="size-3.5" />
-            <span className="font-mono">max_tokens</span>
-            <Input
-              aria-label="Max tokens"
-              className="h-8 w-24 font-mono text-xs"
-              disabled={!canEdit}
-              inputMode="numeric"
-              onChange={(e) => set('maxTokens', e.target.value)}
-              value={draft.maxTokens}
-            />
-          </label>
-          <span className="text-tertiary ml-auto font-mono text-xs">
-            sha {version.content_sha256.slice(0, 8)}
-          </span>
-        </footer>
-      </section>
-
-      <section className={CARD} style={CARD_STYLE}>
-        <header
-          className="border-tertiary flex items-center gap-2 border-b px-4 py-2.5"
-          style={{ borderBottomWidth: '0.5px' }}
-        >
-          <span className="text-primary text-[15px] font-medium">Messages</span>
-          <span className="text-tertiary text-xs">
-            Sent after the system prompt
-          </span>
-          {canEdit && (
-            <Button
-              className="ml-auto h-7"
-              onClick={() =>
-                set('messages', [
-                  ...draft.messages,
-                  { content: '', role: 'user' },
-                ])
-              }
-              size="sm"
-              variant="outline"
+      {decision ? (
+        <>
+          <section className={`${CARD} overflow-hidden`} style={CARD_STYLE}>
+            <header
+              className="border-tertiary flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b px-4 py-2.5"
+              style={{ borderBottomWidth: '0.5px' }}
             >
-              <Plus />
-              Add message
-            </Button>
-          )}
-        </header>
-        <div className="space-y-2 px-4 py-3">
-          {draft.messages.length === 0 && (
-            <p className="text-tertiary text-sm">No messages.</p>
-          )}
-          {draft.messages.map((m, i) => (
-            <div className="flex items-start gap-2" key={i}>
-              <Select
-                disabled={!canEdit}
-                onValueChange={(role) =>
-                  updateMessage(i, { role: role as PromptMessage['role'] })
-                }
-                value={m.role}
-              >
-                <SelectTrigger
-                  aria-label={`Message ${i + 1} role`}
-                  className="h-8 w-28 font-mono text-xs"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">user</SelectItem>
-                  <SelectItem value="assistant">assistant</SelectItem>
-                </SelectContent>
-              </Select>
-              <Textarea
-                aria-label={`Message ${i + 1} content`}
-                className="min-h-16 flex-1 font-mono text-xs"
-                disabled={!canEdit}
-                onChange={(e) => updateMessage(i, { content: e.target.value })}
-                value={m.content}
-              />
+              <span className="text-primary text-[15px] font-medium">
+                State
+              </span>
+              <span className="text-tertiary font-mono text-xs">
+                {version.ref}
+              </span>
+              <span className="text-tertiary text-xs">
+                Sent as JSON when it renders to an object or array
+              </span>
+              <span className="text-tertiary ml-auto flex items-center gap-1.5 text-xs whitespace-nowrap">
+                <Lock className="size-3" />
+                immutable · edit cuts v{prompt.latest_version + 1}
+              </span>
+            </header>
+            <PromptBodyEditor
+              ariaLabel="State template"
+              onChange={(v) => set('state', v)}
+              readOnly={!canEdit}
+              value={draft.state}
+            />
+            <footer
+              className="border-tertiary bg-secondary flex flex-wrap items-center gap-4 border-t px-4 py-2.5"
+              style={{ borderTopWidth: '0.5px' }}
+            >
+              <span className="text-secondary flex items-center gap-1.5 text-xs">
+                <Cpu className="size-3.5" />
+                <AIModelSelect
+                  className="w-56"
+                  disabled={!canEdit}
+                  modelType="decision"
+                  onChange={(v) => set('model', v)}
+                  value={draft.model}
+                />
+              </span>
+              <span className="text-tertiary ml-auto font-mono text-xs">
+                sha {version.content_sha256.slice(0, 8)}
+              </span>
+            </footer>
+          </section>
+          <QuestionsCard
+            canEdit={canEdit}
+            onChange={(rows) => set('questions', rows)}
+            rows={draft.questions}
+          />
+        </>
+      ) : (
+        <>
+          <section className={`${CARD} overflow-hidden`} style={CARD_STYLE}>
+            <header
+              className="border-tertiary flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b px-4 py-2.5"
+              style={{ borderBottomWidth: '0.5px' }}
+            >
+              <span className="text-primary text-[15px] font-medium">Body</span>
+              <span className="text-tertiary font-mono text-xs">
+                {version.ref}
+              </span>
+              <span className="text-tertiary ml-auto flex items-center gap-1.5 text-xs whitespace-nowrap">
+                <Lock className="size-3" />
+                immutable · edit cuts v{prompt.latest_version + 1}
+              </span>
+            </header>
+            <PromptBodyEditor
+              ariaLabel="System prompt"
+              onChange={(v) => set('system', v)}
+              readOnly={!canEdit}
+              value={draft.system}
+            />
+            <footer
+              className="border-tertiary bg-secondary flex flex-wrap items-center gap-4 border-t px-4 py-2.5"
+              style={{ borderTopWidth: '0.5px' }}
+            >
+              <span className="text-secondary flex items-center gap-1.5 text-xs">
+                <Cpu className="size-3.5" />
+                <AIModelSelect
+                  className="w-56"
+                  disabled={!canEdit}
+                  onChange={(v) => set('model', v)}
+                  value={draft.model}
+                />
+              </span>
+              <label className="text-secondary flex items-center gap-1.5 text-xs">
+                <Thermometer className="size-3.5" />
+                <span className="font-mono">temperature</span>
+                <Input
+                  aria-label="Temperature"
+                  className="h-8 w-20 font-mono text-xs"
+                  disabled={!canEdit}
+                  inputMode="decimal"
+                  onChange={(e) => set('temperature', e.target.value)}
+                  value={draft.temperature}
+                />
+              </label>
+              <label className="text-secondary flex items-center gap-1.5 text-xs">
+                <Ruler className="size-3.5" />
+                <span className="font-mono">max_tokens</span>
+                <Input
+                  aria-label="Max tokens"
+                  className="h-8 w-24 font-mono text-xs"
+                  disabled={!canEdit}
+                  inputMode="numeric"
+                  onChange={(e) => set('maxTokens', e.target.value)}
+                  value={draft.maxTokens}
+                />
+              </label>
+              <span className="text-tertiary ml-auto font-mono text-xs">
+                sha {version.content_sha256.slice(0, 8)}
+              </span>
+            </footer>
+          </section>
+
+          <section className={CARD} style={CARD_STYLE}>
+            <header
+              className="border-tertiary flex items-center gap-2 border-b px-4 py-2.5"
+              style={{ borderBottomWidth: '0.5px' }}
+            >
+              <span className="text-primary text-[15px] font-medium">
+                Messages
+              </span>
+              <span className="text-tertiary text-xs">
+                Sent after the system prompt
+              </span>
               {canEdit && (
                 <Button
-                  aria-label={`Remove message ${i + 1}`}
-                  className="size-8"
+                  className="ml-auto h-7"
                   onClick={() =>
-                    set(
-                      'messages',
-                      draft.messages.filter((_, j) => j !== i),
-                    )
+                    set('messages', [
+                      ...draft.messages,
+                      { content: '', role: 'user' },
+                    ])
                   }
-                  size="icon"
-                  variant="ghost"
+                  size="sm"
+                  variant="outline"
                 >
-                  <X />
+                  <Plus />
+                  Add message
                 </Button>
               )}
+            </header>
+            <div className="space-y-2 px-4 py-3">
+              {draft.messages.length === 0 && (
+                <p className="text-tertiary text-sm">No messages.</p>
+              )}
+              {draft.messages.map((m, i) => (
+                <div className="flex items-start gap-2" key={i}>
+                  <Select
+                    disabled={!canEdit}
+                    onValueChange={(role) =>
+                      updateMessage(i, { role: role as PromptMessage['role'] })
+                    }
+                    value={m.role}
+                  >
+                    <SelectTrigger
+                      aria-label={`Message ${i + 1} role`}
+                      className="h-8 w-28 font-mono text-xs"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">user</SelectItem>
+                      <SelectItem value="assistant">assistant</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Textarea
+                    aria-label={`Message ${i + 1} content`}
+                    className="min-h-16 flex-1 font-mono text-xs"
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      updateMessage(i, { content: e.target.value })
+                    }
+                    value={m.content}
+                  />
+                  {canEdit && (
+                    <Button
+                      aria-label={`Remove message ${i + 1}`}
+                      className="size-8"
+                      onClick={() =>
+                        set(
+                          'messages',
+                          draft.messages.filter((_, j) => j !== i),
+                        )
+                      }
+                      size="icon"
+                      variant="ghost"
+                    >
+                      <X />
+                    </Button>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
+        </>
+      )}
 
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         <section className={CARD} style={CARD_STYLE}>
@@ -433,6 +529,15 @@ export function VersionWorkspace({
         </section>
         <EvaluationPanel summary={version.eval_summary} />
       </div>
+
+      {decision && canEdit && (
+        <RunPanel
+          blocked={errors.length > 0 || draft.questions.length === 0}
+          content={toVersion(draft, version, '', true)}
+          prompt={prompt}
+          variables={draft.variables}
+        />
+      )}
 
       {canEdit && (
         <div className="flex flex-wrap items-center gap-2.5 pt-1">

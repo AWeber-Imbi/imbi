@@ -380,7 +380,8 @@ export interface paths {
          *     Raises:
          *         400: Invalid patch or a read-only path.
          *         404: No such provider.
-         *         409: The new slug is taken.
+         *         409: The new slug is taken, or the new driver does not serve
+         *             the model type of a model of this provider.
          *         422: The patched configuration is invalid.
          */
         patch: operations["patch_ai_provider_api_ai_providers__id__patch"];
@@ -2207,6 +2208,39 @@ export interface paths {
          *             template fails.
          */
         post: operations["render_prompt_api_organizations__org_slug__prompts_render_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/prompts/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Prompt
+         * @description Run a decision prompt against its model and return the answers.
+         *
+         *     Renders the saved version ``ref``, or the unsaved ``draft``, then
+         *     calls the version's decision model with its provider's stored key.
+         *     Only prompt authors (``prompt:update``) may run a prompt, because a
+         *     run spends provider credit.
+         *
+         *     Raises:
+         *         403: A template calls ``project()`` without ``project:read``.
+         *         404: No such prompt, version, label, or project.
+         *         409: The model's provider has no stored credentials.
+         *         422: The prompt is not a decision prompt, has no questions or no
+         *             model, the model cannot run it, or the render fails.
+         *         502: The decision model rejected or failed the call.
+         */
+        post: operations["run_prompt_api_organizations__org_slug__prompts_run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5723,7 +5757,12 @@ export interface paths {
          * Create Prompt
          * @description Create a prompt with its first version.
          *
-         *     The default label points at version 1.
+         *     When the caller may promote (``prompt:promote``, or an admin), the
+         *     default label points at version 1. Otherwise the prompt is created
+         *     with no labels: pointing a label at a version changes what consumers
+         *     run, and only ``promote`` may do that. Until a promote holder sets a
+         *     label, a reference to the prompt does not resolve, and a consumer
+         *     such as the assistant uses its packaged prompt.
          *
          *     Raises:
          *         409: ``namespace/slug`` is taken.
@@ -5892,6 +5931,7 @@ export interface paths {
          *     Raises:
          *         404: No such prompt or version.
          *         409: The prompt changed while this request ran.
+         *         422: The label is made only of digits.
          */
         put: operations["set_prompt_label_api_prompts__namespace___slug__labels__label__put"];
         post?: never;
@@ -8096,6 +8136,23 @@ export interface components {
             /** Options */
             options?: {
                 [key: string]: unknown;
+            };
+        };
+        /**
+         * ChoiceQuestion
+         * @description Pick one of up to 255 named options.
+         */
+        ChoiceQuestion: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "choice";
+            /** Instructions */
+            instructions: string;
+            /** Criteria */
+            criteria: {
+                [key: string]: string | null;
             };
         };
         /**
@@ -11290,6 +11347,30 @@ export interface components {
             project_count: number;
         };
         /**
+         * NoulCriteria
+         * @description What a yes and a no mean for a ``noul`` question.
+         */
+        NoulCriteria: {
+            /** True */
+            true: string;
+            /** False */
+            false: string;
+        };
+        /**
+         * NoulQuestion
+         * @description A yes/no question; the answer is the probability of yes.
+         */
+        NoulQuestion: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "noul";
+            /** Instructions */
+            instructions: string;
+            criteria?: components["schemas"]["NoulCriteria"] | null;
+        };
+        /**
          * OAuth2TokenResponse
          * @description OAuth2 token response per RFC 6749.
          */
@@ -12671,6 +12752,12 @@ export interface components {
             /** Type */
             type?: string | null;
             /**
+             * Kind
+             * @default generative
+             * @enum {string}
+             */
+            kind: "generative" | "decision";
+            /**
              * Default Label
              * @default stable
              */
@@ -12747,6 +12834,12 @@ export interface components {
             icon?: string | null;
             /** Type */
             type?: string | null;
+            /**
+             * Kind
+             * @default generative
+             * @enum {string}
+             */
+            kind: "generative" | "decision";
             /** Default Label */
             default_label: string;
             /**
@@ -12783,6 +12876,54 @@ export interface components {
             description?: string | null;
         };
         /**
+         * PromptVersionContent
+         * @description The fields that make up one version.
+         *
+         *     ``content_sha256`` covers all of them, so two versions with the
+         *     same content have the same hash.
+         */
+        PromptVersionContent: {
+            /**
+             * System
+             * @default
+             */
+            system: string;
+            /**
+             * Messages
+             * @default []
+             */
+            messages: components["schemas"]["PromptMessage"][];
+            /**
+             * Tools
+             * @default []
+             */
+            tools: {
+                [key: string]: unknown;
+            }[];
+            /** Model */
+            model?: string | null;
+            params?: components["schemas"]["PromptParams"];
+            /**
+             * Variable Schema
+             * @default {}
+             */
+            variable_schema: {
+                [key: string]: components["schemas"]["PromptVariable"];
+            };
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Questions
+             * @default {}
+             */
+            questions: {
+                [key: string]: components["schemas"]["NoulQuestion"] | components["schemas"]["ChoiceQuestion"] | components["schemas"]["ScoreQuestion"];
+            };
+        };
+        /**
          * PromptVersionCreate
          * @description Request body for saving a new version.
          */
@@ -12813,6 +12954,18 @@ export interface components {
              */
             variable_schema: {
                 [key: string]: components["schemas"]["PromptVariable"];
+            };
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Questions
+             * @default {}
+             */
+            questions: {
+                [key: string]: components["schemas"]["NoulQuestion"] | components["schemas"]["ChoiceQuestion"] | components["schemas"]["ScoreQuestion"];
             };
             /** Summary */
             summary?: string | null;
@@ -12848,6 +13001,18 @@ export interface components {
              */
             variable_schema: {
                 [key: string]: components["schemas"]["PromptVariable"];
+            };
+            /**
+             * State
+             * @default
+             */
+            state: string;
+            /**
+             * Questions
+             * @default {}
+             */
+            questions: {
+                [key: string]: components["schemas"]["NoulQuestion"] | components["schemas"]["ChoiceQuestion"] | components["schemas"]["ScoreQuestion"];
             };
             /** Id */
             id: string;
@@ -13736,6 +13901,9 @@ export interface components {
         /**
          * RenderResponse
          * @description A prompt ready to send to a model.
+         *
+         *     A ``generative`` prompt fills ``system``, ``messages``, and
+         *     ``tools``; a ``decision`` prompt fills ``state`` and ``questions``.
          */
         RenderResponse: {
             /** Ref */
@@ -13744,6 +13912,12 @@ export interface components {
             label: string | null;
             /** N */
             n: number;
+            /**
+             * Kind
+             * @default generative
+             * @enum {string}
+             */
+            kind: "generative" | "decision";
             /** Content Sha256 */
             content_sha256: string;
             /** Model */
@@ -13759,6 +13933,15 @@ export interface components {
             tools: {
                 [key: string]: unknown;
             }[];
+            /** State */
+            state?: unknown;
+            /**
+             * Questions
+             * @default {}
+             */
+            questions: {
+                [key: string]: components["schemas"]["NoulQuestion"] | components["schemas"]["ChoiceQuestion"] | components["schemas"]["ScoreQuestion"];
+            };
         };
         /** RescoreRequest */
         RescoreRequest: {
@@ -13864,6 +14047,68 @@ export interface components {
              */
             permissions: components["schemas"]["Permission"][];
             parent_role?: components["schemas"]["Role-Output"] | null;
+        };
+        /**
+         * RunDraft
+         * @description Unsaved version content of an existing prompt, to run as is.
+         */
+        RunDraft: {
+            /** Namespace */
+            namespace: string;
+            /** Slug */
+            slug: string;
+            version: components["schemas"]["PromptVersionContent"];
+        };
+        /**
+         * RunRequest
+         * @description Run a decision prompt: a saved version (``ref``) or a draft.
+         */
+        RunRequest: {
+            /** Ref */
+            ref?: string | null;
+            draft?: components["schemas"]["RunDraft"] | null;
+            /**
+             * Variables
+             * @default {}
+             */
+            variables: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * RunRequestBody
+         * @description The request sent to the decision model.
+         */
+        RunRequestBody: {
+            /** State */
+            state: unknown;
+            /** Questions */
+            questions: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * RunResponse
+         * @description The typed answers of one decision run.
+         */
+        RunResponse: {
+            /** Ref */
+            ref: string;
+            /** N */
+            n: number | null;
+            /** Model */
+            model: string;
+            /** Model Id */
+            model_id: string;
+            request: components["schemas"]["RunRequestBody"];
+            /** Answers */
+            answers: {
+                [key: string]: unknown;
+            };
+            /** Usage */
+            usage: {
+                [key: string]: unknown;
+            };
         };
         /**
          * Schema
@@ -14190,6 +14435,21 @@ export interface components {
             granularity: "raw" | "hour" | "day";
             /** Points */
             points: components["schemas"]["ScoreHistoryPoint"][];
+        };
+        /**
+         * ScoreQuestion
+         * @description A position on 2 to 10 ordered levels.
+         */
+        ScoreQuestion: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "score";
+            /** Instructions */
+            instructions: string;
+            /** Criteria */
+            criteria: string[];
         };
         /** ScoreRollupRow */
         ScoreRollupRow: {
@@ -18637,6 +18897,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_prompt_api_organizations__org_slug__prompts_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
                 };
             };
             /** @description Validation Error */

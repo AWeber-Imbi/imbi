@@ -538,7 +538,14 @@ export interface ProjectTypeCreate {
 export type Prompt = Schemas['PromptResponse']
 export type PromptCreate = Schemas['PromptCreate']
 
+export type PromptDecisionQuestion =
+  | Schemas['ChoiceQuestion']
+  | Schemas['NoulQuestion']
+  | Schemas['ScoreQuestion']
+
 export type PromptEvalSummary = Schemas['EvalSummary']
+
+export type PromptKind = NonNullable<Prompt['kind']>
 
 export type PromptLabel = Schemas['PromptLabel']
 
@@ -551,6 +558,10 @@ export type PromptRenderRequest = Schemas['RenderRequest']
 export type PromptRenderResponse = Schemas['RenderResponse']
 
 export type PromptResolution = Schemas['Resolution']
+
+export type PromptRunRequest = Schemas['RunRequest']
+
+export type PromptRunResponse = Schemas['RunResponse']
 
 export type PromptVariable = Schemas['PromptVariable']
 
