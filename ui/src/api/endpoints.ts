@@ -8,6 +8,10 @@ import type {
   AdminUser,
   AdminUserCreate,
   Advisory,
+  Agent,
+  AgentCreate,
+  AgentUpdate,
+  AgentVersion,
   AIDiscoveryResponse,
   AIModel,
   AIModelCreate,
@@ -118,6 +122,7 @@ import type {
   ProjectTypeCreate,
   Prompt,
   PromptCreate,
+  PromptResolution,
   PromptRunRequest,
   PromptRunResponse,
   PromptVersion,
@@ -1945,6 +1950,11 @@ export const setPromptDefaultLabel = (
     label,
   })
 
+// Resolves `namespace/slug@label` (or `@n`) to one version. Answers
+// 404 when the prompt, the version, or the label does not exist.
+export const resolvePrompt = (ref: string, signal?: AbortSignal) =>
+  apiClient.get<PromptResolution>('/prompts/resolve', { ref }, signal)
+
 // Runs a decision prompt (a saved version or an unsaved draft) against its
 // TypeSafe model. Org-scoped because the project() provider reads org data.
 export const runPrompt = (orgSlug: string, body: PromptRunRequest) =>
@@ -2436,7 +2446,12 @@ export const listTags = async (
 
 export const createTag = (
   orgSlug: string,
-  data: { description?: null | string; name: string; slug?: null | string },
+  data: {
+    color?: null | string
+    description?: null | string
+    name: string
+    slug?: null | string
+  },
 ) =>
   apiClient.post<Tag>(
     `/organizations/${encodeURIComponent(orgSlug)}/tags/`,
@@ -3504,3 +3519,57 @@ export const getProblemPackages = (orgSlug: string, signal?: AbortSignal) =>
     undefined,
     signal,
   )
+
+// Agents (org-scoped). Each configuration change writes an immutable
+// agent version; a change to `enabled` only does not.
+const agentsPath = (orgSlug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/agents`
+
+const agentPath = (orgSlug: string, slug: string) =>
+  `${agentsPath(orgSlug)}/${encodeURIComponent(slug)}`
+
+export const listAgents = async (
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<Agent[]> => {
+  const response = await apiClient.get<Agent[]>(
+    `${agentsPath(orgSlug)}/`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createAgent = (orgSlug: string, agent: AgentCreate) =>
+  apiClient.post<Agent>(`${agentsPath(orgSlug)}/`, agent)
+
+export const updateAgent = (
+  orgSlug: string,
+  slug: string,
+  agent: AgentUpdate,
+) => apiClient.put<Agent>(agentPath(orgSlug, slug), agent)
+
+export const patchAgent = (
+  orgSlug: string,
+  slug: string,
+  operations: PatchOperation[],
+) => apiClient.patch<Agent>(agentPath(orgSlug, slug), operations)
+
+export const deleteAgent = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(agentPath(orgSlug, slug))
+
+export const listAgentVersions = async (
+  orgSlug: string,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<AgentVersion[]> => {
+  const response = await apiClient.get<AgentVersion[]>(
+    `${agentPath(orgSlug, slug)}/versions`,
+    undefined,
+    signal,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const restoreAgentVersion = (orgSlug: string, slug: string, n: number) =>
+  apiClient.post<Agent>(`${agentPath(orgSlug, slug)}/versions/${n}/restore`)

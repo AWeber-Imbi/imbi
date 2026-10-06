@@ -9,6 +9,9 @@ export const queryKeys = {
   adminLocalAuth: () => ['admin', 'local-auth'] as const,
   adminPlugin: (slug: string) => ['admin-plugin', slug] as const,
   adminPlugins: () => ['admin-plugins'] as const,
+  agents: (orgSlug: string) => ['agents', orgSlug] as const,
+  agentVersions: (orgSlug: string, slug: string) =>
+    ['agentVersions', orgSlug, slug] as const,
   aiModels: () => ['ai-models'] as const,
   anchorEdges: (
     kind: string,
@@ -60,6 +63,8 @@ export const queryKeys = {
   // every open prompt.
   prompt: (namespace: string, slug: string) =>
     ['prompts', namespace, slug] as const,
+  // Nested under `prompts` so a prompt write refreshes it too.
+  promptResolution: (ref: string) => ['prompts', 'resolve', ref] as const,
   prompts: () => ['prompts'] as const,
   promptVersions: (namespace: string, slug: string) =>
     ['promptVersions', namespace, slug] as const,
