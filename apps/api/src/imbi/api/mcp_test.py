@@ -21,6 +21,7 @@ import typing
 
 import httpx
 import mcp
+from mcp import types as mcp_types
 from mcp.client import streamable_http
 from mcp.shared._httpx_utils import create_mcp_http_client
 
@@ -132,6 +133,57 @@ def _build_auth(
     return None, None
 
 
+async def list_tools(
+    server: models.MCPServer, timeout_s: float | None = None
+) -> list[mcp_types.Tool]:
+    """Open a streamable-HTTP session, list the tools, and close it.
+
+    Parameters:
+        server: The MCP server. Secrets are read from the
+            ``*_encrypted`` fields and decrypted at connect time.
+        timeout_s: The limit for each step, in seconds. The default
+            is ``server.timeout``.
+
+    Returns:
+        Every tool that the server lists. ``ignored_tools`` is not
+        applied.
+
+    Raises:
+        TimeoutError: A step took longer than ``timeout_s``.
+        Exception: The connection or the authentication failed.
+
+    """
+    if timeout_s is None:
+        timeout_s = float(server.timeout)
+    headers, http_auth = _build_auth(server)
+    if server.verify_ssl:
+        http_client = create_mcp_http_client(
+            headers, httpx.Timeout(timeout_s), http_auth
+        )
+    else:
+        http_client = httpx.AsyncClient(
+            headers=headers,
+            timeout=httpx.Timeout(timeout_s),
+            auth=http_auth,
+            follow_redirects=True,
+            verify=False,  # noqa: S501 - opt-in for in-cluster endpoints
+        )
+    async with contextlib.AsyncExitStack() as stack:
+        streams = await stack.enter_async_context(
+            streamable_http.streamable_http_client(
+                str(server.url), http_client=http_client
+            )
+        )
+        session = await stack.enter_async_context(
+            mcp.ClientSession(streams[0], streams[1])
+        )
+        await asyncio.wait_for(session.initialize(), timeout=timeout_s)
+        result = await asyncio.wait_for(
+            session.list_tools(), timeout=timeout_s
+        )
+        return list(result.tools)
+
+
 async def test_connection(server: models.MCPServer) -> ConnectionTestResult:
     """Open a streamable-HTTP session, list tools, and time the round trip.
 
@@ -146,36 +198,9 @@ async def test_connection(server: models.MCPServer) -> ConnectionTestResult:
         The test outcome, including discovered tool names and latency.
 
     """
-    timeout_s = float(server.timeout)
     started = time.monotonic()
     try:
-        headers, http_auth = _build_auth(server)
-        if server.verify_ssl:
-            http_client = create_mcp_http_client(
-                headers, httpx.Timeout(timeout_s), http_auth
-            )
-        else:
-            http_client = httpx.AsyncClient(
-                headers=headers,
-                timeout=httpx.Timeout(timeout_s),
-                auth=http_auth,
-                follow_redirects=True,
-                verify=False,  # noqa: S501 - opt-in for in-cluster endpoints
-            )
-        async with contextlib.AsyncExitStack() as stack:
-            streams = await stack.enter_async_context(
-                streamable_http.streamable_http_client(
-                    str(server.url), http_client=http_client
-                )
-            )
-            session = await stack.enter_async_context(
-                mcp.ClientSession(streams[0], streams[1])
-            )
-            await asyncio.wait_for(session.initialize(), timeout=timeout_s)
-            result = await asyncio.wait_for(
-                session.list_tools(), timeout=timeout_s
-            )
-            tools = [tool.name for tool in result.tools]
+        tools = [tool.name for tool in await list_tools(server)]
     except asyncio.CancelledError:
         raise
     except TimeoutError:
@@ -210,4 +235,4 @@ async def test_connection(server: models.MCPServer) -> ConnectionTestResult:
     )
 
 
-__all__ = ['ConnectionTestResult', 'test_connection']
+__all__ = ['ConnectionTestResult', 'list_tools', 'test_connection']
