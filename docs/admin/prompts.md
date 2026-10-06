@@ -122,3 +122,29 @@ each typed answer, the token usage, and the request that was sent.
 Running needs `prompt:update`, because each run uses provider credit.
 The API is `POST /api/organizations/{org}/prompts/run`, with either a
 `ref` or an unsaved `draft`, plus `variables`.
+
+## Rendering isolation
+
+Templates render in separate worker processes, not in the service
+process. Each service (imbi-api, imbi-assistant, imbi-slackbot) starts a
+small pool of workers. A worker has no database access and no
+credentials. When a template calls `project()`, the worker asks the
+service, which runs the lookup with the caller's permissions.
+
+The service stops a worker that runs past the render timeout (2
+seconds), crashes, or sends too much output, and starts a new one. The
+render then fails, and imbi-assistant and imbi-slackbot use their
+built-in prompt for that turn. On Linux, a worker also has a memory
+limit, so a template that uses too much memory ends the worker, not the
+service.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `IMBI_PROMPT_WORKERS` | `2` | Workers per service process |
+| `IMBI_PROMPT_WORKER_MAX_RENDERS` | `500` | Renders before a worker is replaced |
+| `IMBI_PROMPT_WORKER_MEMORY_MB` | `256` | Memory a worker may use after it starts (Linux only) |
+| `IMBI_PROMPT_RENDER_INPROCESS` | `false` | Render in the service process; for debugging only, it removes the isolation |
+
+An idle worker uses about 50 MiB of memory, so the default adds about
+100 MiB to each service process. Size container memory limits to
+include it.

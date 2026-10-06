@@ -17,6 +17,7 @@ from imbi.assistant import (
     settings,
 )
 from imbi.common import graph, lifespan, sentry, server
+from imbi.common.prompts import pool as prompt_pool
 
 if TYPE_CHECKING:
     from collections import abc
@@ -79,6 +80,7 @@ def create_app() -> fastapi.FastAPI:
         lifespan=lifespan.Lifespan(
             sentry.sentry_lifespan,
             graph.graph_lifespan,
+            prompt_pool.pool_lifespan,
             _anthropic_lifespan,
             _mcp_lifespan,
             _links_lifespan,

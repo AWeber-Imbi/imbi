@@ -12,6 +12,7 @@ from imbi.common.plugins.errors import (
     PluginCredentialsMissing,
     PluginInstallationMissing,
 )
+from imbi.common.prompts import pool as prompt_pool
 
 LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ def create_app() -> fastapi.FastAPI:
             lifespans.clickhouse_hook,
             lifespans.iggy_hook,
             graph.graph_lifespan,
+            prompt_pool.pool_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
             lifespans.anthropic_hook,
