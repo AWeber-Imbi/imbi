@@ -192,7 +192,11 @@ describe('AgentsArea', () => {
         created_at: '2026-10-01T12:00:00Z',
         created_by: 'gavin@example.com',
         n: 2,
-        snapshot: { ...snapshot, prompt_version: 4 },
+        snapshot: {
+          ...snapshot,
+          prompt_ref: 'agents/mender',
+          prompt_version: 4,
+        },
         summary: 'Changed name',
       },
     ])
@@ -202,8 +206,31 @@ describe('AgentsArea', () => {
     expect(await screen.findByText(/· prompt v4$/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
     expect(
-      await screen.findByText(/The system prompt and model come back too/),
+      await screen.findByText(
+        /come back too\. Moves agents\/mender@stable to prompt v4\./,
+      ),
     ).toBeInTheDocument()
+  })
+
+  it('names no label move when the version has no prompt version', async () => {
+    const snapshot = { name: 'Mender', slug: 'mender', team: 'platform' }
+    vi.mocked(endpoints.listAgentVersions).mockResolvedValue([
+      {
+        created_at: '2026-10-01T12:00:00Z',
+        created_by: 'gavin@example.com',
+        n: 2,
+        snapshot: { ...snapshot, prompt_ref: 'agents/mender@stable' },
+        summary: 'Changed name',
+      },
+    ])
+    renderAt('/agents/manage/mender/edit')
+    await screen.findByText('Edit Mender')
+    fireEvent.click(screen.getByRole('tab', { name: 'Version history' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }))
+    expect(
+      await screen.findByText(/configuration of v2\. Unsaved edits/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Moves /)).not.toBeInTheDocument()
   })
 
   it('blocks a save with no name and no team', async () => {

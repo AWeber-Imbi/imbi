@@ -19,7 +19,7 @@ import { useHasPermission } from '@/hooks/useHasPermission'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { queryKeys } from '@/lib/queryKeys'
-import type { Agent } from '@/types'
+import type { Agent, AgentVersion } from '@/types'
 
 import { AGENT_PROMPT_LABEL } from './agentDraft'
 import { agentsPath } from './agentsNav'
@@ -34,8 +34,10 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
   const queryClient = useQueryClient()
   const canDelete = useHasPermission('agent:delete')
   const canWrite = useHasPermission('agent:write')
-  const [restoreTarget, setRestoreTarget] = useState<null | number>(null)
+  const [restoreTarget, setRestoreTarget] = useState<AgentVersion | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const restoreMove = restoreTarget && restoreLabelMove(restoreTarget)
 
   const versions = useQuery({
     queryFn: ({ signal }) => listAgentVersions(orgSlug, agent.slug, signal),
@@ -111,7 +113,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
                 {!current && canWrite && (
                   <Button
                     disabled={restore.isPending}
-                    onClick={() => setRestoreTarget(v.n)}
+                    onClick={() => setRestoreTarget(v)}
                     size="sm"
                     variant="outline"
                   >
@@ -148,14 +150,14 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
 
       <ConfirmDialog
         confirmLabel="Restore"
-        description={`This writes a new version with the configuration of v${restoreTarget}. The system prompt and model come back too: the ${AGENT_PROMPT_LABEL} label of the agent's prompt moves to the prompt version that v${restoreTarget} recorded. Unsaved edits on this page are lost.`}
+        description={`This writes a new version with the configuration of v${restoreTarget?.n}.${restoreMove ? ` The system prompt and model come back too. Moves ${restoreMove}.` : ''} Unsaved edits on this page are lost.`}
         onCancel={() => setRestoreTarget(null)}
         onConfirm={() => {
-          if (restoreTarget !== null) restore.mutate(restoreTarget)
+          if (restoreTarget !== null) restore.mutate(restoreTarget.n)
           setRestoreTarget(null)
         }}
         open={restoreTarget !== null}
-        title={`Restore v${restoreTarget}?`}
+        title={`Restore v${restoreTarget?.n}?`}
       />
       <ConfirmDialog
         confirmLabel="Delete agent"
@@ -170,4 +172,17 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
       />
     </div>
   )
+}
+
+/**
+ * Name the label move that a restore of `version` does, for example
+ * `agents/mender@stable to prompt v3`. Return null when no label moves.
+ */
+function restoreLabelMove(version: AgentVersion): null | string {
+  const { prompt_ref: ref, prompt_version: n } = version.snapshot
+  if (!ref || n == null) return null
+  const [address, selector] = ref.split('@', 2)
+  // A reference that names a version number moves no label.
+  if (selector && /^\d+$/.test(selector)) return null
+  return `${address}@${selector || AGENT_PROMPT_LABEL} to prompt v${n}`
 }
