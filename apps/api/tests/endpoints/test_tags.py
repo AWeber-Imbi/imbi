@@ -328,6 +328,147 @@ class TagEndpointsTestCase(support.SharedAppTestCase):
             )
         self.assertEqual(response.status_code, 404)
 
+    # -- Color ---------------------------------------------------------
+
+    def test_create_with_color(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'t': self._tag_data(color='#3B82F6'), 'o': self._org_data()}
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/tags/',
+                json={'name': 'Runbook', 'color': '#3B82F6'},
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['color'], '#3B82F6')
+        _, args, _ = self.mock_db.execute.mock_calls[0]
+        self.assertEqual(args[1]['color'], '#3B82F6')
+
+    def test_create_without_color_stores_null(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'t': self._tag_data(), 'o': self._org_data()}
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.post(
+                '/organizations/engineering/tags/',
+                json={'name': 'Runbook'},
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()['color'])
+        _, args, _ = self.mock_db.execute.mock_calls[0]
+        self.assertIsNone(args[1]['color'])
+
+    def test_create_rejects_invalid_color(self) -> None:
+        for color in ('blue', '#3B82F', '#3B82F6AA', '3B82F6', '#GGGGGG'):
+            with self.subTest(color=color):
+                response = self.client.post(
+                    '/organizations/engineering/tags/',
+                    json={'name': 'Runbook', 'color': color},
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_get_returns_color(self) -> None:
+        self.mock_db.execute.return_value = [
+            {
+                't': self._tag_data(color='#abcdef'),
+                'o': self._org_data(),
+                'document_count': 0,
+            }
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get(
+                '/organizations/engineering/tags/runbook'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['color'], '#abcdef')
+
+    def test_list_returns_color(self) -> None:
+        self.mock_db.execute.return_value = [
+            {
+                't': self._tag_data(color='#abcdef'),
+                'o': self._org_data(),
+                'document_count': 0,
+            }
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.get('/organizations/engineering/tags/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]['color'], '#abcdef')
+
+    def _patch_color(
+        self,
+        existing: str | None,
+        operation: dict[str, typing.Any],
+        stored: str | None,
+    ) -> typing.Any:
+        self.mock_db.execute.side_effect = [
+            [{'t': self._tag_data(color=existing), 'o': self._org_data()}],
+            [
+                {
+                    't': self._tag_data(color=stored),
+                    'o': self._org_data(),
+                    'document_count': 0,
+                }
+            ],
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            return self.client.patch(
+                '/organizations/engineering/tags/runbook', json=[operation]
+            )
+
+    def test_patch_sets_color(self) -> None:
+        response = self._patch_color(
+            None,
+            {'op': 'add', 'path': '/color', 'value': '#FF0000'},
+            '#FF0000',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['color'], '#FF0000')
+        params = self.mock_db.execute.await_args_list[1].args[1]
+        self.assertEqual(params['color'], '#FF0000')
+
+    def test_patch_clears_color(self) -> None:
+        response = self._patch_color(
+            '#FF0000', {'op': 'replace', 'path': '/color', 'value': None}, None
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['color'])
+        params = self.mock_db.execute.await_args_list[1].args[1]
+        self.assertIsNone(params['color'])
+
+    def test_patch_other_field_keeps_color(self) -> None:
+        response = self._patch_color(
+            '#FF0000',
+            {'op': 'replace', 'path': '/name', 'value': 'Runbooks'},
+            '#FF0000',
+        )
+        self.assertEqual(response.status_code, 200)
+        params = self.mock_db.execute.await_args_list[1].args[1]
+        self.assertEqual(params['color'], '#FF0000')
+
+    def test_patch_rejects_invalid_color(self) -> None:
+        self.mock_db.execute.return_value = [
+            {'t': self._tag_data(), 'o': self._org_data()}
+        ]
+        with mock.patch(
+            'imbi.common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/tags/runbook',
+                json=[{'op': 'add', 'path': '/color', 'value': 'red'}],
+            )
+        self.assertEqual(response.status_code, 400)
+
 
 if __name__ == '__main__':
     unittest.main()

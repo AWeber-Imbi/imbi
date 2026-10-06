@@ -19,6 +19,9 @@ __all__ = [
     'AIModelType',
     'AIProvider',
     'Advisory',
+    'Agent',
+    'AgentSettings',
+    'AgentVersion',
     'Blueprint',
     'BlueprintAssignment',
     'BlueprintEdge',
@@ -898,6 +901,78 @@ class PromptVersion(GraphModel):
         return _parse_json(value)
 
 
+class AgentSettings(pydantic.BaseModel):
+    """Operational limits for an agent. ``None`` means no limit."""
+
+    #: USD per month. Advisory only until spend enforcement exists.
+    monthly_cost_cap: decimal.Decimal | None = pydantic.Field(
+        default=None, ge=0
+    )
+    max_concurrent_tasks: int | None = pydantic.Field(default=None, gt=0)
+    task_timeout_seconds: int | None = pydantic.Field(default=None, gt=0)
+    response_sla: typing.Literal['4h', '8h', '24h', '3d', 'none'] | None = None
+
+
+class Agent(Node):
+    """The definition of an agent in an organization.
+
+    Only the definition is stored here; nothing runs an agent yet.
+    ``slug`` is unique per organization: the ``(org_id, slug)`` unique
+    index enforces it. ``prompt_ref`` is a prompt CMS reference
+    (``namespace/slug@label``). The prompt CMS owns the model and the
+    model parameters, so the agent does not store them. ``version`` is
+    the ``n`` of the newest :class:`AgentVersion`. Each change to the
+    configuration writes a new version; a change to ``enabled`` only
+    does not.
+    """
+
+    organization: BelongsToOrganization
+    #: Denormalised so ``(org_id, slug)`` can carry a unique index.
+    org_id: str | None = None
+    team: typing.Annotated[
+        Team, Edge(rel_type='OWNED_BY', direction='OUTGOING')
+    ]
+    tags: typing.Annotated[
+        list[Tag], Edge(rel_type='TAGGED_WITH', direction='OUTGOING')
+    ] = []
+    enabled: bool = True
+    slack_channel: str | None = None
+    prompt_ref: str | None = None
+    settings: AgentSettings = pydantic.Field(default_factory=AgentSettings)
+    version: int = pydantic.Field(default=1, gt=0)
+
+    @pydantic.field_validator('settings', mode='before')
+    @classmethod
+    def _parse_settings(cls, value: object) -> object:
+        return _parse_json(value)
+
+
+class AgentVersion(GraphModel):
+    """One immutable version of an :class:`Agent` configuration.
+
+    ``snapshot`` holds the full configuration that a user can edit:
+    name, slug, description, icon, team slug, tag slugs,
+    slack_channel, prompt_ref, and settings. It does not hold
+    ``enabled``, the id, or the timestamps.
+    """
+
+    agent: typing.Annotated[
+        Agent, Edge(rel_type='VERSION_OF', direction='OUTGOING')
+    ]
+    #: Denormalised so ``(agent_id, n)`` can carry a unique index.
+    agent_id: str
+    n: int = pydantic.Field(gt=0)
+    #: A short note that tells what changed in this version.
+    summary: str | None = None
+    snapshot: dict[str, typing.Any] = {}
+    created_by: str
+
+    @pydantic.field_validator('snapshot', mode='before')
+    @classmethod
+    def _parse_snapshot(cls, value: object) -> object:
+        return _parse_json(value)
+
+
 class LinkDefinition(Node):
     """Defines available link types for projects in an org.
 
@@ -966,6 +1041,15 @@ class Project(Node):
 
 class Tag(Node):
     organization: BelongsToOrganization
+
+    color: typing.Annotated[
+        str | None,
+        pydantic.Field(
+            default=None,
+            pattern=r'^#[0-9A-Fa-f]{6}$',
+            description='Hex color for tag labels (e.g. #3B82F6)',
+        ),
+    ]
 
 
 class Document(GraphModel):

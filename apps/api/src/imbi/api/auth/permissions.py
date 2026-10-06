@@ -58,6 +58,7 @@ _shared.set_auth_settings_provider(lambda: settings.get_auth_settings())
 # even though no such label exists, silently denying every request
 # instead of surfacing a configuration bug.
 _RESOURCE_LABEL_MAP: dict[str, str] = {
+    'agent': 'Agent',
     'blueprint': 'Blueprint',
     'document': 'Document',
     'document_template': 'DocumentTemplate',

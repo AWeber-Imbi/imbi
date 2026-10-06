@@ -26,10 +26,15 @@ LOGGER = logging.getLogger(__name__)
 tags_router = fastapi.APIRouter(tags=['Tags'])
 
 
+#: Same shape as ``Environment.label_color``.
+HEX_COLOR_PATTERN = r'^#[0-9A-Fa-f]{6}$'
+
+
 class TagCreate(pydantic.BaseModel):
     name: str = pydantic.Field(min_length=1)
     slug: str | None = pydantic.Field(default=None, min_length=1)
     description: str | None = None
+    color: str | None = pydantic.Field(default=None, pattern=HEX_COLOR_PATTERN)
 
 
 class OrganizationRef(pydantic.BaseModel):
@@ -42,6 +47,7 @@ class TagResponse(pydantic.BaseModel):
     name: str
     slug: str
     description: str | None = None
+    color: str | None = None
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
     organization: OrganizationRef
@@ -82,6 +88,7 @@ async def create_tag(
         'name': data.name,
         'slug': tag_slug,
         'description': data.description,
+        'color': data.color,
         'created_at': now.isoformat(),
         'updated_at': now.isoformat(),
     }
@@ -92,6 +99,7 @@ async def create_tag(
         name: {name},
         slug: {slug},
         description: {description},
+        color: {color},
         created_at: {created_at},
         updated_at: {updated_at}
     }})
@@ -197,6 +205,7 @@ class TagUpdate(pydantic.BaseModel):
     name: str | None = pydantic.Field(default=None, min_length=1)
     slug: str | None = pydantic.Field(default=None, min_length=1)
     description: str | None = None
+    color: str | None = pydantic.Field(default=None, pattern=HEX_COLOR_PATTERN)
 
 
 _TAG_READONLY_PATHS: frozenset[str] = frozenset(
@@ -216,7 +225,7 @@ async def patch_tag(
         fastapi.Depends(permissions.require_permission('tag:write')),
     ],
 ) -> dict[str, typing.Any]:
-    """Update a tag via JSON Patch (name/slug/description)."""
+    """Update a tag via JSON Patch (name/slug/description/color)."""
     fetch_query: typing.LiteralString = """
     MATCH (t:Tag {{slug: {tag_slug}}})
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
@@ -239,6 +248,7 @@ async def patch_tag(
         'name': existing.get('name'),
         'slug': existing.get('slug'),
         'description': existing.get('description'),
+        'color': existing.get('color'),
     }
     patched = json_patch.apply_patch(current, operations, _TAG_READONLY_PATHS)
     try:
@@ -257,6 +267,9 @@ async def patch_tag(
         if update.description is not None
         else existing.get('description')
     )
+    # The patch starts from the current color, so ``null`` here means
+    # that the patch removed the color.
+    new_color = update.color
 
     update_query: typing.LiteralString = """
     MATCH (t:Tag {{slug: {tag_slug}}})
@@ -264,6 +277,7 @@ async def patch_tag(
     SET t.name = {name},
         t.slug = {slug},
         t.description = {description},
+        t.color = {color},
         t.updated_at = {updated_at}
     WITH t, o
     OPTIONAL MATCH (n:Document)-[:TAGGED_WITH]->(t)
@@ -281,6 +295,7 @@ async def patch_tag(
                 'name': new_name,
                 'slug': new_slug,
                 'description': new_description,
+                'color': new_color,
                 'updated_at': now.isoformat(),
             },
             columns=['t', 'o', 'document_count'],
