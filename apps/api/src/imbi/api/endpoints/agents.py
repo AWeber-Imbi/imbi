@@ -24,8 +24,8 @@ from imbi.api.auth import permissions
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
-from imbi.common.graph import cypher as graph_cypher
 from imbi.common import patch as json_patch
+from imbi.common.graph import cypher as graph_cypher
 from imbi.common.prompts import resolve as prompt_resolve
 
 LOGGER = logging.getLogger(__name__)
