@@ -450,7 +450,8 @@ class RenderDecisionTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
     def test_sources_name_each_field(self) -> None:
-        sources = rendering.decision_sources(decision('s', QUESTIONS))
+        questions = decision('s', QUESTIONS).questions
+        sources = rendering.decision_sources('s', questions)
         self.assertIn('questions.urgent.criteria.true', sources)
         self.assertIn('questions.team.criteria.payments', sources)
         self.assertNotIn('questions.team.criteria.other', sources)

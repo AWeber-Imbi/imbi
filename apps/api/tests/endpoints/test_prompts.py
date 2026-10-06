@@ -301,7 +301,7 @@ class CreatePromptTestCase(PromptTestBase):
         )
         response = self.client.post(BASE + '/', json=self._body())
         self.assertEqual(response.status_code, 422)
-        self.assertIn('Decision models', response.json()['detail'])
+        self.assertIn('needs a generative model', response.json()['detail'])
 
     def test_template_syntax_error_is_422(self) -> None:
         self.route((MODEL, MODEL_ROW))

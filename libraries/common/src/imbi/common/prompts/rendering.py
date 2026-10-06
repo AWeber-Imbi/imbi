@@ -824,7 +824,8 @@ class RenderedDecision(typing.NamedTuple):
 
 
 def decision_sources(
-    version: models.PromptVersion,
+    state: str,
+    questions: collections.abc.Mapping[str, models.DecisionQuestion],
 ) -> dict[str, str]:
     """Return every template of a decision version, by field label.
 
@@ -832,8 +833,8 @@ def decision_sources(
     ``questions.<id>.criteria.<key>``) name the field in an error.
     Choice option names are not templates: code reads them.
     """
-    sources = {'state': version.state}
-    for qid, question in version.questions.items():
+    sources = {'state': state}
+    for qid, question in questions.items():
         base = f'questions.{qid}'
         sources[f'{base}.instructions'] = question.instructions
         match question:
@@ -962,7 +963,10 @@ async def render_decision(
 
     """
     rendered = await _render_sources(
-        version, variables, providers, decision_sources(version)
+        version,
+        variables,
+        providers,
+        decision_sources(version.state, version.questions),
     )
     questions: dict[str, models.DecisionQuestion] = {}
     for qid, question in version.questions.items():

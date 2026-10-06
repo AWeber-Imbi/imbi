@@ -32,6 +32,8 @@ __all__ = [
     'ComponentNote',
     'ComponentRelease',
     'ComponentStatus',
+    'DecisionQuestion',
+    'DecisionQuestionId',
     'DeploymentEvent',
     'Document',
     'DocumentTemplate',
