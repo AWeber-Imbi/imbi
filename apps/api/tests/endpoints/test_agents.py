@@ -188,6 +188,8 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
         create = self.mock_db.execute.await_args_list[3].args
         self.assertIn('CREATE (a:Agent', create[0])
+        self.assertIn('CREATE (a)-[:ACTS_AS]->(s)', create[0])
+        self.assertEqual(create[1]['sa_slug'], f'agent-{create[1]["id"]}')
         self.assertEqual(create[1]['team_id'], 'team-1')
         self.assertEqual(create[1]['version'], 1)
         self.assertEqual(create[1]['prompt_version'], 2)
@@ -260,7 +262,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             )
         queries = self._queries()
         self.assertIn('DETACH DELETE v', queries[4])
-        self.assertIn('DETACH DELETE a', queries[5])
+        self.assertIn('DETACH DELETE c, s, a', queries[5])
         agent_id = self.mock_db.execute.await_args_list[2].args[1]['id']
         self.assertEqual(
             self.mock_db.execute.await_args_list[5].args[1], {'id': agent_id}
@@ -623,7 +625,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(len(statements), 2)
         self.assertIn('AgentVersion', statements[0].cypher)
         self.assertIn('DETACH DELETE v', statements[0].cypher)
-        self.assertIn('DETACH DELETE a', statements[1].cypher)
+        self.assertIn('DETACH DELETE c, s, a', statements[1].cypher)
         for stmt in statements:
             self.assertEqual(stmt.params, {'id': 'agent-1'})
 

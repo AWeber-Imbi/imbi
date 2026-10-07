@@ -908,6 +908,9 @@ class AgentSettings(pydantic.BaseModel):
     monthly_cost_cap: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )
+    #: USD per task. The default hard budget of a new task. A task can
+    #: get a lower budget at creation, never a higher one.
+    task_budget: decimal.Decimal | None = pydantic.Field(default=None, ge=0)
     max_concurrent_tasks: int | None = pydantic.Field(default=None, gt=0)
     task_timeout_seconds: int | None = pydantic.Field(default=None, gt=0)
     response_sla: typing.Literal['4h', '8h', '24h', '3d', 'none'] | None = None
