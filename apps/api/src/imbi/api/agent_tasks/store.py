@@ -315,6 +315,79 @@ class TaskStore:
             )
             return await cursor.fetchall()
 
+    async def unarchived(self) -> list[Row]:
+        """Return the tasks whose log is not archived, by organization.
+
+        Each row also has ``ledger_count``, its number of ledger rows.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT t.*, (SELECT count(*) FROM agent_runtime.budget_ledger'
+                ' AS l WHERE l.task_id = t.id) AS ledger_count'
+                ' FROM agent_runtime.tasks AS t'
+                ' WHERE t.log_archived_at IS NULL'
+                ' ORDER BY t.organization_id, t.id'
+            )
+            return await cursor.fetchall()
+
+    async def events_with_seqs(
+        self, task_id: uuid.UUID, seqs: list[int]
+    ) -> list[Row]:
+        """Return the events of a task with the given seqs, by seq."""
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT * FROM agent_runtime.events'
+                ' WHERE task_id = %s AND seq = ANY(%s) ORDER BY seq',
+                (task_id, seqs),
+            )
+            return await cursor.fetchall()
+
+    async def ledger(self, task_id: uuid.UUID) -> list[Row]:
+        """Return the budget ledger rows of a task, oldest first."""
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT * FROM agent_runtime.budget_ledger'
+                ' WHERE task_id = %s ORDER BY recorded_at, id',
+                (task_id,),
+            )
+            return await cursor.fetchall()
+
+    async def archive(self, task_id: uuid.UUID, last_seq: int) -> bool:
+        """Delete the events of a closed task and set ``log_archived_at``.
+
+        Do this only after ClickHouse has every seq up to ``last_seq``.
+        Return ``False`` and change nothing when the task is not closed,
+        is archived, or has events after ``last_seq``.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            cursor = await conn.execute(
+                'SELECT 1 FROM agent_runtime.tasks WHERE id = %s'
+                " AND status = 'closed' AND log_archived_at IS NULL"
+                ' AND last_seq = %s FOR UPDATE',
+                (task_id, last_seq),
+            )
+            if await cursor.fetchone() is None:
+                return False
+            await conn.execute(
+                'DELETE FROM agent_runtime.events WHERE task_id = %s',
+                (task_id,),
+            )
+            await conn.execute(
+                'UPDATE agent_runtime.tasks SET log_archived_at = NOW()'
+                ' WHERE id = %s',
+                (task_id,),
+            )
+        return True
+
     async def set_control(
         self,
         organization_id: str,

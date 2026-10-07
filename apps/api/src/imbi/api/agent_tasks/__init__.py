@@ -3,8 +3,13 @@
 The ``agent_runtime`` schema holds task state. It is a plain Postgres
 schema next to the graph, managed like the scheduler store: the
 declarative ``schemata.toml`` is applied on every start.
+
+The store lifespan also runs the archive sweep
+(:mod:`imbi.api.agent_tasks.sweeper`), because the sweep needs the
+store's connection pool.
 """
 
+import asyncio
 import contextlib
 import pathlib
 import typing
@@ -13,6 +18,7 @@ from collections import abc
 import fastapi
 import psycopg_pool
 
+from imbi.api.agent_tasks import log, sweeper
 from imbi.api.agent_tasks.store import (
     SCHEMA,
     Actor,
@@ -51,12 +57,21 @@ def create_pool() -> Pool:
 
 @contextlib.asynccontextmanager
 async def store_lifespan() -> abc.AsyncGenerator[TaskStore]:
-    """Initialize the schema and hold the task store open."""
+    """Initialize the schema, hold the task store open, and sweep."""
     await initialize()
     pool = create_pool()
     try:
         await pool.open()
-        yield TaskStore(pool)
+        store = TaskStore(pool)
+        stop = asyncio.Event()
+        sweep = asyncio.create_task(sweeper.run_sweeper(store, stop=stop))
+        try:
+            yield store
+        finally:
+            stop.set()
+            sweep.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweep
     finally:
         await pool.close()
 
@@ -81,5 +96,7 @@ __all__ = [
     'TaskStore',
     'create_pool',
     'initialize',
+    'log',
     'store_lifespan',
+    'sweeper',
 ]

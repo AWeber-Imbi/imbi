@@ -528,9 +528,12 @@ async def list_agent_task_events(
     """List the events of a task with ``seq`` after ``after_seq``.
 
     To read new events, give the ``seq`` of the last event that you
-    have as ``after_seq``.
+    have as ``after_seq``. The events of an archived task come from
+    ClickHouse, in the same shape.
     """
     task = await _get_task(store, org_id, short_id)
+    if task['log_archived_at'] is not None:
+        return await agent_tasks.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
 
 

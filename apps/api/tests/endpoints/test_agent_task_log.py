@@ -12,6 +12,7 @@ from unittest import mock
 
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_agent_tasks
+from imbi.api.agent_tasks import sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
 
@@ -88,3 +89,61 @@ class PublishTests(ClickHouseTestCase):
         self.assertEqual(
             len(await self.postgres_events(response.json()['id'])), 1
         )
+
+
+class SweepTests(ClickHouseTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        await self.make_agent()
+        self.task = (await self.create_task()).json()
+        # The pause events never reach ClickHouse.
+        failing = mock.AsyncMock(side_effect=RuntimeError('Iggy is down'))
+        with mock.patch.object(iggy, 'publish_rows', failing):
+            response = await self.client.post(self.url('T-1/pause'))
+        self.assertEqual(response.status_code, 200, response.text)
+
+    async def get_log(
+        self, **params: typing.Any
+    ) -> list[dict[str, typing.Any]]:
+        response = await self.client.get(self.url('T-1/events'), params=params)
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    async def test_sweep_republishes_missing_rows(self) -> None:
+        stored = await self.stored_events(self.task['id'])
+        self.assertEqual([row['seq'] for row in stored], [1])
+        result = await sweeper.sweep_once(self.store)
+        self.assertGreaterEqual(result.republished_events, 2)
+        stored = await self.stored_events(self.task['id'])
+        self.assertEqual([row['seq'] for row in stored], [1, 2, 3])
+        # A complete open task is not archived.
+        await sweeper.sweep_once(self.store)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        self.assertIsNone(task['log_archived_at'])
+        self.assertEqual(len(await self.postgres_events(self.task['id'])), 3)
+        self.assertEqual(len(await self.stored_events(self.task['id'])), 3)
+
+    async def test_archive_moves_the_log_to_clickhouse(self) -> None:
+        response = await self.client.post(self.url('T-1/cancel'))
+        self.assertEqual(response.json()['status'], 'closed')
+        before = await self.get_log()
+        page = await self.get_log(after_seq=1, limit=2)
+        self.assertEqual([e['seq'] for e in before], [1, 2, 3, 4, 5, 6])
+
+        # The first round only republishes; the task is not complete.
+        await sweeper.sweep_once(self.store)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        self.assertIsNone(task['log_archived_at'])
+
+        await sweeper.sweep_once(self.store)
+        task = await self.store.get(self.org, 'T-1')
+        assert task is not None
+        self.assertIsNotNone(task['log_archived_at'])
+        self.assertEqual(await self.postgres_events(self.task['id']), [])
+        self.assertEqual(await self.get_log(), before)
+        self.assertEqual(await self.get_log(after_seq=1, limit=2), page)
+        self.assertEqual(await self.get_log(after_seq=6), [])
+        # An archived task is not swept again.
+        self.assertFalse(await self.store.archive(task['id'], 6))
