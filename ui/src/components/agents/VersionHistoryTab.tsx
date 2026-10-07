@@ -40,7 +40,9 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
 
   const restoreMove = restoreTarget && restoreLabelMove(restoreTarget)
   // The API refuses to delete an agent that other agents delegate to.
-  const delegators = (useAgentList(orgSlug).data ?? []).filter((a) =>
+  // Until the list loads, we do not know the delegators, so do not delete.
+  const agentList = useAgentList(orgSlug)
+  const delegators = (agentList.data ?? []).filter((a) =>
     a.subagents?.some((s) => s.agent_id === agent.id),
   )
   const locked = delegators.length > 0
@@ -144,7 +146,7 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
                 : 'Deletes the agent and its version history. Its prompt stays in the prompt CMS.'}
             </p>
             <Button
-              disabled={locked || remove.isPending}
+              disabled={locked || !agentList.data || remove.isPending}
               onClick={() => setConfirmDelete(true)}
               size="sm"
               variant="destructive"

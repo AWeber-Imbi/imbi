@@ -31,18 +31,21 @@ interface SubagentsTabProps {
   agentId: null | string
   onChange: (subagents: AgentSubagent[]) => void
   orgSlug: string
+  /** The subagents of the saved agent. Their rows stay while you edit. */
+  saved?: Pick<AgentSubagent, 'agent_id'>[]
   value: AgentSubagent[]
 }
 
 /**
  * The other agents of the org that this agent can delegate to. A
  * checked agent can have delegation instructions. A disabled agent
- * shows only when it is already a subagent.
+ * shows only when it is selected now or in the saved agent.
  */
 export function SubagentsTab({
   agentId,
   onChange,
   orgSlug,
+  saved = [],
   value,
 }: SubagentsTabProps) {
   const agents = useAgentList(orgSlug)
@@ -60,8 +63,11 @@ export function SubagentsTab({
     return <ErrorBanner error={agents.error} title="Failed to load agents" />
 
   const byId = new Map(value.map((s) => [s.agent_id, s]))
+  // Keep a saved disabled subagent after you clear it, so you can select it again.
+  const savedIds = new Set(saved.map((s) => s.agent_id))
   const choices = agents.data.filter(
-    (a) => a.id !== agentId && (a.enabled || byId.has(a.id)),
+    (a) =>
+      a.id !== agentId && (a.enabled || byId.has(a.id) || savedIds.has(a.id)),
   )
   // A stored subagent that is not in the list has no row, so do not count it.
   const selectedCount = choices.filter((a) => byId.has(a.id)).length
@@ -96,7 +102,8 @@ export function SubagentsTab({
         Imbi does not run agents yet. These settings are stored for when it
         does.
       </p>
-      {choices.length > SEARCH_THRESHOLD && (
+      {/* Keep an active search visible, so you can clear it. */}
+      {(choices.length > SEARCH_THRESHOLD || search !== '') && (
         <Input
           aria-label="Search agents"
           onChange={(e) => setSearch(e.target.value)}

@@ -264,6 +264,7 @@ function AgentEditorForm({
           agentId={agent?.id ?? null}
           onChange={(subagents) => update({ subagents })}
           orgSlug={orgSlug}
+          saved={agent?.subagents}
           value={draft.subagents}
         />
       )}

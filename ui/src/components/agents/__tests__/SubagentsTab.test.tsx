@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as endpoints from '@/api/endpoints'
@@ -18,9 +19,17 @@ vi.mock('@/hooks/useAuth', () => ({
 }))
 
 const changes: AgentSubagent[][] = []
+let queryClient: QueryClient
 
-function Harness({ initial }: { initial: AgentSubagent[] }) {
+function Harness({
+  initial,
+  saved,
+}: {
+  initial: AgentSubagent[]
+  saved?: AgentSubagent[]
+}) {
   const [value, setValue] = useState(initial)
+  queryClient = useQueryClient()
   return (
     <SubagentsTab
       agentId="agt-1"
@@ -29,6 +38,7 @@ function Harness({ initial }: { initial: AgentSubagent[] }) {
         setValue(next)
       }}
       orgSlug="acme"
+      saved={saved}
       value={value}
     />
   )
@@ -78,6 +88,21 @@ describe('SubagentsTab', () => {
       />,
     )
     expect(await screen.findByText('1 of 2 agents')).toBeInTheDocument()
+  })
+
+  it('keeps a saved disabled agent after you clear it', async () => {
+    const initial = [{ agent_id: 'agt-4', instructions: '' }]
+    render(<Harness initial={initial} saved={initial} />)
+    const warden = await screen.findByRole('checkbox', {
+      name: 'Delegate to Warden',
+    })
+    fireEvent.click(warden)
+    expect(last()).toEqual([])
+    expect(screen.getByText('0 of 3 agents')).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Delegate to Warden' }),
+    )
+    expect(last()).toEqual(initial)
   })
 
   it('adds subagents in order and sets instructions', async () => {
@@ -132,5 +157,30 @@ describe('SubagentsTab', () => {
     expect(screen.queryByText('Agent 12')).not.toBeInTheDocument()
     fireEvent.change(search, { target: { value: 'nothing' } })
     expect(screen.getByText('No agents match that search.')).toBeVisible()
+  })
+
+  it('keeps an active search field when the list gets shorter', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue(
+      Array.from({ length: 12 }, (_, i) =>
+        agent({ id: `agt-${i + 2}`, name: `Agent ${i + 2}` }),
+      ),
+    )
+    render(<Harness initial={[]} />)
+    const search = await screen.findByRole('textbox', {
+      name: 'Search agents',
+    })
+    fireEvent.change(search, { target: { value: 'nothing' } })
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent({ id: 'agt-2', name: 'Herald' }),
+    ])
+    await queryClient.refetchQueries()
+    expect(await screen.findByText('0 of 1 agents')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search agents' }), {
+      target: { value: '' },
+    })
+    expect(screen.getByText('Herald')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Search agents' }),
+    ).not.toBeInTheDocument()
   })
 })

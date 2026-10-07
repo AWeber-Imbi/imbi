@@ -1463,10 +1463,18 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
                 'name': 'T',
                 'slug': 't',
                 'team': 'ops',
-                'subagents': [{'agent_id': 'x'}, {'agent_id': 'x'}],
+                'subagents': [
+                    {'agent_id': 'y'},
+                    {'agent_id': 'x'},
+                    {'agent_id': 'z'},
+                    {'agent_id': 'x'},
+                    {'agent_id': 'y'},
+                    {'agent_id': 'y'},
+                ],
             },
         )
         self.assertEqual(response.status_code, 422)
+        self.assertIn("Duplicate subagent id(s): ['x', 'y']", response.text)
         self.mock_db.execute.assert_not_awaited()
 
     def test_put_duplicate_subagent(self) -> None:

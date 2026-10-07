@@ -51,8 +51,13 @@ def _check_subagents(
     value: list[models.AgentSubagent],
 ) -> list[models.AgentSubagent]:
     """Make sure that no target agent is in the list two times."""
-    ids = [item.agent_id for item in value]
-    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    seen: set[str] = set()
+    duplicates_found: set[str] = set()
+    for item in value:
+        if item.agent_id in seen:
+            duplicates_found.add(item.agent_id)
+        seen.add(item.agent_id)
+    duplicates = sorted(duplicates_found)
     if duplicates:
         raise ValueError(f'Duplicate subagent id(s): {duplicates!r}')
     return value
