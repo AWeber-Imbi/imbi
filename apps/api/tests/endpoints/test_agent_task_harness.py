@@ -179,6 +179,43 @@ class AccessTests(HarnessTestCase):
             response.json()['detail']['error'], 'organization_forbidden'
         )
 
+    async def test_own_service_account_reads_its_task(self) -> None:
+        response = await self.client.get(self.url('T-1'))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['id'], self.task['id'])
+        response = await self.client.get(self.url('T-1/events'))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            [e['type'] for e in response.json()], ['task.created']
+        )
+        # It still cannot list the tasks of the organization.
+        response = await self.client.get(self.url())
+        self.assertEqual(response.status_code, 403, response.text)
+
+    async def test_others_need_the_read_permission(self) -> None:
+        other_id = await self.make_agent('other', name='Other Bot')
+        self.act_as_user()
+        await self.create_task(agent_slug='other')
+        (account,) = await self.service_accounts(other_id)
+        self.act_as(
+            models.ServiceAccount(
+                id=account['id'], slug=account['slug'], display_name='Other'
+            )
+        )
+        for path in ('T-1', 'T-1/events'):
+            with self.subTest(path=path):
+                response = await self.client.get(self.url(path))
+                self.assertEqual(response.status_code, 403, response.text)
+        self.act_as_user()
+        self.permissions = set(test_agent_tasks.ALL_PERMISSIONS) - {
+            'agent_task:read'
+        }
+        for path in ('T-1', 'T-1/events'):
+            with self.subTest(path=path):
+                response = await self.client.get(self.url(path))
+                self.assertEqual(response.status_code, 403, response.text)
+                self.assertIn('agent_task:read', response.text)
+
     async def test_unknown_task_is_404(self) -> None:
         response = await self.post('sessions', {'session_key': 'k'}, 'T-9')
         self.assertEqual(response.status_code, 404, response.text)

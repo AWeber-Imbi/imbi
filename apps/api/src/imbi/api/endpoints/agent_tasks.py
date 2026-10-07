@@ -294,6 +294,43 @@ async def _get_task(
     return task
 
 
+_require_read = permissions.require_permission('agent_task:read')
+
+
+async def _readable_task(
+    org_id: OrgId,
+    short_id: str,
+    store: agent_tasks.Store,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> dict[str, typing.Any]:
+    """Return the task when the caller can read it.
+
+    The caller needs ``agent_task:read``. The service account of the
+    task's agent can also read its own task and events without it, so
+    its harness can poll the log for human input.
+
+    Raises:
+        403: The caller cannot read the task.
+        404: No such task.
+
+    """
+    if auth.service_account is None:
+        await _require_read(auth)
+        return await _get_task(store, org_id, short_id)
+    task = await _get_task(store, org_id, short_id)
+    if auth.service_account.id != task['service_account_id']:
+        await _require_read(auth)
+    return task
+
+
+#: The task in the path, after the read check.
+ReadableTask = typing.Annotated[
+    dict[str, typing.Any], fastapi.Depends(_readable_task)
+]
+
+
 async def _set_control(
     store: agent_tasks.TaskStore,
     org_id: str,
@@ -498,30 +535,20 @@ async def list_agent_tasks(
 
 
 @agent_tasks_router.get('/{short_id}', response_model=AgentTaskResponse)
-async def get_agent_task(
-    org_id: OrgId,
-    short_id: str,
-    store: agent_tasks.Store,
-    _auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:read')),
-    ],
-) -> dict[str, typing.Any]:
-    """Get a task by its short id (``T-<n>``)."""
-    return await _get_task(store, org_id, short_id)
+async def get_agent_task(task: ReadableTask) -> dict[str, typing.Any]:
+    """Get a task by its short id (``T-<n>``).
+
+    The service account of the task's agent can read its own task.
+    """
+    return task
 
 
 @agent_tasks_router.get(
     '/{short_id}/events', response_model=list[AgentTaskEventResponse]
 )
 async def list_agent_task_events(
-    org_id: OrgId,
-    short_id: str,
+    task: ReadableTask,
     store: agent_tasks.Store,
-    _auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('agent_task:read')),
-    ],
     after_seq: typing.Annotated[int, fastapi.Query(ge=0)] = 0,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=1000)] = 100,
 ) -> list[dict[str, typing.Any]]:
@@ -529,9 +556,9 @@ async def list_agent_task_events(
 
     To read new events, give the ``seq`` of the last event that you
     have as ``after_seq``. The events of an archived task come from
-    ClickHouse, in the same shape.
+    ClickHouse, in the same shape. The service account of the task's
+    agent can read the events of its own task.
     """
-    task = await _get_task(store, org_id, short_id)
     if task['log_archived_at'] is not None:
         return await agent_tasks.log.archived_events(task, after_seq, limit)
     return await store.events(task['id'], after_seq, limit)
