@@ -6,9 +6,9 @@ model usage, opens requests, and sets the terminal outcome.
 
 Only the service account of the task's agent can call these routes.
 Every other caller, people included, gets ``403``. The router is
-mounted with the organization-membership dependency of
-:mod:`imbi.api.endpoints.agent_tasks`, so the service account must also
-be a member of the organization.
+mounted with the router dependencies of the agent task routes, which
+include :func:`imbi.api.auth.organizations.member_org_id`, so the
+service account must also be a member of the organization.
 
 A closed task refuses every write with ``409 task_closed``. Errors that
 a harness branches on have a ``detail.error`` code.
@@ -31,7 +31,7 @@ import pydantic
 
 from imbi.api import agent_tasks
 from imbi.api.agent_tasks import store as task_store
-from imbi.api.auth import autonomous, permissions
+from imbi.api.auth import autonomous, organizations, permissions
 from imbi.api.endpoints import agent_tasks as tasks_api
 from imbi.common import graph, models
 
@@ -277,7 +277,7 @@ _PRICE_COLUMNS = (
 
 
 async def _harness_task(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     short_id: str,
     store: agent_tasks.Store,
     auth: typing.Annotated[
@@ -449,7 +449,7 @@ agent_task_harness_router = fastapi.APIRouter(tags=['Agent Task Harness'])
     response_model=SessionOpenResponse,
 )
 async def open_agent_task_session(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     task: HarnessTask,
     data: SessionOpen,
     response: fastapi.Response,
@@ -494,7 +494,7 @@ async def open_agent_task_session(
     '/{short_id}/sessions/{session_id}/heartbeat', response_model=TaskState
 )
 async def heartbeat_agent_task_session(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     task: HarnessTask,
     session_id: uuid.UUID,
     db: graph.Pool,
@@ -531,7 +531,7 @@ async def heartbeat_agent_task_session(
     '/{short_id}/sessions/{session_id}/close', response_model=TaskState
 )
 async def close_agent_task_session(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     task: HarnessTask,
     session_id: uuid.UUID,
     data: SessionClose,
@@ -568,7 +568,7 @@ async def close_agent_task_session(
     response_model=AppendEventsResponse,
 )
 async def append_agent_task_events(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     task: HarnessTask,
     data: EventBatch,
     response: fastapi.Response,
@@ -631,7 +631,7 @@ async def append_agent_task_events(
     '/{short_id}/usage', status_code=201, response_model=UsageResponse
 )
 async def report_agent_task_usage(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     task: HarnessTask,
     data: UsageReport,
     response: fastapi.Response,
@@ -684,7 +684,7 @@ async def report_agent_task_usage(
     response_model=RequestOpenResponse,
 )
 async def open_agent_task_request(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     task: HarnessTask,
     data: RequestCreate,
     store: agent_tasks.Store,
@@ -732,7 +732,7 @@ async def open_agent_task_request(
     '/{short_id}/outcome', response_model=TaskState
 )
 async def set_agent_task_outcome(
-    org_id: tasks_api.OrgId,
+    org_id: organizations.MemberOrgId,
     task: HarnessTask,
     data: OutcomeSet,
     store: agent_tasks.Store,
