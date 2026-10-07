@@ -654,6 +654,33 @@ class AgentModelTestCase(unittest.TestCase):
                 with self.assertRaises(pydantic.ValidationError):
                     self._agent(tools=tools)
 
+    def test_subagents_parse_json_string(self) -> None:
+        agent = self._agent(
+            subagents=json.dumps(
+                [
+                    {'agent_id': 'b2', 'instructions': 'Check the logs.'},
+                    {'agent_id': 'a1'},
+                ]
+            ),
+        )
+        self.assertEqual(
+            agent.subagents,
+            [
+                models.AgentSubagent(
+                    agent_id='b2', instructions='Check the logs.'
+                ),
+                models.AgentSubagent(agent_id='a1'),
+            ],
+        )
+        self.assertEqual(agent.subagents[1].instructions, '')
+
+    def test_subagents_default_empty(self) -> None:
+        self.assertEqual(self._agent().subagents, [])
+
+    def test_subagents_reject_empty_agent_id(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._agent(subagents=[{'agent_id': ''}])
+
     def test_version_parses_snapshot_json(self) -> None:
         agent = self._agent()
         version = models.AgentVersion(
