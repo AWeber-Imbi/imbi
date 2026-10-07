@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { MarkdownPreview } from '@/components/ui/markdown-editor/MarkdownPreview'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { useIcon } from '@/lib/icons'
-import type { Agent } from '@/types'
+import type { Agent, AgentSubagentRef } from '@/types'
 
 import { formatDuration, formatMoney, slaLabel, wordCount } from './agentDraft'
 import { AgentLabels } from './AgentLabelChip'
@@ -139,31 +139,73 @@ export function AgentDetail({ agent }: { agent: Agent }) {
         </dl>
       </div>
 
-      <div className="border-border bg-card rounded-lg border">
-        <div className="border-border flex items-center justify-between border-b px-6 py-4">
-          <h3 className="text-card-title">System prompt</h3>
-          {system && (
-            <span className="text-tertiary font-mono text-sm tabular-nums">
-              {wordCount(system).toLocaleString()} words
-            </span>
-          )}
-        </div>
-        <div className="max-h-65 overflow-hidden px-6 py-4">
-          {prompt.isLoading ? (
-            <p className="text-tertiary text-sm">Loading…</p>
-          ) : system ? (
-            <MarkdownPreview value={system} />
-          ) : (
-            <p className="text-tertiary text-sm">
-              {prompt.isError
-                ? 'Could not load the system prompt.'
-                : 'No system prompt yet.'}
-            </p>
-          )}
+      <ToolAccessCard agent={agent} />
+
+      <div className="grid grid-cols-2 gap-6">
+        <SubagentsCard agent={agent} />
+        <div className="border-border bg-card rounded-lg border">
+          <div className="border-border flex items-center justify-between border-b px-6 py-4">
+            <h3 className="text-card-title">System prompt</h3>
+            {system && (
+              <span className="text-tertiary font-mono text-sm tabular-nums">
+                {wordCount(system).toLocaleString()} words
+              </span>
+            )}
+          </div>
+          <div className="max-h-65 overflow-hidden px-6 py-4">
+            {prompt.isLoading ? (
+              <p className="text-tertiary text-sm">Loading…</p>
+            ) : system ? (
+              <MarkdownPreview value={system} />
+            ) : (
+              <p className="text-tertiary text-sm">
+                {prompt.isError
+                  ? 'Could not load the system prompt.'
+                  : 'No system prompt yet.'}
+              </p>
+            )}
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
 
-      <ToolAccessCard agent={agent} />
+function SubagentItem({ subagent }: { subagent: AgentSubagentRef }) {
+  const Icon = useIcon(subagent.icon, Bot)
+  const tools = `${subagent.tool_count} tool${subagent.tool_count === 1 ? '' : 's'}`
+  return (
+    <div className="border-border flex items-center gap-3 border-b px-6 py-3 last:border-b-0">
+      <Icon className="text-secondary size-4 shrink-0" />
+      <span className="text-sm font-medium">{subagent.name}</span>
+      <span className="text-tertiary flex-1 text-right font-mono text-xs tabular-nums">
+        v{subagent.version} · {tools}
+      </span>
+    </div>
+  )
+}
+
+/** The agents that this agent delegates to, in order. */
+function SubagentsCard({ agent }: { agent: Agent }) {
+  const subagents = agent.subagents ?? []
+  return (
+    <div className="border-border bg-card rounded-lg border">
+      <div className="border-border flex items-center justify-between border-b px-6 py-4">
+        <h3 className="text-card-title">Subagents</h3>
+        <span className="text-tertiary font-mono text-sm tabular-nums">
+          {subagents.length}
+        </span>
+      </div>
+      <div className="flex flex-col">
+        {subagents.length === 0 && (
+          <p className="text-tertiary px-6 py-5 text-sm">
+            No subagents. This agent does all of its own work.
+          </p>
+        )}
+        {subagents.map((s) => (
+          <SubagentItem key={s.agent_id} subagent={s} />
+        ))}
+      </div>
     </div>
   )
 }

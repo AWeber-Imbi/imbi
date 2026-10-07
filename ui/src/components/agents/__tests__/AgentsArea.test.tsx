@@ -268,6 +268,36 @@ describe('AgentsArea', () => {
     expect(screen.getByText('read_file')).toBeInTheDocument()
   })
 
+  it('shows the subagents on the detail page', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent({
+        subagents: [
+          {
+            agent_id: 'agt-2',
+            icon: null,
+            instructions: '',
+            name: 'Herald',
+            slug: 'herald',
+            tool_count: 1,
+            version: 5,
+          },
+        ],
+      }),
+    ])
+    renderAt('/agents/manage/mender')
+    expect(await screen.findByText('Herald')).toBeInTheDocument()
+    expect(screen.getByText('v5 · 1 tool')).toBeInTheDocument()
+  })
+
+  it('shows the empty subagents text on the detail page', async () => {
+    renderAt('/agents/manage/mender')
+    expect(
+      await screen.findByText(
+        'No subagents. This agent does all of its own work.',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('saves a subagent change from the Subagents tab', async () => {
     vi.mocked(endpoints.listAgents).mockResolvedValue([
       agent(),
