@@ -323,6 +323,49 @@ describe('AgentsArea', () => {
     )
   })
 
+  it('locks delete while other agents delegate to the agent', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent(),
+      agent({
+        id: 'agt-2',
+        name: 'Herald',
+        slug: 'herald',
+        subagents: [
+          {
+            agent_id: 'agt-1',
+            icon: null,
+            instructions: '',
+            name: 'Mender',
+            slug: 'mender',
+            tool_count: 0,
+            version: 3,
+          },
+        ],
+      }),
+    ])
+    renderAt('/agents/manage/mender/edit')
+    await screen.findByText('Edit Mender')
+    fireEvent.click(screen.getByRole('tab', { name: 'Version history' }))
+    expect(
+      await screen.findByText(/Mender is a subagent of 1 agent\. Remove it/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete agent' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: 'Herald' })).toHaveAttribute(
+      'href',
+      '/agents/manage/herald',
+    )
+  })
+
+  it('allows delete when no agent delegates to the agent', async () => {
+    renderAt('/agents/manage/mender/edit')
+    await screen.findByText('Edit Mender')
+    fireEvent.click(screen.getByRole('tab', { name: 'Version history' }))
+    expect(
+      await screen.findByText(/Deletes the agent and its version history/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete agent' })).toBeEnabled()
+  })
+
   it('saves a tool change from the Tools and MCPs tab', async () => {
     vi.mocked(endpoints.updateAgent).mockResolvedValue(agent())
     renderAt('/agents/manage/mender/edit')
