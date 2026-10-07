@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -22,6 +22,7 @@ import { queryKeys } from '@/lib/queryKeys'
 import type { Agent, AgentVersion } from '@/types'
 
 import { AGENT_PROMPT_LABEL } from './agentDraft'
+import { useAgentList } from './agentQueries'
 import { agentsPath } from './agentsNav'
 
 interface VersionHistoryTabProps {
@@ -38,6 +39,13 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const restoreMove = restoreTarget && restoreLabelMove(restoreTarget)
+  // The API refuses to delete an agent that other agents delegate to.
+  // Until the list loads, we do not know the delegators, so do not delete.
+  const agentList = useAgentList(orgSlug)
+  const delegators = (agentList.data ?? []).filter((a) =>
+    a.subagents?.some((s) => s.agent_id === agent.id),
+  )
+  const locked = delegators.length > 0
 
   const versions = useQuery({
     queryFn: ({ signal }) => listAgentVersions(orgSlug, agent.slug, signal),
@@ -133,11 +141,12 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
           </div>
           <div className="mt-2 flex items-center gap-6">
             <p className="text-secondary flex-1 text-sm text-pretty">
-              Deletes the agent and its version history. Its prompt stays in the
-              prompt CMS.
+              {locked
+                ? `${agent.name} is a subagent of ${delegators.length} agent${delegators.length === 1 ? '' : 's'}. Remove it from each agent below before it can be deleted.`
+                : 'Deletes the agent and its version history. Its prompt stays in the prompt CMS.'}
             </p>
             <Button
-              disabled={remove.isPending}
+              disabled={locked || !agentList.data || remove.isPending}
               onClick={() => setConfirmDelete(true)}
               size="sm"
               variant="destructive"
@@ -145,6 +154,23 @@ export function VersionHistoryTab({ agent, orgSlug }: VersionHistoryTabProps) {
               Delete agent
             </Button>
           </div>
+          {locked && (
+            <div className="border-border mt-4 flex flex-col gap-2 border-t pt-4">
+              {delegators.map((d) => (
+                <div className="flex items-center gap-3 text-sm" key={d.id}>
+                  <Link
+                    className="text-action hover:underline"
+                    to={agentsPath('manage', d.slug)}
+                  >
+                    {d.name}
+                  </Link>
+                  <span className="text-tertiary font-mono text-xs">
+                    {d.slug}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

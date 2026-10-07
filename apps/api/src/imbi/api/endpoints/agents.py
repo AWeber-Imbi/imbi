@@ -46,6 +46,28 @@ AGENT_PROMPT_NAMESPACE = 'agents'
 #: The tool configuration of an agent, by tool key.
 AgentTools = dict[models.AgentToolKey, models.AgentToolConfig]
 
+
+def _check_subagents(
+    value: list[models.AgentSubagent],
+) -> list[models.AgentSubagent]:
+    """Make sure that no target agent is in the list two times."""
+    seen: set[str] = set()
+    duplicates_found: set[str] = set()
+    for item in value:
+        if item.agent_id in seen:
+            duplicates_found.add(item.agent_id)
+        seen.add(item.agent_id)
+    duplicates = sorted(duplicates_found)
+    if duplicates:
+        raise ValueError(f'Duplicate subagent id(s): {duplicates!r}')
+    return value
+
+
+#: The agents that an agent can delegate to, in order.
+AgentSubagents = typing.Annotated[
+    list[models.AgentSubagent], pydantic.AfterValidator(_check_subagents)
+]
+
 _READONLY_PATHS: frozenset[str] = frozenset(
     [
         '/id',
@@ -120,6 +142,7 @@ class AgentSnapshot(pydantic.BaseModel):
         default_factory=models.AgentSettings
     )
     tools: AgentTools = {}
+    subagents: list[models.AgentSubagent] = []
 
 
 class AgentWrite(pydantic.BaseModel):
@@ -158,6 +181,13 @@ class AgentWrite(pydantic.BaseModel):
             'is off. Environment slugs must exist in the org.'
         ),
     )
+    subagents: AgentSubagents = pydantic.Field(
+        default=[],
+        description=(
+            'The agents that this agent can delegate to, in order, by '
+            'agent id. Each must be another agent in the org.'
+        ),
+    )
     version_summary: str | None = pydantic.Field(
         default=None,
         description='Note for the version that this write creates.',
@@ -183,7 +213,20 @@ class AgentUpdate(pydantic.BaseModel):
     prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: models.AgentSettings | None = None
     tools: AgentTools | None = None
+    subagents: AgentSubagents | None = None
     version_summary: str | None = None
+
+
+class AgentSubagentRef(pydantic.BaseModel):
+    """A subagent of an agent, with the target agent's details."""
+
+    agent_id: str
+    slug: str
+    name: str
+    icon: str | None = None
+    version: int
+    tool_count: int
+    instructions: str = ''
 
 
 class AgentResponse(pydantic.BaseModel):
@@ -202,6 +245,8 @@ class AgentResponse(pydantic.BaseModel):
         default_factory=models.AgentSettings
     )
     tools: AgentTools = {}
+    #: A target agent that no longer exists is not in the list.
+    subagents: list[AgentSubagentRef] = []
     version: int
     created_at: datetime.datetime
     updated_at: datetime.datetime | None = None
@@ -304,6 +349,19 @@ OPTIONAL MATCH (e:Environment {{slug: env_slug}})-[:BELONGS_TO]->(o)
 RETURN env_slug, e IS NOT NULL AS found
 """
 
+_SUBAGENTS_FOUND_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{slug: {org_slug}}})
+UNWIND {ids} AS agent_id
+OPTIONAL MATCH (s:Agent {{id: agent_id}})-[:BELONGS_TO]->(o)
+RETURN agent_id, s
+"""
+
+_DELEGATORS_QUERY: typing.LiteralString = """
+MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+WHERE a.id <> {id}
+RETURN a.name AS name, a.slug AS slug, a.subagents AS subagents
+"""
+
 _DETACH_TAGS_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})-[r:TAGGED_WITH]->(:Tag)
 DELETE r
@@ -381,8 +439,70 @@ def _tools_json(tools: AgentTools) -> str:
     )
 
 
+def _subagents_json(subagents: list[models.AgentSubagent]) -> str:
+    """Store the subagents as a JSON string, as Apache AGE needs."""
+    return json.dumps([item.model_dump(mode='json') for item in subagents])
+
+
 def _json_value(value: typing.Any) -> typing.Any:
     return json.loads(value) if isinstance(value, str) else value
+
+
+def _stored_subagents(value: typing.Any) -> list[models.AgentSubagent]:
+    """Parse the stored subagents of an agent."""
+    return pydantic.TypeAdapter(list[models.AgentSubagent]).validate_python(
+        _json_value(value) or []
+    )
+
+
+def _subagent_ref(
+    item: models.AgentSubagent, target: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Build an :class:`AgentSubagentRef` payload."""
+    tools: dict[str, typing.Any] = _json_value(target.get('tools')) or {}
+    return {
+        'agent_id': item.agent_id,
+        'slug': str(target.get('slug', '')),
+        'name': str(target.get('name', '')),
+        'icon': None if target.get('icon') is None else str(target['icon']),
+        'version': int(target.get('version') or 1),
+        'tool_count': len(tools),
+        'instructions': item.instructions,
+    }
+
+
+def _resolve_subagents(
+    agent: dict[str, typing.Any], targets: dict[str, dict[str, typing.Any]]
+) -> None:
+    """Set ``subagents`` in a response payload from ``targets``.
+
+    ``targets`` holds agent properties by id. A target that is not in
+    it no longer exists and is not in the response.
+    """
+    agent['subagents'] = [
+        _subagent_ref(item, targets[item.agent_id])
+        for item in agent['_subagents']
+        if item.agent_id in targets
+    ]
+
+
+async def _find_subagents(
+    db: graph.Pool, org_slug: str, ids: list[str]
+) -> dict[str, dict[str, typing.Any]]:
+    """Return the agents of the org that have one of ``ids``, by id."""
+    if not ids:
+        return {}
+    records = await db.execute(
+        _SUBAGENTS_FOUND_QUERY,
+        {'org_slug': org_slug, 'ids': sorted(set(ids))},
+        ['agent_id', 's'],
+    )
+    found: dict[str, dict[str, typing.Any]] = {}
+    for record in records:
+        props = _props(record['s'])
+        if props is not None:
+            found[str(graph.parse_agtype(record['agent_id']))] = props
+    return found
 
 
 def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
@@ -421,6 +541,9 @@ def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
         'tags': tags,
         'settings': _json_value(agent.get('settings')) or {},
         'tools': _json_value(agent.get('tools')) or {},
+        # The caller sets the response list from these.
+        'subagents': [],
+        '_subagents': _stored_subagents(agent.get('subagents')),
         'version': agent.get('version') or latest or 1,
         'updated_by': graph.parse_agtype(record['updated_by']),
         'last_version_at': graph.parse_agtype(record['last_version_at']),
@@ -442,7 +565,13 @@ async def _fetch_agent(
     )
     if not records:
         raise _not_found(slug)
-    return _parse_row(records[0])
+    agent = _parse_row(records[0])
+    stored: list[models.AgentSubagent] = agent['_subagents']
+    _resolve_subagents(
+        agent,
+        await _find_subagents(db, org_slug, [s.agent_id for s in stored]),
+    )
+    return agent
 
 
 def _snapshot_of(agent: dict[str, typing.Any]) -> AgentSnapshot:
@@ -465,6 +594,7 @@ def _snapshot_of(agent: dict[str, typing.Any]) -> AgentSnapshot:
         tools=pydantic.TypeAdapter(AgentTools).validate_python(
             agent.get('tools') or {}
         ),
+        subagents=agent.get('_subagents') or [],
     )
 
 
@@ -482,6 +612,7 @@ def _snapshot_from(data: AgentWrite) -> AgentSnapshot:
         prompt_version=data.prompt_version,
         settings=data.settings,
         tools=data.tools,
+        subagents=data.subagents,
     )
 
 
@@ -586,6 +717,25 @@ async def _validate_tool_environments(
         )
 
 
+async def _validate_subagents(
+    db: graph.Pool,
+    org_slug: str,
+    agent_id: str | None,
+    subagents: list[models.AgentSubagent],
+) -> None:
+    """Raise 422 when a subagent is the agent itself or not in the org.
+
+    Cycles are allowed: the runtime caps the delegation depth.
+    """
+    ids = [item.agent_id for item in subagents]
+    if agent_id is not None and agent_id in ids:
+        raise _unprocessable('An agent cannot be its own subagent')
+    found = await _find_subagents(db, org_slug, ids)
+    missing = sorted(set(ids) - set(found))
+    if missing:
+        raise _unprocessable(f'Subagent id(s) not found: {missing!r}')
+
+
 def _version_conflict_detail(n: int) -> str:
     return (
         f'Version {n} of this agent was saved by another request; '
@@ -674,6 +824,8 @@ async def _apply(
             await _validate_tag_slugs(db, org_slug, target.tags)
         if target.tools != current.tools:
             await _validate_tool_environments(db, org_slug, target.tools)
+        if target.subagents != current.subagents:
+            await _validate_subagents(db, org_slug, agent_id, target.subagents)
         n = int(existing['_latest']) + 1
         # The version is written first. Its unique index stops a
         # concurrent save before that save changes the agent.
@@ -706,6 +858,7 @@ async def _apply(
                 'prompt_version': target.prompt_version,
                 'settings': _settings_json(target.settings),
                 'tools': _tools_json(target.tools),
+                'subagents': _subagents_json(target.subagents),
                 'version': n,
             }
         )
@@ -771,14 +924,16 @@ async def create_agent(
     Raises:
         404: No such organization.
         409: The org has an agent with this slug.
-        422: The team, a tag, or a tool environment is not in the
-            org, or ``prompt_ref`` does not parse.
+        422: The team, a tag, a tool environment, or a subagent is not
+            in the org, a subagent is given two times, or
+            ``prompt_ref`` does not parse.
 
     """
     snapshot = _snapshot_from(data)
     team_id = await _team_id(db, org_slug, data.team)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
     await _validate_tool_environments(db, org_slug, snapshot.tools)
+    await _validate_subagents(db, org_slug, None, snapshot.subagents)
     await _assert_slug_free(db, org_slug, data.slug)
 
     now = _now()
@@ -795,6 +950,7 @@ async def create_agent(
         'prompt_version': snapshot.prompt_version,
         'settings': _settings_json(snapshot.settings),
         'tools': _tools_json(snapshot.tools),
+        'subagents': _subagents_json(snapshot.subagents),
         'version': 1,
         'created_at': now,
         'updated_at': now,
@@ -859,6 +1015,10 @@ async def list_agents(
     """List the agents in an organization, by name."""
     records = await db.execute(_LIST_QUERY, {'org_slug': org_slug}, _COLUMNS)
     agents = [_parse_row(record) for record in records]
+    # The org's agents are all here, so no other query is necessary.
+    targets = {str(a['id']): a for a in agents}
+    for agent in agents:
+        _resolve_subagents(agent, targets)
     agents.sort(key=lambda a: str(a.get('name', '')).lower())
     return agents
 
@@ -998,13 +1158,20 @@ async def delete_agent(
         fastapi.Depends(permissions.require_permission('agent:delete')),
     ],
 ) -> None:
-    """Delete an agent and every version of it."""
+    """Delete an agent and every version of it.
+
+    Raises:
+        404: No such agent.
+        409: Other agents delegate to this agent.
+
+    """
     records = await db.execute(
         _SLUG_TAKEN_QUERY, {'slug': slug, 'org_slug': org_slug}, ['id']
     )
     if not records:
         raise _not_found(slug)
     params = {'id': str(graph.parse_agtype(records[0]['id']))}
+    await _assert_not_delegated_to(db, org_slug, slug, params['id'])
     # One transaction: the versions and the agent go together, or
     # neither goes. ``_execute_batch`` is the transactional primitive
     # that other endpoints also use.
@@ -1014,6 +1181,41 @@ async def delete_agent(
             graph_cypher.Statement(_DELETE_AGENT_QUERY, params),
         ]
     )
+
+
+async def _assert_not_delegated_to(
+    db: graph.Pool, org_slug: str, slug: str, agent_id: str
+) -> None:
+    """Raise 409 when other agents in the org delegate to the agent.
+
+    The subagents are stored as JSON, so the match is done here and not
+    in the graph.
+    """
+    records = await db.execute(
+        _DELEGATORS_QUERY,
+        {'org_slug': org_slug, 'id': agent_id},
+        ['name', 'slug', 'subagents'],
+    )
+    delegators = sorted(
+        (
+            str(graph.parse_agtype(r['name'])),
+            str(graph.parse_agtype(r['slug'])),
+        )
+        for r in records
+        if any(
+            item.agent_id == agent_id
+            for item in _stored_subagents(graph.parse_agtype(r['subagents']))
+        )
+    )
+    if delegators:
+        names = ', '.join(f'{name} ({s})' for name, s in delegators)
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Agent {slug!r} is a subagent of: {names}. Remove it '
+                'from these agents first.'
+            ),
+        )
 
 
 # --- Version endpoints -------------------------------------------------
@@ -1102,7 +1304,8 @@ async def restore_agent_version(
 
     The new version has the summary ``Restored v{n}``. When the
     snapshot is the same as the configuration now, no version is
-    written. ``enabled`` does not change.
+    written. ``enabled`` does not change. A subagent in the snapshot
+    that no longer exists is dropped, and the summary tells so.
 
     When the snapshot has ``prompt_ref`` and ``prompt_version``, the
     label that the reference names (the default label when it names
@@ -1126,16 +1329,27 @@ async def restore_agent_version(
     """
     existing = await _fetch_agent(db, org_slug, slug)
     version = await _fetch_version(db, str(existing['id']), n)
+    snapshot = version.snapshot
+    found = await _find_subagents(
+        db, org_slug, [s.agent_id for s in snapshot.subagents]
+    )
+    kept = [s for s in snapshot.subagents if s.agent_id in found]
+    summary = f'Restored v{n}'
+    dropped = len(snapshot.subagents) - len(kept)
+    if dropped:
+        snapshot = snapshot.model_copy(update={'subagents': kept})
+        noun = 'subagent' if dropped == 1 else 'subagents'
+        summary += f'; dropped {dropped} missing {noun}'
     label_move = await _restore_label_move(
-        db, org_slug, version.snapshot, existing.get('prompt_ref'), auth
+        db, org_slug, snapshot, existing.get('prompt_ref'), auth
     )
     return await _apply(
         db,
         org_slug,
         existing,
-        version.snapshot,
+        snapshot,
         bool(existing.get('enabled', True)),
-        f'Restored v{n}',
+        summary,
         auth.principal_name,
         label_move,
     )

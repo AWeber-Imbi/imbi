@@ -20,6 +20,7 @@ export function agent(overrides: Partial<Agent> = {}): Agent {
     },
     slack_channel: '#cs-escalations',
     slug: 'mender',
+    subagents: [],
     tags: [{ color: '#5A89C9', name: 'Routing', slug: 'routing' }],
     team: { name: 'Platform', slug: 'platform' },
     tools: {},

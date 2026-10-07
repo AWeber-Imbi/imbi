@@ -612,11 +612,12 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
     # -- Delete --------------------------------------------------------
 
     def test_delete_removes_versions_then_agent(self) -> None:
-        self.mock_db.execute.return_value = [{'id': 'agent-1'}]
+        # id, other agents
+        self.mock_db.execute.side_effect = [[{'id': 'agent-1'}], []]
         response = self.client.delete(BASE + '/triage')
         self.assertEqual(response.status_code, 204)
         # Both deletes run in one transaction.
-        self.assertEqual(self.mock_db.execute.await_count, 1)
+        self.assertEqual(self.mock_db.execute.await_count, 2)
         self.mock_db._execute_batch.assert_awaited_once()
         statements = self.mock_db._execute_batch.await_args.args[0]
         self.assertEqual(len(statements), 2)
@@ -1296,3 +1297,388 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             response = self.client.get(BASE + '/tool-catalog?refresh=true')
             self.assertEqual(response.status_code, 200, response.text)
             self.assertTrue(get_catalog.await_args.kwargs['refresh'])
+
+    # -- Subagents -----------------------------------------------------
+
+    def _target(
+        self, agent_id: str, **props: typing.Any
+    ) -> dict[str, typing.Any]:
+        """Return the stored properties of a subagent target."""
+        target: dict[str, typing.Any] = {
+            'id': agent_id,
+            'name': agent_id.title(),
+            'slug': agent_id,
+            'icon': None,
+            'version': 2,
+            'tools': json.dumps({'github.read_file': {}, 'imbi.search': {}}),
+        }
+        target.update(props)
+        return target
+
+    def _found(
+        self, *ids: str, missing: tuple[str, ...] = ()
+    ) -> list[dict[str, typing.Any]]:
+        rows = [{'agent_id': i, 's': self._target(i)} for i in ids]
+        rows += [{'agent_id': i, 's': None} for i in missing]
+        return rows
+
+    def test_get_resolves_subagents(self) -> None:
+        stored = [
+            {'agent_id': 'writer', 'instructions': 'Keep it short.'},
+            {'agent_id': 'gone', 'instructions': ''},
+            {'agent_id': 'coder', 'instructions': ''},
+        ]
+        self.mock_db.execute.side_effect = [
+            [self._row(subagents=json.dumps(stored))],
+            self._found('writer', 'coder', missing=('gone',)),
+        ]
+        response = self.client.get(BASE + '/triage')
+        self.assertEqual(response.status_code, 200, response.text)
+        # The order is kept. A target that is gone is not shown.
+        self.assertEqual(
+            response.json()['subagents'],
+            [
+                {
+                    'agent_id': 'writer',
+                    'slug': 'writer',
+                    'name': 'Writer',
+                    'icon': None,
+                    'version': 2,
+                    'tool_count': 2,
+                    'instructions': 'Keep it short.',
+                },
+                {
+                    'agent_id': 'coder',
+                    'slug': 'coder',
+                    'name': 'Coder',
+                    'icon': None,
+                    'version': 2,
+                    'tool_count': 2,
+                    'instructions': '',
+                },
+            ],
+        )
+        query = self.mock_db.execute.await_args_list[1].args
+        self.assertEqual(query[1]['ids'], ['coder', 'gone', 'writer'])
+        self.assertEqual(query[1]['org_slug'], 'engineering')
+
+    def test_get_without_subagents_needs_no_query(self) -> None:
+        self.mock_db.execute.return_value = [self._row()]
+        body = self.client.get(BASE + '/triage').json()
+        self.assertEqual(body['subagents'], [])
+        self.assertEqual(self.mock_db.execute.await_count, 1)
+
+    def test_list_resolves_subagents_from_the_list(self) -> None:
+        stored = [{'agent_id': 'agent-2', 'instructions': 'Fix it.'}]
+        self.mock_db.execute.return_value = [
+            self._row(subagents=json.dumps(stored)),
+            self._row(
+                id='agent-2',
+                name='Coder',
+                slug='coder',
+                tools=json.dumps({'github.read_file': {}}),
+                latest=5,
+            ),
+        ]
+        response = self.client.get(BASE + '/')
+        self.assertEqual(response.status_code, 200, response.text)
+        triage = response.json()[1]
+        self.assertEqual(triage['slug'], 'triage')
+        self.assertEqual(
+            triage['subagents'],
+            [
+                {
+                    'agent_id': 'agent-2',
+                    'slug': 'coder',
+                    'name': 'Coder',
+                    'icon': None,
+                    'version': 5,
+                    'tool_count': 1,
+                    'instructions': 'Fix it.',
+                }
+            ],
+        )
+        self.assertEqual(self.mock_db.execute.await_count, 1)
+
+    def test_create_with_subagents(self) -> None:
+        # team, subagents, slug check, create, version, fetch
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            self._found('writer', 'coder'),
+            [],
+            [{'id': 'agent-1'}],
+            [{'n': 1}],
+            [self._row()],
+        ]
+        subagents = [
+            {'agent_id': 'writer', 'instructions': 'Short.'},
+            {'agent_id': 'coder'},
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'subagents': subagents,
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        expected = [
+            {'agent_id': 'writer', 'instructions': 'Short.'},
+            {'agent_id': 'coder', 'instructions': ''},
+        ]
+        create = self.mock_db.execute.await_args_list[3].args
+        self.assertEqual(json.loads(create[1]['subagents']), expected)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            json.loads(version['snapshot'])['subagents'], expected
+        )
+
+    def test_create_unknown_subagent(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            self._found('writer', missing=('other-org',)),
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'T',
+                'slug': 't',
+                'team': 'ops',
+                'subagents': [
+                    {'agent_id': 'writer'},
+                    {'agent_id': 'other-org'},
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('other-org', response.json()['detail'])
+        self.assertEqual(self._version_writes(), [])
+
+    def test_create_duplicate_subagent(self) -> None:
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'T',
+                'slug': 't',
+                'team': 'ops',
+                'subagents': [
+                    {'agent_id': 'y'},
+                    {'agent_id': 'x'},
+                    {'agent_id': 'z'},
+                    {'agent_id': 'x'},
+                    {'agent_id': 'y'},
+                    {'agent_id': 'y'},
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("Duplicate subagent id(s): ['x', 'y']", response.text)
+        self.mock_db.execute.assert_not_awaited()
+
+    def test_put_duplicate_subagent(self) -> None:
+        self.mock_db.execute.return_value = [self._row()]
+        response = self.client.put(
+            BASE + '/triage',
+            json={'subagents': [{'agent_id': 'x'}, {'agent_id': 'x'}]},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_put_self_as_subagent(self) -> None:
+        self.mock_db.execute.return_value = [self._row()]
+        response = self.client.put(
+            BASE + '/triage',
+            json={'subagents': [{'agent_id': 'agent-1'}]},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('own subagent', response.json()['detail'])
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_put_subagents_writes_new_version(self) -> None:
+        # fetch, subagents, batch (version, set), fetch
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=2)],
+            self._found('writer'),
+            [self._row(latest=3)],
+        ]
+        subagents = [{'agent_id': 'writer', 'instructions': 'Short.'}]
+        response = self.client.put(
+            BASE + '/triage',
+            json={
+                'subagents': subagents,
+                'version_summary': 'Changed subagents',
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(version['n'], 3)
+        self.assertEqual(version['summary'], 'Changed subagents')
+        self.assertEqual(
+            json.loads(version['snapshot'])['subagents'], subagents
+        )
+        set_params = self._batch()[1].params
+        self.assertEqual(json.loads(set_params['subagents']), subagents)
+
+    def test_put_same_subagents_writes_nothing(self) -> None:
+        stored = [{'agent_id': 'writer', 'instructions': ''}]
+        self.mock_db.execute.side_effect = [
+            [self._row(subagents=json.dumps(stored))],
+            self._found('writer'),
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'subagents': [{'agent_id': 'writer'}]}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(self._version_writes(), [])
+
+    def test_put_subagent_order_is_a_change(self) -> None:
+        stored = [
+            {'agent_id': 'writer', 'instructions': ''},
+            {'agent_id': 'coder', 'instructions': ''},
+        ]
+        self.mock_db.execute.side_effect = [
+            [self._row(subagents=json.dumps(stored))],
+            self._found('writer', 'coder'),
+            self._found('writer', 'coder'),
+            [self._row(latest=2)],
+        ]
+        response = self.client.put(
+            BASE + '/triage',
+            json={'subagents': list(reversed(stored))},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            [
+                s['agent_id']
+                for s in json.loads(version['snapshot'])['subagents']
+            ],
+            ['coder', 'writer'],
+        )
+
+    def test_patch_subagent_instructions(self) -> None:
+        stored = [{'agent_id': 'writer', 'instructions': ''}]
+        self.mock_db.execute.side_effect = [
+            [self._row(subagents=json.dumps(stored))],
+            self._found('writer'),
+            self._found('writer'),
+            [self._row(latest=2)],
+        ]
+        response = self.client.patch(
+            BASE + '/triage',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/subagents/0/instructions',
+                    'value': 'Be brief.',
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            json.loads(version['snapshot'])['subagents'],
+            [{'agent_id': 'writer', 'instructions': 'Be brief.'}],
+        )
+
+    def test_restore_restores_subagents(self) -> None:
+        subagents = [{'agent_id': 'writer', 'instructions': 'Short.'}]
+        # fetch, version, restore check, validate, batch, fetch
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3)],
+            [self._version(1, subagents=subagents)],
+            self._found('writer'),
+            self._found('writer'),
+            [self._row(latest=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(version['summary'], 'Restored v1')
+        set_params = self._batch()[1].params
+        self.assertEqual(json.loads(set_params['subagents']), subagents)
+
+    def test_restore_drops_missing_subagents(self) -> None:
+        subagents = [
+            {'agent_id': 'gone', 'instructions': ''},
+            {'agent_id': 'writer', 'instructions': 'Short.'},
+        ]
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3)],
+            [self._version(1, subagents=subagents)],
+            self._found('writer', missing=('gone',)),
+            self._found('writer'),
+            [self._row(latest=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            version['summary'], 'Restored v1; dropped 1 missing subagent'
+        )
+        self.assertEqual(
+            json.loads(version['snapshot'])['subagents'], subagents[1:]
+        )
+
+    def test_restore_drops_all_missing_subagents(self) -> None:
+        subagents = [{'agent_id': 'a', 'instructions': ''}, {'agent_id': 'b'}]
+        # The slack channel differs, so a version is written.
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new')],
+            [self._version(1, subagents=subagents)],
+            self._found(missing=('a', 'b')),
+            [self._row(latest=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            self._version_writes()[0]['summary'],
+            'Restored v1; dropped 2 missing subagents',
+        )
+
+    def test_restore_old_version_clears_subagents(self) -> None:
+        stored = [{'agent_id': 'writer', 'instructions': ''}]
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, subagents=json.dumps(stored))],
+            self._found('writer'),
+            [self._version(1)],
+            [self._row(latest=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(json.loads(self._batch()[1].params['subagents']), [])
+
+    def test_delete_delegated_to_conflicts(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'id': 'agent-1'}],
+            [
+                {
+                    'name': 'Ops Lead',
+                    'slug': 'ops-lead',
+                    'subagents': json.dumps(
+                        [{'agent_id': 'agent-1', 'instructions': ''}]
+                    ),
+                },
+                {
+                    'name': 'Writer',
+                    'slug': 'writer',
+                    'subagents': json.dumps(
+                        [{'agent_id': 'agent-9', 'instructions': ''}]
+                    ),
+                },
+                {'name': 'Coder', 'slug': 'coder', 'subagents': None},
+            ],
+        ]
+        response = self.client.delete(BASE + '/triage')
+        self.assertEqual(response.status_code, 409)
+        detail = response.json()['detail']
+        self.assertIn('Ops Lead (ops-lead)', detail)
+        self.assertNotIn('writer', detail)
+        self.mock_db._execute_batch.assert_not_awaited()
+        query = self.mock_db.execute.await_args_list[1].args
+        self.assertEqual(
+            query[1], {'org_slug': 'engineering', 'id': 'agent-1'}
+        )

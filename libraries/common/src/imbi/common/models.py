@@ -945,6 +945,20 @@ AgentToolKey = typing.Annotated[
 ]
 
 
+class AgentSubagent(pydantic.BaseModel):
+    """An agent that an agent can delegate a task to.
+
+    Nothing delegates yet, because nothing runs an agent.
+    """
+
+    #: The ``id`` of the target agent. The id does not change when
+    #: the target gets a new name or slug.
+    agent_id: str = pydantic.Field(min_length=1)
+    #: Text added to the system prompt of the target when this agent
+    #: delegates to it. Empty means the task context only.
+    instructions: str = ''
+
+
 class Agent(Node):
     """The definition of an agent in an organization.
 
@@ -977,9 +991,11 @@ class Agent(Node):
     #: The tools that the agent can use, by tool key. A tool that is
     #: not in this map is off.
     tools: dict[AgentToolKey, AgentToolConfig] = {}
+    #: The agents that the agent can delegate to, in order.
+    subagents: list[AgentSubagent] = []
     version: int = pydantic.Field(default=1, gt=0)
 
-    @pydantic.field_validator('settings', 'tools', mode='before')
+    @pydantic.field_validator('settings', 'tools', 'subagents', mode='before')
     @classmethod
     def _parse_settings(cls, value: object) -> object:
         return _parse_json(value)
@@ -990,9 +1006,8 @@ class AgentVersion(GraphModel):
 
     ``snapshot`` holds the full configuration that a user can edit:
     name, slug, description, icon, team slug, tag slugs,
-    slack_channel, prompt_ref, prompt_version, settings, and tools. It
-    does
-    not hold ``enabled``, the id, or the timestamps.
+    slack_channel, prompt_ref, prompt_version, settings, tools, and
+    subagents. It does not hold ``enabled``, the id, or the timestamps.
     """
 
     agent: typing.Annotated[
