@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select'
 import { Sk } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { useHasPermission } from '@/hooks/useHasPermission'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { cn } from '@/lib/utils'
 import type { AgentToolConfig } from '@/types'
@@ -35,6 +36,7 @@ import {
   type RatePeriod,
   setTools,
   toggleEnvironment,
+  TOOL_ERROR_MESSAGES,
   type ToolGroupView,
   type ToolRow,
 } from './agentTools'
@@ -77,6 +79,8 @@ interface ToolsTabProps {
  */
 export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
   const { query: catalog, refresh } = useAgentToolCatalog(orgSlug)
+  // A refresh connects to each MCP server, so the API needs agent:write.
+  const canRefresh = useHasPermission('agent:write')
   const environments = useOrgEnvironments(orgSlug)
   const [search, setSearch] = useState('')
   const [capabilities, setCapabilities] = useState<Set<string>>(new Set())
@@ -155,16 +159,18 @@ export function ToolsTab({ onChange, orgSlug, value }: ToolsTabProps) {
         >
           Enabled only
         </Button>
-        <Button
-          aria-label="Refresh the tool list"
-          disabled={refresh.isPending}
-          onClick={() => refresh.mutate()}
-          size="sm"
-          title={`Listed ${formatRelativeDate(catalog.data.generated_at)}. List the tools again.`}
-          variant="outline"
-        >
-          <RefreshCw className={cn(refresh.isPending && 'animate-spin')} />
-        </Button>
+        {canRefresh && (
+          <Button
+            aria-label="Refresh the tool list"
+            disabled={refresh.isPending}
+            onClick={() => refresh.mutate()}
+            size="sm"
+            title={`Listed ${formatRelativeDate(catalog.data.generated_at)}. List the tools again.`}
+            variant="outline"
+          >
+            <RefreshCw className={cn(refresh.isPending && 'animate-spin')} />
+          </Button>
+        )}
         <span className="text-tertiary font-mono text-sm whitespace-nowrap tabular-nums">
           {enabled} of {total} enabled
         </span>
@@ -371,7 +377,8 @@ function ToolGroupCard({
           role="alert"
         >
           <AlertCircle className="size-4 shrink-0" />
-          Could not list the tools of this server: {view.error}
+          Could not list the tools of this server:{' '}
+          {TOOL_ERROR_MESSAGES[view.error]}
         </div>
       )}
       {isOpen && (

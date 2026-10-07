@@ -1185,7 +1185,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
                     server=agent_tools.AgentToolServer(
                         slug='sentry', name='Sentry', transport='mcp/http'
                     ),
-                    error='Timed out after 10s',
+                    error='timeout',
                 )
             ],
             generated_at=datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC),
@@ -1198,7 +1198,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         body = response.json()
         self.assertEqual(body['groups'][0]['server']['slug'], 'sentry')
         self.assertEqual(body['groups'][0]['tools'], [])
-        self.assertEqual(body['groups'][0]['error'], 'Timed out after 10s')
+        self.assertEqual(body['groups'][0]['error'], 'timeout')
         args = get_catalog.await_args
         self.assertIs(args.args[0], self.mock_db)
         self.assertIs(args.args[1], valkey_client)
@@ -1210,3 +1210,27 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.auth_context.permissions = set()
         response = self.client.get(BASE + '/tool-catalog')
         self.assertEqual(response.status_code, 403)
+
+    def test_tool_catalog_refresh_requires_write(self) -> None:
+        from imbi.api import agent_tools
+
+        self.auth_context.permissions = {'agent:read'}
+        catalog = agent_tools.AgentToolCatalog(
+            groups=[],
+            generated_at=datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC),
+        )
+        with mock.patch.object(
+            agent_tools, 'get_catalog', return_value=catalog
+        ) as get_catalog:
+            response = self.client.get(BASE + '/tool-catalog?refresh=true')
+            self.assertEqual(response.status_code, 403, response.text)
+            get_catalog.assert_not_awaited()
+            # A read without refresh uses the kept catalog.
+            response = self.client.get(BASE + '/tool-catalog')
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertFalse(get_catalog.await_args.kwargs['refresh'])
+            # An admin can refresh without agent:write.
+            self.user.is_admin = True
+            response = self.client.get(BASE + '/tool-catalog?refresh=true')
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertTrue(get_catalog.await_args.kwargs['refresh'])

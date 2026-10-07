@@ -4169,10 +4169,16 @@ export interface paths {
          * @description List the tools that an agent can use, in groups by server.
          *
          *     The groups are the Imbi tools and the tools of each enabled MCP
-         *     server. A server that fails gives its group with ``error`` and no
-         *     tools. The catalog is kept for five minutes; ``refresh=true``
-         *     lists it again. The catalog is the same in each organization,
+         *     server. A server that fails gives its group with an error code in
+         *     ``error`` and no tools. The error text goes only to the log. The
+         *     catalog is kept for five minutes; ``refresh=true`` lists it again.
+         *     A refresh connects to each MCP server, so it needs
+         *     ``agent:write``. The catalog is the same in each organization,
          *     because MCP servers are global.
+         *
+         *     Raises:
+         *         403: ``refresh=true`` and the caller does not have
+         *             ``agent:write``.
          */
         get: operations["get_agent_tool_catalog_api_organizations__org_slug__agents_tool_catalog_get"];
         put?: never;
@@ -8048,7 +8054,7 @@ export interface components {
              */
             tools: components["schemas"]["AgentCatalogTool"][];
             /** Error */
-            error?: string | null;
+            error?: ("unreachable" | "timeout" | "auth_failed") | null;
         };
         /** AgentToolServer */
         AgentToolServer: {

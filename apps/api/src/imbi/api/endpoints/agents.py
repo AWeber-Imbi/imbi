@@ -871,7 +871,7 @@ async def get_agent_tool_catalog(
     request: fastapi.Request,
     db: graph.Pool,
     valkey_client: OptionalValkeyClient,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:read')),
     ],
@@ -880,12 +880,24 @@ async def get_agent_tool_catalog(
     """List the tools that an agent can use, in groups by server.
 
     The groups are the Imbi tools and the tools of each enabled MCP
-    server. A server that fails gives its group with ``error`` and no
-    tools. The catalog is kept for five minutes; ``refresh=true``
-    lists it again. The catalog is the same in each organization,
+    server. A server that fails gives its group with an error code in
+    ``error`` and no tools. The error text goes only to the log. The
+    catalog is kept for five minutes; ``refresh=true`` lists it again.
+    A refresh connects to each MCP server, so it needs
+    ``agent:write``. The catalog is the same in each organization,
     because MCP servers are global.
+
+    Raises:
+        403: ``refresh=true`` and the caller does not have
+            ``agent:write``.
+
     """
     _ = org_slug
+    if refresh and not (auth.is_admin or 'agent:write' in auth.permissions):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Permission denied: refresh needs agent:write',
+        )
     return await agent_tools.get_catalog(
         db, valkey_client, request.app.openapi, refresh=refresh
     )

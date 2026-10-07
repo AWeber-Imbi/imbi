@@ -39,7 +39,7 @@ describe('agentTools', () => {
       'Not in the catalog',
     ])
     const sentry = views[2]
-    expect(sentry.error).toBe('Timed out after 10s')
+    expect(sentry.error).toBe('timeout')
     expect(sentry.rows).toEqual([
       {
         capability: null,
