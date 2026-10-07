@@ -72,6 +72,42 @@ async def _try_sweep_lock() -> bool:
         return True
 
 
+async def _sweep_task(
+    store: task_store.TaskStore,
+    task: task_store.Row,
+    events: dict[str, tuple[int, int]],
+    reports: dict[str, int],
+    result: SweepResult,
+) -> None:
+    """Republish what ClickHouse does not have of one task, and archive
+    the task when it is closed and ClickHouse holds all of it."""
+    complete = True
+    last_seq = task['last_seq']
+    if events.get(str(task['id'])) != (last_seq, last_seq):
+        complete = False
+        stored = await log.stored_seqs(task)
+        missing = [seq for seq in range(1, last_seq + 1) if seq not in stored]
+        rows = await store.events_with_seqs(task['id'], missing)
+        await log.publish(task, rows)
+        result.republished_events += len(rows)
+    if reports.get(str(task['id']), 0) != task['ledger_count']:
+        complete = False
+        stored_reports = await log.stored_reports(task)
+        rows = [
+            row
+            for row in await store.ledger(task['id'])
+            if str(row['id']) not in stored_reports
+        ]
+        await log.publish(task, [], rows)
+        result.republished_reports += len(rows)
+    if (
+        complete
+        and task['status'] == 'closed'
+        and await store.archive(task['id'], last_seq)
+    ):
+        result.archived += 1
+
+
 async def sweep_once(store: task_store.TaskStore) -> SweepResult:
     """Close stale sessions, republish what ClickHouse does not have,
     and archive complete tasks."""
@@ -104,33 +140,14 @@ async def sweep_once(store: task_store.TaskStore) -> SweepResult:
         events = await log.event_counts(organization_id, ids)
         reports = await log.usage_counts(organization_id, ids)
         for task in batch:
-            complete = True
-            last_seq = task['last_seq']
-            if events.get(str(task['id'])) != (last_seq, last_seq):
-                complete = False
-                stored = await log.stored_seqs(task)
-                missing = [
-                    seq for seq in range(1, last_seq + 1) if seq not in stored
-                ]
-                rows = await store.events_with_seqs(task['id'], missing)
-                await log.publish(task, rows)
-                result.republished_events += len(rows)
-            if reports.get(str(task['id']), 0) != task['ledger_count']:
-                complete = False
-                stored_reports = await log.stored_reports(task)
-                rows = [
-                    row
-                    for row in await store.ledger(task['id'])
-                    if str(row['id']) not in stored_reports
-                ]
-                await log.publish(task, [], rows)
-                result.republished_reports += len(rows)
-            if (
-                complete
-                and task['status'] == 'closed'
-                and await store.archive(task['id'], last_seq)
-            ):
-                result.archived += 1
+            try:
+                await _sweep_task(store, task, events, reports, result)
+            except Exception:  # noqa: BLE001
+                LOGGER.warning(
+                    'Agent task sweep failed for task %s',
+                    task['id'],
+                    exc_info=True,
+                )
     if result != SweepResult():
         LOGGER.info('Agent task sweep: %s', result)
     return result

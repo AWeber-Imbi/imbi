@@ -130,6 +130,28 @@ class SweepTests(ClickHouseTestCase):
         self.assertEqual(len(await self.postgres_events(self.task['id'])), 3)
         self.assertEqual(len(await self.stored_events(self.task['id'])), 3)
 
+    async def test_one_failed_task_does_not_stop_the_sweep(self) -> None:
+        failing = mock.AsyncMock(side_effect=RuntimeError('Iggy is down'))
+        with mock.patch.object(iggy, 'publish_rows', failing):
+            other = (await self.create_task()).json()
+        self.assertEqual(await self.stored_events(other['id']), [])
+        # The sweep goes by task id, so the lower id is swept first.
+        first, last = sorted((self.task['id'], other['id']))
+        stored_seqs = sweeper.log.stored_seqs
+
+        async def fail_first(task: dict[str, typing.Any]) -> set[int]:
+            if str(task['id']) == first:
+                raise RuntimeError('ClickHouse is down')
+            return await stored_seqs(task)
+
+        with mock.patch.object(sweeper.log, 'stored_seqs', fail_first):
+            result = await sweeper.sweep_once(self.store)
+        self.assertGreaterEqual(result.republished_events, 1)
+        self.assertEqual(
+            [row['seq'] for row in await self.stored_events(last)],
+            [event['seq'] for event in await self.postgres_events(last)],
+        )
+
     async def test_archive_moves_the_log_to_clickhouse(self) -> None:
         response = await self.client.post(self.url('T-1/cancel'))
         self.assertEqual(response.json()['status'], 'closed')
