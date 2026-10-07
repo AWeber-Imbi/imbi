@@ -4147,8 +4147,9 @@ export interface paths {
          *     Raises:
          *         404: No such organization.
          *         409: The org has an agent with this slug.
-         *         422: The team, a tag, or a tool environment is not in the
-         *             org, or ``prompt_ref`` does not parse.
+         *         422: The team, a tag, a tool environment, or a subagent is not
+         *             in the org, a subagent is given two times, or
+         *             ``prompt_ref`` does not parse.
          */
         post: operations["create_agent_api_organizations__org_slug__agents__post"];
         delete?: never;
@@ -4212,6 +4213,10 @@ export interface paths {
         /**
          * Delete Agent
          * @description Delete an agent and every version of it.
+         *
+         *     Raises:
+         *         404: No such agent.
+         *         409: Other agents delegate to this agent.
          */
         delete: operations["delete_agent_api_organizations__org_slug__agents__slug__delete"];
         options?: never;
@@ -4281,7 +4286,8 @@ export interface paths {
          *
          *     The new version has the summary ``Restored v{n}``. When the
          *     snapshot is the same as the configuration now, no version is
-         *     written. ``enabled`` does not change.
+         *     written. ``enabled`` does not change. A subagent in the snapshot
+         *     that no longer exists is dropped, and the summary tells so.
          *
          *     When the snapshot has ``prompt_ref`` and ``prompt_version``, the
          *     label that the reference names (the default label when it names
@@ -7869,6 +7875,12 @@ export interface components {
                 [key: string]: components["schemas"]["AgentToolConfig"];
             };
             /**
+             * Subagents
+             * @description The agents that this agent can delegate to, in order, by agent id. Each must be another agent in the org.
+             * @default []
+             */
+            subagents: components["schemas"]["AgentSubagent"][];
+            /**
              * Version Summary
              * @description Note for the version that this write creates.
              */
@@ -7924,6 +7936,11 @@ export interface components {
             tools: {
                 [key: string]: components["schemas"]["AgentToolConfig"];
             };
+            /**
+             * Subagents
+             * @default []
+             */
+            subagents: components["schemas"]["AgentSubagentRef"][];
             /** Version */
             version: number;
             /**
@@ -8004,6 +8021,49 @@ export interface components {
             tools: {
                 [key: string]: components["schemas"]["AgentToolConfig"];
             };
+            /**
+             * Subagents
+             * @default []
+             */
+            subagents: components["schemas"]["AgentSubagent"][];
+        };
+        /**
+         * AgentSubagent
+         * @description An agent that an agent can delegate a task to.
+         *
+         *     Nothing delegates yet, because nothing runs an agent.
+         */
+        AgentSubagent: {
+            /** Agent Id */
+            agent_id: string;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+        };
+        /**
+         * AgentSubagentRef
+         * @description A subagent of an agent, with the target agent's details.
+         */
+        AgentSubagentRef: {
+            /** Agent Id */
+            agent_id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Icon */
+            icon?: string | null;
+            /** Version */
+            version: number;
+            /** Tool Count */
+            tool_count: number;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
         };
         /** AgentTagRef */
         AgentTagRef: {
@@ -8100,6 +8160,8 @@ export interface components {
             tools?: {
                 [key: string]: components["schemas"]["AgentToolConfig"];
             } | null;
+            /** Subagents */
+            subagents?: components["schemas"]["AgentSubagent"][] | null;
             /** Version Summary */
             version_summary?: string | null;
         };
