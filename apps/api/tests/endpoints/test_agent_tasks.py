@@ -44,7 +44,8 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         self.other_org = f'at-other-{suffix}'
         self.foreign_org = f'at-foreign-{suffix}'
         self.team_id = f'team-{suffix}'
-        self.project_id = f'project-{suffix}'
+        # No 't-' in the slug, so that q='t-3' matches only T-3
+        self.project_id = f'proj-{suffix}'
         self.member = f'member-{suffix}@example.com'
         self.email = f'dev-{suffix}@example.com'
         self.user_id = f'dev-{suffix}'

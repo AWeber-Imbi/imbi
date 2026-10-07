@@ -24634,6 +24634,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description A task with this idempotency key exists; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {

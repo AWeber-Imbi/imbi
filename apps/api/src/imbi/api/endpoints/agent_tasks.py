@@ -8,8 +8,8 @@ are referred to by email, as everywhere in this API.
 Every route needs the caller to be a member of the organization
 (``MEMBER_OF``), because task content is sensitive and the
 ``agent_task:*`` permissions are not scoped to an organization. A
-caller that is not a member gets ``403 organization_forbidden``, as in
-:mod:`imbi.api.auth.autonomous`. There is no admin bypass.
+caller that is not a member gets ``403 organization_forbidden``: see
+:mod:`imbi.api.auth.organizations`. There is no admin bypass.
 
 Nothing runs a task yet. A person can make a task, read it and its
 events, and change its control value. When no harness session is open,
@@ -27,7 +27,7 @@ import pydantic
 
 from imbi.api import agent_tasks
 from imbi.api.agent_tasks.store import ActorKind, Channel, Control, Status
-from imbi.api.auth import autonomous, permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import agents
 from imbi.api.endpoints._pagination import (
     build_link_header,
@@ -133,13 +133,6 @@ class AgentTaskEventResponse(pydantic.BaseModel):
 
 # --- Queries -----------------------------------------------------------
 
-#: The org id, and whether the user with ``email`` is a member of it.
-_ORG_MEMBER_QUERY: typing.LiteralString = """
-MATCH (o:Organization {{slug: {org_slug}}})
-OPTIONAL MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(o)
-RETURN o.id AS id, u IS NOT NULL AS member
-"""
-
 #: The agents and projects that the text query of the task list
 #: matches by agent name and project slug (O3).
 _TEXT_QUERY: typing.LiteralString = """
@@ -175,60 +168,13 @@ RETURN u.email AS email
 # --- Helpers -----------------------------------------------------------
 
 
-def _org_not_found(org_slug: str) -> fastapi.HTTPException:
-    return fastapi.HTTPException(
-        status_code=404,
-        detail=f'Organization with slug {org_slug!r} not found',
-    )
-
-
 def _unprocessable(detail: str) -> fastapi.HTTPException:
     return fastapi.HTTPException(status_code=422, detail=detail)
 
 
-async def _member_org_id(
-    org_slug: str,
-    db: graph.Pool,
-    auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
-    ],
-) -> str:
-    """Return the id of the organization when the caller is a member.
-
-    Raises:
-        403: The caller is not a member of the organization.
-        404: No such organization.
-
-    """
-    records = await db.execute(
-        _ORG_MEMBER_QUERY,
-        {
-            'org_slug': org_slug,
-            'email': auth.user.email if auth.user else None,
-        },
-        ['id', 'member'],
-    )
-    if not records:
-        raise _org_not_found(org_slug)
-    if auth.user is None:
-        await autonomous.require_organization_membership(
-            db, auth, org_slug=org_slug
-        )
-    elif not graph.parse_agtype(records[0]['member']):
-        raise autonomous.forbidden(
-            'organization_forbidden',
-            (
-                f'Principal {auth.principal_name!r} is not a member of '
-                f'organization {org_slug!r}.'
-            ),
-            org_slug=org_slug,
-        )
-    return str(graph.parse_agtype(records[0]['id']))
-
-
 #: The id of the organization in the path. The router also depends on
 #: it, so no route can skip the membership check.
-OrgId = typing.Annotated[str, fastapi.Depends(_member_org_id)]
+OrgId = organizations.MemberOrgId
 
 
 async def _fetch_agent(
@@ -360,12 +306,24 @@ async def _set_control(
 # --- Endpoints ---------------------------------------------------------
 
 agent_tasks_router = fastapi.APIRouter(
-    tags=['Agent Tasks'], dependencies=[fastapi.Depends(_member_org_id)]
+    tags=['Agent Tasks'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
 )
 
 
 @agent_tasks_router.post(
-    '/', status_code=201, response_model=AgentTaskResponse
+    '/',
+    status_code=201,
+    response_model=AgentTaskResponse,
+    responses={
+        200: {
+            'model': AgentTaskResponse,
+            'description': (
+                'A task with this idempotency key exists; it is returned '
+                'unchanged.'
+            ),
+        },
+    },
 )
 async def create_agent_task(
     org_slug: str,
