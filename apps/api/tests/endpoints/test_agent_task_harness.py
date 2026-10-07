@@ -96,6 +96,32 @@ class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
         assert task is not None
         return task
 
+    async def make_model(
+        self, slug: str, model_id: str, **prices: typing.Any
+    ) -> None:
+        props: dict[str, typing.Any] = {
+            'id': slug,
+            'slug': slug,
+            'name': slug,
+            'model_id': model_id,
+            'input_cost_per_million': '3',
+            'output_cost_per_million': '15',
+            'cache_read_cost_per_million': '0.3',
+            'cache_write_cost_per_million': '3.75',
+        }
+        props.update(prices)
+        await self.graph.execute(
+            f'CREATE (m:AIModel {props_template(props)}) RETURN m.id AS id',
+            props,
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (m:AIModel {{id: {id}}}) DETACH DELETE m RETURN 1 AS ok',
+            {'id': slug},
+            ['ok'],
+        )
+
 
 class AccessTests(HarnessTestCase):
     async def routes(self) -> list[tuple[str, typing.Any]]:
@@ -594,32 +620,6 @@ class UsageTests(HarnessTestCase):
         self.slug = f'opus-{uuid.uuid4().hex[:8]}'
         self.model_id = f'claude-test-{uuid.uuid4().hex[:8]}'
         await self.make_model(self.slug, self.model_id)
-
-    async def make_model(
-        self, slug: str, model_id: str, **prices: typing.Any
-    ) -> None:
-        props: dict[str, typing.Any] = {
-            'id': slug,
-            'slug': slug,
-            'name': slug,
-            'model_id': model_id,
-            'input_cost_per_million': '3',
-            'output_cost_per_million': '15',
-            'cache_read_cost_per_million': '0.3',
-            'cache_write_cost_per_million': '3.75',
-        }
-        props.update(prices)
-        await self.graph.execute(
-            f'CREATE (m:AIModel {props_template(props)}) RETURN m.id AS id',
-            props,
-            ['id'],
-        )
-        self.addAsyncCleanup(
-            self.graph.execute,
-            'MATCH (m:AIModel {{id: {id}}}) DETACH DELETE m RETURN 1 AS ok',
-            {'id': slug},
-            ['ok'],
-        )
 
     async def report(self, key: str, **body: typing.Any) -> httpx.Response:
         payload: dict[str, typing.Any] = {

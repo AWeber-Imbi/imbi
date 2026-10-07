@@ -12,11 +12,15 @@ import uuid
 from unittest import mock
 
 from apps.api.tests import support
-from apps.api.tests.endpoints import test_agent_tasks
+from apps.api.tests.endpoints import (
+    test_agent_task_harness,
+    test_agent_tasks,
+)
 from imbi.api import agent_tasks
 from imbi.api.agent_tasks import sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
+from scripts import agent_task_client
 
 
 class ClickHouseTestCase(test_agent_tasks.AgentTaskTestCase):
@@ -184,3 +188,78 @@ class SweepTests(ClickHouseTestCase):
         self.assertIsNone(stored['cache_read_cost_per_million'])
         self.assertEqual(stored['cost'], decimal.Decimal('0.0045'))
         self.assertEqual(stored['short_id'], 'T-1')
+
+
+class ReferenceClientTests(
+    test_agent_task_harness.HarnessTestCase, ClickHouseTestCase
+):
+    """The reference client drives a task from ``queued`` to ``closed``."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.slug = f'opus-{uuid.uuid4().hex[:8]}'
+        await self.make_model(self.slug, self.slug)
+
+    async def test_run_task_end_to_end(self) -> None:
+        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await agent_task_client.run_task(harness, model_id=self.slug)
+        self.assertEqual(state['status'], 'closed')
+        self.assertEqual(state['outcome'], 'done_acted')
+        self.assertEqual(state['phase'], 'done')
+
+        expected = await self.postgres_events(self.task['id'])
+        self.assertEqual(
+            [e['type'] for e in expected],
+            [
+                'task.created',
+                'session.opened',
+                'state.changed',
+                'phase.changed',
+                'turn',
+                'tool.called',
+                'usage.reported',
+                'todos.updated',
+                'check.reported',
+                'phase.changed',
+                'turn',
+                'session.closed',
+                'state.changed',
+                'outcome.set',
+            ],
+        )
+        # Every Postgres event has exactly one ClickHouse row.
+        stored = await self.stored_events(self.task['id'])
+        self.assertEqual(
+            [(row['seq'], row['event_id']) for row in stored],
+            [(e['seq'], str(e['event_id'])) for e in expected],
+        )
+
+        # The usage totals in Postgres match ClickHouse.
+        task = await self.task_row()
+        (usage,) = await clickhouse.query(
+            'SELECT sum(tokens_in) AS tokens_in,'
+            ' sum(tokens_out) AS tokens_out,'
+            ' sum(cache_read_tokens) AS cache_read_tokens,'
+            ' sum(cache_write_tokens) AS cache_write_tokens,'
+            ' sum(cost) AS cost, count() AS reports'
+            ' FROM imbi.agent_usage WHERE task_id = {task_id:String}',
+            {'task_id': self.task['id']},
+        )
+        self.assertEqual(usage['reports'], 1)
+        for column in (
+            'tokens_in',
+            'tokens_out',
+            'cache_read_tokens',
+            'cache_write_tokens',
+        ):
+            self.assertEqual(usage[column], task[column], column)
+        self.assertEqual(usage['cost'], task['cost_total'])
+        self.assertGreater(task['cost_total'], 0)
+
+    async def test_run_task_with_a_request_leaves_it_blocked(self) -> None:
+        harness = agent_task_client.HarnessClient(self.client, self.org, 'T-1')
+        state = await agent_task_client.run_task(
+            harness, model_id=self.slug, ask=True
+        )
+        self.assertEqual(state['status'], 'blocked')
+        self.assertEqual((await self.task_row())['status'], 'blocked')
