@@ -4332,6 +4332,7 @@ export interface paths {
          *
          *     Raises:
          *         400: The cursor is not valid.
+         *         403: The caller is not a member of the org.
          *         404: No such organization.
          */
         get: operations["list_agent_tasks_api_organizations__org_slug__agent_tasks__get"];
@@ -4345,7 +4346,7 @@ export interface paths {
          *     the first task with status 200.
          *
          *     Raises:
-         *         403: The caller is not a person.
+         *         403: The caller is not a person, or not a member of the org.
          *         404: No such organization.
          *         409: The agent is disabled.
          *         422: The agent or the project is not in the org, or the budget
@@ -4415,6 +4416,7 @@ export interface paths {
          * @description Set the control value of a task to ``pause``.
          *
          *     Raises:
+         *         403: The caller is not a member of the org.
          *         404: No such task.
          *         409: The task is closed, or a cancel is not done yet.
          */
@@ -4439,6 +4441,7 @@ export interface paths {
          * @description Set the control value of a task to ``run``.
          *
          *     Raises:
+         *         403: The caller is not a member of the org.
          *         404: No such task.
          *         409: The task is closed, or a cancel is not done yet.
          */
@@ -4463,6 +4466,7 @@ export interface paths {
          * @description Set the control value of a task to ``cancel``.
          *
          *     Raises:
+         *         403: The caller is not a member of the org.
          *         404: No such task.
          *         409: The task is closed.
          */
@@ -4487,6 +4491,7 @@ export interface paths {
          * @description Give a task a new owner.
          *
          *     Raises:
+         *         403: The caller is not a member of the org.
          *         404: No such task.
          *         409: The task is closed.
          *         422: The new owner is not a member of the org.
@@ -24169,8 +24174,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                org_slug: string;
                 short_id: string;
+                org_slug: string;
             };
             cookie?: never;
         };
@@ -24204,8 +24209,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                org_slug: string;
                 short_id: string;
+                org_slug: string;
             };
             cookie?: never;
         };
@@ -24236,8 +24241,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                org_slug: string;
                 short_id: string;
+                org_slug: string;
             };
             cookie?: never;
         };
@@ -24268,8 +24273,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                org_slug: string;
                 short_id: string;
+                org_slug: string;
             };
             cookie?: never;
         };
@@ -24300,8 +24305,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                org_slug: string;
                 short_id: string;
+                org_slug: string;
             };
             cookie?: never;
         };

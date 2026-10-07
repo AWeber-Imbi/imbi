@@ -235,7 +235,9 @@ authority an agent receives is a later decision.
 ### Idempotency
 
 Task creation and usage reports take an idempotency key. The key is unique
-per organization, origin kind, and key. A repeat returns the first result.
+per organization, origin kind, origin principal, and key. A repeat returns
+the first result. A different principal that sends the same key gets its own
+result, never the result of another principal.
 
 ### Payloads
 

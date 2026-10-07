@@ -80,6 +80,7 @@ class NewTask:
     title: str
     description: str
     origin_kind: str
+    origin_id: str
     origin: dict[str, typing.Any]
     idempotency_key: str | None
     owner: str
@@ -93,16 +94,16 @@ class TaskStore:
         self._pool = pool
 
     async def find_by_idempotency_key(
-        self, organization_id: str, origin_kind: str, key: str
+        self, organization_id: str, origin_kind: str, origin_id: str, key: str
     ) -> Row | None:
-        """Return the task created with ``key``, if one exists."""
+        """Return the task that the origin principal made with ``key``."""
         async with self._pool.connection() as conn:
             return await _fetch_one(
                 conn,
                 'SELECT * FROM agent_runtime.tasks'
                 ' WHERE organization_id = %s AND origin_kind = %s'
-                ' AND idempotency_key = %s',
-                (organization_id, origin_kind, key),
+                ' AND origin_id = %s AND idempotency_key = %s',
+                (organization_id, origin_kind, origin_id, key),
             )
 
     async def create(
@@ -122,9 +123,9 @@ class TaskStore:
                     'INSERT INTO agent_runtime.tasks (id, organization_id,'
                     ' short_id, agent_id, agent_version, prompt_version,'
                     ' service_account_id, project_id, title, description,'
-                    ' origin_kind, origin, idempotency_key, owner, budget)'
-                    ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
-                    ' %s, %s, %s, %s)',
+                    ' origin_kind, origin_id, origin, idempotency_key, owner,'
+                    ' budget) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                    ' %s, %s, %s, %s, %s, %s)',
                     (
                         task_id,
                         task.organization_id,
@@ -137,6 +138,7 @@ class TaskStore:
                         task.title,
                         task.description,
                         task.origin_kind,
+                        task.origin_id,
                         pg_json.Jsonb(task.origin),
                         task.idempotency_key,
                         task.owner,
@@ -149,12 +151,15 @@ class TaskStore:
                 row = await _fetch_task(conn, task_id)
         except psycopg.errors.UniqueViolation as err:
             if (
-                err.diag.constraint_name != 'tasks_idempotency_key'
+                err.diag.constraint_name != 'tasks_origin_idempotency_key'
                 or task.idempotency_key is None
             ):
                 raise
             existing = await self.find_by_idempotency_key(
-                task.organization_id, task.origin_kind, task.idempotency_key
+                task.organization_id,
+                task.origin_kind,
+                task.origin_id,
+                task.idempotency_key,
             )
             if existing is None:  # pragma: no cover - the key just collided
                 raise

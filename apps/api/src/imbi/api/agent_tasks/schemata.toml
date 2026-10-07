@@ -28,6 +28,8 @@ project_id = "TEXT"
 title = "TEXT NOT NULL"
 description = "TEXT NOT NULL"
 origin_kind = "TEXT NOT NULL"
+# The principal that started the task: the user id for a `human` origin.
+origin_id = "TEXT NOT NULL"
 origin = "JSONB NOT NULL"
 idempotency_key = "TEXT"
 owner = "TEXT NOT NULL"
@@ -56,11 +58,13 @@ name = "tasks_short_id_key"
 columns = ["organization_id", "short_id"]
 unique = true
 
-# A repeat with the same key returns the first task. NULL keys are
-# distinct, so tasks without a key do not collide.
+# A repeat with the same key returns the first task. The key is scoped
+# to the origin principal, so one principal cannot get the task of
+# another with its key. NULL keys are distinct, so tasks without a key
+# do not collide.
 [[tables.indexes]]
-name = "tasks_idempotency_key"
-columns = ["organization_id", "origin_kind", "idempotency_key"]
+name = "tasks_origin_idempotency_key"
+columns = ["organization_id", "origin_kind", "origin_id", "idempotency_key"]
 unique = true
 
 # The list query's access path: newest first in an organization.

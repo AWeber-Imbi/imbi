@@ -5,6 +5,12 @@ in the ``agent_runtime`` Postgres schema; the graph holds the agent,
 the organization, and the project that a task refers to by id. People
 are referred to by email, as everywhere in this API.
 
+Every route needs the caller to be a member of the organization
+(``MEMBER_OF``), because task content is sensitive and the
+``agent_task:*`` permissions are not scoped to an organization. A
+caller that is not a member gets ``403 organization_forbidden``, as in
+:mod:`imbi.api.auth.autonomous`. There is no admin bypass.
+
 Nothing runs a task yet. A person can make a task, read it and its
 events, and change its control value. When no harness session is open,
 a control change also changes the status at once: see
@@ -21,7 +27,7 @@ import pydantic
 
 from imbi.api import agent_tasks
 from imbi.api.agent_tasks.store import ActorKind, Channel, Control, Status
-from imbi.api.auth import permissions
+from imbi.api.auth import autonomous, permissions
 from imbi.api.endpoints import agents
 from imbi.api.endpoints._pagination import (
     build_link_header,
@@ -29,8 +35,6 @@ from imbi.api.endpoints._pagination import (
     encode_cursor,
 )
 from imbi.common import graph, models
-
-agent_tasks_router = fastapi.APIRouter(tags=['Agent Tasks'])
 
 #: The origin kind of a task that a person makes with this API.
 HUMAN_ORIGIN = 'human'
@@ -127,13 +131,15 @@ class AgentTaskEventResponse(pydantic.BaseModel):
 
 # --- Queries -----------------------------------------------------------
 
-_ORG_QUERY: typing.LiteralString = """
+#: The org id, and whether the user with ``email`` is a member of it.
+_ORG_MEMBER_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{slug: {org_slug}}})
-RETURN o.id AS id
+OPTIONAL MATCH (u:User {{email: {email}}})-[:MEMBER_OF]->(o)
+RETURN o.id AS id, u IS NOT NULL AS member
 """
 
-#: The org id, and the agents and projects that the text query of the
-#: task list matches by agent name and project slug (O3).
+#: The agents and projects that the text query of the task list
+#: matches by agent name and project slug (O3).
 _TEXT_QUERY: typing.LiteralString = """
 MATCH (o:Organization {{slug: {org_slug}}})
 OPTIONAL MATCH (a:Agent)-[:BELONGS_TO]->(o)
@@ -141,7 +147,7 @@ WHERE toLower(a.name) CONTAINS {text}
 WITH o, collect(a.id) AS agent_ids
 OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
 WHERE toLower(p.slug) CONTAINS {text}
-RETURN o.id AS id, agent_ids, collect(p.id) AS project_ids
+RETURN agent_ids, collect(p.id) AS project_ids
 """
 
 _AGENT_QUERY: typing.LiteralString = """
@@ -178,12 +184,49 @@ def _unprocessable(detail: str) -> fastapi.HTTPException:
     return fastapi.HTTPException(status_code=422, detail=detail)
 
 
-async def _org_id(db: graph.Graph, org_slug: str) -> str:
-    """Return the id of the organization, or raise 404."""
-    records = await db.execute(_ORG_QUERY, {'org_slug': org_slug}, ['id'])
+async def _member_org_id(
+    org_slug: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+    ],
+) -> str:
+    """Return the id of the organization when the caller is a member.
+
+    Raises:
+        403: The caller is not a member of the organization.
+        404: No such organization.
+
+    """
+    records = await db.execute(
+        _ORG_MEMBER_QUERY,
+        {
+            'org_slug': org_slug,
+            'email': auth.user.email if auth.user else None,
+        },
+        ['id', 'member'],
+    )
     if not records:
         raise _org_not_found(org_slug)
+    if auth.user is None:
+        await autonomous.require_organization_membership(
+            db, auth, org_slug=org_slug
+        )
+    elif not graph.parse_agtype(records[0]['member']):
+        raise autonomous.forbidden(
+            'organization_forbidden',
+            (
+                f'Principal {auth.principal_name!r} is not a member of '
+                f'organization {org_slug!r}.'
+            ),
+            org_slug=org_slug,
+        )
     return str(graph.parse_agtype(records[0]['id']))
+
+
+#: The id of the organization in the path. The router also depends on
+#: it, so no route can skip the membership check.
+OrgId = typing.Annotated[str, fastapi.Depends(_member_org_id)]
 
 
 async def _fetch_agent(
@@ -250,14 +293,12 @@ async def _get_task(
 
 
 async def _set_control(
-    db: graph.Graph,
     store: agent_tasks.TaskStore,
-    org_slug: str,
+    org_id: str,
     short_id: str,
     control: Control,
     auth: permissions.AuthContext,
 ) -> dict[str, typing.Any]:
-    org_id = await _org_id(db, org_slug)
     try:
         return await store.set_control(
             org_id, short_id.upper(), control, _actor(auth)
@@ -279,12 +320,17 @@ async def _set_control(
 
 # --- Endpoints ---------------------------------------------------------
 
+agent_tasks_router = fastapi.APIRouter(
+    tags=['Agent Tasks'], dependencies=[fastapi.Depends(_member_org_id)]
+)
+
 
 @agent_tasks_router.post(
     '/', status_code=201, response_model=AgentTaskResponse
 )
 async def create_agent_task(
     org_slug: str,
+    org_id: OrgId,
     data: AgentTaskCreate,
     response: fastapi.Response,
     db: graph.Pool,
@@ -301,7 +347,7 @@ async def create_agent_task(
     the first task with status 200.
 
     Raises:
-        403: The caller is not a person.
+        403: The caller is not a person, or not a member of the org.
         404: No such organization.
         409: The agent is disabled.
         422: The agent or the project is not in the org, or the budget
@@ -309,10 +355,9 @@ async def create_agent_task(
 
     """
     user = auth.require_user
-    org_id = await _org_id(db, org_slug)
     if data.idempotency_key is not None:
         existing = await store.find_by_idempotency_key(
-            org_id, HUMAN_ORIGIN, data.idempotency_key
+            org_id, HUMAN_ORIGIN, user.id, data.idempotency_key
         )
         if existing is not None:
             response.status_code = 200
@@ -353,6 +398,7 @@ async def create_agent_task(
             title=data.title,
             description=data.description,
             origin_kind=HUMAN_ORIGIN,
+            origin_id=user.id,
             origin=origin,
             idempotency_key=data.idempotency_key,
             owner=user.email,
@@ -376,6 +422,7 @@ async def create_agent_task(
 @agent_tasks_router.get('/', response_model=list[AgentTaskResponse])
 async def list_agent_tasks(
     org_slug: str,
+    org_id: OrgId,
     request: fastapi.Request,
     response: fastapi.Response,
     db: graph.Pool,
@@ -400,6 +447,7 @@ async def list_agent_tasks(
 
     Raises:
         400: The cursor is not valid.
+        403: The caller is not a member of the org.
         404: No such organization.
 
     """
@@ -410,15 +458,11 @@ async def list_agent_tasks(
         records = await db.execute(
             _TEXT_QUERY,
             {'org_slug': org_slug, 'text': text},
-            ['id', 'agent_ids', 'project_ids'],
+            ['agent_ids', 'project_ids'],
         )
-        if not records:
-            raise _org_not_found(org_slug)
-        org_id = str(graph.parse_agtype(records[0]['id']))
-        agent_ids = _ids(records[0]['agent_ids'])
-        project_ids = _ids(records[0]['project_ids'])
-    else:
-        org_id = await _org_id(db, org_slug)
+        if records:
+            agent_ids = _ids(records[0]['agent_ids'])
+            project_ids = _ids(records[0]['project_ids'])
     before: tuple[datetime.datetime, uuid.UUID] | None = None
     if cursor is not None:
         decoded = decode_cursor(cursor)
@@ -453,9 +497,8 @@ async def list_agent_tasks(
 
 @agent_tasks_router.get('/{short_id}', response_model=AgentTaskResponse)
 async def get_agent_task(
-    org_slug: str,
+    org_id: OrgId,
     short_id: str,
-    db: graph.Pool,
     store: agent_tasks.Store,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -463,16 +506,15 @@ async def get_agent_task(
     ],
 ) -> dict[str, typing.Any]:
     """Get a task by its short id (``T-<n>``)."""
-    return await _get_task(store, await _org_id(db, org_slug), short_id)
+    return await _get_task(store, org_id, short_id)
 
 
 @agent_tasks_router.get(
     '/{short_id}/events', response_model=list[AgentTaskEventResponse]
 )
 async def list_agent_task_events(
-    org_slug: str,
+    org_id: OrgId,
     short_id: str,
-    db: graph.Pool,
     store: agent_tasks.Store,
     _auth: typing.Annotated[
         permissions.AuthContext,
@@ -486,15 +528,14 @@ async def list_agent_task_events(
     To read new events, give the ``seq`` of the last event that you
     have as ``after_seq``.
     """
-    task = await _get_task(store, await _org_id(db, org_slug), short_id)
+    task = await _get_task(store, org_id, short_id)
     return await store.events(task['id'], after_seq, limit)
 
 
 @agent_tasks_router.post('/{short_id}/pause', response_model=AgentTaskResponse)
 async def pause_agent_task(
-    org_slug: str,
+    org_id: OrgId,
     short_id: str,
-    db: graph.Pool,
     store: agent_tasks.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -504,20 +545,20 @@ async def pause_agent_task(
     """Set the control value of a task to ``pause``.
 
     Raises:
+        403: The caller is not a member of the org.
         404: No such task.
         409: The task is closed, or a cancel is not done yet.
 
     """
-    return await _set_control(db, store, org_slug, short_id, 'pause', auth)
+    return await _set_control(store, org_id, short_id, 'pause', auth)
 
 
 @agent_tasks_router.post(
     '/{short_id}/resume', response_model=AgentTaskResponse
 )
 async def resume_agent_task(
-    org_slug: str,
+    org_id: OrgId,
     short_id: str,
-    db: graph.Pool,
     store: agent_tasks.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -527,20 +568,20 @@ async def resume_agent_task(
     """Set the control value of a task to ``run``.
 
     Raises:
+        403: The caller is not a member of the org.
         404: No such task.
         409: The task is closed, or a cancel is not done yet.
 
     """
-    return await _set_control(db, store, org_slug, short_id, 'run', auth)
+    return await _set_control(store, org_id, short_id, 'run', auth)
 
 
 @agent_tasks_router.post(
     '/{short_id}/cancel', response_model=AgentTaskResponse
 )
 async def cancel_agent_task(
-    org_slug: str,
+    org_id: OrgId,
     short_id: str,
-    db: graph.Pool,
     store: agent_tasks.Store,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -550,11 +591,12 @@ async def cancel_agent_task(
     """Set the control value of a task to ``cancel``.
 
     Raises:
+        403: The caller is not a member of the org.
         404: No such task.
         409: The task is closed.
 
     """
-    return await _set_control(db, store, org_slug, short_id, 'cancel', auth)
+    return await _set_control(store, org_id, short_id, 'cancel', auth)
 
 
 @agent_tasks_router.post(
@@ -562,6 +604,7 @@ async def cancel_agent_task(
 )
 async def reassign_agent_task(
     org_slug: str,
+    org_id: OrgId,
     short_id: str,
     data: AgentTaskReassign,
     db: graph.Pool,
@@ -574,12 +617,12 @@ async def reassign_agent_task(
     """Give a task a new owner.
 
     Raises:
+        403: The caller is not a member of the org.
         404: No such task.
         409: The task is closed.
         422: The new owner is not a member of the org.
 
     """
-    org_id = await _org_id(db, org_slug)
     if not await db.execute(
         _MEMBER_QUERY, {'email': data.owner, 'org_slug': org_slug}, ['email']
     ):

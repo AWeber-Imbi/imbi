@@ -4,6 +4,9 @@ These run against the live Postgres that ``root:services`` boots: the
 graph for organizations, agents, and service accounts, and the
 ``agent_runtime`` schema for task state. Each test makes its own
 organizations, so tests do not share task counters.
+
+The caller is a member of ``org`` and ``other_org``, and not of
+``foreign_org``.
 """
 
 import datetime
@@ -39,10 +42,12 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
         suffix = uuid.uuid4().hex[:10]
         self.org = f'at-{suffix}'
         self.other_org = f'at-other-{suffix}'
+        self.foreign_org = f'at-foreign-{suffix}'
         self.team_id = f'team-{suffix}'
         self.project_id = f'project-{suffix}'
         self.member = f'member-{suffix}@example.com'
         self.email = f'dev-{suffix}@example.com'
+        self.user_id = f'dev-{suffix}'
 
         await graph.initialize()
         await agent_tasks.initialize()
@@ -59,6 +64,8 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
                                      name: {org}}})
             CREATE (x:Organization {{id: {other}, slug: {other},
                                      name: {other}}})
+            CREATE (f:Organization {{id: {foreign}, slug: {foreign},
+                                     name: {foreign}}})
             CREATE (t:Team {{id: {team}, slug: {team}, name: 'Ops'}})
             CREATE (t)-[:BELONGS_TO]->(o)
             CREATE (p:Project {{id: {project}, slug: {project},
@@ -67,20 +74,28 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
             CREATE (u:User {{id: {member}, email: {member},
                              display_name: 'Member', is_active: true}})
             CREATE (u)-[:MEMBER_OF {{role: 'developer'}}]->(o)
+            CREATE (d:User {{id: {user_id}, email: {email},
+                             display_name: 'Dev User', is_active: true}})
+            CREATE (d)-[:MEMBER_OF {{role: 'developer'}}]->(o)
+            CREATE (d)-[:MEMBER_OF {{role: 'developer'}}]->(x)
             RETURN o.id AS id
             """,
             {
                 'org': self.org,
                 'other': self.other_org,
+                'foreign': self.foreign_org,
                 'team': self.team_id,
                 'project': self.project_id,
                 'member': self.member,
+                'user_id': self.user_id,
+                'email': self.email,
             },
             ['id'],
         )
 
         self.permissions = set(ALL_PERMISSIONS)
         self.user = models.User(
+            id=self.user_id,
             email=self.email,
             display_name='Dev User',
             is_active=True,
@@ -108,7 +123,7 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
 
     async def _cleanup(self) -> None:
         await self.client.aclose()
-        for org in (self.org, self.other_org):
+        for org in (self.org, self.other_org, self.foreign_org):
             await self.graph.execute(
                 """
                 MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{slug: {org}}})
@@ -130,9 +145,11 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
                 'ids': [
                     self.org,
                     self.other_org,
+                    self.foreign_org,
                     self.team_id,
                     self.project_id,
                     self.member,
+                    self.user_id,
                 ]
             },
             ['ok'],
@@ -141,17 +158,52 @@ class AgentTaskTestCase(support.SharedAppAsyncTestCase):
             await conn.execute(
                 'DELETE FROM agent_runtime.tasks'
                 ' WHERE organization_id = ANY(%s)',
-                ([self.org, self.other_org],),
+                ([self.org, self.other_org, self.foreign_org],),
             )
             await conn.execute(
                 'DELETE FROM agent_runtime.task_id_sequences'
                 ' WHERE organization_id = ANY(%s)',
-                ([self.org, self.other_org],),
+                ([self.org, self.other_org, self.foreign_org],),
             )
         await self.pool.close()
         await self.graph.close()
 
     # -- Fixtures ------------------------------------------------------
+
+    async def act_as_service_account(self, *, member: bool) -> None:
+        """Authenticate as a service account, a member of ``org`` or not."""
+        account = models.ServiceAccount(
+            slug=f'sa-{self.org}', display_name='Robot'
+        )
+        if member:
+            await self.graph.execute(
+                """
+                MATCH (o:Organization {{slug: {org}}})
+                CREATE (s:ServiceAccount {{id: {slug}, slug: {slug}}})
+                CREATE (s)-[:MEMBER_OF]->(o)
+                RETURN s.slug AS slug
+                """,
+                {'org': self.org, 'slug': account.slug},
+                ['slug'],
+            )
+            self.addAsyncCleanup(
+                self.graph.execute,
+                'MATCH (s:ServiceAccount {{slug: {slug}}}) DETACH DELETE s'
+                ' RETURN 1 AS ok',
+                {'slug': account.slug},
+                ['ok'],
+            )
+
+        async def service_account() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                service_account=account,
+                auth_method='client_credentials',
+                permissions=set(self.permissions),
+            )
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            service_account
+        )
 
     async def make_agent(
         self,
@@ -327,6 +379,24 @@ class CreateTaskTests(AgentTaskTestCase):
         response = await self.create_task()
         self.assertEqual(response.json()['short_id'], 'T-2')
 
+    async def test_idempotency_key_is_per_principal(self) -> None:
+        await self.make_agent()
+        mine = await self.create_task(idempotency_key='shared')
+        self.user = models.User(
+            id=self.member,
+            email=self.member,
+            display_name='Member',
+            is_active=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        theirs = await self.create_task(idempotency_key='shared')
+        self.assertEqual(theirs.status_code, 201, theirs.text)
+        self.assertNotEqual(theirs.json()['id'], mine.json()['id'])
+        self.assertEqual(theirs.json()['owner'], self.member)
+        repeat = await self.create_task(idempotency_key='shared')
+        self.assertEqual(repeat.status_code, 200, repeat.text)
+        self.assertEqual(repeat.json()['id'], theirs.json()['id'])
+
     async def test_short_ids_count_per_organization(self) -> None:
         await self.make_agent()
         await self.make_agent(org=self.other_org)
@@ -337,21 +407,12 @@ class CreateTaskTests(AgentTaskTestCase):
 
     async def test_service_account_cannot_create(self) -> None:
         await self.make_agent()
-
-        async def service_account() -> permissions.AuthContext:
-            return permissions.AuthContext(
-                service_account=models.ServiceAccount(
-                    slug='robot', display_name='Robot'
-                ),
-                auth_method='client_credentials',
-                permissions=set(self.permissions),
-            )
-
-        self.test_app.dependency_overrides[permissions.get_current_user] = (
-            service_account
-        )
+        await self.act_as_service_account(member=True)
         response = await self.create_task()
         self.assertEqual(response.status_code, 403, response.text)
+        self.assertIn('requires user authentication', response.text)
+        response = await self.client.get(self.url())
+        self.assertEqual(response.status_code, 200, response.text)
 
 
 class ReadTaskTests(AgentTaskTestCase):
@@ -658,6 +719,7 @@ class StoreTests(AgentTaskTestCase):
             title='Race',
             description='Two requests with one key.',
             origin_kind='human',
+            origin_id=self.user_id,
             origin={'kind': 'human', 'user': self.email},
             idempotency_key=key,
             owner=self.email,
@@ -677,3 +739,64 @@ class StoreTests(AgentTaskTestCase):
         self.assertEqual(second['id'], first['id'])
         third, _ = await self.store.create(self.new_task(None), actor, {})
         self.assertEqual(third['short_id'], 'T-2')
+
+
+class MembershipTests(AgentTaskTestCase):
+    async def test_non_member_is_refused_on_every_route(self) -> None:
+        await self.make_agent(org=self.foreign_org)
+        await self.store.create(
+            agent_tasks.NewTask(
+                organization_id=self.foreign_org,
+                agent_id='agent-1',
+                agent_version=1,
+                prompt_version=None,
+                service_account_id='sa-1',
+                project_id=None,
+                title='Secret',
+                description='Not for other orgs.',
+                origin_kind='human',
+                origin_id='someone',
+                origin={'kind': 'human', 'user': 'someone@example.com'},
+                idempotency_key=None,
+                owner='someone@example.com',
+                budget=None,
+            ),
+            agent_tasks.Actor('human', 'someone@example.com', 'web'),
+            {},
+        )
+        cases: list[tuple[str, str, dict[str, typing.Any] | None]] = [
+            (
+                'POST',
+                '',
+                {'agent_slug': 'triage', 'title': 'x', 'description': 'y'},
+            ),
+            ('GET', '', None),
+            ('GET', 'T-1', None),
+            ('GET', 'T-1/events', None),
+            ('POST', 'T-1/pause', None),
+            ('POST', 'T-1/resume', None),
+            ('POST', 'T-1/cancel', None),
+            ('POST', 'T-1/reassign', {'owner': self.member}),
+        ]
+        for method, path, body in cases:
+            with self.subTest(method=method, path=path):
+                response = await self.client.request(
+                    method, self.url(path, org=self.foreign_org), json=body
+                )
+                self.assertEqual(response.status_code, 403, response.text)
+                self.assertEqual(
+                    response.json()['detail']['error'],
+                    'organization_forbidden',
+                )
+        task = await self.store.get(self.foreign_org, 'T-1')
+        assert task is not None
+        self.assertEqual(task['control'], 'run')
+        self.assertEqual(task['last_seq'], 1)
+
+    async def test_service_account_needs_membership(self) -> None:
+        await self.act_as_service_account(member=False)
+        response = await self.client.get(self.url())
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'organization_forbidden'
+        )
