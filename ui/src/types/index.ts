@@ -734,6 +734,14 @@ export type AgentCreate = Schemas['AgentCreate']
 
 export type AgentSettings = Schemas['AgentSettings-Input']
 
+// The tools that an agent can use, in groups by server, and the
+// configuration of one tool. The tool key is `<server slug>.<name>`.
+export type AgentToolCatalog = Schemas['AgentToolCatalog']
+
+export type AgentToolConfig = Schemas['AgentToolConfig']
+
+export type AgentToolGroup = Schemas['AgentToolGroup']
+
 export type AgentUpdate = Schemas['AgentUpdate']
 
 export type AgentVersion = Schemas['AgentVersionResponse']

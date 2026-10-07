@@ -4147,10 +4147,36 @@ export interface paths {
          *     Raises:
          *         404: No such organization.
          *         409: The org has an agent with this slug.
-         *         422: The team or a tag is not in the org, or ``prompt_ref``
-         *             does not parse.
+         *         422: The team, a tag, or a tool environment is not in the
+         *             org, or ``prompt_ref`` does not parse.
          */
         post: operations["create_agent_api_organizations__org_slug__agents__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agents/tool-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Tool Catalog
+         * @description List the tools that an agent can use, in groups by server.
+         *
+         *     The groups are the Imbi tools and the tools of each enabled MCP
+         *     server. A server that fails gives its group with ``error`` and no
+         *     tools. The catalog is kept for five minutes; ``refresh=true``
+         *     lists it again. The catalog is the same in each organization,
+         *     because MCP servers are global.
+         */
+        get: operations["get_agent_tool_catalog_api_organizations__org_slug__agents_tool_catalog_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7773,6 +7799,20 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** AgentCatalogTool */
+        AgentCatalogTool: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Capability
+             * @enum {string}
+             */
+            capability: "read" | "write" | "destructive" | "unknown";
+        };
         /** AgentCreate */
         AgentCreate: {
             /** Name */
@@ -7813,10 +7853,31 @@ export interface components {
             prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Input"];
             /**
+             * Tools
+             * @description The tools that the agent can use, by tool key (<server slug>.<tool name>). A tool that is not in the map is off. Environment slugs must exist in the org.
+             * @default {}
+             */
+            tools: {
+                [key: string]: components["schemas"]["AgentToolConfig"];
+            };
+            /**
              * Version Summary
              * @description Note for the version that this write creates.
              */
             version_summary?: string | null;
+        };
+        /**
+         * AgentRateLimit
+         * @description The maximum number of calls to one tool in one period.
+         */
+        AgentRateLimit: {
+            /** Count */
+            count: number;
+            /**
+             * Per
+             * @enum {string}
+             */
+            per: "minute" | "hour" | "day";
         };
         /** AgentResponse */
         AgentResponse: {
@@ -7848,6 +7909,13 @@ export interface components {
             /** Prompt Version */
             prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Output"];
+            /**
+             * Tools
+             * @default {}
+             */
+            tools: {
+                [key: string]: components["schemas"]["AgentToolConfig"];
+            };
             /** Version */
             version: number;
             /**
@@ -7921,6 +7989,13 @@ export interface components {
             /** Prompt Version */
             prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Output"];
+            /**
+             * Tools
+             * @default {}
+             */
+            tools: {
+                [key: string]: components["schemas"]["AgentToolConfig"];
+            };
         };
         /** AgentTagRef */
         AgentTagRef: {
@@ -7937,6 +8012,55 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** AgentToolCatalog */
+        AgentToolCatalog: {
+            /** Groups */
+            groups: components["schemas"]["AgentToolGroup"][];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
+        /**
+         * AgentToolConfig
+         * @description The configuration of one tool that an agent can use.
+         *
+         *     Nothing applies these limits yet, because nothing runs an agent.
+         */
+        AgentToolConfig: {
+            /**
+             * Approval
+             * @default false
+             */
+            approval: boolean;
+            /** Environments */
+            environments?: string[] | null;
+            rate_limit?: components["schemas"]["AgentRateLimit"] | null;
+        };
+        /** AgentToolGroup */
+        AgentToolGroup: {
+            server: components["schemas"]["AgentToolServer"];
+            /**
+             * Tools
+             * @default []
+             */
+            tools: components["schemas"]["AgentCatalogTool"][];
+            /** Error */
+            error?: string | null;
+        };
+        /** AgentToolServer */
+        AgentToolServer: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /**
+             * Transport
+             * @enum {string}
+             */
+            transport: "internal" | "mcp/http";
         };
         /**
          * AgentUpdate
@@ -7964,6 +8088,10 @@ export interface components {
             /** Prompt Version */
             prompt_version?: number | null;
             settings?: components["schemas"]["AgentSettings-Input"] | null;
+            /** Tools */
+            tools?: {
+                [key: string]: components["schemas"]["AgentToolConfig"];
+            } | null;
             /** Version Summary */
             version_summary?: string | null;
         };
@@ -23266,6 +23394,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_tool_catalog_api_organizations__org_slug__agents_tool_catalog_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentToolCatalog"];
                 };
             };
             /** @description Validation Error */

@@ -2,6 +2,7 @@ import { slugify } from '@/lib/utils'
 import type {
   Agent,
   AgentSettings,
+  AgentToolConfig,
   PromptParams,
   PromptVersion,
   PromptVersionCreate,
@@ -21,9 +22,13 @@ export interface AgentDraft {
   slug: string
   tags: AgentTagChip[]
   team: string
+  /** The enabled tools, by tool key. A tool that is not here is off. */
+  tools: AgentTools
 }
 
 export type AgentTagChip = Agent['tags'][number]
+
+export type AgentTools = Record<string, AgentToolConfig>
 
 export type ParamKey =
   | 'maxTokens'
@@ -149,6 +154,7 @@ export function draftFromAgent(
     slug: agent.slug,
     tags: agent.tags,
     team: agent.team?.slug ?? '',
+    tools: agent.tools ?? {},
   }
 }
 
@@ -177,6 +183,7 @@ export function emptyDraft(): AgentDraft {
     slug: '',
     tags: [],
     team: '',
+    tools: {},
   }
 }
 
@@ -222,6 +229,26 @@ export function managedParams(
       INTEGER_PARAMS.has(key) || NUMBER_PARAMS.has(key)
         ? Number(p.value)
         : p.value
+  }
+  return out
+}
+
+/**
+ * The tools in the form that the API stores: keys and environments in
+ * sort order, and every field set. Two equal configurations give the
+ * same JSON.
+ */
+export function normalizeTools(tools: AgentTools): AgentTools {
+  const out: AgentTools = {}
+  for (const key of Object.keys(tools).sort()) {
+    const config = tools[key]
+    out[key] = {
+      approval: !!config.approval,
+      environments: config.environments
+        ? [...new Set(config.environments)].sort()
+        : null,
+      rate_limit: config.rate_limit ?? null,
+    }
   }
   return out
 }
@@ -351,6 +378,11 @@ export function versionSummary(
     JSON.stringify(settingsFromDraft(draft.settings))
   )
     changed.push('settings')
+  if (
+    JSON.stringify(normalizeTools(before.tools)) !==
+    JSON.stringify(normalizeTools(draft.tools))
+  )
+    changed.push('tools')
   const parts: string[] = []
   if (changed.length) parts.push(`Changed ${changed.join(', ')}`)
   if (promptVersion !== null) parts.push(`prompt v${promptVersion}`)

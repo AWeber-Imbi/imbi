@@ -1,7 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
-import { listAgents, resolvePrompt } from '@/api/endpoints'
+import {
+  getAgentToolCatalog,
+  listAgents,
+  listEnvironments,
+  resolvePrompt,
+} from '@/api/endpoints'
 import { useHasPermission } from '@/hooks/useHasPermission'
 import { queryKeys } from '@/lib/queryKeys'
 import type { PromptVersion } from '@/types'
@@ -13,6 +18,39 @@ export function useAgentList(orgSlug: string | undefined) {
     enabled: !!orgSlug && canRead,
     queryFn: ({ signal }) => listAgents(orgSlug!, signal),
     queryKey: queryKeys.agents(orgSlug ?? ''),
+  })
+}
+
+/**
+ * The tools that an agent can use. The server keeps the catalog for five
+ * minutes; `refresh` lists it again and replaces the cached data.
+ */
+export function useAgentToolCatalog(orgSlug: string) {
+  const queryClient = useQueryClient()
+  const queryKey = queryKeys.agentToolCatalog(orgSlug)
+  const query = useQuery({
+    queryFn: ({ signal }) => getAgentToolCatalog(orgSlug, false, signal),
+    queryKey,
+    staleTime: 60_000,
+  })
+  const refresh = useMutation({
+    mutationFn: () => getAgentToolCatalog(orgSlug, true),
+    onSuccess: (catalog) => queryClient.setQueryData(queryKey, catalog),
+  })
+  return { query, refresh }
+}
+
+/** The environments of an org, in their sort order. */
+export function useOrgEnvironments(orgSlug: string) {
+  return useQuery({
+    queryFn: ({ signal }) => listEnvironments(orgSlug, signal),
+    queryKey: queryKeys.environments(orgSlug),
+    select: (environments) =>
+      [...environments].sort(
+        (a, b) =>
+          (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+          a.name.localeCompare(b.name),
+      ),
   })
 }
 

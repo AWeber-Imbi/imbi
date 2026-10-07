@@ -13,8 +13,9 @@ import type { Agent } from '@/types'
 
 import { formatDuration, formatMoney, slaLabel, wordCount } from './agentDraft'
 import { AgentLabels } from './AgentLabelChip'
-import { usePromptResolution } from './agentQueries'
+import { useAgentToolCatalog, usePromptResolution } from './agentQueries'
 import { agentsPath } from './agentsNav'
+import { serverOf } from './agentTools'
 
 export function AgentDetail({ agent }: { agent: Agent }) {
   const navigate = useNavigate()
@@ -160,6 +161,58 @@ export function AgentDetail({ agent }: { agent: Agent }) {
             </p>
           )}
         </div>
+      </div>
+
+      <ToolAccessCard agent={agent} />
+    </div>
+  )
+}
+
+/** The enabled tools, one row for each server. */
+function ToolAccessCard({ agent }: { agent: Agent }) {
+  const { query: catalog } = useAgentToolCatalog(agent.organization.slug)
+  const keys = Object.keys(agent.tools ?? {}).sort()
+  const groups = catalog.data?.groups ?? []
+  const total = groups.reduce((n, g) => n + g.tools.length, 0)
+  const names = new Map(groups.map((g) => [g.server.slug, g.server.name]))
+  const servers = new Map<string, string[]>()
+  for (const key of keys) {
+    const server = serverOf(key)
+    servers.set(server, [
+      ...(servers.get(server) ?? []),
+      key.slice(server.length + 1),
+    ])
+  }
+  return (
+    <div className="border-border bg-card rounded-lg border">
+      <div className="border-border flex items-center justify-between border-b px-6 py-4">
+        <h3 className="text-card-title">Tools and MCP access</h3>
+        <span className="text-tertiary font-mono text-sm tabular-nums">
+          {catalog.data
+            ? `${keys.length} of ${total} enabled`
+            : `${keys.length} enabled`}
+        </span>
+      </div>
+      <div className="flex flex-col">
+        {keys.length === 0 && (
+          <p className="text-tertiary px-6 py-4 text-sm">No tools enabled.</p>
+        )}
+        {[...servers].map(([server, tools]) => (
+          <div
+            className="border-border flex items-center gap-4 border-b px-6 py-3 last:border-b-0"
+            key={server}
+          >
+            <span className="w-30 shrink-0 truncate text-sm font-medium">
+              {names.get(server) ?? server}
+            </span>
+            <span
+              className="text-secondary min-w-0 flex-1 truncate font-mono text-xs"
+              title={tools.join(', ')}
+            >
+              {tools.join(', ')}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )

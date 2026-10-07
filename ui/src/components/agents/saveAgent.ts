@@ -121,6 +121,7 @@ export async function saveAgent({
     slug: existing?.slug ?? draft.slug,
     tags: draft.tags.map((t) => t.slug),
     team: draft.team,
+    tools: draft.tools,
     version_summary: versionSummary(existing, draft, promptVersion),
   }
   try {

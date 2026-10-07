@@ -7,7 +7,7 @@ import * as endpoints from '@/api/endpoints'
 import { fireEvent, render, screen, waitFor } from '@/test/utils'
 
 import { AgentsArea } from '../AgentsArea'
-import { agent, promptVersion } from './fixtures'
+import { agent, catalog, promptVersion } from './fixtures'
 
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
@@ -17,10 +17,12 @@ vi.mock('@/api/endpoints', () => ({
   createTag: vi.fn(),
   deleteAgent: vi.fn(),
   deleteUpload: vi.fn(),
+  getAgentToolCatalog: vi.fn(),
   getUploadThumbnailUrl: vi.fn(),
   listAgents: vi.fn(),
   listAgentVersions: vi.fn(),
   listAIModels: vi.fn(),
+  listEnvironments: vi.fn(),
   listTags: vi.fn(),
   listTeams: vi.fn(),
   patchAgent: vi.fn(),
@@ -84,6 +86,8 @@ describe('AgentsArea', () => {
     vi.mocked(endpoints.listTags).mockResolvedValue([])
     vi.mocked(endpoints.listAIModels).mockResolvedValue([])
     vi.mocked(endpoints.listAgentVersions).mockResolvedValue([])
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(catalog())
+    vi.mocked(endpoints.listEnvironments).mockResolvedValue([])
   })
 
   it('shows an honest empty state and the agent count', async () => {
@@ -242,5 +246,55 @@ describe('AgentsArea', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Owner team is required')).toBeInTheDocument()
     expect(endpoints.createAgent).not.toHaveBeenCalled()
+  })
+
+  it('shows the enabled tools by server on the detail page', async () => {
+    vi.mocked(endpoints.listAgents).mockResolvedValue([
+      agent({
+        tools: {
+          'github.read_file': { approval: false },
+          'imbi.delete_project': { approval: true },
+          'imbi.list_projects': { approval: false },
+        },
+      }),
+    ])
+    renderAt('/agents/manage/mender')
+    expect(await screen.findByText('3 of 4 enabled')).toBeInTheDocument()
+    expect(screen.getByText('Tools and MCP access')).toBeInTheDocument()
+    expect(
+      screen.getByText('delete_project, list_projects'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('GitHub')).toBeInTheDocument()
+    expect(screen.getByText('read_file')).toBeInTheDocument()
+  })
+
+  it('saves a tool change from the Tools and MCPs tab', async () => {
+    vi.mocked(endpoints.updateAgent).mockResolvedValue(agent())
+    renderAt('/agents/manage/mender/edit')
+    await screen.findByText('Edit Mender')
+    const tab = screen.getByRole('tab', { name: /Tools and MCPs/ })
+    expect(tab).toHaveTextContent('Tools and MCPs0')
+    fireEvent.click(tab)
+    await screen.findByText('0 of 4 enabled')
+    fireEvent.click(screen.getByRole('button', { name: /GitHub/ }))
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Enable github.read_file' }),
+    )
+    expect(tab).toHaveTextContent('Tools and MCPs1')
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }))
+    await waitFor(() => expect(endpoints.updateAgent).toHaveBeenCalled())
+    expect(vi.mocked(endpoints.updateAgent).mock.calls[0][2]).toEqual(
+      expect.objectContaining({
+        tools: {
+          'github.read_file': {
+            approval: false,
+            environments: null,
+            rate_limit: null,
+          },
+        },
+        version_summary: 'Changed tools',
+      }),
+    )
+    expect(endpoints.createPromptVersion).not.toHaveBeenCalled()
   })
 })

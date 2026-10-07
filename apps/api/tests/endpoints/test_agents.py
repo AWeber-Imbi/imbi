@@ -935,3 +935,278 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         (label,) = json.loads(self._batch()[0].params['labels'])
         self.assertEqual((label['name'], label['version']), ('stable', 4))
+
+    # -- Tools ---------------------------------------------------------
+
+    _TOOLS: typing.ClassVar[dict[str, typing.Any]] = {
+        'github.read_file': {},
+        'imbi.update_project': {
+            'approval': True,
+            'environments': ['staging', 'production'],
+            'rate_limit': {'count': 6, 'per': 'hour'},
+        },
+    }
+
+    _STORED_TOOLS: typing.ClassVar[dict[str, typing.Any]] = {
+        'github.read_file': {
+            'approval': False,
+            'environments': None,
+            'rate_limit': None,
+        },
+        'imbi.update_project': {
+            'approval': True,
+            'environments': ['production', 'staging'],
+            'rate_limit': {'count': 6, 'per': 'hour'},
+        },
+    }
+
+    def _env_rows(self, **found: bool) -> list[dict[str, typing.Any]]:
+        return [{'env_slug': s, 'found': f} for s, f in found.items()]
+
+    def test_get_returns_tools(self) -> None:
+        self.mock_db.execute.return_value = [
+            self._row(tools=json.dumps(self._STORED_TOOLS))
+        ]
+        body = self.client.get(BASE + '/triage').json()
+        self.assertEqual(body['tools'], self._STORED_TOOLS)
+
+    def test_get_agent_without_tools(self) -> None:
+        self.mock_db.execute.return_value = [self._row()]
+        self.assertEqual(self.client.get(BASE + '/triage').json()['tools'], {})
+
+    def test_create_with_tools(self) -> None:
+        # team, environments, slug check, create, version, fetch
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            self._env_rows(production=True, staging=True),
+            [],
+            [{'id': 'agent-1'}],
+            [{'n': 1}],
+            [self._row(tools=json.dumps(self._STORED_TOOLS))],
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'Triage',
+                'slug': 'triage',
+                'team': 'ops',
+                'tools': self._TOOLS,
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        env_query = self.mock_db.execute.await_args_list[1].args
+        self.assertEqual(env_query[1]['slugs'], ['production', 'staging'])
+        create = self.mock_db.execute.await_args_list[3].args
+        self.assertEqual(json.loads(create[1]['tools']), self._STORED_TOOLS)
+        (version,) = self._version_writes()
+        snapshot = json.loads(version['snapshot'])
+        self.assertEqual(snapshot['tools'], self._STORED_TOOLS)
+
+    def test_create_unknown_environment(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [{'team_id': 'team-1'}],
+            self._env_rows(production=True, staging=False),
+        ]
+        response = self.client.post(
+            BASE + '/',
+            json={
+                'name': 'T',
+                'slug': 't',
+                'team': 'ops',
+                'tools': self._TOOLS,
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('staging', response.json()['detail'])
+        self.assertEqual(self._version_writes(), [])
+
+    def test_create_rejects_invalid_tools(self) -> None:
+        for tools in (
+            {'no_server': {}},
+            {'github.read_file': {'environments': []}},
+            {'github.read_file': {'rate_limit': {'count': 0, 'per': 'day'}}},
+            {'github.read_file': {'rate_limit': {'count': 1, 'per': 'week'}}},
+        ):
+            with self.subTest(tools=tools):
+                response = self.client.post(
+                    BASE + '/',
+                    json={
+                        'name': 'T',
+                        'slug': 't',
+                        'team': 'ops',
+                        'tools': tools,
+                    },
+                )
+                self.assertEqual(response.status_code, 422)
+        self.mock_db.execute.assert_not_awaited()
+
+    def test_tool_keys_are_not_checked(self) -> None:
+        # A tool without environments needs no query. The key does not
+        # have to be in the catalog.
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=2)],
+            [self._row(latest=3)],
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'tools': {'offline.some_tool': {}}}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        (version,) = self._version_writes()
+        self.assertEqual(
+            list(json.loads(version['snapshot'])['tools']),
+            ['offline.some_tool'],
+        )
+
+    def test_put_tools_writes_new_version(self) -> None:
+        # fetch, environments, batch (version, set), fetch
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=2)],
+            self._env_rows(production=True, staging=True),
+            [self._row(latest=3, tools=json.dumps(self._STORED_TOOLS))],
+        ]
+        response = self.client.put(
+            BASE + '/triage',
+            json={'tools': self._TOOLS, 'version_summary': 'Changed tools'},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['tools'], self._STORED_TOOLS)
+        (version,) = self._version_writes()
+        self.assertEqual(version['summary'], 'Changed tools')
+        self.assertEqual(
+            json.loads(version['snapshot'])['tools'], self._STORED_TOOLS
+        )
+        set_params = self._batch()[1].params
+        self.assertEqual(json.loads(set_params['tools']), self._STORED_TOOLS)
+
+    def test_put_same_tools_writes_nothing(self) -> None:
+        self.mock_db.execute.return_value = [
+            self._row(tools=json.dumps(self._STORED_TOOLS))
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'tools': self._TOOLS}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        # No environment query and no write.
+        self.assertEqual(self.mock_db.execute.await_count, 1)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_put_unknown_environment(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row()],
+            self._env_rows(production=False, staging=True),
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'tools': self._TOOLS}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('production', response.json()['detail'])
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_patch_tool(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(tools=json.dumps(self._STORED_TOOLS))],
+            self._env_rows(production=True, staging=True),
+            [self._row(latest=2)],
+        ]
+        response = self.client.patch(
+            BASE + '/triage',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/tools/imbi.update_project/approval',
+                    'value': False,
+                },
+                {'op': 'remove', 'path': '/tools/github.read_file'},
+            ],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        tools = json.loads(self._version_writes()[0]['snapshot'])['tools']
+        self.assertEqual(list(tools), ['imbi.update_project'])
+        self.assertFalse(tools['imbi.update_project']['approval'])
+
+    def test_restore_restores_tools(self) -> None:
+        # fetch, version, environments, batch, fetch
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3)],
+            [self._version(1, tools=self._STORED_TOOLS)],
+            self._env_rows(production=True, staging=True),
+            [self._row(latest=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        set_params = self._batch()[1].params
+        self.assertEqual(json.loads(set_params['tools']), self._STORED_TOOLS)
+
+    def test_restore_old_version_clears_tools(self) -> None:
+        # Version 1 was written before tools existed.
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, tools=json.dumps(self._STORED_TOOLS))],
+            [self._version(1)],
+            [self._row(latest=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(json.loads(self._batch()[1].params['tools']), {})
+
+    def test_restore_missing_environment(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3)],
+            [self._version(1, tools=self._STORED_TOOLS)],
+            self._env_rows(production=False, staging=True),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self._version_writes(), [])
+
+    def test_version_snapshot_has_tools(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row()],
+            [self._version(2, tools=self._STORED_TOOLS)],
+        ]
+        body = self.client.get(BASE + '/triage/versions/2').json()
+        self.assertEqual(body['snapshot']['tools'], self._STORED_TOOLS)
+
+    # -- Tool catalog --------------------------------------------------
+
+    def test_tool_catalog(self) -> None:
+        from imbi.api import agent_tools, scoring
+
+        valkey_client = mock.AsyncMock()
+        self.test_app.dependency_overrides[scoring._inject_optional_client] = (
+            lambda: valkey_client
+        )
+        self.addCleanup(
+            self.test_app.dependency_overrides.pop,
+            scoring._inject_optional_client,
+        )
+        catalog = agent_tools.AgentToolCatalog(
+            groups=[
+                agent_tools.AgentToolGroup(
+                    server=agent_tools.AgentToolServer(
+                        slug='sentry', name='Sentry', transport='mcp/http'
+                    ),
+                    error='Timed out after 10s',
+                )
+            ],
+            generated_at=datetime.datetime(2026, 10, 6, tzinfo=datetime.UTC),
+        )
+        with mock.patch.object(
+            agent_tools, 'get_catalog', return_value=catalog
+        ) as get_catalog:
+            response = self.client.get(BASE + '/tool-catalog?refresh=true')
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body['groups'][0]['server']['slug'], 'sentry')
+        self.assertEqual(body['groups'][0]['tools'], [])
+        self.assertEqual(body['groups'][0]['error'], 'Timed out after 10s')
+        args = get_catalog.await_args
+        self.assertIs(args.args[0], self.mock_db)
+        self.assertIs(args.args[1], valkey_client)
+        self.assertTrue(args.kwargs['refresh'])
+        # The OpenAPI document of this app is the source of Imbi tools.
+        self.assertIn('paths', args.args[2]())
+
+    def test_tool_catalog_requires_read(self) -> None:
+        self.auth_context.permissions = set()
+        response = self.client.get(BASE + '/tool-catalog')
+        self.assertEqual(response.status_code, 403)

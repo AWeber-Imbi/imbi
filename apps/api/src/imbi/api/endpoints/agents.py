@@ -24,10 +24,12 @@ import nanoid
 import psycopg.errors
 import pydantic
 
+from imbi.api import agent_tools
 from imbi.api.auth import permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
+from imbi.api.scoring import OptionalValkeyClient
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 from imbi.common.graph import cypher as graph_cypher
@@ -40,6 +42,9 @@ agents_router = fastapi.APIRouter(tags=['Agents'])
 #: The prompt CMS namespace that holds the prompts the UI makes for
 #: agents (``agents/<slug>``). Restore moves labels only in it.
 AGENT_PROMPT_NAMESPACE = 'agents'
+
+#: The tool configuration of an agent, by tool key.
+AgentTools = dict[models.AgentToolKey, models.AgentToolConfig]
 
 _READONLY_PATHS: frozenset[str] = frozenset(
     [
@@ -114,6 +119,7 @@ class AgentSnapshot(pydantic.BaseModel):
     settings: models.AgentSettings = pydantic.Field(
         default_factory=models.AgentSettings
     )
+    tools: AgentTools = {}
 
 
 class AgentWrite(pydantic.BaseModel):
@@ -144,6 +150,14 @@ class AgentWrite(pydantic.BaseModel):
     settings: models.AgentSettings = pydantic.Field(
         default_factory=models.AgentSettings
     )
+    tools: AgentTools = pydantic.Field(
+        default={},
+        description=(
+            'The tools that the agent can use, by tool key '
+            '(<server slug>.<tool name>). A tool that is not in the map '
+            'is off. Environment slugs must exist in the org.'
+        ),
+    )
     version_summary: str | None = pydantic.Field(
         default=None,
         description='Note for the version that this write creates.',
@@ -168,6 +182,7 @@ class AgentUpdate(pydantic.BaseModel):
     prompt_ref: PromptRef = None
     prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: models.AgentSettings | None = None
+    tools: AgentTools | None = None
     version_summary: str | None = None
 
 
@@ -186,6 +201,7 @@ class AgentResponse(pydantic.BaseModel):
     settings: models.AgentSettings = pydantic.Field(
         default_factory=models.AgentSettings
     )
+    tools: AgentTools = {}
     version: int
     created_at: datetime.datetime
     updated_at: datetime.datetime | None = None
@@ -281,6 +297,13 @@ OPTIONAL MATCH (t:Tag {{slug: tag_slug}})-[:BELONGS_TO]->(o)
 RETURN tag_slug, t IS NOT NULL AS found
 """
 
+_ENVIRONMENTS_FOUND_QUERY: typing.LiteralString = """
+MATCH (o:Organization {{slug: {org_slug}}})
+UNWIND {slugs} AS env_slug
+OPTIONAL MATCH (e:Environment {{slug: env_slug}})-[:BELONGS_TO]->(o)
+RETURN env_slug, e IS NOT NULL AS found
+"""
+
 _DETACH_TAGS_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})-[r:TAGGED_WITH]->(:Tag)
 DELETE r
@@ -348,6 +371,20 @@ def _settings_json(settings: models.AgentSettings) -> str:
     return json.dumps(settings.model_dump(mode='json'))
 
 
+def _tools_json(tools: AgentTools) -> str:
+    """Store the tools as a JSON string, as Apache AGE needs."""
+    return json.dumps(
+        {
+            key: config.model_dump(mode='json')
+            for key, config in sorted(tools.items())
+        }
+    )
+
+
+def _json_value(value: typing.Any) -> typing.Any:
+    return json.loads(value) if isinstance(value, str) else value
+
+
 def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
     """Build an :class:`AgentResponse` payload from one graph row."""
     agent = _props(record['a']) or {}
@@ -369,9 +406,6 @@ def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
             }
         )
     tags.sort(key=lambda t: str(t['slug']))
-    settings: typing.Any = agent.get('settings')
-    if isinstance(settings, str):
-        settings = json.loads(settings)
     latest = graph.parse_agtype(record['latest'])
     return {
         **agent,
@@ -385,7 +419,8 @@ def _parse_row(record: dict[str, typing.Any]) -> dict[str, typing.Any]:
             }
         ),
         'tags': tags,
-        'settings': settings or {},
+        'settings': _json_value(agent.get('settings')) or {},
+        'tools': _json_value(agent.get('tools')) or {},
         'version': agent.get('version') or latest or 1,
         'updated_by': graph.parse_agtype(record['updated_by']),
         'last_version_at': graph.parse_agtype(record['last_version_at']),
@@ -427,6 +462,9 @@ def _snapshot_of(agent: dict[str, typing.Any]) -> AgentSnapshot:
         settings=models.AgentSettings.model_validate(
             agent.get('settings') or {}
         ),
+        tools=pydantic.TypeAdapter(AgentTools).validate_python(
+            agent.get('tools') or {}
+        ),
     )
 
 
@@ -443,6 +481,7 @@ def _snapshot_from(data: AgentWrite) -> AgentSnapshot:
         prompt_ref=data.prompt_ref,
         prompt_version=data.prompt_version,
         settings=data.settings,
+        tools=data.tools,
     )
 
 
@@ -512,6 +551,39 @@ async def _validate_tag_slugs(
     ]
     if missing:
         raise _unprocessable(f'Tag slug(s) not found: {sorted(missing)!r}')
+
+
+async def _validate_tool_environments(
+    db: graph.Pool, org_slug: str, tools: AgentTools
+) -> None:
+    """Raise 422 when a tool names an environment that is not in the org.
+
+    The tool keys are not checked, because a tool server can be
+    offline when the agent is saved.
+    """
+    slugs = sorted(
+        {
+            slug
+            for config in tools.values()
+            for slug in config.environments or []
+        }
+    )
+    if not slugs:
+        return
+    records = await db.execute(
+        _ENVIRONMENTS_FOUND_QUERY,
+        {'org_slug': org_slug, 'slugs': slugs},
+        ['env_slug', 'found'],
+    )
+    missing = [
+        graph.parse_agtype(r['env_slug'])
+        for r in records
+        if not graph.parse_agtype(r['found'])
+    ]
+    if missing:
+        raise _unprocessable(
+            f'Environment slug(s) not found: {sorted(missing)!r}'
+        )
 
 
 def _version_conflict_detail(n: int) -> str:
@@ -600,6 +672,8 @@ async def _apply(
             team_id = await _team_id(db, org_slug, target.team)
         if target.tags != current.tags:
             await _validate_tag_slugs(db, org_slug, target.tags)
+        if target.tools != current.tools:
+            await _validate_tool_environments(db, org_slug, target.tools)
         n = int(existing['_latest']) + 1
         # The version is written first. Its unique index stops a
         # concurrent save before that save changes the agent.
@@ -631,6 +705,7 @@ async def _apply(
                 'prompt_ref': target.prompt_ref,
                 'prompt_version': target.prompt_version,
                 'settings': _settings_json(target.settings),
+                'tools': _tools_json(target.tools),
                 'version': n,
             }
         )
@@ -696,13 +771,14 @@ async def create_agent(
     Raises:
         404: No such organization.
         409: The org has an agent with this slug.
-        422: The team or a tag is not in the org, or ``prompt_ref``
-            does not parse.
+        422: The team, a tag, or a tool environment is not in the
+            org, or ``prompt_ref`` does not parse.
 
     """
     snapshot = _snapshot_from(data)
     team_id = await _team_id(db, org_slug, data.team)
     await _validate_tag_slugs(db, org_slug, snapshot.tags)
+    await _validate_tool_environments(db, org_slug, snapshot.tools)
     await _assert_slug_free(db, org_slug, data.slug)
 
     now = _now()
@@ -718,6 +794,7 @@ async def create_agent(
         'prompt_ref': snapshot.prompt_ref,
         'prompt_version': snapshot.prompt_version,
         'settings': _settings_json(snapshot.settings),
+        'tools': _tools_json(snapshot.tools),
         'version': 1,
         'created_at': now,
         'updated_at': now,
@@ -784,6 +861,34 @@ async def list_agents(
     agents = [_parse_row(record) for record in records]
     agents.sort(key=lambda a: str(a.get('name', '')).lower())
     return agents
+
+
+@agents_router.get(
+    '/tool-catalog', response_model=agent_tools.AgentToolCatalog
+)
+async def get_agent_tool_catalog(
+    org_slug: str,
+    request: fastapi.Request,
+    db: graph.Pool,
+    valkey_client: OptionalValkeyClient,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('agent:read')),
+    ],
+    refresh: bool = False,
+) -> agent_tools.AgentToolCatalog:
+    """List the tools that an agent can use, in groups by server.
+
+    The groups are the Imbi tools and the tools of each enabled MCP
+    server. A server that fails gives its group with ``error`` and no
+    tools. The catalog is kept for five minutes; ``refresh=true``
+    lists it again. The catalog is the same in each organization,
+    because MCP servers are global.
+    """
+    _ = org_slug
+    return await agent_tools.get_catalog(
+        db, valkey_client, request.app.openapi, refresh=refresh
+    )
 
 
 @agents_router.get('/{slug}', response_model=AgentResponse)

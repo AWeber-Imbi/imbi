@@ -28,13 +28,21 @@ import { OverviewTab } from './OverviewTab'
 import { saveAgent } from './saveAgent'
 import { SettingsTab } from './SettingsTab'
 import { SystemPromptTab } from './SystemPromptTab'
+import { ToolsTab } from './ToolsTab'
 import { VersionHistoryTab } from './VersionHistoryTab'
 
-type TabKey = 'model' | 'overview' | 'prompt' | 'settings' | 'versions'
+type TabKey =
+  | 'model'
+  | 'overview'
+  | 'prompt'
+  | 'settings'
+  | 'tools'
+  | 'versions'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'prompt', label: 'System prompt' },
+  { key: 'tools', label: 'Tools and MCPs' },
   { key: 'model', label: 'Model' },
   { key: 'settings', label: 'Settings' },
   { key: 'versions', label: 'Version history' },
@@ -206,6 +214,11 @@ function AgentEditorForm({
             type="button"
           >
             {t.label}
+            {t.key === 'tools' && (
+              <span className="text-tertiary ml-2 font-mono text-xs tabular-nums">
+                {Object.keys(draft.tools).length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -225,6 +238,13 @@ function AgentEditorForm({
         <SystemPromptTab
           onChange={(system) => update({ prompt: { ...draft.prompt, system } })}
           value={draft.prompt.system}
+        />
+      )}
+      {tab === 'tools' && (
+        <ToolsTab
+          onChange={(tools) => update({ tools })}
+          orgSlug={orgSlug}
+          value={draft.tools}
         />
       )}
       {tab === 'model' && (
