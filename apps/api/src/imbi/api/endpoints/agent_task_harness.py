@@ -447,6 +447,14 @@ agent_task_harness_router = fastapi.APIRouter(tags=['Agent Task Harness'])
     '/{short_id}/sessions',
     status_code=201,
     response_model=SessionOpenResponse,
+    responses={
+        200: {
+            'model': SessionOpenResponse,
+            'description': (
+                'A session with this session key exists; it is returned.'
+            ),
+        },
+    },
 )
 async def open_agent_task_session(
     org_id: organizations.MemberOrgId,
@@ -566,6 +574,12 @@ async def close_agent_task_session(
     '/{short_id}/events',
     status_code=201,
     response_model=AppendEventsResponse,
+    responses={
+        200: {
+            'model': AppendEventsResponse,
+            'description': 'All events in the batch are duplicates.',
+        },
+    },
 )
 async def append_agent_task_events(
     org_id: organizations.MemberOrgId,
@@ -628,7 +642,17 @@ async def append_agent_task_events(
 
 
 @agent_task_harness_router.post(
-    '/{short_id}/usage', status_code=201, response_model=UsageResponse
+    '/{short_id}/usage',
+    status_code=201,
+    response_model=UsageResponse,
+    responses={
+        200: {
+            'model': UsageResponse,
+            'description': (
+                'A report with this idempotency key exists; it is returned.'
+            ),
+        },
+    },
 )
 async def report_agent_task_usage(
     org_id: organizations.MemberOrgId,

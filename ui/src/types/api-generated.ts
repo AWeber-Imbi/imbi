@@ -24746,6 +24746,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description All events in the batch are duplicates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppendEventsResponse"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {
@@ -24914,6 +24923,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description A session with this session key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOpenResponse"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {
@@ -25020,6 +25038,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description A report with this idempotency key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageResponse"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {
