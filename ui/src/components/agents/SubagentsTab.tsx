@@ -63,6 +63,8 @@ export function SubagentsTab({
   const choices = agents.data.filter(
     (a) => a.id !== agentId && (a.enabled || byId.has(a.id)),
   )
+  // A stored subagent that is not in the list has no row, so do not count it.
+  const selectedCount = choices.filter((a) => byId.has(a.id)).length
   const query = search.trim().toLowerCase()
   const shown = query
     ? choices.filter((a) =>
@@ -108,7 +110,7 @@ export function SubagentsTab({
             Delegates to
           </span>
           <span className="text-secondary font-mono text-xs tabular-nums">
-            {value.length} of {choices.length} agents
+            {selectedCount} of {choices.length} agents
           </span>
         </div>
         {choices.length === 0 && (

@@ -68,6 +68,18 @@ describe('SubagentsTab', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('does not count a selected agent that is not in the list', async () => {
+    render(
+      <Harness
+        initial={[
+          { agent_id: 'agt-2', instructions: '' },
+          { agent_id: 'agt-gone', instructions: '' },
+        ]}
+      />,
+    )
+    expect(await screen.findByText('1 of 2 agents')).toBeInTheDocument()
+  })
+
   it('adds subagents in order and sets instructions', async () => {
     render(<Harness initial={[]} />)
     fireEvent.click(
