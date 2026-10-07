@@ -401,6 +401,13 @@ class ConcurrencyTests(HarnessTestCase):
         # A repeat of an open session is not a new session.
         response = await self.post('sessions', {'session_key': 's-1'})
         self.assertEqual(response.status_code, 200, response.text)
+        # A new session on a running task is not a new concurrent task.
+        response = await self.post('sessions', {'session_key': 's-2'})
+        self.assertEqual(response.status_code, 201, response.text)
+        await self.post(
+            f'sessions/{response.json()["session"]["id"]}/close',
+            {'reason': 'x'},
+        )
         await self.post(f'sessions/{session["id"]}/close', {'reason': 'x'})
         response = await self.post('sessions', {'session_key': 'b'}, 'T-2')
         self.assertEqual(response.status_code, 201, response.text)

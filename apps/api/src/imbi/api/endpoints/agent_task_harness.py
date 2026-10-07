@@ -466,8 +466,8 @@ async def open_agent_task_session(
         403: The caller is not the service account of the task's agent.
         404: No such task.
         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
-            ``concurrency_limit`` (the agent has
-            ``settings.max_concurrent_tasks`` open sessions).
+            ``concurrency_limit`` (``settings.max_concurrent_tasks``
+            other tasks of the agent have an open session).
 
     """
     settings = await _agent_settings(db, task['agent_id'])

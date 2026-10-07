@@ -611,8 +611,8 @@ class TaskStore:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
             CancelPending: The control value is ``cancel``.
-            ConcurrencyLimit: The agent has ``max_concurrent`` open
-                sessions on its tasks.
+            ConcurrencyLimit: ``max_concurrent`` other tasks of the
+                agent have an open session.
 
         """
         async with self._write(organization_id, short_id) as write:
@@ -629,7 +629,7 @@ class TaskStore:
                 return task, session, False
             if max_concurrent is not None:
                 await _check_concurrency(
-                    write.conn, task['agent_id'], max_concurrent
+                    write.conn, task['agent_id'], task['id'], max_concurrent
                 )
             session = await _fetch_one(
                 write.conn,
@@ -1157,9 +1157,13 @@ async def _stale(
 
 
 async def _check_concurrency(
-    conn: Conn, agent_id: str, max_concurrent: int
+    conn: Conn, agent_id: str, task_id: uuid.UUID, max_concurrent: int
 ) -> None:
-    """Raise when the agent has ``max_concurrent`` open sessions.
+    """Raise when ``max_concurrent`` other tasks of the agent run.
+
+    A task runs when it has an open session. The count excludes
+    ``task_id``: a new session on a task that already runs (for example
+    after a harness restart) does not start a new concurrent task.
 
     The advisory lock makes concurrent opens for one agent count one at
     a time, so two opens cannot both take the last place.
@@ -1169,10 +1173,11 @@ async def _check_concurrency(
         (f'agent_runtime.sessions:{agent_id}',),
     )
     cursor = await conn.execute(
-        'SELECT count(*) FROM agent_runtime.sessions AS s'
+        'SELECT count(DISTINCT s.task_id) FROM agent_runtime.sessions AS s'
         ' JOIN agent_runtime.tasks AS t ON t.id = s.task_id'
-        ' WHERE t.agent_id = %s AND s.closed_at IS NULL',
-        (agent_id,),
+        ' WHERE t.agent_id = %s AND s.closed_at IS NULL'
+        ' AND s.task_id <> %s',
+        (agent_id, task_id),
     )
     row = await cursor.fetchone()
     if row and row[0] >= max_concurrent:
