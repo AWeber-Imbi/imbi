@@ -3,25 +3,30 @@
 import datetime
 import json
 import typing
+import uuid
 from unittest import mock
 
+import httpx
 import psycopg.errors
 from fastapi import testclient
 
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_prompts
 from imbi.api import models
+from imbi.api.auth import organizations, permissions
 from imbi.common import graph
 
 BASE = '/organizations/engineering/agents'
+
+ALL_PERMISSIONS = frozenset(
+    {'agent:create', 'agent:read', 'agent:write', 'agent:delete'}
+)
 
 
 class AgentEndpointsTestCase(support.SharedAppTestCase):
     """Test cases for agent CRUD and versions."""
 
     def setUp(self) -> None:
-        from imbi.api.auth import permissions
-
         self.user = models.User(
             email='dev@example.com',
             display_name='Dev User',
@@ -48,6 +53,13 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
+        )
+        # The user is a member of the organization. The mock graph
+        # cannot answer the membership query, because each test gives
+        # it only the queries of the route. AgentMembershipTests tests
+        # the membership check with a real graph.
+        self.test_app.dependency_overrides[organizations.member_org_id] = (
+            lambda: 'engineering'
         )
 
         self.mock_db = mock.AsyncMock(spec=graph.Graph)
@@ -1683,4 +1695,215 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         query = self.mock_db.execute.await_args_list[1].args
         self.assertEqual(
             query[1], {'org_slug': 'engineering', 'id': 'agent-1'}
+        )
+
+
+class AgentMembershipTests(support.SharedAppAsyncTestCase):
+    """The organization membership check, with a real graph.
+
+    The user is a member of ``org``, not of ``other_org``, and has all
+    the ``agent:*`` permissions. ``other_org`` has the agent ``triage``.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        suffix = uuid.uuid4().hex[:10]
+        self.org = f'am-{suffix}'
+        self.other_org = f'am-other-{suffix}'
+        self.team = f'team-{suffix}'
+        self.other_team = f'team-other-{suffix}'
+        self.email = f'dev-{suffix}@example.com'
+
+        await graph.initialize()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        self.addAsyncCleanup(self._cleanup)
+        await self.graph.execute(
+            """
+            CREATE (o:Organization {{id: {org}, slug: {org}, name: {org}}})
+            CREATE (x:Organization {{id: {other}, slug: {other},
+                                     name: {other}}})
+            CREATE (t:Team {{id: {team}, slug: {team}, name: 'Ops'}})
+            CREATE (t)-[:BELONGS_TO]->(o)
+            CREATE (y:Team {{id: {other_team}, slug: {other_team},
+                             name: 'Ops'}})
+            CREATE (y)-[:BELONGS_TO]->(x)
+            CREATE (u:User {{id: {email}, email: {email},
+                             display_name: 'Dev User', is_active: true}})
+            CREATE (u)-[:MEMBER_OF {{role: 'developer'}}]->(o)
+            CREATE (u)-[:MEMBER_OF {{role: 'developer'}}]->(x)
+            RETURN o.id AS id
+            """,
+            {
+                'org': self.org,
+                'other': self.other_org,
+                'team': self.team,
+                'other_team': self.other_team,
+                'email': self.email,
+            },
+            ['id'],
+        )
+
+        user = models.User(
+            id=self.email,
+            email=self.email,
+            display_name='Dev User',
+            is_active=True,
+            is_admin=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        async def current_user() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                user=user,
+                session_id='test-session',
+                auth_method='jwt',
+                permissions=set(ALL_PERMISSIONS),
+            )
+
+        overrides = self.test_app.dependency_overrides
+        overrides[permissions.get_current_user] = current_user
+        overrides[graph._inject_graph] = lambda: self.graph
+        self.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.test_app),
+            base_url='http://test',
+        )
+
+        # Make the agent of other_org as a member, then end the
+        # membership.
+        response = await self.client.post(
+            self.url(org=self.other_org),
+            json={'name': 'Triage', 'slug': 'triage', 'team': self.other_team},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        await self.graph.execute(
+            """
+            MATCH (:User {{email: {email}}})-[m:MEMBER_OF]->
+                  (:Organization {{slug: {other}}})
+            DELETE m
+            RETURN 1 AS ok
+            """,
+            {'email': self.email, 'other': self.other_org},
+            ['ok'],
+        )
+
+    async def _cleanup(self) -> None:
+        await self.client.aclose()
+        for org in (self.org, self.other_org):
+            await self.graph.execute(
+                """
+                MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{slug: {org}}})
+                OPTIONAL MATCH (a)-[:ACTS_AS]->(s:ServiceAccount)
+                OPTIONAL MATCH (v:AgentVersion)-[:VERSION_OF]->(a)
+                DETACH DELETE v, s, a
+                RETURN 1 AS ok
+                """,
+                {'org': org},
+                ['ok'],
+            )
+        await self.graph.execute(
+            """
+            MATCH (n) WHERE n.id IN {ids}
+            DETACH DELETE n
+            RETURN 1 AS ok
+            """,
+            {
+                'ids': [
+                    self.org,
+                    self.other_org,
+                    self.team,
+                    self.other_team,
+                    self.email,
+                ]
+            },
+            ['ok'],
+        )
+        await self.graph.close()
+
+    def url(self, path: str = '', org: str | None = None) -> str:
+        return f'/organizations/{org or self.org}/agents/{path}'
+
+    async def agents(self, org: str) -> list[dict[str, typing.Any]]:
+        """Return the name and version of each agent in ``org``."""
+        records = await self.graph.execute(
+            """
+            MATCH (a:Agent)-[:BELONGS_TO]->(:Organization {{slug: {org}}})
+            RETURN a.slug AS slug, a.name AS name, a.version AS version
+            """,
+            {'org': org},
+            ['slug', 'name', 'version'],
+        )
+        return [
+            {k: graph.parse_agtype(v) for k, v in record.items()}
+            for record in records
+        ]
+
+    async def test_non_member_is_refused_on_every_route(self) -> None:
+        before = await self.agents(self.other_org)
+        self.assertEqual(
+            before, [{'slug': 'triage', 'name': 'Triage', 'version': 1}]
+        )
+        agent = {'name': 'Pwned', 'slug': 'triage', 'team': self.other_team}
+        cases: list[tuple[str, str, typing.Any]] = [
+            ('POST', '', {**agent, 'slug': 'pwned'}),
+            ('GET', '', None),
+            ('GET', 'tool-catalog', None),
+            ('GET', 'tool-catalog?refresh=true', None),
+            ('GET', 'triage', None),
+            ('PUT', 'triage', agent),
+            (
+                'PATCH',
+                'triage',
+                [{'op': 'replace', 'path': '/name', 'value': 'Pwned'}],
+            ),
+            ('DELETE', 'triage', None),
+            ('GET', 'triage/versions', None),
+            ('GET', 'triage/versions/1', None),
+            ('POST', 'triage/versions/1/restore', None),
+        ]
+        for method, path, body in cases:
+            with self.subTest(method=method, path=path):
+                response = await self.client.request(
+                    method, self.url(path, org=self.other_org), json=body
+                )
+                self.assertEqual(response.status_code, 403, response.text)
+                self.assertEqual(
+                    response.json()['detail']['error'],
+                    'organization_forbidden',
+                )
+        self.assertEqual(await self.agents(self.other_org), before)
+
+    async def test_member_is_allowed(self) -> None:
+        response = await self.client.post(
+            self.url(),
+            json={'name': 'Triage', 'slug': 'triage', 'team': self.team},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.client.get(self.url('triage'))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['organization']['slug'], self.org)
+
+    async def test_unknown_organization_is_not_found(self) -> None:
+        response = await self.client.get(self.url(org='no-such-org'))
+        self.assertEqual(response.status_code, 404, response.text)
+
+    async def test_service_account_needs_membership(self) -> None:
+        account = models.ServiceAccount(
+            slug=f'sa-{self.org}', display_name='Robot'
+        )
+
+        async def service_account() -> permissions.AuthContext:
+            return permissions.AuthContext(
+                service_account=account,
+                auth_method='client_credentials',
+                permissions=set(ALL_PERMISSIONS),
+            )
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            service_account
+        )
+        response = await self.client.get(self.url())
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'organization_forbidden'
         )
