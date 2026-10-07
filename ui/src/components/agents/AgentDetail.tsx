@@ -50,7 +50,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
       value:
         settings.task_budget == null
           ? 'No budget'
-          : formatMoney(settings.task_budget),
+          : formatMoney(settings.task_budget, 6),
     },
     {
       mono: true,
