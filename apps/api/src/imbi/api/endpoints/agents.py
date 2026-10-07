@@ -17,6 +17,10 @@ Each agent is its own service principal (ADR 0020): a
 ``ServiceAccount`` that is ``MEMBER_OF`` the organization, with an
 ``ACTS_AS`` edge from the agent. It is made with the agent and deleted
 with it. It has no role, so it has no permissions.
+
+Every route needs the caller to be a member of the organization
+(``MEMBER_OF``), because the ``agent:*`` permissions are not scoped to
+an organization: see :mod:`imbi.api.auth.organizations`.
 """
 
 import datetime
@@ -30,7 +34,7 @@ import psycopg.errors
 import pydantic
 
 from imbi.api import agent_tools
-from imbi.api.auth import permissions
+from imbi.api.auth import organizations, permissions
 from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
@@ -42,7 +46,10 @@ from imbi.common.prompts import resolve as prompt_resolve
 
 LOGGER = logging.getLogger(__name__)
 
-agents_router = fastapi.APIRouter(tags=['Agents'])
+agents_router = fastapi.APIRouter(
+    tags=['Agents'],
+    dependencies=[fastapi.Depends(organizations.member_org_id)],
+)
 
 #: The prompt CMS namespace that holds the prompts the UI makes for
 #: agents (``agents/<slug>``). Restore moves labels only in it.
