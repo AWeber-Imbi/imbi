@@ -10,6 +10,7 @@ from imbi.common import lifespan
 from imbi.common.graph.client import (
     Graph,
     SearchResult,
+    StatementMatchedNothing,
     embeddable_node_types,
     parse_agtype,
 )
@@ -56,6 +57,7 @@ __all__ = [
     'OnStartup',
     'Pool',
     'SearchResult',
+    'StatementMatchedNothing',
     'embeddable_node_types',
     'graph_lifespan',
     'initialize',

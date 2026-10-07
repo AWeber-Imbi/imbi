@@ -9,6 +9,7 @@ import psycopg.errors
 from fastapi import testclient
 
 from apps.api.tests import support
+from apps.api.tests.endpoints import test_prompts
 from imbi.api import models
 from imbi.common import graph
 
@@ -167,6 +168,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
                 'tags': ['red', 'red'],
                 'slack_channel': '#ops',
                 'prompt_ref': 'agents/triage@stable',
+                'prompt_version': 2,
                 'settings': {'response_sla': '24h'},
                 'version_summary': 'First cut',
             },
@@ -188,6 +190,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertIn('CREATE (a:Agent', create[0])
         self.assertEqual(create[1]['team_id'], 'team-1')
         self.assertEqual(create[1]['version'], 1)
+        self.assertEqual(create[1]['prompt_version'], 2)
         self.assertNotIn('version_summary', create[1])
 
         (version,) = self._version_writes()
@@ -198,6 +201,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(snapshot['team'], 'ops')
         self.assertEqual(snapshot['tags'], ['red'])
         self.assertEqual(snapshot['prompt_ref'], 'agents/triage@stable')
+        self.assertEqual(snapshot['prompt_version'], 2)
         for key in ('enabled', 'id', 'created_at', 'model', 'params'):
             self.assertNotIn(key, snapshot)
 
@@ -378,6 +382,36 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         set_params = statements[1].params
         self.assertEqual(set_params['version'], 4)
         self.assertEqual(set_params['slack_channel'], '#triage')
+
+    def test_put_prompt_version_writes_new_version(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_version=4)],
+            [self._row(latest=4, prompt_version=5)],
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'prompt_version': 5}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['prompt_version'], 5)
+        (version,) = self._version_writes()
+        self.assertEqual(json.loads(version['snapshot'])['prompt_version'], 5)
+        self.assertEqual(self._batch()[1].params['prompt_version'], 5)
+
+    def test_put_same_prompt_version_writes_nothing(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_version=4)],
+        ]
+        response = self.client.put(
+            BASE + '/triage', json={'prompt_version': 4}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_put_rejects_zero_prompt_version(self) -> None:
+        response = self.client.put(
+            BASE + '/triage', json={'prompt_version': 0}
+        )
+        self.assertEqual(response.status_code, 422)
 
     def test_put_no_change_writes_nothing(self) -> None:
         self.mock_db.execute.return_value = [self._row()]
@@ -664,3 +698,240 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.auth_context.permissions = {'agent:read'}
         response = self.client.post(BASE + '/triage/versions/1/restore')
         self.assertEqual(response.status_code, 403)
+
+    # -- Restore with the prompt ---------------------------------------
+
+    def _prompt(self, stable: int) -> list[dict[str, typing.Any]]:
+        return test_prompts.prompt_row(
+            latest=6,
+            namespace='agents',
+            slug='triage',
+            labels=json.dumps([test_prompts.label('stable', stable)]),
+        )
+
+    def _allow_promote(self) -> None:
+        self.auth_context.permissions = {
+            *self.auth_context.permissions,
+            'prompt:promote',
+        }
+
+    def test_restore_moves_prompt_label(self) -> None:
+        self._allow_promote()
+        # fetch, version, prompt, prompt version, batch, fetch
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new', prompt_version=5)],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+            [self._row(latest=4, prompt_version=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['prompt_version'], 4)
+        label_move, version_write, agent_set = self._batch()
+        self.assertTrue(label_move.expect_rows)
+        self.assertEqual(label_move.params['id'], 'prm-1')
+        (label,) = json.loads(label_move.params['labels'])
+        self.assertEqual(label['name'], 'stable')
+        self.assertEqual(label['version'], 4)
+        self.assertEqual(label['updated_by'], 'dev@example.com')
+        self.assertIn('CREATE (v:AgentVersion', version_write.cypher)
+        self.assertEqual(
+            json.loads(version_write.params['snapshot'])['prompt_version'], 4
+        )
+        self.assertEqual(agent_set.params['prompt_version'], 4)
+
+    def test_restore_moves_named_label(self) -> None:
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_version=5)],
+            [
+                self._version(
+                    1, prompt_ref='agents/triage@beta', prompt_version=4
+                )
+            ],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+            [self._row(latest=4, prompt_version=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        labels = json.loads(self._batch()[0].params['labels'])
+        self.assertEqual(
+            sorted((lb['name'], lb['version']) for lb in labels),
+            [('beta', 4), ('stable', 5)],
+        )
+
+    def test_restore_label_only_when_config_is_same(self) -> None:
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_version=4)],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        (label_move,) = self._batch()
+        self.assertTrue(label_move.expect_rows)
+        self.assertEqual(self._version_writes(), [])
+
+    def test_restore_label_already_at_version(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new', prompt_version=4)],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=4),
+            test_prompts.version_row(4),
+            [self._row(latest=4, prompt_version=4)],
+        ]
+        # No prompt:promote is needed when the label does not move.
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(self._batch()), 2)
+
+    def test_restore_pinned_ref_moves_no_label(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new')],
+            [self._version(1, prompt_ref='agents/triage@3', prompt_version=3)],
+            [self._row(latest=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(self._batch()), 2)
+
+    def test_restore_missing_prompt_version_conflicts(self) -> None:
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new', prompt_version=5)],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=5),
+            [],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('no version 4', response.json()['detail'])
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_restore_missing_prompt_conflicts(self) -> None:
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new', prompt_version=5)],
+            [self._version(1, prompt_version=4)],
+            [],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_restore_label_move_requires_promote(self) -> None:
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new', prompt_version=5)],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 403, response.text)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_restore_prompt_changed_conflicts(self) -> None:
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, slack_channel='#new', prompt_version=5)],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        self.mock_db._execute_batch.side_effect = (
+            graph.StatementMatchedNothing('labels')
+        )
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('prompt changed', response.json()['detail'])
+
+    def test_restore_shared_prompt_conflicts(self) -> None:
+        # The agent uses the shared prompt now, but it is not in the
+        # agents namespace, so a restore must not move its label.
+        self._allow_promote()
+        ref = 'imbi-assistant/system@stable'
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_ref=ref, prompt_version=5)],
+            [self._version(1, prompt_ref=ref, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('imbi-assistant/system', response.json()['detail'])
+        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(self._version_writes(), [])
+
+    def test_restore_other_agent_prompt_conflicts(self) -> None:
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_version=5)],
+            [
+                self._version(
+                    1, prompt_ref='agents/other@stable', prompt_version=4
+                )
+            ],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn('agents/other', response.json()['detail'])
+        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(self._version_writes(), [])
+
+    def test_restore_agent_without_prompt_conflicts(self) -> None:
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_ref=None)],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_restore_shared_prompt_label_in_place(self) -> None:
+        # No label moves, so the restore of the rest goes on.
+        ref = 'imbi-assistant/system@stable'
+        self.mock_db.execute.side_effect = [
+            [
+                self._row(
+                    latest=3,
+                    slack_channel='#new',
+                    prompt_ref=ref,
+                    prompt_version=4,
+                )
+            ],
+            [self._version(1, prompt_ref=ref, prompt_version=4)],
+            self._prompt(stable=4),
+            test_prompts.version_row(4),
+            [self._row(latest=4, prompt_ref=ref, prompt_version=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(self._batch()), 2)
+
+    def test_restore_moves_label_with_other_selector(self) -> None:
+        # The same prompt with another label is the agent's own prompt.
+        self._allow_promote()
+        self.mock_db.execute.side_effect = [
+            [
+                self._row(
+                    latest=3, prompt_ref='agents/triage@beta', prompt_version=5
+                )
+            ],
+            [self._version(1, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+            [self._row(latest=4, prompt_version=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        (label,) = json.loads(self._batch()[0].params['labels'])
+        self.assertEqual((label['name'], label['version']), ('stable', 4))

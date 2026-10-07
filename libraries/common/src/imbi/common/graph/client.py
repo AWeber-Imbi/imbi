@@ -256,6 +256,10 @@ def parse_agtype(value: typing.Any) -> typing.Any:
     return parsed
 
 
+class StatementMatchedNothing(Exception):
+    """A batch statement that must return rows returned none."""
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class SearchResult:
     """A vector search result with distance score."""
@@ -936,17 +940,23 @@ class Graph:
         failure does not mask the original exception the way
         a manual ``try/except`` calling ``rollback()`` would.
 
+        A statement with ``expect_rows`` set that returns no rows
+        raises :class:`StatementMatchedNothing`, and the transaction
+        rolls back.
+
         """
         self._require_open()
 
         async def run(conn: psycopg.AsyncConnection[typing.Any]) -> None:
             async with conn.transaction():
                 for stmt in statements:
-                    await self._execute_on(
+                    found = await self._execute_on(
                         conn,
                         stmt.cypher,
                         stmt.params,
                     )
+                    if stmt.expect_rows and not found:
+                        raise StatementMatchedNothing(stmt.cypher)
 
         await self._run_retrying_poisoned(run)
 

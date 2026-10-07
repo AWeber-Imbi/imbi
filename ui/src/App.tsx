@@ -33,6 +33,9 @@ const DocumentsIndexPage = lazy(() =>
     default: m.DocumentsIndexPage,
   })),
 )
+const AgentsPage = lazy(() =>
+  import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })),
+)
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 )
@@ -147,6 +150,14 @@ function App() {
                     </ProtectedRoute>
                   }
                   path="/settings/:tab?"
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <AgentsPage />
+                    </ProtectedRoute>
+                  }
+                  path="/agents/:section?/:slug?/:action?"
                 />
                 <Route
                   element={

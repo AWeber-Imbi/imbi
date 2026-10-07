@@ -3,12 +3,15 @@
 Agents are scoped to an organization and owned by a team. Only the
 definition is stored; nothing runs an agent yet. The prompt CMS owns
 the model and the model parameters: an agent names its prompt with
-``prompt_ref`` (``namespace/slug@label``).
+``prompt_ref`` (``namespace/slug@label``) and records the prompt
+version that its configuration uses in ``prompt_version``.
 
 Each write that changes the configuration (create, PUT, PATCH,
 restore) writes one immutable :class:`~imbi.common.models.AgentVersion`
 and sets ``Agent.version`` to its number. A write that changes only
-``enabled``, or that changes nothing, does not write a version.
+``enabled``, or that changes nothing, does not write a version. A
+restore also moves the prompt label back to the recorded prompt
+version, so the system prompt and the model come back too.
 """
 
 import datetime
@@ -22,6 +25,7 @@ import psycopg.errors
 import pydantic
 
 from imbi.api.auth import permissions
+from imbi.api.endpoints import prompts
 from imbi.api.endpoints._helpers import conflict_on_unique_violation
 from imbi.api.graph_sql import props_template, set_clause
 from imbi.common import graph, models
@@ -32,6 +36,10 @@ from imbi.common.prompts import resolve as prompt_resolve
 LOGGER = logging.getLogger(__name__)
 
 agents_router = fastapi.APIRouter(tags=['Agents'])
+
+#: The prompt CMS namespace that holds the prompts the UI makes for
+#: agents (``agents/<slug>``). Restore moves labels only in it.
+AGENT_PROMPT_NAMESPACE = 'agents'
 
 _READONLY_PATHS: frozenset[str] = frozenset(
     [
@@ -67,12 +75,14 @@ PromptRef = typing.Annotated[
 # --- Schemas -----------------------------------------------------------
 
 
-class TeamRef(pydantic.BaseModel):
+# The ``Agent`` prefix keeps these schema names unique in the OpenAPI
+# document. Other endpoints have a different ``TeamRef`` and ``TagRef``.
+class AgentTeamRef(pydantic.BaseModel):
     name: str
     slug: str
 
 
-class TagRef(pydantic.BaseModel):
+class AgentTagRef(pydantic.BaseModel):
     name: str
     slug: str
     color: str | None = None
@@ -100,6 +110,7 @@ class AgentSnapshot(pydantic.BaseModel):
     tags: list[str] = []
     slack_channel: str | None = None
     prompt_ref: str | None = None
+    prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: models.AgentSettings = pydantic.Field(
         default_factory=models.AgentSettings
     )
@@ -124,6 +135,11 @@ class AgentWrite(pydantic.BaseModel):
     prompt_ref: PromptRef = pydantic.Field(
         default=None,
         description='Prompt CMS reference: namespace/slug@label.',
+    )
+    prompt_version: int | None = pydantic.Field(
+        default=None,
+        gt=0,
+        description='The prompt CMS version that the agent uses.',
     )
     settings: models.AgentSettings = pydantic.Field(
         default_factory=models.AgentSettings
@@ -150,6 +166,7 @@ class AgentUpdate(pydantic.BaseModel):
     enabled: bool | None = None
     slack_channel: str | None = None
     prompt_ref: PromptRef = None
+    prompt_version: int | None = pydantic.Field(default=None, gt=0)
     settings: models.AgentSettings | None = None
     version_summary: str | None = None
 
@@ -160,11 +177,12 @@ class AgentResponse(pydantic.BaseModel):
     slug: str
     description: str | None = None
     icon: str | None = None
-    team: TeamRef | None = None
-    tags: list[TagRef] = []
+    team: AgentTeamRef | None = None
+    tags: list[AgentTagRef] = []
     enabled: bool = True
     slack_channel: str | None = None
     prompt_ref: str | None = None
+    prompt_version: int | None = None
     settings: models.AgentSettings = pydantic.Field(
         default_factory=models.AgentSettings
     )
@@ -405,6 +423,7 @@ def _snapshot_of(agent: dict[str, typing.Any]) -> AgentSnapshot:
         tags=sorted(str(t['slug']) for t in tags),
         slack_channel=agent.get('slack_channel'),
         prompt_ref=agent.get('prompt_ref'),
+        prompt_version=agent.get('prompt_version'),
         settings=models.AgentSettings.model_validate(
             agent.get('settings') or {}
         ),
@@ -422,6 +441,7 @@ def _snapshot_from(data: AgentWrite) -> AgentSnapshot:
         tags=sorted(dict.fromkeys(data.tags)),
         slack_channel=data.slack_channel,
         prompt_ref=data.prompt_ref,
+        prompt_version=data.prompt_version,
         settings=data.settings,
     )
 
@@ -549,22 +569,28 @@ async def _apply(
     enabled: bool,
     summary: str | None,
     principal: str,
+    label_move: graph_cypher.Statement | None = None,
 ) -> dict[str, typing.Any]:
     """Write ``target`` and ``enabled`` over the stored agent.
 
     A new version is written only when the snapshot changes. All the
-    writes run in one transaction.
+    writes, and ``label_move`` when it is given, run in one
+    transaction.
     """
     current = _snapshot_of(existing)
     config_changed = target != current
     enabled_changed = enabled != bool(existing.get('enabled', True))
     if not config_changed and not enabled_changed:
+        if label_move is not None:
+            await _execute(db, [label_move], None, target, current)
         return existing
 
     agent_id = str(existing['id'])
     ids = {'id': agent_id}
     props: dict[str, typing.Any] = {'enabled': enabled, 'updated_at': _now()}
     statements: list[graph_cypher.Statement] = []
+    if label_move is not None:
+        statements.append(label_move)
     n: int | None = None
     if config_changed:
         if target.slug != current.slug:
@@ -603,6 +629,7 @@ async def _apply(
                 'icon': target.icon,
                 'slack_channel': target.slack_channel,
                 'prompt_ref': target.prompt_ref,
+                'prompt_version': target.prompt_version,
                 'settings': _settings_json(target.settings),
                 'version': n,
             }
@@ -616,11 +643,30 @@ async def _apply(
             {**props, 'agent_id': agent_id},
         )
     )
-    # One transaction: the version, the properties, and the edges are
-    # all written, or none is. If the agent was deleted, every MATCH
-    # finds nothing, nothing is written, and the read below gives 404.
+    await _execute(db, statements, n, target, current)
+    return await _fetch_agent(db, org_slug, target.slug)
+
+
+async def _execute(
+    db: graph.Pool,
+    statements: list[graph_cypher.Statement],
+    n: int | None,
+    target: AgentSnapshot,
+    current: AgentSnapshot,
+) -> None:
+    """Run the statements of :func:`_apply` in one transaction.
+
+    The version, the properties, the edges, and a label move are all
+    written, or none is. If the agent was deleted, every agent MATCH
+    finds nothing, nothing is written, and the next read gives 404.
+    """
     try:
         await db._execute_batch(statements)  # pyright: ignore[reportPrivateUsage]
+    except graph.StatementMatchedNothing as exc:
+        # Only the label move expects rows.
+        raise fastapi.HTTPException(
+            status_code=409, detail=prompts.PROMPT_CHANGED_DETAIL
+        ) from exc
     except psycopg.errors.UniqueViolation as exc:
         if n is not None and (
             target.slug == current.slug
@@ -630,7 +676,6 @@ async def _apply(
         else:
             detail = _slug_taken_detail(target.slug)
         raise fastapi.HTTPException(status_code=409, detail=detail) from exc
-    return await _fetch_agent(db, org_slug, target.slug)
 
 
 # --- Agent endpoints ---------------------------------------------------
@@ -671,6 +716,7 @@ async def create_agent(
         'enabled': data.enabled,
         'slack_channel': snapshot.slack_channel,
         'prompt_ref': snapshot.prompt_ref,
+        'prompt_version': snapshot.prompt_version,
         'settings': _settings_json(snapshot.settings),
         'version': 1,
         'created_at': now,
@@ -938,17 +984,32 @@ async def restore_agent_version(
     """Apply the snapshot of version ``n`` and write a new version.
 
     The new version has the summary ``Restored v{n}``. When the
-    snapshot is the same as the configuration now, nothing is written.
-    ``enabled`` does not change.
+    snapshot is the same as the configuration now, no version is
+    written. ``enabled`` does not change.
+
+    When the snapshot has ``prompt_ref`` and ``prompt_version``, the
+    label that the reference names (the default label when it names
+    none) moves to that prompt version in the same transaction. This
+    needs ``prompt:promote``, as a label move in the prompt CMS does.
+    A reference that names a version number moves no label. A label
+    moves only on the agent's own prompt: a prompt in the ``agents``
+    namespace that the ``prompt_ref`` of the agent names now.
 
     Raises:
+        403: The label must move and the caller cannot promote.
         404: No such agent or version.
-        409: The snapshot slug is taken by another agent.
+        409: The snapshot slug is taken by another agent, the label
+            must move on a prompt that is not the agent's own
+            ``agents/`` prompt, the prompt or its version no longer
+            exists, or the prompt changed while this request ran.
         422: The snapshot team or a snapshot tag no longer exists.
 
     """
     existing = await _fetch_agent(db, org_slug, slug)
     version = await _fetch_version(db, str(existing['id']), n)
+    label_move = await _restore_label_move(
+        db, version.snapshot, existing.get('prompt_ref'), auth
+    )
     return await _apply(
         db,
         org_slug,
@@ -957,4 +1018,86 @@ async def restore_agent_version(
         bool(existing.get('enabled', True)),
         f'Restored v{n}',
         auth.principal_name,
+        label_move,
+    )
+
+
+async def _restore_label_move(
+    db: graph.Pool,
+    snapshot: AgentSnapshot,
+    current_ref: str | None,
+    auth: permissions.AuthContext,
+) -> graph_cypher.Statement | None:
+    """Return the statement that moves the prompt label of a restore.
+
+    Return ``None`` when no label must move.
+
+    A restore moves a label only on a prompt in the ``agents``
+    namespace that the agent uses now. Any caller with ``agent:write``
+    can write any ``prompt_ref`` into a version. Without this check, a
+    later restore by a caller with ``prompt:promote`` could move the
+    label of a prompt that other consumers use. When the label is
+    already at the version, nothing moves and the check does not
+    apply.
+
+    Raises:
+        403: The caller cannot promote prompts.
+        409: The label must move on a prompt that is not the agent's
+            own prompt, or the prompt or the prompt version no longer
+            exists.
+
+    """
+    if snapshot.prompt_ref is None or snapshot.prompt_version is None:
+        return None
+    namespace, prompt_slug, selector = prompt_resolve.parse_ref(
+        snapshot.prompt_ref
+    )
+    if selector is not None and selector.isascii() and selector.isdigit():
+        return None
+    try:
+        prompt, _latest = await prompt_resolve.fetch_prompt(
+            db, namespace, prompt_slug
+        )
+        await prompt_resolve.fetch_version(db, prompt, snapshot.prompt_version)
+    except prompt_resolve.PromptNotFound as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Cannot restore the prompt: {e}',
+        ) from e
+    label = selector or prompt.default_label
+    if any(
+        item.name == label and item.version == snapshot.prompt_version
+        for item in prompt.labels
+    ):
+        return None
+    current = (
+        prompt_resolve.parse_ref(current_ref)[:2] if current_ref else None
+    )
+    if namespace != AGENT_PROMPT_NAMESPACE or current != (
+        namespace,
+        prompt_slug,
+    ):
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Restoring this version moves the {label!r} label of '
+                f'{namespace}/{prompt_slug}, which is not the '
+                f'{AGENT_PROMPT_NAMESPACE}/ prompt that this agent uses '
+                'now. Move the label in the prompt CMS instead.'
+            ),
+        )
+    if not (auth.is_admin or 'prompt:promote' in auth.permissions):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail=(
+                f'Restoring this version moves the {label!r} label of '
+                f'{namespace}/{prompt_slug}; that needs prompt:promote'
+            ),
+        )
+    return prompts.labels_statement(
+        prompt,
+        prompts.moved_labels(
+            prompt, label, snapshot.prompt_version, auth.principal_name
+        ),
+        prompt.default_label,
     )

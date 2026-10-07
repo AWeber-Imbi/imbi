@@ -23,10 +23,15 @@ __all__ = [
 
 
 class Statement(typing.NamedTuple):
-    """A Cypher query template paired with its parameter values."""
+    """A Cypher query template paired with its parameter values.
+
+    When ``expect_rows`` is true, a batch that runs the statement
+    fails and rolls back if the statement returns no rows.
+    """
 
     cypher: str
     params: dict[str, typing.Any]
+    expect_rows: bool = False
 
 
 # ------------------------------------------------------------------

@@ -726,6 +726,18 @@ export type AdminUserCreate = Schemas['UserCreate'] & {
 // package reports.
 export type Advisory = Schemas['AdvisoryResponse']
 
+// Agents (org-scoped). The prompt CMS owns the model and its
+// parameters; an agent names its prompt with `prompt_ref`.
+export type Agent = Schemas['AgentResponse']
+
+export type AgentCreate = Schemas['AgentCreate']
+
+export type AgentSettings = Schemas['AgentSettings-Input']
+
+export type AgentUpdate = Schemas['AgentUpdate']
+
+export type AgentVersion = Schemas['AgentVersionResponse']
+
 export type ApiKey = Schemas['APIKeyResponse']
 
 export type ApiKeyCreated = Schemas['APIKeyCreateResponse']

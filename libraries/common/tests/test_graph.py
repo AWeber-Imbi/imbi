@@ -14,7 +14,7 @@ import fastapi.testclient
 import psycopg
 
 from imbi.common import graph, lifespan, models
-from imbi.common.graph import client
+from imbi.common.graph import client, cypher
 
 dotenv.load_dotenv()
 
@@ -1175,3 +1175,59 @@ class RowToModelTests(unittest.TestCase):
         """
         self.assertTrue(client._has_required_edge_field(models.Project))
         self.assertFalse(client._has_required_edge_field(_NoRequiredEdgeNode))
+
+
+class ExecuteBatchExpectRowsTests(unittest.IsolatedAsyncioTestCase):
+    """A statement with ``expect_rows`` rolls back an empty batch."""
+
+    def setUp(self) -> None:
+        self.tx = mock.AsyncMock()
+        self.tx.__aexit__.return_value = False
+        self.conn = mock.MagicMock()
+        self.conn.transaction.return_value = self.tx
+
+    async def _run_batch(
+        self, statements: list[cypher.Statement], found: list[typing.Any]
+    ) -> None:
+        g = graph.Graph()
+        g.opened = True
+
+        async def run_once(run: typing.Any) -> typing.Any:
+            return await run(self.conn)
+
+        with (
+            mock.patch.object(
+                graph.Graph, '_run_retrying_poisoned', side_effect=run_once
+            ),
+            mock.patch.object(
+                graph.Graph,
+                '_execute_on',
+                new=mock.AsyncMock(side_effect=found),
+            ),
+        ):
+            await g._execute_batch(statements)
+
+    def _exit_exception(self) -> typing.Any:
+        return self.tx.__aexit__.await_args.args[0]
+
+    async def test_empty_result_raises_and_rolls_back(self) -> None:
+        stmts = [
+            cypher.Statement('MATCH (a) RETURN a', {}),
+            cypher.Statement('MATCH (b) RETURN b', {}, expect_rows=True),
+        ]
+        with self.assertRaises(graph.StatementMatchedNothing):
+            await self._run_batch(stmts, [[], []])
+        self.assertIs(self._exit_exception(), graph.StatementMatchedNothing)
+
+    async def test_rows_found_commits(self) -> None:
+        stmts = [
+            cypher.Statement('MATCH (a) RETURN a', {}),
+            cypher.Statement('MATCH (b) RETURN b', {}, expect_rows=True),
+        ]
+        await self._run_batch(stmts, [[], [{'b': 1}]])
+        self.assertIsNone(self._exit_exception())
+
+    async def test_empty_result_without_flag_commits(self) -> None:
+        stmts = [cypher.Statement('MATCH (a) RETURN a', {})]
+        await self._run_batch(stmts, [[]])
+        self.assertIsNone(self._exit_exception())

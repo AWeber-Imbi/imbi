@@ -3440,7 +3440,7 @@ export interface paths {
         head?: never;
         /**
          * Patch Tag
-         * @description Update a tag via JSON Patch (name/slug/description).
+         * @description Update a tag via JSON Patch (name/slug/description/color).
          */
         patch: operations["patch_tag_api_organizations__org_slug__tags__tag_slug__patch"];
         trace?: never;
@@ -4125,6 +4125,154 @@ export interface paths {
          * @description Partially update a document template using JSON Patch (RFC 6902).
          */
         patch: operations["patch_document_template_api_organizations__org_slug__document_templates__slug__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agents
+         * @description List the agents in an organization, by name.
+         */
+        get: operations["list_agents_api_organizations__org_slug__agents__get"];
+        put?: never;
+        /**
+         * Create Agent
+         * @description Create an agent in ``org_slug`` and write its version 1.
+         *
+         *     Raises:
+         *         404: No such organization.
+         *         409: The org has an agent with this slug.
+         *         422: The team or a tag is not in the org, or ``prompt_ref``
+         *             does not parse.
+         */
+        post: operations["create_agent_api_organizations__org_slug__agents__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agents/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent
+         * @description Get an agent by slug.
+         */
+        get: operations["get_agent_api_organizations__org_slug__agents__slug__get"];
+        /**
+         * Update Agent
+         * @description Update an agent (whole-or-partial replace).
+         *
+         *     Fields that are not in the body keep their values.
+         */
+        put: operations["update_agent_api_organizations__org_slug__agents__slug__put"];
+        post?: never;
+        /**
+         * Delete Agent
+         * @description Delete an agent and every version of it.
+         */
+        delete: operations["delete_agent_api_organizations__org_slug__agents__slug__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Agent
+         * @description Partially update an agent with JSON Patch (RFC 6902).
+         *
+         *     ``/team`` is a team slug and ``/tags`` a list of tag slugs. Add
+         *     ``/version_summary`` to put a note on the version.
+         */
+        patch: operations["patch_agent_api_organizations__org_slug__agents__slug__patch"];
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agents/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Versions
+         * @description List every version of an agent, newest first.
+         */
+        get: operations["list_agent_versions_api_organizations__org_slug__agents__slug__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agents/{slug}/versions/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Version
+         * @description Get one version of an agent.
+         */
+        get: operations["get_agent_version_api_organizations__org_slug__agents__slug__versions__n__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agents/{slug}/versions/{n}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Agent Version
+         * @description Apply the snapshot of version ``n`` and write a new version.
+         *
+         *     The new version has the summary ``Restored v{n}``. When the
+         *     snapshot is the same as the configuration now, no version is
+         *     written. ``enabled`` does not change.
+         *
+         *     When the snapshot has ``prompt_ref`` and ``prompt_version``, the
+         *     label that the reference names (the default label when it names
+         *     none) moves to that prompt version in the same transaction. This
+         *     needs ``prompt:promote``, as a label move in the prompt CMS does.
+         *     A reference that names a version number moves no label. A label
+         *     moves only on the agent's own prompt: a prompt in the ``agents``
+         *     namespace that the ``prompt_ref`` of the agent names now.
+         *
+         *     Raises:
+         *         403: The label must move and the caller cannot promote.
+         *         404: No such agent or version.
+         *         409: The snapshot slug is taken by another agent, the label
+         *             must move on a prompt that is not the agent's own
+         *             ``agents/`` prompt, the prompt or its version no longer
+         *             exists, or the prompt changed while this request ran.
+         *         422: The snapshot team or a snapshot tag no longer exists.
+         */
+        post: operations["restore_agent_version_api_organizations__org_slug__agents__slug__versions__n__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/organizations/{org_slug}/projects/{project_id}/configuration/": {
@@ -7624,6 +7772,215 @@ export interface components {
             age_score_map: {
                 [key: string]: number;
             };
+        };
+        /** AgentCreate */
+        AgentCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Team
+             * @description Slug of the owner team in the org.
+             */
+            team: string;
+            /**
+             * Tags
+             * @description Tag slugs to attach. Must already exist in the org.
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Slack Channel */
+            slack_channel?: string | null;
+            /**
+             * Prompt Ref
+             * @description Prompt CMS reference: namespace/slug@label.
+             */
+            prompt_ref?: string | null;
+            /**
+             * Prompt Version
+             * @description The prompt CMS version that the agent uses.
+             */
+            prompt_version?: number | null;
+            settings?: components["schemas"]["AgentSettings-Input"];
+            /**
+             * Version Summary
+             * @description Note for the version that this write creates.
+             */
+            version_summary?: string | null;
+        };
+        /** AgentResponse */
+        AgentResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            team?: components["schemas"]["AgentTeamRef"] | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: components["schemas"]["AgentTagRef"][];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Slack Channel */
+            slack_channel?: string | null;
+            /** Prompt Ref */
+            prompt_ref?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
+            settings?: components["schemas"]["AgentSettings-Output"];
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Updated By */
+            updated_by?: string | null;
+            /** Last Version At */
+            last_version_at?: string | null;
+            organization: components["schemas"]["OrganizationRef"];
+        };
+        /**
+         * AgentSettings
+         * @description Operational limits for an agent. ``None`` means no limit.
+         */
+        "AgentSettings-Input": {
+            /** Monthly Cost Cap */
+            monthly_cost_cap?: number | string | null;
+            /** Max Concurrent Tasks */
+            max_concurrent_tasks?: number | null;
+            /** Task Timeout Seconds */
+            task_timeout_seconds?: number | null;
+            /** Response Sla */
+            response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+        };
+        /**
+         * AgentSettings
+         * @description Operational limits for an agent. ``None`` means no limit.
+         */
+        "AgentSettings-Output": {
+            /** Monthly Cost Cap */
+            monthly_cost_cap?: string | null;
+            /** Max Concurrent Tasks */
+            max_concurrent_tasks?: number | null;
+            /** Task Timeout Seconds */
+            task_timeout_seconds?: number | null;
+            /** Response Sla */
+            response_sla?: ("4h" | "8h" | "24h" | "3d" | "none") | null;
+        };
+        /**
+         * AgentSnapshot
+         * @description The editable configuration of an agent, as a version stores it.
+         *
+         *     ``team`` is a team slug and ``tags`` are tag slugs in sort order,
+         *     so two snapshots of the same configuration compare equal.
+         */
+        AgentSnapshot: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Team */
+            team: string;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /** Slack Channel */
+            slack_channel?: string | null;
+            /** Prompt Ref */
+            prompt_ref?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
+            settings?: components["schemas"]["AgentSettings-Output"];
+        };
+        /** AgentTagRef */
+        AgentTagRef: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Color */
+            color?: string | null;
+        };
+        /** AgentTeamRef */
+        AgentTeamRef: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * AgentUpdate
+         * @description A whole-or-partial replace. Fields that are not set stay.
+         */
+        AgentUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Team */
+            team?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Slack Channel */
+            slack_channel?: string | null;
+            /** Prompt Ref */
+            prompt_ref?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
+            settings?: components["schemas"]["AgentSettings-Input"] | null;
+            /** Version Summary */
+            version_summary?: string | null;
+        };
+        /** AgentVersionResponse */
+        AgentVersionResponse: {
+            /** N */
+            n: number;
+            /** Summary */
+            summary?: string | null;
+            snapshot: components["schemas"]["AgentSnapshot"];
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * AnalysisReport
@@ -14625,6 +14982,8 @@ export interface components {
             slug?: string | null;
             /** Description */
             description?: string | null;
+            /** Color */
+            color?: string | null;
         };
         /**
          * TagFormat
@@ -14662,6 +15021,8 @@ export interface components {
             slug: string;
             /** Description */
             description?: string | null;
+            /** Color */
+            color?: string | null;
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -22839,6 +23200,304 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentTemplateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_api_organizations__org_slug__agents__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_api_organizations__org_slug__agents__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_api_organizations__org_slug__agents__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_api_organizations__org_slug__agents__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_api_organizations__org_slug__agents__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_agent_api_organizations__org_slug__agents__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchOperation"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_versions_api_organizations__org_slug__agents__slug__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentVersionResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_version_api_organizations__org_slug__agents__slug__versions__n__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_agent_version_api_organizations__org_slug__agents__slug__versions__n__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                slug: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
                 };
             };
             /** @description Validation Error */
