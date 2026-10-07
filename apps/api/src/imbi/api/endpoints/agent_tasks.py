@@ -328,7 +328,18 @@ agent_tasks_router = fastapi.APIRouter(
 
 
 @agent_tasks_router.post(
-    '/', status_code=201, response_model=AgentTaskResponse
+    '/',
+    status_code=201,
+    response_model=AgentTaskResponse,
+    responses={
+        200: {
+            'model': AgentTaskResponse,
+            'description': (
+                'A task with this idempotency key exists; it is returned '
+                'unchanged.'
+            ),
+        },
+    },
 )
 async def create_agent_task(
     org_slug: str,
