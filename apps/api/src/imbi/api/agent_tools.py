@@ -9,9 +9,11 @@ The catalog has one group for each tool server:
   The tools are listed live, with the client code of the connection
   test. ``ignored_tools`` is applied.
 
-A server that fails gives its group with ``error`` and no tools. The
-other groups are not affected. The catalog is kept in Valkey for
-:data:`CACHE_TTL_SECONDS`.
+A server that fails gives its group with an :data:`ErrorCode` in
+``error`` and no tools. The other groups are not affected. The error
+text can show internal hosts, URLs, or parts of credentials, so it
+goes only to the log, never to the response or to the cache. The
+catalog is kept in Valkey for :data:`CACHE_TTL_SECONDS`.
 
 A tool key is ``<server slug>.<tool name>``. An agent stores its tool
 configuration by this key.
@@ -56,6 +58,10 @@ DESCRIPTION_LENGTH = 300
 Capability = typing.Literal['read', 'write', 'destructive', 'unknown']
 Transport = typing.Literal['internal', 'mcp/http']
 
+#: Why the tools of a server could not be listed. ``auth_failed`` is
+#: an HTTP 401 or 403 response. ``unreachable`` is each other failure.
+ErrorCode = typing.Literal['unreachable', 'timeout', 'auth_failed']
+
 
 class AgentToolServer(pydantic.BaseModel):
     slug: str
@@ -75,7 +81,7 @@ class AgentToolGroup(pydantic.BaseModel):
     server: AgentToolServer
     tools: list[AgentCatalogTool] = []
     #: Set when the tools of this server could not be listed.
-    error: str | None = None
+    error: ErrorCode | None = None
 
 
 class AgentToolCatalog(pydantic.BaseModel):
@@ -127,12 +133,27 @@ def _tool(
     )
 
 
-def _error_text(err: BaseException) -> str:
-    """Return the message of ``err``, or of the first error in a group."""
-    while isinstance(err, BaseExceptionGroup):
-        group = typing.cast('BaseExceptionGroup[BaseException]', err)
-        err = group.exceptions[0]
-    return str(err) or type(err).__name__
+def _error_code(err: BaseException) -> ErrorCode:
+    """Return the error code of ``err``.
+
+    The errors in a group and the ``__cause__`` of each error are
+    examined too.
+    """
+    pending: list[BaseException] = [err]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, httpx.HTTPStatusError) and (
+            item.response.status_code in {401, 403}
+        ):
+            return 'auth_failed'
+        if isinstance(item, TimeoutError | httpx.TimeoutException):
+            return 'timeout'
+        if isinstance(item, BaseExceptionGroup):
+            group = typing.cast('BaseExceptionGroup[BaseException]', item)
+            pending.extend(group.exceptions)
+        if item.__cause__ is not None:
+            pending.append(item.__cause__)
+    return 'unreachable'
 
 
 async def _mcp_group(server: models.MCPServer) -> AgentToolGroup:
@@ -149,11 +170,18 @@ async def _mcp_group(server: models.MCPServer) -> AgentToolGroup:
     except asyncio.CancelledError:
         raise
     except TimeoutError:
-        group.error = f'Timed out after {timeout_s:g}s'
+        LOGGER.warning(
+            'Cannot list the tools of %r: timed out after %gs',
+            server.slug,
+            timeout_s,
+        )
+        group.error = 'timeout'
         return group
     except Exception as err:  # noqa: BLE001 - one server must not fail all
-        LOGGER.info('Cannot list the tools of %r: %s', server.slug, err)
-        group.error = _error_text(err)
+        LOGGER.warning(
+            'Cannot list the tools of %r: %s', server.slug, err, exc_info=err
+        )
+        group.error = _error_code(err)
         return group
     ignored = set(server.ignored_tools)
     group.tools = sorted(
@@ -209,7 +237,7 @@ async def _imbi_group(spec: dict[str, typing.Any]) -> AgentToolGroup:
         raise
     except Exception as err:
         LOGGER.exception('Cannot make the Imbi tools')
-        group.error = _error_text(err)
+        group.error = _error_code(err)
         return group
     group.tools = sorted(
         (
@@ -247,7 +275,9 @@ async def get_catalog(
     """Return the catalog from Valkey, or list it and keep it there.
 
     ``refresh`` lists the catalog again and replaces the kept copy.
-    Without Valkey, each call lists the catalog.
+    Without Valkey, each call lists the catalog. A kept copy that does
+    not validate, for example one with error text from an earlier
+    release, is listed again.
     """
     if client is not None and not refresh:
         try:

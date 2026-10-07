@@ -871,7 +871,7 @@ async def get_agent_tool_catalog(
     request: fastapi.Request,
     db: graph.Pool,
     valkey_client: OptionalValkeyClient,
-    _auth: typing.Annotated[
+    auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('agent:read')),
     ],
@@ -880,12 +880,24 @@ async def get_agent_tool_catalog(
     """List the tools that an agent can use, in groups by server.
 
     The groups are the Imbi tools and the tools of each enabled MCP
-    server. A server that fails gives its group with ``error`` and no
-    tools. The catalog is kept for five minutes; ``refresh=true``
-    lists it again. The catalog is the same in each organization,
+    server. A server that fails gives its group with an error code in
+    ``error`` and no tools. The error text goes only to the log. The
+    catalog is kept for five minutes; ``refresh=true`` lists it again.
+    A refresh connects to each MCP server, so it needs
+    ``agent:write``. The catalog is the same in each organization,
     because MCP servers are global.
+
+    Raises:
+        403: ``refresh=true`` and the caller does not have
+            ``agent:write``.
+
     """
     _ = org_slug
+    if refresh and not (auth.is_admin or 'agent:write' in auth.permissions):
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Permission denied: refresh needs agent:write',
+        )
     return await agent_tools.get_catalog(
         db, valkey_client, request.app.openapi, refresh=refresh
     )
@@ -1098,22 +1110,24 @@ async def restore_agent_version(
     needs ``prompt:promote``, as a label move in the prompt CMS does.
     A reference that names a version number moves no label. A label
     moves only on the agent's own prompt: a prompt in the ``agents``
-    namespace that the ``prompt_ref`` of the agent names now.
+    namespace that the ``prompt_ref`` of the agent names now, with a
+    slug that starts with ``<org_slug>.``.
 
     Raises:
         403: The label must move and the caller cannot promote.
         404: No such agent or version.
         409: The snapshot slug is taken by another agent, the label
             must move on a prompt that is not the agent's own
-            ``agents/`` prompt, the prompt or its version no longer
-            exists, or the prompt changed while this request ran.
+            ``agents/<org_slug>.`` prompt, the prompt or its version no
+            longer exists, or the prompt changed while this request
+            ran.
         422: The snapshot team or a snapshot tag no longer exists.
 
     """
     existing = await _fetch_agent(db, org_slug, slug)
     version = await _fetch_version(db, str(existing['id']), n)
     label_move = await _restore_label_move(
-        db, version.snapshot, existing.get('prompt_ref'), auth
+        db, org_slug, version.snapshot, existing.get('prompt_ref'), auth
     )
     return await _apply(
         db,
@@ -1129,6 +1143,7 @@ async def restore_agent_version(
 
 async def _restore_label_move(
     db: graph.Pool,
+    org_slug: str,
     snapshot: AgentSnapshot,
     current_ref: str | None,
     auth: permissions.AuthContext,
@@ -1138,18 +1153,19 @@ async def _restore_label_move(
     Return ``None`` when no label must move.
 
     A restore moves a label only on a prompt in the ``agents``
-    namespace that the agent uses now. Any caller with ``agent:write``
-    can write any ``prompt_ref`` into a version. Without this check, a
+    namespace that the agent uses now, and only when the prompt slug
+    starts with ``<org_slug>.``. Any caller with ``agent:write`` can
+    write any ``prompt_ref`` into a version. Without these checks, a
     later restore by a caller with ``prompt:promote`` could move the
-    label of a prompt that other consumers use. When the label is
-    already at the version, nothing moves and the check does not
-    apply.
+    label of a prompt that other consumers use, or that an agent in
+    another organization uses. When the label is already at the
+    version, nothing moves and the checks do not apply.
 
     Raises:
         403: The caller cannot promote prompts.
         409: The label must move on a prompt that is not the agent's
-            own prompt, or the prompt or the prompt version no longer
-            exists.
+            own org-scoped prompt, or the prompt or the prompt version
+            no longer exists.
 
     """
     if snapshot.prompt_ref is None or snapshot.prompt_version is None:
@@ -1191,6 +1207,23 @@ async def _restore_label_move(
                 'now. Move the label in the prompt CMS instead.'
             ),
         )
+    if not prompt_slug.startswith(f'{org_slug}.'):
+        if '.' not in prompt_slug:
+            detail = (
+                f'Restoring this version moves the {label!r} label of '
+                f'{namespace}/{prompt_slug}, which is not scoped to this '
+                'organization. Change and save the system prompt of the '
+                f'agent once, so that it moves to {namespace}/'
+                f'{org_slug}.{prompt_slug}. Then restore this version.'
+            )
+        else:
+            detail = (
+                f'Restoring this version moves the {label!r} label of '
+                f'{namespace}/{prompt_slug}, which is not a prompt of the '
+                f'{org_slug!r} organization. Move the label in the '
+                'prompt CMS instead.'
+            )
+        raise fastapi.HTTPException(status_code=409, detail=detail)
     if not (auth.is_admin or 'prompt:promote' in auth.permissions):
         raise fastapi.HTTPException(
             status_code=403,

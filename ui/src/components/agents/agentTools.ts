@@ -7,6 +7,15 @@ import type { AgentTools } from './agentDraft'
 
 export type Capability = AgentToolGroup['tools'][number]['capability']
 
+export type ToolErrorCode = NonNullable<AgentToolGroup['error']>
+
+/** The message for each error code of a server group. */
+export const TOOL_ERROR_MESSAGES: Record<ToolErrorCode, string> = {
+  auth_failed: 'the server did not accept the credentials.',
+  timeout: 'the server did not answer in time.',
+  unreachable: 'the server is not reachable.',
+}
+
 export type RatePeriod = NonNullable<AgentToolConfig['rate_limit']>['per']
 
 export const CAPABILITIES: {
@@ -46,7 +55,7 @@ export interface ToolFilters {
 export interface ToolGroupView {
   /** Every row of the group before the filters. */
   allRows: ToolRow[]
-  error: null | string
+  error: null | ToolErrorCode
   name: string
   rows: ToolRow[]
   slug: string

@@ -68,7 +68,7 @@ export function catalog(): AgentToolCatalog {
         ],
       },
       {
-        error: 'Timed out after 10s',
+        error: 'timeout',
         server: { name: 'Sentry', slug: 'sentry', transport: 'mcp/http' },
         tools: [],
       },

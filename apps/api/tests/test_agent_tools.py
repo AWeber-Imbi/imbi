@@ -1,10 +1,12 @@
 """Tests for the agent tool catalog."""
 
 import asyncio
+import json
 import typing
 import unittest
 from unittest import mock
 
+import httpx
 from mcp import types as mcp_types
 
 from imbi.api import agent_tools
@@ -120,7 +122,9 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
                     mcp_types.ToolAnnotations(destructiveHint=True),
                 ),
             ],
-            'sentry': ConnectionError('connection refused'),
+            'sentry': ConnectionError(
+                'connection refused: http://10.0.0.5:8080/mcp?token=s3cret'
+            ),
         }
 
         async def list_tools(
@@ -166,7 +170,7 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
 
         sentry = self._group(catalog, 'sentry')
         self.assertEqual(sentry.tools, [])
-        self.assertEqual(sentry.error, 'connection refused')
+        self.assertEqual(sentry.error, 'unreachable')
 
     async def test_imbi_group(self) -> None:
         group = self._group(
@@ -209,7 +213,7 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
         self.db.match.return_value = [_server('slow', timeout=0)]
         catalog = await agent_tools.build_catalog(self.db, SPEC)
         group = self._group(catalog, 'slow')
-        self.assertEqual(group.error, 'Timed out after 0s')
+        self.assertEqual(group.error, 'timeout')
 
     async def test_server_timeout_is_capped(self) -> None:
         self.db.match.return_value = [_server('github', timeout=60)]
@@ -219,12 +223,50 @@ class CatalogTestCase(unittest.IsolatedAsyncioTestCase):
             agent_tools.SERVER_TIMEOUT_SECONDS,
         )
 
-    async def test_error_group_text(self) -> None:
-        self.listed['sentry'] = ExceptionGroup(
-            'task group', [ValueError('bad token')]
-        )
-        catalog = await agent_tools.build_catalog(self.db, SPEC)
-        self.assertEqual(self._group(catalog, 'sentry').error, 'bad token')
+    async def test_error_codes(self) -> None:
+        request = httpx.Request('POST', 'https://mcp.example.com/mcp')
+
+        def status(code: int) -> httpx.HTTPStatusError:
+            return httpx.HTTPStatusError(
+                'bad token',
+                request=request,
+                response=httpx.Response(code, request=request),
+            )
+
+        wrapped = RuntimeError('session failed')
+        wrapped.__cause__ = status(403)
+        for err, expected in (
+            (status(401), 'auth_failed'),
+            (ExceptionGroup('task group', [status(401)]), 'auth_failed'),
+            (wrapped, 'auth_failed'),
+            (status(500), 'unreachable'),
+            (httpx.ReadTimeout('slow', request=request), 'timeout'),
+            (ExceptionGroup('task group', [ValueError('x')]), 'unreachable'),
+        ):
+            with self.subTest(err=err):
+                self.listed['sentry'] = err
+                catalog = await agent_tools.build_catalog(self.db, SPEC)
+                self.assertEqual(
+                    self._group(catalog, 'sentry').error, expected
+                )
+
+    async def test_error_text_is_not_in_the_catalog(self) -> None:
+        with self.assertLogs(agent_tools.LOGGER, 'WARNING') as logs:
+            catalog = await agent_tools.build_catalog(self.db, SPEC)
+        self.assertNotIn('s3cret', catalog.model_dump_json())
+        self.assertNotIn('10.0.0.5', catalog.model_dump_json())
+        # The full error goes to the log, with the server slug.
+        self.assertIn("'sentry'", logs.output[0])
+        self.assertIn('s3cret', logs.output[0])
+
+    async def test_cache_holds_only_codes(self) -> None:
+        client = mock.AsyncMock()
+        client.get.return_value = None
+        await agent_tools.get_catalog(self.db, client, lambda: SPEC)
+        stored = client.set.await_args.args[1]
+        self.assertNotIn('s3cret', stored)
+        self.assertNotIn('connection refused', stored)
+        self.assertIn('"error":"unreachable"', stored)
 
 
 class CacheTestCase(unittest.IsolatedAsyncioTestCase):
@@ -273,6 +315,16 @@ class CacheTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, self.catalog)
         self.valkey.get.assert_not_awaited()
+        self.build.assert_awaited_once()
+        self.valkey.set.assert_awaited_once()
+
+    async def test_entry_with_error_text_is_replaced(self) -> None:
+        # An entry from an earlier release can hold the error text.
+        entry = json.loads(self.catalog.model_dump_json())
+        entry['groups'][0]['error'] = 'connection refused: 10.0.0.5'
+        self.valkey.get.return_value = json.dumps(entry).encode()
+        result = await agent_tools.get_catalog(self.db, self.valkey, self.spec)
+        self.assertEqual(result, self.catalog)
         self.build.assert_awaited_once()
         self.valkey.set.assert_awaited_once()
 

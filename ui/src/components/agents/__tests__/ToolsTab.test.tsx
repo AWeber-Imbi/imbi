@@ -10,6 +10,13 @@ import type { AgentTools } from '../agentDraft'
 import { ToolsTab } from '../ToolsTab'
 import { catalog } from './fixtures'
 
+const auth = vi.hoisted(() => ({
+  user: { is_admin: false, permissions: ['agent:write'] as string[] },
+}))
+
+// fallow-ignore-next-line unresolved-import
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }))
+
 // fallow-ignore-next-line unresolved-import
 vi.mock('@/api/endpoints', () => ({
   getAgentToolCatalog: vi.fn(),
@@ -49,6 +56,7 @@ describe('ToolsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     changes.length = 0
+    auth.user = { is_admin: false, permissions: ['agent:write'] }
     vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(catalog())
     vi.mocked(endpoints.listEnvironments).mockResolvedValue([
       env('staging', 2),
@@ -64,7 +72,7 @@ describe('ToolsTab', () => {
       within(group('GitHub')).getByText('1 of 2 enabled'),
     ).toBeInTheDocument()
     expect(within(group('Sentry')).getByRole('alert')).toHaveTextContent(
-      'Could not list the tools of this server: Timed out after 10s',
+      'Could not list the tools of this server: the server did not answer in time.',
     )
     expect(endpoints.getAgentToolCatalog).toHaveBeenCalledWith(
       'acme',
@@ -181,6 +189,29 @@ describe('ToolsTab', () => {
     )
     await waitFor(() =>
       expect(endpoints.getAgentToolCatalog).toHaveBeenCalledWith('acme', true),
+    )
+  })
+
+  it('hides refresh without agent:write', async () => {
+    auth.user = { is_admin: false, permissions: ['agent:read'] }
+    render(<Harness initial={{}} />)
+    await screen.findByText('0 of 4 enabled')
+    expect(
+      screen.queryByRole('button', { name: 'Refresh the tool list' }),
+    ).toBeNull()
+  })
+
+  it.each([
+    ['auth_failed', 'the server did not accept the credentials.'],
+    ['unreachable', 'the server is not reachable.'],
+  ] as const)('shows a message for %s', async (code, message) => {
+    const data = catalog()
+    data.groups[2].error = code
+    vi.mocked(endpoints.getAgentToolCatalog).mockResolvedValue(data)
+    render(<Harness initial={{}} />)
+    await screen.findByText('0 of 4 enabled')
+    expect(within(group('Sentry')).getByRole('alert')).toHaveTextContent(
+      `Could not list the tools of this server: ${message}`,
     )
   })
 })

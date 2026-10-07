@@ -4169,10 +4169,16 @@ export interface paths {
          * @description List the tools that an agent can use, in groups by server.
          *
          *     The groups are the Imbi tools and the tools of each enabled MCP
-         *     server. A server that fails gives its group with ``error`` and no
-         *     tools. The catalog is kept for five minutes; ``refresh=true``
-         *     lists it again. The catalog is the same in each organization,
+         *     server. A server that fails gives its group with an error code in
+         *     ``error`` and no tools. The error text goes only to the log. The
+         *     catalog is kept for five minutes; ``refresh=true`` lists it again.
+         *     A refresh connects to each MCP server, so it needs
+         *     ``agent:write``. The catalog is the same in each organization,
          *     because MCP servers are global.
+         *
+         *     Raises:
+         *         403: ``refresh=true`` and the caller does not have
+         *             ``agent:write``.
          */
         get: operations["get_agent_tool_catalog_api_organizations__org_slug__agents_tool_catalog_get"];
         put?: never;
@@ -4283,15 +4289,17 @@ export interface paths {
          *     needs ``prompt:promote``, as a label move in the prompt CMS does.
          *     A reference that names a version number moves no label. A label
          *     moves only on the agent's own prompt: a prompt in the ``agents``
-         *     namespace that the ``prompt_ref`` of the agent names now.
+         *     namespace that the ``prompt_ref`` of the agent names now, with a
+         *     slug that starts with ``<org_slug>.``.
          *
          *     Raises:
          *         403: The label must move and the caller cannot promote.
          *         404: No such agent or version.
          *         409: The snapshot slug is taken by another agent, the label
          *             must move on a prompt that is not the agent's own
-         *             ``agents/`` prompt, the prompt or its version no longer
-         *             exists, or the prompt changed while this request ran.
+         *             ``agents/<org_slug>.`` prompt, the prompt or its version no
+         *             longer exists, or the prompt changed while this request
+         *             ran.
          *         422: The snapshot team or a snapshot tag no longer exists.
          */
         post: operations["restore_agent_version_api_organizations__org_slug__agents__slug__versions__n__restore_post"];
@@ -8048,7 +8056,7 @@ export interface components {
              */
             tools: components["schemas"]["AgentCatalogTool"][];
             /** Error */
-            error?: string | null;
+            error?: ("unreachable" | "timeout" | "auth_failed") | null;
         };
         /** AgentToolServer */
         AgentToolServer: {
