@@ -56,6 +56,16 @@ describe('agentDraft', () => {
     })
   })
 
+  it('keeps a task budget below one cent', () => {
+    const base = agent()
+    const draft = draftFromAgent(
+      { ...base, settings: { ...base.settings, task_budget: '0.004' } },
+      null,
+    )
+    expect(draft.settings.taskBudget).toBe('$0.004')
+    expect(settingsFromDraft(draft.settings).task_budget).toBe('0.004')
+  })
+
   it('parses durations and money', () => {
     expect(parseDuration('30m')).toBe(1800)
     expect(parseDuration('2h')).toBe(7200)
