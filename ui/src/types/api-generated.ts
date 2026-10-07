@@ -4369,6 +4369,8 @@ export interface paths {
         /**
          * Get Agent Task
          * @description Get a task by its short id (``T-<n>``).
+         *
+         *     The service account of the task's agent can read its own task.
          */
         get: operations["get_agent_task_api_organizations__org_slug__agent_tasks__short_id__get"];
         put?: never;
@@ -4392,7 +4394,8 @@ export interface paths {
          *
          *     To read new events, give the ``seq`` of the last event that you
          *     have as ``after_seq``. The events of an archived task come from
-         *     ClickHouse, in the same shape.
+         *     ClickHouse, in the same shape. The service account of the task's
+         *     agent can read the events of its own task.
          */
         get: operations["list_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_get"];
         put?: never;
@@ -4404,10 +4407,15 @@ export interface paths {
          *     ``phase.changed``, ``todos.updated``, and ``check.reported``. A
          *     ``phase.changed`` event also sets the phase of the task.
          *
+         *     Each event has an ``event_id`` that the harness picks. An event that
+         *     the task already has is not written again and takes no seq; its id
+         *     is in ``duplicates``. The status is 200 when nothing was written.
+         *
          *     Raises:
          *         403: The caller is not the service account of the task's agent.
          *         404: No such task or session.
-         *         409: ``task_closed`` or ``session_closed``.
+         *         409: ``task_closed``, ``session_closed``, or
+         *             ``event_id_conflict`` (another task has the event id).
          *         413: A payload is larger than :data:`MAX_PAYLOAD_BYTES`.
          *         422: An event type that Imbi writes, or a bad envelope.
          */
@@ -8841,6 +8849,13 @@ export interface components {
             /** Start */
             start: number;
         };
+        /** AppendEventsResponse */
+        AppendEventsResponse: {
+            /** Written */
+            written: components["schemas"]["AgentTaskEventResponse"][];
+            /** Duplicates */
+            duplicates: string[];
+        };
         /**
          * AttachmentRef
          * @description The vertex a document hangs off of.
@@ -11118,6 +11133,12 @@ export interface components {
          * @description One event in the envelope of ADR 0020.
          */
         HarnessEvent: {
+            /**
+             * Event Id
+             * Format: uuid
+             * @description Picked by the harness. An event that the task already has is a duplicate and is not written again.
+             */
+            event_id: string;
             /**
              * Type
              * @enum {string}
@@ -24638,8 +24659,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                short_id: string;
                 org_slug: string;
+                short_id: string;
             };
             cookie?: never;
         };
@@ -24673,8 +24694,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                short_id: string;
                 org_slug: string;
+                short_id: string;
             };
             cookie?: never;
         };
@@ -24722,7 +24743,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                    "application/json": components["schemas"]["AppendEventsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -78,9 +78,14 @@ class HarnessClient:
             f'sessions/{session_id}/close', {'reason': reason}
         )
 
-    async def append(
-        self, session_id: str | None, events: list[Body]
-    ) -> list[Body]:
+    async def append(self, session_id: str | None, events: list[Body]) -> Body:
+        """Write events. Each event gets an ``event_id`` when it has none.
+
+        The ids are set on the dicts in ``events``, so sending the same
+        list again after an error writes nothing two times.
+        """
+        for event in events:
+            event.setdefault('event_id', str(uuid.uuid4()))
         return await self._post(
             'events', {'session_id': session_id, 'events': events}
         )

@@ -13,9 +13,11 @@ be a member of the organization.
 A closed task refuses every write with ``409 task_closed``. Errors that
 a harness branches on have a ``detail.error`` code.
 
+Imbi stores payloads as the harness sends them. The harness redacts
+them before it sends them (CC8); Imbi does not redact again.
+
 Not in this version: payloads larger than :data:`MAX_PAYLOAD_BYTES` are
-refused rather than moved to object storage, and payloads are not
-redacted (CC8).
+refused rather than moved to object storage.
 """
 
 import datetime
@@ -67,6 +69,12 @@ class SessionClose(pydantic.BaseModel):
 class HarnessEvent(pydantic.BaseModel):
     """One event in the envelope of ADR 0020."""
 
+    event_id: uuid.UUID = pydantic.Field(
+        description=(
+            'Picked by the harness. An event that the task already has '
+            'is a duplicate and is not written again.'
+        )
+    )
     type: HarnessEventType
     schema_version: int = pydantic.Field(default=1, ge=1)
     actor_kind: typing.Literal['agent', 'subagent'] = 'agent'
@@ -116,6 +124,13 @@ class UsageReport(pydantic.BaseModel):
     cache_read_tokens: int | None = pydantic.Field(default=None, ge=0)
     cache_write_tokens: int | None = pydantic.Field(default=None, ge=0)
     session_id: uuid.UUID | None = None
+
+
+class AppendEventsResponse(pydantic.BaseModel):
+    #: The events written, with their seqs.
+    written: list[tasks_api.AgentTaskEventResponse]
+    #: The ids of the events that the task already had.
+    duplicates: list[uuid.UUID]
 
 
 class RequestCreate(pydantic.BaseModel):
@@ -391,6 +406,7 @@ _STORE_ERRORS = (
     agent_tasks.CancelPending,
     agent_tasks.SessionClosed,
     agent_tasks.ConcurrencyLimit,
+    agent_tasks.EventIdConflict,
 )
 
 
@@ -412,6 +428,10 @@ def _translate(err: Exception, short_id: str) -> fastapi.HTTPException:
         )
     if isinstance(err, agent_tasks.SessionClosed):
         return _conflict('session_closed', f'Session {err} is closed')
+    if isinstance(err, agent_tasks.EventIdConflict):
+        return _conflict(
+            'event_id_conflict', 'Another task has an event with this id'
+        )
     return _conflict(
         'concurrency_limit',
         'The agent has its maximum number of open sessions',
@@ -545,24 +565,30 @@ async def close_agent_task_session(
 @agent_task_harness_router.post(
     '/{short_id}/events',
     status_code=201,
-    response_model=list[tasks_api.AgentTaskEventResponse],
+    response_model=AppendEventsResponse,
 )
 async def append_agent_task_events(
     org_id: tasks_api.OrgId,
     task: HarnessTask,
     data: EventBatch,
+    response: fastapi.Response,
     store: agent_tasks.Store,
-) -> list[dict[str, typing.Any]]:
+) -> AppendEventsResponse:
     """Write a batch of harness events, in order.
 
     The harness writes only ``turn``, ``tool.called``,
     ``phase.changed``, ``todos.updated``, and ``check.reported``. A
     ``phase.changed`` event also sets the phase of the task.
 
+    Each event has an ``event_id`` that the harness picks. An event that
+    the task already has is not written again and takes no seq; its id
+    is in ``duplicates``. The status is 200 when nothing was written.
+
     Raises:
         403: The caller is not the service account of the task's agent.
         404: No such task or session.
-        409: ``task_closed`` or ``session_closed``.
+        409: ``task_closed``, ``session_closed``, or
+            ``event_id_conflict`` (another task has the event id).
         413: A payload is larger than :data:`MAX_PAYLOAD_BYTES`.
         422: An event type that Imbi writes, or a bad envelope.
 
@@ -572,11 +598,12 @@ async def append_agent_task_events(
         if size > MAX_PAYLOAD_BYTES:
             raise _too_large(f'The payload of event {index}', size)
     try:
-        _row, written = await store.append_events(
+        _row, written, duplicates = await store.append_events(
             org_id,
             task['short_id'],
             [
                 agent_tasks.NewEvent(
+                    event_id=event.event_id,
                     type=event.type,
                     payload=event.payload,
                     actor=agent_tasks.Actor(
@@ -593,7 +620,11 @@ async def append_agent_task_events(
         )
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err
-    return written
+    if not written:
+        response.status_code = 200
+    return AppendEventsResponse.model_validate(
+        {'written': written, 'duplicates': duplicates}
+    )
 
 
 @agent_task_harness_router.post(

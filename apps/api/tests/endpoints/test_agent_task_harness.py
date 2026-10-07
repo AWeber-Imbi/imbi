@@ -19,6 +19,11 @@ from imbi.api.endpoints import agent_task_harness
 from imbi.api.graph_sql import props_template
 
 
+def new_id() -> str:
+    """Return a new event id."""
+    return str(uuid.uuid4())
+
+
 class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
     """Fixtures: an agent, its task ``T-1``, and its service account."""
 
@@ -130,7 +135,7 @@ class AccessTests(HarnessTestCase):
             ('sessions', {'session_key': 'k'}),
             (f'sessions/{session_id}/heartbeat', None),
             (f'sessions/{session_id}/close', {'reason': 'done'}),
-            ('events', {'events': [{'type': 'turn'}]}),
+            ('events', {'events': [{'event_id': new_id(), 'type': 'turn'}]}),
             ('usage', {'idempotency_key': 'u', 'model_id': 'm'}),
             ('requests', {'kind': 'feedback', 'title': 'Which one?'}),
             ('outcome', {'outcome': 'done_acted'}),
@@ -410,8 +415,13 @@ class EventTests(HarnessTestCase):
             {
                 'session_id': session['id'],
                 'events': [
-                    {'type': 'turn', 'payload': {'body': 'Looking.'}},
                     {
+                        'event_id': new_id(),
+                        'type': 'turn',
+                        'payload': {'body': 'Looking.'},
+                    },
+                    {
+                        'event_id': new_id(),
                         'type': 'tool.called',
                         'actor_kind': 'subagent',
                         'actor_id': 'helper',
@@ -421,9 +431,18 @@ class EventTests(HarnessTestCase):
                             'mutating': False,
                         },
                     },
-                    {'type': 'phase.changed', 'payload': {'phase': 'triage'}},
-                    {'type': 'todos.updated', 'payload': {'todos': []}},
                     {
+                        'event_id': new_id(),
+                        'type': 'phase.changed',
+                        'payload': {'phase': 'triage'},
+                    },
+                    {
+                        'event_id': new_id(),
+                        'type': 'todos.updated',
+                        'payload': {'todos': []},
+                    },
+                    {
+                        'event_id': new_id(),
                         'type': 'check.reported',
                         'schema_version': 2,
                         'payload': {'name': 'tests', 'verdict': 'pass'},
@@ -432,7 +451,8 @@ class EventTests(HarnessTestCase):
             },
         )
         self.assertEqual(response.status_code, 201, response.text)
-        written = response.json()
+        written = response.json()['written']
+        self.assertEqual(response.json()['duplicates'], [])
         self.assertEqual([e['seq'] for e in written], [4, 5, 6, 7, 8])
         self.assertEqual(written, (await self.events())[3:])
         self.assertTrue(all(e['session_id'] == session['id'] for e in written))
@@ -445,6 +465,81 @@ class EventTests(HarnessTestCase):
         )
         self.assertEqual(written[4]['schema_version'], 2)
         self.assertEqual((await self.task_row())['phase'], 'triage')
+
+    async def test_a_batch_sent_again_writes_nothing(self) -> None:
+        batch = {
+            'events': [
+                {'event_id': new_id(), 'type': 'turn'},
+                {
+                    'event_id': new_id(),
+                    'type': 'phase.changed',
+                    'payload': {'phase': 'one'},
+                },
+            ]
+        }
+        response = await self.post('events', batch)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(
+            [e['seq'] for e in response.json()['written']], [2, 3]
+        )
+        response = await self.post('events', batch)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['written'], [])
+        self.assertEqual(
+            response.json()['duplicates'],
+            [e['event_id'] for e in batch['events']],
+        )
+        self.assertEqual((await self.task_row())['last_seq'], 3)
+
+        # New and duplicate ids mixed: only the new ones, in order, with
+        # no gap in seq. A repeat inside one batch is a duplicate too.
+        first, second = new_id(), new_id()
+        response = await self.post(
+            'events',
+            {
+                'events': [
+                    {'event_id': first, 'type': 'turn', 'payload': {'n': 1}},
+                    batch['events'][0],
+                    {
+                        'event_id': second,
+                        'type': 'phase.changed',
+                        'payload': {'phase': 'two'},
+                    },
+                    {'event_id': first, 'type': 'turn', 'payload': {'n': 2}},
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        self.assertEqual(
+            [(e['seq'], e['event_id']) for e in body['written']],
+            [(4, first), (5, second)],
+        )
+        self.assertEqual(body['written'][0]['payload'], {'n': 1})
+        self.assertEqual(
+            body['duplicates'], [batch['events'][0]['event_id'], first]
+        )
+        task = await self.task_row()
+        self.assertEqual(task['last_seq'], 5)
+        self.assertEqual(task['phase'], 'two')
+        self.assertEqual(
+            [e['seq'] for e in await self.events()], [1, 2, 3, 4, 5]
+        )
+
+    async def test_event_id_of_another_task_is_a_conflict(self) -> None:
+        self.act_as_user()
+        await self.create_task()
+        self.act_as(self.account)
+        event_id = new_id()
+        body = {'events': [{'event_id': event_id, 'type': 'turn'}]}
+        response = await self.post('events', body, 'T-2')
+        self.assertEqual(response.status_code, 201, response.text)
+        response = await self.post('events', body)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(
+            response.json()['detail']['error'], 'event_id_conflict'
+        )
+        self.assertEqual((await self.task_row())['last_seq'], 1)
 
     async def test_imbi_event_types_are_refused(self) -> None:
         for event_type in (
@@ -463,14 +558,40 @@ class EventTests(HarnessTestCase):
         ):
             with self.subTest(event_type=event_type):
                 response = await self.post(
-                    'events', {'events': [{'type': event_type}]}
+                    'events',
+                    {'events': [{'event_id': new_id(), 'type': event_type}]},
                 )
                 self.assertEqual(response.status_code, 422, response.text)
         for body in (
             {'events': []},
-            {'events': [{'type': 'phase.changed', 'payload': {}}]},
-            {'events': [{'type': 'turn', 'actor_kind': 'human'}]},
-            {'events': [{'type': 'turn', 'at': '2026-10-07T12:00:00'}]},
+            {'events': [{'type': 'turn'}]},
+            {
+                'events': [
+                    {
+                        'event_id': new_id(),
+                        'type': 'phase.changed',
+                        'payload': {},
+                    }
+                ]
+            },
+            {
+                'events': [
+                    {
+                        'event_id': new_id(),
+                        'type': 'turn',
+                        'actor_kind': 'human',
+                    }
+                ]
+            },
+            {
+                'events': [
+                    {
+                        'event_id': new_id(),
+                        'type': 'turn',
+                        'at': '2026-10-07T12:00:00',
+                    }
+                ]
+            },
         ):
             with self.subTest(body=body):
                 response = await self.post('events', body)
@@ -483,8 +604,16 @@ class EventTests(HarnessTestCase):
             'events',
             {
                 'events': [
-                    {'type': 'turn', 'payload': {'body': 'fits'}},
-                    {'type': 'turn', 'payload': {'body': big}},
+                    {
+                        'event_id': new_id(),
+                        'type': 'turn',
+                        'payload': {'body': 'fits'},
+                    },
+                    {
+                        'event_id': new_id(),
+                        'type': 'turn',
+                        'payload': {'body': big},
+                    },
                 ]
             },
         )
@@ -499,12 +628,18 @@ class EventTests(HarnessTestCase):
         await self.post(f'sessions/{session["id"]}/close', {'reason': 'x'})
         response = await self.post(
             'events',
-            {'session_id': session['id'], 'events': [{'type': 'turn'}]},
+            {
+                'session_id': session['id'],
+                'events': [{'event_id': new_id(), 'type': 'turn'}],
+            },
         )
         self.assertEqual(response.status_code, 409, response.text)
         response = await self.post(
             'events',
-            {'session_id': str(uuid.uuid4()), 'events': [{'type': 'turn'}]},
+            {
+                'session_id': str(uuid.uuid4()),
+                'events': [{'event_id': new_id(), 'type': 'turn'}],
+            },
         )
         self.assertEqual(response.status_code, 404, response.text)
 
@@ -633,7 +768,7 @@ class OutcomeTests(HarnessTestCase):
             ('sessions', {'session_key': 's-2'}),
             (f'sessions/{session["id"]}/heartbeat', None),
             (f'sessions/{session["id"]}/close', {'reason': 'x'}),
-            ('events', {'events': [{'type': 'turn'}]}),
+            ('events', {'events': [{'event_id': new_id(), 'type': 'turn'}]}),
             ('usage', {'idempotency_key': 'u', 'model_id': 'm'}),
             ('requests', {'kind': 'feedback', 'title': 'Hello?'}),
             ('outcome', {'outcome': 'done_acted'}),

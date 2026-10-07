@@ -99,6 +99,10 @@ class SessionClosed(ValueError):
     """The session is closed."""
 
 
+class EventIdConflict(ValueError):
+    """An event of another task has this ``event_id``."""
+
+
 @dataclasses.dataclass(frozen=True)
 class Actor:
     """Who caused an event, and through which channel."""
@@ -130,8 +134,13 @@ class NewTask:
 
 @dataclasses.dataclass(frozen=True)
 class NewEvent:
-    """An event that a harness writes."""
+    """An event that a harness writes.
 
+    The harness picks ``event_id``, so a batch that it sends again does
+    not write its events two times.
+    """
+
+    event_id: uuid.UUID
     type: str
     payload: Row
     actor: Actor
@@ -784,40 +793,66 @@ class TaskStore:
         short_id: str,
         events: list[NewEvent],
         session_id: uuid.UUID | None,
-    ) -> tuple[Row, list[Row]]:
-        """Write harness events; return the task and the events.
+    ) -> tuple[Row, list[Row], list[uuid.UUID]]:
+        """Write harness events; return the task, the events written,
+        and the ids of the duplicates.
 
-        A ``phase.changed`` event also sets the ``phase`` of the task.
+        An event whose ``event_id`` the task already has, or that comes
+        earlier in the batch, is a duplicate. It is skipped before it
+        takes a seq, so the sequence stays without gaps. A
+        ``phase.changed`` event that is written also sets the ``phase``
+        of the task.
 
         Raises:
             TaskNotFound: No such task.
             TaskClosed: The task is closed.
             SessionNotFound: The task has no such session.
             SessionClosed: The session is closed.
+            EventIdConflict: Another task has an event with an id.
 
         """
-        async with self._write(organization_id, short_id) as write:
-            if session_id is not None:
-                await _open_session(write.conn, write.task['id'], session_id)
-            written = [
-                await write.event(
-                    event.type,
-                    event.payload,
-                    event.actor,
-                    session_id=session_id,
-                    schema_version=event.schema_version,
-                    at=event.at,
+        try:
+            async with self._write(organization_id, short_id) as write:
+                if session_id is not None:
+                    await _open_session(
+                        write.conn, write.task['id'], session_id
+                    )
+                cursor = await write.conn.execute(
+                    'SELECT event_id FROM agent_runtime.events'
+                    ' WHERE task_id = %s AND event_id = ANY(%s)',
+                    (write.task['id'], [event.event_id for event in events]),
                 )
-                for event in events
-            ]
-            phases = [
-                event.payload['phase']
-                for event in events
-                if event.type == 'phase.changed'
-            ]
-            if phases:
-                await write.update({'phase': phases[-1]})
-        return write.task, written
+                seen: set[uuid.UUID] = {
+                    row[0] for row in await cursor.fetchall()
+                }
+                written: list[Row] = []
+                duplicates: list[uuid.UUID] = []
+                phase: str | None = None
+                for event in events:
+                    if event.event_id in seen:
+                        duplicates.append(event.event_id)
+                        continue
+                    seen.add(event.event_id)
+                    written.append(
+                        await write.event(
+                            event.type,
+                            event.payload,
+                            event.actor,
+                            event_id=event.event_id,
+                            session_id=session_id,
+                            schema_version=event.schema_version,
+                            at=event.at,
+                        )
+                    )
+                    if event.type == 'phase.changed':
+                        phase = event.payload['phase']
+                if phase is not None:
+                    await write.update({'phase': phase})
+        except psycopg.errors.UniqueViolation as err:
+            if err.diag.constraint_name != 'events_event_id_key':
+                raise
+            raise EventIdConflict(short_id) from err
+        return write.task, written, duplicates
 
     async def open_request(
         self,
@@ -1272,11 +1307,14 @@ async def _append_event(
     payload: Row,
     actor: Actor,
     *,
+    event_id: uuid.UUID | None = None,
     session_id: uuid.UUID | None = None,
     schema_version: int = 1,
     at: datetime.datetime | None = None,
 ) -> Row:
     """Write one event with the next ``seq`` of the task; return it.
+
+    ``event_id`` defaults to a new UUID.
 
     ``at`` is the time the event happened. The default is the start of
     the transaction.
@@ -1298,7 +1336,7 @@ async def _append_event(
         (
             task_id,
             row[0],
-            uuid.uuid4(),
+            event_id or uuid.uuid4(),
             event_type,
             schema_version,
             actor.kind,
