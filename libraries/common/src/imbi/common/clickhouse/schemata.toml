@@ -532,3 +532,74 @@ ORDER BY (sent_at, to_email_hash)
 TTL toDateTime(sent_at) + INTERVAL 1 YEAR;
 """
 enabled = true
+
+# The permanent log of agent tasks (ADR 0020). One row per task event.
+# Postgres (`agent_runtime.events`) holds the same rows until the archive
+# sweep confirms every `seq` of a task is here, then deletes them; after
+# that the events endpoint reads this table.
+#
+# `seq` is unique per task, so `ORDER BY (organization_id, task_id, seq)`
+# makes a republish by the sweep collapse into one row. `at` never changes
+# for an event, so a republish lands in the same partition, where the
+# replacement happens. `payload` is the JSON text of the event payload.
+#
+# No TTL: this is the audit trail (F10, N6). If a retention decision is
+# made, the TTL must be on a column every row has, with no DELETE WHERE,
+# so ReplacingMergeTree cannot bring back a removed row.
+[agent_task_events]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.agent_task_events {on_cluster}(
+  organization_id  LowCardinality(String),
+  task_id          String,
+  short_id         String,
+  agent_id         LowCardinality(String),
+  agent_version    UInt32,
+  project_id       LowCardinality(String) DEFAULT '',
+  seq              UInt64,
+  event_id         String,
+  type             LowCardinality(String),
+  schema_version   UInt16 DEFAULT 1,
+  actor_kind       LowCardinality(String),
+  actor_id         Nullable(String),
+  channel          LowCardinality(String),
+  session_id       Nullable(String),
+  at               DateTime64(6, 'UTC'),
+  payload          String
+) ENGINE = {replicated}ReplacingMergeTree()
+PARTITION BY toYYYYMM(at)
+ORDER BY (organization_id, task_id, seq);
+"""
+enabled = true
+
+# One row per agent usage report (ADR 0020), for the Usage page (N2, N7).
+# `report_id` is the `agent_runtime.budget_ledger` id, so a republish by
+# the sweep collapses into one row. NULL token counts are unmeasured, not
+# zero; NULL cost and rates mean the model or a price was unknown.
+# Postgres keeps the ledger, so this table is analytics, not the budget
+# authority. No TTL, like `agent_task_events`.
+[agent_usage]
+query = """
+CREATE TABLE IF NOT EXISTS imbi.agent_usage {on_cluster}(
+  organization_id               LowCardinality(String),
+  task_id                       String,
+  short_id                      String,
+  agent_id                      LowCardinality(String),
+  project_id                    LowCardinality(String) DEFAULT '',
+  session_id                    Nullable(String),
+  report_id                     String,
+  model_id                      LowCardinality(String) DEFAULT '',
+  tokens_in                     Nullable(UInt64),
+  tokens_out                    Nullable(UInt64),
+  cache_read_tokens             Nullable(UInt64),
+  cache_write_tokens            Nullable(UInt64),
+  input_cost_per_million        Nullable(Decimal(14, 6)),
+  output_cost_per_million       Nullable(Decimal(14, 6)),
+  cache_read_cost_per_million   Nullable(Decimal(14, 6)),
+  cache_write_cost_per_million  Nullable(Decimal(14, 6)),
+  cost                          Nullable(Decimal(14, 6)),
+  recorded_at                   DateTime64(6, 'UTC')
+) ENGINE = {replicated}ReplacingMergeTree()
+PARTITION BY toYYYYMM(recorded_at)
+ORDER BY (organization_id, task_id, report_id);
+"""
+enabled = true

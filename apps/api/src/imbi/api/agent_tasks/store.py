@@ -8,13 +8,21 @@ An event write increments ``tasks.last_seq`` and uses the new value as
 the event ``seq``. The ``UPDATE`` locks the task row until the
 transaction ends, so concurrent writers to one task get consecutive
 numbers and the sequence has no gaps.
+
+After the transaction commits, the events it wrote (and the budget
+ledger rows) go to the permanent log in ClickHouse: see
+:mod:`imbi.api.agent_tasks.log`. They go after the commit, never inside
+the transaction, so ClickHouse never holds an event that Postgres rolled
+back.
 """
 
+import contextlib
 import dataclasses
 import datetime
 import decimal
 import typing
 import uuid
+from collections import abc
 
 import psycopg
 import psycopg.errors
@@ -22,10 +30,13 @@ import psycopg_pool
 from psycopg import rows, sql
 from psycopg.types import json as pg_json
 
+from imbi.api.agent_tasks import log
+
 type Pool = psycopg_pool.AsyncConnectionPool[
     psycopg.AsyncConnection[typing.Any]
 ]
 type Row = dict[str, typing.Any]
+type Conn = psycopg.AsyncConnection[typing.Any]
 
 SCHEMA = 'agent_runtime'
 
@@ -87,11 +98,62 @@ class NewTask:
     budget: decimal.Decimal | None
 
 
+@dataclasses.dataclass
+class _Write:
+    """One write transaction on a locked task.
+
+    ``task`` is the newest row of the task. ``events`` and ``ledger``
+    collect the rows to publish after the commit.
+    """
+
+    conn: Conn
+    task: Row
+    events: list[Row] = dataclasses.field(default_factory=list[Row])
+    ledger: list[Row] = dataclasses.field(default_factory=list[Row])
+
+    async def event(
+        self, event_type: str, payload: Row, actor: Actor, **kwargs: typing.Any
+    ) -> Row:
+        """Write one event; see :func:`_append_event`."""
+        row = await _append_event(
+            self.conn, self.task['id'], event_type, payload, actor, **kwargs
+        )
+        self.events.append(row)
+        return row
+
+    async def update(self, changes: Row) -> Row:
+        """Change columns of the task and keep the new row."""
+        self.task = await _update_task(self.conn, self.task['id'], changes)
+        return self.task
+
+
 class TaskStore:
     """Repository over the ``agent_runtime`` schema."""
 
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
+
+    @contextlib.asynccontextmanager
+    async def _write(
+        self, organization_id: str, short_id: str
+    ) -> abc.AsyncGenerator[_Write]:
+        """Lock an open task for a change, then publish what changed.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+
+        """
+        async with self._pool.connection() as conn:
+            async with conn.transaction():
+                write = _Write(
+                    conn, await _lock_task(conn, organization_id, short_id)
+                )
+                yield write
+                if write.events:
+                    # Event writes change ``last_seq``.
+                    write.task = await _fetch_task(conn, write.task['id'])
+        await log.publish(write.task, write.events, write.ledger)
 
     async def find_by_idempotency_key(
         self, organization_id: str, origin_kind: str, origin_id: str, key: str
@@ -145,7 +207,7 @@ class TaskStore:
                         task.budget,
                     ),
                 )
-                await _append_event(
+                event = await _append_event(
                     conn, task_id, 'task.created', event_payload, actor
                 )
                 row = await _fetch_task(conn, task_id)
@@ -164,6 +226,7 @@ class TaskStore:
             if existing is None:  # pragma: no cover - the key just collided
                 raise
             return existing, False
+        await log.publish(row, [event])
         return row, True
 
     async def get(self, organization_id: str, short_id: str) -> Row | None:
@@ -273,27 +336,23 @@ class TaskStore:
             CancelPending: A cancel waits for the harness.
 
         """
-        async with self._pool.connection() as conn, conn.transaction():
-            task = await _lock_task(conn, organization_id, short_id)
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
             if task['control'] == control:
                 return task
             if task['control'] == 'cancel':
                 raise CancelPending(short_id)
-            await _append_event(
-                conn,
-                task['id'],
+            await write.event(
                 'control.changed',
                 {'from': task['control'], 'to': control, 'actor': actor.id},
                 actor,
             )
             changes: Row = {'control': control}
-            if not await _session_open(conn, task['id']):
+            if not await _session_open(write.conn, task['id']):
                 status = _IDLE_STATUS[control]
                 if status != task['status']:
                     changes['status'] = status
-                    await _append_event(
-                        conn,
-                        task['id'],
+                    await write.event(
                         'state.changed',
                         {
                             'from': task['status'],
@@ -306,9 +365,7 @@ class TaskStore:
                     changes['outcome'] = 'cancelled_by_human'
                     changes['outcome_reason'] = CANCELLED_WITHOUT_SESSION
                     changes['closed_at'] = datetime.datetime.now(datetime.UTC)
-                    await _append_event(
-                        conn,
-                        task['id'],
+                    await write.event(
                         'outcome.set',
                         {
                             'outcome': changes['outcome'],
@@ -316,7 +373,8 @@ class TaskStore:
                         },
                         actor,
                     )
-            return await _update_task(conn, task['id'], changes)
+            await write.update(changes)
+        return write.task
 
     async def set_owner(
         self,
@@ -332,18 +390,15 @@ class TaskStore:
             TaskClosed: The task is closed.
 
         """
-        async with self._pool.connection() as conn, conn.transaction():
-            task = await _lock_task(conn, organization_id, short_id)
-            if task['owner'] == owner:
-                return task
-            await _append_event(
-                conn,
-                task['id'],
-                'owner.changed',
-                {'from': task['owner'], 'to': owner},
-                actor,
-            )
-            return await _update_task(conn, task['id'], {'owner': owner})
+        async with self._write(organization_id, short_id) as write:
+            if write.task['owner'] != owner:
+                await write.event(
+                    'owner.changed',
+                    {'from': write.task['owner'], 'to': owner},
+                    actor,
+                )
+                await write.update({'owner': owner})
+        return write.task
 
 
 async def _fetch_one(
@@ -445,13 +500,21 @@ async def _next_short_id(
 
 
 async def _append_event(
-    conn: psycopg.AsyncConnection[typing.Any],
+    conn: Conn,
     task_id: uuid.UUID,
     event_type: str,
     payload: Row,
     actor: Actor,
-) -> None:
-    """Write one event with the next ``seq`` of the task."""
+    *,
+    session_id: uuid.UUID | None = None,
+    schema_version: int = 1,
+    at: datetime.datetime | None = None,
+) -> Row:
+    """Write one event with the next ``seq`` of the task; return it.
+
+    ``at`` is the time the event happened. The default is the start of
+    the transaction.
+    """
     cursor = await conn.execute(
         'UPDATE agent_runtime.tasks SET last_seq = last_seq + 1'
         ' WHERE id = %s RETURNING last_seq',
@@ -460,21 +523,29 @@ async def _append_event(
     row = await cursor.fetchone()
     if row is None:  # pragma: no cover - callers hold the task
         raise TaskNotFound(str(task_id))
-    await conn.execute(
+    event = await _fetch_one(
+        conn,
         'INSERT INTO agent_runtime.events (task_id, seq, event_id, type,'
-        ' actor_kind, actor_id, channel, payload)'
-        ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s)',
+        ' schema_version, actor_kind, actor_id, channel, session_id, at,'
+        ' payload) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,'
+        ' COALESCE(%s, NOW()), %s) RETURNING *',
         (
             task_id,
             row[0],
             uuid.uuid4(),
             event_type,
+            schema_version,
             actor.kind,
             actor.id,
             actor.channel,
+            session_id,
+            at,
             pg_json.Jsonb(payload),
         ),
     )
+    if event is None:  # pragma: no cover - RETURNING always yields a row
+        raise RuntimeError('event insert returned no row')
+    return event
 
 
 def _escape_like(value: str) -> str:
