@@ -4289,15 +4289,17 @@ export interface paths {
          *     needs ``prompt:promote``, as a label move in the prompt CMS does.
          *     A reference that names a version number moves no label. A label
          *     moves only on the agent's own prompt: a prompt in the ``agents``
-         *     namespace that the ``prompt_ref`` of the agent names now.
+         *     namespace that the ``prompt_ref`` of the agent names now, with a
+         *     slug that starts with ``<org_slug>.``.
          *
          *     Raises:
          *         403: The label must move and the caller cannot promote.
          *         404: No such agent or version.
          *         409: The snapshot slug is taken by another agent, the label
          *             must move on a prompt that is not the agent's own
-         *             ``agents/`` prompt, the prompt or its version no longer
-         *             exists, or the prompt changed while this request ran.
+         *             ``agents/<org_slug>.`` prompt, the prompt or its version no
+         *             longer exists, or the prompt changed while this request
+         *             ran.
          *         422: The snapshot team or a snapshot tag no longer exists.
          */
         post: operations["restore_agent_version_api_organizations__org_slug__agents__slug__versions__n__restore_post"];

@@ -1110,22 +1110,24 @@ async def restore_agent_version(
     needs ``prompt:promote``, as a label move in the prompt CMS does.
     A reference that names a version number moves no label. A label
     moves only on the agent's own prompt: a prompt in the ``agents``
-    namespace that the ``prompt_ref`` of the agent names now.
+    namespace that the ``prompt_ref`` of the agent names now, with a
+    slug that starts with ``<org_slug>.``.
 
     Raises:
         403: The label must move and the caller cannot promote.
         404: No such agent or version.
         409: The snapshot slug is taken by another agent, the label
             must move on a prompt that is not the agent's own
-            ``agents/`` prompt, the prompt or its version no longer
-            exists, or the prompt changed while this request ran.
+            ``agents/<org_slug>.`` prompt, the prompt or its version no
+            longer exists, or the prompt changed while this request
+            ran.
         422: The snapshot team or a snapshot tag no longer exists.
 
     """
     existing = await _fetch_agent(db, org_slug, slug)
     version = await _fetch_version(db, str(existing['id']), n)
     label_move = await _restore_label_move(
-        db, version.snapshot, existing.get('prompt_ref'), auth
+        db, org_slug, version.snapshot, existing.get('prompt_ref'), auth
     )
     return await _apply(
         db,
@@ -1141,6 +1143,7 @@ async def restore_agent_version(
 
 async def _restore_label_move(
     db: graph.Pool,
+    org_slug: str,
     snapshot: AgentSnapshot,
     current_ref: str | None,
     auth: permissions.AuthContext,
@@ -1150,18 +1153,19 @@ async def _restore_label_move(
     Return ``None`` when no label must move.
 
     A restore moves a label only on a prompt in the ``agents``
-    namespace that the agent uses now. Any caller with ``agent:write``
-    can write any ``prompt_ref`` into a version. Without this check, a
+    namespace that the agent uses now, and only when the prompt slug
+    starts with ``<org_slug>.``. Any caller with ``agent:write`` can
+    write any ``prompt_ref`` into a version. Without these checks, a
     later restore by a caller with ``prompt:promote`` could move the
-    label of a prompt that other consumers use. When the label is
-    already at the version, nothing moves and the check does not
-    apply.
+    label of a prompt that other consumers use, or that an agent in
+    another organization uses. When the label is already at the
+    version, nothing moves and the checks do not apply.
 
     Raises:
         403: The caller cannot promote prompts.
         409: The label must move on a prompt that is not the agent's
-            own prompt, or the prompt or the prompt version no longer
-            exists.
+            own org-scoped prompt, or the prompt or the prompt version
+            no longer exists.
 
     """
     if snapshot.prompt_ref is None or snapshot.prompt_version is None:
@@ -1203,6 +1207,23 @@ async def _restore_label_move(
                 'now. Move the label in the prompt CMS instead.'
             ),
         )
+    if not prompt_slug.startswith(f'{org_slug}.'):
+        if '.' not in prompt_slug:
+            detail = (
+                f'Restoring this version moves the {label!r} label of '
+                f'{namespace}/{prompt_slug}, which is not scoped to this '
+                'organization. Change and save the system prompt of the '
+                f'agent once, so that it moves to {namespace}/'
+                f'{org_slug}.{prompt_slug}. Then restore this version.'
+            )
+        else:
+            detail = (
+                f'Restoring this version moves the {label!r} label of '
+                f'{namespace}/{prompt_slug}, which is not a prompt of the '
+                f'{org_slug!r} organization. Move the label in the '
+                'prompt CMS instead.'
+            )
+        raise fastapi.HTTPException(status_code=409, detail=detail)
     if not (auth.is_admin or 'prompt:promote' in auth.permissions):
         raise fastapi.HTTPException(
             status_code=403,

@@ -80,7 +80,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             'icon': None,
             'enabled': True,
             'slack_channel': '#ops',
-            'prompt_ref': 'agents/triage@stable',
+            'prompt_ref': 'agents/engineering.triage@stable',
             'settings': json.dumps({'response_sla': '24h'}),
             'version': latest,
             'created_at': '2026-10-01T12:00:00Z',
@@ -109,7 +109,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             'team': 'ops',
             'tags': [],
             'slack_channel': '#ops',
-            'prompt_ref': 'agents/triage@stable',
+            'prompt_ref': 'agents/engineering.triage@stable',
             'settings': {'response_sla': '24h'},
         }
         body.update(snapshot)
@@ -352,7 +352,9 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual([t['slug'] for t in body['tags']], ['a', 'b'])
-        self.assertEqual(body['prompt_ref'], 'agents/triage@stable')
+        self.assertEqual(
+            body['prompt_ref'], 'agents/engineering.triage@stable'
+        )
 
     def test_get_not_found(self) -> None:
         self.mock_db.execute.return_value = []
@@ -705,7 +707,7 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         return test_prompts.prompt_row(
             latest=6,
             namespace='agents',
-            slug='triage',
+            slug='engineering.triage',
             labels=json.dumps([test_prompts.label('stable', stable)]),
         )
 
@@ -747,7 +749,9 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
             [self._row(latest=3, prompt_version=5)],
             [
                 self._version(
-                    1, prompt_ref='agents/triage@beta', prompt_version=4
+                    1,
+                    prompt_ref='agents/engineering.triage@beta',
+                    prompt_version=4,
                 )
             ],
             self._prompt(stable=5),
@@ -923,7 +927,9 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.mock_db.execute.side_effect = [
             [
                 self._row(
-                    latest=3, prompt_ref='agents/triage@beta', prompt_version=5
+                    latest=3,
+                    prompt_ref='agents/engineering.triage@beta',
+                    prompt_version=5,
                 )
             ],
             [self._version(1, prompt_version=4)],
@@ -935,6 +941,62 @@ class AgentEndpointsTestCase(support.SharedAppTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         (label,) = json.loads(self._batch()[0].params['labels'])
         self.assertEqual((label['name'], label['version']), ('stable', 4))
+
+    def test_restore_cross_org_prompt_conflicts(self) -> None:
+        # The agent uses the prompt of another organization now.
+        self._allow_promote()
+        ref = 'agents/other.triage@stable'
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_ref=ref, prompt_version=5)],
+            [self._version(1, prompt_ref=ref, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        detail = response.json()['detail']
+        self.assertIn('agents/other.triage', detail)
+        self.assertIn("'engineering' organization", detail)
+        self.mock_db._execute_batch.assert_not_awaited()
+        self.assertEqual(self._version_writes(), [])
+
+    def test_restore_legacy_prompt_conflicts(self) -> None:
+        self._allow_promote()
+        ref = 'agents/triage@stable'
+        self.mock_db.execute.side_effect = [
+            [self._row(latest=3, prompt_ref=ref, prompt_version=5)],
+            [self._version(1, prompt_ref=ref, prompt_version=4)],
+            self._prompt(stable=5),
+            test_prompts.version_row(4),
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 409, response.text)
+        detail = response.json()['detail']
+        self.assertIn('not scoped to this organization', detail)
+        self.assertIn('save the system prompt', detail)
+        self.assertIn('agents/engineering.triage', detail)
+        self.mock_db._execute_batch.assert_not_awaited()
+
+    def test_restore_legacy_prompt_label_in_place(self) -> None:
+        # No label moves, so the org-scope check does not apply.
+        ref = 'agents/triage@stable'
+        self.mock_db.execute.side_effect = [
+            [
+                self._row(
+                    latest=3,
+                    slack_channel='#new',
+                    prompt_ref=ref,
+                    prompt_version=4,
+                )
+            ],
+            [self._version(1, prompt_ref=ref, prompt_version=4)],
+            self._prompt(stable=4),
+            test_prompts.version_row(4),
+            [self._row(latest=4, prompt_ref=ref, prompt_version=4)],
+        ]
+        response = self.client.post(BASE + '/triage/versions/1/restore')
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(self._batch()), 2)
 
     # -- Tools ---------------------------------------------------------
 
