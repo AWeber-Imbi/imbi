@@ -701,10 +701,14 @@ class TaskStore:
         session_id: uuid.UUID,
         reason: str,
         actor: Actor,
+        *,
+        stale_seconds: int | None = None,
     ) -> Row:
         """Close a session and write ``session.closed``; return the task.
 
         A closed session stays closed; closing it again changes nothing.
+        With ``stale_seconds``, the session closes only when its last
+        sign of life (``heartbeat_at``, else ``opened_at``) is older.
         When no session remains open, the status follows the control
         value, as in :meth:`set_control`: ``pause`` moves the task to
         ``paused``, ``run`` moves a ``running`` task back to ``queued``,
@@ -720,6 +724,10 @@ class TaskStore:
             task = write.task
             session = await _session(write.conn, task['id'], session_id)
             if session['closed_at'] is not None:
+                return task
+            if stale_seconds is not None and not await _stale(
+                write.conn, session_id, stale_seconds
+            ):
                 return task
             await write.conn.execute(
                 'UPDATE agent_runtime.sessions'
@@ -748,6 +756,27 @@ class TaskStore:
                 elif task['status'] == 'running':
                     await _set_status(write, 'queued', 'session_closed', actor)
         return write.task
+
+    async def stale_sessions(self, stale_seconds: int) -> list[Row]:
+        """Return open sessions with no sign of life in ``stale_seconds``.
+
+        Each row has the session ``id`` and the ``organization_id`` and
+        ``short_id`` of its task.
+        """
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=rows.dict_row) as cursor,
+        ):
+            await cursor.execute(
+                'SELECT s.id, t.organization_id, t.short_id'
+                ' FROM agent_runtime.sessions AS s'
+                ' JOIN agent_runtime.tasks AS t ON t.id = s.task_id'
+                ' WHERE s.closed_at IS NULL'
+                ' AND COALESCE(s.heartbeat_at, s.opened_at)'
+                ' < NOW() - make_interval(secs => %s)',
+                (stale_seconds,),
+            )
+            return await cursor.fetchall()
 
     async def append_events(
         self,
@@ -1077,6 +1106,19 @@ async def _open_session(
     if session['closed_at'] is not None:
         raise SessionClosed(str(session_id))
     return session
+
+
+async def _stale(
+    conn: Conn, session_id: uuid.UUID, stale_seconds: int
+) -> bool:
+    cursor = await conn.execute(
+        'SELECT COALESCE(heartbeat_at, opened_at)'
+        ' < NOW() - make_interval(secs => %s)'
+        ' FROM agent_runtime.sessions WHERE id = %s',
+        (stale_seconds, session_id),
+    )
+    row = await cursor.fetchone()
+    return bool(row and row[0])
 
 
 async def _check_concurrency(

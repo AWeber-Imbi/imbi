@@ -263,3 +263,63 @@ class ReferenceClientTests(
         )
         self.assertEqual(state['status'], 'blocked')
         self.assertEqual((await self.task_row())['status'], 'blocked')
+
+
+class StaleSessionTests(
+    test_agent_task_harness.HarnessTestCase, ClickHouseTestCase
+):
+    agent_settings: typing.ClassVar[dict[str, typing.Any]] = {
+        'max_concurrent_tasks': 2
+    }
+
+    async def backdate(self, session_id: str, opened: int, beat: int) -> None:
+        """Move a session's opened_at and heartbeat_at minutes back."""
+        async with self.pool.connection() as conn:
+            await conn.execute(
+                'UPDATE agent_runtime.sessions'
+                ' SET opened_at = NOW() - make_interval(mins => %s),'
+                ' heartbeat_at = NOW() - make_interval(mins => %s)'
+                ' WHERE id = %s',
+                (opened, beat, uuid.UUID(session_id)),
+            )
+
+    async def test_sweep_closes_stale_sessions(self) -> None:
+        self.act_as_user()
+        for _ in range(2):
+            await self.create_task()
+        self.act_as(self.account)
+        stale = (await self.open_session())['session']
+        fresh = (await self.open_session(short_id='T-2'))['session']
+        # The heartbeat, not the open time, is the last sign of life.
+        await self.backdate(stale['id'], opened=10, beat=6)
+        await self.backdate(fresh['id'], opened=10, beat=1)
+        response = await self.post('sessions', {'session_key': 'c'}, 'T-3')
+        self.assertEqual(response.status_code, 409, response.text)
+
+        result = await sweeper.sweep_once(self.store)
+        self.assertGreaterEqual(result.closed_sessions, 1)
+        task = await self.task_row()
+        self.assertEqual(task['status'], 'queued')
+        events = await self.events()
+        self.assertEqual(
+            [e['type'] for e in events[-2:]],
+            ['session.closed', 'state.changed'],
+        )
+        self.assertEqual(
+            events[-2]['payload'],
+            {'session_id': stale['id'], 'reason': 'heartbeat_lost'},
+        )
+        self.assertEqual(events[-2]['actor_kind'], 'system')
+        self.assertEqual(
+            events[-1]['payload'],
+            {'from': 'running', 'to': 'queued', 'reason': 'session_closed'},
+        )
+        # The fresh session is not touched.
+        state = await self.post(
+            f'sessions/{fresh["id"]}/heartbeat', None, 'T-2'
+        )
+        self.assertEqual(state.status_code, 200, state.text)
+        self.assertEqual(state.json()['status'], 'running')
+        # The stale session no longer counts toward the limit.
+        response = await self.post('sessions', {'session_key': 'c'}, 'T-3')
+        self.assertEqual(response.status_code, 201, response.text)

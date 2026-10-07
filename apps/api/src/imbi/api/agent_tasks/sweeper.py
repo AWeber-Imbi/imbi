@@ -10,6 +10,11 @@ For a closed task that ClickHouse holds completely, the sweep deletes the
 Postgres events and sets ``log_archived_at``. After that, the events
 endpoint reads the log from ClickHouse.
 
+Before that, the sweep closes each open session with no heartbeat in
+:data:`STALE_SESSION_SECONDS`, with the reason ``heartbeat_lost``, as a
+harness would. A harness that dies would otherwise hold its place under
+the agent's ``max_concurrent_tasks`` for ever.
+
 Postgres events have no gaps, so a task's ``last_seq`` is both the number
 of its events and the highest ``seq``. ClickHouse is complete for a task
 when it has ``last_seq`` distinct seqs and the highest is ``last_seq``.
@@ -25,7 +30,7 @@ import itertools
 import logging
 
 from imbi.api.agent_tasks import log
-from imbi.api.agent_tasks.store import TaskStore
+from imbi.api.agent_tasks import store as task_store
 from imbi.common import valkey
 
 LOGGER = logging.getLogger(__name__)
@@ -33,12 +38,16 @@ LOGGER = logging.getLogger(__name__)
 #: How often the sweep runs.
 SWEEP_INTERVAL_SECONDS = 60
 _SWEEP_LOCK_KEY = 'imbi:agent-tasks:log-sweeper'
+#: A session with no heartbeat for this long has lost its harness.
+STALE_SESSION_SECONDS = 5 * 60
+_SYSTEM = task_store.Actor('system', 'imbi', 'harness')
 
 
 @dataclasses.dataclass
 class SweepResult:
     """What one round did."""
 
+    closed_sessions: int = 0
     republished_events: int = 0
     republished_reports: int = 0
     archived: int = 0
@@ -63,11 +72,29 @@ async def _try_sweep_lock() -> bool:
         return True
 
 
-async def sweep_once(store: TaskStore) -> SweepResult:
-    """Republish what ClickHouse does not have; archive complete tasks."""
+async def sweep_once(store: task_store.TaskStore) -> SweepResult:
+    """Close stale sessions, republish what ClickHouse does not have,
+    and archive complete tasks."""
     result = SweepResult()
     if not await _try_sweep_lock():
         return result
+    for session in await store.stale_sessions(STALE_SESSION_SECONDS):
+        try:
+            await store.close_session(
+                session['organization_id'],
+                session['short_id'],
+                session['id'],
+                'heartbeat_lost',
+                _SYSTEM,
+                stale_seconds=STALE_SESSION_SECONDS,
+            )
+        except (
+            task_store.TaskNotFound,
+            task_store.TaskClosed,
+            task_store.SessionNotFound,
+        ):
+            continue
+        result.closed_sessions += 1
     tasks = await store.unarchived()
     for organization_id, group in itertools.groupby(
         tasks, key=lambda task: task['organization_id']
@@ -109,7 +136,9 @@ async def sweep_once(store: TaskStore) -> SweepResult:
     return result
 
 
-async def run_sweeper(store: TaskStore, *, stop: asyncio.Event) -> None:
+async def run_sweeper(
+    store: task_store.TaskStore, *, stop: asyncio.Event
+) -> None:
     """Sweep every :data:`SWEEP_INTERVAL_SECONDS` until ``stop`` is set.
 
     The loop waits before its first sweep, so a ClickHouse outage is
