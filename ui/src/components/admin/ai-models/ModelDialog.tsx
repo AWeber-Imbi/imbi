@@ -40,6 +40,8 @@ import { decimalToNumber } from './decimal'
 export interface ModelFormValues {
   access_scope: AIModelAccessScope
   allowed_team_ids: string[]
+  cache_read_cost_per_million: null | number
+  cache_write_cost_per_million: null | number
   context_window: null | number
   default_temperature: null | number
   default_top_p: null | number
@@ -72,6 +74,8 @@ interface ModelDialogProps {
 
 /** The fields typed as free text but submitted as numbers. */
 type NumericKey =
+  | 'cache_read_cost_per_million'
+  | 'cache_write_cost_per_million'
   | 'context_window'
   | 'default_temperature'
   | 'default_top_p'
@@ -85,6 +89,8 @@ const CAP_HELP =
   'Advisory until spend enforcement ships; Imbi does not yet block calls at the cap.'
 
 const NUMERIC_KEYS: NumericKey[] = [
+  'cache_read_cost_per_million',
+  'cache_write_cost_per_million',
   'context_window',
   'default_temperature',
   'default_top_p',
@@ -339,6 +345,24 @@ export function ModelDialog({
                   onChange={(raw) => setNumeric('output_cost_per_million', raw)}
                   value={text.output_cost_per_million}
                 />
+                <NumberField
+                  error={numericError('cache_read_cost_per_million')}
+                  id="ai-model-cost-cache-read"
+                  label="Cache read cost / 1M tokens"
+                  onChange={(raw) =>
+                    setNumeric('cache_read_cost_per_million', raw)
+                  }
+                  value={text.cache_read_cost_per_million}
+                />
+                <NumberField
+                  error={numericError('cache_write_cost_per_million')}
+                  id="ai-model-cost-cache-write"
+                  label="Cache write cost / 1M tokens"
+                  onChange={(raw) =>
+                    setNumeric('cache_write_cost_per_million', raw)
+                  }
+                  value={text.cache_write_cost_per_million}
+                />
               </div>
               {!isDecision && (
                 <>
@@ -491,6 +515,8 @@ function initialText(
   const seed = initialValues(model, _defaultProviderId)
   const asText = (value: null | number) => (value === null ? '' : String(value))
   return {
+    cache_read_cost_per_million: asText(seed.cache_read_cost_per_million),
+    cache_write_cost_per_million: asText(seed.cache_write_cost_per_million),
     context_window: asText(seed.context_window),
     default_temperature: asText(seed.default_temperature),
     default_top_p: asText(seed.default_top_p),
@@ -509,6 +535,8 @@ function initialValues(
     return {
       access_scope: 'organization',
       allowed_team_ids: [],
+      cache_read_cost_per_million: null,
+      cache_write_cost_per_million: null,
       context_window: null,
       default_temperature: null,
       default_top_p: null,
@@ -527,6 +555,12 @@ function initialValues(
   return {
     access_scope: model.access_scope,
     allowed_team_ids: model.allowed_teams.map((team) => team.id),
+    cache_read_cost_per_million: decimalToNumber(
+      model.cache_read_cost_per_million,
+    ),
+    cache_write_cost_per_million: decimalToNumber(
+      model.cache_write_cost_per_million,
+    ),
     context_window: model.context_window,
     default_temperature: model.default_temperature,
     default_top_p: model.default_top_p,
