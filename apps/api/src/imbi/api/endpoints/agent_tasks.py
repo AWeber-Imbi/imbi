@@ -55,6 +55,8 @@ class AgentTaskCreate(pydantic.BaseModel):
     budget: decimal.Decimal | None = pydantic.Field(
         default=None,
         ge=0,
+        max_digits=14,
+        decimal_places=6,
         description=(
             "USD. Defaults to the agent's task_budget. It cannot be more "
             'than that budget.'

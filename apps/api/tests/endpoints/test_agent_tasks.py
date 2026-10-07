@@ -346,6 +346,12 @@ class CreateTaskTests(AgentTaskTestCase):
         response = await self.create_task(budget='3')
         self.assertEqual(decimal.Decimal(response.json()['budget']), 3)
 
+    async def test_budget_out_of_column_range_is_422(self) -> None:
+        await self.make_agent()
+        for budget in ('1000000000', '0.0000001'):
+            response = await self.create_task(budget=budget)
+            self.assertEqual(response.status_code, 422, budget)
+
     async def test_disabled_agent_is_refused(self) -> None:
         await self.make_agent(enabled=False)
         response = await self.create_task()
