@@ -44,6 +44,24 @@ Status = typing.Literal['queued', 'running', 'blocked', 'paused', 'closed']
 Control = typing.Literal['run', 'pause', 'cancel']
 ActorKind = typing.Literal['human', 'agent', 'subagent', 'system']
 Channel = typing.Literal['web', 'slack', 'mcp', 'api', 'harness']
+#: The closed F5 set of terminal outcomes.
+Outcome = typing.Literal[
+    'done_acted',
+    'done_nothing_to_act_on',
+    'no_reason_to_run',
+    'partial_capped',
+    'suppressed_duplicate',
+    'superseded',
+    'cancelled_by_human',
+    'interrupted_by_operator',
+    'failed_at_gate',
+    'failed_external',
+    'unmapped_subject',
+    'exceeded_ceiling',
+    'unhandled_no_actor',
+    'request_expired',
+    'refused_rate_ceiling',
+]
 
 #: The status of a task with no open session, by control value.
 _IDLE_STATUS: dict[Control, Status] = {
@@ -67,6 +85,18 @@ class TaskClosed(ValueError):
 
 class CancelPending(ValueError):
     """A cancel waits for the harness; the control cannot change."""
+
+
+class ConcurrencyLimit(ValueError):
+    """The agent has its maximum number of open sessions."""
+
+
+class SessionNotFound(LookupError):
+    """The task has no session with this id."""
+
+
+class SessionClosed(ValueError):
+    """The session is closed."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,6 +126,31 @@ class NewTask:
     idempotency_key: str | None
     owner: str
     budget: decimal.Decimal | None
+
+
+@dataclasses.dataclass(frozen=True)
+class NewEvent:
+    """An event that a harness writes."""
+
+    type: str
+    payload: Row
+    actor: Actor
+    schema_version: int = 1
+    at: datetime.datetime | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class NewRequest:
+    """A feedback or approval request that a harness opens."""
+
+    kind: typing.Literal['feedback', 'approval']
+    title: str
+    why: str | None
+    options: list[typing.Any] | None
+    artifacts: list[typing.Any] | None
+    artifact_digests: list[str] | None
+    expires_at: datetime.datetime | None
+    session_id: uuid.UUID | None
 
 
 @dataclasses.dataclass
@@ -472,6 +527,414 @@ class TaskStore:
                 )
                 await write.update({'owner': owner})
         return write.task
+
+    # --- Harness ------------------------------------------------------
+
+    async def open_session(
+        self,
+        organization_id: str,
+        short_id: str,
+        *,
+        key: str,
+        harness_instance: str | None,
+        max_concurrent: int | None,
+        actor: Actor,
+    ) -> tuple[Row, Row, bool]:
+        """Open a harness session; return the task, it, and if it is new.
+
+        A repeat with the same ``key`` returns the first session. A new
+        session moves a ``queued`` task, or a ``blocked`` task with no
+        open request, to ``running`` when the control value is ``run``.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            CancelPending: The control value is ``cancel``.
+            ConcurrencyLimit: The agent has ``max_concurrent`` open
+                sessions on its tasks.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
+            if task['control'] == 'cancel':
+                raise CancelPending(short_id)
+            session = await _fetch_one(
+                write.conn,
+                'SELECT * FROM agent_runtime.sessions'
+                ' WHERE task_id = %s AND session_key = %s',
+                (task['id'], key),
+            )
+            if session is not None:
+                return task, session, False
+            if max_concurrent is not None:
+                await _check_concurrency(
+                    write.conn, task['agent_id'], max_concurrent
+                )
+            session = await _fetch_one(
+                write.conn,
+                'INSERT INTO agent_runtime.sessions'
+                ' (id, task_id, session_key, harness_instance)'
+                ' VALUES (%s, %s, %s, %s) RETURNING *',
+                (uuid.uuid4(), task['id'], key, harness_instance),
+            )
+            if session is None:  # pragma: no cover - RETURNING yields a row
+                raise RuntimeError('session insert returned no row')
+            await write.event(
+                'session.opened',
+                {
+                    'session_id': str(session['id']),
+                    'session_key': key,
+                    'harness_instance': harness_instance,
+                },
+                actor,
+                session_id=session['id'],
+            )
+            if task['control'] == 'run' and (
+                task['status'] == 'queued'
+                or (
+                    task['status'] == 'blocked'
+                    and not await _request_open(write.conn, task['id'])
+                )
+            ):
+                await _set_status(write, 'running', 'session_opened', actor)
+        return write.task, session, True
+
+    async def heartbeat(
+        self,
+        organization_id: str,
+        short_id: str,
+        session_id: uuid.UUID,
+        *,
+        timeout_seconds: int | None,
+        system: Actor,
+    ) -> Row:
+        """Record a heartbeat of an open session; return the task.
+
+        When the task has run longer than ``timeout_seconds`` since its
+        first session opened, close it with ``exceeded_ceiling``.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            SessionNotFound: The task has no such session.
+            SessionClosed: The session is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            session = await _open_session(
+                write.conn, write.task['id'], session_id
+            )
+            await write.conn.execute(
+                'UPDATE agent_runtime.sessions SET heartbeat_at = NOW()'
+                ' WHERE id = %s',
+                (session['id'],),
+            )
+            if timeout_seconds is not None:
+                cursor = await write.conn.execute(
+                    'SELECT NOW() - min(opened_at) > make_interval(secs => %s)'
+                    ' FROM agent_runtime.sessions WHERE task_id = %s',
+                    (timeout_seconds, write.task['id']),
+                )
+                row = await cursor.fetchone()
+                if row and row[0]:
+                    await _close(
+                        write, 'exceeded_ceiling', 'task_timeout', system
+                    )
+        return write.task
+
+    async def close_session(
+        self,
+        organization_id: str,
+        short_id: str,
+        session_id: uuid.UUID,
+        reason: str,
+        actor: Actor,
+    ) -> Row:
+        """Close a session and write ``session.closed``; return the task.
+
+        A closed session stays closed; closing it again changes nothing.
+        When no session remains open, the status follows the control
+        value, as in :meth:`set_control`: ``pause`` moves the task to
+        ``paused``, ``run`` moves a ``running`` task back to ``queued``,
+        and ``cancel`` closes it with ``cancelled_by_human``.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            SessionNotFound: The task has no such session.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
+            session = await _session(write.conn, task['id'], session_id)
+            if session['closed_at'] is not None:
+                return task
+            await write.conn.execute(
+                'UPDATE agent_runtime.sessions'
+                ' SET closed_at = NOW(), close_reason = %s WHERE id = %s',
+                (reason, session_id),
+            )
+            await write.event(
+                'session.closed',
+                {'session_id': str(session_id), 'reason': reason},
+                actor,
+                session_id=session_id,
+            )
+            if not await _session_open(write.conn, task['id']):
+                if task['control'] == 'cancel':
+                    await _close(
+                        write,
+                        'cancelled_by_human',
+                        CANCELLED_WITHOUT_SESSION,
+                        actor,
+                    )
+                elif task['control'] == 'pause':
+                    if task['status'] != 'paused':
+                        await _set_status(
+                            write, 'paused', 'session_closed', actor
+                        )
+                elif task['status'] == 'running':
+                    await _set_status(write, 'queued', 'session_closed', actor)
+        return write.task
+
+    async def append_events(
+        self,
+        organization_id: str,
+        short_id: str,
+        events: list[NewEvent],
+        session_id: uuid.UUID | None,
+    ) -> tuple[Row, list[Row]]:
+        """Write harness events; return the task and the events.
+
+        A ``phase.changed`` event also sets the ``phase`` of the task.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            SessionNotFound: The task has no such session.
+            SessionClosed: The session is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            if session_id is not None:
+                await _open_session(write.conn, write.task['id'], session_id)
+            written = [
+                await write.event(
+                    event.type,
+                    event.payload,
+                    event.actor,
+                    session_id=session_id,
+                    schema_version=event.schema_version,
+                    at=event.at,
+                )
+                for event in events
+            ]
+            phases = [
+                event.payload['phase']
+                for event in events
+                if event.type == 'phase.changed'
+            ]
+            if phases:
+                await write.update({'phase': phases[-1]})
+        return write.task, written
+
+    async def open_request(
+        self,
+        organization_id: str,
+        short_id: str,
+        request: NewRequest,
+        actor: Actor,
+    ) -> tuple[Row, Row]:
+        """Open a request, write ``request.opened``, and block the task.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            SessionNotFound: The task has no such session.
+            SessionClosed: The session is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            task = write.task
+            if request.session_id is not None:
+                await _open_session(write.conn, task['id'], request.session_id)
+            row = await _fetch_one(
+                write.conn,
+                'INSERT INTO agent_runtime.requests (id, task_id,'
+                ' session_id, kind, title, why, options, artifacts,'
+                ' artifact_digests, expires_at)'
+                ' VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+                ' RETURNING *',
+                (
+                    uuid.uuid4(),
+                    task['id'],
+                    request.session_id,
+                    request.kind,
+                    request.title,
+                    request.why,
+                    _jsonb(request.options),
+                    _jsonb(request.artifacts),
+                    request.artifact_digests,
+                    request.expires_at,
+                ),
+            )
+            if row is None:  # pragma: no cover - RETURNING yields a row
+                raise RuntimeError('request insert returned no row')
+            await write.event(
+                'request.opened',
+                {
+                    'request_id': str(row['id']),
+                    'kind': request.kind,
+                    'title': request.title,
+                    'why': request.why,
+                    'options': request.options,
+                    'artifacts': request.artifacts,
+                    'artifact_digests': request.artifact_digests,
+                    'expires_at': (
+                        None
+                        if request.expires_at is None
+                        else request.expires_at.isoformat()
+                    ),
+                },
+                actor,
+                session_id=request.session_id,
+            )
+            if task['status'] != 'blocked':
+                await _set_status(write, 'blocked', 'request_opened', actor)
+        return write.task, row
+
+    async def set_outcome(
+        self,
+        organization_id: str,
+        short_id: str,
+        outcome: Outcome,
+        reason: str | None,
+        actor: Actor,
+    ) -> Row:
+        """Close the task with ``outcome``; see :func:`_close`.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+
+        """
+        async with self._write(organization_id, short_id) as write:
+            await _close(write, outcome, reason, actor)
+        return write.task
+
+
+async def _set_status(
+    write: _Write, status: Status, reason: str, actor: Actor
+) -> None:
+    """Change the status of the task and write ``state.changed``."""
+    await write.event(
+        'state.changed',
+        {'from': write.task['status'], 'to': status, 'reason': reason},
+        actor,
+    )
+    await write.update({'status': status})
+
+
+async def _close(
+    write: _Write, outcome: Outcome, reason: str | None, actor: Actor
+) -> None:
+    """Close the task with an outcome.
+
+    Close each open session (``session.closed``), then write
+    ``state.changed`` and ``outcome.set``.
+    """
+    cursor = await write.conn.execute(
+        'UPDATE agent_runtime.sessions'
+        " SET closed_at = NOW(), close_reason = 'task_closed'"
+        ' WHERE task_id = %s AND closed_at IS NULL RETURNING id',
+        (write.task['id'],),
+    )
+    for (session_id,) in await cursor.fetchall():
+        await write.event(
+            'session.closed',
+            {'session_id': str(session_id), 'reason': 'task_closed'},
+            actor,
+            session_id=session_id,
+        )
+    await write.event(
+        'state.changed',
+        {
+            'from': write.task['status'],
+            'to': 'closed',
+            'reason': 'outcome_set',
+        },
+        actor,
+    )
+    await write.event(
+        'outcome.set', {'outcome': outcome, 'reason': reason}, actor
+    )
+    await write.update(
+        {
+            'status': 'closed',
+            'outcome': outcome,
+            'outcome_reason': reason,
+            'closed_at': datetime.datetime.now(datetime.UTC),
+        }
+    )
+
+
+async def _session(
+    conn: Conn, task_id: uuid.UUID, session_id: uuid.UUID
+) -> Row:
+    session = await _fetch_one(
+        conn,
+        'SELECT * FROM agent_runtime.sessions WHERE id = %s AND task_id = %s',
+        (session_id, task_id),
+    )
+    if session is None:
+        raise SessionNotFound(str(session_id))
+    return session
+
+
+async def _open_session(
+    conn: Conn, task_id: uuid.UUID, session_id: uuid.UUID
+) -> Row:
+    session = await _session(conn, task_id, session_id)
+    if session['closed_at'] is not None:
+        raise SessionClosed(str(session_id))
+    return session
+
+
+async def _check_concurrency(
+    conn: Conn, agent_id: str, max_concurrent: int
+) -> None:
+    """Raise when the agent has ``max_concurrent`` open sessions.
+
+    The advisory lock makes concurrent opens for one agent count one at
+    a time, so two opens cannot both take the last place.
+    """
+    await conn.execute(
+        'SELECT pg_advisory_xact_lock(hashtext(%s))',
+        (f'agent_runtime.sessions:{agent_id}',),
+    )
+    cursor = await conn.execute(
+        'SELECT count(*) FROM agent_runtime.sessions AS s'
+        ' JOIN agent_runtime.tasks AS t ON t.id = s.task_id'
+        ' WHERE t.agent_id = %s AND s.closed_at IS NULL',
+        (agent_id,),
+    )
+    row = await cursor.fetchone()
+    if row and row[0] >= max_concurrent:
+        raise ConcurrencyLimit(agent_id)
+
+
+async def _request_open(conn: Conn, task_id: uuid.UUID) -> bool:
+    cursor = await conn.execute(
+        'SELECT EXISTS (SELECT 1 FROM agent_runtime.requests'
+        " WHERE task_id = %s AND status = 'open')",
+        (task_id,),
+    )
+    row = await cursor.fetchone()
+    return bool(row and row[0])
+
+
+def _jsonb(value: typing.Any) -> pg_json.Jsonb | None:
+    return None if value is None else pg_json.Jsonb(value)
 
 
 async def _fetch_one(

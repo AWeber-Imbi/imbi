@@ -13,6 +13,7 @@ from imbi.api.relationships import RelationshipSpec, build_relationships
 from imbi.common import graph, models
 from imbi.common import patch as json_patch
 
+from .agent_task_harness import agent_task_harness_router
 from .agent_tasks import agent_tasks_router
 from .agents import agents_router
 from .comments import comments_router
@@ -180,6 +181,13 @@ organizations_router.include_router(
 organizations_router.include_router(
     agent_tasks_router,
     prefix='/{org_slug}/agent-tasks',
+)
+# The harness routes take the organization-membership dependency of the
+# task routes, so no route under /agent-tasks can skip it.
+organizations_router.include_router(
+    agent_task_harness_router,
+    prefix='/{org_slug}/agent-tasks',
+    dependencies=agent_tasks_router.dependencies,
 )
 organizations_router.include_router(
     project_configuration_router,

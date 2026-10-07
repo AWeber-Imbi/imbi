@@ -85,6 +85,8 @@ name = "sessions"
 [tables.columns]
 id = "UUID NOT NULL"
 task_id = "UUID NOT NULL REFERENCES agent_runtime.tasks (id) ON DELETE CASCADE"
+# The client key that makes a session open idempotent.
+session_key = "TEXT"
 harness_instance = "TEXT"
 opened_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
 heartbeat_at = "TIMESTAMP WITH TIME ZONE"
@@ -95,8 +97,9 @@ close_reason = "TEXT"
 columns = ["id"]
 
 [[tables.indexes]]
-name = "sessions_task_idx"
-columns = ["task_id"]
+name = "sessions_task_key"
+columns = ["task_id", "session_key"]
+unique = true
 
 # The event buffer of tasks that are not archived. ClickHouse holds the
 # permanent log; the archive sweep deletes these rows.
