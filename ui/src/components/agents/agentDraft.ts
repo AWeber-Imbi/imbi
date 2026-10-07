@@ -2,6 +2,7 @@ import { slugify } from '@/lib/utils'
 import type {
   Agent,
   AgentSettings,
+  AgentSubagent,
   AgentToolConfig,
   PromptParams,
   PromptVersion,
@@ -20,6 +21,8 @@ export interface AgentDraft {
   settings: SettingsDraft
   slackChannel: string
   slug: string
+  /** The agents that this agent can delegate to, in order. */
+  subagents: AgentSubagent[]
   tags: AgentTagChip[]
   team: string
   /** The enabled tools, by tool key. A tool that is not here is off. */
@@ -152,6 +155,10 @@ export function draftFromAgent(
     },
     slackChannel: agent.slack_channel ?? '',
     slug: agent.slug,
+    subagents: (agent.subagents ?? []).map((s) => ({
+      agent_id: s.agent_id,
+      instructions: s.instructions ?? '',
+    })),
     tags: agent.tags,
     team: agent.team?.slug ?? '',
     tools: agent.tools ?? {},
@@ -181,6 +188,7 @@ export function emptyDraft(): AgentDraft {
     },
     slackChannel: '',
     slug: '',
+    subagents: [],
     tags: [],
     team: '',
     tools: {},
@@ -383,6 +391,16 @@ export function versionSummary(
     JSON.stringify(normalizeTools(draft.tools))
   )
     changed.push('tools')
+  if (
+    JSON.stringify(before.subagents) !==
+    JSON.stringify(
+      draft.subagents.map((s) => ({
+        agent_id: s.agent_id,
+        instructions: s.instructions,
+      })),
+    )
+  )
+    changed.push('subagents')
   const parts: string[] = []
   if (changed.length) parts.push(`Changed ${changed.join(', ')}`)
   if (promptVersion !== null) parts.push(`prompt v${promptVersion}`)

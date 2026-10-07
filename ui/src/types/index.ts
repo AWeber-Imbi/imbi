@@ -734,6 +734,12 @@ export type AgentCreate = Schemas['AgentCreate']
 
 export type AgentSettings = Schemas['AgentSettings-Input']
 
+// A subagent as an agent stores it (by agent id), and as the API
+// returns it (with the target agent's details).
+export type AgentSubagent = Schemas['AgentSubagent']
+
+export type AgentSubagentRef = Schemas['AgentSubagentRef']
+
 // The tools that an agent can use, in groups by server, and the
 // configuration of one tool. The tool key is `<server slug>.<name>`.
 export type AgentToolCatalog = Schemas['AgentToolCatalog']

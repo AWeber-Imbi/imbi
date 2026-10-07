@@ -118,6 +118,37 @@ describe('agentDraft', () => {
     )
   })
 
+  it('maps subagents to the draft and names a subagent change', () => {
+    const existing = agent({
+      subagents: [
+        {
+          agent_id: 'agt-2',
+          icon: null,
+          instructions: 'Only post summaries.',
+          name: 'Herald',
+          slug: 'herald',
+          tool_count: 4,
+          version: 5,
+        },
+      ],
+    })
+    const draft = draftFromAgent(existing, null)
+    expect(draft.subagents).toEqual([
+      { agent_id: 'agt-2', instructions: 'Only post summaries.' },
+    ])
+    expect(emptyDraft().subagents).toEqual([])
+    expect(duplicateDraft(existing, null).subagents).toEqual(draft.subagents)
+    expect(versionSummary(existing, draft, null)).toBe('Saved')
+
+    draft.subagents = [{ agent_id: 'agt-2', instructions: '' }]
+    expect(versionSummary(existing, draft, null)).toBe('Changed subagents')
+    draft.subagents = [
+      { agent_id: 'agt-2', instructions: 'Only post summaries.' },
+      { agent_id: 'agt-3', instructions: '' },
+    ]
+    expect(versionSummary(existing, draft, null)).toBe('Changed subagents')
+  })
+
   it('normalizes tools to the stored form', () => {
     expect(
       normalizeTools({

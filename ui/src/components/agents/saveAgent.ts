@@ -119,6 +119,7 @@ export async function saveAgent({
     settings: settingsFromDraft(draft.settings),
     slack_channel: draft.slackChannel.trim() || null,
     slug: existing?.slug ?? draft.slug,
+    subagents: draft.subagents,
     tags: draft.tags.map((t) => t.slug),
     team: draft.team,
     tools: draft.tools,
