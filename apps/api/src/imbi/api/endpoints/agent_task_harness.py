@@ -96,6 +96,28 @@ class EventBatch(pydantic.BaseModel):
     events: list[HarnessEvent] = pydantic.Field(min_length=1, max_length=100)
 
 
+class UsageReport(pydantic.BaseModel):
+    """One model call. Imbi computes the cost from the AI model catalog."""
+
+    model_config = pydantic.ConfigDict(protected_namespaces=())
+
+    idempotency_key: str = pydantic.Field(
+        min_length=1,
+        max_length=200,
+        description='A repeat with the same key returns the first report.',
+    )
+    model_id: str = pydantic.Field(
+        min_length=1,
+        max_length=200,
+        description='The catalog slug or the model id sent to the provider.',
+    )
+    tokens_in: int | None = pydantic.Field(default=None, ge=0)
+    tokens_out: int | None = pydantic.Field(default=None, ge=0)
+    cache_read_tokens: int | None = pydantic.Field(default=None, ge=0)
+    cache_write_tokens: int | None = pydantic.Field(default=None, ge=0)
+    session_id: uuid.UUID | None = None
+
+
 class RequestCreate(pydantic.BaseModel):
     kind: typing.Literal['feedback', 'approval']
     title: str = pydantic.Field(min_length=1, max_length=500)
@@ -168,6 +190,31 @@ class SessionOpenResponse(pydantic.BaseModel):
     task: TaskState
 
 
+class UsageResponse(pydantic.BaseModel):
+    """The budget ledger row of a report, and the task after it.
+
+    A ``None`` token count was not measured. A ``None`` cost is unknown:
+    the model or a price it needs is not in the catalog.
+    """
+
+    model_config = pydantic.ConfigDict(protected_namespaces=())
+
+    id: uuid.UUID
+    idempotency_key: str
+    model_id: str | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    input_cost_per_million: decimal.Decimal | None = None
+    output_cost_per_million: decimal.Decimal | None = None
+    cache_read_cost_per_million: decimal.Decimal | None = None
+    cache_write_cost_per_million: decimal.Decimal | None = None
+    cost: decimal.Decimal | None = None
+    recorded_at: datetime.datetime
+    task: TaskState
+
+
 class RequestResponse(pydantic.BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID | None = None
@@ -193,6 +240,25 @@ _AGENT_SETTINGS_QUERY: typing.LiteralString = """
 MATCH (a:Agent {{id: {id}}})
 RETURN a.settings AS settings
 """
+
+#: A model by catalog slug or by provider model id. The AI model catalog
+#: is global, so the organization does not narrow the match.
+_MODEL_PRICES_QUERY: typing.LiteralString = """
+MATCH (m:AIModel)
+WHERE m.slug = {model} OR m.model_id = {model}
+RETURN m.slug AS slug,
+       m.input_cost_per_million AS input_cost_per_million,
+       m.output_cost_per_million AS output_cost_per_million,
+       m.cache_read_cost_per_million AS cache_read_cost_per_million,
+       m.cache_write_cost_per_million AS cache_write_cost_per_million
+"""
+
+_PRICE_COLUMNS = (
+    'input_cost_per_million',
+    'output_cost_per_million',
+    'cache_read_cost_per_million',
+    'cache_write_cost_per_million',
+)
 
 
 async def _harness_task(
@@ -250,6 +316,35 @@ async def _agent_settings(
     if isinstance(raw, str):
         return models.AgentSettings.model_validate_json(raw)
     return models.AgentSettings.model_validate(raw or {})
+
+
+async def _model_prices(
+    db: graph.Graph, model: str
+) -> dict[str, decimal.Decimal | None] | None:
+    """Return the catalog prices of a model; ``None`` when it is unknown.
+
+    A slug match wins. When only provider model ids match, the model
+    with the first slug is used.
+    """
+    records = await db.execute(
+        _MODEL_PRICES_QUERY, {'model': model}, ['slug', *_PRICE_COLUMNS]
+    )
+    rows = [
+        {key: graph.parse_agtype(value) for key, value in record.items()}
+        for record in records
+    ]
+    if not rows:
+        return None
+    row = next(
+        (r for r in rows if r['slug'] == model),
+        min(rows, key=lambda r: str(r['slug'])),
+    )
+    return {
+        column: None
+        if row[column] is None
+        else decimal.Decimal(str(row[column]))
+        for column in _PRICE_COLUMNS
+    }
 
 
 def task_state(task: dict[str, typing.Any]) -> TaskState:
@@ -499,6 +594,57 @@ async def append_agent_task_events(
     except _STORE_ERRORS as err:
         raise _translate(err, task['short_id']) from err
     return written
+
+
+@agent_task_harness_router.post(
+    '/{short_id}/usage', status_code=201, response_model=UsageResponse
+)
+async def report_agent_task_usage(
+    org_id: tasks_api.OrgId,
+    task: HarnessTask,
+    data: UsageReport,
+    response: fastapi.Response,
+    db: graph.Pool,
+    store: agent_tasks.Store,
+) -> UsageResponse:
+    """Report the tokens of one model call; return the remaining budget.
+
+    Imbi prices the report from the AI model catalog and records the
+    prices it used. A report with no token counts is unmeasured, and an
+    unknown model has no cost; both are still recorded. When the cost
+    total passes the budget, the task closes with ``exceeded_ceiling``
+    (reason ``budget``). A repeat with the same ``idempotency_key``
+    returns the first report with status 200.
+
+    Raises:
+        403: The caller is not the service account of the task's agent.
+        404: No such task or session.
+        409: ``task_closed`` or ``session_closed``.
+
+    """
+    prices = await _model_prices(db, data.model_id)
+    try:
+        row, ledger, created = await store.report_usage(
+            org_id,
+            task['short_id'],
+            agent_tasks.Usage(
+                idempotency_key=data.idempotency_key,
+                model_id=data.model_id,
+                tokens_in=data.tokens_in,
+                tokens_out=data.tokens_out,
+                cache_read_tokens=data.cache_read_tokens,
+                cache_write_tokens=data.cache_write_tokens,
+                session_id=data.session_id,
+            ),
+            prices,
+            actor=_agent_actor(task),
+            system=_SYSTEM,
+        )
+    except _STORE_ERRORS as err:
+        raise _translate(err, task['short_id']) from err
+    if not created:
+        response.status_code = 200
+    return UsageResponse.model_validate({**ledger, 'task': task_state(row)})
 
 
 @agent_task_harness_router.post(

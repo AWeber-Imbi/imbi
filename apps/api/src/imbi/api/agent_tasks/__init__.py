@@ -33,6 +33,7 @@ from imbi.api.agent_tasks.store import (
     TaskClosed,
     TaskNotFound,
     TaskStore,
+    Usage,
 )
 from imbi.common import lifespan, relational
 from imbi.common import settings as common_settings
@@ -104,6 +105,7 @@ __all__ = [
     'TaskClosed',
     'TaskNotFound',
     'TaskStore',
+    'Usage',
     'create_pool',
     'initialize',
     'log',

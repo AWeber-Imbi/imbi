@@ -140,6 +140,58 @@ class NewEvent:
 
 
 @dataclasses.dataclass(frozen=True)
+class Usage:
+    """One model call that a harness reports.
+
+    ``None`` for a token count means the harness did not measure it.
+    """
+
+    idempotency_key: str
+    model_id: str
+    tokens_in: int | None
+    tokens_out: int | None
+    cache_read_tokens: int | None
+    cache_write_tokens: int | None
+    session_id: uuid.UUID | None
+
+
+#: Each token count of a usage report, and the price column for it.
+_TOKEN_PRICES: tuple[tuple[str, str], ...] = (
+    ('tokens_in', 'input_cost_per_million'),
+    ('tokens_out', 'output_cost_per_million'),
+    ('cache_read_tokens', 'cache_read_cost_per_million'),
+    ('cache_write_tokens', 'cache_write_cost_per_million'),
+)
+
+#: The scale of the NUMERIC(14, 6) cost columns.
+_COST_SCALE = decimal.Decimal('0.000001')
+
+
+def usage_cost(
+    counts: dict[str, int | None],
+    prices: dict[str, decimal.Decimal | None] | None,
+) -> decimal.Decimal | None:
+    """Return the USD cost of a usage report, or ``None`` when unknown.
+
+    The cost is unknown when no count was measured, when the model is not
+    in the catalog (``prices`` is ``None``), or when a count above zero
+    has no price. Unknown is never recorded as zero (N2).
+    """
+    if prices is None or all(count is None for count in counts.values()):
+        return None
+    total = decimal.Decimal(0)
+    for count_column, price_column in _TOKEN_PRICES:
+        count = counts[count_column]
+        if not count:
+            continue
+        price = prices[price_column]
+        if price is None:
+            return None
+        total += count * price / 1_000_000
+    return total.quantize(_COST_SCALE)
+
+
+@dataclasses.dataclass(frozen=True)
 class NewRequest:
     """A feedback or approval request that a harness opens."""
 
@@ -803,6 +855,133 @@ class TaskStore:
                 await _set_status(write, 'blocked', 'request_opened', actor)
         return write.task, row
 
+    async def report_usage(
+        self,
+        organization_id: str,
+        short_id: str,
+        usage: Usage,
+        prices: dict[str, decimal.Decimal | None] | None,
+        *,
+        actor: Actor,
+        system: Actor,
+    ) -> tuple[Row, Row, bool]:
+        """Record a usage report; return the task, the ledger row, and
+        whether the row is new.
+
+        The ledger row keeps the prices used, and the task totals change
+        in the same transaction. When the cost total passes the budget,
+        the task closes with ``exceeded_ceiling``. A repeat with the same
+        idempotency key returns the first row, even when the first report
+        closed the task.
+
+        Raises:
+            TaskNotFound: No such task.
+            TaskClosed: The task is closed.
+            SessionNotFound: The task has no such session.
+            SessionClosed: The session is closed.
+
+        """
+        repeat = await self._usage_repeat(
+            organization_id, short_id, usage.idempotency_key
+        )
+        if repeat is not None:
+            return *repeat, False
+        try:
+            async with self._write(organization_id, short_id) as write:
+                task = write.task
+                # Two reports with one key wait for the same task lock.
+                existing = await _ledger_row(
+                    write.conn, task['id'], usage.idempotency_key
+                )
+                if existing is not None:
+                    return task, existing, False
+                if usage.session_id is not None:
+                    await _open_session(
+                        write.conn, task['id'], usage.session_id
+                    )
+                counts: dict[str, int | None] = {
+                    count_column: getattr(usage, count_column)
+                    for count_column, _price_column in _TOKEN_PRICES
+                }
+                cost = usage_cost(counts, prices)
+                row = await _fetch_one(
+                    write.conn,
+                    'INSERT INTO agent_runtime.budget_ledger (id, task_id,'
+                    ' session_id, idempotency_key, model_id, tokens_in,'
+                    ' tokens_out, cache_read_tokens, cache_write_tokens,'
+                    ' input_cost_per_million, output_cost_per_million,'
+                    ' cache_read_cost_per_million,'
+                    ' cache_write_cost_per_million, cost) VALUES (%s, %s,'
+                    ' %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+                    ' RETURNING *',
+                    (
+                        uuid.uuid4(),
+                        task['id'],
+                        usage.session_id,
+                        usage.idempotency_key,
+                        usage.model_id,
+                        *counts.values(),
+                        *(
+                            None if prices is None else prices[price_column]
+                            for _count_column, price_column in _TOKEN_PRICES
+                        ),
+                        cost,
+                    ),
+                )
+                if row is None:  # pragma: no cover - RETURNING yields a row
+                    raise RuntimeError('ledger insert returned no row')
+                write.ledger.append(row)
+                totals: Row = {
+                    column: task[column] + (count or 0)
+                    for column, count in counts.items()
+                }
+                totals['cost_total'] = task['cost_total'] + (cost or 0)
+                budget: decimal.Decimal | None = task['budget']
+                remaining = (
+                    None if budget is None else budget - totals['cost_total']
+                )
+                await write.event(
+                    'usage.reported',
+                    {
+                        'report_id': str(row['id']),
+                        'model_id': usage.model_id,
+                        **counts,
+                        'cost': None if cost is None else str(cost),
+                        'budget_remaining': (
+                            None if remaining is None else str(remaining)
+                        ),
+                    },
+                    actor,
+                    session_id=usage.session_id,
+                )
+                await write.update(totals)
+                if remaining is not None and remaining < 0:
+                    await _close(write, 'exceeded_ceiling', 'budget', system)
+        except TaskClosed:
+            repeat = await self._usage_repeat(
+                organization_id, short_id, usage.idempotency_key
+            )
+            if repeat is None:
+                raise
+            return *repeat, False
+        return write.task, row, True
+
+    async def _usage_repeat(
+        self, organization_id: str, short_id: str, key: str
+    ) -> tuple[Row, Row] | None:
+        """Return the task and its ledger row with ``key``, if any."""
+        async with self._pool.connection() as conn:
+            task = await _fetch_one(
+                conn,
+                'SELECT * FROM agent_runtime.tasks'
+                ' WHERE organization_id = %s AND short_id = %s',
+                (organization_id, short_id),
+            )
+            if task is None:
+                raise TaskNotFound(short_id)
+            row = await _ledger_row(conn, task['id'], key)
+        return None if row is None else (task, row)
+
     async def set_outcome(
         self,
         organization_id: str,
@@ -921,6 +1100,15 @@ async def _check_concurrency(
     row = await cursor.fetchone()
     if row and row[0] >= max_concurrent:
         raise ConcurrencyLimit(agent_id)
+
+
+async def _ledger_row(conn: Conn, task_id: uuid.UUID, key: str) -> Row | None:
+    return await _fetch_one(
+        conn,
+        'SELECT * FROM agent_runtime.budget_ledger'
+        ' WHERE task_id = %s AND idempotency_key = %s',
+        (task_id, key),
+    )
 
 
 async def _request_open(conn: Conn, task_id: uuid.UUID) -> bool:

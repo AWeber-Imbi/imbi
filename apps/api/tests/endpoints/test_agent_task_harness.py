@@ -6,6 +6,7 @@ service account of the agent, unless a test says otherwise.
 """
 
 import datetime
+import decimal
 import typing
 import uuid
 
@@ -15,6 +16,7 @@ from apps.api.tests.endpoints import test_agent_tasks
 from imbi.api import models
 from imbi.api.auth import permissions
 from imbi.api.endpoints import agent_task_harness
+from imbi.api.graph_sql import props_template
 
 
 class HarnessTestCase(test_agent_tasks.AgentTaskTestCase):
@@ -103,6 +105,7 @@ class AccessTests(HarnessTestCase):
             (f'sessions/{session_id}/heartbeat', None),
             (f'sessions/{session_id}/close', {'reason': 'done'}),
             ('events', {'events': [{'type': 'turn'}]}),
+            ('usage', {'idempotency_key': 'u', 'model_id': 'm'}),
             ('requests', {'kind': 'feedback', 'title': 'Which one?'}),
             ('outcome', {'outcome': 'done_acted'}),
         ]
@@ -568,6 +571,7 @@ class OutcomeTests(HarnessTestCase):
             (f'sessions/{session["id"]}/heartbeat', None),
             (f'sessions/{session["id"]}/close', {'reason': 'x'}),
             ('events', {'events': [{'type': 'turn'}]}),
+            ('usage', {'idempotency_key': 'u', 'model_id': 'm'}),
             ('requests', {'kind': 'feedback', 'title': 'Hello?'}),
             ('outcome', {'outcome': 'done_acted'}),
         ):
@@ -578,3 +582,178 @@ class OutcomeTests(HarnessTestCase):
                     response.json()['detail']['error'], 'task_closed'
                 )
         self.assertEqual((await self.task_row())['last_seq'], last_seq)
+
+
+class UsageTests(HarnessTestCase):
+    agent_settings: typing.ClassVar[dict[str, typing.Any]] = {
+        'task_budget': '0.03'
+    }
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.slug = f'opus-{uuid.uuid4().hex[:8]}'
+        self.model_id = f'claude-test-{uuid.uuid4().hex[:8]}'
+        await self.make_model(self.slug, self.model_id)
+
+    async def make_model(
+        self, slug: str, model_id: str, **prices: typing.Any
+    ) -> None:
+        props: dict[str, typing.Any] = {
+            'id': slug,
+            'slug': slug,
+            'name': slug,
+            'model_id': model_id,
+            'input_cost_per_million': '3',
+            'output_cost_per_million': '15',
+            'cache_read_cost_per_million': '0.3',
+            'cache_write_cost_per_million': '3.75',
+        }
+        props.update(prices)
+        await self.graph.execute(
+            f'CREATE (m:AIModel {props_template(props)}) RETURN m.id AS id',
+            props,
+            ['id'],
+        )
+        self.addAsyncCleanup(
+            self.graph.execute,
+            'MATCH (m:AIModel {{id: {id}}}) DETACH DELETE m RETURN 1 AS ok',
+            {'id': slug},
+            ['ok'],
+        )
+
+    async def report(self, key: str, **body: typing.Any) -> httpx.Response:
+        payload: dict[str, typing.Any] = {
+            'idempotency_key': key,
+            'model_id': self.slug,
+            'tokens_in': 1000,
+            'tokens_out': 500,
+            'cache_read_tokens': 10000,
+            'cache_write_tokens': 2000,
+        }
+        payload.update(body)
+        return await self.post('usage', payload)
+
+    async def ledger(self) -> list[dict[str, typing.Any]]:
+        return await self.store.ledger((await self.task_row())['id'])
+
+    async def test_usage_is_priced_from_the_catalog(self) -> None:
+        session = (await self.open_session())['session']
+        response = await self.report('u-1', session_id=session['id'])
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        # 1000 * 3 + 500 * 15 + 10000 * 0.3 + 2000 * 3.75, per million.
+        self.assertEqual(
+            decimal.Decimal(body['cost']), decimal.Decimal('0.021')
+        )
+        self.assertEqual(
+            decimal.Decimal(body['cache_read_cost_per_million']),
+            decimal.Decimal('0.3'),
+        )
+        self.assertEqual(
+            decimal.Decimal(body['cache_write_cost_per_million']),
+            decimal.Decimal('3.75'),
+        )
+        self.assertEqual(body['task']['status'], 'running')
+        self.assertEqual(
+            decimal.Decimal(body['task']['budget_remaining']),
+            decimal.Decimal('0.009'),
+        )
+        task = await self.task_row()
+        self.assertEqual(task['tokens_in'], 1000)
+        self.assertEqual(task['tokens_out'], 500)
+        self.assertEqual(task['cache_read_tokens'], 10000)
+        self.assertEqual(task['cache_write_tokens'], 2000)
+        self.assertEqual(task['cost_total'], decimal.Decimal('0.021'))
+        (row,) = await self.ledger()
+        self.assertEqual(row['input_cost_per_million'], 3)
+        self.assertEqual(str(row['session_id']), session['id'])
+        event = (await self.events())[-1]
+        self.assertEqual(event['type'], 'usage.reported')
+        self.assertEqual(event['payload']['report_id'], body['id'])
+        self.assertEqual(event['payload']['cost'], '0.021000')
+        self.assertEqual(event['payload']['budget_remaining'], '0.009000')
+        # The provider model id finds the same catalog entry.
+        response = await self.report(
+            'u-2',
+            model_id=self.model_id,
+            tokens_in=1,
+            tokens_out=None,
+            cache_read_tokens=None,
+            cache_write_tokens=None,
+        )
+        self.assertEqual(response.json()['input_cost_per_million'], '3.000000')
+
+    async def test_repeat_key_returns_the_first_report(self) -> None:
+        first = await self.report('u-1')
+        last_seq = (await self.task_row())['last_seq']
+        repeat = await self.report('u-1', tokens_in=999999)
+        self.assertEqual(repeat.status_code, 200, repeat.text)
+        self.assertEqual(repeat.json(), first.json())
+        self.assertEqual(len(await self.ledger()), 1)
+        task = await self.task_row()
+        self.assertEqual(task['last_seq'], last_seq)
+        self.assertEqual(task['tokens_in'], 1000)
+
+    async def test_unmeasured_and_unknown_are_recorded(self) -> None:
+        response = await self.post(
+            'usage', {'idempotency_key': 'u-1', 'model_id': self.slug}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        self.assertIsNone(body['tokens_in'])
+        self.assertIsNone(body['cost'])
+        self.assertEqual(body['input_cost_per_million'], '3.000000')
+        response = await self.report('u-2', model_id='no-such-model')
+        self.assertEqual(response.status_code, 201, response.text)
+        body = response.json()
+        self.assertEqual(body['tokens_in'], 1000)
+        self.assertIsNone(body['cost'])
+        self.assertIsNone(body['input_cost_per_million'])
+        self.assertIsNone(body['cache_write_cost_per_million'])
+        rows = await self.ledger()
+        self.assertEqual(len(rows), 2)
+        self.assertIsNone(rows[0]['tokens_in'])
+        task = await self.task_row()
+        self.assertEqual(task['tokens_in'], 1000)
+        self.assertEqual(task['cost_total'], 0)
+
+    async def test_missing_cache_price_makes_the_cost_unknown(self) -> None:
+        slug = f'nocache-{uuid.uuid4().hex[:8]}'
+        await self.make_model(slug, slug, cache_read_cost_per_million=None)
+        response = await self.report('u-1', model_id=slug)
+        self.assertIsNone(response.json()['cost'])
+        response = await self.report('u-2', model_id=slug, cache_read_tokens=0)
+        self.assertEqual(
+            decimal.Decimal(response.json()['cost']), decimal.Decimal('0.018')
+        )
+
+    async def test_budget_closes_the_task(self) -> None:
+        await self.open_session()
+        first = await self.report('u-1')
+        self.assertEqual(first.json()['task']['status'], 'running')
+        second = await self.report('u-2')
+        self.assertEqual(second.status_code, 201, second.text)
+        state = second.json()['task']
+        self.assertEqual(state['status'], 'closed')
+        self.assertEqual(state['outcome'], 'exceeded_ceiling')
+        self.assertEqual(state['outcome_reason'], 'budget')
+        self.assertEqual(
+            decimal.Decimal(state['budget_remaining']),
+            decimal.Decimal('-0.012'),
+        )
+        events = await self.events()
+        self.assertEqual(
+            [e['type'] for e in events[-4:]],
+            [
+                'usage.reported',
+                'session.closed',
+                'state.changed',
+                'outcome.set',
+            ],
+        )
+        # The repeat of the report that closed the task still answers.
+        repeat = await self.report('u-2')
+        self.assertEqual(repeat.status_code, 200, repeat.text)
+        self.assertEqual(repeat.json()['id'], second.json()['id'])
+        response = await self.report('u-3')
+        self.assertEqual(response.status_code, 409, response.text)

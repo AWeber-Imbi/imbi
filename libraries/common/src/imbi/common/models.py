@@ -710,7 +710,7 @@ class AIModel(Node):
         default=None, ge=0
     )
     #: USD per 1M prompt-cache read and write tokens. ``None`` is
-    #: unknown; agent usage then prices those tokens at zero.
+    #: unknown: an agent usage report with such tokens has no cost.
     cache_read_cost_per_million: decimal.Decimal | None = pydantic.Field(
         default=None, ge=0
     )

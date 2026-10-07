@@ -6,12 +6,14 @@ ClickHouse that ``root:services`` boots.
 straight into its table, as the Iggy sink would.
 """
 
+import decimal
 import typing
 import uuid
 from unittest import mock
 
 from apps.api.tests import support
 from apps.api.tests.endpoints import test_agent_tasks
+from imbi.api import agent_tasks
 from imbi.api.agent_tasks import sweeper
 from imbi.common import clickhouse, iggy
 from imbi.common.clickhouse import client
@@ -147,3 +149,38 @@ class SweepTests(ClickHouseTestCase):
         self.assertEqual(await self.get_log(after_seq=6), [])
         # An archived task is not swept again.
         self.assertFalse(await self.store.archive(task['id'], 6))
+
+    async def test_sweep_republishes_usage_rows(self) -> None:
+        actor = agent_tasks.Actor('agent', 'agent-1', 'harness')
+        prices: dict[str, decimal.Decimal | None] = {
+            'input_cost_per_million': decimal.Decimal(3),
+            'output_cost_per_million': decimal.Decimal(15),
+            'cache_read_cost_per_million': None,
+            'cache_write_cost_per_million': None,
+        }
+        failing = mock.AsyncMock(side_effect=RuntimeError('Iggy is down'))
+        with mock.patch.object(iggy, 'publish_rows', failing):
+            _task, row, _created = await self.store.report_usage(
+                self.org,
+                'T-1',
+                agent_tasks.Usage('u-1', 'opus', 1000, 100, None, None, None),
+                prices,
+                actor=actor,
+                system=actor,
+            )
+        query = (
+            'SELECT * FROM imbi.agent_usage WHERE task_id = {task_id:String}'
+        )
+        params = {'task_id': self.task['id']}
+        self.assertEqual(await clickhouse.query(query, params), [])
+        result = await sweeper.sweep_once(self.store)
+        self.assertGreaterEqual(result.republished_reports, 1)
+        (stored,) = await clickhouse.query(query, params)
+        self.assertEqual(stored['report_id'], str(row['id']))
+        self.assertEqual(stored['model_id'], 'opus')
+        self.assertEqual(stored['tokens_in'], 1000)
+        self.assertIsNone(stored['cache_read_tokens'])
+        self.assertEqual(stored['input_cost_per_million'], 3)
+        self.assertIsNone(stored['cache_read_cost_per_million'])
+        self.assertEqual(stored['cost'], decimal.Decimal('0.0045'))
+        self.assertEqual(stored['short_id'], 'T-1')
