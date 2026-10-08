@@ -260,13 +260,14 @@ export function statusVariant(task: {
 
 /**
  * The tool calls of a task in seq order, each nested call under its
- * parent (N3). A call is known by `payload.call_id`, else by its event
- * id; `payload.parent_call_id` names the parent. A call whose parent is
- * not in the log is a top-level row.
+ * parent (N3). `payload.parent_call_id` names the `payload.call_id` of
+ * the parent. The harness plan defines these two fields. A call whose
+ * parent is not in the log is a top-level row.
  */
 export function toolCalls(events: AgentTaskEvent[]): ToolCallRow[] {
   const calls = events.filter((e) => e.type === 'tool.called')
-  const idOf = (e: AgentTaskEvent) => String(e.payload.call_id ?? e.event_id)
+  const idOf = (e: AgentTaskEvent) =>
+    typeof e.payload.call_id === 'string' ? e.payload.call_id : null
   const ids = new Set(calls.map(idOf))
   const children = new Map<string, AgentTaskEvent[]>()
   const roots: AgentTaskEvent[] = []
@@ -279,7 +280,8 @@ export function toolCalls(events: AgentTaskEvent[]): ToolCallRow[] {
   const rows: ToolCallRow[] = []
   const walk = (call: AgentTaskEvent, depth: number) => {
     rows.push({ depth, event: call })
-    for (const child of children.get(idOf(call)) ?? []) walk(child, depth + 1)
+    const id = idOf(call)
+    for (const child of (id && children.get(id)) || []) walk(child, depth + 1)
   }
   for (const root of roots) walk(root, 0)
   return rows
