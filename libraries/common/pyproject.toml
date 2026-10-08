@@ -28,6 +28,7 @@ dependencies = [
   "markdown-it-py>=3.0",
   "nanoid>=2.0.0",
   "orjson",
+  "prometheus-client>=0.21",
   "pydantic-settings",
   "pydantic[email]>=2.0",
   "pyjwt>=2.10.1",

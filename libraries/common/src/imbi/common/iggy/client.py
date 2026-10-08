@@ -16,6 +16,7 @@ import typing
 import urllib.parse
 
 import orjson
+import prometheus_client
 import pydantic
 from apache_iggy import IggyClient, SendMessage
 
@@ -45,6 +46,20 @@ PARTITIONS_COUNT = 1
 #: found``; with ``PARTITIONS_COUNT`` at 1, publishing to partition 0 is
 #: equivalent to the balanced partitioning the ADR describes.
 PARTITION_ID = 0
+
+#: Messages that `_send` published, and messages it failed to publish.
+#: Every publish goes through `_send`, so these count every producer.
+#: The labels come from `TOPICS`, which keeps the series count bounded.
+PUBLISHED = prometheus_client.Counter(
+    'imbi_iggy_published_total',
+    'Messages published to Iggy.',
+    ['stream', 'topic'],
+)
+PUBLISH_ERRORS = prometheus_client.Counter(
+    'imbi_iggy_publish_errors_total',
+    'Messages that failed to publish to Iggy.',
+    ['stream', 'topic'],
+)
 
 
 def connection_string(url: pydantic.AnyUrl) -> str:
@@ -415,17 +430,29 @@ class Iggy:
         payloads: list[dict[str, typing.Any]],
         headers: dict[str, str] | None,
     ) -> None:
-        await self.ensure_topic(stream, topic)
-        messages = [
-            SendMessage(orjson.dumps(payload), user_headers=headers)
-            for payload in payloads
-        ]
-        client = await self._require_client()
-        LOGGER.debug(
-            'Iggy PUBLISH: %s/%s (%d messages)', stream, topic, len(messages)
-        )
-        with _translate_errors(f'publish to {stream}/{topic}', self, client):
-            await client.send_messages(stream, topic, PARTITION_ID, messages)
+        try:
+            await self.ensure_topic(stream, topic)
+            messages = [
+                SendMessage(orjson.dumps(payload), user_headers=headers)
+                for payload in payloads
+            ]
+            client = await self._require_client()
+            LOGGER.debug(
+                'Iggy PUBLISH: %s/%s (%d messages)',
+                stream,
+                topic,
+                len(messages),
+            )
+            with _translate_errors(
+                f'publish to {stream}/{topic}', self, client
+            ):
+                await client.send_messages(
+                    stream, topic, PARTITION_ID, messages
+                )
+        except Exception:
+            PUBLISH_ERRORS.labels(stream, topic).inc(len(payloads))
+            raise
+        PUBLISHED.labels(stream, topic).inc(len(payloads))
 
     async def _require_client(self) -> IggyClient:
         """Return the connected client, initializing it on first use."""
