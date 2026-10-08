@@ -10,6 +10,12 @@ import type {
   Advisory,
   Agent,
   AgentCreate,
+  AgentTask,
+  AgentTaskCreate,
+  AgentTaskEvent,
+  AgentTaskListItem,
+  AgentTaskResolve,
+  AgentTaskStatus,
   AgentToolCatalog,
   AgentUpdate,
   AgentVersion,
@@ -3586,3 +3592,99 @@ export const getAgentToolCatalog = (
 
 export const restoreAgentVersion = (orgSlug: string, slug: string, n: number) =>
   apiClient.post<Agent>(`${agentPath(orgSlug, slug)}/versions/${n}/restore`)
+
+// Agent tasks (ADR 0020). A task is addressed by its short id (`T-<n>`).
+const agentTasksPath = (orgSlug: string) =>
+  `/organizations/${encodeURIComponent(orgSlug)}/agent-tasks`
+
+const agentTaskPath = (orgSlug: string, shortId: string) =>
+  `${agentTasksPath(orgSlug)}/${encodeURIComponent(shortId)}`
+
+export interface AgentTaskListParams {
+  limit?: number
+  mine?: boolean
+  q?: string
+  status?: AgentTaskStatus[]
+}
+
+export const listAgentTasks = (
+  orgSlug: string,
+  params: AgentTaskListParams,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AgentTaskListItem[]>(
+    `${agentTasksPath(orgSlug)}/`,
+    { ...params },
+    signal,
+  )
+
+/** The number of blocked tasks in the org (the "waiting on you" badge). */
+export const countWaitingAgentTasks = (orgSlug: string, signal?: AbortSignal) =>
+  apiClient.get<{ count: number }>(
+    `${agentTasksPath(orgSlug)}/waiting`,
+    undefined,
+    signal,
+  )
+
+export const createAgentTask = (orgSlug: string, task: AgentTaskCreate) =>
+  apiClient.post<AgentTask>(`${agentTasksPath(orgSlug)}/`, task)
+
+export const getAgentTask = (
+  orgSlug: string,
+  shortId: string,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AgentTask>(agentTaskPath(orgSlug, shortId), undefined, signal)
+
+/** The events of a task with a `seq` after `afterSeq`, in seq order. */
+export const listAgentTaskEvents = (
+  orgSlug: string,
+  shortId: string,
+  afterSeq: number,
+  limit: number,
+  signal?: AbortSignal,
+) =>
+  apiClient.get<AgentTaskEvent[]>(
+    `${agentTaskPath(orgSlug, shortId)}/events`,
+    { after_seq: afterSeq, limit },
+    signal,
+  )
+
+/** Pause, resume, or cancel a task. */
+export const controlAgentTask = (
+  orgSlug: string,
+  shortId: string,
+  action: 'cancel' | 'pause' | 'resume',
+) => apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/${action}`)
+
+export const reassignAgentTask = (
+  orgSlug: string,
+  shortId: string,
+  owner: string,
+) =>
+  apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/reassign`, {
+    owner,
+  })
+
+/** A reply from a person; `hold` also pauses the task. */
+export const replyAgentTask = (
+  orgSlug: string,
+  shortId: string,
+  body: string,
+  hold: boolean,
+) =>
+  apiClient.post<AgentTask>(`${agentTaskPath(orgSlug, shortId)}/reply`, {
+    body,
+    hold,
+  })
+
+export const resolveAgentTaskRequest = (
+  orgSlug: string,
+  shortId: string,
+  requestId: string,
+  resolution: AgentTaskResolve,
+) =>
+  apiClient.post<unknown>(
+    `${agentTaskPath(orgSlug, shortId)}/requests/${encodeURIComponent(requestId)}/resolve`,
+    resolution,
+  )
