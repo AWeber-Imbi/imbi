@@ -4369,6 +4369,8 @@ export interface paths {
         /**
          * Get Agent Task
          * @description Get a task by its short id (``T-<n>``).
+         *
+         *     The service account of the task's agent can read its own task.
          */
         get: operations["get_agent_task_api_organizations__org_slug__agent_tasks__short_id__get"];
         put?: never;
@@ -4391,11 +4393,33 @@ export interface paths {
          * @description List the events of a task with ``seq`` after ``after_seq``.
          *
          *     To read new events, give the ``seq`` of the last event that you
-         *     have as ``after_seq``.
+         *     have as ``after_seq``. The events of an archived task come from
+         *     ClickHouse, in the same shape. The service account of the task's
+         *     agent can read the events of its own task.
          */
         get: operations["list_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_get"];
         put?: never;
-        post?: never;
+        /**
+         * Append Agent Task Events
+         * @description Write a batch of harness events, in order.
+         *
+         *     The harness writes only ``turn``, ``tool.called``,
+         *     ``phase.changed``, ``todos.updated``, and ``check.reported``. A
+         *     ``phase.changed`` event also sets the phase of the task.
+         *
+         *     Each event has an ``event_id`` that the harness picks. An event that
+         *     the task already has is not written again and takes no seq; its id
+         *     is in ``duplicates``. The status is 200 when nothing was written.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed``, ``session_closed``, or
+         *             ``event_id_conflict`` (another task has the event id).
+         *         413: A payload is larger than :data:`MAX_PAYLOAD_BYTES`.
+         *         422: An event type that Imbi writes, or a bad envelope.
+         */
+        post: operations["append_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4497,6 +4521,186 @@ export interface paths {
          *         422: The new owner is not a member of the org.
          */
         post: operations["reassign_agent_task_api_organizations__org_slug__agent_tasks__short_id__reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Agent Task Session
+         * @description Open a harness session on a task.
+         *
+         *     A repeat with the same ``session_key`` returns the first session
+         *     with status 200. A new session moves a ``queued`` task to
+         *     ``running``, as it does a ``blocked`` task with no open request.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task.
+         *         409: ``task_closed``, ``task_cancelled`` (control is cancel), or
+         *             ``concurrency_limit`` (the agent has
+         *             ``settings.max_concurrent_tasks`` open sessions).
+         */
+        post: operations["open_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/sessions/{session_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Heartbeat Agent Task Session
+         * @description Record a heartbeat; return the control value, seq, and budget.
+         *
+         *     When the task has run longer than the agent's
+         *     ``settings.task_timeout_seconds`` since its first session opened,
+         *     the task closes with ``exceeded_ceiling`` (reason ``task_timeout``)
+         *     and the response has the closed status.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed`` or ``session_closed``.
+         */
+        post: operations["heartbeat_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions__session_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/sessions/{session_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Agent Task Session
+         * @description Close a session. Closing a closed session changes nothing.
+         *
+         *     When no session remains open, the status follows the control value:
+         *     ``pause`` makes the task ``paused``, ``run`` puts a ``running`` task
+         *     back to ``queued``, and ``cancel`` closes it.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed``.
+         */
+        post: operations["close_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions__session_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Agent Task Usage
+         * @description Report the tokens of one model call; return the remaining budget.
+         *
+         *     Imbi prices the report from the AI model catalog and records the
+         *     prices it used. A report with no token counts is unmeasured, and an
+         *     unknown model has no cost; both are still recorded. When the cost
+         *     total passes the budget, the task closes with ``exceeded_ceiling``
+         *     (reason ``budget``). A repeat with the same ``idempotency_key``
+         *     returns the first report with status 200.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed`` or ``session_closed``.
+         */
+        post: operations["report_agent_task_usage_api_organizations__org_slug__agent_tasks__short_id__usage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Agent Task Request
+         * @description Ask a person for feedback or an approval; block the task.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task or session.
+         *         409: ``task_closed`` or ``session_closed``.
+         *         413: The request content is larger than
+         *             :data:`MAX_PAYLOAD_BYTES`.
+         *         422: An approval with no ``artifact_digests``, or an
+         *             ``expires_at`` that is not in the future.
+         */
+        post: operations["open_agent_task_request_api_organizations__org_slug__agent_tasks__short_id__requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{org_slug}/agent-tasks/{short_id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Agent Task Outcome
+         * @description Close the task with a terminal outcome (F5).
+         *
+         *     Every open session closes. Every outcome but ``done_acted`` needs a
+         *     slug ``reason``. Per-outcome reason lists (F6) are not checked yet.
+         *
+         *     Raises:
+         *         403: The caller is not the service account of the task's agent.
+         *         404: No such task.
+         *         409: ``task_closed``.
+         *         422: Not an F5 outcome, or no reason.
+         */
+        post: operations["set_agent_task_outcome_api_organizations__org_slug__agent_tasks__short_id__outcome_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7578,6 +7782,10 @@ export interface components {
             input_cost_per_million?: number | string | null;
             /** Output Cost Per Million */
             output_cost_per_million?: number | string | null;
+            /** Cache Read Cost Per Million */
+            cache_read_cost_per_million?: number | string | null;
+            /** Cache Write Cost Per Million */
+            cache_write_cost_per_million?: number | string | null;
             /** Default Temperature */
             default_temperature?: number | null;
             /** Default Top P */
@@ -7639,6 +7847,10 @@ export interface components {
             input_cost_per_million?: string | null;
             /** Output Cost Per Million */
             output_cost_per_million?: string | null;
+            /** Cache Read Cost Per Million */
+            cache_read_cost_per_million?: string | null;
+            /** Cache Write Cost Per Million */
+            cache_write_cost_per_million?: string | null;
             /** Default Temperature */
             default_temperature?: number | null;
             /** Default Top P */
@@ -8636,6 +8848,13 @@ export interface components {
             suffix: string;
             /** Start */
             start: number;
+        };
+        /** AppendEventsResponse */
+        AppendEventsResponse: {
+            /** Written */
+            written: components["schemas"]["AgentTaskEventResponse"][];
+            /** Duplicates */
+            duplicates: string[];
         };
         /**
          * AttachmentRef
@@ -10739,6 +10958,13 @@ export interface components {
              */
             evaluated_at?: string;
         };
+        /** EventBatch */
+        EventBatch: {
+            /** Session Id */
+            session_id?: string | null;
+            /** Events */
+            events: components["schemas"]["HarnessEvent"][];
+        };
         /** EventRecord */
         EventRecord: {
             /** Id */
@@ -10901,6 +11127,48 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HarnessEvent
+         * @description One event in the envelope of ADR 0020.
+         */
+        HarnessEvent: {
+            /**
+             * Event Id
+             * Format: uuid
+             * @description Picked by the harness. An event that the task already has is a duplicate and is not written again.
+             */
+            event_id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "turn" | "tool.called" | "phase.changed" | "todos.updated" | "check.reported";
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+            /**
+             * Actor Kind
+             * @default agent
+             * @enum {string}
+             */
+            actor_kind: "agent" | "subagent";
+            /**
+             * Actor Id
+             * @description Defaults to the id of the agent.
+             */
+            actor_id?: string | null;
+            /**
+             * At
+             * @description When it happened. Defaults to now.
+             */
+            at?: string | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
         };
         /** IdentitiesResponse */
         IdentitiesResponse: {
@@ -12495,6 +12763,19 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** OutcomeSet */
+        OutcomeSet: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "done_acted" | "done_nothing_to_act_on" | "no_reason_to_run" | "partial_capped" | "suppressed_duplicate" | "superseded" | "cancelled_by_human" | "interrupted_by_operator" | "failed_at_gate" | "failed_external" | "unmapped_subject" | "exceeded_ceiling" | "unhandled_no_actor" | "request_expired" | "refused_rate_ceiling";
+            /**
+             * Reason
+             * @description A slug. Required for every outcome but done_acted.
+             */
+            reason?: string | null;
         };
         /**
          * PRActivityResponse
@@ -14851,6 +15132,67 @@ export interface components {
                 [key: string]: components["schemas"]["NoulQuestion"] | components["schemas"]["ChoiceQuestion"] | components["schemas"]["ScoreQuestion"];
             };
         };
+        /** RequestCreate */
+        RequestCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "feedback" | "approval";
+            /** Title */
+            title: string;
+            /** Why */
+            why?: string | null;
+            /** Options */
+            options?: unknown[] | null;
+            /** Artifacts */
+            artifacts?: unknown[] | null;
+            /**
+             * Artifact Digests
+             * @description Required for an approval: what the approval binds to.
+             */
+            artifact_digests?: string[] | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+        };
+        /** RequestOpenResponse */
+        RequestOpenResponse: {
+            request: components["schemas"]["RequestResponse"];
+            task: components["schemas"]["TaskState"];
+        };
+        /** RequestResponse */
+        RequestResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Session Id */
+            session_id?: string | null;
+            /** Kind */
+            kind: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Why */
+            why?: string | null;
+            /** Options */
+            options?: unknown[] | null;
+            /** Artifacts */
+            artifacts?: unknown[] | null;
+            /** Artifact Digests */
+            artifact_digests?: string[] | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+        };
         /** RescoreRequest */
         RescoreRequest: {
             /** Project Id */
@@ -15482,6 +15824,49 @@ export interface components {
             /** Detail */
             detail?: string | null;
         };
+        /** SessionClose */
+        SessionClose: {
+            /** Reason */
+            reason: string;
+        };
+        /** SessionOpen */
+        SessionOpen: {
+            /**
+             * Session Key
+             * @description A repeat with the same key returns the first session.
+             */
+            session_key: string;
+            /** Harness Instance */
+            harness_instance?: string | null;
+        };
+        /** SessionOpenResponse */
+        SessionOpenResponse: {
+            session: components["schemas"]["SessionResponse"];
+            task: components["schemas"]["TaskState"];
+        };
+        /** SessionResponse */
+        SessionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Session Key */
+            session_key?: string | null;
+            /** Harness Instance */
+            harness_instance?: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Heartbeat At */
+            heartbeat_at?: string | null;
+            /** Closed At */
+            closed_at?: string | null;
+            /** Close Reason */
+            close_reason?: string | null;
+        };
         /** StatsResponse */
         StatsResponse: {
             /**
@@ -15583,6 +15968,38 @@ export interface components {
             relationships?: {
                 [key: string]: components["schemas"]["RelationshipLink"];
             } | null;
+        };
+        /**
+         * TaskState
+         * @description What a harness reads at each turn boundary.
+         */
+        TaskState: {
+            /** Short Id */
+            short_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "blocked" | "paused" | "closed";
+            /**
+             * Control
+             * @enum {string}
+             */
+            control: "run" | "pause" | "cancel";
+            /** Phase */
+            phase?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Outcome Reason */
+            outcome_reason?: string | null;
+            /** Last Seq */
+            last_seq: number;
+            /** Budget */
+            budget?: string | null;
+            /** Cost Total */
+            cost_total: string;
+            /** Budget Remaining */
+            budget_remaining?: string | null;
         };
         /** Team */
         Team: {
@@ -15756,6 +16173,86 @@ export interface components {
              * @default []
              */
             environments: string[];
+        };
+        /**
+         * UsageReport
+         * @description One model call. Imbi computes the cost from the AI model catalog.
+         */
+        UsageReport: {
+            /**
+             * Idempotency Key
+             * @description A repeat with the same key returns the first report.
+             */
+            idempotency_key: string;
+            /**
+             * Model Id
+             * @description The catalog slug or the model id sent to the provider.
+             */
+            model_id: string;
+            /**
+             * Tokens In
+             * @description Uncached input tokens only. Do not include the tokens in cache_read_tokens or cache_write_tokens.
+             */
+            tokens_in?: number | null;
+            /**
+             * Tokens Out
+             * @description Output tokens.
+             */
+            tokens_out?: number | null;
+            /**
+             * Cache Read Tokens
+             * @description Input tokens read from the cache.
+             */
+            cache_read_tokens?: number | null;
+            /**
+             * Cache Write Tokens
+             * @description Input tokens written to the cache.
+             */
+            cache_write_tokens?: number | null;
+            /** Session Id */
+            session_id?: string | null;
+        };
+        /**
+         * UsageResponse
+         * @description The budget ledger row of a report, and the task after it.
+         *
+         *     A ``None`` token count was not measured. A ``None`` cost is unknown:
+         *     the model or a price it needs is not in the catalog.
+         */
+        UsageResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Model Id */
+            model_id?: string | null;
+            /** Tokens In */
+            tokens_in?: number | null;
+            /** Tokens Out */
+            tokens_out?: number | null;
+            /** Cache Read Tokens */
+            cache_read_tokens?: number | null;
+            /** Cache Write Tokens */
+            cache_write_tokens?: number | null;
+            /** Input Cost Per Million */
+            input_cost_per_million?: string | null;
+            /** Output Cost Per Million */
+            output_cost_per_million?: string | null;
+            /** Cache Read Cost Per Million */
+            cache_read_cost_per_million?: string | null;
+            /** Cache Write Cost Per Million */
+            cache_write_cost_per_million?: string | null;
+            /** Cost */
+            cost?: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            task: components["schemas"]["TaskState"];
         };
         /**
          * UsageVersion
@@ -24183,8 +24680,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                short_id: string;
                 org_slug: string;
+                short_id: string;
             };
             cookie?: never;
         };
@@ -24218,8 +24715,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                short_id: string;
                 org_slug: string;
+                short_id: string;
             };
             cookie?: never;
         };
@@ -24232,6 +24729,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    append_agent_task_events_api_organizations__org_slug__agent_tasks__short_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventBatch"];
+            };
+        };
+        responses: {
+            /** @description All events in the batch are duplicates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppendEventsResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppendEventsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -24364,6 +24906,238 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionOpen"];
+            };
+        };
+        responses: {
+            /** @description A session with this session key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOpenResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOpenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions__session_id__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_agent_task_session_api_organizations__org_slug__agent_tasks__short_id__sessions__session_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_agent_task_usage_api_organizations__org_slug__agent_tasks__short_id__usage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsageReport"];
+            };
+        };
+        responses: {
+            /** @description A report with this idempotency key exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_agent_task_request_api_organizations__org_slug__agent_tasks__short_id__requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestOpenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_agent_task_outcome_api_organizations__org_slug__agent_tasks__short_id__outcome_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_slug: string;
+                short_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskState"];
                 };
             };
             /** @description Validation Error */

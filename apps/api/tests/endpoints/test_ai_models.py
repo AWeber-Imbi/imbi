@@ -376,6 +376,42 @@ class CreateModelTestCase(AIModelTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
+    def test_create_stores_cache_prices(self) -> None:
+        """Cache read and write prices are stored and returned."""
+        router = self.route(
+            (GET_PROVIDER, [{'p': provider_tests.provider_props()}]),
+            (
+                CREATE,
+                [
+                    {
+                        'm': model_props(
+                            cache_read_cost_per_million='0.3',
+                            cache_write_cost_per_million='3.75',
+                        )
+                    }
+                ],
+            ),
+        )
+        response = self.client.post(
+            BASE + '/',
+            json=self._body(
+                cache_read_cost_per_million='0.3',
+                cache_write_cost_per_million='3.75',
+            ),
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['cache_read_cost_per_million'], '0.3')
+        self.assertEqual(
+            response.json()['cache_write_cost_per_million'], '3.75'
+        )
+        params = router.params_for(CREATE)
+        self.assertEqual(params['cache_read_cost_per_million'], '0.3')
+        self.assertEqual(params['cache_write_cost_per_million'], '3.75')
+        response = self.client.post(
+            BASE + '/', json=self._body(cache_read_cost_per_million='-1')
+        )
+        self.assertEqual(response.status_code, 422)
+
 
 class PatchModelTestCase(AIModelTestBase):
     """``PATCH`` with RFC 6902 operations."""
@@ -407,6 +443,26 @@ class PatchModelTestCase(AIModelTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()['enabled'])
         self.assertFalse(router.params_for(UPDATE)['enabled'])
+
+    def test_patch_cache_price(self) -> None:
+        """A replace on a cache price is persisted."""
+        self._installed()
+        router = typing.cast('typing.Any', self.mock_db.execute.side_effect)
+        response = self.client.patch(
+            f'{BASE}/mdl-1',
+            json=[
+                {
+                    'op': 'add',
+                    'path': '/cache_read_cost_per_million',
+                    'value': '0.5',
+                }
+            ],
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['cache_read_cost_per_million'], '0.5')
+        self.assertEqual(
+            router.params_for(UPDATE)['cache_read_cost_per_million'], '0.5'
+        )
 
     def test_teams_are_replaced_as_a_set(self) -> None:
         """Patching the team list clears the old edges first."""
