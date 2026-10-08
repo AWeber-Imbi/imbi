@@ -4329,8 +4329,8 @@ export interface paths {
          *     ``q`` matches the title, the short id, the agent name, or the
          *     project slug. ``mine`` keeps the tasks that the caller owns. The
          *     ``Link`` header has the URL of the next page. Each task has
-         *     ``blocked_since``, so a client can sort the blocked queue oldest
-         *     block first (O2).
+         *     ``blocked_since`` when it waits on a person, so a client can sort
+         *     that queue oldest block first (O2).
          *
          *     Raises:
          *         400: The cursor is not valid.
@@ -4372,8 +4372,10 @@ export interface paths {
          * Count Waiting Agent Tasks
          * @description Count the tasks in the organization that wait on a person.
          *
-         *     A task waits when it is ``blocked`` on an open request. The count is
-         *     for the whole organization, for the navigation badge (O1).
+         *     A task waits when it is not closed and has an open request that has
+         *     not expired, whatever its status: a task that is paused with an open
+         *     request (Reply and hold) still waits. The count is for the whole
+         *     organization, for the navigation badge (O1).
          *
          *     Raises:
          *         403: The caller is not a member of the org.

@@ -10,7 +10,7 @@ import {
 import { event, task } from './taskFixtures'
 
 describe('groupTasks', () => {
-  it('groups by state and puts the oldest block first (O2)', () => {
+  it('groups waiting tasks, paused too, oldest block first (O2)', () => {
     const groups = groupTasks([
       task({ short_id: 'T-6', status: 'queued' }),
       task({
@@ -19,6 +19,11 @@ describe('groupTasks', () => {
         status: 'blocked',
       }),
       task({ short_id: 'T-4', status: 'paused' }),
+      task({
+        blocked_since: '2026-10-08T11:30:00Z',
+        short_id: 'T-7',
+        status: 'paused',
+      }),
       task({
         blocked_since: '2026-10-08T11:00:00Z',
         short_id: 'T-3',
@@ -39,7 +44,7 @@ describe('groupTasks', () => {
     expect(
       groups.map((g) => [g.label, g.tasks.map((t) => t.short_id)]),
     ).toEqual([
-      ['Human input required', ['T-3', 'T-5']],
+      ['Human input required', ['T-3', 'T-7', 'T-5']],
       ['Running', ['T-4', 'T-2']],
       ['Queued', ['T-6']],
       ['Recently closed', ['T-0', 'T-1']],

@@ -62,6 +62,15 @@ const GROUP_OF: Record<AgentTaskStatus, InboxGroupId> = {
   running: 'running',
 }
 
+/**
+ * The inbox group of a task. A task that waits on a person (it has
+ * `blocked_since`: it is not closed and a request is open) needs human
+ * input whatever its status, also when it is paused.
+ */
+function groupOf(task: AgentTaskListItem): InboxGroupId {
+  return task.blocked_since ? 'input' : GROUP_OF[task.status]
+}
+
 /** The event types that the Conversation tab shows (O5). */
 const CONVERSATION_TYPES = new Set([
   'control.changed',
@@ -138,21 +147,17 @@ export function formatTokens(n: number): string {
 }
 
 /**
- * The inbox groups that have tasks, in order. The blocked queue is
- * oldest block first (O2); the closed group is newest close first; the
+ * The inbox groups that have tasks, in order. The tasks that wait on a
+ * person are oldest block first (O2); the closed group is newest close first; the
  * others keep the list order (newest first).
  */
 export function groupTasks(tasks: AgentTaskListItem[]): InboxGroup[] {
   const time = (value: null | string | undefined) =>
     value ? Date.parse(value) : 0
   return GROUPS.map(({ id, label }) => {
-    const members = tasks.filter((t) => GROUP_OF[t.status] === id)
+    const members = tasks.filter((t) => groupOf(t) === id)
     if (id === 'input')
-      members.sort(
-        (a, b) =>
-          time(a.blocked_since ?? a.updated_at) -
-          time(b.blocked_since ?? b.updated_at),
-      )
+      members.sort((a, b) => time(a.blocked_since) - time(b.blocked_since))
     if (id === 'closed')
       members.sort((a, b) => time(b.closed_at) - time(a.closed_at))
     return { id, label, tasks: members }

@@ -122,7 +122,10 @@ export function useAgentTasks(orgSlug: string, params: AgentTaskListParams) {
   })
 }
 
-/** The number of blocked tasks in the org, for the badge (O1). */
+/**
+ * The number of tasks in the org that wait on a person (not closed, a
+ * request open), for the badge (O1).
+ */
 export function useWaitingTaskCount(orgSlug: string | undefined) {
   const canRead = useHasPermission('agent_task:read')
   return useQuery({

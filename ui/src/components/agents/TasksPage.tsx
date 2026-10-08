@@ -245,11 +245,8 @@ function TaskRow({
   const trigger = TRIGGERS[task.origin.kind]
   const TriggerIcon = trigger.icon
   const since =
-    task.status === 'blocked'
-      ? (task.blocked_since ?? task.updated_at)
-      : task.status === 'closed'
-        ? task.closed_at
-        : task.created_at
+    task.blocked_since ??
+    (task.status === 'closed' ? task.closed_at : task.created_at)
   const label =
     task.status === 'running' && task.phase
       ? task.phase[0].toUpperCase() + task.phase.slice(1)
